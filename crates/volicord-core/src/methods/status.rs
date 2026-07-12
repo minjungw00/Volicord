@@ -104,7 +104,10 @@ fn status_result_fields(
     let mut guard_health = None;
     let mut coverage_summary = None;
     let mut continuity_summary = None;
+    let mut task_flow = None;
+    let mut authority_receipt = None;
     let mut next_actions = Vec::new();
+    let mut receipt_next_actions = Vec::new();
     let mut card_pending_user_judgment_count = 0usize;
     let guarantee_profile = if include.guarantees {
         Some(
@@ -125,6 +128,32 @@ fn status_result_fields(
         let current_change_unit = store
             .current_change_unit(&task_id)
             .map_err(CorePipelineError::from)?;
+        let task_ref = state_ref(
+            StateRecordKind::Task,
+            &task.task_id,
+            project_id,
+            Some(&task_id),
+            Some(state_version),
+        );
+        let change_unit_ref = current_change_unit.as_ref().map(|record| {
+            state_ref(
+                StateRecordKind::ChangeUnit,
+                &record.change_unit_id,
+                project_id,
+                Some(&task_id),
+                Some(state_version),
+            )
+        });
+        let task_next_actions = if is_terminal_lifecycle(&task.lifecycle_phase) {
+            Vec::new()
+        } else {
+            next_actions_for_state(
+                parse_task_mode(&task.mode)?,
+                &task_ref,
+                change_unit_ref.as_ref(),
+                state_version,
+            )
+        };
         let all_pending_user_judgments =
             projected_pending_user_judgment_refs(store, &task_id, state_version)?;
         card_pending_user_judgment_count = all_pending_user_judgments.len();
@@ -144,39 +173,65 @@ fn status_result_fields(
             None
         };
         write_ticket_summary = projected_write_ticket.clone();
-        let close_plan = if include.evidence || include.close {
-            let plan = close_task::plan_close_task(
-                store,
-                project_state,
-                Some(verified_invocation),
-                guarantee_profile.as_ref(),
-                close_task::CloseTaskPlanRequest::check(CheckCloseRequest {
-                    envelope: ToolEnvelope {
-                        task_id: Some(task_id.clone()).into(),
-                        ..envelope.clone()
-                    },
-                    task_id: task_id.clone(),
-                }),
-                &utc_timestamp(now),
-            )?;
-            evidence_gate = Some(plan.evidence_gate);
-            current_close_basis = plan.current_close_basis.clone();
-            if include.close {
-                close_state = Some(status_close_state(plan.close_state));
-                risk_acceptance_coverage = Some(plan.risk_acceptance_coverage.clone());
-                close_blockers = Some(plan.blockers.clone());
-                guard_health = plan.guard_health.clone();
-                coverage_summary = plan
-                    .guard_health
-                    .as_ref()
-                    .map(close_task::coverage_summary_from_guard_health);
-                next_actions.extend(close_next_actions(&plan.blockers));
-            }
-            Some(plan)
-        } else {
-            None
+        let close_plan = close_task::plan_close_task(
+            store,
+            project_state,
+            Some(verified_invocation),
+            guarantee_profile.as_ref(),
+            close_task::CloseTaskPlanRequest::check(CheckCloseRequest {
+                envelope: ToolEnvelope {
+                    task_id: Some(task_id.clone()).into(),
+                    ..envelope.clone()
+                },
+                task_id: task_id.clone(),
+            }),
+            &utc_timestamp(now),
+        )?;
+        let lifecycle_phase = parse_lifecycle_phase(&task.lifecycle_phase)?;
+        let terminal_close_state = match lifecycle_phase {
+            TaskLifecyclePhase::Completed => Some(CloseState::Closed),
+            TaskLifecyclePhase::Cancelled => Some(CloseState::Cancelled),
+            TaskLifecyclePhase::Superseded => Some(CloseState::Superseded),
+            TaskLifecyclePhase::Shaping
+            | TaskLifecyclePhase::Ready
+            | TaskLifecyclePhase::Executing
+            | TaskLifecyclePhase::WaitingUser
+            | TaskLifecyclePhase::Blocked => None,
         };
-        let projected_evidence = if include.evidence || include.close {
+        let effective_close_state = terminal_close_state.unwrap_or(close_plan.close_state);
+        let effective_close_blockers = if terminal_close_state.is_some() {
+            Vec::new()
+        } else {
+            close_plan.blockers.clone()
+        };
+        let mut effective_close_actions = close_next_actions(&effective_close_blockers);
+        if effective_close_state == CloseState::Ready {
+            let mut required_refs = vec![task_ref.clone()];
+            required_refs.extend(change_unit_ref.clone());
+            effective_close_actions.push(close_next_action(
+                "Complete the current Task.",
+                required_refs,
+            ));
+        }
+        evidence_gate = Some(close_plan.evidence_gate);
+        current_close_basis = close_plan.current_close_basis.clone();
+        receipt_next_actions.extend(effective_close_actions.clone());
+        receipt_next_actions.extend(task_next_actions.clone());
+        if include.close {
+            close_state = Some(status_close_state(effective_close_state));
+            risk_acceptance_coverage = Some(close_plan.risk_acceptance_coverage.clone());
+            close_blockers = Some(effective_close_blockers.clone());
+            guard_health = close_plan.guard_health.clone();
+            coverage_summary = close_plan
+                .guard_health
+                .as_ref()
+                .map(close_task::coverage_summary_from_guard_health);
+            next_actions.extend(effective_close_actions.clone());
+        }
+        if include.task {
+            next_actions.extend(task_next_actions.clone());
+        }
+        let projected_evidence = if include.task || include.evidence || include.close {
             projected_evidence_summary(store, project_id, state_version, task)?
                 .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()))
         } else {
@@ -187,9 +242,7 @@ fn status_result_fields(
         }
         if include.pending_user_judgments {
             let user_channel = UserChannelContext {
-                guard_health: close_plan
-                    .as_ref()
-                    .and_then(|plan| plan.guard_health.as_ref()),
+                guard_health: close_plan.guard_health.as_ref(),
                 host_elicitation_available: verified_invocation.host_elicitation_available,
                 local_web_consent_available: verified_invocation.local_web_consent_available,
             };
@@ -215,38 +268,51 @@ fn status_result_fields(
                 write_ticket_summary: projected_write_ticket,
                 evidence_summary: projected_evidence.clone(),
                 evidence_gate,
-                close_state: include
-                    .close
-                    .then(|| close_plan.as_ref().map(|plan| plan.close_state))
-                    .flatten(),
+                close_state: include.close.then_some(effective_close_state),
                 close_blockers: if include.close {
-                    close_plan
-                        .as_ref()
-                        .map(|plan| plan.blockers.clone())
-                        .unwrap_or_default()
+                    effective_close_blockers.clone()
                 } else {
                     Vec::new()
                 },
                 guard_health: include
                     .close
-                    .then(|| {
-                        close_plan
-                            .as_ref()
-                            .and_then(|plan| plan.guard_health.clone())
-                    })
+                    .then(|| close_plan.guard_health.clone())
                     .flatten(),
                 guarantee_display: guarantee_projection.clone(),
             })?;
-            if let Some(task_ref) = &state.task_ref {
-                next_actions.extend(next_actions_for_state(
-                    parse_task_mode(&task.mode)?,
-                    task_ref,
-                    state.active_change_unit_ref.as_ref(),
-                    state_version,
-                ));
-            }
             active_task = Some(status_state_summary_value(state, include)?);
         }
+        let latest_run = store
+            .run_observed_changes_for_task(&task_id)
+            .map_err(CorePipelineError::from)?
+            .into_iter()
+            .find(|record| record.status == "recorded");
+        let latest_run_ref = latest_run.as_ref().map(|record| {
+            state_ref(
+                StateRecordKind::Run,
+                &record.run_id,
+                project_id,
+                Some(&task_id),
+                Some(state_version),
+            )
+        });
+        let product_file_write_observed = latest_run
+            .as_ref()
+            .is_some_and(|record| record.observed_changes.product_file_write_observed);
+        authority_receipt = Some(AuthorityReceipt {
+            project_id: project_id.clone(),
+            state_version,
+            task_ref,
+            change_unit_ref,
+            scope_revision: task.scope_revision,
+            latest_run_ref,
+            product_file_write_observed,
+            evidence_gate: Some(close_plan.evidence_gate),
+            close_state: status_close_state(effective_close_state),
+            close_blockers: effective_close_blockers,
+            next_actor: AuthorityNextActor::None,
+            next_action: None,
+        });
     }
     if include.continuity {
         continuity_summary = Some(projected_continuity_summary(
@@ -254,9 +320,22 @@ fn status_result_fields(
             state_version,
             STATUS_CONTINUITY_RECORD_LIMIT,
         )?);
+        if let Some(task) = task {
+            task_flow = Some(projected_task_flow(store, task, state_version)?);
+        }
     }
     next_actions = unique_next_actions(next_actions);
     normalize_next_action_collection(&mut next_actions, state_version);
+    receipt_next_actions = unique_next_actions(receipt_next_actions);
+    normalize_next_action_collection(&mut receipt_next_actions, state_version);
+    if let Some(receipt) = authority_receipt.as_mut() {
+        let next_action = receipt_next_actions.first().cloned();
+        receipt.next_actor = next_action
+            .as_ref()
+            .map(authority_next_actor)
+            .unwrap_or(AuthorityNextActor::None);
+        receipt.next_action = next_action;
+    }
 
     let close_blockers_slice = close_blockers.as_deref().unwrap_or(&[]);
     let summary_card = summary_card_for_core(SummaryCardBuild {
@@ -305,12 +384,92 @@ fn status_result_fields(
         coverage_summary: include.close.then_some(coverage_summary).flatten(),
         guarantee_display: guarantee_projection.map(RequiredNullable::some),
         continuity_summary,
+        task_flow,
+        authority_receipt,
     };
     let mut result_fields = strip_base(serde_json::to_value(result)?)?;
     if let Some(active_task) = active_task {
         result_fields.insert("active_task".to_owned(), active_task);
     }
     Ok(result_fields)
+}
+
+fn authority_next_actor(action: &NextActionSummary) -> AuthorityNextActor {
+    if action
+        .allowed_operation_categories
+        .contains(&OperationCategory::UserOnly)
+    {
+        AuthorityNextActor::User
+    } else if action
+        .allowed_operation_categories
+        .contains(&OperationCategory::AgentWorkflow)
+    {
+        AuthorityNextActor::Agent
+    } else {
+        AuthorityNextActor::None
+    }
+}
+
+fn projected_task_flow(
+    store: &CoreProjectStore,
+    selected: &TaskRecord,
+    state_version: u64,
+) -> Result<Vec<TaskFlowItem>, PlanError> {
+    let records = store.task_records().map_err(CorePipelineError::from)?;
+    let mut connected = BTreeSet::from([selected.task_id.clone()]);
+    loop {
+        let before = connected.len();
+        for record in &records {
+            if connected.contains(&record.task_id)
+                || record
+                    .predecessor_task_id
+                    .as_ref()
+                    .is_some_and(|predecessor| connected.contains(predecessor))
+            {
+                connected.insert(record.task_id.clone());
+                if let Some(predecessor) = record.predecessor_task_id.as_ref() {
+                    connected.insert(predecessor.clone());
+                }
+            }
+        }
+        if connected.len() == before {
+            break;
+        }
+    }
+    records
+        .into_iter()
+        .filter(|record| connected.contains(&record.task_id))
+        .map(|record| {
+            let task_id = TaskId::new(record.task_id.clone());
+            Ok(TaskFlowItem {
+                task_ref: state_ref(
+                    StateRecordKind::Task,
+                    &record.task_id,
+                    &ProjectId::new(record.project_id.clone()),
+                    Some(&task_id),
+                    Some(state_version),
+                ),
+                predecessor_task_ref: record.predecessor_task_id.as_ref().map(|predecessor| {
+                    let predecessor_id = TaskId::new(predecessor.clone());
+                    state_ref(
+                        StateRecordKind::Task,
+                        predecessor,
+                        &ProjectId::new(record.project_id.clone()),
+                        Some(&predecessor_id),
+                        Some(state_version),
+                    )
+                }),
+                relation: record
+                    .lineage_relation
+                    .as_deref()
+                    .map(parse_task_lineage_relation)
+                    .transpose()?,
+                mode: parse_task_mode(&record.mode)?,
+                work_phase: parse_work_phase(&record.work_phase)?,
+                lifecycle_phase: parse_lifecycle_phase(&record.lifecycle_phase)?,
+            })
+        })
+        .collect()
 }
 
 fn status_summary_for(

@@ -124,6 +124,18 @@ fn plan_update_scope(
 
     let current_scope = StoredScope::from_task(&task)?;
     let next_scope = current_scope.apply_request(&request);
+    if request.change_unit.operation == ChangeUnitOperation::KeepCurrent
+        && current_change_unit.is_some()
+        && current_scope.baseline_ref != next_scope.baseline_ref
+    {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "baseline_ref",
+            "changing the Task baseline while a current Change Unit exists requires replace_current",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
     let (acceptance_criteria, acceptance_criteria_mutation, acceptance_criteria_changed) =
         plan_acceptance_criteria_replacement(service, store, project_state, &request)?;
     let scope_changed = current_scope != next_scope
@@ -159,8 +171,15 @@ fn plan_update_scope(
         Vec::new()
     };
 
+    let task_mode = parse_task_mode(&task.mode)?;
     let mut storage_mutations = vec![CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
         task_id: task.task_id.clone(),
+        work_phase: matches!(
+            request.change_unit.operation,
+            ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
+        )
+        .then(|| work_phase_storage(WorkPhase::Implementation).to_owned())
+        .filter(|_| task_mode != TaskMode::Advisor),
         lifecycle_phase: None,
         result: None,
         title: next_scope.goal_summary.clone(),
@@ -208,6 +227,14 @@ fn plan_update_scope(
     synthetic_task.autonomy_boundary_json = serde_json::to_string(&json!({
         "autonomy_boundary": next_scope.autonomy_boundary
     }))?;
+    if task_mode != TaskMode::Advisor
+        && matches!(
+            request.change_unit.operation,
+            ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
+        )
+    {
+        synthetic_task.work_phase = work_phase_storage(WorkPhase::Implementation).to_owned();
+    }
 
     let (change_unit_ref, synthetic_change_unit, branch_change_unit_id) =
         match request.change_unit.operation {
@@ -242,7 +269,7 @@ fn plan_update_scope(
                 }
                 let change_unit_id =
                     allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
-                let insert = change_unit_insert(&request, &change_unit_id)?;
+                let insert = change_unit_insert(&request, &change_unit_id, verified_invocation)?;
                 let record = synthetic_change_unit_record(
                     &request.envelope.project_id,
                     &request.task_id,
@@ -278,7 +305,7 @@ fn plan_update_scope(
                 }
                 let change_unit_id =
                     allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
-                let insert = change_unit_insert(&request, &change_unit_id)?;
+                let insert = change_unit_insert(&request, &change_unit_id, verified_invocation)?;
                 let record = synthetic_change_unit_record(
                     &request.envelope.project_id,
                     &request.task_id,

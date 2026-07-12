@@ -353,7 +353,8 @@ fn schema_comparison_detects_contract_critical_drift() -> Result<(), Box<dyn Err
         "CREATE TABLE tool_invocations_drift AS
          SELECT project_id, tool_name, idempotency_key, request_hash,
                 basis_state_version, committed_state_version, status,
-                operation_category, verification_basis, response_json, created_at
+                operation_category, verification_basis, git_workspace_context_json,
+                response_json, created_at
            FROM tool_invocations",
         [],
     )?;
@@ -1036,6 +1037,10 @@ fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
             task_id,
             created_by_actor_source,
             mode,
+            work_phase,
+            acceptance_policy,
+            acceptance_policy_reason,
+            carry_forward_json,
             lifecycle_phase,
             created_at,
             updated_at
@@ -1045,6 +1050,10 @@ fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
             'task_a',
             'agent_connection:conn_main',
             'work',
+            'shaping',
+            'required',
+            'DDL fixture requires explicit acceptance.',
+            '[]',
             'shaping',
             't0',
             't0'
@@ -1469,6 +1478,10 @@ fn assert_acceptance_evidence_target_constraints(label: &str, conn: &Connection)
             task_id,
             created_by_actor_source,
             mode,
+            work_phase,
+            acceptance_policy,
+            acceptance_policy_reason,
+            carry_forward_json,
             lifecycle_phase,
             created_at,
             updated_at
@@ -1478,6 +1491,10 @@ fn assert_acceptance_evidence_target_constraints(label: &str, conn: &Connection)
             'task_b',
             'agent_connection:conn_main',
             'work',
+            'shaping',
+            'required',
+            'DDL fixture requires explicit acceptance.',
+            '[]',
             'shaping',
             't1',
             't1'

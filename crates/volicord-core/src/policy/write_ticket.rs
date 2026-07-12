@@ -191,6 +191,7 @@ pub(crate) fn write_decision_reason(
 fn write_decision_category_value(category: WriteDecisionCategory) -> &'static str {
     match category {
         WriteDecisionCategory::Scope => "scope",
+        WriteDecisionCategory::Workspace => "workspace",
         WriteDecisionCategory::UserJudgment => "user_judgment",
         WriteDecisionCategory::SensitiveApproval => "sensitive_approval",
         WriteDecisionCategory::WriteCompatibility => "write_compatibility",

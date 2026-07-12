@@ -507,7 +507,8 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn prepare_write_missing_change_unit_returns_decision_reason() -> Result<(), Box<dyn Error>> {
+fn prepare_write_shaping_task_is_rejected_before_change_unit_resolution(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
         intake_request(
@@ -537,8 +538,11 @@ fn prepare_write_missing_change_unit_returns_decision_reason() -> Result<(), Box
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
     let after = harness.counts()?;
 
-    assert_eq!(response.response_value["decision"], "blocked");
-    assert_prepare_reason(&response.response_value, "no_current_change_unit");
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
     assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
@@ -876,6 +880,33 @@ fn prepare_write_baseline_mismatch_blocks_write_ticket() -> Result<(), Box<dyn E
     assert!(response.response_value["write_ticket_id"].is_null());
     assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(response.response_value["write_ticket_effect"], "none");
+    assert_eq!(after.write_tickets, before.write_tickets);
+    Ok(())
+}
+
+#[test]
+fn prepare_write_rejects_divergent_task_and_change_unit_baselines() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_divergent_baseline")?;
+    set_task_baseline_owner_state(&harness, &task_id, "baseline_other")?;
+    let before = harness.counts()?;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_divergent_baseline",
+            "idem_prepare_divergent_baseline",
+            Some(before.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let after = harness.counts()?;
+
+    assert_eq!(response.response_value["decision"], "blocked");
+    assert_prepare_reason(&response.response_value, "baseline_mismatch");
+    assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
@@ -1338,5 +1369,159 @@ fn prepare_write_replay_requires_current_invocation_context() -> Result<(), Box<
     );
     assert_ne!(second.response_json, first.response_json);
     assert_eq!(harness.counts()?, after_first);
+    Ok(())
+}
+
+#[test]
+fn prepare_write_replay_rejects_changed_git_workspace_without_exposing_ticket(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_workspace_replay_task",
+            "idem_workspace_replay_task",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id")
+        .to_owned();
+    let original = crate::pipeline::GitWorkspaceContext {
+        git_common_dir: "/tmp/volicord-workspace-replay/.git".to_owned(),
+        worktree_id: format!("sha256:{}", "1".repeat(64)),
+        branch_ref: Some("refs/heads/original".to_owned()),
+        head_sha: Some("1".repeat(40)),
+        workspace_fingerprint: format!("sha256:{}", "2".repeat(64)),
+    };
+    let scoped = harness.service.update_scope(
+        update_scope_request(
+            "req_workspace_replay_scope",
+            "idem_workspace_replay_scope",
+            false,
+            Some(1),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Bind replay to the original workspace.",
+        ),
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(original.clone()),
+    )?;
+    let change_unit_id = scoped.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .expect("change unit id")
+        .to_owned();
+    let request = prepare_write_request(
+        "req_workspace_replay_write",
+        "idem_workspace_replay_write",
+        Some(2),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+
+    let first = harness.service.prepare_write(
+        request.clone(),
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(original.clone()),
+    )?;
+    let after_first = harness.counts()?;
+    assert_eq!(first.response_value["decision"], "allowed");
+    assert!(first.response_value["write_ticket"].is_object());
+
+    let mut changed = original;
+    changed.branch_ref = Some("refs/heads/other".to_owned());
+    changed.head_sha = Some("3".repeat(40));
+    changed.workspace_fingerprint = format!("sha256:{}", "4".repeat(64));
+    let replay = harness.service.prepare_write(
+        request,
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(changed),
+    )?;
+
+    assert!(!replay.replayed);
+    assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        replay.response_value["errors"][0]["code"],
+        "INVOCATION_CONTEXT_MISMATCH"
+    );
+    assert_ne!(replay.response_json, first.response_json);
+    assert!(!replay.response_json.contains(
+        first.response_value["write_ticket_id"]
+            .as_str()
+            .expect("write ticket id")
+    ));
+    assert_eq!(harness.counts()?, after_first);
+    Ok(())
+}
+
+#[test]
+fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let intake = harness.service.intake(
+        intake_request(
+            "req_workspace_task",
+            "idem_workspace_task",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id")
+        .to_owned();
+    let original = crate::pipeline::GitWorkspaceContext {
+        git_common_dir: "/tmp/volicord-workspace/.git".to_owned(),
+        worktree_id: format!("sha256:{}", "1".repeat(64)),
+        branch_ref: Some("refs/heads/original".to_owned()),
+        head_sha: Some("1".repeat(40)),
+        workspace_fingerprint: format!("sha256:{}", "2".repeat(64)),
+    };
+    let scoped = harness.service.update_scope(
+        update_scope_request(
+            "req_workspace_scope",
+            "idem_workspace_scope",
+            false,
+            Some(1),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Bind the original branch.",
+        ),
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(original.clone()),
+    )?;
+    let change_unit_id = scoped.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .expect("change unit id")
+        .to_owned();
+    assert_eq!(
+        scoped.response_value["state"]["workspace_context"]["branch_ref"],
+        "refs/heads/original"
+    );
+
+    let mut changed = original;
+    changed.branch_ref = Some("refs/heads/other".to_owned());
+    changed.head_sha = Some("3".repeat(40));
+    changed.workspace_fingerprint = format!("sha256:{}", "4".repeat(64));
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_workspace_write",
+            "idem_workspace_write",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(changed),
+    )?;
+    assert_eq!(response.response_value["decision"], "blocked");
+    assert!(response.response_value["write_decision_reasons"]
+        .as_array()
+        .expect("reasons")
+        .iter()
+        .any(|reason| {
+            reason["category"] == "workspace" && reason["code"] == "workspace_context_mismatch"
+        }));
+    assert!(response.response_value["write_ticket"].is_null());
     Ok(())
 }

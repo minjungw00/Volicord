@@ -176,6 +176,13 @@ fn idempotent_replay_returns_original_generated_ids() -> Result<(), Box<dyn Erro
 
     assert!(second.replayed);
     assert_eq!(
+        second
+            .resolved_task_id
+            .as_ref()
+            .map(|task_id| task_id.as_str().to_owned()),
+        Some(response_record_id(&first.response_value, "task_ref"))
+    );
+    assert_eq!(
         response_record_id(&first.response_value, "task_ref"),
         response_record_id(&second.response_value, "task_ref")
     );

@@ -12,22 +12,24 @@ use crate::ids::{
     UnrecordedChangeId, UserJudgmentId, UserJudgmentOptionId, WriteTicketId,
 };
 use crate::values::{
-    ActorSource, ArtifactAvailability, ArtifactInputSourceKind, ArtifactIntegrityStatus,
+    AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
+    ArtifactIntegrityStatus, AuthorityNextActor, CarryForwardDispositionStatus, CarryForwardKind,
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
     CoverageHostHookState, CoverageSessionWatcherState, EffectKind, EnabledEnforcementMechanism,
     ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceCoverageUpdateState,
-    EvidenceDisplayState, EvidenceGateState, EvidenceRequirement, EvidenceSourceKind,
-    EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
-    GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
-    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
-    NextActionPresentationRole, NonGuarantee, OperationCategory, PlannedBlockerSourceKind,
-    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
-    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
-    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
+    EvidenceDisplayState, EvidenceGateState, EvidenceProducerKind, EvidenceRelevanceStatus,
+    EvidenceRequirement, EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel,
+    GuardConfigurationStatus, GuardDecision, GuardEffectiveStatus, GuardInstallationStatus,
+    GuardObservationStatus, HostKind, IntegrationProfile, JudgmentBasisCompatibilityStatus,
+    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
+    NextActionKind, NextActionPresentationRole, NonGuarantee, OperationCategory,
+    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
+    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
+    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
+    StateRecordKind, StatusCloseState, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
     TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
-    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteDecisionCategory,
-    WriteTicketState, WriteTicketStatus,
+    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
+    WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -727,7 +729,12 @@ pub struct StateSummary {
     pub state_version: u64,
     pub task_ref: Option<StateRecordRef>,
     pub mode: Option<TaskMode>,
+    pub work_phase: Option<WorkPhase>,
+    pub acceptance_policy: Option<AcceptancePolicy>,
+    pub acceptance_policy_reason: Option<String>,
+    pub lineage: Option<TaskLineageSummary>,
     pub lifecycle: Option<TaskLifecycleState>,
+    pub scope_revision: u64,
     pub goal_summary: Option<String>,
     pub scope_summary: Option<String>,
     pub non_goals: Vec<String>,
@@ -736,6 +743,7 @@ pub struct StateSummary {
     pub active_change_unit_ref: Option<StateRecordRef>,
     pub effect_contract: Option<ChangeUnitEffectContract>,
     pub baseline_ref: Option<BaselineRef>,
+    pub workspace_context: Option<WorkspaceContext>,
     pub shaping_readiness: Option<ShapingReadiness>,
     pub pending_user_judgment_refs: Vec<StateRecordRef>,
     pub blocker_refs: Vec<StateRecordRef>,
@@ -746,6 +754,77 @@ pub struct StateSummary {
     pub close_blockers: Vec<CloseReadinessBlocker>,
     pub guard_health: Option<GuardHealthSummary>,
     pub guarantee_display: Option<GuaranteeDisplay>,
+}
+
+/// Explicit predecessor selection supplied only when intake creates a Task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TaskLineageInput {
+    pub predecessor_task_id: TaskId,
+    pub relation: TaskLineageRelation,
+    pub creation_reason: String,
+    pub carry_forward: Vec<CarryForwardKind>,
+}
+
+/// Recorded disposition for one selected predecessor material category.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CarryForwardDisposition {
+    pub kind: CarryForwardKind,
+    pub status: CarryForwardDispositionStatus,
+    pub source_refs: Vec<StateRecordRef>,
+}
+
+/// Current Task's canonical predecessor edge and carry-forward audit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TaskLineageSummary {
+    pub predecessor_task_ref: StateRecordRef,
+    pub relation: TaskLineageRelation,
+    pub creation_reason: String,
+    pub carry_forward: Vec<CarryForwardDisposition>,
+}
+
+/// One Task in the connected predecessor flow returned by full status.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TaskFlowItem {
+    pub task_ref: StateRecordRef,
+    pub predecessor_task_ref: Option<StateRecordRef>,
+    pub relation: Option<TaskLineageRelation>,
+    pub mode: TaskMode,
+    pub work_phase: WorkPhase,
+    pub lifecycle_phase: TaskLifecyclePhase,
+}
+
+/// Verified Git coordinate captured with a Change Unit baseline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceContext {
+    pub vcs: WorkspaceVcs,
+    pub git_common_dir: String,
+    pub worktree_id: String,
+    pub branch_ref: Option<String>,
+    pub head_sha: Option<String>,
+    pub workspace_fingerprint: String,
+}
+
+/// Core-generated compact receipt over current Task authority state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityReceipt {
+    pub project_id: ProjectId,
+    pub state_version: u64,
+    pub task_ref: StateRecordRef,
+    pub change_unit_ref: Option<StateRecordRef>,
+    pub scope_revision: u64,
+    pub latest_run_ref: Option<StateRecordRef>,
+    pub product_file_write_observed: bool,
+    pub evidence_gate: Option<EvidenceGateSummary>,
+    pub close_state: StatusCloseState,
+    pub close_blockers: Vec<CloseReadinessBlocker>,
+    pub next_actor: AuthorityNextActor,
+    pub next_action: Option<NextActionSummary>,
 }
 
 /// Optional Change Unit effect contract recorded as Core state.
@@ -1013,6 +1092,8 @@ pub struct EvidenceObservation {
     pub target: EvidenceTarget,
     pub source_kind: EvidenceSourceKind,
     pub assurance_level: EvidenceAssuranceLevel,
+    pub producer_anchor: EvidenceProducerAnchor,
+    pub relevance_assessment: EvidenceRelevanceAssessment,
     pub observed_by_actor_source: RequiredNullable<ActorSource>,
     pub tool_name: RequiredNullable<String>,
     pub tool_invocation_id: RequiredNullable<String>,
@@ -1023,6 +1104,55 @@ pub struct EvidenceObservation {
     pub limitations: Vec<String>,
     pub observed_at: UtcTimestamp,
     pub recorded_at: UtcTimestamp,
+}
+
+/// Core-derived producer record and exact-output binding for one observation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceProducerAnchor {
+    pub producer_kind: EvidenceProducerKind,
+    pub producer_ref: RequiredNullable<StateRecordRef>,
+    pub output_artifact_refs: Vec<ArtifactRef>,
+    pub verification_basis: RequiredNullable<String>,
+}
+
+/// Core-derived target relevance assessment for one observation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceRelevanceAssessment {
+    pub status: EvidenceRelevanceStatus,
+    pub assessment_ref: RequiredNullable<StateRecordRef>,
+    pub assessed_by_actor_source: RequiredNullable<ActorSource>,
+}
+
+/// User Channel-owned observation of exact artifact bytes and one evidence target.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserEvidenceObservation {
+    pub observation_id: EvidenceObservationId,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub relevance_status: EvidenceRelevanceStatus,
+    pub output_artifact_refs: Vec<ArtifactRef>,
+    pub summary: String,
+    pub observed_by_actor_source: ActorSource,
+    pub verification_basis: String,
+    pub observed_at: UtcTimestamp,
+    pub recorded_at: UtcTimestamp,
+}
+
+/// Persisted authority metadata for one evidence observation row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedEvidenceObservationAuthority {
+    pub recorded_by_run_id: RunId,
+    pub invocation_verification_basis: String,
+    pub producer_anchor: EvidenceProducerAnchor,
+    pub relevance_assessment: EvidenceRelevanceAssessment,
 }
 
 /// Request-side evidence observation input supplied by `volicord.record_run`.

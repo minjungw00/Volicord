@@ -3,17 +3,19 @@ use std::{
     path::{Component, Path},
 };
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis, EvidenceAssuranceLevel,
-    EvidenceCoverageItem, EvidenceSourceKind, JudgmentBasis, JudgmentBasisCompatibilityStatus,
-    JudgmentRationale, JudgmentResolutionOutcome, PersistedArtifactProducer,
-    PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata, PersistedJudgmentBasis,
-    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
-    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfile,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, SourceRef, StateRecordRef,
-    UserJudgmentOptionAction, UtcTimestamp, BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID,
+    canonical_json_string, ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis,
+    EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceSourceKind, JudgmentBasis,
+    JudgmentBasisCompatibilityStatus, JudgmentRationale, JudgmentResolutionOutcome,
+    PersistedArtifactProducer, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
+    PersistedEvidenceObservationAuthority, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
+    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, ProjectContinuityKind,
+    ProjectContinuityStatus, ProjectEnforcementProfile, ProjectEnforcementProfileSource,
+    ProjectEnforcementProfileStatus, SourceRef, StateRecordRef, UserJudgmentOptionAction,
+    UtcTimestamp, BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID,
 };
 
 use super::{PendingTaskEvent, VerifiedReplayContext};
@@ -64,7 +66,84 @@ pub(super) fn validate_replay_context(context: &VerifiedReplayContext) -> StoreR
     if let Some(verification_basis) = &context.verification_basis {
         validate_identifier("verification_basis", verification_basis)?;
     }
+    if let Some(git_workspace_context_json) = &context.git_workspace_context_json {
+        validate_git_workspace_context_json(
+            "tool_invocations.git_workspace_context_json",
+            git_workspace_context_json,
+        )?;
+    }
     Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedGitWorkspaceReplayContext {
+    git_common_dir: String,
+    worktree_id: String,
+    branch_ref: Option<String>,
+    head_sha: Option<String>,
+    workspace_fingerprint: String,
+}
+
+pub(super) fn validate_stored_git_workspace_context_json(
+    record_ref: &str,
+    text: &str,
+) -> StoreResult<()> {
+    parse_canonical_git_workspace_context(text)
+        .map(|_| ())
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "tool_invocations",
+                record_ref,
+                "git_workspace_context_json",
+            )
+        })
+}
+
+fn validate_git_workspace_context_json(field: &'static str, text: &str) -> StoreResult<()> {
+    parse_canonical_git_workspace_context(text)
+        .map(|_| ())
+        .map_err(|detail| StoreError::InvalidInput {
+            detail: format!("{field} {detail}"),
+        })
+}
+
+fn parse_canonical_git_workspace_context(
+    text: &str,
+) -> Result<PersistedGitWorkspaceReplayContext, &'static str> {
+    let context = serde_json::from_str::<PersistedGitWorkspaceReplayContext>(text)
+        .map_err(|_| "must have the strict Git workspace-context JSON shape")?;
+    let sha256_coordinate = |value: &str| {
+        value.strip_prefix("sha256:").is_some_and(|digest| {
+            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+    };
+    if context.git_common_dir.trim().is_empty() || !Path::new(&context.git_common_dir).is_absolute()
+    {
+        return Err("must contain an absolute non-empty git_common_dir");
+    }
+    if !sha256_coordinate(&context.worktree_id) {
+        return Err("must contain a valid worktree_id");
+    }
+    if context.branch_ref.as_ref().is_some_and(|reference| {
+        !reference.starts_with("refs/")
+            || reference.contains(['\0', '\n', '\r'])
+            || reference.trim() != reference
+    }) {
+        return Err("must contain a valid branch_ref or null");
+    }
+    if context.head_sha.as_ref().is_some_and(|sha| {
+        !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+    }) {
+        return Err("must contain a valid head_sha or null");
+    }
+    if !sha256_coordinate(&context.workspace_fingerprint) {
+        return Err("must contain a valid workspace_fingerprint");
+    }
+    if canonical_json_string(&context).map_err(|_| "must be serializable")? != text {
+        return Err("must use canonical JSON serialization");
+    }
+    Ok(context)
 }
 
 pub(super) fn validate_identifier(field: &'static str, value: &str) -> StoreResult<()> {
@@ -393,16 +472,27 @@ pub(super) fn validate_evidence_observation_tool_metadata_json(
     field: &'static str,
     text: &str,
 ) -> StoreResult<()> {
-    validate_evidence_observation_metadata_json(field, text)
+    let value: Value = serde_json::from_str(text).map_err(|error| StoreError::InvalidInput {
+        detail: format!("{field} must be valid JSON: {error}"),
+    })?;
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidInput {
+            detail: format!("{field} must be a JSON object"),
+        })
+    }
 }
 
 pub(super) fn validate_evidence_observation_metadata_json(
     field: &'static str,
     text: &str,
 ) -> StoreResult<()> {
-    serde_json::from_str::<serde_json::Map<String, Value>>(text).map_err(|error| {
+    serde_json::from_str::<PersistedEvidenceObservationAuthority>(text).map_err(|error| {
         StoreError::InvalidInput {
-            detail: format!("{field} must be a JSON object: {error}"),
+            detail: format!(
+                "{field} must be persisted evidence observation authority JSON: {error}"
+            ),
         }
     })?;
     Ok(())

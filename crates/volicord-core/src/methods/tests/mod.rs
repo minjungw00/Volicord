@@ -864,6 +864,8 @@ fn intake_request(
         plain_language_request: "Create a test export flow.".to_owned(),
         requested_mode,
         resume_policy: ResumePolicy::CreateNew,
+        acceptance_policy: RequiredNullable::null(),
+        lineage: RequiredNullable::null(),
         initial_scope: InitialScope {
             boundary: "Initial test scope.".to_owned(),
             non_goals: vec!["Changing unrelated flows.".to_owned()],
@@ -1570,16 +1572,8 @@ fn record_close_evidence_with_updates(
             ),
         };
     }
-    let request_id = format!("req_close_evidence_{suffix}");
-    let idempotency_key = format!("idem_close_evidence_{suffix}");
-    let mut request = record_run_request(
-        &request_id,
-        &idempotency_key,
-        false,
-        Some(expected_state_version),
-        task_id,
-        change_unit_id,
-    );
+    let mut current_state_version = expected_state_version;
+    let mut evidence_observations = Vec::new();
     for (index, update) in evidence_updates.iter().enumerate() {
         if update.provenance.as_ref().is_some_and(|provenance| {
             provenance.source_kind == EvidenceSourceKind::ExternalTool
@@ -1590,7 +1584,7 @@ fn record_close_evidence_with_updates(
                 harness,
                 task_id,
                 &artifact_suffix,
-                expected_state_version,
+                current_state_version,
             )?;
             let mut artifact_input = artifact_input_for_handle(
                 &format!("artifact_input_{artifact_suffix}"),
@@ -1599,9 +1593,84 @@ fn record_close_evidence_with_updates(
                 None,
             );
             artifact_input.evidence_target = Some(update.target.clone()).into();
-            request.artifact_inputs.push(artifact_input);
+            let mut promotion = record_run_request(
+                &format!("req_promote_{artifact_suffix}"),
+                &format!("idem_promote_{artifact_suffix}"),
+                false,
+                Some(current_state_version),
+                task_id,
+                change_unit_id,
+            );
+            promotion.artifact_inputs = vec![artifact_input];
+            let promoted = harness
+                .service
+                .record_run(promotion, invocation(OperationCategory::AgentWorkflow))?;
+            current_state_version = promoted.response_value["base"]["state_version"]
+                .as_u64()
+                .expect("artifact promotion state version");
+            let artifact_ref: ArtifactRef =
+                serde_json::from_value(promoted.response_value["registered_artifacts"][0].clone())?;
+            let user_observation = harness.service.record_user_observation(
+                RecordUserObservationRequest {
+                    envelope: envelope(
+                        &format!("req_user_observation_{artifact_suffix}"),
+                        Some(&format!("idem_user_observation_{artifact_suffix}")),
+                        false,
+                        Some(current_state_version),
+                        Some(task_id),
+                    ),
+                    task_id: TaskId::new(task_id),
+                    change_unit_id: ChangeUnitId::new(change_unit_id),
+                    target: update.target.clone(),
+                    relevance_status: EvidenceRelevanceStatus::Supported,
+                    artifact_ids: vec![artifact_ref.artifact_id.clone()],
+                    summary: "The user confirms that these exact bytes support the target."
+                        .to_owned(),
+                    observed_at: UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
+                },
+                invocation(OperationCategory::UserOnly),
+            )?;
+            current_state_version = user_observation.response_value["base"]["state_version"]
+                .as_u64()
+                .expect("user observation state version");
+            let user_observation_ref: StateRecordRef = serde_json::from_value(
+                user_observation.response_value["user_observation_ref"].clone(),
+            )?;
+            evidence_observations.push(EvidenceObservationInput {
+                target: update.target.clone(),
+                source_kind: EvidenceSourceKind::UserObservation,
+                assurance_level: EvidenceAssuranceLevel::UserObserved,
+                observed_by_actor_source: None.into(),
+                tool_name: None.into(),
+                tool_invocation_id: None.into(),
+                tool_metadata: JsonObject::new(),
+                input_refs: vec![user_observation_ref],
+                source_refs: Vec::new(),
+                output_artifact_refs: vec![artifact_ref],
+                limitations: Vec::new(),
+                observed_at: UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
+            });
         }
     }
+    for update in &mut evidence_updates {
+        if update.provenance.as_ref().is_some_and(|provenance| {
+            provenance.source_kind == EvidenceSourceKind::ExternalTool
+                && provenance.assurance_level == EvidenceAssuranceLevel::ExternalToolResult
+        }) {
+            update.provenance = None;
+        }
+    }
+    let request_id = format!("req_close_evidence_{suffix}");
+    let idempotency_key = format!("idem_close_evidence_{suffix}");
+    let mut request = record_run_request(
+        &request_id,
+        &idempotency_key,
+        false,
+        Some(current_state_version),
+        task_id,
+        change_unit_id,
+    );
+    request.evidence_observations = evidence_observations;
     request.evidence_updates = evidence_updates;
     request.close_assessment = Some(volicord_types::CloseAssessmentInput {
         result_summary: result_summary.to_owned(),
@@ -2336,18 +2405,28 @@ fn create_task_with_mode_and_change_unit(
     prefix: &str,
     requested_mode: RequestedMode,
 ) -> Result<(String, String), Box<dyn Error>> {
+    create_task_with_policy_and_change_unit(harness, prefix, requested_mode, None)
+}
+
+fn create_task_with_policy_and_change_unit(
+    harness: &MethodHarness,
+    prefix: &str,
+    requested_mode: RequestedMode,
+    acceptance_policy: Option<AcceptancePolicy>,
+) -> Result<(String, String), Box<dyn Error>> {
     let intake_request_id = format!("req_{prefix}_task");
     let intake_idempotency_key = format!("idem_{prefix}_task");
-    let intake = harness.service.intake(
-        intake_request(
-            &intake_request_id,
-            &intake_idempotency_key,
-            false,
-            Some(0),
-            requested_mode,
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
+    let mut request = intake_request(
+        &intake_request_id,
+        &intake_idempotency_key,
+        false,
+        Some(0),
+        requested_mode,
+    );
+    request.acceptance_policy = acceptance_policy.into();
+    let intake = harness
+        .service
+        .intake(request, invocation(OperationCategory::AgentWorkflow))?;
     let task_id = intake.response_value["task_ref"]["record_id"]
         .as_str()
         .expect("task ref should be present")
@@ -2517,6 +2596,10 @@ fn insert_superseding_task(harness: &MethodHarness, task_id: &str) -> Result<(),
                 task_id,
                 created_by_actor_source,
                 mode,
+                work_phase,
+                acceptance_policy,
+                acceptance_policy_reason,
+                carry_forward_json,
                 lifecycle_phase,
                 result,
                 title,
@@ -2533,6 +2616,10 @@ fn insert_superseding_task(harness: &MethodHarness, task_id: &str) -> Result<(),
                 ?2,
                 ?3,
                 'work',
+                'shaping',
+                'required',
+                'Superseding work requires explicit acceptance.',
+                '[]',
                 'ready',
                 'none',
                 'Superseding task',
@@ -3624,6 +3711,52 @@ fn set_task_owner_json(
         .conn()?
         .execute(sql, rusqlite::params![PROJECT_ID, task_id, value])?;
     Ok(())
+}
+
+fn set_task_baseline_owner_state(
+    harness: &MethodHarness,
+    task_id: &str,
+    baseline_ref: &str,
+) -> Result<(), Box<dyn Error>> {
+    let raw: String = harness.conn()?.query_row(
+        "SELECT shaping_summary_json
+           FROM tasks
+          WHERE project_id = ?1
+            AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    let mut shaping: Value = serde_json::from_str(&raw)?;
+    shaping["baseline_ref"] = json!(baseline_ref);
+    set_task_owner_json(
+        harness,
+        task_id,
+        "shaping_summary_json",
+        Some(&serde_json::to_string(&shaping)?),
+    )
+}
+
+fn set_task_initial_source_refs_owner_state(
+    harness: &MethodHarness,
+    task_id: &str,
+    source_refs: &[SourceRef],
+) -> Result<(), Box<dyn Error>> {
+    let raw: String = harness.conn()?.query_row(
+        "SELECT shaping_summary_json
+           FROM tasks
+          WHERE project_id = ?1
+            AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    let mut shaping: Value = serde_json::from_str(&raw)?;
+    shaping["initial_source_refs"] = serde_json::to_value(source_refs)?;
+    set_task_owner_json(
+        harness,
+        task_id,
+        "shaping_summary_json",
+        Some(&serde_json::to_string(&shaping)?),
+    )
 }
 
 fn set_change_unit_owner_json(

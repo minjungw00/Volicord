@@ -407,6 +407,8 @@ fn mcp_intake_args(project_selector: Option<&str>) -> Value {
         "plain_language_request": "Create a test export flow.",
         "requested_mode": "work",
         "resume_policy": "create_new",
+        "acceptance_policy": null,
+        "lineage": null,
         "initial_scope": {
             "boundary": "Initial test scope.",
             "non_goals": ["Changing unrelated flows."],

@@ -657,11 +657,19 @@ mod tests {
                 task_id,
                 created_by_actor_source,
                 mode,
+                work_phase,
+                acceptance_policy,
+                acceptance_policy_reason,
+                carry_forward_json,
                 lifecycle_phase,
                 created_at,
                 updated_at
             )
-            VALUES (?1, 'task_local_web', ?2, 'standard', 'ready', 't0', 't0')",
+            VALUES (
+                ?1, 'task_local_web', ?2, 'work',
+                'shaping', 'required', 'Local consent fixture requires acceptance.', '[]',
+                'ready', 't0', 't0'
+            )",
             params![fixture.project_id(), fixture.actor_source()],
         )?;
         conn.execute(

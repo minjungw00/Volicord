@@ -538,6 +538,7 @@ fn validate_project_state_required_schema(conn: &Connection) -> Result<(), Inspe
             "acceptance_criteria",
             "evidence_claims",
             "evidence_observations",
+            "user_evidence_observations",
             "project_continuity_records",
         ],
     )?;
@@ -577,6 +578,28 @@ fn validate_project_state_required_schema(conn: &Connection) -> Result<(), Inspe
             "observed_at",
             "recorded_at",
             "metadata_json",
+        ],
+    )?;
+    require_columns(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "user_evidence_observations",
+        &[
+            "project_id",
+            "user_evidence_observation_id",
+            "task_id",
+            "change_unit_id",
+            "scope_revision",
+            "baseline_ref",
+            "acceptance_criterion_id",
+            "evidence_claim_id",
+            "relevance_status",
+            "output_artifact_refs_json",
+            "summary",
+            "observed_by_actor_source",
+            "verification_basis",
+            "observed_at",
+            "recorded_at",
         ],
     )?;
     require_columns(

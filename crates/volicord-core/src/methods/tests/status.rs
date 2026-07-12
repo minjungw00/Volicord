@@ -170,6 +170,69 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
 }
 
 #[test]
+fn status_receipt_uses_authority_commit_order_for_latest_run() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_latest_run")?;
+    let first_run_id = RunId::new("run_zzzz_status_order_first");
+    let second_run_id = RunId::new("run_aaaa_status_order_second");
+    let mut first = record_run_request(
+        "req_status_latest_run_first",
+        "idem_status_latest_run_first",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    first.run_id = RequiredNullable::some(first_run_id.clone());
+    let first_response = harness
+        .service
+        .record_run(first, invocation(OperationCategory::AgentWorkflow))?;
+    let first_state_version = first_response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("first Run state version");
+    let mut second = record_run_request(
+        "req_status_latest_run_second",
+        "idem_status_latest_run_second",
+        false,
+        Some(first_state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    second.run_id = RequiredNullable::some(second_run_id.clone());
+    harness
+        .service
+        .record_run(second, invocation(OperationCategory::AgentWorkflow))?;
+    harness.conn()?.execute(
+        "UPDATE runs
+            SET created_at = '2026-07-12T00:00:00.000Z'
+          WHERE project_id = ?1
+            AND run_id IN (?2, ?3)",
+        rusqlite::params![PROJECT_ID, first_run_id.as_str(), second_run_id.as_str()],
+    )?;
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_latest_run_receipt",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(
+        status.response_value["authority_receipt"]["latest_run_ref"]["record_id"],
+        second_run_id.as_str()
+    );
+    Ok(())
+}
+
+#[test]
 fn record_run_evidence_without_close_basis_appears_attached() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "attached_evidence")?;
@@ -480,6 +543,22 @@ fn status_ready_close_uses_empty_blockers_only_after_computation() -> Result<(),
         json!([])
     );
     assert!(status.response_value["current_close_basis"].is_object());
+    assert_eq!(
+        status.response_value["authority_receipt"]["close_state"],
+        "ready"
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["next_actor"],
+        "agent"
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["next_action"]["action_kind"],
+        "close_task"
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["next_action"]["owner_method"],
+        "volicord.close_task"
+    );
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -517,6 +596,16 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     assert_field_absent(&none.response_value, "close_blockers");
     assert_field_absent(&none.response_value, "guarantee_display");
     assert_no_close_next_actions(&none.response_value);
+    assert_eq!(
+        none.response_value["authority_receipt"]["task_ref"]["record_id"],
+        task_id
+    );
+    assert_eq!(
+        none.response_value["authority_receipt"]["state_version"],
+        before.state_version
+    );
+    assert!(none.response_value["authority_receipt"]["evidence_gate"].is_object());
+    assert!(none.response_value["authority_receipt"]["close_blockers"].is_array());
 
     let evidence_only = harness.service.status(
         StatusRequest {
@@ -605,7 +694,8 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
 }
 
 #[test]
-fn status_close_false_does_not_read_corrupt_close_basis() -> Result<(), Box<dyn Error>> {
+fn status_receipt_fails_closed_on_corrupt_close_basis_for_every_include_shape(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_change_unit(&harness, "status_close_not_read")?;
     set_task_owner_json(
@@ -626,7 +716,7 @@ fn status_close_false_does_not_read_corrupt_close_basis() -> Result<(), Box<dyn 
                 Some(&task_id),
             ),
             include: StatusInclude {
-                task: true,
+                task: false,
                 pending_user_judgments: false,
                 write_ticket: false,
                 evidence: false,
@@ -638,14 +728,13 @@ fn status_close_false_does_not_read_corrupt_close_basis() -> Result<(), Box<dyn 
         invocation(OperationCategory::Read),
     )?;
 
-    assert_eq!(excluded.response_value["base"]["response_kind"], "result");
-    assert_field_absent(&excluded.response_value, "close_state");
-    assert_field_absent(&excluded.response_value, "current_close_basis");
-    assert_field_absent(&excluded.response_value, "close_blockers");
-    assert_field_absent(&excluded.response_value["active_task"], "close_state");
-    assert_field_absent(&excluded.response_value["active_task"], "close_blockers");
-    assert_field_absent(&excluded.response_value["active_task"], "evidence_gate");
-    assert_no_close_next_actions(&excluded.response_value);
+    assert_owner_state_rejection(
+        &excluded,
+        "tasks",
+        &task_id,
+        "close_basis_json",
+        &harness.runtime_home_path,
+    );
     assert_eq!(harness.counts()?, before);
 
     let selected = harness.service.status(

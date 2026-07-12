@@ -35,6 +35,9 @@ impl CoreStorageMutation {
             Self::LinkArtifact(input) => mutation.link_artifact(input),
             Self::UpsertEvidenceSummary(input) => mutation.upsert_evidence_summary(input),
             Self::InsertEvidenceObservation(input) => mutation.insert_evidence_observation(input),
+            Self::InsertUserEvidenceObservation(input) => {
+                mutation.insert_user_evidence_observation(input)
+            }
             Self::InsertUserJudgment(input) => mutation.insert_user_judgment(input),
             Self::ResolveUserJudgment(input) => mutation.resolve_user_judgment(input),
             Self::ConsumeLocalWebConsentToken(input) => {
@@ -60,6 +63,15 @@ impl ProjectMutation<'_> {
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         validate_identifier("mode", &input.mode)?;
+        validate_identifier("work_phase", &input.work_phase)?;
+        validate_identifier("acceptance_policy", &input.acceptance_policy)?;
+        if input.acceptance_policy_reason.trim().is_empty() {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "Task acceptance policy reason must not be empty",
+            ));
+        }
+        validate_json_text("tasks.carry_forward_json", &input.carry_forward_json)?;
         validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
         validate_json_text("tasks.shaping_summary_json", &input.shaping_summary_json)?;
         validate_json_text("tasks.bounded_context_json", &input.bounded_context_json)?;
@@ -74,6 +86,13 @@ impl ProjectMutation<'_> {
                 task_id,
                 created_by_actor_source,
                 mode,
+                work_phase,
+                acceptance_policy,
+                acceptance_policy_reason,
+                predecessor_task_id,
+                lineage_relation,
+                lineage_reason,
+                carry_forward_json,
                 lifecycle_phase,
                 result,
                 title,
@@ -91,15 +110,8 @@ impl ProjectMutation<'_> {
                 ?2,
                 ?3,
                 ?4,
-                ?5,
-                ?6,
-                ?7,
-                ?8,
-                ?9,
-                ?10,
-                ?11,
-                ?12,
-                ?13,
+                ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             )",
@@ -108,6 +120,13 @@ impl ProjectMutation<'_> {
                 input.task_id,
                 input.created_by_actor_source,
                 input.mode,
+                input.work_phase,
+                input.acceptance_policy,
+                input.acceptance_policy_reason,
+                input.predecessor_task_id,
+                input.lineage_relation,
+                input.lineage_reason,
+                input.carry_forward_json,
                 input.lifecycle_phase,
                 input.result,
                 input.title,
@@ -213,6 +232,10 @@ impl ProjectMutation<'_> {
         if let Some(value) = &input.lifecycle_phase {
             validate_identifier("lifecycle_phase", value)?;
             self.update_task_text_column(&input.task_id, "lifecycle_phase", value)?;
+        }
+        if let Some(value) = &input.work_phase {
+            validate_identifier("work_phase", value)?;
+            self.update_task_text_column(&input.task_id, "work_phase", value)?;
         }
         if let Some(value) = &input.result {
             validate_identifier("result", value)?;
@@ -1095,6 +1118,93 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
+    fn insert_user_evidence_observation(
+        &mut self,
+        input: &UserEvidenceObservationInsert,
+    ) -> StoreResult<()> {
+        validate_identifier(
+            "user_evidence_observation_id",
+            &input.user_evidence_observation_id,
+        )?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        validate_identifier("baseline_ref", &input.baseline_ref)?;
+        if input.acceptance_criterion_id.is_some() == input.evidence_claim_id.is_some() {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "user evidence observation must select exactly one target identity",
+            ));
+        }
+        if !matches!(
+            input.relevance_status.as_str(),
+            "supported" | "contradicted"
+        ) {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "user evidence observation relevance_status must be supported or contradicted",
+            ));
+        }
+        validate_artifact_refs_json(
+            "user_evidence_observations.output_artifact_refs_json",
+            &input.output_artifact_refs_json,
+        )?;
+        if input.summary.trim().is_empty() {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "user evidence observation summary must not be empty",
+            ));
+        }
+        if input.observed_by_actor_source != "local_user" {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "user evidence observation actor must be local_user",
+            ));
+        }
+        validate_identifier("verification_basis", &input.verification_basis)?;
+        validate_timestamp("observed_at", &input.observed_at)?;
+        validate_timestamp("recorded_at", &input.recorded_at)?;
+
+        self.tx.execute(
+            "INSERT INTO user_evidence_observations (
+                project_id,
+                user_evidence_observation_id,
+                task_id,
+                change_unit_id,
+                scope_revision,
+                baseline_ref,
+                acceptance_criterion_id,
+                evidence_claim_id,
+                relevance_status,
+                output_artifact_refs_json,
+                summary,
+                observed_by_actor_source,
+                verification_basis,
+                observed_at,
+                recorded_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+            )",
+            params![
+                self.project_id,
+                input.user_evidence_observation_id,
+                input.task_id,
+                input.change_unit_id,
+                input.scope_revision,
+                input.baseline_ref,
+                input.acceptance_criterion_id,
+                input.evidence_claim_id,
+                input.relevance_status,
+                input.output_artifact_refs_json,
+                input.summary,
+                input.observed_by_actor_source,
+                input.verification_basis,
+                input.observed_at,
+                input.recorded_at,
+            ],
+        )?;
+        Ok(())
+    }
+
     fn insert_user_judgment(&mut self, input: &UserJudgmentInsert) -> StoreResult<()> {
         validate_identifier("judgment_id", &input.judgment_id)?;
         validate_identifier("task_id", &input.task_id)?;
@@ -1634,6 +1744,9 @@ impl ProjectMutation<'_> {
             }
             "lifecycle_phase" => {
                 "UPDATE tasks SET lifecycle_phase = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+            }
+            "work_phase" => {
+                "UPDATE tasks SET work_phase = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
             }
             "result" => {
                 "UPDATE tasks SET result = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"

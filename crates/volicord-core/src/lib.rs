@@ -15,8 +15,8 @@ mod policy;
 
 pub use pipeline::{
     dry_run_response, method_result_base, method_result_value, rejected_response, tool_error,
-    Clock, CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
-    SystemClock, VerifiedInvocationContext,
+    Clock, CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
+    PipelineResponse, SystemClock, VerifiedInvocationContext,
 };
 
 /// Internal Core request for local web consent user capture.

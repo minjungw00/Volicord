@@ -3137,11 +3137,19 @@ mod tests {
                     task_id,
                     created_by_actor_source,
                     mode,
+                    work_phase,
+                    acceptance_policy,
+                    acceptance_policy_reason,
+                    carry_forward_json,
                     lifecycle_phase,
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, 'agent_connection:conn_guard_a', 'work', 'shaping', 't0', 't0')",
+                VALUES (
+                    ?1, ?2, 'agent_connection:conn_guard_a', 'work',
+                    'shaping', 'required', 'Guard fixture requires acceptance.', '[]',
+                    'shaping', 't0', 't0'
+                )",
                 params![project_id, task_id],
             )?;
             Ok(())

@@ -4070,101 +4070,19 @@ fn projected_evidence_observation_provenance_class(
     context: &CloseTaskContext,
     observation: &EvidenceObservation,
 ) -> CoreResult<EvidenceProvenanceClass> {
-    if !evidence_assurance_matches_source(observation.source_kind, observation.assurance_level) {
-        return Ok(EvidenceProvenanceClass::Weak);
-    }
-    match (observation.source_kind, observation.assurance_level) {
-        (EvidenceSourceKind::AgentReport, EvidenceAssuranceLevel::CooperativeReport) => {
-            Ok(EvidenceProvenanceClass::CooperativeAgentReport)
-        }
-        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult) => Ok(
-            if projected_external_observation_has_verified_artifact(
-                store,
-                request,
-                context,
-                observation,
-            )? {
-                EvidenceProvenanceClass::Strong
-            } else {
-                EvidenceProvenanceClass::Weak
-            },
-        ),
-        (EvidenceSourceKind::ReusedEvidence, EvidenceAssuranceLevel::ExternalToolResult) => {
-            let [source_ref] = observation.input_refs.as_slice() else {
-                return Ok(EvidenceProvenanceClass::Weak);
-            };
-            if source_ref.record_kind != StateRecordKind::EvidenceObservation
-                || source_ref.project_id != request.envelope.project_id
-                || source_ref.task_id.as_ref() != Some(&request.task_id)
-            {
-                return Ok(EvidenceProvenanceClass::Weak);
-            }
-            let Some(source_record) = store
-                .evidence_observation_record(source_ref.record_id.as_str())
-                .map_err(CorePipelineError::from)?
-            else {
-                return Ok(EvidenceProvenanceClass::Weak);
-            };
-            super::record_run::stored_evidence_observation_provenance_class(
-                store,
-                &source_record,
-                &super::record_run::StoredEvidenceProvenanceBasis {
-                    project_id: &request.envelope.project_id,
-                    task_id: &request.task_id,
-                    change_unit_id: basis.change_unit_id.as_str(),
-                    scope_revision: basis.scope_revision,
-                    baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
-                    target: &observation.target,
-                },
-            )
-        }
-        _ => Ok(EvidenceProvenanceClass::Weak),
-    }
-}
-
-fn projected_external_observation_has_verified_artifact(
-    store: &CoreProjectStore,
-    request: &CloseTaskPlanRequest,
-    context: &CloseTaskContext,
-    observation: &EvidenceObservation,
-) -> CoreResult<bool> {
-    for artifact_ref in &observation.output_artifact_refs {
-        if artifact_ref.project_id != request.envelope.project_id
-            || artifact_ref.task_id != request.task_id
-            || artifact_ref.availability != ArtifactAvailability::Available
-            || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
-        {
-            continue;
-        }
-        if context.projected_artifacts.iter().any(|projected| {
-            projected.artifact_id == artifact_ref.artifact_id
-                && projected.project_id == artifact_ref.project_id
-                && projected.task_id == artifact_ref.task_id
-                && projected.availability == ArtifactAvailability::Available
-                && projected.integrity_status == ArtifactIntegrityStatus::Verified
-        }) {
-            return Ok(true);
-        }
-        let Some(artifact) = store
-            .artifact_record(artifact_ref.artifact_id.as_str())
-            .map_err(CorePipelineError::from)?
-        else {
-            continue;
-        };
-        if artifact.project_id == request.envelope.project_id.as_str()
-            && artifact.task_id == request.task_id.as_str()
-            && store
-                .artifact_has_task_owner_link(
-                    artifact_ref.artifact_id.as_str(),
-                    request.task_id.as_str(),
-                )
-                .map_err(CorePipelineError::from)?
-            && persistent_artifact_is_verified_current(store, &artifact)?
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    super::record_run::projected_evidence_observation_provenance_class(
+        store,
+        observation,
+        &super::record_run::StoredEvidenceProvenanceBasis {
+            project_id: &request.envelope.project_id,
+            task_id: &request.task_id,
+            change_unit_id: basis.change_unit_id.as_str(),
+            scope_revision: basis.scope_revision,
+            baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
+            target: &observation.target,
+        },
+        &context.projected_artifacts,
+    )
 }
 
 fn unavailable_close_artifact_refs(
@@ -4336,6 +4254,21 @@ fn final_acceptance_blocker(
     request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
 ) -> Result<Option<CloseReadinessBlocker>, PlanError> {
+    let acceptance_policy = parse_acceptance_policy(&context.task.acceptance_policy)?;
+    let acceptance_required = match acceptance_policy {
+        AcceptancePolicy::Required => true,
+        AcceptancePolicy::NotRequired => false,
+        AcceptancePolicy::PolicyDependent => {
+            parse_task_mode(&context.task.mode)? != TaskMode::Advisor
+                || context
+                    .current_close_basis
+                    .as_ref()
+                    .is_some_and(|basis| !basis.residual_risks.is_empty())
+        }
+    };
+    if !acceptance_required {
+        return Ok(None);
+    }
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let Some(close_basis) = context.current_close_basis.as_ref() else {
         return Ok(Some(close_blocker(

@@ -18,9 +18,10 @@ use volicord_store::{
         ProjectContinuityRecordRecord, ProjectStateHeader, RunInsert, RunObservedChangesRecord,
         RunRecord, StoredArtifactRecord, StoredArtifactStagingRecord, StoredRecordRef,
         TaskCloseBasisUpdate, TaskCloseUpdate, TaskInsert, TaskRecord, TaskScopeRevisionUpdate,
-        TaskScopeUpdate, UnrecordedChangeResolutionUpdate, UserJudgmentInsert,
-        UserJudgmentInvalidation, UserJudgmentRecord, UserJudgmentResolutionUpdate,
-        WriteTicketConsumption, WriteTicketInsert, WriteTicketRecord,
+        TaskScopeUpdate, UnrecordedChangeResolutionUpdate, UserEvidenceObservationInsert,
+        UserEvidenceObservationRecord, UserJudgmentInsert, UserJudgmentInvalidation,
+        UserJudgmentRecord, UserJudgmentResolutionUpdate, WriteTicketConsumption,
+        WriteTicketInsert, WriteTicketRecord,
     },
     guards::{GuardHealthRecord, UnrecordedChangeRecord},
     local_consent::{
@@ -30,8 +31,10 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    AcceptanceCriterion, AcceptanceCriterionId, ActorSource, ArtifactAvailability, ArtifactId,
-    ArtifactInput, ArtifactInputSourceKind, ArtifactIntegrityStatus, ArtifactRef, BaselineRef,
+    AcceptanceCriterion, AcceptanceCriterionId, AcceptanceCriterionInput, AcceptancePolicy,
+    ActorSource, ArtifactAvailability, ArtifactId, ArtifactInput, ArtifactInputSourceKind,
+    ArtifactIntegrityStatus, ArtifactRef, AuthorityNextActor, AuthorityReceipt, BaselineRef,
+    CarryForwardDisposition, CarryForwardDispositionStatus, CarryForwardKind,
     ChangeUnitEffectContract, ChangeUnitId, ChangeUnitOperation, CheckCloseRequest, CloseIntent,
     CloseReadinessBlocker, CloseReadinessBlockerCategory, CloseReason, CloseState,
     CloseTaskRequest, CloseTaskResult, ControlSurfaceSummary, CoverageHostHookState,
@@ -39,33 +42,38 @@ use volicord_types::{
     EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
     EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState,
     EvidenceGateSummary, EvidenceObservation, EvidenceObservationId, EvidenceObservationInput,
-    EvidenceRequirement, EvidenceSourceKind, EvidenceStatus, EvidenceSummary, EvidenceTarget,
-    EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel, GuardConfigurationStatus,
-    GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId, GuardInstallationStatus,
-    GuardObservationStatus, IntegrationProfile, JsonObject, JudgmentAnswerConstraints,
-    JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentCapturePath, JudgmentInboxChoice,
-    JudgmentInboxItem, JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
-    JudgmentResolutionOutcome, MethodName, MethodOperationCategory, NextActionKind,
-    NextActionPresentationRole, NextActionSummary, NonGuarantee, ObservedChanges,
-    OperationCategory, PersistedEvidenceMetadata, PersistedJudgmentBasis,
-    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
-    PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteRequest,
-    PrepareWriteResult, ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
+    EvidenceProducerAnchor, EvidenceProducerKind, EvidenceRelevanceAssessment,
+    EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus,
+    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel,
+    GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId,
+    GuardInstallationStatus, GuardObservationStatus, IntegrationProfile, JsonObject,
+    JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
+    JudgmentCapturePath, JudgmentInboxChoice, JudgmentInboxItem, JudgmentKind,
+    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, JudgmentResolutionOutcome,
+    MethodName, MethodOperationCategory, NextActionKind, NextActionPresentationRole,
+    NextActionSummary, NonGuarantee, ObservedChanges, OperationCategory, PersistedEvidenceMetadata,
+    PersistedEvidenceObservationAuthority, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
+    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, PlannedBlocker,
+    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteRequest, PrepareWriteResult,
+    ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
     ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
     ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
-    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
-    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind,
-    RunSummary, SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
+    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RecordUserObservationRequest,
+    RecordUserObservationResult, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
+    ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind, RunSummary,
+    SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
     SessionWatchStatus, SourceRef, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
     StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
-    StatusRequest, StorageRef, SummaryCard, TaskId, TaskLifecyclePhase, TaskLifecycleState,
-    TaskMode, TaskResult, ToolEnvelope, ToolResultBase, UnrecordedChangeFinding,
-    UnrecordedChangeId, UnrecordedChangeResolutionBasis, UnrecordedChangeResolutionRequest,
+    StatusRequest, StorageRef, SummaryCard, TaskFlowItem, TaskId, TaskLifecyclePhase,
+    TaskLifecycleState, TaskLineageRelation, TaskLineageSummary, TaskMode, TaskResult,
+    ToolEnvelope, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeId,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeResolutionRequest,
     UnrecordedChangeResolutionSummary, UnrecordedChangeStatus, UpdateScopeRequest,
-    UserChannelAvailability, UserChannelPathAvailability, UserJudgment, UserJudgmentCandidate,
-    UserJudgmentContext, UserJudgmentId, UserJudgmentOption, UserJudgmentOptionAction,
-    UserJudgmentOptionId, UserJudgmentOptionInput, UserJudgmentResolution, UserJudgmentStatus,
-    UtcTimestamp, WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
+    UserChannelAvailability, UserChannelPathAvailability, UserEvidenceObservation, UserJudgment,
+    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
+    UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
+    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WorkPhase, WorkspaceContext,
+    WorkspaceVcs, WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
     WriteTicketEffect, WriteTicketId, WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
     WriteTicketStateSummary, WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
     VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
@@ -132,6 +140,7 @@ mod status;
 #[cfg(test)]
 mod tests;
 mod update_scope;
+mod user_observation;
 
 struct MethodPlan {
     task_id: TaskId,
@@ -361,9 +370,13 @@ fn allocate_evidence_observation_id(
 ) -> CoreResult<EvidenceObservationId> {
     service
         .allocate_generated_id(DurableIdKind::EvidenceObservation, |candidate| {
-            store
+            let evidence_exists = store
                 .evidence_observation_exists(candidate)
-                .map_err(CorePipelineError::from)
+                .map_err(CorePipelineError::from)?;
+            let user_observation_exists = store
+                .user_evidence_observation_exists(candidate)
+                .map_err(CorePipelineError::from)?;
+            Ok(evidence_exists || user_observation_exists)
         })
         .map(EvidenceObservationId::new)
 }
@@ -682,10 +695,38 @@ fn normalize_source_refs(
     field: &'static str,
     refs: &[SourceRef],
 ) -> Result<Vec<SourceRef>, PlanError> {
+    normalize_source_refs_with_carried_artifact_task(
+        store,
+        project_state,
+        envelope,
+        task_id,
+        field,
+        refs,
+        None,
+    )
+}
+
+fn normalize_source_refs_with_carried_artifact_task(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    envelope: &ToolEnvelope,
+    task_id: &TaskId,
+    field: &'static str,
+    refs: &[SourceRef],
+    carried_artifact_task_id: Option<&TaskId>,
+) -> Result<Vec<SourceRef>, PlanError> {
     refs.iter()
         .cloned()
         .map(|source_ref| {
-            normalize_source_ref(store, project_state, envelope, task_id, field, source_ref)
+            normalize_source_ref(
+                store,
+                project_state,
+                envelope,
+                task_id,
+                field,
+                source_ref,
+                carried_artifact_task_id,
+            )
         })
         .collect()
 }
@@ -697,6 +738,7 @@ fn normalize_source_ref(
     task_id: &TaskId,
     field: &'static str,
     source_ref: SourceRef,
+    carried_artifact_task_id: Option<&TaskId>,
 ) -> Result<SourceRef, PlanError> {
     match source_ref {
         SourceRef::RepositoryFile(mut source) => {
@@ -772,6 +814,7 @@ fn normalize_source_ref(
                     task_id,
                     field,
                     artifact_ref,
+                    carried_artifact_task_id,
                 )?)
                 .into();
             }
@@ -799,6 +842,7 @@ fn normalize_source_ref(
                     task_id,
                     field,
                     artifact_ref,
+                    carried_artifact_task_id,
                 )?)
                 .into();
             }
@@ -911,13 +955,26 @@ fn canonical_source_artifact_ref(
     task_id: &TaskId,
     field: &'static str,
     submitted: &ArtifactRef,
+    carried_artifact_task_id: Option<&TaskId>,
 ) -> Result<ArtifactRef, PlanError> {
-    if submitted.project_id != envelope.project_id || submitted.task_id != *task_id {
+    let artifact_task_id = if submitted.task_id == *task_id {
+        task_id
+    } else if carried_artifact_task_id == Some(&submitted.task_id) {
+        carried_artifact_task_id.expect("matched carried artifact Task")
+    } else {
         return source_ref_error(
             envelope,
             project_state,
             field,
-            "source artifact refs must belong to the request project and Task",
+            "source artifact refs must belong to the request Task or the explicitly carried predecessor Task",
+        );
+    };
+    if submitted.project_id != envelope.project_id {
+        return source_ref_error(
+            envelope,
+            project_state,
+            field,
+            "source artifact refs must belong to the request project",
         );
     }
     let record = store
@@ -938,7 +995,7 @@ fn canonical_source_artifact_ref(
         );
     };
     let owner_link = store
-        .artifact_has_task_owner_link(submitted.artifact_id.as_str(), task_id.as_str())
+        .artifact_has_task_owner_link(submitted.artifact_id.as_str(), artifact_task_id.as_str())
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 envelope,
@@ -947,7 +1004,7 @@ fn canonical_source_artifact_ref(
             )))
         })?;
     if record.project_id != envelope.project_id.as_str()
-        || record.task_id != task_id.as_str()
+        || record.task_id != artifact_task_id.as_str()
         || !owner_link
     {
         return source_ref_error(
@@ -981,7 +1038,7 @@ fn canonical_source_artifact_ref(
     Ok(ArtifactRef {
         artifact_id: ArtifactId::new(record.artifact_id.clone()),
         project_id: envelope.project_id.clone(),
-        task_id: task_id.clone(),
+        task_id: artifact_task_id.clone(),
         display_name: record
             .producer
             .display_name
@@ -1002,7 +1059,7 @@ fn canonical_source_artifact_ref(
             StateRecordKind::Run,
             record.provenance.producer_run_id.as_str(),
             &envelope.project_id,
-            Some(task_id),
+            Some(artifact_task_id),
             Some(project_state.state_version),
         ))
         .into(),
@@ -1957,11 +2014,24 @@ fn baseline_matches(
         "write_basis_json",
         Some(&change_unit.write_basis_json),
     )?;
-    let baseline = match write_basis.baseline_ref {
-        Some(value) => Some(value.as_str().to_owned()),
-        None => StoredScope::from_task(task)?.baseline_ref,
-    };
-    Ok(baseline.as_deref() == Some(baseline_ref.as_str()))
+    let task_baseline = StoredScope::from_task(task)?.baseline_ref;
+    Ok(
+        write_basis.baseline_ref.as_ref().map(BaselineRef::as_str) == Some(baseline_ref.as_str())
+            && task_baseline.as_deref() == Some(baseline_ref.as_str()),
+    )
+}
+
+fn workspace_context_matches(
+    change_unit: &ChangeUnitRecord,
+    verified_invocation: &VerifiedInvocationContext,
+) -> CoreResult<bool> {
+    let basis: PersistedWriteBasis = decode_required_json(
+        "change_units",
+        change_unit.change_unit_id.clone(),
+        "write_basis_json",
+        Some(&change_unit.write_basis_json),
+    )?;
+    Ok(basis.git_workspace_context == verified_invocation.git_workspace_context)
 }
 
 fn paths_match_current_change_unit(
@@ -2263,6 +2333,26 @@ fn baseline_stale_response(
     )
 }
 
+fn workspace_stale_response(
+    envelope: &ToolEnvelope,
+    state_version: Option<u64>,
+) -> PipelineResponse {
+    let details = object_from_value(json!({
+        "workspace_reason": "workspace_context_mismatch"
+    }))
+    .expect("workspace details should be an object");
+    infallible_rejected_pipeline_response(
+        envelope.dry_run,
+        state_version,
+        vec![tool_error(
+            ErrorCode::BaselineStale,
+            "current Git workspace context does not match the current Change Unit basis",
+            true,
+            Some(details),
+        )],
+    )
+}
+
 fn no_active_change_unit_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
@@ -2350,6 +2440,8 @@ struct PersistedScopeSummary {
 struct PersistedWriteBasis {
     #[serde(default)]
     baseline_ref: Option<BaselineRef>,
+    #[serde(default)]
+    git_workspace_context: Option<crate::pipeline::GitWorkspaceContext>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2591,6 +2683,57 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         .map(change_unit_effect_contract)
         .transpose()?
         .flatten();
+    let workspace_context = current_change_unit
+        .map(|record| {
+            decode_required_json::<PersistedWriteBasis>(
+                "change_units",
+                record.change_unit_id.clone(),
+                "write_basis_json",
+                Some(&record.write_basis_json),
+            )
+            .map(|basis| {
+                basis
+                    .git_workspace_context
+                    .map(|workspace| WorkspaceContext {
+                        vcs: WorkspaceVcs::Git,
+                        git_common_dir: workspace.git_common_dir,
+                        worktree_id: workspace.worktree_id,
+                        branch_ref: workspace.branch_ref,
+                        head_sha: workspace.head_sha,
+                        workspace_fingerprint: workspace.workspace_fingerprint,
+                    })
+            })
+        })
+        .transpose()?
+        .flatten();
+    let lineage = match (
+        task.predecessor_task_id.as_ref(),
+        task.lineage_relation.as_deref(),
+        task.lineage_reason.as_ref(),
+    ) {
+        (Some(predecessor_task_id), Some(relation), Some(creation_reason)) => {
+            let dispositions: Vec<CarryForwardDisposition> = decode_required_json(
+                "tasks",
+                task.task_id.clone(),
+                "carry_forward_json",
+                Some(&task.carry_forward_json),
+            )?;
+            Some(TaskLineageSummary {
+                predecessor_task_ref: state_ref(
+                    StateRecordKind::Task,
+                    predecessor_task_id,
+                    project_id,
+                    Some(&TaskId::new(predecessor_task_id.clone())),
+                    Some(state_version),
+                ),
+                relation: parse_task_lineage_relation(relation)?,
+                creation_reason: creation_reason.clone(),
+                carry_forward: dispositions,
+            })
+        }
+        (None, None, None) => None,
+        _ => return invalid_storage("tasks.lineage"),
+    };
     let scope = StoredScope::from_task(task)?;
     let change_unit_scope = current_change_unit
         .map(|record| {
@@ -2609,6 +2752,10 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         state_version,
         task_ref: Some(task_ref),
         mode: Some(parse_task_mode(&task.mode)?),
+        work_phase: Some(parse_work_phase(&task.work_phase)?),
+        acceptance_policy: Some(parse_acceptance_policy(&task.acceptance_policy)?),
+        acceptance_policy_reason: Some(task.acceptance_policy_reason.clone()),
+        lineage,
         lifecycle: Some(TaskLifecycleState {
             lifecycle_phase: parse_lifecycle_phase(&task.lifecycle_phase)?,
             close_reason: parse_close_reason(task)?,
@@ -2621,6 +2768,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
                 })
                 .transpose()?,
         }),
+        scope_revision: task.scope_revision,
         goal_summary: scope.goal_summary,
         scope_summary: change_unit_scope.or(scope.scope_summary),
         non_goals: scope.non_goals,
@@ -2629,6 +2777,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         active_change_unit_ref,
         effect_contract,
         baseline_ref: scope.baseline_ref.map(BaselineRef::new),
+        workspace_context,
         shaping_readiness: None,
         pending_user_judgment_refs,
         blocker_refs,
@@ -3188,6 +3337,7 @@ fn projected_close_check(
 fn change_unit_insert(
     request: &UpdateScopeRequest,
     change_unit_id: &ChangeUnitId,
+    verified_invocation: &VerifiedInvocationContext,
 ) -> CoreResult<ChangeUnitInsert> {
     let fields = &request.change_unit.fields;
     let scope_summary = string_member(fields, "scope_summary")
@@ -3206,7 +3356,8 @@ fn change_unit_insert(
         }))?,
         bounded_paths_json: serde_json::to_string(&affected_paths)?,
         write_basis_json: serde_json::to_string(&json!({
-            "baseline_ref": request.baseline_ref
+            "baseline_ref": request.baseline_ref,
+            "git_workspace_context": verified_invocation.git_workspace_context
         }))?,
         effect_contract_json: serde_json::to_string(&request.change_unit.effect_contract)?,
         lifecycle_json: "{}".to_owned(),
@@ -3347,6 +3498,7 @@ fn projected_judgment_lifecycle_phase(
 fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStorageMutation {
     CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
         task_id: task_id.as_str().to_owned(),
+        work_phase: None,
         lifecycle_phase: Some(lifecycle_phase.to_owned()),
         result: None,
         title: None,
@@ -3590,7 +3742,9 @@ fn next_action_expected_state_version(
 
 fn allowed_operation_categories(owner_method: Option<MethodName>) -> Vec<OperationCategory> {
     match owner_method {
-        Some(MethodName::RecordUserJudgment) => vec![OperationCategory::UserOnly],
+        Some(MethodName::RecordUserJudgment | MethodName::RecordUserObservation) => {
+            vec![OperationCategory::UserOnly]
+        }
         Some(MethodName::ReconcileChanges) => vec![
             OperationCategory::AgentWorkflow,
             OperationCategory::LocalRecovery,
@@ -3966,6 +4120,66 @@ fn task_mode_storage(mode: TaskMode) -> &'static str {
         TaskMode::Advisor => "advisor",
         TaskMode::Direct => "direct",
         TaskMode::Work => "work",
+    }
+}
+
+fn initial_work_phase(mode: TaskMode) -> WorkPhase {
+    match mode {
+        TaskMode::Direct => WorkPhase::Implementation,
+        TaskMode::Advisor | TaskMode::Work => WorkPhase::Shaping,
+    }
+}
+
+fn work_phase_storage(phase: WorkPhase) -> &'static str {
+    match phase {
+        WorkPhase::Shaping => "shaping",
+        WorkPhase::Implementation => "implementation",
+    }
+}
+
+fn parse_work_phase(value: &str) -> CoreResult<WorkPhase> {
+    match value {
+        "shaping" => Ok(WorkPhase::Shaping),
+        "implementation" => Ok(WorkPhase::Implementation),
+        _ => invalid_storage("tasks.work_phase"),
+    }
+}
+
+fn acceptance_policy_storage(policy: AcceptancePolicy) -> &'static str {
+    match policy {
+        AcceptancePolicy::Required => "required",
+        AcceptancePolicy::NotRequired => "not_required",
+        AcceptancePolicy::PolicyDependent => "policy_dependent",
+    }
+}
+
+fn parse_acceptance_policy(value: &str) -> CoreResult<AcceptancePolicy> {
+    match value {
+        "required" => Ok(AcceptancePolicy::Required),
+        "not_required" => Ok(AcceptancePolicy::NotRequired),
+        "policy_dependent" => Ok(AcceptancePolicy::PolicyDependent),
+        _ => invalid_storage("tasks.acceptance_policy"),
+    }
+}
+
+fn task_lineage_relation_storage(relation: TaskLineageRelation) -> &'static str {
+    match relation {
+        TaskLineageRelation::Continues => "continues",
+        TaskLineageRelation::DerivedFrom => "derived_from",
+        TaskLineageRelation::SplitFrom => "split_from",
+        TaskLineageRelation::Replaces => "replaces",
+        TaskLineageRelation::ImplementsAdviceFrom => "implements_advice_from",
+    }
+}
+
+fn parse_task_lineage_relation(value: &str) -> CoreResult<TaskLineageRelation> {
+    match value {
+        "continues" => Ok(TaskLineageRelation::Continues),
+        "derived_from" => Ok(TaskLineageRelation::DerivedFrom),
+        "split_from" => Ok(TaskLineageRelation::SplitFrom),
+        "replaces" => Ok(TaskLineageRelation::Replaces),
+        "implements_advice_from" => Ok(TaskLineageRelation::ImplementsAdviceFrom),
+        _ => invalid_storage("tasks.lineage_relation"),
     }
 }
 

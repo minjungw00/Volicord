@@ -387,6 +387,14 @@ mod tests {
                 .operation_category(),
             OperationCategory::UserOnly
         );
+        assert_eq!(
+            serde_json::from_value::<RecordUserObservationRequest>(
+                record_user_observation_request_json(),
+            )
+            .expect("record user observation request")
+            .operation_category(),
+            OperationCategory::UserOnly
+        );
 
         let check = serde_json::from_value::<CheckCloseRequest>(check_close_request_json())
             .expect("check_close request");
@@ -1093,6 +1101,7 @@ mod tests {
             "volicord.record_run",
             "volicord.request_user_judgment",
             "volicord.record_user_judgment",
+            "volicord.record_user_observation",
             "volicord.reconcile_changes",
             "volicord.close_task",
         ] {
@@ -1813,6 +1822,10 @@ mod tests {
                 record_user_judgment_request_json(),
             ),
             (
+                "volicord.record_user_observation",
+                record_user_observation_request_json(),
+            ),
+            (
                 "volicord.reconcile_changes",
                 reconcile_changes_request_json(),
             ),
@@ -2159,6 +2172,10 @@ mod tests {
                 &serde_json::from_value::<RecordUserJudgmentRequest>(value)
                     .expect("record judgment request"),
             ),
+            "volicord.record_user_observation" => canonical_request_hash(
+                &serde_json::from_value::<RecordUserObservationRequest>(value)
+                    .expect("record user observation request"),
+            ),
             "volicord.reconcile_changes" => canonical_request_hash(
                 &serde_json::from_value::<ReconcileChangesRequest>(value)
                     .expect("reconcile changes request"),
@@ -2182,6 +2199,8 @@ mod tests {
                 "plain_language_request",
                 "requested_mode",
                 "resume_policy",
+                "acceptance_policy",
+                "lineage",
                 "initial_scope",
                 "initial_context_refs",
                 "initial_source_refs",
@@ -2259,6 +2278,16 @@ mod tests {
                 "note",
                 "accepted_risks",
             ],
+            "volicord.record_user_observation" => &[
+                "envelope",
+                "task_id",
+                "change_unit_id",
+                "target",
+                "relevance_status",
+                "artifact_ids",
+                "summary",
+                "observed_at",
+            ],
             "volicord.reconcile_changes" => &["envelope", "task_id"],
             "volicord.close_task" => &[
                 "envelope",
@@ -2296,6 +2325,9 @@ mod tests {
             "volicord.record_user_judgment" => {
                 serde_json::from_value::<RecordUserJudgmentRequest>(value).map(drop)
             }
+            "volicord.record_user_observation" => {
+                serde_json::from_value::<RecordUserObservationRequest>(value).map(drop)
+            }
             "volicord.reconcile_changes" => {
                 serde_json::from_value::<ReconcileChangesRequest>(value).map(drop)
             }
@@ -2321,6 +2353,8 @@ mod tests {
             "plain_language_request": "Create a first-run checklist.",
             "requested_mode": "work",
             "resume_policy": "create_new",
+            "acceptance_policy": null,
+            "lineage": null,
             "initial_scope": {
                 "boundary": "First-run checklist.",
                 "non_goals": ["Changing account creation."],
@@ -2456,6 +2490,7 @@ mod tests {
 
     fn evidence_observation_json() -> Value {
         let mut observation = evidence_observation_input_json();
+        let output_artifact_refs = observation["output_artifact_refs"].clone();
         let object = observation
             .as_object_mut()
             .expect("observation input fixture should be an object");
@@ -2469,6 +2504,23 @@ mod tests {
         object.insert(
             "run_ref".to_owned(),
             state_ref_json("run", "run_observation_001", "task_empty_001"),
+        );
+        object.insert(
+            "producer_anchor".to_owned(),
+            json!({
+                "producer_kind": "unverified_caller",
+                "producer_ref": null,
+                "output_artifact_refs": output_artifact_refs,
+                "verification_basis": null
+            }),
+        );
+        object.insert(
+            "relevance_assessment".to_owned(),
+            json!({
+                "status": "unassessed",
+                "assessment_ref": null,
+                "assessed_by_actor_source": null
+            }),
         );
         object.insert("recorded_at".to_owned(), json!("2026-06-18T00:00:01Z"));
         observation
@@ -2641,6 +2693,22 @@ mod tests {
             "rationale": judgment_rationale_json(),
             "note": null,
             "accepted_risks": []
+        })
+    }
+
+    fn record_user_observation_request_json() -> Value {
+        json!({
+            "envelope": envelope_json(),
+            "task_id": "task_empty_001",
+            "change_unit_id": "cu_empty_001",
+            "target": {
+                "target_kind": "acceptance_criterion",
+                "acceptance_criterion_id": "ac_empty_001"
+            },
+            "relevance_status": "supported",
+            "artifact_ids": ["artifact_evidence_001"],
+            "summary": "The stored output supports the criterion.",
+            "observed_at": "2026-06-18T00:00:00Z"
         })
     }
 

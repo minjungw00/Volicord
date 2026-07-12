@@ -18,10 +18,12 @@ use volicord_test_support::core_fixtures::{
 };
 use volicord_types::{
     AcceptanceCriterionId, ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind,
-    ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind,
-    ErrorCode, EvidenceClaimId, EvidenceTarget, JudgmentKind, OperationCategory, ProjectId,
-    ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef,
-    StatusRequest, UtcTimestamp, WriteTicketId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    ArtifactRef, ChangeUnitId, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason,
+    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceObservationInput,
+    EvidenceRelevanceStatus, EvidenceSourceKind, EvidenceTarget, JsonObject, JudgmentKind,
+    OperationCategory, ProjectId, RecordUserObservationRequest, ResidualRiskInput, ResponseKind,
+    RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, TaskId,
+    UtcTimestamp, WriteTicketId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 #[test]
@@ -1679,7 +1681,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
     let scope_service = core(&scope_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&scope_fixture, &scope_service, "basis_public_scope")?;
-    record_close_evidence(
+    let after_basis = record_close_evidence(
         &scope_fixture,
         &scope_service,
         &task_id,
@@ -1692,7 +1694,7 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
             request_id: "req_basis_public_scope_change",
             idempotency_key: "idem_basis_public_scope_change",
             dry_run: false,
-            expected_state_version: Some(3),
+            expected_state_version: Some(after_basis),
             task_id: &task_id,
             operation: ChangeUnitOperation::KeepCurrent,
             scope_summary: "Material scope change invalidates close basis.",
@@ -2097,7 +2099,11 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         }),
         invocation(&accepted_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(closed.response_value["close_state"], "closed");
+    assert_eq!(
+        closed.response_value["close_state"], "closed",
+        "unexpected close response: {}",
+        closed.response_value
+    );
 
     let rejected_fixture = CoreFixture::new("negative_final_rejected")?;
     let rejected_service = core(&rejected_fixture);
@@ -2486,7 +2492,11 @@ fn public_sensitive_lifecycle_preserves_full_scope_through_close() -> Result<(),
         }),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(closed.response_value["close_state"], "closed");
+    assert_eq!(
+        closed.response_value["close_state"], "closed",
+        "unexpected close response: {}",
+        closed.response_value
+    );
     Ok(())
 }
 
@@ -2800,7 +2810,11 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         }),
         invocation(&info_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(closed.response_value["close_state"], "closed");
+    assert_eq!(
+        closed.response_value["close_state"], "closed",
+        "unexpected close response: {}",
+        closed.response_value
+    );
     Ok(())
 }
 
@@ -3942,14 +3956,6 @@ fn record_close_evidence(
     expected_state_version: u64,
     supported: bool,
 ) -> Result<u64, Box<dyn Error>> {
-    let mut request = fixture.record_run_request(
-        &format!("req_close_evidence_{supported}_{expected_state_version}"),
-        &format!("idem_close_evidence_{supported}_{expected_state_version}"),
-        false,
-        Some(expected_state_version),
-        task_id,
-        change_unit_id,
-    );
     let acceptance_criterion_id = require_active_acceptance_criterion(fixture, task_id)?;
     let mut evidence_update = if supported {
         supported_evidence_update("Close claim supported.")
@@ -3959,6 +3965,9 @@ fn record_close_evidence(
     evidence_update.target = EvidenceTarget::AcceptanceCriterion {
         acceptance_criterion_id,
     };
+
+    let mut current_state_version = expected_state_version;
+    let mut evidence_observations = Vec::new();
     if supported {
         let staged =
             stage_artifact_for_record_run(fixture, service, task_id, expected_state_version)?;
@@ -3969,8 +3978,79 @@ fn record_close_evidence(
             Some("Close claim supported."),
         );
         artifact_input.evidence_target = Some(evidence_update.target.clone()).into();
-        request.artifact_inputs = vec![artifact_input];
+        let mut promotion = fixture.record_run_request(
+            &format!("req_promote_close_evidence_{expected_state_version}"),
+            &format!("idem_promote_close_evidence_{expected_state_version}"),
+            false,
+            Some(current_state_version),
+            task_id,
+            change_unit_id,
+        );
+        promotion.artifact_inputs = vec![artifact_input];
+        let promoted = service.record_run(
+            promotion,
+            invocation(fixture, OperationCategory::AgentWorkflow),
+        )?;
+        current_state_version = promoted.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("artifact promotion state version should be present");
+        let artifact_ref: ArtifactRef =
+            serde_json::from_value(promoted.response_value["registered_artifacts"][0].clone())?;
+
+        let observed_at = UtcTimestamp::parse("2026-06-18T00:00:00Z")?;
+        let user_observation = service.record_user_observation(
+            RecordUserObservationRequest {
+                envelope: fixture.envelope(
+                    &format!("req_user_observation_close_evidence_{expected_state_version}"),
+                    Some(&format!(
+                        "idem_user_observation_close_evidence_{expected_state_version}"
+                    )),
+                    false,
+                    Some(current_state_version),
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                change_unit_id: ChangeUnitId::new(change_unit_id),
+                target: evidence_update.target.clone(),
+                relevance_status: EvidenceRelevanceStatus::Supported,
+                artifact_ids: vec![artifact_ref.artifact_id.clone()],
+                summary: "The user confirms that these exact bytes support the target.".to_owned(),
+                observed_at: observed_at.clone(),
+            },
+            invocation(fixture, OperationCategory::UserOnly),
+        )?;
+        current_state_version = user_observation.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("user observation state version should be present");
+        let user_observation_ref: StateRecordRef = serde_json::from_value(
+            user_observation.response_value["user_observation_ref"].clone(),
+        )?;
+        evidence_observations.push(EvidenceObservationInput {
+            target: evidence_update.target.clone(),
+            source_kind: EvidenceSourceKind::UserObservation,
+            assurance_level: EvidenceAssuranceLevel::UserObserved,
+            observed_by_actor_source: None.into(),
+            tool_name: None.into(),
+            tool_invocation_id: None.into(),
+            tool_metadata: JsonObject::new(),
+            input_refs: vec![user_observation_ref],
+            source_refs: Vec::new(),
+            output_artifact_refs: vec![artifact_ref],
+            limitations: Vec::new(),
+            observed_at,
+        });
+        evidence_update.provenance = None;
     }
+
+    let mut request = fixture.record_run_request(
+        &format!("req_close_evidence_{supported}_{expected_state_version}"),
+        &format!("idem_close_evidence_{supported}_{expected_state_version}"),
+        false,
+        Some(current_state_version),
+        task_id,
+        change_unit_id,
+    );
+    request.evidence_observations = evidence_observations;
     request.evidence_updates = vec![evidence_update];
     request.close_assessment = Some(CloseAssessmentInput {
         result_summary: "Close claim supported.".to_owned(),

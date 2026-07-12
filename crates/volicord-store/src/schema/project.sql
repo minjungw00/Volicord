@@ -17,6 +17,19 @@ CREATE TABLE tasks (
   task_id TEXT NOT NULL,
   created_by_actor_source TEXT NOT NULL,
   mode TEXT NOT NULL,
+  work_phase TEXT NOT NULL CHECK (work_phase IN ('shaping', 'implementation')),
+  acceptance_policy TEXT NOT NULL CHECK (
+    acceptance_policy IN ('required', 'not_required', 'policy_dependent')
+  ),
+  acceptance_policy_reason TEXT NOT NULL CHECK (length(trim(acceptance_policy_reason)) > 0),
+  predecessor_task_id TEXT,
+  lineage_relation TEXT CHECK (
+    lineage_relation IS NULL OR lineage_relation IN (
+      'continues', 'derived_from', 'split_from', 'replaces', 'implements_advice_from'
+    )
+  ),
+  lineage_reason TEXT,
+  carry_forward_json TEXT NOT NULL DEFAULT '[]',
   lifecycle_phase TEXT NOT NULL,
   result TEXT,
   title TEXT,
@@ -35,9 +48,20 @@ CREATE TABLE tasks (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, task_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, predecessor_task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, current_change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
-    DEFERRABLE INITIALLY DEFERRED
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    (predecessor_task_id IS NULL AND lineage_relation IS NULL AND lineage_reason IS NULL)
+    OR (
+      predecessor_task_id IS NOT NULL
+      AND lineage_relation IS NOT NULL
+      AND lineage_reason IS NOT NULL
+      AND length(trim(lineage_reason)) > 0
+      AND predecessor_task_id <> task_id
+    )
+  )
 );
 
 CREATE TABLE acceptance_criteria (
@@ -446,6 +470,36 @@ CREATE TABLE evidence_observations (
   )
 );
 
+CREATE TABLE user_evidence_observations (
+  project_id TEXT NOT NULL,
+  user_evidence_observation_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  change_unit_id TEXT NOT NULL,
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
+  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
+  acceptance_criterion_id TEXT,
+  evidence_claim_id TEXT,
+  relevance_status TEXT NOT NULL CHECK (relevance_status IN ('supported', 'contradicted')),
+  output_artifact_refs_json TEXT NOT NULL,
+  summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+  observed_by_actor_source TEXT NOT NULL CHECK (observed_by_actor_source = 'local_user'),
+  verification_basis TEXT NOT NULL CHECK (length(trim(verification_basis)) > 0),
+  observed_at TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_evidence_observation_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
+  FOREIGN KEY (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id),
+  FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
+    REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
+  FOREIGN KEY (project_id, task_id, evidence_claim_id)
+    REFERENCES evidence_claims (project_id, task_id, evidence_claim_id),
+  CHECK (
+    (acceptance_criterion_id IS NOT NULL AND evidence_claim_id IS NULL)
+    OR (acceptance_criterion_id IS NULL AND evidence_claim_id IS NOT NULL)
+  )
+);
+
 CREATE TABLE blockers (
   project_id TEXT NOT NULL,
   blocker_id TEXT NOT NULL,
@@ -519,6 +573,7 @@ CREATE TABLE tool_invocations (
   actor_source TEXT NOT NULL,
   operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
   verification_basis TEXT,
+  git_workspace_context_json TEXT,
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
@@ -583,6 +638,14 @@ CREATE INDEX idx_evidence_observations_task_target
 
 CREATE INDEX idx_evidence_observations_run
   ON evidence_observations (project_id, run_id);
+CREATE INDEX idx_user_evidence_observations_task_target
+  ON user_evidence_observations (
+    project_id,
+    task_id,
+    acceptance_criterion_id,
+    evidence_claim_id,
+    recorded_at
+  );
 
 CREATE INDEX idx_blockers_task_status
   ON blockers (project_id, task_id, status);

@@ -7,6 +7,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use volicord_store::{
     core_pipeline::{
@@ -92,6 +93,22 @@ impl From<DurableIdError> for CorePipelineError {
     }
 }
 
+/// Adapter-captured Git coordinate for the selected Product Repository.
+///
+/// Core never discovers Git state itself. The selected adapter captures this
+/// coordinate at the method boundary and Core treats it as verified invocation
+/// context only after the same structural and actor checks as the surrounding
+/// invocation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitWorkspaceContext {
+    pub git_common_dir: String,
+    pub worktree_id: String,
+    pub branch_ref: Option<String>,
+    pub head_sha: Option<String>,
+    pub workspace_fingerprint: String,
+}
+
 /// Local invocation facts supplied by an adapter outside `ToolEnvelope`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvocationContext {
@@ -102,6 +119,7 @@ pub struct InvocationContext {
     pub session_id: Option<String>,
     pub host_elicitation_available: bool,
     pub local_web_consent_available: bool,
+    pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
 impl InvocationContext {
@@ -120,6 +138,7 @@ impl InvocationContext {
             session_id: None,
             host_elicitation_available: false,
             local_web_consent_available: false,
+            git_workspace_context: None,
         }
     }
 
@@ -141,6 +160,12 @@ impl InvocationContext {
         self.local_web_consent_available = available;
         self
     }
+
+    /// Adds the adapter-captured Git workspace coordinate for this invocation.
+    pub fn with_git_workspace_context(mut self, context: GitWorkspaceContext) -> Self {
+        self.git_workspace_context = Some(context);
+        self
+    }
 }
 
 /// Internal verified invocation context derived for one Core call.
@@ -154,6 +179,7 @@ pub struct VerifiedInvocationContext {
     pub session_id: Option<String>,
     pub host_elicitation_available: bool,
     pub local_web_consent_available: bool,
+    pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
 /// Internal verified actor-provenance context derived for authority-bearing resolution.
@@ -976,7 +1002,7 @@ fn replay_preflight_response(
         return Ok(None);
     };
 
-    let replay_context = replay_context_from_verified_invocation(verified_invocation);
+    let replay_context = replay_context_from_verified_invocation(verified_invocation)?;
     if !record.matches_verified_replay_context(&replay_context) {
         return Ok(Some(response_from_rejected(
             replay_context_mismatch_response(request.envelope.dry_run, project_state.state_version),
@@ -985,10 +1011,12 @@ fn replay_preflight_response(
         )?));
     }
     if record.request_hash == request_hash.as_str() {
+        let resolved_task_id =
+            replay_resolved_task_id(&record.response_json, request, project_state)?;
         return Ok(Some(response_from_json_string(
             record.response_json,
             Some(verified_invocation.clone()),
-            None,
+            resolved_task_id,
             true,
         )?));
     }
@@ -1008,6 +1036,35 @@ fn replay_preflight_response(
         Some(verified_invocation.clone()),
         None,
     )?))
+}
+
+fn replay_resolved_task_id(
+    response_json: &str,
+    request: &PipelinePreflightRequest,
+    project_state: &ProjectStateHeader,
+) -> CoreResult<Option<TaskId>> {
+    let response: Value = serde_json::from_str(response_json)?;
+    for pointer in [
+        "/task_ref/record_id",
+        "/state/task_ref/record_id",
+        "/active_task/task_ref/record_id",
+    ] {
+        if let Some(task_id) = response
+            .pointer(pointer)
+            .and_then(Value::as_str)
+            .filter(|task_id| !task_id.is_empty())
+        {
+            return Ok(Some(TaskId::new(task_id)));
+        }
+    }
+    if let Some(task_id) = request.envelope.task_id.as_ref() {
+        return Ok(Some(task_id.clone()));
+    }
+    Ok(match &request.policy.task {
+        TaskRequirement::Exact(task_id) => Some(task_id.clone()),
+        TaskRequirement::Required => project_state.active_task_id.as_ref().map(TaskId::new),
+        TaskRequirement::None | TaskRequirement::Optional => None,
+    })
 }
 
 fn freshness_preflight_response(
@@ -1111,14 +1168,13 @@ fn commit_mutation(
         verified_invocation,
     } = args;
 
+    let replay_context = replay_context_from_verified_invocation(&verified_invocation)?;
     let input = commit_input(
         &envelope.project_id,
         method_name,
         envelope.idempotency_key.as_ref(),
         request_hash,
-        Some(replay_context_from_verified_invocation(
-            &verified_invocation,
-        )),
+        Some(replay_context),
         envelope.expected_state_version.as_ref().copied(),
         vec![PendingTaskEvent {
             event_id,
@@ -1541,6 +1597,10 @@ mod tests {
                     task_id,
                     created_by_actor_source,
                     mode,
+                    work_phase,
+                    acceptance_policy,
+                    acceptance_policy_reason,
+                    carry_forward_json,
                     lifecycle_phase,
                     created_at,
                     updated_at
@@ -1550,6 +1610,10 @@ mod tests {
                     'task_a',
                     'agent_connection:connection_main',
                     'work',
+                    'shaping',
+                    'required',
+                    'Pipeline fixture requires explicit acceptance.',
+                    '[]',
                     'shaping',
                     't0',
                     't0'

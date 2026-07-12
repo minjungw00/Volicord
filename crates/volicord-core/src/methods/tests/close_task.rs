@@ -2234,6 +2234,39 @@ fn close_task_complete_success() -> Result<(), Box<dyn Error>> {
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_close_superseded_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                ..status_include()
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(status.response_value["next_actions"], json!([]));
+    assert_eq!(status.response_value["close_state"], "closed");
+    assert_eq!(status.response_value["close_blockers"], json!([]));
+    assert_eq!(
+        status.response_value["authority_receipt"]["close_state"],
+        "closed"
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["close_blockers"],
+        json!([])
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["next_actor"],
+        "none"
+    );
+    assert!(status.response_value["authority_receipt"]["next_action"].is_null());
     Ok(())
 }
 
@@ -2264,20 +2297,12 @@ fn advisor_close_complete_persists_and_projects_advice_only() -> Result<(), Box<
     let after_evidence = run_response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
-    let after_final = record_final_acceptance(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        after_evidence,
-        "advisor_close",
-    )?;
-
     let response = harness.service.close_task(
         close_task_request(CloseTaskFixture {
             request_id: "req_advisor_close_complete",
             idempotency_key: Some("idem_advisor_close_complete"),
             dry_run: false,
-            expected_state_version: Some(after_final),
+            expected_state_version: Some(after_evidence),
             task_id: &task_id,
             intent: CloseIntent::Complete,
             close_reason: Some(CloseReason::CompletedSelfChecked),
@@ -2299,6 +2324,97 @@ fn advisor_close_complete_persists_and_projects_advice_only() -> Result<(), Box<
     );
     assert_eq!(stored.lifecycle_phase, "completed");
     assert_eq!(stored.result.as_deref(), Some("advice_only"));
+    Ok(())
+}
+
+#[test]
+fn advisor_policy_dependent_acceptance_requires_final_only_when_risk_exists(
+) -> Result<(), Box<dyn Error>> {
+    let no_risk = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
+        &no_risk,
+        "advisor_policy_dependent_no_risk",
+        RequestedMode::Advisor,
+        Some(AcceptancePolicy::PolicyDependent),
+    )?;
+    let mut run = record_run_request(
+        "req_advisor_policy_dependent_no_risk_run",
+        "idem_advisor_policy_dependent_no_risk_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::ShapingUpdate;
+    run.evidence_updates = vec![supported_evidence_update(
+        "Policy-dependent advice evidence.",
+    )];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Policy-dependent advice without residual risk.",
+        Vec::new(),
+    ))
+    .into();
+    no_risk
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    let check = no_risk.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_advisor_policy_dependent_no_risk_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(check.response_value["close_state"], "ready");
+    assert!(!close_blocker_codes(&check.response_value)
+        .iter()
+        .any(|code| code == "missing_final_acceptance"));
+
+    let with_risk = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
+        &with_risk,
+        "advisor_policy_dependent_with_risk",
+        RequestedMode::Advisor,
+        Some(AcceptancePolicy::PolicyDependent),
+    )?;
+    let mut run = record_run_request(
+        "req_advisor_policy_dependent_with_risk_run",
+        "idem_advisor_policy_dependent_with_risk_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::ShapingUpdate;
+    run.evidence_updates = vec![supported_evidence_update("Risk-bearing advice evidence.")];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Policy-dependent advice with residual risk.",
+        vec![residual_risk_input("The advice retains a user-owned risk.")],
+    ))
+    .into();
+    with_risk
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    let check = with_risk.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_advisor_policy_dependent_with_risk_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(&check.response_value, "missing_final_acceptance");
+    assert_close_blocker(&check.response_value, "missing_residual_risk_acceptance");
     Ok(())
 }
 
@@ -4731,6 +4847,31 @@ fn close_task_supersede_success() -> Result<(), Box<dyn Error>> {
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_close_supersede_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                ..status_include()
+            },
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(status.response_value["close_state"], "superseded");
+    assert_eq!(status.response_value["close_blockers"], json!([]));
+    assert_eq!(status.response_value["next_actions"], json!([]));
+    assert_eq!(
+        status.response_value["authority_receipt"]["close_state"],
+        "superseded"
+    );
+    assert!(status.response_value["authority_receipt"]["next_action"].is_null());
     Ok(())
 }
 

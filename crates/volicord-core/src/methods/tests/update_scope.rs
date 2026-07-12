@@ -98,9 +98,17 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
     )?;
     let after = harness.counts()?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["base"]["response_kind"], "result",
+        "{:#}",
+        response.response_value
+    );
     assert_eq!(response.response_value["base"]["state_version"], 2);
     assert!(response.response_value["change_unit_ref"].is_object());
+    assert_eq!(
+        response.response_value["state"]["work_phase"],
+        "implementation"
+    );
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.change_units, before.change_units + 1);
     assert_eq!(after.task_events, before.task_events + 1);
@@ -270,6 +278,38 @@ fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<d
     assert_eq!(after.close_basis_revision, before.close_basis_revision);
     assert_eq!(after.current_close_basis, before.current_close_basis);
     assert_eq!(event_payload["scope_changed"], false);
+    Ok(())
+}
+
+#[test]
+fn keep_current_rejects_task_baseline_retarget_with_current_change_unit(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "scope_baseline_keep_current")?;
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+    let mut request = update_scope_request(
+        "req_scope_baseline_keep_current",
+        "idem_scope_baseline_keep_current",
+        false,
+        Some(before.state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Attempt to retarget only the Task baseline.",
+    );
+    request.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_other"));
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
     Ok(())
 }
 

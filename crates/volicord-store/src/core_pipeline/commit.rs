@@ -242,6 +242,7 @@ impl CoreProjectStore {
                     actor_source,
                     operation_category,
                     verification_basis,
+                    git_workspace_context_json,
                     response_json,
                     created_at
                 )
@@ -256,6 +257,7 @@ impl CoreProjectStore {
                     ?8,
                     ?9,
                     ?10,
+                    ?11,
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 )",
                 params![
@@ -268,6 +270,7 @@ impl CoreProjectStore {
                     replay_context.actor_source.as_str(),
                     replay_context.operation_category.as_str(),
                     replay_context.verification_basis.as_deref(),
+                    replay_context.git_workspace_context_json.as_deref(),
                     response_json
                 ],
             )?;

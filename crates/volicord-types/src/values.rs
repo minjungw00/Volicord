@@ -130,6 +130,8 @@ pub enum MethodName {
     RequestUserJudgment,
     #[serde(rename = "volicord.record_user_judgment")]
     RecordUserJudgment,
+    #[serde(rename = "volicord.record_user_observation")]
+    RecordUserObservation,
     #[serde(rename = "volicord.reconcile_changes")]
     ReconcileChanges,
     #[serde(rename = "volicord.close_task")]
@@ -149,6 +151,7 @@ impl MethodName {
             Self::RecordRun => "volicord.record_run",
             Self::RequestUserJudgment => "volicord.request_user_judgment",
             Self::RecordUserJudgment => "volicord.record_user_judgment",
+            Self::RecordUserObservation => "volicord.record_user_observation",
             Self::ReconcileChanges => "volicord.reconcile_changes",
             Self::CloseTask => "volicord.close_task",
         }
@@ -850,6 +853,7 @@ pub enum StateRecordKind {
     Run,
     EvidenceSummary,
     EvidenceObservation,
+    UserEvidenceObservation,
     Artifact,
     Blocker,
     TaskEvent,
@@ -885,6 +889,85 @@ pub enum TaskMode {
     Advisor,
     Direct,
     Work,
+}
+
+/// Current delivery phase inside one Task's longer-lived outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkPhase {
+    Shaping,
+    Implementation,
+}
+
+/// Task-owned final-acceptance policy selected at intake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceptancePolicy {
+    Required,
+    NotRequired,
+    PolicyDependent,
+}
+
+/// Canonical relation from a newly created Task to one predecessor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskLineageRelation {
+    Continues,
+    DerivedFrom,
+    SplitFrom,
+    Replaces,
+    ImplementsAdviceFrom,
+}
+
+/// Selectable predecessor material considered during Task creation.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CarryForwardKind {
+    Scope,
+    NonGoals,
+    UserDecisions,
+    SourceRefs,
+    ContextRefs,
+    KnownLimitations,
+    UnresolvedObligations,
+    ResidualRisks,
+    Baseline,
+}
+
+/// Core disposition for one explicitly selected carry-forward category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CarryForwardDispositionStatus {
+    Applied,
+    ReferenceOnly,
+}
+
+/// Optional VCS binding kind exposed by current-position state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceVcs {
+    Git,
+}
+
+/// Responsible party projected by a compact authority receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthorityNextActor {
+    Agent,
+    User,
+    None,
+}
+
+/// MCP mutation response detail requested by the caller.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MutationDetailLevel {
+    #[default]
+    Summary,
+    Workflow,
+    Full,
 }
 
 /// Intake input mode, including the input-only `auto` value.
@@ -1082,6 +1165,7 @@ pub enum PlannedBlockerSourceKind {
 #[serde(rename_all = "snake_case")]
 pub enum WriteDecisionCategory {
     Scope,
+    Workspace,
     UserJudgment,
     SensitiveApproval,
     WriteCompatibility,
@@ -1210,6 +1294,27 @@ pub enum EvidenceAssuranceLevel {
     ExternalToolResult,
     UserObserved,
     Unverified,
+}
+
+/// Core-derived producer anchor classifications for evidence observations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceProducerKind {
+    UnverifiedCaller,
+    UserChannelObservation,
+    RegisteredConnectionObservation,
+    VerifiedToolInvocation,
+    VerifiedCommandExecution,
+    ReusedEvidence,
+}
+
+/// Core-derived claim-relevance assessment states for evidence observations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceRelevanceStatus {
+    Unassessed,
+    Supported,
+    Contradicted,
 }
 
 /// Validator status values.

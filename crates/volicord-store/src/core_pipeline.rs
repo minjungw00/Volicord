@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
@@ -59,15 +62,17 @@ pub struct ToolInvocationRecord {
     pub actor_source: String,
     pub operation_category: String,
     pub verification_basis: Option<String>,
+    pub git_workspace_context_json: Option<String>,
     pub response_json: String,
 }
 
-/// Verified replay identity derived from current actor provenance and operation category.
+/// Verified replay identity derived from current invocation context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedReplayContext {
     pub actor_source: String,
     pub operation_category: String,
     pub verification_basis: Option<String>,
+    pub git_workspace_context_json: Option<String>,
 }
 
 /// Pending event supplied by a method-specific commit branch.
@@ -102,6 +107,7 @@ pub enum CoreStorageMutation {
     LinkArtifact(ArtifactLinkInsert),
     UpsertEvidenceSummary(EvidenceSummaryUpsert),
     InsertEvidenceObservation(EvidenceObservationInsert),
+    InsertUserEvidenceObservation(UserEvidenceObservationInsert),
     InsertUserJudgment(UserJudgmentInsert),
     ResolveUserJudgment(UserJudgmentResolutionUpdate),
     ConsumeLocalWebConsentToken(LocalWebConsentTokenConsumption),
@@ -118,6 +124,13 @@ pub struct TaskInsert {
     pub task_id: String,
     pub created_by_actor_source: String,
     pub mode: String,
+    pub work_phase: String,
+    pub acceptance_policy: String,
+    pub acceptance_policy_reason: String,
+    pub predecessor_task_id: Option<String>,
+    pub lineage_relation: Option<String>,
+    pub lineage_reason: Option<String>,
+    pub carry_forward_json: String,
     pub lifecycle_phase: String,
     pub result: Option<String>,
     pub title: Option<String>,
@@ -133,6 +146,7 @@ pub struct TaskInsert {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskScopeUpdate {
     pub task_id: String,
+    pub work_phase: Option<String>,
     pub lifecycle_phase: Option<String>,
     pub result: Option<String>,
     pub title: Option<String>,
@@ -471,6 +485,45 @@ pub struct EvidenceObservationRecord {
     pub metadata_json: String,
 }
 
+/// Storage input for a User Channel-owned evidence observation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserEvidenceObservationInsert {
+    pub user_evidence_observation_id: String,
+    pub task_id: String,
+    pub change_unit_id: String,
+    pub scope_revision: u64,
+    pub baseline_ref: String,
+    pub acceptance_criterion_id: Option<String>,
+    pub evidence_claim_id: Option<String>,
+    pub relevance_status: String,
+    pub output_artifact_refs_json: String,
+    pub summary: String,
+    pub observed_by_actor_source: String,
+    pub verification_basis: String,
+    pub observed_at: String,
+    pub recorded_at: String,
+}
+
+/// Stored User Channel-owned evidence observation facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserEvidenceObservationRecord {
+    pub project_id: String,
+    pub user_evidence_observation_id: String,
+    pub task_id: String,
+    pub change_unit_id: String,
+    pub scope_revision: u64,
+    pub baseline_ref: String,
+    pub acceptance_criterion_id: Option<String>,
+    pub evidence_claim_id: Option<String>,
+    pub relevance_status: String,
+    pub output_artifact_refs_json: String,
+    pub summary: String,
+    pub observed_by_actor_source: String,
+    pub verification_basis: String,
+    pub observed_at: String,
+    pub recorded_at: String,
+}
+
 /// Event reference facts created by an atomic mutation commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedEventRef {
@@ -556,6 +609,13 @@ pub struct TaskRecord {
     pub project_id: String,
     pub task_id: String,
     pub mode: String,
+    pub work_phase: String,
+    pub acceptance_policy: String,
+    pub acceptance_policy_reason: String,
+    pub predecessor_task_id: Option<String>,
+    pub lineage_relation: Option<String>,
+    pub lineage_reason: Option<String>,
+    pub carry_forward_json: String,
     pub lifecycle_phase: String,
     pub result: Option<String>,
     pub title: Option<String>,
@@ -807,6 +867,11 @@ impl CoreProjectStore {
         task_record(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
+    /// Lists every Task row for lineage-flow projection.
+    pub fn task_records(&self) -> StoreResult<Vec<TaskRecord>> {
+        task_records(&self.conn, &self.project.project_id)
+    }
+
     /// Reads Task revision coordinates and the current close basis, when present.
     pub fn task_revision_record(
         &self,
@@ -1044,6 +1109,32 @@ impl CoreProjectStore {
             &self.conn,
             &self.project.project_id,
             evidence_observation_id,
+        )
+    }
+
+    /// Returns whether a User Channel evidence observation id exists in this project.
+    pub fn user_evidence_observation_exists(
+        &self,
+        user_evidence_observation_id: &str,
+    ) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "user_evidence_observations",
+            "user_evidence_observation_id",
+            user_evidence_observation_id,
+        )
+    }
+
+    /// Reads one User Channel evidence observation by exact project-local identity.
+    pub fn user_evidence_observation_record(
+        &self,
+        user_evidence_observation_id: &str,
+    ) -> StoreResult<Option<UserEvidenceObservationRecord>> {
+        user_evidence_observation_record(
+            &self.conn,
+            &self.project.project_id,
+            user_evidence_observation_id,
         )
     }
 
@@ -1359,6 +1450,13 @@ fn task_record(
             project_id,
             task_id,
             mode,
+            work_phase,
+            acceptance_policy,
+            acceptance_policy_reason,
+            predecessor_task_id,
+            lineage_relation,
+            lineage_reason,
+            carry_forward_json,
             lifecycle_phase,
             result,
             title,
@@ -1382,24 +1480,49 @@ fn task_record(
     .map_err(StoreError::from)
 }
 
+fn task_records(conn: &Connection, project_id: &str) -> StoreResult<Vec<TaskRecord>> {
+    let mut statement = conn.prepare(
+        "SELECT
+            project_id, task_id, mode, work_phase, acceptance_policy,
+            acceptance_policy_reason, predecessor_task_id, lineage_relation,
+            lineage_reason, carry_forward_json, lifecycle_phase, result, title,
+            summary, shaping_summary_json, bounded_context_json,
+            autonomy_boundary_json, scope_revision, close_basis_revision,
+            close_basis_json, close_summary_json, current_change_unit_id, closed_at
+         FROM tasks
+         WHERE project_id = ?1
+         ORDER BY created_at, task_id",
+    )?;
+    let rows = statement.query_map([project_id], task_record_from_row)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
+
 fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
     Ok(TaskRecord {
         project_id: row.get(0)?,
         task_id: row.get(1)?,
         mode: row.get(2)?,
-        lifecycle_phase: row.get(3)?,
-        result: row.get(4)?,
-        title: row.get(5)?,
-        summary: row.get(6)?,
-        shaping_summary_json: row.get(7)?,
-        bounded_context_json: row.get(8)?,
-        autonomy_boundary_json: row.get(9)?,
-        scope_revision: nonnegative_i64_to_u64("tasks.scope_revision", row.get(10)?)?,
-        close_basis_revision: nonnegative_i64_to_u64("tasks.close_basis_revision", row.get(11)?)?,
-        close_basis_json: row.get(12)?,
-        close_summary_json: row.get(13)?,
-        current_change_unit_id: row.get(14)?,
-        closed_at: row.get(15)?,
+        work_phase: row.get(3)?,
+        acceptance_policy: row.get(4)?,
+        acceptance_policy_reason: row.get(5)?,
+        predecessor_task_id: row.get(6)?,
+        lineage_relation: row.get(7)?,
+        lineage_reason: row.get(8)?,
+        carry_forward_json: row.get(9)?,
+        lifecycle_phase: row.get(10)?,
+        result: row.get(11)?,
+        title: row.get(12)?,
+        summary: row.get(13)?,
+        shaping_summary_json: row.get(14)?,
+        bounded_context_json: row.get(15)?,
+        autonomy_boundary_json: row.get(16)?,
+        scope_revision: nonnegative_i64_to_u64("tasks.scope_revision", row.get(17)?)?,
+        close_basis_revision: nonnegative_i64_to_u64("tasks.close_basis_revision", row.get(18)?)?,
+        close_basis_json: row.get(19)?,
+        close_summary_json: row.get(20)?,
+        current_change_unit_id: row.get(21)?,
+        closed_at: row.get(22)?,
     })
 }
 
@@ -1831,6 +1954,7 @@ fn run_observed_changes_for_task(
     validate_identifier("task_id", task_id)?;
     let mut stmt = conn.prepare(
         "SELECT
+            rowid,
             project_id,
             run_id,
             task_id,
@@ -1840,37 +1964,82 @@ fn run_observed_changes_for_task(
          FROM runs
          WHERE project_id = ?1
            AND task_id = ?2
-         ORDER BY created_at DESC, run_id DESC",
+         ORDER BY rowid DESC",
     )?;
     let rows = stmt.query_map(params![project_id, task_id], |row| {
         Ok((
-            row.get::<_, String>(0)?,
+            row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, String>(4)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
             row.get::<_, String>(5)?,
+            row.get::<_, String>(6)?,
         ))
     })?;
     let mut records = Vec::new();
     for row in rows {
-        let (project_id, run_id, task_id, change_unit_id, observed_changes_json, status) = row?;
+        let (rowid, project_id, run_id, task_id, change_unit_id, observed_changes_json, status) =
+            row?;
         let observed_changes = decode_owner_json_text::<ObservedChanges>(
             "runs",
             run_id.clone(),
             "observed_changes_json",
             &observed_changes_json,
         )?;
-        records.push(RunObservedChangesRecord {
-            project_id,
-            run_id,
-            task_id,
-            change_unit_id,
-            observed_changes,
-            status,
-        });
+        records.push((
+            rowid,
+            RunObservedChangesRecord {
+                project_id,
+                run_id,
+                task_id,
+                change_unit_id,
+                observed_changes,
+                status,
+            },
+        ));
     }
-    Ok(records)
+    let mut event_stmt = conn.prepare(
+        "SELECT event_seq, payload_json
+           FROM authority_events
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND event_type = 'run_recorded'
+          ORDER BY event_seq DESC",
+    )?;
+    let event_rows = event_stmt.query_map(params![project_id, task_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut event_order = BTreeMap::new();
+    for row in event_rows {
+        let (event_seq, payload_json) = row?;
+        let payload = decode_owner_json_text::<serde_json::Value>(
+            "authority_events",
+            format!("event_seq:{event_seq}"),
+            "payload_json",
+            &payload_json,
+        )?;
+        let run_id = payload
+            .get("run_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                StoreError::corrupt_owner_state_value(
+                    "authority_events",
+                    format!("event_seq:{event_seq}"),
+                    "payload_json.run_id",
+                )
+            })?;
+        event_order.entry(run_id.to_owned()).or_insert(event_seq);
+    }
+    records.sort_by(|(left_rowid, left), (right_rowid, right)| {
+        event_order
+            .get(&right.run_id)
+            .copied()
+            .unwrap_or_default()
+            .cmp(&event_order.get(&left.run_id).copied().unwrap_or_default())
+            .then_with(|| right_rowid.cmp(left_rowid))
+    });
+    Ok(records.into_iter().map(|(_, record)| record).collect())
 }
 
 fn artifact_staging_record(
@@ -2265,6 +2434,63 @@ fn evidence_observation_record_from_row(
         observed_at: row.get(17)?,
         recorded_at: row.get(18)?,
         metadata_json: row.get(19)?,
+    })
+}
+
+fn user_evidence_observation_record(
+    conn: &Connection,
+    project_id: &str,
+    user_evidence_observation_id: &str,
+) -> StoreResult<Option<UserEvidenceObservationRecord>> {
+    conn.query_row(
+        "SELECT
+            project_id,
+            user_evidence_observation_id,
+            task_id,
+            change_unit_id,
+            scope_revision,
+            baseline_ref,
+            acceptance_criterion_id,
+            evidence_claim_id,
+            relevance_status,
+            output_artifact_refs_json,
+            summary,
+            observed_by_actor_source,
+            verification_basis,
+            observed_at,
+            recorded_at
+         FROM user_evidence_observations
+         WHERE project_id = ?1
+           AND user_evidence_observation_id = ?2",
+        params![project_id, user_evidence_observation_id],
+        user_evidence_observation_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn user_evidence_observation_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<UserEvidenceObservationRecord> {
+    Ok(UserEvidenceObservationRecord {
+        project_id: row.get(0)?,
+        user_evidence_observation_id: row.get(1)?,
+        task_id: row.get(2)?,
+        change_unit_id: row.get(3)?,
+        scope_revision: nonnegative_i64_to_u64(
+            "user_evidence_observations.scope_revision",
+            row.get(4)?,
+        )?,
+        baseline_ref: row.get(5)?,
+        acceptance_criterion_id: row.get(6)?,
+        evidence_claim_id: row.get(7)?,
+        relevance_status: row.get(8)?,
+        output_artifact_refs_json: row.get(9)?,
+        summary: row.get(10)?,
+        observed_by_actor_source: row.get(11)?,
+        verification_basis: row.get(12)?,
+        observed_at: row.get(13)?,
+        recorded_at: row.get(14)?,
     })
 }
 
@@ -2896,6 +3122,135 @@ mod tests {
     }
 
     #[test]
+    fn transaction_replay_rejects_changed_git_workspace_context() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let mut first_context = replay_context(CONNECTION_ID, "agent_workflow");
+        first_context.git_workspace_context_json =
+            Some(volicord_types::canonical_json_string(&json!({
+                "git_common_dir": "/tmp/repo/.git",
+                "worktree_id": format!("sha256:{}", "1".repeat(64)),
+                "branch_ref": "refs/heads/original",
+                "head_sha": "1111111111111111111111111111111111111111",
+                "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
+            }))?);
+        let first_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::UpdateScope,
+            Some(&IdempotencyKey::new("idem_store_workspace_context")),
+            &RequestHash::new("sha256:same-request"),
+            Some(first_context.clone()),
+            Some(0),
+            vec![pending_event("workspace_first")],
+        );
+        let first = store.commit_mutation(
+            first_input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert("task_workspace_first"))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
+        let before = store.effect_counts()?;
+
+        let mut changed_context = first_context;
+        changed_context.git_workspace_context_json =
+            Some(volicord_types::canonical_json_string(&json!({
+                "git_common_dir": "/tmp/repo/.git",
+                "worktree_id": format!("sha256:{}", "3".repeat(64)),
+                "branch_ref": "refs/heads/other",
+                "head_sha": "2222222222222222222222222222222222222222",
+                "workspace_fingerprint": format!("sha256:{}", "4".repeat(64))
+            }))?);
+        let replay_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::UpdateScope,
+            Some(&IdempotencyKey::new("idem_store_workspace_context")),
+            &RequestHash::new("sha256:same-request"),
+            Some(changed_context),
+            Some(1),
+            vec![pending_event("workspace_second")],
+        );
+        let replay = store.commit_mutation(replay_input, |_, _| Ok(()), response_json)?;
+
+        assert!(matches!(
+            replay,
+            MutationCommitOutcome::ReplayContextMismatch { .. }
+        ));
+        assert_eq!(store.effect_counts()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_stored_git_workspace_replay_context_is_corruption() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let mut context = replay_context(CONNECTION_ID, "agent_workflow");
+        context.git_workspace_context_json = Some(volicord_types::canonical_json_string(&json!({
+            "git_common_dir": "/tmp/repo/.git",
+            "worktree_id": format!("sha256:{}", "1".repeat(64)),
+            "branch_ref": "refs/heads/original",
+            "head_sha": "1111111111111111111111111111111111111111",
+            "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
+        }))?);
+        let idempotency_key = IdempotencyKey::new("idem_store_workspace_corrupt");
+        let first = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::UpdateScope,
+                Some(&idempotency_key),
+                &RequestHash::new("sha256:workspace-corrupt"),
+                Some(context),
+                Some(0),
+                vec![pending_event("workspace_corrupt")],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert("task_workspace_corrupt"))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
+        drop(store);
+
+        let conn = open_project_state_database(
+            harness
+                .runtime_home_path
+                .join("projects")
+                .join(PROJECT_ID)
+                .join("state.sqlite"),
+        )?;
+        conn.execute(
+            "UPDATE tool_invocations
+                SET git_workspace_context_json = '{\"unexpected\":true}'
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            params![
+                PROJECT_ID,
+                MethodName::UpdateScope.as_str(),
+                idempotency_key.as_str()
+            ],
+        )?;
+        drop(conn);
+
+        let store = harness.store()?;
+        let error = store
+            .tool_invocation(MethodName::UpdateScope, &idempotency_key)
+            .expect_err("malformed replay workspace context must be corrupt owner state");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateJson {
+                table: "tool_invocations",
+                logical_column: "git_workspace_context_json",
+                ..
+            }
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn transaction_replay_returns_stored_response_before_stale_expected_state(
     ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
@@ -3035,6 +3390,7 @@ mod tests {
             actor_source: "user_channel:local_user".to_owned(),
             operation_category: "user_only".to_owned(),
             verification_basis: Some("store_test_user_channel".to_owned()),
+            git_workspace_context_json: None,
         };
         let second = store.commit_mutation(
             commit_input(
@@ -3049,6 +3405,7 @@ mod tests {
             |mutation, facts| {
                 CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
                     task_id: task_id.to_owned(),
+                    work_phase: None,
                     lifecycle_phase: None,
                     result: None,
                     title: Some("Authority event projection".to_owned()),
@@ -3310,7 +3667,22 @@ mod tests {
                             .to_string(),
                         observed_at: "2026-06-18T00:00:00Z".to_owned(),
                         recorded_at: "2026-06-18T00:00:01Z".to_owned(),
-                        metadata_json: json!({"recorded_by_run_id": run_id}).to_string(),
+                        metadata_json: json!({
+                            "recorded_by_run_id": run_id,
+                            "invocation_verification_basis": "store_test_boundary",
+                            "producer_anchor": {
+                                "producer_kind": "unverified_caller",
+                                "producer_ref": null,
+                                "output_artifact_refs": [],
+                                "verification_basis": null
+                            },
+                            "relevance_assessment": {
+                                "status": "unassessed",
+                                "assessment_ref": null,
+                                "assessed_by_actor_source": null
+                            }
+                        })
+                        .to_string(),
                     }),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
@@ -4074,6 +4446,7 @@ mod tests {
             actor_source: format!("agent_connection:{connection_id}"),
             operation_category: operation_category.to_owned(),
             verification_basis: Some("store_test_registration".to_owned()),
+            git_workspace_context_json: None,
         }
     }
 
@@ -4096,6 +4469,13 @@ mod tests {
             task_id: task_id.to_owned(),
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
             mode: "work".to_owned(),
+            work_phase: "shaping".to_owned(),
+            acceptance_policy: "required".to_owned(),
+            acceptance_policy_reason: "Store test policy.".to_owned(),
+            predecessor_task_id: None,
+            lineage_relation: None,
+            lineage_reason: None,
+            carry_forward_json: "[]".to_owned(),
             lifecycle_phase: "shaping".to_owned(),
             result: None,
             title: None,

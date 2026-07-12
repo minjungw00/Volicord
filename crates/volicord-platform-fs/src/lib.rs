@@ -110,6 +110,7 @@ pub fn capture_git_workspace_snapshot(
     let Some(layout) = resolve_git_worktree_layout(repository_root)? else {
         return Ok(None);
     };
+    ensure_supported_git_reference_storage(&layout)?;
     let head_text = read_one_line_control_file(&layout.git_dir.join("HEAD"))?;
     let (branch_ref, head_sha) = if let Some(reference) = head_text.strip_prefix("ref: ") {
         validate_git_reference(reference)?;
@@ -136,6 +137,66 @@ pub fn capture_git_workspace_snapshot(
         head_sha,
         workspace_fingerprint,
     }))
+}
+
+fn ensure_supported_git_reference_storage(layout: &GitWorktreeLayout) -> io::Result<()> {
+    let config_path = layout.common_dir.join("config");
+    let bytes = match read_bounded_regular_file(&config_path, 1024 * 1024) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if bytes.contains(&0) {
+        return Err(invalid_git_data("Git config contains NUL"));
+    }
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| invalid_git_data("Git config is not valid UTF-8"))?;
+    let mut section = String::new();
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with(['#', ';']) {
+            continue;
+        }
+        if line.starts_with('[') {
+            let Some(end) = line.find(']') else {
+                return Err(invalid_git_data("Git config contains a malformed section"));
+            };
+            section = line[1..end]
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            continue;
+        }
+        if section != "extensions" {
+            continue;
+        }
+        let (key, raw_value) = match line.split_once('=') {
+            Some((key, value)) => (key.trim(), value.trim()),
+            None => {
+                let mut fields = line.splitn(2, char::is_whitespace);
+                (
+                    fields.next().unwrap_or_default(),
+                    fields.next().unwrap_or_default().trim(),
+                )
+            }
+        };
+        if !key.eq_ignore_ascii_case("refstorage") {
+            continue;
+        }
+        let value = raw_value
+            .split(['#', ';'])
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .trim_matches('"');
+        if !value.eq_ignore_ascii_case("files") {
+            return Err(invalid_git_data(
+                "unsupported Git reference storage; only the files backend is supported",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn resolve_reference_oid(
@@ -590,6 +651,25 @@ mod tests {
             .expect("packed workspace should be captured");
         assert_eq!(packed.head_sha.as_deref(), Some(oid));
         assert_ne!(packed.workspace_fingerprint, unborn.workspace_fingerprint);
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_unsupported_reftable_reference_storage() -> io::Result<()> {
+        let repository = TestDirectory::new("reftable-workspace")?;
+        let git_dir = repository.path().join(".git");
+        fs::create_dir(&git_dir)?;
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n")?;
+        fs::write(
+            git_dir.join("config"),
+            "[core]\n\trepositoryformatversion = 1\n[extensions]\n\trefStorage = reftable\n",
+        )?;
+
+        let error = capture_git_workspace_snapshot(repository.path())
+            .expect_err("reftable must fail closed before an unborn snapshot is returned");
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("only the files backend"));
         Ok(())
     }
 

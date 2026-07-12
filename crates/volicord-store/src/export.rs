@@ -38,6 +38,7 @@ const PROJECT_STATE_EXPORT_TABLES: &[&str] = &[
     "artifact_links",
     "evidence_summaries",
     "evidence_observations",
+    "user_evidence_observations",
     "blockers",
     "authority_events",
     "tool_invocations",

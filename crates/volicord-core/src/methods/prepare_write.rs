@@ -162,6 +162,15 @@ fn plan_prepare_write(
         )?;
         unreachable!("validation_plan_error always returns Err");
     }
+    if parse_work_phase(&task.work_phase)? != WorkPhase::Implementation {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "task_id",
+            "write preparation requires work_phase=implementation",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
     let current_change_unit = store.current_change_unit(&task_id).map_err(|error| {
         PlanError::Response(Box::new(store_error_response(
             &request.envelope,
@@ -186,6 +195,19 @@ fn plan_prepare_write(
     }
 
     if let Some(change_unit) = change_unit {
+        if !workspace_context_matches(change_unit, verified_invocation)? {
+            reasons.push(write_decision_reason(
+                WriteDecisionCategory::Workspace,
+                "workspace_context_mismatch",
+                "The current Git workspace does not match the Change Unit baseline context.",
+                vec![change_unit_ref(
+                    &request.envelope.project_id,
+                    &task_id,
+                    change_unit,
+                    project_state.state_version,
+                )],
+            ));
+        }
         if !baseline_matches(change_unit, &task, &request.baseline_ref)? {
             reasons.push(write_decision_reason(
                 WriteDecisionCategory::Baseline,

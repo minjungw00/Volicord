@@ -3,27 +3,29 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{
-    BaselineRef, ChangeUnitId, RunId, TaskId, UnrecordedChangeId, UserJudgmentId,
+    ArtifactId, BaselineRef, ChangeUnitId, RunId, TaskId, UnrecordedChangeId, UserJudgmentId,
     UserJudgmentOptionId, WriteTicketId,
 };
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
-    ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput, CloseReadinessBlocker,
-    ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EvidenceCoverageUpdate,
-    EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput, EvidenceSummary,
-    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject,
-    JudgmentInboxItem, JudgmentRationale, NextActionSummary, ObservedChanges,
-    ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage,
-    RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle, StateRecordRef,
-    StateSummary, SummaryCard, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserChannelAvailability, UserJudgment,
-    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason,
-    WriteTicket, WriteTicketStateSummary,
+    ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
+    CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
+    EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput,
+    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
+    GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale, NextActionSummary,
+    ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable,
+    RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle,
+    StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope,
+    ToolResponse, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
+    UserChannelAvailability, UserEvidenceObservation, UserJudgment, UserJudgmentCandidate,
+    UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason, WriteTicket,
+    WriteTicketStateSummary,
 };
 use crate::values::{
-    ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
-    EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceSourceKind,
-    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory,
+    AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
+    CloseState, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
+    EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
+    JudgmentPresentation, JudgmentRequiredFor, MethodName, MutationDetailLevel, OperationCategory,
     PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
     StatusDetailLevel, UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
 };
@@ -63,6 +65,9 @@ pub type RequestUserJudgmentResponse = ToolResponse<RequestUserJudgmentResult>;
 
 /// Response branch type for `volicord.record_user_judgment`.
 pub type RecordUserJudgmentResponse = ToolResponse<RecordUserJudgmentResult>;
+
+/// Response branch type for `volicord.record_user_observation`.
+pub type RecordUserObservationResponse = ToolResponse<RecordUserObservationResult>;
 
 /// Response branch type for `volicord.reconcile_changes`.
 pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
@@ -155,6 +160,58 @@ pub enum McpToolStructuredContent<T> {
     AdapterError(McpToolErrorResponse),
 }
 
+/// Workflow-detail MCP mutation branch over one fresh authority receipt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpMutationWorkflowResponse {
+    pub authority_receipt: AuthorityReceipt,
+    pub next_actions: Vec<NextActionSummary>,
+}
+
+/// Fail-closed MCP branch used when post-mutation authoritative refresh fails.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpAuthoritativeRefreshFailure {
+    pub code: ErrorCode,
+    pub tool_name: MethodName,
+    pub reached_core: bool,
+    pub committed: bool,
+    pub completion_claim_withheld: bool,
+}
+
+/// Stable MCP adapter code for a compact mutation projection failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum McpMutationProjectionErrorCode {
+    McpResponseBudgetExceeded,
+}
+
+/// Bounded MCP branch used when a fresh mutation projection exceeds its budget.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpMutationResponseBudgetExceeded {
+    pub code: McpMutationProjectionErrorCode,
+    pub tool_name: MethodName,
+    pub requested_detail: MutationDetailLevel,
+    pub reached_core: bool,
+    pub committed: bool,
+    pub authoritative_refresh_succeeded: bool,
+    pub response_projection_omitted: bool,
+    pub completion_claim_withheld: bool,
+}
+
+/// Structured MCP output advertised by mutation tools.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum McpMutationStructuredContent<T> {
+    Full(Box<T>),
+    Summary(AuthorityReceipt),
+    Workflow(McpMutationWorkflowResponse),
+    RefreshFailure(McpAuthoritativeRefreshFailure),
+    ResponseBudgetExceeded(McpMutationResponseBudgetExceeded),
+    AdapterError(McpToolErrorResponse),
+}
+
 /// `volicord.intake` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -163,6 +220,8 @@ pub struct IntakeRequest {
     pub plain_language_request: String,
     pub requested_mode: RequestedMode,
     pub resume_policy: ResumePolicy,
+    pub acceptance_policy: RequiredNullable<AcceptancePolicy>,
+    pub lineage: RequiredNullable<TaskLineageInput>,
     pub initial_scope: InitialScope,
     pub initial_context_refs: Vec<StateRecordRef>,
     pub initial_source_refs: Vec<SourceRef>,
@@ -184,9 +243,13 @@ impl MethodOperationCategory for IntakeRequest {
 pub struct McpIntakeArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub plain_language_request: String,
     pub requested_mode: RequestedMode,
     pub resume_policy: ResumePolicy,
+    pub acceptance_policy: RequiredNullable<AcceptancePolicy>,
+    pub lineage: RequiredNullable<TaskLineageInput>,
     pub initial_scope: InitialScope,
     #[serde(default)]
     pub initial_context_refs: Vec<StateRecordRef>,
@@ -246,6 +309,8 @@ impl MethodOperationCategory for UpdateScopeRequest {
 pub struct McpUpdateScopeArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub task_id: TaskId,
     #[serde(default)]
     pub goal_summary: RequiredNullable<String>,
@@ -409,6 +474,9 @@ pub struct StatusResult {
     pub guarantee_display: Option<RequiredNullable<GuaranteeDisplay>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continuity_summary: Option<Vec<ProjectContinuitySummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_flow: Option<Vec<TaskFlowItem>>,
+    pub authority_receipt: Option<AuthorityReceipt>,
 }
 
 /// `volicord.prepare_write` request params.
@@ -441,6 +509,8 @@ impl MethodOperationCategory for PrepareWriteRequest {
 pub struct McpPrepareWriteArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     #[serde(default)]
     pub task_id: RequiredNullable<TaskId>,
     #[serde(default)]
@@ -503,6 +573,8 @@ impl MethodOperationCategory for StageArtifactRequest {
 pub struct McpStageArtifactArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub task_id: TaskId,
     pub display_name: String,
     pub content_type: String,
@@ -560,6 +632,8 @@ impl MethodOperationCategory for RecordRunRequest {
 pub struct McpRecordRunArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub task_id: TaskId,
     pub change_unit_id: ChangeUnitId,
     pub kind: RunKind,
@@ -706,6 +780,8 @@ impl MethodOperationCategory for RequestUserJudgmentRequest {
 pub struct McpRequestUserJudgmentArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub task_id: TaskId,
     #[serde(default)]
     pub change_unit_id: RequiredNullable<ChangeUnitId>,
@@ -770,6 +846,38 @@ pub struct RecordUserJudgmentResult {
     pub next_actions: Vec<NextActionSummary>,
 }
 
+/// `volicord.record_user_observation` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecordUserObservationRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub target: EvidenceTarget,
+    pub relevance_status: EvidenceRelevanceStatus,
+    pub artifact_ids: Vec<ArtifactId>,
+    pub summary: String,
+    pub observed_at: UtcTimestamp,
+}
+
+impl MethodOperationCategory for RecordUserObservationRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::RecordUserObservation
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::UserOnly
+    }
+}
+
+/// `volicord.record_user_observation` method result branch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RecordUserObservationResult {
+    pub base: ToolResultBase,
+    pub user_observation_ref: StateRecordRef,
+    pub user_observation: UserEvidenceObservation,
+}
+
 /// `volicord.reconcile_changes` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -796,6 +904,8 @@ impl MethodOperationCategory for ReconcileChangesRequest {
 pub struct McpReconcileChangesArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub task_id: TaskId,
     #[serde(default)]
     pub resolution_requests: Vec<UnrecordedChangeResolutionRequest>,
@@ -892,6 +1002,8 @@ pub struct McpCheckCloseArguments {
 pub struct McpCloseTaskArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
     pub task_id: TaskId,
     pub intent: CloseMutationIntent,
     #[serde(default)]
@@ -933,6 +1045,9 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.record_run" => Some(request_schema::<RecordRunRequest>()),
         "volicord.request_user_judgment" => Some(request_schema::<RequestUserJudgmentRequest>()),
         "volicord.record_user_judgment" => Some(request_schema::<RecordUserJudgmentRequest>()),
+        "volicord.record_user_observation" => {
+            Some(request_schema::<RecordUserObservationRequest>())
+        }
         "volicord.reconcile_changes" => Some(request_schema::<ReconcileChangesRequest>()),
         "volicord.close_task" => Some(request_schema::<CloseTaskRequest>()),
         _ => None,
@@ -954,6 +1069,9 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
         "volicord.record_run" => Some(response_schema::<RecordRunResponse>()),
         "volicord.request_user_judgment" => Some(response_schema::<RequestUserJudgmentResponse>()),
         "volicord.record_user_judgment" => Some(response_schema::<RecordUserJudgmentResponse>()),
+        "volicord.record_user_observation" => {
+            Some(response_schema::<RecordUserObservationResponse>())
+        }
         "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResponse>()),
         "volicord.close_task" => Some(response_schema::<CloseTaskResponse>()),
         _ => None,
@@ -983,31 +1101,33 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
 pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
     match tool_name {
         "volicord.request_user_judgment" => Some(response_schema::<
-            McpToolStructuredContent<McpRequestUserJudgmentResponse>,
+            McpMutationStructuredContent<McpRequestUserJudgmentResponse>,
         >()),
-        "volicord.intake" => Some(response_schema::<McpToolStructuredContent<IntakeResponse>>()),
+        "volicord.intake" => Some(response_schema::<
+            McpMutationStructuredContent<IntakeResponse>,
+        >()),
         "volicord.update_scope" => Some(response_schema::<
-            McpToolStructuredContent<UpdateScopeResponse>,
+            McpMutationStructuredContent<UpdateScopeResponse>,
         >()),
         "volicord.status" => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
         "volicord.prepare_write" => Some(response_schema::<
-            McpToolStructuredContent<PrepareWriteResponse>,
+            McpMutationStructuredContent<PrepareWriteResponse>,
         >()),
         "volicord.stage_artifact" => Some(response_schema::<
-            McpToolStructuredContent<StageArtifactResponse>,
+            McpMutationStructuredContent<StageArtifactResponse>,
         >()),
-        "volicord.record_run" => {
-            Some(response_schema::<McpToolStructuredContent<RecordRunResponse>>())
-        }
+        "volicord.record_run" => Some(response_schema::<
+            McpMutationStructuredContent<RecordRunResponse>,
+        >()),
         "volicord.reconcile_changes" => Some(response_schema::<
-            McpToolStructuredContent<ReconcileChangesResponse>,
+            McpMutationStructuredContent<ReconcileChangesResponse>,
         >()),
         "volicord.check_close" => Some(response_schema::<
             McpToolStructuredContent<CheckCloseResponse>,
         >()),
-        "volicord.close_task" => {
-            Some(response_schema::<McpToolStructuredContent<CloseTaskResponse>>())
-        }
+        "volicord.close_task" => Some(response_schema::<
+            McpMutationStructuredContent<CloseTaskResponse>,
+        >()),
         _ => None,
     }
 }

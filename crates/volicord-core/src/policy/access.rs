@@ -36,6 +36,9 @@ pub(crate) fn derive_verified_invocation(
             "invocation.invocation_binding_basis",
         ));
     }
+    if let Some(workspace) = invocation.git_workspace_context.as_ref() {
+        validate_git_workspace_context(workspace)?;
+    }
 
     Ok(VerifiedInvocationContext {
         project_id: invocation.project_id.clone(),
@@ -46,7 +49,52 @@ pub(crate) fn derive_verified_invocation(
         session_id: invocation.session_id.clone(),
         host_elicitation_available: invocation.host_elicitation_available,
         local_web_consent_available: invocation.local_web_consent_available,
+        git_workspace_context: invocation.git_workspace_context.clone(),
     })
+}
+
+fn validate_git_workspace_context(
+    workspace: &crate::pipeline::GitWorkspaceContext,
+) -> Result<(), ToolError> {
+    let sha256_coordinate = |value: &str| {
+        value.strip_prefix("sha256:").is_some_and(|digest| {
+            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+    };
+    if workspace.git_common_dir.trim().is_empty()
+        || !std::path::Path::new(&workspace.git_common_dir).is_absolute()
+    {
+        return Err(invocation_context_mismatch_error(
+            "invocation.git_workspace_context.git_common_dir",
+        ));
+    }
+    if !sha256_coordinate(&workspace.worktree_id) {
+        return Err(invocation_context_mismatch_error(
+            "invocation.git_workspace_context.worktree_id",
+        ));
+    }
+    if workspace.branch_ref.as_ref().is_some_and(|reference| {
+        !reference.starts_with("refs/")
+            || reference.contains(['\0', '\n', '\r'])
+            || reference.trim() != reference
+    }) {
+        return Err(invocation_context_mismatch_error(
+            "invocation.git_workspace_context.branch_ref",
+        ));
+    }
+    if workspace.head_sha.as_ref().is_some_and(|sha| {
+        !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+    }) {
+        return Err(invocation_context_mismatch_error(
+            "invocation.git_workspace_context.head_sha",
+        ));
+    }
+    if !sha256_coordinate(&workspace.workspace_fingerprint) {
+        return Err(invocation_context_mismatch_error(
+            "invocation.git_workspace_context.workspace_fingerprint",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_actor_source(
