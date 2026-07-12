@@ -55,6 +55,8 @@ Reference owner for the fact being checked.
 
 `live_host_smoke` is a normal Cargo test target whose four live checks carry
 `#[ignore]`, so an ordinary workspace test run reports those checks as ignored.
+Its pure result-path and operator-token checks and its disposable MCP-to-Core
+advisor/Stop-readiness regression are not ignored and run in ordinary CI.
 Run one host check only in an environment where that host executable is
 installed and the matching opt-in variable is set:
 
@@ -76,24 +78,45 @@ host-native MCP elicitation UI, and exit the host after status is reported.
 A passing Judgment variant verifies marker Task and Judgment creation,
 host-native prompt/response recording with
 `mcp_elicitation_user_channel`, the resulting Task-state transition, authority
-events, and the matching content-free session diagnostic. The Judgment has two
-fixed route options. After the human selects one, the agent must consume the
-default compact Judgment outcome and record a no-product-write
-`shaping_update` Run whose exact summary marker is mapped to that option. The
-harness reads both stored `selected_option_id` and the latest Run and requires
-the mapping, kind, empty changed paths, and no-write observation to match. If native
-elicitation is unavailable, the harness verifies that the pending Judgment is
-visible through `volicord inbox`, prints an exact `volicord inbox answer`
-command, and fails the native-round-trip check rather than treating fallback as
-native success. The operator may use that command for recovery, but doing so
-does not turn the failed live-native check into a passing result.
+events, and the matching content-free session diagnostic. The Task uses advisor
+mode, then creates a current Change Unit and baseline before requesting the
+Judgment. The Judgment has two fixed route options. After the human selects one,
+the agent must consume the default compact Judgment outcome and record a
+no-product-write `shaping_update` Run whose exact summary and close-assessment
+marker are mapped to that option. After the host exits, the operator confirms
+the selected fixed option; the harness requires it to equal the stored
+`selected_option_id`. It then follows the fresh receipt's `latest_run_ref` to the
+exact Run row and requires the matching user-Judgment and Run authority-event
+payloads and event sequence to prove selection-before-consumption order. If
+native elicitation is unavailable, the harness verifies pending inbox visibility
+and the current answer-command shape, emits path-free command templates, and
+fails the native-round-trip check. The disposable fixture is then deleted, so
+the templates are not runnable recovery commands and do not turn the failed
+live-native check into a pass.
 
-Before publishing a release that claims the maintained Codex or Claude Code
-Judgment path, the manual release-validation checklist must run the matching
-Judgment variant against the release candidate and retain the host version,
-Volicord `build_id`, and pass/fail result. An unavailable host, authentication
-environment, or native elicitation surface is a reported skipped validation,
-not a passing round trip.
+The Judgment variants also capture the host's `--version` output and Volicord
+`build_id`, read a fresh CLI status, and require its `authority_receipt` to bind
+the same Project, Task, exact Run, ready close state, empty blocker set, and
+`state_version`. It binds native-channel diagnostics and the durable final Stop
+guard event to the exact Agent Connection returned by `init`, requires a
+non-null Stop host session and an allow decision, and requires that event's
+receipt to equal the fresh status receipt. After the host
+exits, the operator confirms only the separate Volicord Stop-hook
+`systemMessage` UI shown after the final model answer by entering its receipt's
+state-version token. A bounded JSON summary is printed. Setting
+`VOLICORD_LIVE_HOST_RESULT_PATH` uses a new absolute approved path outside the
+source repository: the harness rejects an existing file, writes a run-identified
+`running` record, and atomically replaces it with the bounded final or
+early-failure record. It contains validation facts, not a transcript,
+credential, secret, or full prompt.
+
+Before publishing a release that claims either maintained host Judgment path,
+follow the paired [live-host Judgment release-validation checklist](../maintain/validation.md#live-host-judgment-release-validation).
+It requires both host-specific runs against the release candidate and owns
+external result retention, UI confirmation, fallback, and skipped-validation
+reporting. An unavailable host, authentication environment, native elicitation
+surface, or Stop-hook `systemMessage` receipt surface is not a passing round
+trip.
 
 An explicitly selected check fails when its opt-in variable or host executable
 is unavailable. Passing confirms only the assertions that the installed host

@@ -52,8 +52,10 @@ guard 생명주기 설정, JSON 파싱, 재사용 단언을 위한 CLI 통합 �
 
 `live_host_smoke`는 일반 Cargo 테스트 대상이고 내부의 네 개의 실제 호스트 점검에
 `#[ignore]`가 붙어 있습니다. 따라서 일반 워크스페이스 테스트 실행은 이 점검들을
-무시된 항목으로 보고합니다. 호스트 실행 파일이 설치되어 있고 해당 선택 변수를 설정한
-환경에서 호스트 하나의 점검만 실행합니다.
+무시된 항목으로 보고합니다. 순수 결과 경로·운영자 토큰 점검과 폐기 가능한
+MCP-to-Core advisor/Stop 준비 상태 회귀 점검은 무시되지 않고 일반 CI에서 실행됩니다.
+호스트 실행 파일이 설치되어 있고 해당 선택 변수를 설정한 환경에서 호스트 하나의
+점검만 실행합니다.
 
 ```sh
 VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
@@ -71,20 +73,39 @@ MCP 항목을 승인하고, 호스트 고유 MCP elicitation UI에서 직접 답
 
 판단 변형이 통과하면 표식 `Task`와 판단 생성, `mcp_elicitation_user_channel` 근거의
 호스트 고유 프롬프트/응답 기록, 그에 따른 Task 상태 전환, 권한 이벤트, 내용 없는 해당
-세션 진단을 검증한 것입니다. Judgment에는 고정된 route option 두 개가 있습니다. 사람이
-하나를 선택하면 에이전트는 기본 간결한 Judgment 결과를 소비하고, 해당 option에 매핑된
-정확한 요약 표식을 가진 Product Repository 비쓰기 `shaping_update` Run을 기록해야 합니다.
-테스트 하네스는 저장된 `selected_option_id`와 최신 Run을 모두 읽고 매핑, kind, 빈 변경 경로,
-비쓰기 관찰이 일치하는지 확인합니다. 고유 elicitation을 사용할 수 없으면 테스트 하네스는 대기 판단이
-`volicord inbox`에 보이는지 확인하고 정확한 `volicord inbox answer` 명령을 출력한 뒤,
-대체 경로를 고유 프롬프트 성공으로 취급하지 않고 점검을 실패시킵니다. 운영자는 복구에
-그 명령을 사용할 수 있지만, 그렇게 해도 실패한 실제 고유 프롬프트 점검이 통과 결과로
-바뀌지는 않습니다.
+세션 진단을 검증한 것입니다. Task는 advisor 모드를 사용하고 판단을 요청하기 전에 현재
+Change Unit과 baseline을 만듭니다. Judgment에는 고정된 route option 두 개가 있습니다.
+사람이 하나를 선택하면 에이전트는 기본 간결한 Judgment 결과를 소비하고, 해당 option에
+매핑된 정확한 요약과 close-assessment 표식을 가진 Product Repository 비쓰기
+`shaping_update` Run을 기록해야 합니다. 호스트 종료 뒤 운영자가 선택한 고정 option을
+확인하면 하네스는 그 값이 저장된 `selected_option_id`와 같은지 검사합니다. 이어서 최신
+영수증의 `latest_run_ref`가 가리키는 정확한 Run 행을 읽고, 일치하는 사용자 판단과 Run
+권한 이벤트 payload와 event sequence가 선택 후 소비 순서를 증명하는지 검사합니다.
+고유 elicitation을 사용할 수 없으면 하네스는 대기 inbox 표시와 현재 답변 명령 형태를
+검사하고 임시 경로가 없는 명령 템플릿을 내보낸 뒤 실제 고유 왕복 점검을 실패시킵니다.
+그 뒤 폐기 가능한 픽스처가 삭제되므로 이 템플릿은 실행 가능한 복구 명령이 아니며,
+실패한 실제 고유 프롬프트 점검을 통과 결과로 바꾸지 않습니다.
 
-유지되는 Codex 또는 Claude Code 판단 경로를 지원한다고 명시하는 릴리스를 게시하기 전에
-수동 릴리스 검증 체크리스트에서 릴리스 후보를 대상으로 해당 판단 변형을 실행하고 호스트
-버전, Volicord `build_id`, 통과/실패 결과를 보존해야 합니다. 호스트, 인증 환경, 고유
-elicitation 표면을 사용할 수 없으면 통과한 왕복이 아니라 건너뛴 검증으로 보고합니다.
+판단 변형은 호스트의 `--version` 출력과 Volicord `build_id`도 수집하고, 최신 CLI
+상태를 읽어 `authority_receipt`가 같은 Project, Task, 정확한 Run, `close_state=ready`,
+빈 close blocker 집합, `state_version`에 결속됐는지 확인합니다. 하네스는 고유 채널 진단과
+영속 저장된 마지막 Stop guard event를 `init`이 반환한 정확한 Agent Connection에
+결속하고, Stop event에 `null`이 아닌 호스트 세션과 allow 결정이 있으며 그 영수증이
+최신 status 영수증과 완전히 같은지 검사합니다.
+호스트가 종료된 뒤 운영자는 모델의 최종 답변 다음에 별도 Volicord Stop 훅
+`systemMessage` UI로 표시된 영수증의 상태 버전 토큰만 입력해 해당 표면을 확인합니다.
+크기가 제한된 JSON 요약을 출력합니다. `VOLICORD_LIVE_HOST_RESULT_PATH`에는 소스 저장소
+밖에서 승인된 새 절대 경로를 지정해야 합니다. 하네스는 기존 파일을 거부하고 실행을
+식별하는 `running` 기록을 쓴 뒤 크기가 제한된 최종 또는 조기 실패 기록으로 원자
+교체합니다. 이 결과에는 검증 사실만 들어가며 대화 기록, 자격 증명, 비밀값, 전체
+프롬프트는 들어가지 않습니다.
+
+유지되는 호스트 판단 경로를 지원한다고 명시하는 릴리스를 게시하기 전에는 대응하는
+[실제 호스트 판단 릴리스 검증 체크리스트](../maintain/validation.md#live-host-judgment-release-validation)를
+따릅니다. 이 체크리스트는 릴리스 후보에서 두 호스트별 실행을 모두 요구하고 외부 결과
+보존, UI 확인, 대체 경로, 건너뛴 검증 보고를 담당합니다. 호스트, 인증 환경, 고유
+elicitation 표면, Stop 훅 `systemMessage` 영수증 표면을 사용할 수 없으면 통과한
+왕복으로 취급하지 않습니다.
 
 명시적으로 선택한 점검은 선택 변수나 호스트 실행 파일을 사용할 수 없으면
 실패합니다. 통과 결과는 설치된 호스트와 로컬 테스트 환경에서 스모크 테스트가 관찰한

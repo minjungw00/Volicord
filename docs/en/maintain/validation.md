@@ -250,6 +250,101 @@ proves only the machine-checkable properties it owns, Rust tests prove only
 implementation checks, and an agent desk review proves only that a maintainer
 reviewed the documents for objective blockers.
 
+<a id="live-host-judgment-release-validation"></a>
+## Live-Host Judgment Release Validation
+
+Use this checklist before publishing a release that claims the maintained Codex
+or Claude Code Judgment path. This is an authenticated, human-in-the-loop release
+validation against the exact release candidate. It is not replaced by schema
+checks, fixtures, ordinary workspace tests, or a live test reported as ignored.
+Exact status and receipt behavior remains with the [status method](../reference/api/method-status.md)
+and [API State Schemas](../reference/api/schema-state.md); this checklist owns
+release-validation execution and evidence handling only.
+
+Prepare an approved release-record location outside the source repository, then
+record the exact release-candidate identity and both host identities. Each
+result path below must be absolute, have an existing parent directory, and not
+exist before the test starts; the harness rejects an existing path so a stale
+`result=passed` cannot be attributed to a later run.
+
+```sh
+volicord --version
+codex --version
+claude --version
+```
+
+Run both ignored Judgment tests separately. Give each test a different absolute
+result path in the approved external location:
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-judgment.json VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-judgment.json VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+For each host, confirm all of these observations against the release candidate:
+
+1. The host-native Judgment selector is visibly presented, and the human
+   operator—not the Agent—selects one offered option. After the host exits, the
+   operator enters `choice:route_alpha` or `choice:route_beta`; the harness
+   requires that confirmation to equal the stored `selected_option_id`.
+2. The Agent creates an `advisor` Task, creates its current Change Unit and
+   baseline with `volicord.update_scope`, consumes the default compact result's
+   selected option, and records the option-mapped no-write `shaping_update` Run
+   with a non-null minimal close assessment.
+3. Fresh status reports `close_state=ready`, no close blockers, and an
+   `AuthorityReceipt.latest_run_ref`. The harness reads exactly that Run rather
+   than choosing a row by timestamp or ID ordering.
+4. The matching `user_judgment_requested`, `user_judgment_recorded`, and
+   `run_recorded` authority-event payloads preserve the Judgment, selected
+   option, Run, kind, and no-write fact, and their event sequences prove that
+   the selected answer was recorded before that Run.
+5. The persisted final Stop guard event for the exact Agent Connection returned
+   by `init`, the same Task, and a non-null host session has `decision=allow`, no
+   reasons or close blockers, and an `AuthorityReceipt` exactly equal to the
+   fresh CLI status receipt. After the final model answer, the supported Codex
+   or Claude Code Stop hook
+   visibly presents its separate Volicord `systemMessage` UI surface containing
+   the complete fresh `AuthorityReceipt`. After the host exits, enter
+   `receipt:<state_version>` only when that separate surface's receipt
+   `state_version` matches the fresh CLI status receipt. This token confirms UI
+   presentation only; the harness reads the Stop decision and receipt binding
+   from the durable guard event.
+6. The bounded JSON result reports a unique validation `run_id`, start and
+   record times, host version, Volicord `build_id`, exact Agent Connection ID,
+   operator-confirmed and stored choice, authority-event order, consumed Run,
+   observed Stop allow, fresh
+   receipt binding, UI confirmations, and final `result=passed` without
+   including a transcript or prompt body. The external file is replaced through
+   a same-directory temporary file and rename, so readers do not observe a
+   partially written final JSON object.
+
+If native elicitation is unavailable, the test must verify that the pending item
+is visible in `volicord inbox` and that the current `volicord inbox answer`
+command shape is available. It emits bounded command templates without the
+fixture's temporary paths or IDs, writes `result=failed_native_elicitation`, and
+fails. The disposable Runtime Home is deleted after the test, so those templates
+are not runnable recovery commands. Preserve that failed result for diagnosis,
+but do not count the CLI fallback as a successful native round trip.
+An unavailable executable, authentication environment, trust/approval surface,
+native selector, or Stop-hook `systemMessage` receipt surface is `SKIP` or
+`FAIL`, never `PASS`.
+Both host-specific validations must pass for a release claim that covers both
+maintained hosts.
+
+When an external path is configured, the harness first writes a bounded
+`result=running` record. Any ordinary early return or panic before an explicit
+final result atomically replaces it with `result=failed_before_completion`.
+Treat a surviving `running` record as an interrupted test, never as a pass.
+
+Keep each bounded JSON result and the release approver's checklist record in the
+approved release location outside the source repository. Do not commit result
+files, Runtime Homes, screenshots, transcripts, recordings, credentials,
+secrets, full prompts, or private operator input to maintained documentation or
+the source repository. The structured result is release-validation evidence for
+the observed host and environment only; it is not portable host conformance, a
+security proof, product acceptance, close readiness, or a general correctness
+claim.
+
 ## Rust Implementation Validation
 
 If no Rust source, Cargo manifest, test, fixture, or build configuration is

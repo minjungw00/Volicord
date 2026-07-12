@@ -226,6 +226,90 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 확인 가능 속성만 증명하고, Rust 테스트는 구현 점검만 증명하며, 에이전트 책상
 검토는 유지보수자가 객관적 차단 사유를 문서에서 검토했다는 점만 증명합니다.
 
+<a id="live-host-judgment-release-validation"></a>
+## 실제 호스트 판단 릴리스 검증
+
+유지되는 Codex 또는 Claude Code 판단 경로를 지원한다고 명시하는 릴리스를 게시하기
+전에 이 체크리스트를 사용합니다. 정확한 릴리스 후보에서 인증된 환경과 사람의 참여로
+수행하는 릴리스 검증입니다. 스키마 점검, 픽스처, 일반 워크스페이스 테스트, 또는
+무시된 것으로 보고된 실제 테스트가 이를 대신하지 않습니다.
+정확한 상태와 영수증 동작은 [상태 메서드](../reference/api/method-status.md)와
+[API 상태 스키마](../reference/api/schema-state.md)가 계속 담당합니다. 이 체크리스트는
+릴리스 검증 실행과 증거 처리만 담당합니다.
+
+소스 저장소 밖에서 승인된 릴리스 기록 위치를 준비한 뒤, 정확한 릴리스 후보와 두
+호스트의 식별 정보를 기록합니다. 아래의 각 결과 경로는 절대 경로여야 하고 부모
+디렉터리가 이미 있어야 하며 테스트 시작 전에는 존재하지 않아야 합니다. 이전
+`result=passed`를 이후 실행 결과로 오인하지 않도록 하네스는 기존 경로를 거부합니다.
+
+```sh
+volicord --version
+codex --version
+claude --version
+```
+
+두 호스트의 무시된 판단 테스트를 각각 실행합니다. 승인된 외부 위치에서 테스트마다
+서로 다른 절대 결과 경로를 지정합니다.
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-judgment.json VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-judgment.json VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
+
+1. 호스트 고유 판단 선택자가 화면에 표시되고, 에이전트가 아니라 사람 운영자가 제공된
+   선택지 하나를 고릅니다. 호스트가 종료된 뒤 운영자는 `choice:route_alpha` 또는
+   `choice:route_beta`를 입력하고, 하네스는 이 확인값이 저장된
+   `selected_option_id`와 같은지 검사합니다.
+2. 에이전트가 `advisor` Task를 만들고 `volicord.update_scope`로 현재 Change Unit과
+   baseline을 만든 뒤, 기본 간결한 결과의 선택지를 소비해 그 선택지에 매핑된 비쓰기
+   `shaping_update` Run을 `null`이 아닌 최소 close assessment와 함께 기록합니다.
+3. 새로 조회한 status가 `close_state=ready`, 빈 close blocker, 그리고
+   `AuthorityReceipt.latest_run_ref`를 보고합니다. 하네스는 시간이나 ID 정렬로 행을
+   고르지 않고 그 ref가 가리키는 정확한 Run을 읽습니다.
+4. 일치하는 `user_judgment_requested`, `user_judgment_recorded`, `run_recorded` 권한
+   이벤트 payload가 Judgment, 선택지, Run, kind, 비쓰기 사실을 보존하고, event
+   sequence가 선택 답변 기록 뒤에 해당 Run이 기록됐음을 증명합니다.
+5. `init`이 반환한 정확한 Agent Connection, 같은 Task, `null`이 아닌 호스트 세션의
+   마지막 Stop guard event가 `decision=allow`, 빈 reason과 close blocker, 최신 CLI
+   status의 `AuthorityReceipt`와 완전히 같은 영수증을 가집니다. 모델의 최종 답변 뒤에
+   지원되는 Codex 또는 Claude Code Stop 훅이 별도 Volicord
+   `systemMessage` UI 표면으로 완전한 최신 `AuthorityReceipt`를 분명히 표시합니다.
+   호스트 종료 뒤에는 그 별도 표면에 표시된 영수증의 `state_version`이 최신 CLI
+   상태의 영수증과 일치할 때만 `receipt:<state_version>`을 입력합니다. 이 토큰은 UI
+   표시만 확인하며, 하네스는 영속 저장된 guard event에서 Stop 결정과 영수증 결속을
+   직접 읽습니다.
+6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
+   Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,
+   권한 이벤트 순서, 소비한 Run, 관찰한 Stop allow, 최신 영수증 결속, UI 확인,
+   최종 `result=passed`를
+   보고하며 대화 기록이나 프롬프트 본문은 포함하지 않습니다. 외부 파일은 같은
+   디렉터리의 임시 파일을 rename해 교체하므로 읽는 쪽에 일부만 기록된 최종 JSON이
+   노출되지 않습니다.
+
+고유 elicitation을 사용할 수 없으면 테스트는 대기 항목이 `volicord inbox`에
+표시되고 현재 `volicord inbox answer` 명령 형태를 사용할 수 있는지 확인합니다.
+픽스처의 임시 경로나 ID가 없는 크기 제한 명령 템플릿을 내보내고
+`result=failed_native_elicitation`을 기록한 뒤 실패합니다. 테스트가 끝나면 폐기 가능한
+Runtime Home이 삭제되므로 이 템플릿은 실행 가능한 복구 명령이 아닙니다. 진단을 위해
+이 실패 결과를 보존하되 CLI 대체 경로를 성공한 고유 왕복으로 세면 안 됩니다. 실행 파일,
+인증 환경, 신뢰·승인 표면, 고유 선택자, Stop 훅 `systemMessage` 영수증 표면을 사용할
+수 없는 결과는 `PASS`가 아니라 `SKIP` 또는 `FAIL`입니다. 유지되는 두 호스트를 모두
+지원한다고 명시하는 릴리스에서는 두 호스트별 검증이 모두 통과해야 합니다.
+
+외부 경로를 설정하면 하네스는 먼저 크기가 제한된 `result=running` 기록을 씁니다.
+명시적인 최종 결과 전에 일반적인 조기 반환이나 panic이 발생하면 이를 원자적으로
+`result=failed_before_completion`으로 교체합니다. `running` 기록이 남아 있으면 통과가
+아니라 중단된 테스트로 처리합니다.
+
+크기가 제한된 각 JSON 결과와 릴리스 승인자의 체크리스트 기록은 소스 저장소 밖의
+승인된 릴리스 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화 기록,
+녹화, 자격 증명, 비밀값, 전체 프롬프트, 비공개 운영자 입력을 유지 문서나 소스
+저장소에 커밋하지 않습니다. 구조화 결과는 관찰한 호스트와 환경에 대한 릴리스 검증
+증거일 뿐이며 이식 가능한 호스트 적합성, 보안 증명, 제품 수락, 닫기 준비 상태,
+일반적인 정확성 주장이 아닙니다.
+
 ## Rust 구현 검증
 
 Rust 소스, Cargo 매니페스트, 테스트, 픽스처, 빌드 설정을 바꾸지 않았다면 Rust
