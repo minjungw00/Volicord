@@ -328,10 +328,17 @@ expires_at: "<future-expiration-timestamp>"
 
 증거 자격, 아티팩트 가용성, 증거 충분성은 서로 분리됩니다. `artifact_links`가 다형 담당 테이블이어도 아티팩트 담당 관계 무결성은 필요합니다.
 
+아티팩트 바이트 무결성은 Evidence producer provenance 및 claim relevance와도
+분리됩니다. 호출자가 제출한 바이트를 staging하거나 등록해도 외부 도구가 그
+바이트를 만들었다는 사실은 증명되지 않습니다. `available` / `verified`
+아티팩트도 협력적 agent report에 머물 수 있습니다. Strong evidence에는
+authority-owned producer 앵커, 정확한 출력 결합, 현재 Task/scope/baseline과
+대상, supported relevance 평가가 추가로 필요합니다.
+
 허용되는 것:
 
 - `integrity_status=verified`이고 유효한 담당 연결이 있는 `artifacts.status=available` 행은 증거 범위 항목을 뒷받침할 수 있습니다.
-- 현재 `evidence_requirement=required` 수락 기준의 범위 항목이 그 아티팩트를 같은 대상에 연결하고 `coverage_state=supported`일 때만 아티팩트가 닫기 충분성을 뒷받침할 수 있습니다. 필수 기준은 `not_applicable`을 거부하며, `optional`, `not_required`, 보충 대상, 폐기된 대상은 닫기 권한을 갖지 않습니다.
+- 현재 `evidence_requirement=required` 수락 기준의 범위 항목이 그 아티팩트를 같은 대상에 연결하고 `coverage_state=supported`이며 그 관찰이 분리된 producer 및 relevance 검사를 통과할 때만 아티팩트가 닫기 충분성을 뒷받침할 수 있습니다. 필수 기준은 `not_applicable`을 거부하며, `optional`, `not_required`, 보충 대상, 폐기된 대상은 닫기 권한을 갖지 않습니다.
 
 필수 검증:
 

@@ -40,6 +40,9 @@ Volicord는 Volicord 기록을 다룹니다.
 범위가 작업을 제한합니다.
 
 - `Task`는 사용자 가치 단위입니다. Change Unit은 그 `Task` 안에서 쓰기 가능한 현재 적용 작업 경계입니다.
+- Task의 영속 `work_phase`는 하나의 사용자 outcome을 여러 Task로 쪼개지 않고
+  shaping과 implementation을 구분합니다. predecessor edge는 의도적인 후속
+  Task를 연결하지만 이전 권한을 현재 상태로 만들지 않습니다.
 - 제품 파일 쓰기, 증거 주장, 최종 수락, 닫기 주장은 현재 적용 범위와 현재 적용 Change Unit에 호환되어야 합니다.
 - Change Unit 효과 계약은 현재 적용 Change Unit에 대해 호환되는 효과, 경로, 예상 출력, 불변 조건, 증거 기대사항, 민감 동작 기대사항을 더 좁힐 수 있습니다.
 - 해결된 범위 판단은 현재 적용 범위를 조용히 바꾸지 않습니다. 현재 적용 범위는 범위 담당 문서가 정의한 전이를 통해 갱신되어야 합니다.
@@ -71,6 +74,8 @@ Volicord는 Volicord 기록을 다룹니다.
 수락과 위험 수락은 구체적입니다.
 
 - 최종 수락은 보이는 닫기 근거에 대한 사용자의 판단입니다.
+- 최종 수락 필요 여부는 intake에서 선택한 명시적 Task 소유 정책이며 암묵적
+  전역 규칙이나 에이전트가 닫을 때 고르는 면제가 아닙니다.
 - 잔여 위험 수락은 요청한 닫기에 대해 이름 붙은 보이는 잔여 위험을 사용자가 받아들이는 것입니다.
 - 둘 다 증거 공백을 채우거나, 범위를 바꾸거나, 쓰기 권한을 부여하거나, 검증을 증명하거나, 결과를 무위험으로 만들지 않습니다.
 
@@ -132,6 +137,15 @@ Core 권한은 Volicord 기록에 관한 것입니다. 보안 보장 수준, 로
 
 `Task`는 범위, Change Unit, 필요한 판단, 검증 기준, 증거 뒷받침, 닫기 준비 상태, 최종 결과, 잔여 위험의 중심 작업 경로입니다. 정확한 생명주기 값과 상태 필드는 API 상태 스키마와 값 집합 담당 문서가 맡습니다.
 
+`work_phase`는 장기 outcome과 현재 delivery step을 구분합니다. 선택적 lineage는
+predecessor 하나, 관계와 생성 이유, 명시적 carry-forward disposition을
+기록합니다. 적용한 범위 계열 material은 새 Task 입력으로 다시 검증하고 결정,
+한계, 의무, 위험은 현재 담당 전이가 새 권한을 만들기 전까지 reference-only로
+남습니다.
+
+`acceptance_policy`와 그 이유는 최종 수락 검사가 필요한지, 순수 자문에는
+필요하지 않은지, 현재 닫기 정책으로 평가할지를 Task가 소유하게 합니다.
+
 ### Change Unit
 
 Change Unit은 `Task` 안에서 쓰기 가능한 현재 적용 작업 경계입니다.
@@ -156,15 +170,17 @@ Autonomy Boundary는 현재 적용 Change Unit 안에서 에이전트가 가질 
 
 사용자 소유 판단은 제품 방향, 기술 방향, 범위, 민감 단계, 최종 수락, 잔여 위험 수락, 취소에 관한 것일 수 있습니다. 정확한 판단 스키마 필드와 값 이름은 API 스키마와 값 집합 담당 문서가 맡습니다.
 
-### Task 모드와 실행 기록 호환성
+### Task 모드, work phase, 실행 기록 호환성
 
-확정된 `Task.mode`는 해당 Task의 작업을 나타낼 수 있는 실행 기록 종류를 제한합니다.
+확정된 `Task.mode`와 `work_phase`는 현재 단계를 나타낼 수 있는 Run 종류를 함께
+제한합니다.
 
-| `Task.mode` | 호환되는 실행 기록 종류 |
-|---|---|
-| `advisor` | `shaping_update` |
-| `direct` | `direct` |
-| `work` | `shaping_update`, `implementation` |
+| `Task.mode` | `work_phase` | 호환되는 Run 종류 |
+|---|---|---|
+| `advisor` | `shaping` | `shaping_update` |
+| `direct` | `implementation` | `direct` |
+| `work` | `shaping` | `shaping_update` |
+| `work` | `implementation` | `implementation` |
 
 `advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. 제품 파일 쓰기나 쓰기 티켓 발급 권한을 만들지 않지만, 호환되는 `shaping_update`의 `record_run` 호출은 Run과 메서드 소유 Core 증거 상태를 정상 커밋합니다. 성공한 `intent=complete` 종료 전이는 `advisor`에서 `Task.result=advice_only`를 기록하고, 같은 성공 완료 경로는 `direct`와 `work`에서 `Task.result=completed`를 기록합니다. 모드 호환성 자체는 증거, 최종 수락, 잔여 위험 또는 다른 닫기 준비 상태 요구사항을 만족하거나 면제하지 않습니다.
 
@@ -218,6 +234,16 @@ Core는 아티팩트 담당 문서가 허용할 때만 아티팩트 참조를 �
 현재 작업 경계와 판단, 쓰기, 실행, 증거, 아티팩트, 차단 사유, 수락, 잔여 위험,
 복구, 프로젝트 연속성 사실을 함께 고려합니다. 자세한 닫기 입력은 10절에서
 나열합니다.
+
+### Authority receipt
+
+Authority receipt는 새로 읽은 project state version 하나에서 Core가 만드는
+간결한 보기입니다. 현재 Task와 Change Unit, scope revision, 최신 Run과 관찰된
+product-file-write 사실, Evidence gate, 전체 close blocker, 다음 actor/action을
+결합합니다. Host는 이 receipt로 자연어에서 권한을 재구성하지 않고 기록된 상태를
+보고할 수 있습니다. Receipt는 파생 상태이므로 자체로 커밋, 수락, 닫기, 정확성
+증명을 만들지 않으며 host는 mutation 뒤 완료 또는 차단 주장을 하기 전에 다시
+읽어야 합니다.
 
 ### 현재 닫기 근거
 
@@ -390,6 +416,8 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 | 영역 | 권한 의미 |
 |---|---|
 | 입력과 구체화 | 관련 담당 문서가 지원을 정의할 때 사용자 의도가 구체적 목표, 범위 경계, 범위 밖 항목, 수락 기준, Autonomy Boundary, 첫 번째 안전한 Change Unit으로 바뀝니다. |
+| 작업 단계 | Advisor와 일반 work는 shaping에서 시작하고 direct는 implementation에서 시작합니다. 현재 Change Unit을 생성하거나 교체하면 일반 work가 implementation으로 진행됩니다. Core는 현재 단계와 맞지 않는 Run 종류나 쓰기 준비를 거부합니다. |
+| Lineage와 carry-forward | 새 Task는 predecessor 하나를 지정하고 호환 material을 명시적으로 선택할 수 있습니다. 적용 material은 새 입력으로 검증하며 reference-only 맥락은 이전 권한을 되살리지 않습니다. |
 | 범위 업데이트 | 받아들인 범위나 Change Unit 변경은 범위 담당 문서가 정의한 전이를 통해서만 현재 적용 상태가 됩니다. 판단 기록만으로 현재 적용 범위가 바뀌지 않습니다. |
 | 실행과 관찰 | 실행 기록은 행동과 관찰을 기록합니다. 제품 파일 쓰기는 현재 적용 범위와 쓰기 티켓에 호환되어야 하며, 읽기 전용 작업은 이후 쓰기에 대한 호환성을 만들지 않습니다. |
 | 대기 또는 차단 | 현재 종료되지 않은 `Task`에 사용자 답변이 필요한, 현재 호환되는 정보성 외 작업 대상의 대기 사용자 판단이 있으면 `Task`는 `waiting_user`입니다. 마지막 해당 판단이 해결되거나 현재 상태가 아니게 되면 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다. 그 밖에 필요한 권한 데이터가 없거나, 오래됐거나, 호환되지 않거나, 우회하기 안전하지 않으면 Core는 공백을 숨기지 않고 담당 문서가 정의한 차단 상태로 드러냅니다. |
@@ -403,12 +431,13 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 | 확인 영역 | 권한 의미 |
 |---|---|
 | 범위 | 요청한 작업, 쓰기, 증거 주장, 닫기 주장은 현재 적용 `Task` 범위와 현재 적용 Change Unit에 맞아야 합니다. |
+| Workspace | Git에 결합된 Change Unit은 쓰기 준비 때 기록한 common directory, worktree identity, branch 또는 detached HEAD, HEAD SHA, workspace fingerprint가 현재 값과 일치해야 합니다. 다르면 명시적 retarget/rebaseline이 필요합니다. |
 | Change Unit 효과 계약 | 값이 있으면 요청한 제품 파일 쓰기 효과와 경로가 현재 적용 Change Unit 효과 계약에 맞아야 쓰기 티켓을 발급할 수 있습니다. |
 | 사용자 소유 판단 | 필요한 제품, 기술, 범위, 민감 동작, 최종 수락, 잔여 위험, 취소 판단은 사용자가 필요한 저장 결과로 해결해야 하며 영향을 받는 대상과 결과에 호환되어야 합니다. |
 | 민감 동작 | 이름 붙은 민감 단계에 승인이 필요하면 그 단계에 맞는 별도 사용자 승인이 있어야 합니다. |
 | 쓰기 호환성 | 제품 파일 쓰기 시도는 현재 적용 범위와 열린 쓰기 티켓에 호환되어야 합니다. |
 | 실행 기록과 증거 | 기록된 실행 기록, 증거 요약, 증거에 쓸 수 있는 아티팩트는 자신이 뒷받침하는 주장에 맞아야 합니다. |
-| 최종 수락 | 필요한 최종 수락은 보이는 닫기 근거와 연결되어야 합니다. |
+| 최종 수락 | Task 소유 acceptance policy가 최종 수락 필요 여부를 정합니다. 필요하면 보이는 닫기 근거와 연결되어야 합니다. |
 | 잔여 위험 | 알려진 닫기 관련 잔여 위험은 보여야 하며, 필요한 위험 수락은 요청한 닫기와 호환되어야 합니다. |
 | 닫기 준비 상태 | 닫기 관련 모든 담당 문서가 정의한 요구사항이 정직한 종료 전이를 뒷받침해야 합니다. 남은 차단 사유가 있으면 `Task`는 열린 상태로 남습니다. |
 
@@ -499,15 +528,24 @@ flowchart LR
 - 증거 보장 수준은 호출자가 부여하지 않고 Core가 파생합니다. 요청 측의 유효한
   `source_kind` / `assurance_level` 조합은 출처 주장일 뿐입니다. 기준 범위의 직접
   `record_run` 경로는 앵커가 없는 외부 도구, 연결, 사용자, 호출자 선언 재사용
-  주장을 협력적 에이전트 보고로 강등합니다. 관찰자 행위자 출처는 확인된 호출에서
-  파생합니다.
-- 강한 외부 도구 출처에는 대상이 일치하며 현재 바이트를 사용할 수 있고 검증된
-  기준 출력 아티팩트가 필요합니다. 설명용 도구 필드와 `SourceRef` 값은 보장 수준
-  앵커가 아닙니다.
+  주장을 협력적 에이전트 보고로 강등합니다. 권한 producer가 있으면 그
+  레코드에서 관찰자를 파생하고, 그렇지 않으면 확인된 호출에서 파생합니다.
+- Evidence는 바이트 무결성, producer provenance, Task/scope/baseline freshness,
+  대상 identity, claim relevance를 서로 다른 축으로 평가합니다. Strong
+  evidence에는 적용되는 모든 축이 필요하며 아티팩트 무결성만으로 producer나
+  relevance를 증명할 수 없습니다.
+- 기준 구현은 별도의 `user_only` `volicord.record_user_observation` 전이를
+  제공합니다. 그 `UserEvidenceObservation`은 로컬 사용자 provenance와
+  supported 또는 contradicted relevance를 정확한 현재 아티팩트 및 근거에
+  결합합니다. 이는 Evidence이지 `UserJudgment`나 최종 수락이 아닙니다.
+- 기준 구현에는 authority-owned verified command/tool producer나 등록된
+  connection observation producer가 없습니다. 따라서 직접 외부 도구 및 연결
+  주장은 아티팩트 바이트가 검증돼도 협력적 상태입니다. raw guard payload와
+  설명용 tool 필드는 앵커가 아닙니다.
 - 재사용하는 강한 증거는 원래 관찰 identity 하나를 보존하고 대상, `Task`, Change
-  Unit, 출처 실행 기록, 범위 리비전, 기준선, 승계한 보장 수준, 원래 앵커와 계속
-  호환되어야 합니다. 닫기와 재사용 평가는 이 체인과 외부 아티팩트의 현재 바이트를
-  다시 확인합니다.
+  Unit, 출처 실행 기록, 범위 리비전, 기준선, 승계한 보장 수준, 정확한 출력,
+  producer 앵커, 분리된 relevance 평가와 계속 호환되어야 합니다. 닫기와 재사용
+  평가는 전체 체인과 현재 바이트를 엄격히 decode하고 재귀적으로 다시 확인합니다.
 - `unverified_claim`과 협력적 에이전트 보고는 증거 기록으로 보존할 수 있지만, 더 강한 출처가 필요할 때 필요한 닫기 증거를 만족하지 않습니다.
 - 사용자 관찰은 증거 출처이지 최종 수락이나 다른 사용자 소유 판단이 아닙니다.
 - `SourceRef`는 Task 또는 증거 관찰 안에 보고된 파일, Git, 명령, 외부 자료, 사용자 맥락 출처를 보존할 수 있습니다. Core 상태 참조가 아니며 범위, 승인, 증거 충분성, 최종 수락, 잔여 위험 수락, 닫기 준비 상태, 보장을 만들지 않습니다. Core는 출처를 기록할 때 참조 대상을 해석하거나 실행하지 않습니다.

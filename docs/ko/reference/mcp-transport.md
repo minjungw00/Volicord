@@ -77,32 +77,45 @@ MCP TCP 리스너, HTTP MCP 리스너, Unix 도메인 소켓 리스너, 또는 �
 전체 쓰기 방지, 행위자 귀속 증명, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체가
 아닙니다.
 
-생성된 호스트 설정과 사용자가 관리하는 일반 호스트 설정은 내부 연결 바인딩으로 stdio
-루프를 시작합니다. 설정 항목이 안전하게 프로젝트에 묶이면 선택된 내부 프로젝트
-바인딩도 함께 담습니다.
+생성된 개인·로컬 호스트 설정과 사용자가 관리하는 일반 호스트 설정은 내부 연결
+바인딩으로 stdio 루프를 시작합니다. 로컬 설정 항목이 안전하게 프로젝트에 묶이면 선택된
+내부 프로젝트 바인딩도 함께 담을 수 있습니다.
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-생성된 프로젝트 범위 Codex 설정은 관리 시작 출처 환경 변수 마커
-`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
-`VOLICORD_MCP_CONNECTION_ID=<connection_id>`,
-`VOLICORD_MCP_PROJECT_ID=<project_id>`도 설정합니다. Codex 검증은 일치하는
-출처 마커 없이 명령과 인자만 있는 항목을 변경된 설정으로 취급하며, 그런 항목은
-관리 설정 일치로 볼 수 있기 전에 다시 생성해야 합니다.
+생성된 공유 프로젝트 설정은 바인딩 ID와 로컬 환경을 모두 사용하지 않습니다. 전체
+프로세스 기술 정보는 다음 중 하나입니다.
+
+```text
+volicord mcp --stdio --discover-repository --host codex
+volicord mcp --stdio --discover-repository --host claude-code
+```
+
+공유 명령은 `PATH`로 해석되는 이름 `volicord`여야 합니다. 절대 명령, 추가
+Connection/프로젝트 인자, Runtime Home, 관리 시작 마커, 비밀값 형태 환경 키, 그 밖의
+모든 환경 항목은 유효하지 않습니다. Codex 검증은 이 정확한 프로젝트 기술 정보와 다른
+항목을 설정 불일치로 취급합니다. 개인·사용자 범위 Codex 바인딩은 아래에서 설명하는
+로컬 관리 시작 마커 계약을 유지합니다.
 
 `<connection_id>` 프로세스 바인딩 값은 `volicord init` 또는
 `volicord connection add`가 만든 저장 `connection_internal_id`에서 옵니다.
 선택적 `<project_id>` 프로세스 바인딩 값은
 그 연결에 이미 허용된 저장 `project_internal_id`입니다. 일반 사용자가 텍스트 모드
 흐름에서 두 값 중 어느 것도 입력할 필요가 없어야 합니다.
+저장소 발견 모드는 저장소에서 어느 값도 얻지 않으며, 정규화된 현재 Git 복제본을 식별한
+뒤 선택된 로컬 Runtime Home에서만 두 값을 해석합니다.
 
 기준 명령줄 동작:
 
 - `volicord mcp --stdio --connection <connection_id> [--project <project_id>]`는 stdio
   루프를 시작합니다. `--project`가 있으면 제공한 값은 연결 허용 목록 안에 있어야 하며,
   stdio 프로세스는 도구 요청을 처리하기 전에 그 프로젝트로 좁혀집니다.
+- `volicord mcp --stdio --discover-repository --host codex|claude-code`는 저장소에서
+  보이는 이식 가능한 기술 정보로 같은 stdio 루프를 시작합니다. 이 모드는 정확한 호스트
+  선택자가 필요하고 `--connection`, `--project`, `--check`, 추가 인자, 알 수 없는
+  호스트를 거부합니다.
 - `volicord mcp --check --connection <connection_id>`는 stdin을 읽지 않고 시작 검증을
   실행합니다.
 - `volicord mcp --check --connection <connection_id> --project <project_id>`는 같은 시작
@@ -111,9 +124,10 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 - `-h`와 `--help`는 사용법과 환경 요약을 출력한 뒤 종료 코드 `0`으로 끝납니다.
 - `-V`와 `--version`은
   `volicord <package-version> (build_id=<build-id>)`를 출력한 뒤 종료 코드 `0`으로 끝납니다.
-- 모드 없음, `--connection` 없는 `--check` 또는 `--stdio`, 알 수 없는 옵션, 결합된
-  명령줄 모드, 필요한 옵션 값 누락, 추가 위치 인자는 사용법 진단을 stderr에 쓰고 종료
-  코드 `2`로 끝납니다.
+- 모드 없음, 바인딩 모드에서 `--connection` 없는 `--check` 또는 `--stdio`, `--stdio`와
+  지원되는 `--host` 하나가 없는 저장소 발견, 알 수 없는 옵션, 결합된 명령줄 모드,
+  필요한 옵션 값 누락, 추가 위치 인자는 사용법 진단을 stderr에 쓰고 종료 코드 `2`로
+  끝납니다.
 - help와 version 처리는 Runtime Home이나 Agent Connection 조회보다 먼저 일어납니다.
 
 성공한 `--check` 출력은 진단 보고서입니다. 이 보고서는 설정 유효성, stdio 전송,
@@ -264,11 +278,13 @@ MCP 프로세스는 아래처럼 역할이 제한된 환경 입력을 해석합�
 - `VOLICORD_HOME`이 없을 때 사용하는 표준 플랫폼 홈 환경 변수인 `HOME`,
   `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합
 
-`VOLICORD_HOME`은 프로세스의 Runtime Home을 선택합니다. 일반 흐름에서 사용자가 직접
-입력하는 값이 아니라, 필요할 때 생성된 호스트 설정이 보통 기록하는 값입니다. 이 값은
-프로젝트, 연결 의도, 행위자 출처, 작업 범주, 연결 모드, 호스트 신뢰 상태를 선택하지
-않습니다. stdio 프로세스와 `--check`는 시작 검증에 들어가기 전에 `VOLICORD_HOME`을
-사용합니다. help와 version 모드는 이를 사용하지 않습니다.
+`VOLICORD_HOME`은 프로세스의 Runtime Home을 선택합니다. 개인·로컬·사용자 전역 호스트
+오버레이는 필요할 때 이 값을 기록할 수 있습니다. 저장소에서 보이는 공유 Codex 또는
+Claude Code MCP 항목은 환경 맵이 없어야 하므로, 저장소 발견 모드는 호스트 프로세스가
+상속한 로컬 환경이나 플랫폼 기본값에서만 Runtime Home 선택을 받습니다. 이 값은 프로젝트,
+연결 의도, 행위자 출처, 작업 범주, 연결 모드, 호스트 신뢰 상태를 선택하지 않습니다.
+stdio 프로세스와 `--check`는 시작 검증 전에 이 값을 사용하며 help와 version 모드는
+사용하지 않습니다.
 
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, `disabled`는 stdio local web consent
 리스너를 끕니다. 다른 값은 리스너 주소나 토큰 정책을 바꾸지 않습니다.
@@ -281,28 +297,31 @@ MCP 프로세스는 아래처럼 역할이 제한된 환경 입력을 해석합�
 시작 세션 감시 기준선이나 관리 Codex 런타임 관찰을 만들지 않습니다. 일반
 호스트 설정에 사용하는 값이 아닙니다.
 
-Volicord가 관리하는 Codex 설정은 다음과 같은 관리 시작 출처 마커를 담습니다.
+Volicord가 관리하는 개인 또는 사용자 범위 Codex 설정은 다음 로컬 관리 시작 출처
+마커를 담을 수 있습니다.
 
 - `VOLICORD_MCP_LAUNCH=managed_host`
 - `VOLICORD_MCP_HOST=codex`
 - `VOLICORD_MCP_CONNECTION_ID=<connection_id>`
 - 명령에 프로젝트 바인딩이 있을 때의 `VOLICORD_MCP_PROJECT_ID=<project_id>`
 
-이 마커들은 Volicord 관리 설정 식별 정보의 일부이며 일반 운영자 선택자가 아닙니다.
+이 마커들은 로컬 Volicord 관리 설정 식별 정보의 일부이며 일반 운영자 선택자가 아닙니다.
 사용자 관리 시작을 관리 시작처럼 보이게 만들려고 직접 추가하거나 바꾸지 말고,
 `volicord init` 또는 `volicord connection add`로 관리 설정을 다시 생성합니다. Connection과
-선택적 project 값은 대응하는 프로세스 인자와 일치해야 합니다. 관리 마커가 하나도 없는
-시작은 수동으로 분류됩니다. 일부만 있거나 값이 맞지 않는 마커 집합은 유효하지 않은 관리
-출처이며 관리 생명주기 관찰을 만들지 않습니다. 이 마커는 프로젝트 접근, 호스트
-신뢰, 더 넓은 권한을 부여하지 않습니다.
+선택적 project 값은 대응하는 프로세스 인자와 일치해야 합니다. 일부만 있거나 값이 맞지
+않는 마커 집합은 유효하지 않은 관리 출처이며 관리 생명주기 관찰을 만들지 않습니다.
+저장소 발견 시작은 정확한 형식의 기술 정보와 호스트 선택자를 관리 시작 출처로 사용하며
+이 마커를 담으면 안 됩니다. 마커와 기술 정보는 프로젝트 접근, 호스트 신뢰, 더 넓은
+권한을 부여하지 않습니다.
 
-연결 식별 정보는 생성된 호스트 설정이나 사용자가 관리하는 일반 호스트 설정 안의
-`--connection <connection_id>`로 제공합니다. 이것은 선택된 Agent Connection에 대한 내부
-프로세스 바인딩이며, 사용자가 보통 직접 고르거나 관리하는 값이 아닙니다. 묶인 Agent
-Connection과 Runtime Home 레지스트리 상태가 연결 모드, 연결 프로젝트, 어댑터가 파생하는
-`actor_source`와 `operation_category`를 제공합니다. 프로젝트 접근은 선택된 Agent
-Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니다. 그 밖의 Volicord 전용
-환경 변수는 지원되는 운영자 설정이 아닙니다.
+로컬 연결 식별 정보는 개인·로컬 생성 설정이나 사용자가 관리하는 일반 호스트 설정 안의
+`--connection <connection_id>`로 제공합니다. 이것은 저장된 `connection_internal_id`를
+이름 붙이며 사용자가 보통 직접 고르는 값이 아닙니다. 공유 저장소 설정은 대신
+`--discover-repository --host <host>`만 제공합니다. 시작 시 정규화된 현재 Git 루트를
+로컬 Runtime Home 등록을 통해 연결 하나와 프로젝트 하나로 해석합니다. 두 형태 모두
+해석된 Agent Connection과 Runtime Home 레지스트리 상태가 연결 모드, 연결 프로젝트,
+어댑터가 파생하는 `actor_source`와 `operation_category`를 제공합니다. 그 밖의 Volicord
+전용 환경 변수는 지원되는 운영자 설정이 아닙니다.
 
 현재 MCP Runtime Home 경로 해석:
 
@@ -319,19 +338,38 @@ Connection의 연결 프로젝트와 저장소 루트 해석으로 제어됩니�
 
 ## 시작 검증
 
-`volicord mcp --stdio`는 stdio 루프에 들어가기 전에 Agent Connection 바인딩과 그
-바인딩이 의존하는 로컬 레지스트리 기록을 검증합니다.
+`volicord mcp --stdio`는 stdio 루프에 들어가기 전에 명시적 로컬 Agent Connection
+바인딩 또는 저장소 발견 바인딩과 그 바인딩이 의존하는 로컬 레지스트리 기록을
+검증합니다.
 
 시작 검증에는 아래 조건이 필요합니다.
 
 - Runtime Home 레지스트리가 존재하고 유효합니다.
-- 설정된 `connection_id` 프로세스 인자가 저장된 기존 `connection_internal_id`를
-  가리킵니다.
+- 명시적 바인딩 모드에서는 설정된 `connection_id` 프로세스 인자가 저장된 기존
+  `connection_internal_id`를 가리킵니다.
 - 연결이 활성화되어 있습니다.
 - 연결 모드가 지원됩니다.
 - 연결 프로젝트 행이 하나 이상 읽을 수 있습니다.
 - 진단에 필요한 MCP 명령 정보를 설치 프로필에서 해석할 수 있습니다.
 - 시작에 필요한 레지스트리 JSON과 메타데이터가 유효합니다.
+
+저장소 발견 모드는 위의 공통 검증 전에 다음 단계를 닫힌 방식으로 수행합니다.
+
+1. 프로세스 현재 디렉터리를 정규화하고 상위 경로를 따라가 가장 가까운 유효 Git
+   worktree 루트를 찾습니다. 지원되는 gitdir 파일과 연결된 worktree 배치도 포함합니다.
+2. 정확히 그 정규화된 루트가 선택된 로컬 Runtime Home에 등록된 프로젝트인지
+   요구합니다.
+3. `--host`와 호스트가 일치하고, 의도가 `shared`이며, 호스트 범위가 프로젝트이고,
+   Connection Projects에 해당 프로젝트를 포함하는 활성 연결만 선택합니다.
+4. 일치 항목이 정확히 하나인지 요구하고 프로세스 허용 목록을 해당 프로젝트로
+   좁힙니다.
+
+일치 항목 없음은 `REPOSITORY_DISCOVERY_CONNECTION_NOT_FOUND`, 여러 항목은
+`REPOSITORY_DISCOVERY_CONNECTION_AMBIGUOUS`, 등록되지 않은 복제본은
+`REPOSITORY_DISCOVERY_PROJECT_NOT_REGISTERED`로 실패합니다. 진단은 저장소와 Runtime
+Home을 이름 붙이고 해당 `volicord init --shared`, `connection verify`, 또는
+`connection list`와 중복 제거 동작을 안내합니다. 어댑터는 모호한 행 하나를 임의로
+고르거나 저장소 파일에서 Connection ID나 프로젝트 ID를 읽지 않습니다.
 
 시작 검증은 호스트 신뢰를 부여하지 않고 사용자 소유 판단을 기록하지 않습니다. 프로젝트
 가용성, 프로젝트 상태, 경로 분리, 저장소 루트 대조, 모드 호환성은
@@ -351,7 +389,10 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 
 `volicord mcp --stdio` 프로세스 하나는 아래 값에 묶입니다.
 
-- 저장된 Agent Connection을 위한 하나의 `connection_id` 프로세스 바인딩
+- 로컬 `connection_id` 프로세스 바인딩 하나 또는 고유한 저장소 발견 결과로 선택된
+  저장된 Agent Connection 하나
+- 저장소 발견 모드에서는 정규화된 현재 Git worktree에서 선택한 등록 프로젝트 정확히
+  하나
 
 Agent Connection이 제공하는 값:
 
@@ -360,7 +401,7 @@ Agent Connection이 제공하는 값:
 - 명시적 연결 프로젝트 허용 목록
 - 레지스트리를 통한 호스트 설정 인벤토리와 마지막 검증 상태
 
-프로세스 바인딩은 프로세스 수명 동안 고정됩니다. Agent Connection 식별 정보를 바꾸려면
+해석된 프로세스 바인딩은 프로세스 수명 동안 고정됩니다. Agent Connection 식별 정보를 바꾸려면
 다른 프로세스나 호스트 설정 갱신이 필요합니다. 프로젝트 멤버십, 모드, 활성화 상태, 검증
 상태 변경은 레지스트리 상태를 통해 효력을 가지며, 새 프로세스는 시작할 때마다 현재
 레지스트리 상태로 시작 검증을 다시 실행합니다.
@@ -680,8 +721,9 @@ MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 �
 `volicord.check_close`는 닫기 준비 상태를 확인하는 일급 읽기 전용 Core 메서드에
 매핑됩니다. `volicord.close_task`는 워크플로 전용 Core 변경 메서드에 매핑되며
 `read_only` 연결에는 나열되지 않습니다.
-`volicord.record_user_judgment`는 User Channel 경로를 위한 공개 Core API 메서드이지만
-Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담당 표는 [API
+`volicord.record_user_judgment`와 `volicord.record_user_observation`은 User
+Channel 경로를 위한 공개 Core API 메서드이지만 둘 다 Agent Connection MCP 도구로
+노출되지 않습니다. 공개 메서드 담당 표는 [API
 메서드](api/methods.md)를 봅니다.
 
 구조적으로 유효한 `tools/call` 요청은 객체 `params` 안에 아래 값을 둡니다.
@@ -725,6 +767,10 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
   `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`,
   `expires_at=null`
 
+MCP에 보이는 모든 변경 도구는 `detail=summary|workflow|full`도 받습니다. `detail`을
+생략하면 `summary`가 기본값입니다. 이는 어댑터 응답 상태 보기 선택이며 Core 요청 필드가
+아니고 메서드 담당 요청 멤버를 생략할 권한도 아닙니다.
+
 이 기본값은 MCP 표시 인자 DTO에만 속합니다. 디코딩 뒤 어댑터는 모든 멤버를 갖춘 Core
 요청 형태를 구성합니다. 따라서 각 메서드 참조가 담당하는 공개 Core API의 멤버 존재
 계약은 바뀌지 않습니다. `volicord.request_user_judgment`의 `task_id`,
@@ -748,11 +794,14 @@ MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 �
 상태나 권한, 전제조건, 성공적인 Core 결과를 주장하지 않습니다.
 
 나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
-`outputSchema`도 노출합니다. 공개 메서드 도구는 공개 메서드 응답 분기에서 이 스키마를
-생성합니다. `volicord.request_user_judgment` 출력 스키마는 원래 도구 호출이 끝나기 전에
-호스트 elicitation이 대기 판단을 기록했을 때 반환되는 User Channel 응답도 포함합니다.
-`volicord.list_projects`는 정확한 어댑터 유틸리티 결과 스키마를 사용합니다.
-`structuredContent`를 포함하는 서버 결과는 광고한 스키마를 따라야 합니다.
+`outputSchema`도 노출합니다. 읽기 전용 공개 메서드 도구는 공개 메서드 응답 분기에서 이
+스키마를 생성합니다. 변경 도구는 전체 공개 응답과 함께 간결한 `AuthorityReceipt`,
+workflow receipt, 갱신 실패 폐쇄 분기, 응답 바이트 상한 분기도 광고합니다.
+`volicord.request_user_judgment`의
+full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이 대기 판단을 기록했을 때
+반환되는 User Channel 응답도 포함합니다. `volicord.list_projects`는 정확한 어댑터
+유틸리티 결과 스키마를 사용합니다. `structuredContent`를 포함하는 서버 결과는 광고한
+스키마를 따라야 합니다.
 
 `tools/list`는 다음과 같이 보수적인 MCP `annotations`를 제공합니다.
 
@@ -807,6 +856,17 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 `volicord.status`는 Core include 행렬을 노출하지 않고 간결한 공개 `detail` 인자를
 사용합니다. 지원 값은 `summary`, `workflow`, `full`이며 `detail`을 생략하면 기본값은
 `workflow`입니다.
+
+변경 도구의 `detail`은 같은 세 값을 쓰지만 기본값과 효과가 다릅니다. `summary`는 새로
+읽은 Core 소유 `AuthorityReceipt` 객체를 반환하고, `workflow`는 그 receipt와 현재
+`next_actions`를 반환하며, `full`은 기존 공개 메서드 응답 객체를 반환합니다. Core/도메인
+거절 분기는 모든 detail 값에서 기존 응답 객체를 유지합니다. 어댑터는 Core 진입 전에 이
+인자를 검증합니다.
+
+Receipt 상태 보기는 메서드별 payload를 반복하지 않습니다. `PrepareWriteResult`의 쓰기
+티켓 payload, `StageArtifactResult.staged_artifact_handle`, 찾은 항목별
+`ReconcileChangesResult` 데이터가 필요한 호출자는 `detail=full`을 요청해야 합니다. 이
+때문에 해당 도구의 광고 예시는 `full`을 선택합니다.
 
 알려진 도구에서 어댑터는 프로젝트 선택, 세션 감시 설정, 생성 Core 래퍼 작성, Core 메서드
 진입보다 먼저 객체 `arguments`를 정확히 광고한 `inputSchema`로 검증합니다. 경계가 정해진
@@ -867,6 +927,50 @@ Volicord 응답 형태와 전송 의미 `isError: false`를 유지합니다.
 요청은 `CreateTaskResult`를 반환하지 않으며, `task` 파라미터는 지원되는 기준 기능이
 아닙니다.
 
+<a id="mutation-authority-receipt-projection"></a>
+### 변경 권한 receipt 상태 보기
+
+변경이 `base.response_kind=result`를 반환하면 어댑터는 도구 결과를 반환하기 전에 같은
+선택 프로젝트와 해석된 Task를 대상으로 읽기 전용 `volicord.status`를 새로 실행합니다.
+상태 분기가 dry-run이 아닌 읽기 전용 결과이고 `AuthorityReceipt`가 새로 읽은
+`base.state_version`, 프로젝트, Task, Task 참조 버전, 현재 상태 보기와 일치할 때만 그
+갱신을 받아들입니다. 변경 자체의 Core 효과는 해당 메서드 담당 문서가 정의하며, 이 갱신은
+두 번째 변경을 만들지 않습니다.
+
+받아들인 갱신은 다음과 같이 반환합니다.
+
+- `detail=summary`는 정규화된 `AuthorityReceipt` 자체를
+  `result.structuredContent`에 반환합니다.
+- `detail=workflow`는 `result.structuredContent`에 정확히 `authority_receipt`와
+  `next_actions`를 반환합니다.
+- `detail=full`은 기존 공개 메서드 응답 객체를 `result.structuredContent`에 반환합니다.
+- `result.content[0].text`는 UTF-8 기준 최대 512바이트인 짧은 호환 요약입니다.
+  `structuredContent`를 다시 JSON으로 직렬화한 복사본이 아닙니다.
+- 간결한 `summary` 또는 `workflow` `CallToolResult`는 최대 65,536바이트입니다. 새로 읽은
+  상태 보기가 Core 소유 receipt를 바꾸지 않고 이 상한에 들어갈 수 없으면 어댑터는 권한
+  데이터를 잘라 내지 않고 해당 상태 보기를 생략합니다.
+
+새로 읽은 상태 보기가 바이트 상한을 넘으면 별도의 크기 제한 `isError=true` 분기를
+반환합니다. `structuredContent`에는 `code=MCP_RESPONSE_BUDGET_EXCEEDED`, 메서드
+`tool_name`, `requested_detail`, `reached_core`, `committed`,
+`authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
+`completion_claim_withheld=true`를 담습니다. `committed`는 원래 호출이 Core 변경을
+커밋했는지를 계속 정확히 보고합니다. 이 분기는 `MCP_UNAVAILABLE`을 주장하지 않고 권한
+상태 새로 고침 실패로 집계되지 않으며, 일부만 남긴 receipt나 바이트 상한을 넘는 상태
+본문을 반환하지 않습니다. 호출자는 행동하기 전에 현재 상태를 읽어야 합니다.
+
+갱신 호출이 실패하거나, 거절 또는 잘못된 형식의 분기를 반환하거나, receipt가 없거나,
+최신성 비교가 하나라도 실패하면 어댑터는 `isError=true`를 반환합니다. 크기가 제한된
+`structuredContent`에는 `code=MCP_UNAVAILABLE`, 메서드 `tool_name`, `reached_core`,
+`committed`, `completion_claim_withheld=true`만 담습니다. 원래 성공·완료 본문, 오래된
+receipt, 비공개 갱신 오류 본문은 반환하지 않습니다. 호출자는 행동하기 전에 현재 상태를
+읽어야 합니다. 로컬 세션 진단은 오류 본문을 저장하지 않고 이를 권한 상태 새로 고침
+실패로 집계합니다.
+
+Core/도메인 거절 변경 응답은 이 성공 상태 보기 경로에 들어가지 않습니다. 기존 공개 응답
+객체와 `isError=false`를 유지하고, 짧은 호환 텍스트로 클라이언트가
+`structuredContent`를 보도록 안내합니다.
+
 <a id="user-judgment-elicitation"></a>
 ### 사용자 판단 입력 요청
 
@@ -886,9 +990,8 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 - `elicitation` 응답이 `action=accept`이면 어댑터는 `content.selected_option_id`를 대기
   판단 선택지와 대조해 검증합니다. 유효한 응답은 Core의 User Channel 메서드를 통해
   `actor_source=local_user`, `operation_category=user_only`,
-  `resolved_verification_basis=mcp_elicitation_user_channel`로 기록합니다. 반환되는
-  `tools/call` 결과에는 그 결과 Volicord 응답이 `structuredContent`와 JSON 텍스트로 모두
-  들어갑니다.
+  `resolved_verification_basis=mcp_elicitation_user_channel`로 기록합니다. 그런 다음
+  어댑터는 새로 읽은 Task 상태에 선택한 변경 `detail` 상태 보기를 적용합니다.
 - `elicitation` 응답이 `action=decline`이고 대기 판단에 Core 거절 선택지가 있으면
   어댑터는 같은 User Channel 경로로 그 거절 선택지를 기록합니다. 거절 선택지가 없으면
   판단은 대기 상태로 남습니다.
@@ -906,11 +1009,13 @@ Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변
 - 로컬 consent URL 경로가 비활성화되었거나, 안전하게 바인딩할 수 없거나, 토큰을 만들 수
   없으면 대체 안내는 `volicord inbox` CLI 받은편지함 경로를 가리킵니다.
 
-모든 분기에서 `result.structuredContent`는 Volicord 응답 객체이고
-`result.content[0].text`는 하위 호환성을 위해 같은 객체를 JSON으로 직렬화한 문자열로
-남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나 `elicitation` 취소·무효 설명 같은
-어댑터 안내입니다. 그 추가 텍스트는 `structuredContent`의 일부가 아니며 Core 권한, 공개
-API 응답 필드, 사용자 판단 기록도 아닙니다.
+모든 성공 분기에서 `result.structuredContent`는 선택한 변경 `detail` 상태 보기를
+따릅니다. `detail=full`은 대기 또는 기록된 공개 응답 객체를 유지하고, 기본값인
+`summary`는 새 권한 receipt를 반환합니다. `result.content[0].text`는 JSON 복사본이 아니라
+짧은 호환 요약으로 남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나
+`elicitation` 취소·무효 설명 같은 어댑터 안내입니다. 그 추가 텍스트는
+`structuredContent`의 일부가 아니며 Core 권한, 공개 API 응답 필드, 사용자 판단 기록도
+아닙니다.
 
 <a id="local-web-consent-fallback"></a>
 로컬 consent 리스너는 기본적으로 `127.0.0.1`에 바인딩합니다. 안전하게 바인딩할 수
@@ -948,10 +1053,12 @@ API 응답 필드, 사용자 판단 기록도 아닙니다.
 Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과
 안에 Volicord 응답 JSON을 래핑합니다.
 
-- Volicord 응답 객체는 `result.structuredContent`로 반환됩니다.
-- 같은 객체는 구조화 도구 결과를 소비하지 않는 클라이언트를 위해
-  `result.content[0].text`에 JSON으로 직렬화됩니다. 이 텍스트를 파싱한 값은
-  `result.structuredContent`와 같아야 합니다.
+- 읽기 전용 메서드 결과는 Volicord 응답 객체를 `result.structuredContent`로 반환합니다.
+  해당 호환 JSON 텍스트를 파싱한 값은 계속 그 객체와 같아야 합니다.
+- 성공한 변경 결과는 위에서 정의한 선택 receipt 상태 보기를 사용합니다.
+  `result.content[0].text`는 크기가 제한된 짧은 요약이며 JSON으로 파싱될 필요가 없습니다.
+- Core/도메인 거절 변경 결과는 공개 응답 객체를 `result.structuredContent`에 유지하고
+  크기가 제한된 짧은 호환 텍스트를 사용합니다.
 - 클라이언트는 `structuredContent`를 도구가 광고한 `outputSchema`로 검증할 수 있습니다.
 - 성공한 MCP 전송은 Volicord 도메인 수준 거절 응답을 포함해 `isError: false`를
   반환합니다.

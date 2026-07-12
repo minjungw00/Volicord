@@ -146,18 +146,23 @@ Codex, Claude Code, or another external host loaded, trusted, approved,
 initialized, or exposed the project configuration.
 
 For Codex project-scoped MCP configuration, the Volicord-managed identity is
-the `volicord` server name together with the generated command, args carrying
-the selected connection and project bindings, and Volicord managed environment
-markers such as `VOLICORD_MCP_LAUNCH=managed_host`,
-`VOLICORD_MCP_HOST=codex`, `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
+the `volicord` server name and this exact portable process descriptor:
+`command="volicord"`, arguments
+`mcp --stdio --discover-repository --host codex`, and no environment map.
+Connection IDs, project IDs, an absolute command, Runtime Home paths, and all
+environment keys are invalid in that repository-visible managed entry. Codex
+user-scoped configuration remains a local binding and can carry the selected
+connection and project IDs plus managed-launch environment markers such as
+`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
+`VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
 `VOLICORD_MCP_PROJECT_ID=<project_id>` when a project binding is present.
 Codex-owned tool approval subtables under that server entry are host policy
 overlay, not Volicord-managed identity. Preserving an accepted
 `tools.<tool>.approval_mode` overlay does not prove host trust, active tool
 exposure, running-session approval, correctness, test sufficiency, human
-review completion, sandboxing, or actor identity. A `volicord` server entry
-without Volicord managed markers is unmanaged; command, args, or managed marker
-drift is still configuration drift.
+review completion, sandboxing, or actor identity. Any deviation from the exact
+project descriptor, or command, argument, or managed-marker drift in a local
+binding, is configuration drift.
 
 Rules:
 
@@ -205,12 +210,40 @@ stored connection intent or host scope. In particular,
 `.volicord/policy.json` is an intent-independent `local_overlay`, and generated
 hook wrappers remain local even for `shared`.
 
-A `shared` primary host file can still contain `connection_id` and `project_id`
-process-binding values for one local Runtime Home. Those values are internal
-identities, not repository-stable selectors. The file is therefore not a
-clone-portable discovery contract unless a separate focused owner defines a
-repository-bound discovery mechanism; the current baseline defines no such
-mechanism.
+For one Product Repository, `volicord init` keeps only one selected supported
+host and one active repository-local `personal` or `shared` integration.
+Selecting a different supported host or the opposite intent migrates the
+managed host and hook projections and retires the prior Connection Project from
+active use; it does not silently activate multiple host integrations or intents
+against the singleton local policy.
+
+A `shared` primary host file contains only a typed repository-discovery
+descriptor: `volicord mcp --stdio --discover-repository --host codex` for
+Codex, or the same command with `--host claude-code` for Claude Code. It must
+not contain `connection_id`, `project_id`, an absolute executable, Runtime Home
+path, or any environment entry. The descriptor bytes can therefore be reused
+by another clone, but Agent Connection and project identities remain local to
+each Runtime Home.
+
+At repository-discovery startup, the MCP adapter selects the local Runtime
+Home through the normal process environment/default rules, finds the canonical
+Git worktree root from the host process current directory, looks up that exact
+registered repository root, and requires exactly one enabled `shared`,
+project-scoped Agent Connection for the descriptor host whose Connection
+Projects include that project. It then narrows the session to that one project.
+An unregistered clone, no matching connection, or more than one matching
+connection fails closed with an actionable init, verify, list, or duplicate
+removal instruction. Repository metadata never supplies or derives an internal
+ID.
+
+Local policy and host overlays may retain connection/project IDs, absolute
+commands, Runtime Home selection, and allowlisted local environment values;
+they must not be treated as shareable MCP descriptors. A previously generated
+shared entry with explicit local bindings is recognized only when its stored
+managed fingerprint authorizes a safe migration. Re-running init replaces it
+once with the portable descriptor, preserves unrelated host content, and is a
+no-op after convergence. New shared projections never emit the legacy binding
+shape.
 
 The baseline directly managed host kinds are `codex` and `claude_code`.
 Host-neutral MCP configuration is user-managed. User-managed configuration can
@@ -393,11 +426,27 @@ and `volicord.check_close`. The resulting task can remain blocked by
 `missing_final_acceptance` until the user records the required final judgment
 through a supported `User Channel`.
 
+The opt-in live Judgment harness in
+[Testing Strategy](../architecture-guide/testing-strategy.md) exercises a
+smaller connection round trip with an installed host: marker Task creation,
+product-decision Judgment creation, a human answer through the host-native MCP
+User Channel, and the resulting Task-state refresh. It requires the stored
+resolution basis `mcp_elicitation_user_channel`; a pending CLI inbox fallback
+is actionable recovery but is not counted as a successful native round trip.
+The harness is ignored by default and is not a portable host-conformance or
+security test.
+
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent
 Connections. The supported local user path for recording an authority-bearing
 answer is the `volicord inbox` command group owned by
 [Administrative CLI](admin-cli.md#user-channel-commands).
+
+`volicord.record_user_observation` is likewise `user_only` and unavailable to
+Agent Connections. `volicord inbox observe` records target-bound User Channel
+evidence. An Agent Connection cannot substitute an ordinary `record_run`
+claim, staged artifact, tool metadata, or raw guard payload for that user-owned
+producer and relevance record.
 
 Internal actor shape, not a public API schema:
 

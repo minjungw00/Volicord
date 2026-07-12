@@ -92,22 +92,29 @@ sandboxing, network isolation, malware defense, full write prevention, actor
 attribution proof, correctness proof, test sufficiency proof, or human review
 replacement.
 
-Generated host configuration and user-managed generic host configuration launch
-the stdio loop with an internal connection binding. When the configuration
-entry is safely project-bound, it also carries the selected internal project
-binding:
+Personal/local generated host configuration and user-managed generic host
+configuration launch the stdio loop with an internal connection binding. When
+the local entry is safely project-bound, it can also carry the selected internal
+project binding:
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-Generated project-scoped Codex configuration also sets the managed launch
-provenance environment markers `VOLICORD_MCP_LAUNCH=managed_host`,
-`VOLICORD_MCP_HOST=codex`,
-`VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
-`VOLICORD_MCP_PROJECT_ID=<project_id>`. Codex verification treats command and
-args without matching provenance markers as changed configuration that must be
-regenerated before it can count as a managed configuration match.
+Generated shared project configuration uses neither binding ID nor local
+environment. Its complete process descriptor is one of:
+
+```text
+volicord mcp --stdio --discover-repository --host codex
+volicord mcp --stdio --discover-repository --host claude-code
+```
+
+The shared command must be the PATH-resolved name `volicord`; an absolute
+command, extra connection/project arguments, Runtime Home, managed-launch
+markers, secret-like environment keys, and every other environment entry are
+invalid. Codex verification treats any deviation from this exact project
+descriptor as configuration drift. Personal/user-scoped Codex bindings retain
+the local managed-launch marker contract described below.
 
 The `<connection_id>` process-binding value comes from the stored
 `connection_internal_id` created by `volicord init` or
@@ -115,6 +122,9 @@ The `<connection_id>` process-binding value comes from the stored
 The optional `<project_id>` process-binding value is a stored
 `project_internal_id` already allowed for that connection. Ordinary users
 should not need to type either value in text-mode flows.
+Repository-discovery mode obtains neither value from the repository; it
+resolves both only from the selected local Runtime Home after identifying the
+canonical current Git clone.
 
 Baseline command-line behavior:
 
@@ -122,6 +132,10 @@ Baseline command-line behavior:
   launches the stdio loop. When `--project` is present, the supplied value must
   be in the connection's allowlist and the stdio process is narrowed to that
   project before serving tool requests.
+- `volicord mcp --stdio --discover-repository --host codex|claude-code`
+  launches the same stdio loop from a repository-visible portable descriptor.
+  This mode requires the exact host selector and rejects `--connection`,
+  `--project`, `--check`, extra arguments, and unknown hosts.
 - `volicord mcp --check --connection <connection_id>` runs startup validation
   without reading stdin.
 - `volicord mcp --check --connection <connection_id> --project <project_id>`
@@ -131,10 +145,10 @@ Baseline command-line behavior:
   `0`.
 - `-V` and `--version` print
   `volicord <package-version> (build_id=<build-id>)`, then exit with code `0`.
-- No mode, `--check` or `--stdio` without `--connection`, unknown options,
-  combined command-line modes, missing required option values, and extra
-  positional arguments write usage diagnostics to stderr and exit with code
-  `2`.
+- No mode, bound `--check` or `--stdio` without `--connection`, discovery
+  without `--stdio` and one supported `--host`, unknown options, combined
+  command-line modes, missing required option values, and extra positional
+  arguments write usage diagnostics to stderr and exit with code `2`.
 - Help and version handling happen before Runtime Home or Agent Connection
   lookup.
 
@@ -306,12 +320,14 @@ Supported operator and Runtime Home inputs:
 - standard platform home variables when `VOLICORD_HOME` is absent: `HOME`,
   `USERPROFILE`, and the `HOMEDRIVE` plus `HOMEPATH` pair
 
-`VOLICORD_HOME` selects the Runtime Home for the process. It is normally written
-by generated host configuration when needed, not typed by the user in ordinary
-flows. It does not select a project, connection intent, actor provenance,
-operation category, connection mode, or host trust state. The stdio process and
-`--check` use `VOLICORD_HOME` before entering startup validation. Help and
-version modes do not use it.
+`VOLICORD_HOME` selects the Runtime Home for the process. A personal, local, or
+user-wide host overlay may write it when needed. A shared repository-visible
+Codex or Claude Code MCP entry must have no environment map, so discovery mode
+receives Runtime Home selection only from the host process's inherited local
+environment or the platform default. `VOLICORD_HOME` does not select a project,
+connection intent, actor provenance, operation category, connection mode, or
+host trust state. The stdio process and `--check` use it before entering startup
+validation. Help and version modes do not use it.
 
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, or `disabled` disables the
 stdio local web consent listener. Other values do not change the listener
@@ -326,32 +342,35 @@ verification probe, so the process does not create a startup session-watch
 baseline or managed Codex runtime observations. It is not a normal host
 configuration setting.
 
-Volicord-managed Codex configuration carries these managed-launch provenance
-markers:
+Volicord-managed personal or user-scoped Codex configuration can carry these
+local managed-launch provenance markers:
 
 - `VOLICORD_MCP_LAUNCH=managed_host`
 - `VOLICORD_MCP_HOST=codex`
 - `VOLICORD_MCP_CONNECTION_ID=<connection_id>`
 - `VOLICORD_MCP_PROJECT_ID=<project_id>` when the command has a project binding
 
-These markers are part of the Volicord-managed configuration identity, not
+These markers are part of a local Volicord-managed configuration identity, not
 general operator selectors. Do not hand-add or alter them to make a
 user-managed launch appear managed; regenerate managed configuration with
 `volicord init` or `volicord connection add`. Their connection and optional
-project values must match the corresponding process arguments. A launch with
-no managed markers is classified as manual. A partial or mismatched marker set
-is invalid managed provenance and does not create managed lifecycle
-observations. These markers do not grant project access, host trust, or broader
-authority.
+project values must match the corresponding process arguments. A partial or
+mismatched marker set is invalid managed provenance and does not create managed
+lifecycle observations. A repository-discovery launch uses its exact typed
+descriptor and host selector as managed launch provenance and must not carry
+these markers. The markers and descriptor grant neither project access, host
+trust, nor broader authority.
 
-Connection process binding is supplied by `--connection <connection_id>` in
-generated host configuration or user-managed generic host configuration. It
-names the stored `connection_internal_id` for the selected Agent Connection and
-is not a normal user-chosen value. The bound Agent Connection and Runtime Home registry state
-supply the connection mode, connected projects, and adapter-derived `actor_source` and
-`operation_category`. Project access is controlled by the selected Agent
-Connection's connected projects and repository-root resolution. No other
-Volicord-specific environment variable is a supported operator setting.
+Local connection process binding is supplied by `--connection <connection_id>`
+in personal/local generated configuration or user-managed generic host
+configuration. It names the stored `connection_internal_id` and is not a normal
+user-chosen value. Shared repository configuration instead supplies only
+`--discover-repository --host <host>`; startup resolves the canonical current
+Git root through local Runtime Home registration to one connection and one
+project. In either form, the resolved Agent Connection and Runtime Home registry
+state supply connection mode, connected projects, and adapter-derived
+`actor_source` and `operation_category`. No other Volicord-specific environment
+variable is a supported operator setting.
 
 Current MCP Runtime Home resolution:
 
@@ -368,20 +387,42 @@ Current MCP Runtime Home resolution:
 
 ## Startup Validation
 
-Before entering the stdio loop, `volicord mcp --stdio` validates the Agent
-Connection binding and the local registry records it depends on.
+Before entering the stdio loop, `volicord mcp --stdio` validates either an
+explicit local Agent Connection binding or a repository-discovery binding and
+the local registry records it depends on.
 
 Startup validation requires:
 
 - the Runtime Home registry exists and is valid
-- the configured `connection_id` process argument names an existing stored
-  `connection_internal_id`
+- in explicit-binding mode, the configured `connection_id` process argument
+  names an existing stored `connection_internal_id`
 - the connection is enabled
 - the connection mode is supported
 - at least one connected project row is readable
 - the installation profile can resolve the MCP command information needed for
   diagnostics
 - registry JSON and metadata needed for startup are valid
+
+Repository-discovery mode performs these additional fail-closed steps before
+the shared validation above:
+
+1. Canonicalize the process current directory and walk its ancestors to the
+   nearest valid Git worktree root, including supported gitdir-file and linked
+   worktree layouts.
+2. Require that exact canonical root to be a project registered in the selected
+   local Runtime Home.
+3. Select enabled connections whose host matches `--host`, whose intent is
+   `shared`, whose host scope is project, and whose Connection Projects contain
+   that project.
+4. Require exactly one match and narrow the process allowlist to that project.
+
+No match fails with `REPOSITORY_DISCOVERY_CONNECTION_NOT_FOUND`; multiple
+matches fail with `REPOSITORY_DISCOVERY_CONNECTION_AMBIGUOUS`; an unregistered
+clone fails with `REPOSITORY_DISCOVERY_PROJECT_NOT_REGISTERED`. Diagnostics
+name the repository and Runtime Home and direct the operator to the applicable
+`volicord init --shared`, `connection verify`, or `connection list` and
+duplicate-removal action. The adapter never chooses one ambiguous row and never
+reads a Connection ID or project ID from repository files.
 
 Startup validation does not grant host trust and does not record user-owned
 judgments. Project availability, project status, path separation, repository
@@ -402,7 +443,10 @@ reject because no connected project remains.
 
 One `volicord mcp --stdio` process is bound to:
 
-- one `connection_id` process binding for a stored Agent Connection
+- one stored Agent Connection, selected either by one local `connection_id`
+  process binding or by the unique repository-discovery result
+- in repository-discovery mode, exactly one registered project selected from
+  the canonical current Git worktree
 
 The Agent Connection supplies:
 
@@ -411,8 +455,9 @@ The Agent Connection supplies:
 - an explicit allowlist of connected projects
 - host configuration inventory and last verification state through the registry
 
-The process binding remains fixed for the process lifetime. Changing the Agent
-Connection identity requires another process or host configuration update.
+The resolved process binding remains fixed for the process lifetime. Changing
+the Agent Connection identity requires another process or host configuration
+update.
 Changing project membership, mode, enabled state, or verification state takes
 effect through registry state; each new process reruns startup validation
 against the current registry state.
@@ -762,8 +807,9 @@ The MCP-visible tools are not the same thing as the public Volicord Core API
 method list. `volicord.check_close` maps to the first-class read-only Core
 method for close readiness. `volicord.close_task` maps to the workflow-only
 Core mutation method and is not listed for `read_only` connections.
-`volicord.record_user_judgment` is a public Core API method for the User
-Channel path, but it is not exposed as an Agent Connection MCP tool; see
+`volicord.record_user_judgment` and `volicord.record_user_observation` are
+public Core API methods for User Channel paths, but neither is exposed as an
+Agent Connection MCP tool; see
 [API Methods](api/methods.md) for the public method
 owner table.
 
@@ -812,6 +858,11 @@ array:
   `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`, and
   `expires_at=null`
 
+Every MCP-visible mutation tool also accepts `detail=summary|workflow|full`.
+Omitted `detail` defaults to `summary`. This is an adapter response-projection
+choice, not a Core request field and not permission to omit any method-owned
+request member.
+
 These defaults belong only to the MCP-visible argument DTO. After decoding, the
 adapter constructs the complete Core request shape. They do not change the
 public Core API present-member contract owned by the focused method references.
@@ -842,11 +893,14 @@ Examples illustrate supported argument branches only; they do not assert
 matching project state, authority, preconditions, or a successful Core result.
 
 Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
-root type is `object`. Public method tools derive that schema from their public
-method response branches. The `volicord.request_user_judgment` output schema
-also covers the User Channel response returned when host elicitation records the
-pending judgment before the original tool call completes. `volicord.list_projects`
-uses its exact adapter-utility result schema. A server result that includes
+root type is `object`. Read-only public method tools derive that schema from
+their public method response branches. Mutation tools additionally advertise
+the compact `AuthorityReceipt`, workflow receipt, fail-closed refresh branch,
+and response-budget branch alongside the full public response. The
+`volicord.request_user_judgment` full branch also covers the User Channel
+response returned when host elicitation records the pending judgment before the
+original tool call completes. `volicord.list_projects` uses its exact
+adapter-utility result schema. A server result that includes
 `structuredContent` must conform to the advertised schema.
 
 `tools/list` supplies the following conservative MCP `annotations`:
@@ -910,6 +964,19 @@ derived invocation context. Public MCP arguments cannot override those facts.
 `volicord.status` uses a compact public `detail` argument instead of exposing
 the Core include matrix. Supported values are `summary`, `workflow`, and
 `full`; omitted `detail` defaults to `workflow`.
+
+Mutation `detail` has the same three values but a different default and effect:
+`summary` returns the refreshed Core-owned `AuthorityReceipt` object,
+`workflow` returns that receipt plus current `next_actions`, and `full` returns
+the existing public method response object. A Core/domain rejected branch keeps
+its existing response object for every detail value. The adapter validates the
+argument before Core entry.
+
+Receipt projections intentionally do not reproduce method-specific payloads.
+Callers that need a `PrepareWriteResult` write-ticket payload, a
+`StageArtifactResult.staged_artifact_handle`, or per-finding
+`ReconcileChangesResult` data must request `detail=full`. The advertised
+examples for those tools select `full` for that reason.
 
 For a known tool, the adapter validates object `arguments` against the exact
 advertised `inputSchema` before project selection, session-watch setup, generated
@@ -978,6 +1045,56 @@ their normal Volicord response shape and `isError: false` transport meaning.
 execution. A `tools/call` request does not return `CreateTaskResult`, and a
 `task` parameter is not a supported baseline feature.
 
+<a id="mutation-authority-receipt-projection"></a>
+### Mutation Authority Receipt Projection
+
+After a mutation returns `base.response_kind=result`, the adapter performs a
+read-only `volicord.status` refresh for the same selected project and resolved
+Task before it returns the tool result. It accepts the refresh only when the
+status branch is a non-dry-run read-only result and its `AuthorityReceipt`
+matches the refreshed `base.state_version`, project, Task, Task reference
+version, and current status projection. The mutation's own Core effect remains
+the method owner's effect; this refresh creates no second mutation.
+
+For an accepted refresh:
+
+- `detail=summary` returns the normalized `AuthorityReceipt` itself in
+  `result.structuredContent`.
+- `detail=workflow` returns exactly `authority_receipt` and `next_actions` in
+  `result.structuredContent`.
+- `detail=full` returns the existing public method response object in
+  `result.structuredContent`.
+- `result.content[0].text` is a short compatibility summary of at most 512
+  UTF-8 bytes. It is not a second JSON serialization of `structuredContent`.
+- A compact `summary` or `workflow` `CallToolResult` is at most 65,536 bytes.
+  If the refreshed projection cannot fit that bound without changing the
+  Core-owned receipt, the adapter omits that projection rather than truncating
+  authority data.
+
+An oversized fresh projection returns a separate bounded `isError=true`
+branch. Its `structuredContent` contains
+`code=MCP_RESPONSE_BUDGET_EXCEEDED`, the method `tool_name`, the
+`requested_detail`, `reached_core`, `committed`,
+`authoritative_refresh_succeeded=true`, `response_projection_omitted=true`,
+and `completion_claim_withheld=true`. `committed` continues to report whether
+the original call committed its Core mutation. This branch does not claim
+`MCP_UNAVAILABLE`, is not counted as an authoritative-refresh failure, and
+does not return a partial receipt or oversized status body. The caller must
+read current status before acting.
+
+If the refresh call fails, returns a rejected or malformed branch, lacks a
+receipt, or fails any freshness comparison, the adapter returns
+`isError=true`. Its bounded `structuredContent` contains
+`code=MCP_UNAVAILABLE`, the method `tool_name`, `reached_core`, `committed`, and
+`completion_claim_withheld=true`. It does not return the original success or
+completion body, a stale receipt, or a private refresh error body. The caller
+must read current status before acting. Local session diagnostics count this as
+an authoritative-refresh failure without storing the error body.
+
+Core/domain rejected mutation responses do not enter this success-projection
+path. They retain the existing public response object and `isError=false`, with
+a short compatibility text directing the client to `structuredContent`.
+
 <a id="user-judgment-elicitation"></a>
 ### User Judgment Elicitation
 
@@ -999,9 +1116,8 @@ commits a pending judgment:
   `content.selected_option_id` against the pending judgment options. A valid
   response is recorded through Core's User Channel method with
   `actor_source=local_user`, `operation_category=user_only`, and
-  `resolved_verification_basis=mcp_elicitation_user_channel`. The returned
-  `tools/call` result contains the resulting Volicord response as both
-  `structuredContent` and JSON text.
+  `resolved_verification_basis=mcp_elicitation_user_channel`. The adapter then
+  applies the selected mutation `detail` projection to the fresh Task status.
 - If the elicitation response is `action=decline` and the pending judgment has
   a Core reject option, the adapter records that reject option through the same
   User Channel path. If no reject option exists, the judgment remains pending.
@@ -1023,13 +1139,14 @@ commits a pending judgment:
   create a token, the fallback text points to the `volicord inbox` CLI inbox
   path.
 
-For all branches, `result.structuredContent` is the Volicord response object and
-`result.content[0].text` remains a JSON serialization of that same object for
-backwards compatibility. Additional `content[]` text, when present, is adapter
-guidance such as fallback instructions or an explanation that elicitation was
-cancelled or invalid. The additional text is not part of `structuredContent`,
-not Core authority, not a public API response field, and not a user judgment
-record.
+For all successful branches, `result.structuredContent` follows the selected
+mutation `detail` projection. `detail=full` preserves the pending or recorded
+public response object; the default `summary` returns the fresh authority
+receipt. `result.content[0].text` remains a short compatibility summary, not a
+JSON duplicate. Additional `content[]` text, when present, is adapter guidance
+such as fallback instructions or an explanation that elicitation was cancelled
+or invalid. The additional text is not part of `structuredContent`, not Core
+authority, not a public API response field, and not a user judgment record.
 
 <a id="local-web-consent-fallback"></a>
 The local web consent listener binds to `127.0.0.1` by default and must fail
@@ -1074,10 +1191,14 @@ Local web consent endpoint behavior:
 For known public Volicord method-tool calls that reach Volicord, `tools/call`
 wraps the Volicord response JSON inside the MCP result:
 
-- The Volicord response object is returned in `result.structuredContent`.
-- The same object is serialized as JSON in `result.content[0].text` for clients
-  that do not consume structured tool results. Parsing that text must produce a
-  value equal to `result.structuredContent`.
+- Read-only method results return the Volicord response object in
+  `result.structuredContent`. Their compatibility JSON text continues to parse
+  equal to that object.
+- Successful mutation results use the selected receipt projection described
+  above. Their `result.content[0].text` is a bounded short summary and is not
+  required to parse as JSON.
+- Core/domain rejected mutation results retain the public response object in
+  `result.structuredContent` and use bounded short compatibility text.
 - Clients may validate `structuredContent` against the tool's advertised
   `outputSchema`.
 - Successful MCP transport returns `isError: false`, including Volicord

@@ -134,7 +134,12 @@ StateSummary:
   state_version: integer
   task_ref: StateRecordRef | null
   mode: string | null
+  work_phase: string | null
+  acceptance_policy: string | null
+  acceptance_policy_reason: string | null
+  lineage: TaskLineageSummary | null
   lifecycle: TaskLifecycleState | null
+  scope_revision: integer
   goal_summary: string | null
   scope_summary: string | null
   non_goals: string[]
@@ -143,6 +148,7 @@ StateSummary:
   active_change_unit_ref: StateRecordRef | null
   effect_contract: ChangeUnitEffectContract | null
   baseline_ref: string | null
+  workspace_context: WorkspaceContext | null
   shaping_readiness: ShapingReadiness | null
   pending_user_judgment_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
@@ -158,22 +164,91 @@ StateSummary:
 Meaning:
 - `StateSummary` is a compact response shape for state references, summaries, and close-readiness fields.
 - Method include flags may select only part of this shape. When a method owner says a projection is not selected, include-controlled fields such as `evidence_summary`, `evidence_gate`, `close_state`, `close_blockers`, `guard_health`, or `guarantee_display` are omitted instead of being returned as null or empty. A returned empty array means the projection was computed and found empty.
-- `mode` and `close_state` are controlled value strings when present.
+- `mode`, `work_phase`, `acceptance_policy`, and `close_state` are controlled
+  value strings when present. `acceptance_policy_reason` records why Core chose
+  the Task-owned final-acceptance policy; it is not an approval or waiver.
+- `lineage` is the Task's one canonical predecessor edge and its carry-forward
+  audit. `scope_revision` is the current Task scope revision.
 - `goal_summary`, `scope_summary`, `non_goals`, and `autonomy_boundary` are
   free-form display strings. `acceptance_criteria` contains the current
   canonical criterion records for the Task; retired criteria are not projected
   as current criteria.
 - `effect_contract` is the current Change Unit's optional extra effect contract. `null` means no extra Change Unit effect contract is recorded; it must not be described as broad safety or unrestricted execution.
 - `baseline_ref` is an opaque baseline identifier.
+- `workspace_context` is the optional verified Git coordinate captured for the
+  current Change Unit baseline. Its paths and hashes are local authority facts,
+  not portable repository identity or a security guarantee.
 - `pending_user_judgment_refs` lists current pending judgments relevant to the response view. A pending judgment is operation-blocking only when its `required_for` target, judgment kind, Task, Change Unit, affected refs, and basis are compatible with that operation.
 
 Does not imply:
 - `StateSummary` field presence does not define whether a method committed.
 
 Owner links:
-- `mode` and `close_state` values: [task lifecycle values](schema-value-sets.md#task-lifecycle-values)
+- Task, lineage, workspace, and close values: [task lifecycle values](schema-value-sets.md#task-lifecycle-values)
 - Commit decision branch: [Common response branches](schema-core.md#common-response)
 - Method-specific commit behavior: method owner documents routed from [API Methods](methods.md)
+
+<a id="task-lineage-workspace-and-authority-receipt"></a>
+### Task lineage, workspace, and authority receipt
+
+```yaml
+TaskLineageSummary:
+  predecessor_task_ref: StateRecordRef
+  relation: string
+  creation_reason: string
+  carry_forward: CarryForwardDisposition[]
+
+CarryForwardDisposition:
+  kind: string
+  status: string
+  source_refs: StateRecordRef[]
+
+TaskFlowItem:
+  task_ref: StateRecordRef
+  predecessor_task_ref: StateRecordRef | null
+  relation: string | null
+  mode: string
+  work_phase: string
+  lifecycle_phase: string
+
+WorkspaceContext:
+  vcs: string
+  git_common_dir: string
+  worktree_id: string
+  branch_ref: string | null
+  head_sha: string | null
+  workspace_fingerprint: string
+
+AuthorityReceipt:
+  project_id: string
+  state_version: integer
+  task_ref: StateRecordRef
+  change_unit_ref: StateRecordRef | null
+  scope_revision: integer
+  latest_run_ref: StateRecordRef | null
+  product_file_write_observed: boolean
+  evidence_gate: EvidenceGateSummary | null
+  close_state: string
+  close_blockers: CloseReadinessBlocker[]
+  next_actor: string
+  next_action: NextActionSummary | null
+```
+
+Meaning:
+
+- `TaskLineageSummary` records exactly one predecessor relation. Applied
+  carry-forward becomes newly validated Task input; `reference_only` preserves
+  predecessor context without making its authority current.
+- `TaskFlowItem[]` is a full-status projection over the connected predecessor
+  component. It is derived display, not a new parent-goal record.
+- `WorkspaceContext` uses the canonical Git common-directory and linked-
+  worktree identity shared by local integration and Core write checks. A null
+  branch represents detached HEAD. Non-Git repositories return null context.
+- `AuthorityReceipt` is Core-generated from one freshly read project state
+  version. Its blocker list is complete even when optional status projections
+  are omitted. `product_file_write_observed` describes the latest recorded Run,
+  not every historical Run. The receipt does not itself commit, close, accept,
+  or prove product correctness.
 
 ## Guard health summary
 
@@ -719,6 +794,8 @@ EvidenceObservation:
   target: EvidenceTarget
   source_kind: string
   assurance_level: string
+  producer_anchor: EvidenceProducerAnchor
+  relevance_assessment: EvidenceRelevanceAssessment
   observed_by_actor_source: string | null
   tool_name: string | null
   tool_invocation_id: string | null
@@ -727,6 +804,33 @@ EvidenceObservation:
   source_refs: SourceRef[]
   output_artifact_refs: ArtifactRef[]
   limitations: string[]
+  observed_at: string
+  recorded_at: string
+
+EvidenceProducerAnchor:
+  producer_kind: string
+  producer_ref: StateRecordRef | null
+  output_artifact_refs: ArtifactRef[]
+  verification_basis: string | null
+
+EvidenceRelevanceAssessment:
+  status: string
+  assessment_ref: StateRecordRef | null
+  assessed_by_actor_source: string | null
+
+UserEvidenceObservation:
+  observation_id: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  relevance_status: string
+  output_artifact_refs: ArtifactRef[]
+  summary: string
+  observed_by_actor_source: string
+  verification_basis: string
   observed_at: string
   recorded_at: string
 
@@ -791,18 +895,37 @@ Meaning:
   `supporting_artifact_refs`, and `gap_refs` preserve target-specific
   observation, artifact, and gap relations.
 - `EvidenceSummary.observation_refs` and `EvidenceCoverageItem.observation_refs` list `StateRecordRef` values for committed evidence observations that Core relates to the summary or target.
-- `EvidenceObservation` is a durable provenance record for one evidence target. It records source, assurance, observer actor source, optional tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and observation timestamps.
+- `EvidenceObservation` is a durable provenance record for one evidence target.
+  `producer_anchor` separately identifies the Core-validated producer record and
+  its exact outputs; `relevance_assessment` separately identifies whether an
+  authority source assessed those outputs as supporting the target. Byte
+  integrity, producer provenance, basis freshness, target identity, and claim
+  relevance remain distinct checks.
+- `UserEvidenceObservation` is the User Channel-owned, target- and basis-bound
+  record created by `volicord.record_user_observation`. It binds exact canonical
+  artifact refs and may establish user-observed provenance when its relevance is
+  `supported`; it is not a `UserJudgment` or final acceptance.
 - `source_refs` uses `SourceRef`. `input_refs` remains a separate `StateRecordRef[]`; a source ref never becomes a Core state ref or close-basis result ref.
 - `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, `recorded_at`, and the observer actor source when it commits. Request-side source and assurance values are provenance claims, not caller-granted assurance.
 - Only coverage for a current criterion with
   `evidence_requirement=required` participates in close authority. Required
   criteria reject `coverage_state=not_applicable`; optional, `not_required`,
   supplemental, and retired targets remain non-authoritative for close.
-- Submitted `observed_by_actor_source` does not select the committed actor. Core always derives the committed value from the verified invocation context; a non-null submitted value cannot raise trust or impersonate another actor source.
+- Submitted `observed_by_actor_source` does not select the committed actor. Core
+  derives it from a validated producer record when present and otherwise from
+  the verified invocation; a submitted value cannot raise trust or impersonate
+  another actor source.
 - Core derives committed `source_kind` and `assurance_level` from verified anchors. An unanchored direct `connection_observation`, `user_observation`, `external_tool`, or caller-declared `reused_evidence` input is committed as `agent_report` / `cooperative_report`. These fields never by themselves prove product correctness, grant user authority, satisfy final acceptance, satisfy residual-risk acceptance, or raise `GuaranteeDisplay.level`.
-- `external_tool` / `external_tool_result` requires at least one target-matching canonical output artifact with currently available, verified bytes. Descriptive tool fields and `SourceRef` values are not that anchor.
-- `reused_evidence` is Core-derived only after the original observation identity, target, current scope and baseline, source Run, inherited assurance, and original anchor are revalidated. External-tool reuse also revalidates the original observation-to-artifact relation and current bytes.
-- The baseline has no target-scoped verified User Channel or connection-observation record for direct `record_run` input. Direct `user_observation` and `connection_observation` therefore do not receive strong assurance; a user-attributed observation would still be evidence rather than final acceptance or another authority-bearing user judgment.
+- The baseline has no authority-owned verified command/tool producer or
+  registered connection-observation producer. Therefore direct
+  `external_tool` and `connection_observation` inputs remain cooperative even
+  when their artifacts have verified bytes.
+- `user_observation` requires a current `UserEvidenceObservation`, exact output
+  equality, `relevance_status=supported`, verified local-user provenance, and a
+  matching Task, Change Unit, scope, baseline, and target.
+- `reused_evidence` is Core-derived only after every recursive observation's
+  strict persisted producer/relevance metadata, exact outputs, target, current
+  basis, source Run, and inherited assurance are revalidated.
 - `unverified_claim` and `unverified` preserve an asserted claim without verified observation and are not sufficient evidence by themselves.
 - `tool_metadata` is descriptive metadata and must not be treated as authority, approval, or a storage effect.
 - `ObservedChanges.changed_paths` are path strings.

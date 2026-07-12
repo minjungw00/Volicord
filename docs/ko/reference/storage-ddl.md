@@ -272,6 +272,19 @@ CREATE TABLE tasks (
   task_id TEXT NOT NULL,
   created_by_actor_source TEXT NOT NULL,
   mode TEXT NOT NULL,
+  work_phase TEXT NOT NULL CHECK (work_phase IN ('shaping', 'implementation')),
+  acceptance_policy TEXT NOT NULL CHECK (
+    acceptance_policy IN ('required', 'not_required', 'policy_dependent')
+  ),
+  acceptance_policy_reason TEXT NOT NULL CHECK (length(trim(acceptance_policy_reason)) > 0),
+  predecessor_task_id TEXT,
+  lineage_relation TEXT CHECK (
+    lineage_relation IS NULL OR lineage_relation IN (
+      'continues', 'derived_from', 'split_from', 'replaces', 'implements_advice_from'
+    )
+  ),
+  lineage_reason TEXT,
+  carry_forward_json TEXT NOT NULL DEFAULT '[]',
   lifecycle_phase TEXT NOT NULL,
   result TEXT,
   title TEXT,
@@ -290,9 +303,20 @@ CREATE TABLE tasks (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, task_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, predecessor_task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, current_change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
-    DEFERRABLE INITIALLY DEFERRED
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    (predecessor_task_id IS NULL AND lineage_relation IS NULL AND lineage_reason IS NULL)
+    OR (
+      predecessor_task_id IS NOT NULL
+      AND lineage_relation IS NOT NULL
+      AND lineage_reason IS NOT NULL
+      AND length(trim(lineage_reason)) > 0
+      AND predecessor_task_id <> task_id
+    )
+  )
 );
 
 CREATE TABLE acceptance_criteria (
@@ -701,6 +725,36 @@ CREATE TABLE evidence_observations (
   )
 );
 
+CREATE TABLE user_evidence_observations (
+  project_id TEXT NOT NULL,
+  user_evidence_observation_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  change_unit_id TEXT NOT NULL,
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
+  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
+  acceptance_criterion_id TEXT,
+  evidence_claim_id TEXT,
+  relevance_status TEXT NOT NULL CHECK (relevance_status IN ('supported', 'contradicted')),
+  output_artifact_refs_json TEXT NOT NULL,
+  summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+  observed_by_actor_source TEXT NOT NULL CHECK (observed_by_actor_source = 'local_user'),
+  verification_basis TEXT NOT NULL CHECK (length(trim(verification_basis)) > 0),
+  observed_at TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_evidence_observation_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
+  FOREIGN KEY (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id),
+  FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
+    REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
+  FOREIGN KEY (project_id, task_id, evidence_claim_id)
+    REFERENCES evidence_claims (project_id, task_id, evidence_claim_id),
+  CHECK (
+    (acceptance_criterion_id IS NOT NULL AND evidence_claim_id IS NULL)
+    OR (acceptance_criterion_id IS NULL AND evidence_claim_id IS NOT NULL)
+  )
+);
+
 CREATE TABLE blockers (
   project_id TEXT NOT NULL,
   blocker_id TEXT NOT NULL,
@@ -774,6 +828,7 @@ CREATE TABLE tool_invocations (
   actor_source TEXT NOT NULL,
   operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
   verification_basis TEXT,
+  git_workspace_context_json TEXT,
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
@@ -838,6 +893,14 @@ CREATE INDEX idx_evidence_observations_task_target
 
 CREATE INDEX idx_evidence_observations_run
   ON evidence_observations (project_id, run_id);
+CREATE INDEX idx_user_evidence_observations_task_target
+  ON user_evidence_observations (
+    project_id,
+    task_id,
+    acceptance_criterion_id,
+    evidence_claim_id,
+    recorded_at
+  );
 
 CREATE INDEX idx_blockers_task_status
   ON blockers (project_id, task_id, status);
@@ -1127,8 +1190,15 @@ CREATE INDEX idx_local_web_consent_tokens_expiry
 프로젝트 상태 제약:
 
 - `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다. 이것은 Core 상태 시계이지 스키마 버전이 아닙니다.
+- `tasks.work_phase`와 `tasks.acceptance_policy`는 필수 제어 값이고 policy
+  reason은 비어 있지 않습니다. Predecessor ID, lineage relation, 비어 있지
+  않은 lineage reason은 모두 null이거나 모두 존재하고 외래 키로 같은
+  프로젝트에 남으며 Task 자신을 가리킬 수 없습니다.
+- `tasks.carry_forward_json`은 타입이 지정된 carry-forward disposition을
+  저장합니다. 저장되어 있다는 사실만으로 predecessor 행, 판단, Evidence 집합,
+  baseline, 쓰기 티켓을 현재 상태로 만들지 않습니다.
 - `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다.
-- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
+- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `user_evidence_observations.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
 - 사용자 판단 행은 권한 효력이 있는 판단 해결에 대한 User Channel 출처를 저장합니다. `status='resolved'`는 답변이 존재한다는 사실을 기록할 뿐이며, 승인 의미는 저장된 기계 동작, 결과, 근거, 출처, 메서드 담당 문서에서 나옵니다.
@@ -1136,7 +1206,10 @@ CREATE INDEX idx_local_web_consent_tokens_expiry
 - `write_tickets`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `write_tickets.consumed_by_run_id`와 `runs.write_ticket_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.
-- `tool_invocations`는 행위자 출처와 작업 범주를 포함해 재실행 행을 저장합니다. 재실행 행은 호출자 권한이 아니며 현재 연결 맥락이나 User Channel 요구사항을 우회하지 않습니다.
+- `evidence_observations.metadata_json`은 엄격한 Core 파생 producer 앵커 및
+  relevance 평가 JSON입니다. `user_evidence_observations`는 별도의 로컬 사용자
+  relevance 레코드와 정확한 현재 근거 좌표를 저장합니다.
+- `tool_invocations`는 행위자 출처, 작업 범주, 선택적 정규 `git_workspace_context_json`을 포함해 재실행 행을 저장합니다. 재실행 행은 호출자 권한이 아니며 현재 연결, Git 작업 공간, User Channel 요구사항을 우회하지 않습니다.
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 호스트 관찰 및 세션 감시 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
 - `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 호스트 판단 요청을 기록하며 OS 수준 집행 증명이 아닙니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 도구 실행 후 호스트 훅 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.

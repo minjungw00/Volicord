@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.2.0, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.3.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -663,8 +663,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1572,6 +1572,30 @@ documents:
   - '`volicord.record_user_judgment` behavior'
   - '`RecordUserJudgmentResult` branch behavior'
   - user-owned judgment answer recording behavior
+- doc_id: reference.api.method-record-user-observation
+  path_en: docs/en/reference/api/method-record-user-observation.md
+  path_ko: docs/ko/reference/api/method-record-user-observation.md
+  kind: reference
+  summary: Reference contract for `volicord.record_user_observation` behavior.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: core_api
+  created_on: '2026-07-12'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
+  applies_to:
+  - volicord_workspace_0_2
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.record_user_observation` behavior'
+  - '`RecordUserObservationResult` branch behavior'
+  - User Channel evidence observation recording behavior
 - doc_id: reference.api.method-reconcile-changes
   path_en: docs/en/reference/api/method-reconcile-changes.md
   path_ko: docs/ko/reference/api/method-reconcile-changes.md
@@ -2064,8 +2088,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-12'
+  last_verified_on: '2026-07-12'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3

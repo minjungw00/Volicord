@@ -67,6 +67,7 @@ volicord.stage_artifact
 volicord.record_run
 volicord.request_user_judgment
 volicord.record_user_judgment
+volicord.record_user_observation
 volicord.reconcile_changes
 volicord.close_task
 ```
@@ -77,7 +78,7 @@ volicord.close_task
 <a id="actor-values"></a>
 ## 행위자 출처 값
 
-`EvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, `UserJudgmentResolution.resolved_by_actor_source` 같은 행위자 출처 필드는 `ActorSource` 값 집합을 사용합니다.
+`EvidenceObservation.observed_by_actor_source`, `UserEvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, `UserJudgmentResolution.resolved_by_actor_source` 같은 행위자 출처 필드는 `ActorSource` 값 집합을 사용합니다.
 
 | 값 | 사용하는 곳 | 담당 문서 경로 |
 |---|---|---|
@@ -184,6 +185,7 @@ user_judgment
 run
 evidence_summary
 evidence_observation
+user_evidence_observation
 artifact
 blocker
 task_event
@@ -230,15 +232,70 @@ work
 
 `volicord.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. 접수 확정 동작은 [접수 메서드](method-intake.md)가 담당합니다.
 
-모드는 실행 기록 종류 호환성과 종료 완료 결과를 제한합니다.
+모드와 `work_phase`가 함께 Run 종류 호환성을 제한합니다.
 
-| `Task.mode` | 허용되는 `RunKind` 값 | 성공한 `intent=complete` 결과 |
-|---|---|---|
-| `advisor` | `shaping_update` | `advice_only` |
-| `direct` | `direct` | `completed` |
-| `work` | `shaping_update`, `implementation` | `completed` |
+| `Task.mode` | `work_phase` | 허용되는 `RunKind` | 성공한 `intent=complete` 결과 |
+|---|---|---|---|
+| `advisor` | `shaping` | `shaping_update` | `advice_only` |
+| `direct` | `implementation` | `direct` | `completed` |
+| `work` | `shaping` | `shaping_update` | `completed` |
+| `work` | `implementation` | `implementation` | `completed` |
 
 `advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `prepare_write`나 쓰기 티켓을 사용하지 않으며, 호환되는 실행 기록은 `product_file_write_observed=false`, 빈 `changed_paths` 목록, `write_ticket_id=null`을 가집니다. 호환되는 `shaping_update`는 `record_run`이 Run과 메서드 소유 Core 증거 상태를 커밋하는 것을 허용합니다.
+
+`StateSummary.work_phase`와 `TaskFlowItem.work_phase`는 아래 값을 사용합니다.
+
+```text
+shaping
+implementation
+```
+
+이 단계는 한 Task의 장기 outcome을 유지하면서 분석과 쓰기 가능한 실행을
+구분합니다. `lifecycle_phase`와는 독립된 필드입니다.
+
+`StateSummary.acceptance_policy`는 아래 값을 사용합니다.
+
+```text
+required
+not_required
+policy_dependent
+```
+
+정책과 이유는 intake에서 선택합니다. `not_required`는 advisor Task에만 사용할 수
+있고 `policy_dependent`는 닫기 담당 규칙이 평가하며 에이전트가 고르는 면제가
+아닙니다.
+
+`TaskLineageSummary.relation`은 아래 값을 사용합니다.
+
+```text
+continues
+derived_from
+split_from
+replaces
+implements_advice_from
+```
+
+`CarryForwardDisposition.kind`는 아래 값을 사용합니다.
+
+```text
+scope
+non_goals
+user_decisions
+source_refs
+context_refs
+known_limitations
+unresolved_obligations
+residual_risks
+baseline
+```
+
+`status`는 `applied` 또는 `reference_only`입니다. 적용한 material은 새 Task
+입력으로 다시 검증합니다. Reference-only 맥락은 predecessor 범위, 판단,
+Evidence, 수락, 위험 수락, 쓰기 권한을 다시 현재 상태로 만들지 않습니다.
+
+`WorkspaceContext.vcs`는 현재 `git`만 사용하고 `branch_ref=null`은 detached
+HEAD를 뜻합니다. `AuthorityReceipt.next_actor`는 `agent`, `user`, `none`을
+사용합니다.
 
 `Task.lifecycle_phase`는 아래 값을 사용합니다.
 
@@ -296,6 +353,18 @@ superseded
 
 <a id="method-local-values"></a>
 ## 메서드 내부 값
+
+MCP mutation 인자 `detail`은 아래 값을 사용합니다.
+
+```text
+summary
+workflow
+full
+```
+
+기본값 `summary`는 compact authority receipt이고 `workflow`는 정규 다음 행동을
+추가하며 `full`은 전체 메서드 결과를 반환합니다. Transport는 호환 text member를
+유지하지만 전체 JSON을 중복한 문서가 아니라 크기가 제한된 요약을 사용합니다.
 
 `volicord.intake`의 `resume_policy`는 아래 값을 사용합니다.
 
@@ -752,8 +821,13 @@ unverified_claim
 출처 종류 의미:
 - `agent_report`는 에이전트 행위자 맥락이 만든 보고를 기록합니다. 그 자체로 외부 도구 결과가 아닙니다.
 - `connection_observation`은 대상별 확인된 연결 관찰 기록으로 뒷받침되는 관찰을 이름 붙입니다. 기준 범위의 직접 `record_run` 경로에는 이런 기록이 없으므로 요청된 값을 `agent_report`로 강등합니다.
-- `external_tool`은 대상이 일치하는 관찰에 현재 바이트를 사용할 수 있고 검증된 기준 출력 아티팩트가 있을 때만 외부 도구의 출력이나 상태를 기록합니다. 그 자체로 제품 정확성 증명은 아닙니다.
-- `user_observation`은 대상별 확인된 User Channel 관찰로 뒷받침되는 사용자 귀속 관찰을 이름 붙입니다. 기준 범위의 직접 `record_run` 경로에는 이런 기록이 없으므로 요청된 값을 `agent_report`로 강등합니다. 그 자체로 최종 수락이나 다른 권한 효력이 있는 판단은 아닙니다.
+- `external_tool`은 정확한 출력과 결합된 authority-owned verified tool 또는
+  command producer 레코드를 요구합니다. 기준 구현에는 아직 해당 producer
+  전이가 없으므로 직접 요청은 강등됩니다. 검증된 아티팩트 바이트만으로는
+  충분하지 않습니다.
+- `user_observation`은 `volicord.record_user_observation`이 만든 현재의 대상 결합
+  `UserEvidenceObservation`으로 뒷받침되는 관찰입니다. 앵커 없는 직접 선택은
+  강등되며 최종 수락이나 다른 권한 효력이 있는 판단은 아닙니다.
 - `reused_evidence`는 Core가 검증한 이전 강한 관찰의 재사용을 기록합니다. 호출자가 직접 선택한 값은 강등되며 검증된 재사용 자체도 새 관찰은 아닙니다.
 - `unverified_claim`은 확인된 관찰 없는 주장을 보존합니다. 그 자체로 충분한 증거가 아닙니다.
 
@@ -770,16 +844,40 @@ unverified
 보장 수준 의미:
 - `cooperative_report`는 제출 행위자 맥락의 협력형 보고입니다.
 - `registered_connection_observed`에는 대상별 확인된 연결 관찰 앵커가 필요합니다. 현재 Agent Connection 호출만으로 파생되지 않습니다.
-- `external_tool_result`에는 위에서 정의한 대상 일치 기준 출력 아티팩트와 현재 바이트 검증 앵커가 필요합니다.
-- `user_observed`에는 대상별 확인된 User Channel 관찰 앵커가 필요합니다.
+- `external_tool_result`에는 authority-owned producer 레코드, 정확한 정규 출력
+  결합, 현재 바이트, 분리된 supported relevance 평가가 필요합니다.
+- `user_observed`에는 현재의 대상별 User Channel 관찰, 정확한 출력,
+  `relevance_status=supported`가 필요합니다.
 - `unverified`는 확인된 관찰 보장 수준이 없음을 기록합니다.
 
 Core는 필요한 앵커가 없는 요청된 강한 조합을 `agent_report` /
 `cooperative_report`로 강등합니다. `reused_evidence`에서는 원래 identity, 대상,
 `Task`와 Change Unit, 출처 실행 기록, 범위 리비전, 기준선, 승계한 보장 수준,
-원래 앵커를 다시 검증합니다. 외부 아티팩트의 관찰 관계와 현재 바이트도 다시
+정확한 출력, producer 앵커, relevance 평가를 각 재귀 단계에서 다시
 확인합니다. 이 값들은 사용자 권한을 부여하거나, 최종 수락 또는 잔여 위험 수락을
 만족하거나, 제품 정확성을 증명하거나, `GuaranteeDisplay.level`을 바꾸지 않습니다.
+
+`EvidenceProducerAnchor.producer_kind`는 다음 값을 사용합니다.
+
+```text
+unverified_caller
+user_channel_observation
+registered_connection_observation
+verified_tool_invocation
+verified_command_execution
+reused_evidence
+```
+
+기준 구현에서 authority-owned producer 경로가 있는 값은
+`user_channel_observation`과 재귀 검증된 `reused_evidence`뿐입니다. connection,
+tool, command 값은 이후 담당 문서가 정의할 producer 전이를 위한 정규 분류를
+예약합니다. 호출자 입력이나 raw guard payload로 이 값을 만들 수 없습니다.
+
+`EvidenceRelevanceAssessment.status`와
+`UserEvidenceObservation.relevance_status`는 `unassessed`, `supported`,
+`contradicted`를 사용합니다. User Channel 메서드는 `supported` 또는
+`contradicted`만 받습니다. Strong evidence에는 분리된 현재 `supported` 평가가
+필요합니다.
 
 <a id="source-ref-values"></a>
 ### 출처 참조 값

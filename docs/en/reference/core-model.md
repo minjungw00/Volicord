@@ -40,6 +40,9 @@ Volicord governs Volicord records.
 Scope bounds work.
 
 - A `Task` defines the user-value unit. A Change Unit defines the current write-capable work boundary inside that `Task`.
+- A Task's durable `work_phase` distinguishes shaping from implementation
+  without fragmenting one user outcome. A predecessor edge connects deliberate
+  follow-up Tasks without making predecessor authority current.
 - Product-file writes, evidence claims, final acceptance, and close claims must stay compatible with the current scope and current Change Unit.
 - A Change Unit effect contract can further constrain compatible effects, paths, expected outputs, invariants, evidence expectations, or sensitive-action expectations for the current Change Unit.
 - A resolved scope judgment does not silently mutate current scope; current scope must be updated through the scope owner-defined transition.
@@ -68,6 +71,8 @@ Close must stay honest.
 Acceptance and risk acceptance are specific.
 
 - Final acceptance is the user's judgment of the visible close basis.
+- Whether final acceptance is required is explicit Task-owned policy selected
+  at intake, not an implicit global rule or an agent-selected close waiver.
 - Residual-risk acceptance is the user's acceptance of named visible residual risk for the requested close.
 - Neither fills evidence gaps, changes scope, grants write authority, proves verification, or makes the result risk-free.
 
@@ -130,6 +135,16 @@ A `Task` is the user-value unit being shaped, executed, blocked, or closed.
 
 A `Task` owns the main work path for scope, Change Units, required judgments, verification criteria, evidence support, close readiness, final outcome, and residual risk. Exact lifecycle values and state fields belong to the API state and value-set owners.
 
+Its `work_phase` keeps long-lived outcome and current delivery step separate.
+Its optional lineage records one predecessor, a relation and creation reason,
+and explicit carry-forward dispositions. Applied scope-like material is
+revalidated as new Task input; decisions, limitations, obligations, and risks
+remain reference-only unless a current owner-defined transition establishes new
+authority.
+
+Its `acceptance_policy` and reason own whether the final-acceptance check is
+required, not required for pure advice, or evaluated from current close policy.
+
 ### Change Unit
 
 A Change Unit is the currently applied work boundary for write-capable work inside a `Task`.
@@ -154,15 +169,17 @@ User-owned judgment is the boundary where the user owns the decision. Core may r
 
 User-owned judgment can concern product direction, technical direction, scope, a sensitive step, final acceptance, residual-risk acceptance, or cancellation. Exact judgment schema fields and value names belong to API schema and value-set owners.
 
-### Task mode and Run compatibility
+### Task mode, work phase, and Run compatibility
 
-The concrete `Task.mode` limits which Run kinds can represent work for that Task:
+The concrete `Task.mode` and `work_phase` jointly limit which Run kind can
+represent the current step:
 
-| `Task.mode` | Compatible Run kinds |
-|---|---|
-| `advisor` | `shaping_update` |
-| `direct` | `direct` |
-| `work` | `shaping_update`, `implementation` |
+| `Task.mode` | `work_phase` | Compatible Run kind |
+|---|---|---|
+| `advisor` | `shaping` | `shaping_update` |
+| `direct` | `implementation` | `direct` |
+| `work` | `shaping` | `shaping_update` |
+| `work` | `implementation` | `implementation` |
 
 `advisor` is read-only with respect to Product Repository file effects. It does not authorize product-file writes or write-ticket issuance, while a compatible `shaping_update` call to `record_run` still commits the Run and any method-owned Core evidence state. A successful `intent=complete` terminal transition records `Task.result=advice_only` for `advisor`; the same successful completion path records `Task.result=completed` for `direct` and `work`. Mode compatibility does not by itself satisfy or waive evidence, final-acceptance, residual-risk, or other close-readiness requirements.
 
@@ -217,6 +234,16 @@ It is a record-based readiness decision, not proof that the product result is ob
 It combines the current work boundary with judgment, write, Run, evidence,
 artifact, blocker, acceptance, residual-risk, recovery, and project-continuity
 facts. Section 10 lists the close inputs in detail.
+
+### Authority receipt
+
+An authority receipt is a compact Core-generated view of one freshly read
+project state version. It binds the current Task and Change Unit, scope
+revision, latest Run and observed product-file-write fact, evidence gate, full
+close-blocker set, and next actor/action. It lets a host report recorded state
+without reconstructing authority in prose. A receipt is derived state: it does
+not itself commit, accept, close, or prove correctness, and a host must refresh
+it after a mutation before making a completion or blocked claim.
 
 ### Current close basis
 
@@ -373,6 +400,8 @@ The lifecycle here is conceptual authority meaning, not an API state table.
 | Area | Authority meaning |
 |---|---|
 | Intake and shaping | User intent becomes a concrete goal, scope boundary, non-goals, acceptance criteria, Autonomy Boundary, and first safe Change Unit when the relevant owners define support. |
+| Work phase | Advisor and ordinary work begin in shaping; direct work begins in implementation. Creating or replacing the current Change Unit advances ordinary work to implementation. Core rejects a Run kind or write preparation that does not match the current phase. |
+| Lineage and carry-forward | A new Task may name one predecessor and explicitly select compatible material. Applied material is validated as new input; reference-only context never revives predecessor authority. |
 | Scope update | Accepted scope or Change Unit changes become currently applied only through the scope owner-defined transition. A judgment record alone does not mutate current scope. |
 | Execution and observation | Runs record actions and observations. Product-file writes must be compatible with current scope and a write ticket; read-only work does not create compatibility for subsequent writes. |
 | Waiting or blocked | A current non-terminal `Task` is `waiting_user` while a current compatible pending user judgment with a non-informational operation target requires a user answer. When the last such judgment is resolved or made non-current, the `Task` returns to `ready` if it has a current Change Unit and to `shaping` otherwise. Other missing, stale, incompatible, or unsafe-to-bypass authority data remains visible through owner-defined blocker state rather than being hidden. |
@@ -386,12 +415,13 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 | Check area | Authority meaning |
 |---|---|
 | Scope | The requested work, write, evidence claim, or close claim must fit the current `Task` scope and current Change Unit. |
+| Workspace | For a Git-bound Change Unit, write preparation must match the recorded common directory, worktree identity, branch or detached HEAD, HEAD SHA, and workspace fingerprint. A mismatch requires explicit retarget/rebaseline. |
 | Change Unit effect contract | When present, requested product-file write effects and paths must fit the current Change Unit effect contract before a write ticket can be issued. |
 | User-owned judgment | Required product, technical, scope, sensitive-action, final-acceptance, residual-risk, or cancellation judgment must be resolved by the user with the required stored outcome and compatible with the affected object and consequence. |
 | Sensitive action | A named sensitive step must have its own compatible user approval when that approval is required. |
 | Write compatibility | A product-file write attempt must be compatible with current scope and an open write ticket. |
 | Run and evidence | Recorded Runs, evidence summaries, and evidence-eligible artifacts must support the claims they are used for. |
-| Final acceptance | Required final acceptance must be tied to the visible close basis. |
+| Final acceptance | The Task-owned acceptance policy determines whether final acceptance is required; when required, it must be tied to the visible close basis. |
 | Residual risk | Known close-relevant residual risk must be visible, and required risk acceptance must be compatible with the requested close. |
 | Close readiness | All close-relevant owner-defined requirements must support an honest terminal transition; remaining blockers keep the `Task` open. |
 
@@ -482,14 +512,26 @@ Evidence authority:
   request-side `source_kind` / `assurance_level` pair is only a provenance claim.
   The baseline direct `record_run` path downgrades unanchored external-tool,
   connection, user, and caller-declared reuse claims to a cooperative agent
-  report. It derives the observer actor source from the verified invocation.
-- Strong external-tool provenance requires a target-matching canonical output
-  artifact whose current bytes are available and verified. Descriptive tool
-  fields and `SourceRef` values are not an assurance anchor.
+  report. It derives an authority-backed observer from the producer record and
+  otherwise uses the verified invocation.
+- Evidence evaluates byte integrity, producer provenance, Task/scope/baseline
+  freshness, target identity, and claim relevance as separate axes. Strong
+  evidence requires every applicable axis; artifact integrity alone is never
+  producer or relevance proof.
+- The baseline provides a distinct `user_only`
+  `volicord.record_user_observation` transition. Its
+  `UserEvidenceObservation` binds local-user provenance and supported or
+  contradicted relevance to the exact current artifacts and basis. It is
+  evidence, not a `UserJudgment` or final acceptance.
+- The baseline has no authority-owned verified command/tool producer or
+  registered connection-observation producer. Direct external-tool and
+  connection claims therefore remain cooperative even with verified artifact
+  bytes; raw guard payloads and descriptive tool fields are not anchors.
 - Reused strong evidence must retain exactly one original observation identity
   and remain compatible with the target, Task, Change Unit, source Run, scope
-  revision, baseline, inherited assurance, and original anchor. Close and reuse
-  evaluation recheck that chain and the current bytes of an external artifact.
+  revision, baseline, inherited assurance, exact outputs, producer anchor, and
+  separate relevance assessment. Close and reuse evaluation strict-decode and
+  recursively recheck the whole chain and current bytes.
 - `unverified_claim` and cooperative agent reports can be retained as evidence records, but they do not satisfy required close evidence when stronger provenance is required.
 - A user observation is evidence provenance, not final acceptance or another user-owned judgment.
 - A `SourceRef` can preserve reported file, Git, command, external-resource, or user-context provenance inside a Task or evidence observation. It is not a Core state ref and does not establish scope, approval, evidence sufficiency, final acceptance, residual-risk acceptance, close readiness, or a guarantee. Core does not resolve or execute the referenced source when recording it.

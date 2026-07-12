@@ -65,6 +65,7 @@ volicord --version
 volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json] [--privacy-footprint]
+volicord diagnostics session [--session ID] [--json]
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
@@ -77,6 +78,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
+volicord mcp --stdio --discover-repository --host codex|claude-code
 volicord mcp --check --connection <connection_id>
 volicord mcp --check --connection <connection_id> --project <project_id>
 volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]
@@ -85,6 +87,7 @@ volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
 volicord inbox open <judgment-id> [--repo PATH] [--json]
+volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
 ```
 
 지원되는 `HOST` 값은 `codex`와 `claude-code`입니다. `HOST`를 생략하면 명령은
@@ -206,7 +209,7 @@ MCP 시작 명령도 선택할 수 있습니다. 부모 셸의 현재 환경을 
 | 인자 | 의미 |
 |---|---|
 | `--home PATH` | `Volicord Runtime Home`을 선택합니다. 생략하면 플랫폼 기본 로컬 런타임 위치를 사용합니다. 선택한 경로는 프로젝트 상태를 사용하기 전에 Runtime Home/Product Repository 분리 계약을 만족해야 합니다. |
-| `--mcp-command PATH` | init이 설치 프로필을 만들거나 갱신할 때 관리 호스트 설정이 `mcp --stdio --connection <connection_id> [--project <project_id>]` 인자를 붙여 사용할 정확한 `volicord` 명령을 저장합니다. 생략하면 init이 선택한 실행 중인 `volicord` 실행 파일을 사용합니다. |
+| `--mcp-command PATH` | 개인·로컬 연결 바인딩, 검증, 그 밖의 로컬 시작 흐름에 사용할 정확한 로컬 `volicord` 명령을 설치 프로필에 저장합니다. 생략하면 init이 선택한 실행 중인 `volicord` 실행 파일을 사용합니다. 저장소에서 보이는 공유 MCP 항목에는 이 경로를 넣지 않으며, `PATH`로 해석되는 고정 `volicord` 저장소 발견 기술 정보를 사용합니다. |
 | `--json` | 기계 판독 비대화식 출력을 선택합니다. JSON 모드에서는 init이 프롬프트를 표시하지 않습니다. |
 
 Runtime Home과 설치 프로필 선택에 관련된 init 효과:
@@ -330,24 +333,24 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
   편집하지 않아도 선택된 연결의 저장 모드를 바꿉니다.
 
 내부 호스트 설정 키 `server_name`의 기본값은 `volicord`입니다. 일반 CLI 흐름은
-서버 이름 옵션을 노출하지 않습니다. 생성된 호스트 설정에는 호스트가
-`volicord mcp --stdio`를 시작할 수 있도록 저장된 내부 식별 정보에서 파생된
-`connection_id`와, 안전하게 프로젝트에 묶인 경우의 `project_id` 프로세스 바인딩 값,
-서버 이름, 명령 인자가 들어갈 수 있습니다. 이 값들은 저장된 프로세스 바인딩
-세부사항이며 사용자 권한 토큰이 아닙니다. 텍스트 모드 명령 입력은 선택된 호스트,
-의도, 저장소 루트를 사용합니다.
+서버 이름 옵션을 노출하지 않습니다. 생성된 개인·로컬·사용자 전역 호스트 설정에는
+호스트가 `volicord mcp --stdio`를 시작할 수 있도록 저장된 내부 식별 정보에서 파생된
+`connection_id`와, 안전하게 프로젝트에 묶인 경우의 `project_id`가 들어갈 수 있습니다.
+이 값들은 저장된 로컬 프로세스 바인딩 세부사항이며 사용자 권한 토큰이 아닙니다.
+저장소에서 보이는 공유 항목에는 형식이 지정된 호스트별 저장소 발견 기술 정보만
+들어갑니다. 텍스트 모드 명령 입력은 내부 ID 대신 선택된 호스트, 의도, 저장소 루트를
+사용합니다.
 
 일반 `volicord connection add` 명령은 MCP 명령 경로나 Runtime Home 경로를 다시 묻지 않고
 해석된 Runtime Home에 저장된 프로필을 사용합니다. 개인, 로컬, 사용자 전체 호스트
 설정은 그 Runtime Home을 `VOLICORD_HOME`으로 담을 수 있습니다. `shared` 프로젝트
-호스트 설정은 개인 Runtime Home 경로를 포함하면 안 되며, 생성된 항목이 선택된 프로젝트
-하나를 위한 것일 때 명령 이름 `volicord`와 프로젝트에 묶인
-`mcp --stdio --connection <connection_id> --project <project_id>` 인자를 사용합니다.
-여러 연결 프로젝트를 의도적으로 다루는 항목에만 연결 전용 생성 인자를 남깁니다.
-호스트 환경은 명령을 `PATH`로 해석해야 합니다.
-저장된 `connection_id`와 `project_id`는 선택된 로컬 Runtime Home에서 계속 해석되어야
-합니다. 이 값이 든 프로젝트 범위 파일은 복제본에서 그대로 쓸 수 있는 저장소 발견용
-기술 정보가 아니며, init은 저장소 메타데이터에서 대체 로컬 ID를 파생하지 않습니다.
+호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다. 명령은 `volicord`, 환경
+맵은 없음이며 인자는 정확히 `mcp --stdio --discover-repository --host codex` 또는
+`mcp --stdio --discover-repository --host claude-code`입니다. 호스트 환경은
+`volicord`를 `PATH`로 해석하고 상속된 프로세스 환경이나 플랫폼 기본값으로 로컬 Runtime
+Home을 선택해야 합니다. 시작 시 정규화된 현재 Git 저장소를 해당 Runtime Home에서 그
+호스트의 고유한 활성 공유 연결과 프로젝트로 해석합니다. 저장소 메타데이터에서 로컬 ID를
+파생하지 않습니다.
 
 <a id="agent-host-setup-and-init"></a>
 ### 호스트 설정 프로필
@@ -359,8 +362,8 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 설정 대상을 사용하고 Claude Code는 저장소 로컬 CLI 범위를 사용합니다. `--shared`를
 추가하면 `.codex/config.toml` 또는 `.mcp.json`의 프로젝트 범위 호스트 배치를
 선택합니다. 이 생성 항목은 `PATH`를 통해
-`volicord mcp --stdio --connection <connection_id> --project <project_id>`를 시작하고
-개인 Runtime Home 경로를 포함하지 않습니다.
+`volicord mcp --stdio --discover-repository --host codex|claude-code`를 시작하며 로컬
+ID, 절대 명령 경로, Runtime Home 경로, 환경 맵을 포함하지 않습니다.
 
 연결 의도는 관리 Agent Connection 대상을 선택합니다. 이와 별도로 init은
 `personal`과 `shared` 모두에서 현재 저장소 통합 파일 구성을 유지합니다.
@@ -374,6 +377,16 @@ Code 탐지 설정은 `.claude/settings.local.json`을 사용하고, 공유 탐�
 `.claude/settings.json`을 사용합니다. 이런 통합 파일은 저장된 연결 의도나 주 호스트
 범위를 바꾸지 않습니다.
 
+Product Repository 하나에서 init은 선택한 지원 호스트 하나와 활성 저장소 로컬 통합
+의도 및 프로필을 하나씩만 소유합니다. 다른 지원 호스트나 반대 `personal` 또는
+`shared` 의도로 init을 다시 실행하거나 `record`와 `detective` 사이를 바꾸는 작업은 로컬
+통합을 하나 더 공존시키는 것이 아니라 관리 마이그레이션입니다. 마이그레이션은 검증된
+로컬 정책에서 이전 호스트·의도·프로필을 식별하고, 여러 주체가 소유한 파일의 관련 없는
+내용을 보존하며, 일치하는 Volicord 소유 호스트 항목·훅 처리기·관리 블록·파일 전체 소유
+대상만 폐기해야 합니다. 수정되었거나 비관리 상태인 유사 항목은 삭제하지 않고 충돌로
+실패해야 합니다. 이전 Agent Connection은 비활성 이력으로 남을 수 있지만 해당 저장소의
+활성 Connection Project로 남으면 안 됩니다.
+
 Git 기반 Product Repository의 모든 init은 선택한 worktree에 실제로 적용되는 Git
 `info/exclude`의 관리 블록 하나를 다시 계산합니다. 일반 `.git` 디렉터리, `.git`
 gitdir 파일, 연결된 worktree의 `commondir`를 해석해 실제 공통 Git 디렉터리를
@@ -381,8 +394,12 @@ gitdir 파일, 연결된 worktree의 `commondir`를 해석해 실제 공통 Git 
 `.claude/hooks/` 아래의 Volicord 전용 래퍼 스크립트를 제외합니다. 이 파일들은 공유
 Detective init에서도 로컬 프로세스 바인딩 사실을 담습니다. 독립형 worktree의
 `personal` init은 개인 전용 훅 설정과 규칙 경로도 추가로 제외합니다. init을
-`shared`로 다시 실행하면 의도와 무관한 패턴은 유지하고 개인 전용 패턴은 제거하며,
-`personal`로 다시 실행하면 개인 전용 패턴을 복원합니다.
+호스트, 의도, 프로필 중 하나를 바꾸어 다시 실행하는 동안 먼저 이전 상태와 요청 상태의
+로컬 전용 경로를 합친 장애 안전 제외 블록을 유지합니다. 새 상태 보기를 설치하고 필요한 폐기가
+모두 성공한 뒤에만 새 의도에 맞게 블록을 줄입니다. 따라서 실패하거나 중단된
+마이그레이션은 더 넓은 로컬 보호를 유지하고, 같은 init을 다시 실행하면 멱등하게
+수렴합니다. 완료된 `shared` 마이그레이션은 폐기된 개인 전용 패턴을 제거하고, 완료된
+`personal` 마이그레이션은 이를 복원합니다.
 
 관리 블록은 `.codex/`나 `.claude/` 전체를 제외하지 않으며, `AGENTS.md`,
 `.mcp.json`, `.claude/settings.json`, 공유 Codex 훅 설정과 규칙도 제외하지 않습니다.
@@ -399,16 +416,21 @@ init은 경로 전체를 제외합니다. init은 추적되는 `.gitignore`를 �
 `LINKED_WORKTREE_PERSONAL_DETECTIVE_UNSUPPORTED`로 거부합니다. `--profile record`,
 `--shared` Detective 통합, 또는 독립형 worktree를 사용합니다.
 
-`volicord doctor`는 이 경계를 `checks[].id=personal_local_git_tracking`으로 보고합니다.
-연결된 Git 저장소에서는 의도와 무관한 로컬 경로를 확인하고, 검증된 로컬 정책 파일
-구성을 읽어 추가 개인 경로의 적용 여부를 판단합니다. 정책이 없거나 잘못되었으면
-크기가 제한된 감사 오류로 보고하고 보수적으로 개인 경로도 확인합니다. 현재 정책이
-`shared`이면 이전 개인 연결 기록이 남아 있다는 이유만으로 개인 전용 경로를 검사하지
-않습니다. 로컬 전용 경로가 추적 중이거나 존재하지만 제외되지 않았으면 경고하고,
-크기가 제한된 `tracked_paths`와 `unignored_existing_paths` 세부사항을 제공합니다.
-Doctor는 index를 바꾸지 않습니다. 의도한 연결 의도로 init을 다시 실행해 제외 블록을
-복구하고, 작업 트리 파일을 삭제하지 않은 채 추적 중인 로컬 전용 경로를 index에서
-제거하도록 권고합니다.
+`volicord doctor`는 로컬 Git 보호를 `checks[].id=personal_local_git_tracking`으로
+보고합니다. 현재 정책 의도와 관계없이 연결된 모든 Git 저장소에서 의도와 무관한 로컬
+경로와 알려진 개인 전용 로컬 경로를 모두 검사합니다. 정책이 없거나 잘못되었으면 크기가
+제한된 감사 오류로 보고합니다. 로컬 전용 경로가 추적 중이거나 존재하지만 제외되지
+않았으면 경고하고, 크기가 제한된 `tracked_paths`와 `unignored_existing_paths`
+세부사항을 제공합니다.
+
+Doctor는 `checks[].id=integration_intent_drift`도 보고합니다. 검증된 로컬 정책을 활성
+Connection Project 구성과 비교하고, 범위가 제한된 알려진 이전 호스트 및 반대 의도 상태
+보기 경로에서 Volicord 소유 내용을 검사합니다. 이전 호스트나 반대 의도 상태 보기, 한
+저장소에서 여러 지원 호스트 또는 의도의 통합이 동시에 활성화된 상태, 정책의 의도나
+호스트와 맞지 않는 활성 구성, `record` 정책 아래 남은 탐지 훅을 경고합니다. Doctor는
+파일이나 Git index를 바꾸지 않습니다. 복구 동작은 정책의 정확한 호스트·의도
+플래그·프로필로 init을 다시 실행합니다. index 정리는 작업 트리 파일을 삭제하지 않는
+명시적 사용자 동작으로 남습니다.
 
 `--profile`은 공개 통합 프로필을 선택합니다.
 
@@ -473,9 +495,8 @@ Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호
 - 의도에 따라 주 관리 호스트 연결 대상을 설치합니다. `personal`은 Codex 사용자
   대상 또는 Claude Code 로컬 CLI 대상을 사용하고, 명시적 `--shared`는 프로젝트 범위
   Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 사용합니다.
-- 명시적 공유 연결에는
-  `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 쓰며,
-  Codex에는 관리 시작 출처 환경 변수 마커도 넣습니다.
+- 명시적 공유 연결에는 환경 맵 없이 정확한 이식 가능 기술 정보
+  `volicord mcp --stdio --discover-repository --host codex|claude-code`를 씁니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
 - 선택한 `connection_intent`와 숨겨진 내부 훅 명령군을 호출하는 탐지용 호스트 훅
   명령을 담은 `local_overlay` 정책으로 `.volicord/policy.json`을 씁니다.
@@ -499,11 +520,16 @@ Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호
 - 호스트가 새 MCP 또는 탐지용 호스트 훅 설정을 불러와야 할 때 필요한 재시작, 설정 다시
   불러오기, 신뢰, 승인 동작을 보고합니다.
 
-init 재실행은 일치하는 Volicord 관리 내용에 대해 멱등입니다. 관리 블록, 정책 파일,
-호스트 MCP 항목, 탐지 프로필 설치 기록을 중복 없이 갱신합니다. 기존 대상에 Volicord가
-소유 마커나 관리 지문을 요구하는 위치의 비관리 내용이 있으면 init은 이를 덮어쓰지
-않고 충돌로 보고해야 합니다. 후속 상태 조회와 검증 명령, dry-run 진단, 복구 명령은
-선택한 의도를 보존하며 공유 init 결과일 때만 `--shared`를 포함합니다.
+init 재실행은 일치하는 Volicord 관리 내용과 일부만 완료된 호스트·의도·프로필
+마이그레이션에 대해 멱등입니다. 관리 블록, 정책 파일, 호스트 MCP 항목, 탐지 프로필 설치
+기록을 중복 없이 갱신하며 이미 폐기된 일치 상태 보기는 성공한 무동작입니다. 기존 대상에
+명시적 Connection/프로젝트 바인딩이 든 이전 공유 MCP 항목은 현재 지문이 저장된 관리
+지문과 일치할 때만 한 번의 조건부 마이그레이션 대상입니다. 성공하면 이식 가능한 기술
+정보로 교체하며 이후 재실행은 무동작입니다. 기존 대상에
+Volicord 소유 마커나 관리 지문이 필요한 위치의 비관리 내용이 있거나 이전 관리 폐기
+대상이 바뀌었으면 init은 이를 덮어쓰거나 삭제하지 않고 충돌로 보고해야 합니다. 후속
+상태 조회와 검증 명령, dry-run 진단, 복구 명령은 선택한 의도를 보존하며 공유 init
+결과일 때만 `--shared`를 포함합니다.
 
 Unix에서 새 `.volicord/policy.json`은 사용자 전용 모드 `0600`으로 만듭니다. 기존
 일반 파일 정책에 Volicord 소유권 메타데이터가 있으면 같은 init을 다시 실행할 때
@@ -513,6 +539,8 @@ Unix에서 새 `.volicord/policy.json`은 사용자 전용 모드 `0600`으로 �
 `VOLICORD_MCP_CONNECTION_ID`, `VOLICORD_MCP_PROJECT_ID`만 허용합니다. 비밀값을
 나타내는 형태의 키와 그 밖의 환경 키는 값을 진단에 포함하지 않고 거부합니다. 이
 허용 목록은 일반적인 비밀값 내용 검사기가 아닙니다.
+이는 로컬 오버레이 스키마이며, 이 환경 필드는 어느 것도 공유 `.codex/config.toml`이나
+`.mcp.json`의 Volicord 항목에 허용되지 않습니다.
 정책 스키마는 `storage_scope=local_overlay`, 선택한 `connection_intent`, 비어 있지 않은
 호스트·저장소·연결 식별자 집합, 문자열 인자와 문자열 환경 값을 가진 MCP 명령, 그리고
 `selected_profile`과 일치하는 호스트 훅 활성 상태도 요구합니다. 최상위, `mcp`,
@@ -922,18 +950,25 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
   `actor_source=local_user`와
   `resolved_verification_basis=user_prompt_submit_hook`으로
   기록하고, 프롬프트 캡처 저장소에는 전체 프롬프트 본문을 생략하며, 그 명령을 일반
-  에이전트 지시로 다루지 않고 모델에 보이는 기록 완료 맥락을 반환합니다.
+  에이전트 지시로 다루지 않고 모델에 보이는 기록 완료 맥락을 반환합니다. 인식된 명령
+  객체의 `replayed=true`는 동일한 지속 판단 기록이 멱등 재실행으로 반환됐을 때만
+  사용합니다. 로컬 진단은 성공한 인식 명령을 모두 Core 도달로 세지만, 재실행이 아닌
+  경우만 Core 커밋으로 셉니다.
 - `stop`은 현재 작업을 완료로 다뤄도 되는지 점검합니다. 현재 작업에 대해 `allow`를
   반환하기 전에 닫기 데이터를 포함한 최신 Core 상태 응답을 가져옵니다.
-  `base.response_kind=result`인 응답만 이 결정에 사용할 수 있는 최신 상태 근거입니다.
-  응답 종류가 `result`가 아니거나 필요한 상태 필드가 누락되었거나 형식이 잘못되었으면
-  이유 코드 `authoritative_refresh_failed`와 함께 `deny`를 반환합니다. 이 거절에서
+  `base.response_kind=result`이고 `base.effect_kind=read_only`인 응답만 이 결정의 후보가
+  됩니다. Core 소유 `AuthorityReceipt`가 새로 읽은 상태 버전, 프로젝트, Task, Task 참조
+  버전, 범위 revision, 현재 Change Unit, 증거 gate, 닫기 상태, 닫기 차단 사유, 이 훅
+  이벤트에서 캡처한 guard 맥락과 일치해야 합니다. 하나라도 맞지 않거나, 응답 종류가
+  `result`가 아니거나, 필요한 상태 필드가 누락되었거나 형식이 잘못되었으면 이유 코드
+  `authoritative_refresh_failed`와 함께 `deny`를 반환합니다. 이 거절에서
   `result.close_status.authoritative_refresh`는 인식된 `response_kind` 값만 담고, 값이
   누락되었거나 형식이 잘못되었으면 `null`을 담으며, 유효한 공개 `ErrorCode` 값으로만
   구성된 `error_codes` 목록을 함께 담습니다. Core 오류 메시지, 오류 세부사항, 요청 본문,
   응답 본문을 복사하면 안 됩니다. Core 호출 자체가 실패하면 기존 내부 훅 명령 오류
   경로를 유지합니다. 이 갱신은 읽기 전용이며, 갱신 실패 거절은 일반 훅 관찰 기록 외에
-  Core 상태 효과를 만들지 않습니다. 유효한 결과에서 닫기 차단 사유가 남아 있거나,
+  Core 상태 효과를 만들지 않습니다. 유효한 결과는 일치한 receipt를
+  `result.close_status.authority_receipt`에 주입합니다. 닫기 차단 사유가 남아 있거나,
   사용자 소유 판단이 대기 중이거나, 미해결 미기록 변경이 남아 있으면 `deny`를 반환하고,
   그렇지 않으면 `allow`를 반환합니다.
 
@@ -970,7 +1005,8 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
 <a id="user-interaction-commands"></a>
 
 `volicord inbox` 명령은 사람이 로컬 CLI에서 `User Channel`을 통해 대기 중인 사용자
-판단을 나열하고 답할 수 있는 경로를 제공합니다. 이 명령은 Agent
+판단을 나열하고 답하거나 대상 결합 Evidence 관찰을 기록하는 경로를 제공합니다. 이
+명령은 Agent
 Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Connection이 사용자처럼
 동작할 수 있게 하지 않습니다.
 
@@ -1006,6 +1042,11 @@ JSON 출력에서 확인할 수 있습니다.
   이 CLI 프로세스가 로컬 consent URL을 소유하지 않으므로 `action_required`를
   보고합니다. 사용할 수 있다면 MCP Judgment Inbox 항목에 이미 표시된 URL을
   사용하도록 안내하고, 그렇지 않으면 CLI 답변 명령을 안내합니다.
+- `volicord inbox observe`는 직접 로컬 사용자 User Channel을 통해
+  `volicord.record_user_observation`을 호출합니다. 각 `--artifact` ID를 현재의
+  검증된 바이트로 해석하고 정확히 하나의 `--criterion` 또는 기존 `--claim`에
+  대해 기본 supported 또는 `--contradicted` relevance를 기록합니다. 이는
+  Evidence provenance이며 판단이나 최종 수락이 아닙니다.
 
 판단 하나를 기록하는 것은 그 판단만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
 판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.
@@ -1015,8 +1056,9 @@ JSON 출력에서 확인할 수 있습니다.
 출력은 사용할 수 없는 호스트 프롬프트 입력이 채팅 캡처, 로컬 consent URL, CLI
 받은편지함 같은 다른 답변 경로를 숨기지 않도록 사용 가능한 답변 경로도 요약합니다. 이
 출력은 증거, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 만들지 않습니다.
-`volicord inbox answer`만 대기 중인 해당 판단을 변경하며, 그것도 선택된 Core 생성
-선택지를 통해서만 변경합니다.
+`volicord inbox answer`는 선택된 Core 생성 선택지를 통해 대기 중인 해당 판단만
+변경합니다. `volicord inbox observe`는 별도로 User Channel Evidence 관찰 하나를
+만들며 판단을 해결하지 않습니다.
 
 <a id="dry-run"></a>
 ## 미리보기와 JSON 출력
@@ -1091,11 +1133,57 @@ JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 �
 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락을 증명하지 않는다고
 나열합니다. 이 명령은 저장된 행 본문, Product Repository 파일 내용, 프롬프트 텍스트를
 출력하면 안 됩니다.
+`diagnostics.sqlite`가 있으면 저장 범주 요약은 크기가 제한된 식별 정보, 범주, 카운터,
+바이트 크기, 지연 범위를 포함하고 제외되는 진단 내용 범주는 저장하지 않는다고
+명시합니다.
 
 설정과 doctor JSON은 진단 소비자가 설정 동작 상태와 설치 프로필 상태를 구분할 수
 있도록 `status_meaning`을 포함해야 합니다. doctor JSON은 최상위 상태가
 `complete`로 남는 경고 전용 후속 동작을 `actions_recommended[]`에, 차단하는 로컬
 복구 동작을 `actions_required[]`에 구분해야 합니다.
+
+<a id="session-diagnostics"></a>
+## 세션 진단
+
+`volicord diagnostics session [--session ID] [--json]`은 선택된 Runtime Home에서
+크기가 제한된 로컬 운영 진단 집계를 읽습니다. `--session`을 생략하면 진단 갱신 시각이
+가장 최근인 세션을 선택합니다. 진단 데이터베이스가 없거나 일치하는 세션이 없으면
+`status=no_data`를 반환하며, 읽는 과정에서 데이터베이스를 만들지 않습니다. 일반 설정
+사전 조건은 설치 프로필을 읽을 수 있지만, 보고서 자체는 `diagnostics.sqlite`만 읽고
+프로젝트 `state.sqlite`는 열지 않습니다.
+
+안전한 집계 수집은 MCP 도구 호출 경계와 지원되는 guard 훅 관찰에 기본으로 활성화됩니다.
+진단 저장은 최선 노력 방식입니다. `diagnostics.sqlite`의 실패, 손상, 쓰기 거부는 MCP
+결과, guard 결정, User Channel 결과, Core 커밋, CLI 권한 결과를 바꾸면 안 됩니다. 이
+명령은 관찰 전용이며 `state_version`, 증거 또는 보장 수준, 닫기 준비 상태,
+UserJudgment, 권한 행을 바꾸면 안 됩니다.
+
+JSON 출력의 최상위 필드는 다음과 같습니다.
+
+- `schema_version`, `status`, `scope`
+- `database_file`, `retention_days`, `max_sessions`,
+  `max_events_per_session`을 담는 `storage`
+- 제외되는 내용 범주를 선언하는 `redaction`
+- 보고서가 프로젝트 상태를 열거나 권한 범주를 바꾸지 않는다고 선언하는
+  `authority_isolation`
+- 현재 CLI의 패키지 버전과 `build_id`를 담는 `current_build`
+- `null`을 허용하는 `session`
+
+사용 가능한 `session`은 크기가 제한된 세션, 연결, 프로젝트, 전송, 호스트 종류,
+기록 생성 빌드, 타임스탬프 식별 정보와 `tools[]`, `totals`, `user_channel_counts`,
+`fallback_counts`를 포함합니다. 도구별 집계는 호출 수, 마이크로초 단위 전체/최대/평균
+지연, 요청/응답 바이트 수, 스키마 검증 실패, 검증 실패 뒤 재시도, Core 도달 수,
+Core 커밋 수, 재실행 수를 보고합니다. 전체 집계는 관찰된 제품 파일 쓰기 수와 권한
+상태 새로 고침 실패 수도 보고합니다. 이는 로컬 진단 관찰일 뿐 증거, 행위자 귀속,
+쓰기 권한, 호스트 적합성, 정확성 주장이 아닙니다. 대체 경로 수는 대기 답변에 그 경로가
+선택되었다는 뜻이며 사용자가 그 경로로 판단을 해결했다는 뜻이 아닙니다.
+
+기본 저장소는 프롬프트 본문, Product Repository 경로나 파일 내용, 오류 본문, 비밀값
+텍스트, 판단 질문·답변·이유·메모를 받지 않습니다. 허용 목록 식별 정보와 범주형 결과,
+카운터, 바이트 크기, 지연, 빌드 식별 정보만 저장합니다. 내용을 담는 상세 추적 모드는
+지원하지 않습니다. 향후 상세 추적을 추가하려면 별도로 문서화한 명시적 opt-in 표면과
+독립된 보존·가림 계약이 필요하며, 이 기본 수집 범위를 조용히 넓히면 안 됩니다. 정확한
+배치와 보존은 [저장소 기록](storage-records.md#local-diagnostics-store)이 담당합니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화식 동작

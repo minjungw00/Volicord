@@ -330,10 +330,17 @@ An artifact is evidence-eligible only when storage has:
 
 Evidence eligibility, artifact availability, and evidence sufficiency remain separate. Artifact owner relation integrity is required even though `artifact_links` is a polymorphic owner table.
 
+Artifact byte integrity is also separate from evidence producer provenance and
+claim relevance. Staging or registering caller-supplied bytes never proves that
+an external tool produced them. An `available` / `verified` artifact may remain
+part of a cooperative agent report; Strong evidence additionally requires an
+authority-owned producer anchor, exact output binding, current Task/scope/
+baseline and target, and a supported relevance assessment.
+
 Allowed:
 
 - An `artifacts.status=available` row with `integrity_status=verified` and a valid owner link can support a coverage item.
-- An artifact can support close sufficiency only when a coverage item for a current `evidence_requirement=required` acceptance criterion links that artifact to the same target and has `coverage_state=supported`. Required criteria reject `not_applicable`; optional, `not_required`, supplemental, and retired targets are not close-authoritative.
+- An artifact can support close sufficiency only when a coverage item for a current `evidence_requirement=required` acceptance criterion links that artifact to the same target, has `coverage_state=supported`, and its observation passes the separate producer and relevance checks. Required criteria reject `not_applicable`; optional, `not_required`, supplemental, and retired targets are not close-authoritative.
 
 Required validation:
 

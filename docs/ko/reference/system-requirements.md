@@ -35,6 +35,7 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 | 패키지 관리자 설치 | **지원 범위 밖입니다.** | 이 저장소는 Homebrew 탭이나 포뮬러, Linux 패키지 관리자 패키지, 외부 패키지 레지스트리를 제공한다고 주장하지 않습니다. | 소스 빌드, 로컬 Docker 빌드, 기존 `volicord` 실행 파일, 또는 검증된 게시 자산 세트가 뒷받침하는 릴리스 설치 스크립트를 사용합니다. |
 | Codex와 Claude Code 호스트 최소 버전 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 호스트 호환성은 문서화된 버전 하한이 아니라 운영 점검으로 확인합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행합니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. 문서화되지 않은 Codex 또는 Claude Code 최소 버전에 의존하지 않습니다. |
 | Codex Detective profile의 호스트 훅 루트 결정 | 로컬 Git 작업 트리에서 **지원되고 검증되었습니다.** | 생성된 Codex 탐지형 호스트 훅 명령은 Volicord 관리 래퍼를 호출하기 전에 `git rev-parse --show-toplevel`로 Git 작업 트리 루트를 찾습니다. 초기화는 이 방법을 지원할 수 없으면 Detective profile 설정을 거부합니다. | Codex Detective profile에는 `.git` 작업 트리 루트가 있는 Product Repository를 사용합니다. Codex 훅 환경은 저장소 하위 디렉터리에서도 `git`을 실행할 수 있어야 합니다. 이 전제 조건이 없으면 `--profile record`를 사용합니다. |
+| Git 작업공간 좌표의 참조 저장 방식 | loose ref, `packed-refs`, 일반 작업 트리, linked worktree에 대해 Git `files` 참조 백엔드는 **지원되고 검증되었습니다.** Git `reftable` 참조 저장 방식은 **지원 범위 밖입니다.** | 작업공간 좌표 캡처는 Git을 실행하지 않고 크기가 제한된 Git 제어 파일을 읽습니다. 명시적인 `extensions.refStorage` 값이 `files`가 아니면 기존 브랜치를 unborn으로 오인하지 않고 실패 폐쇄합니다. | 작업공간 좌표에 의존하는 Git 기반 Product Repository의 Change Unit/write-ticket 경로에는 `files` 참조 백엔드를 사용합니다. 지원하지 않는 저장소는 해당 경로를 사용하기 전에 변환합니다. |
 
 <a id="toolchain-requirements"></a>
 
@@ -163,10 +164,11 @@ CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
 요구사항 요약:
 
 - 설치는 찾을 수 있는 `volicord` 명령을 식별해야 합니다.
-- 설정을 로드하는 호스트 프로세스는 설정된 `volicord` 명령을 `mcp --stdio --connection <connection_id>`
-  인자와 함께 시작할 수 있어야 합니다.
-- `shared` 프로젝트 호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다.
-  호스트 환경이 `PATH`로 해석해야 하는 명령 이름 `volicord`를 사용합니다.
+- 개인·로컬 바인딩을 로드하는 호스트 프로세스는 설정된 `volicord` 명령을
+  `mcp --stdio --connection <connection_id>` 인자와 함께 시작할 수 있어야 합니다.
+- 공유 Codex와 Claude Code 프로젝트 설정은 정확한 `PATH` 해석형
+  `volicord mcp --stdio --discover-repository --host <host>` 기술 정보를 사용해야 하며,
+  로컬 ID, 절대 명령, Runtime Home 경로, 환경 맵을 포함하면 안 됩니다.
 - 사용자가 관리하는 일반 MCP 호스트 설정에는 호스트별로 관찰 가능한 로드 가능 여부
   점검이 없습니다.
 
@@ -243,26 +245,34 @@ Windows의 Record profile은 지원되지만, Windows 호스트 훅과 감시기
 | 호스트 | 연결 의도 | 환경 전제 조건 |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` 또는 `HOME`이 사용자 Codex 설정 위치를 식별해야 합니다. 가용성 점검을 위해 `codex`가 `PATH`에서 사용 가능해야 합니다. |
-| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Codex 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. `shared` 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
+| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Codex 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host codex`를 시작하며 상속 환경/기본값 규칙으로 의도한 로컬 Runtime Home을 선택해야 합니다. 공유 항목에는 로컬 ID나 환경 맵이 없습니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
 | Claude Code | `personal`, `global` | Volicord가 `claude mcp` 명령을 사용할 수 있도록 관리 프로세스가 `claude` 실행 파일을 시작할 수 있어야 합니다. |
-| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Claude Code 호스트는 `PATH`를 통해 프로젝트에 묶인 `volicord mcp --stdio`를 시작할 수 있어야 합니다. `shared` 파일은 개인 Runtime Home 경로를 포함하면 안 됩니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
+| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Claude Code 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host claude-code`를 시작하며 상속 환경/기본값 규칙으로 의도한 로컬 Runtime Home을 선택해야 합니다. 공유 항목에는 로컬 ID나 환경 맵이 없습니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
 | 일반 MCP 호스트 | 사용자 관리 | Volicord는 일반 MCP 호스트 설정을 쓰지 않습니다. 외부 호스트를 수동으로 설정하려면 먼저 지원되는 Agent Connection이 있어야 합니다. 외부 호스트는 호스트별 방식으로 로드되고 점검되기 전까지 사용자 관리 상태이며 미검증입니다. |
 
 호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
 
 ## MCP 호스트 환경 요구사항
 
-기준 MCP 호스트 환경은 `volicord mcp --stdio --connection <connection_id> [--project <project_id>]`를
-로컬 자식 프로세스로 시작하고 `stdin`/`stdout`으로 통신할 수 있어야 합니다.
-`connection_id` 프로세스 인자는 생성된 호스트 설정이 기록했거나 사용자가 관리하는 일반
-호스트 설정을 위해 선택된 저장 `connection_internal_id`를 가리킵니다. 선택적 `project_id` 프로세스 인자는 그
-연결에 허용된 저장 `project_internal_id`를 가리킵니다. 둘 다 공개 MCP 도구 인자가
-아닙니다. 이것은 네트워크 리스너 요구사항이 아닙니다.
+기준 MCP 호스트 환경은 지원되는 다음 로컬 자식 프로세스 형태 중 하나를 시작하고
+`stdin`/`stdout`으로 통신할 수 있어야 합니다.
+
+- 개인·로컬 바인딩: `volicord mcp --stdio --connection <connection_id>
+  [--project <project_id>]`
+- 공유 저장소 기술 정보: `volicord mcp --stdio --discover-repository --host
+  codex|claude-code`
+
+로컬 바인딩 형태에서 ID는 저장된 내부 레코드를 이름 붙이며 공개 MCP 도구 인자가
+아닙니다. 발견 형태에서는 프로세스 현재 디렉터리가 의도한 Git 복제본 안에 있어야 하고,
+그 정규화된 저장소가 선택한 Runtime Home에 등록되어 있어야 하며, 선택된 호스트의 활성
+공유 연결 정확히 하나가 이를 포함해야 합니다. 이는 네트워크 리스너 요구사항이 아닙니다.
 
 호스트 프로세스 환경은 아래를 제공해야 합니다.
 
 - 설정된 명령 경로나 `PATH`에 따른 실행 가능한 `volicord` 명령
-- 의도한 Runtime Home이 기본 홈에서 유도되는 위치가 아니고 호스트 설정이 개인 환경 값을 담을 수 있을 때의 `VOLICORD_HOME`
+- 의도한 Runtime Home이 기본 홈에서 유도되는 위치가 아닐 때의 `VOLICORD_HOME`입니다.
+  개인·로컬 설정은 이 값을 담을 수 있지만 공유 저장소 항목은 호스트가 상속한 로컬
+  환경에 의존합니다.
 - Runtime Home과 명시적으로 허용된 각 `Product Repository`에 대한 로컬 파일시스템 접근
 
 `volicord mcp --check --connection <connection_id>`는 그 프로세스 바인딩에 대한 시작

@@ -27,7 +27,7 @@ policy.
 | Guard command tests | [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs), target `guard_command`, package `volicord-cli`. | Guard hook lifecycle behavior for session start, pre-tool, post-tool, prompt capture, and stop; recorded observations; expected-write matching; write-ticket coverage; host-native rendering; prompt-capture command handling; and guarded lifecycle fixtures. | A security proof, human approval record, product acceptance record, or replacement for Core method tests. |
 | Binary tests for MCP transport | [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs), target `mcp_transport`, package `volicord-cli`. | The `volicord mcp` subcommand, help/version, `--check`, stdio framing, JSON-RPC behavior, reconnect cases, and response wrapping. | Core method semantics. |
 | Local HTTP serve transport tests | [`crates/volicord-cli/tests/serve_transport.rs`](../../../crates/volicord-cli/tests/serve_transport.rs), target `serve_transport`, package `volicord-cli`. | The `volicord serve --transport local-http` process path, loopback listener startup, token and origin checks, HTTP session behavior, defensive headers, and MCP request routing through the local HTTP transport. | A general MCP method test or security proof. |
-| Opt-in live host smoke tests | [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs), target `live_host_smoke`, package `volicord-cli`. | Explicit checks against an installed Codex or Claude Code executable in an environment prepared for that host. The tests are ignored by default and require the matching `VOLICORD_RUN_*_SMOKE=1` selector. | A default workspace-test signal, portable host conformance, host trust, credential availability, network availability, or a security proof. |
+| Opt-in live host smoke tests | [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs), target `live_host_smoke`, package `volicord-cli`. | Explicit checks against an installed Codex or Claude Code executable in an environment prepared for that host. Configuration checks use `VOLICORD_RUN_*_SMOKE=1`; interactive Judgment round trips use `VOLICORD_RUN_*_JUDGMENT_SMOKE=1`. Every live check is ignored by default. | A default workspace-test signal, portable host conformance, host trust, credential availability, network availability, or a security proof. |
 | MCP integration tests | [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs), target `mcp_connection`, package `volicord-integration-tests`. | Cross-layer MCP, Core, Store, connection binding, `operation_category` derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Public contract snapshot tests | [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs), target `public_contract_snapshots`, package `volicord-integration-tests`. | Generated API request-schema and MCP tool-contract snapshot drift against the current source projection. | Hand-edited generated snapshots, semantic Reference review, or proof that the public contract is correct. |
 | Conformance implementation tests | [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs), target `baseline`, package `volicord-conformance-tests`. | Baseline cross-method scenarios through Core-facing APIs, including replay, write tickets, artifacts, judgments, close readiness, error routing, and corruption handling. | Product acceptance, security proof, close readiness, or the sole source of a product rule. |
@@ -53,7 +53,7 @@ Reference owner for the fact being checked.
 
 ## Opt-in live host smoke tests
 
-`live_host_smoke` is a normal Cargo test target whose two live checks carry
+`live_host_smoke` is a normal Cargo test target whose four live checks carry
 `#[ignore]`, so an ordinary workspace test run reports those checks as ignored.
 Run one host check only in an environment where that host executable is
 installed and the matching opt-in variable is set:
@@ -61,7 +61,34 @@ installed and the matching opt-in variable is set:
 ```sh
 VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
 VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
 ```
+
+The Judgment variants are human-in-the-loop checks. They create a disposable
+Runtime Home and Product Repository, configure the selected host, then launch
+the installed host interactively with an initial no-write instruction. They
+reuse the runner's normal host authentication environment; the fixture does
+not copy credentials into its isolated Runtime Home. The operator must approve
+the project/MCP entry when the host requires it, choose the answer in the
+host-native MCP elicitation UI, and exit the host after status is reported.
+
+A passing Judgment variant verifies marker Task and Judgment creation,
+host-native prompt/response recording with
+`mcp_elicitation_user_channel`, the resulting Task-state transition, authority
+events, and the matching content-free session diagnostic. If native
+elicitation is unavailable, the harness verifies that the pending Judgment is
+visible through `volicord inbox`, prints an exact `volicord inbox answer`
+command, and fails the native-round-trip check rather than treating fallback as
+native success. The operator may use that command for recovery, but doing so
+does not turn the failed live-native check into a passing result.
+
+Before publishing a release that claims the maintained Codex or Claude Code
+Judgment path, the manual release-validation checklist must run the matching
+Judgment variant against the release candidate and retain the host version,
+Volicord `build_id`, and pass/fail result. An unavailable host, authentication
+environment, or native elicitation surface is a reported skipped validation,
+not a passing round trip.
 
 An explicitly selected check fails when its opt-in variable or host executable
 is unavailable. Passing confirms only the assertions that the installed host

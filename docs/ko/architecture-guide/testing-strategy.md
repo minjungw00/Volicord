@@ -26,7 +26,7 @@
 | Guard 명령 테스트 | `volicord-cli` 패키지의 `guard_command` 대상인 [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs). | `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop`의 guard 훅 생명주기, 기록된 관찰, `expected write` 일치, 쓰기 티켓 범위, 호스트 고유 렌더링, 프롬프트 캡처 명령, guard 생명주기 픽스처. | 보안 증명, 사용자 승인 기록, 제품 수락 기록, Core 메서드 테스트 대체물. |
 | MCP 전송 바이너리 테스트 | `volicord-cli` 패키지의 `mcp_transport` 대상인 [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs). | `volicord mcp` 하위 명령, 도움말/버전, `--check`, 표준 입출력 프레이밍, JSON-RPC 동작, 재연결, 응답 래핑. | Core 메서드 의미. |
 | 로컬 HTTP 전송 테스트 | `volicord-cli` 패키지의 `serve_transport` 대상인 [`crates/volicord-cli/tests/serve_transport.rs`](../../../crates/volicord-cli/tests/serve_transport.rs). | `volicord serve --transport local-http` 프로세스 경로, 루프백 리스너 시작, 토큰과 Origin 점검, HTTP 세션, 방어 헤더, 로컬 HTTP 전송을 통한 MCP 요청 처리. | 일반 MCP 메서드 테스트나 보안 증명. |
-| 명시적으로 실행하는 실제 호스트 스모크 테스트 | `volicord-cli` 패키지의 `live_host_smoke` 대상인 [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs). | 해당 호스트에 맞게 준비된 환경에서 설치된 Codex 또는 Claude Code 실행 파일을 명시적으로 점검할 때. 기본적으로 무시되며 해당 `VOLICORD_RUN_*_SMOKE=1` 선택자가 필요합니다. | 기본 워크스페이스 테스트 신호, 이식 가능한 호스트 적합성, 호스트 신뢰, 자격 증명이나 네트워크 가용성, 보안 증명. |
+| 명시적으로 실행하는 실제 호스트 스모크 테스트 | `volicord-cli` 패키지의 `live_host_smoke` 대상인 [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs). | 해당 호스트에 맞게 준비된 환경에서 설치된 Codex 또는 Claude Code 실행 파일을 명시적으로 점검할 때. 설정 점검은 `VOLICORD_RUN_*_SMOKE=1`, 대화형 판단 왕복은 `VOLICORD_RUN_*_JUDGMENT_SMOKE=1`을 사용하며 모든 실제 점검은 기본적으로 무시됩니다. | 기본 워크스페이스 테스트 신호, 이식 가능한 호스트 적합성, 호스트 신뢰, 자격 증명이나 네트워크 가용성, 보안 증명. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, 작업 범주 파생, 도구 노출, 재실행 맥락 바인딩, MCP에서 보이는 저장소 효과 없음 분기. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 공개 계약 스냅샷 테스트 | `volicord-integration-tests` 패키지의 `public_contract_snapshots` 대상인 [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs). | 생성된 API 요청 스키마와 MCP 도구 계약 스냅샷이 현재 소스에서 생성한 계약과 어긋나는지 점검합니다. | 생성 스냅샷 직접 편집, 의미 기준 참조 검토, 공개 계약이 올바르다는 증명. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -50,7 +50,7 @@ guard 생명주기 설정, JSON 파싱, 재사용 단언을 위한 CLI 통합 �
 
 ## 명시적으로 실행하는 실제 호스트 스모크 테스트
 
-`live_host_smoke`는 일반 Cargo 테스트 대상이고 내부의 두 실제 호스트 점검에
+`live_host_smoke`는 일반 Cargo 테스트 대상이고 내부의 네 개의 실제 호스트 점검에
 `#[ignore]`가 붙어 있습니다. 따라서 일반 워크스페이스 테스트 실행은 이 점검들을
 무시된 항목으로 보고합니다. 호스트 실행 파일이 설치되어 있고 해당 선택 변수를 설정한
 환경에서 호스트 하나의 점검만 실행합니다.
@@ -58,7 +58,29 @@ guard 생명주기 설정, JSON 파싱, 재사용 단언을 위한 CLI 통합 �
 ```sh
 VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
 VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
 ```
+
+판단 변형은 사람 참여형 점검입니다. 폐기 가능한 Runtime Home과 Product Repository를
+만들고 선택한 호스트를 설정한 뒤, 쓰기를 하지 말라는 초기 지시와 함께 설치된 호스트를
+대화형으로 실행합니다. 실행자의 일반 호스트 인증 환경을 재사용하며 픽스처의 격리된
+Runtime Home으로 자격 증명을 복사하지 않습니다. 호스트가 요구하면 운영자가 프로젝트나
+MCP 항목을 승인하고, 호스트 고유 MCP elicitation UI에서 직접 답을 선택하고, 상태 보고가
+끝난 뒤 호스트를 종료해야 합니다.
+
+판단 변형이 통과하면 표식 `Task`와 판단 생성, `mcp_elicitation_user_channel` 근거의
+호스트 고유 프롬프트/응답 기록, 그에 따른 Task 상태 전환, 권한 이벤트, 내용 없는 해당
+세션 진단을 검증한 것입니다. 고유 elicitation을 사용할 수 없으면 테스트 하네스는 대기 판단이
+`volicord inbox`에 보이는지 확인하고 정확한 `volicord inbox answer` 명령을 출력한 뒤,
+대체 경로를 고유 프롬프트 성공으로 취급하지 않고 점검을 실패시킵니다. 운영자는 복구에
+그 명령을 사용할 수 있지만, 그렇게 해도 실패한 실제 고유 프롬프트 점검이 통과 결과로
+바뀌지는 않습니다.
+
+유지되는 Codex 또는 Claude Code 판단 경로를 지원한다고 명시하는 릴리스를 게시하기 전에
+수동 릴리스 검증 체크리스트에서 릴리스 후보를 대상으로 해당 판단 변형을 실행하고 호스트
+버전, Volicord `build_id`, 통과/실패 결과를 보존해야 합니다. 호스트, 인증 환경, 고유
+elicitation 표면을 사용할 수 없으면 통과한 왕복이 아니라 건너뛴 검증으로 보고합니다.
 
 명시적으로 선택한 점검은 선택 변수나 호스트 실행 파일을 사용할 수 없으면
 실패합니다. 통과 결과는 설치된 호스트와 로컬 테스트 환경에서 스모크 테스트가 관찰한

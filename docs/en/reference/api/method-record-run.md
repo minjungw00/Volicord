@@ -27,15 +27,23 @@ This document does not own:
 - a direct answer or result
 - implementation work
 
-The current persisted `Task.mode` and requested `kind` must match this exhaustive matrix:
+The current persisted `Task.mode`, `work_phase`, and requested `kind` must match
+this exhaustive matrix:
 
-| Current `Task.mode` | Allowed `RecordRunRequest.kind` |
-|---|---|
-| `advisor` | `shaping_update` |
-| `direct` | `direct` |
-| `work` | `shaping_update`, `implementation` |
+| Current `Task.mode` | Current `work_phase` | Allowed `RecordRunRequest.kind` |
+|---|---|---|
+| `advisor` | `shaping` | `shaping_update` |
+| `direct` | `implementation` | `direct` |
+| `work` | `shaping` | `shaping_update` |
+| `work` | `implementation` | `implementation` |
 
 Core rejects an incompatible pair before commit. An `advisor` Run is read-only with respect to Product Repository file effects and additionally requires `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, and `write_ticket_id=null`. A compatible `shaping_update` remains a committed Core mutation that records the Run and any method-owned evidence state.
+
+Every Run also requires the verified current Git workspace context to match the
+current Change Unit write basis. This applies to non-write evidence and close
+assessment Runs as well as product-write Runs, so changing branch, HEAD, or
+worktree cannot move Run authority to a different workspace without an explicit
+`replace_current` rebaseline.
 
 The method may also update the current close basis, update compact
 target-scoped evidence coverage, record evidence observations for stable
@@ -117,8 +125,8 @@ Path and access notes:
   evidence sufficiency.
 - `EvidenceObservationInput.source_refs` and `EvidenceUpdateProvenance.source_refs` preserve structurally validated, non-authoritative provenance. Core performs no file read, Git resolution, command execution, URI fetch, or message lookup for these refs. Optional command or Git-diff artifact refs must canonicalize to an existing artifact owned by this project and Task. Source refs never establish evidence sufficiency or close authority.
 - `EvidenceObservationInput.observed_by_actor_source` is not authoritative input.
-  Core always records `observed_by_actor_source` from the verified invocation
-  context, including when the submitted member is non-null.
+  Core derives the committed observer from the validated producer record when
+  one exists and otherwise from the verified invocation context.
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
@@ -137,32 +145,37 @@ Evidence update provenance rules:
 - Request-side `source_kind` and `assurance_level` must form a valid pair, but
   the pair cannot self-assert stronger provenance. Core derives the committed
   pair as follows:
-  - `external_tool` / `external_tool_result` is retained only when the
-    target-matching observation has at least one canonical output artifact whose
-    current bytes are available and verified. `tool_name`,
-    `tool_invocation_id`, `tool_metadata`, and `SourceRef` values are descriptive
-    and do not supply that anchor.
-  - Direct `connection_observation` and `user_observation` inputs are not strong
-    in the baseline because `record_run` has no target-scoped verified
-    connection-observation or User Channel observation record to bind them to.
+  - A canonical artifact proves byte identity and current integrity only. It
+    does not prove who produced the bytes or whether they support the target.
+  - `user_observation` / `user_observed` is retained only when `input_refs`
+    identifies a current target-bound `UserEvidenceObservation` created by
+    [`volicord.record_user_observation`](method-record-user-observation.md), and
+    its exact output artifacts match. Core rechecks the local-user actor,
+    verification basis, relevance, Task, Change Unit, scope, baseline, target,
+    and current bytes.
+  - The baseline has no authority-owned verified command/tool-invocation or
+    registered connection-observation producer record. Direct `external_tool`
+    and `connection_observation` requests therefore downgrade even when an
+    attached artifact is available and integrity-verified. Descriptive tool
+    fields, `SourceRef`, staging metadata, and guard-hook payloads cannot supply
+    a producer or relevance anchor.
   - Direct caller-supplied `reused_evidence` is not a validated reuse path.
   - An unproved strong claim is committed as `agent_report` /
     `cooperative_report`; `unverified_claim` / `unverified` remains unverified.
 - When a supported update relies only on strong, usable target-matching
   `observation_refs`, Core records a current-Run `source_kind=reused_evidence`
-  observation. Its `input_refs` retain each original observation ref, so the
+  observation. Its single `input_ref` retains the original observation ref, so the
   historical observation is a provenance input rather than being relabeled as
-  current. The reuse observation carries artifact outputs named by the current
-  update and a reuse limitation; it does not silently copy the original
-  observation's artifact outputs or limitations, which remain reachable through
-  the retained input ref.
+  current. The reuse observation carries the original observation's exact
+  canonical artifact outputs and a reuse limitation. A current update cannot
+  substitute different bytes into the inherited producer chain.
 - Before creating that reuse observation, Core revalidates the original
   observation identity and target, Task and Change Unit ownership, source Run,
-  current scope revision and baseline, inherited assurance, and the original
-  anchor. External-tool reuse rechecks the original observation-to-artifact
-  link and current artifact bytes. Recursive reuse must lead to the same current,
-  anchored original assurance; a stale, missing, corrupt, mismatched, or cyclic
-  chain is rejected.
+  current scope revision and baseline, inherited assurance, producer anchor,
+  exact outputs, and separate relevance assessment. Every recursive hop
+  strict-decodes its persisted authority metadata and must lead to the same
+  current anchored assurance; a stale, missing, contradicted, corrupt,
+  mismatched, output-substituted, or cyclic chain is rejected.
 - For non-supported states, current target-matching cooperative or unverified
   observation refs may be retained as descriptive support; the strong-reuse
   requirement applies only when refs are used to establish `supported`.
@@ -208,6 +221,9 @@ Product-write recording consumes the write ticket only when:
 - the ticket and its `WriteTicketAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
 - the checked attempt has `product_file_write_intended=true`
 - the checked attempt `baseline_ref` matches the Run `baseline_ref`
+- the verified current Git workspace context still exactly matches the current
+  Change Unit write basis captured when the ticket was issued; a branch, HEAD,
+  worktree, or fingerprint change after issuance rejects consumption
 - observed sensitive categories match the checked attempt's normalized `sensitive_categories`
 - observed changed paths, after Product Repository path normalization, are compatible with the checked attempt
 
@@ -217,7 +233,7 @@ The method rejects stale `expected_state_version` and stale write-ticket basis b
 
 Expiration is calculated using parsed UTC timestamps, not lexical string comparison. An expired write ticket is never consumed. Expired write-ticket use returns `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason=expired`.
 
-Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason` values such as `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`.
+Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.details.write_ticket_reason` values such as `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `workspace_context_mismatch`, `sensitive_category_mismatch`, or `path_mismatch`.
 
 ## Method result fields
 
@@ -264,10 +280,11 @@ Those failures are rejected before commit.
 
 Returns `ToolRejectedResponse` for:
 
-- a `kind` incompatible with the current persisted `Task.mode`
+- a `kind` incompatible with the current persisted `Task.mode` and `work_phase`
 - an `advisor` request that reports a product-file write, non-empty changed paths, or a non-null write ticket
 - stale `expected_state_version`
 - stale write-ticket basis
+- stale or mismatched current Git workspace context
 - missing or invalid write ticket for product writes
 - expired write ticket
 - incompatible write-ticket path, baseline, product-write flag, sensitivity category, Task, or Change Unit
@@ -346,7 +363,7 @@ params:
 
 ## Minimal valid request
 
-This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The target-linked staged artifact becomes the canonical output-artifact anchor for the external-tool observation. The request leaves `observed_by_actor_source=null`; the response shows the actor source derived from the verified invocation. The precondition is local to this document and does not reuse any other method example.
+This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The target-linked staged artifact establishes byte integrity, but no authority-owned tool producer exists, so the requested external-tool classification is committed as a cooperative agent report. The request leaves `observed_by_actor_source=null`; the response shows the actor source derived from the verified invocation. The precondition is local to this document and does not reuse any other method example.
 
 ```yaml
 method: volicord.record_run
@@ -576,8 +593,8 @@ evidence_observations:
     target:
       target_kind: acceptance_criterion
       acceptance_criterion_id: criterion_runprobe_count_001
-    source_kind: external_tool
-    assurance_level: external_tool_result
+    source_kind: agent_report
+    assurance_level: cooperative_report
     observed_by_actor_source: agent_connection:conn_run_probe
     tool_name: "search-count-validator"
     tool_invocation_id: null
@@ -586,7 +603,8 @@ evidence_observations:
     input_refs: []
     source_refs: []
     output_artifact_refs:
-      - artifact_id: artifact_runprobe_report_001
+      - &runprobe_output
+        artifact_id: artifact_runprobe_report_001
         project_id: proj_runprobe_001
         task_id: task_runprobe_001
         display_name: "search-result-count-validation.json"
@@ -604,6 +622,16 @@ evidence_observations:
           produced_at_state_version: 32
         created_by_actor_source: agent_connection:conn_run_probe
         storage_ref: "artifact-storage://search-result-count-validation"
+    producer_anchor:
+      producer_kind: unverified_caller
+      producer_ref: null
+      output_artifact_refs:
+        - *runprobe_output
+      verification_basis: null
+    relevance_assessment:
+      status: unassessed
+      assessment_ref: null
+      assessed_by_actor_source: null
     limitations: []
     observed_at: "<example-observed-at>"
     recorded_at: "<example-recorded-at>"

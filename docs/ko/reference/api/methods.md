@@ -26,6 +26,7 @@
 <a id="volicordrecord_run"></a>
 <a id="volicordrequest_user_judgment"></a>
 <a id="volicordrecord_user_judgment"></a>
+<a id="volicordrecord_user_observation"></a>
 <a id="volicordreconcile_changes"></a>
 <a id="volicordcheck_close"></a>
 <a id="volicordclose_task"></a>
@@ -40,6 +41,7 @@
 | `volicord.record_run` | [실행 기록 메서드 담당 문서](method-record-run.md) |
 | `volicord.request_user_judgment` | [사용자 소유 판단 요청 메서드 담당 문서](method-request-user-judgment.md#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | [사용자 소유 판단 기록 메서드 담당 문서](method-record-user-judgment.md#volicordrecord_user_judgment) |
+| `volicord.record_user_observation` | [사용자 Evidence 관찰 기록 메서드 담당 문서](method-record-user-observation.md#volicordrecord_user_observation) |
 | `volicord.reconcile_changes` | [변경 조정 메서드 담당 문서](method-reconcile-changes.md#volicordreconcile_changes) |
 | `volicord.check_close` | [닫기 메서드 담당 문서](method-close-task.md#volicordcheck_close) |
 | `volicord.close_task` | [닫기 메서드 담당 문서](method-close-task.md#volicordclose_task) |

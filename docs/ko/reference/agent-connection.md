@@ -123,16 +123,19 @@ CLI 쪽 MCP 사전 점검, `volicord mcp --check`, 직접 MCP 핸드셰이크는
 설정을 로드, 신뢰, 승인, 초기화, 노출했다는 증명이 아닙니다.
 
 Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 식별 정보는 `volicord` 서버
-이름, 선택된 연결과 프로젝트 바인딩을 담은 생성 명령과 인자, 그리고
+이름과 정확히 다음 이식 가능한 프로세스 기술 정보입니다. 명령은
+`command="volicord"`, 인자는 `mcp --stdio --discover-repository --host codex`, 환경
+맵은 없음입니다. 저장소에서 보이는 이 관리 항목에는 Connection ID, 프로젝트 ID, 절대
+명령 경로, Runtime Home 경로, 어떤 환경 키도 들어갈 수 없습니다. Codex 사용자 범위
+설정은 계속 로컬 바인딩이므로 선택된 연결·프로젝트 ID와
 `VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
 `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, 프로젝트 바인딩이 있을 때의
-`VOLICORD_MCP_PROJECT_ID=<project_id>` 같은 Volicord 관리 환경 변수 마커로 이루어집니다.
+`VOLICORD_MCP_PROJECT_ID=<project_id>` 같은 관리 시작 환경 변수 마커를 담을 수 있습니다.
 그 서버 항목 아래의 Codex 소유 도구 승인 하위 테이블은 호스트 정책 추가 설정이며,
 Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_mode` 설정을 보존해도
 호스트 신뢰, 활성 도구 노출, 실행 중인 세션의 승인, 정확성, 테스트 충분성, 사람 검토
-완료, 샌드박싱, 행위자 신원을 증명하지 않습니다. Volicord 관리 마커가 없는
-`volicord` 서버 항목은 비관리 항목입니다. 명령, 인자, 관리 마커의 차이는 계속 설정
-불일치입니다.
+완료, 샌드박싱, 행위자 신원을 증명하지 않습니다. 프로젝트 기술 정보가 정확한 형태와
+다르거나 로컬 바인딩의 명령·인자·관리 마커가 달라지면 설정 불일치입니다.
 
 규칙:
 
@@ -173,11 +176,34 @@ Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_
 `.volicord/policy.json`은 의도와 무관한 `local_overlay`이고, 생성된 훅 래퍼는
 `shared`에서도 로컬 파일입니다.
 
-`shared` 주 호스트 파일에도 하나의 로컬 Runtime Home을 위한 `connection_id`와
-`project_id` 프로세스 바인딩 값이 들어갈 수 있습니다. 이 값은 내부 식별 정보이지
-저장소에서 안정적으로 유지되는 선택자가 아닙니다. 따라서 별도의 집중 담당 문서가
-저장소 바인딩 발견 메커니즘을 정의하지 않는 한 이 파일은 복제본에서 그대로 쓸 수 있는
-발견 계약이 아닙니다. 현재 기준 범위에는 그런 메커니즘이 없습니다.
+Product Repository 하나에서 `volicord init`은 선택한 지원 호스트 하나와 활성 저장소
+로컬 `personal` 또는 `shared` 통합 하나만 유지합니다. 다른 지원 호스트나 반대 의도를
+선택하면 관리 호스트와 훅 상태 보기를 마이그레이션하고 이전 Connection Project를 활성
+사용에서 폐기합니다. 단일 로컬 정책에 여러 호스트 통합이나 서로 다른 로컬 통합 의도를
+암묵적으로 동시에 활성화하지 않습니다.
+
+`shared` 주 호스트 파일에는 형식이 지정된 저장소 발견 기술 정보만 들어갑니다. Codex는
+`volicord mcp --stdio --discover-repository --host codex`, Claude Code는 같은 명령의
+`--host claude-code` 형태를 사용합니다. Connection ID, 프로젝트 ID, 절대 실행 파일,
+Runtime Home 경로, 어떤 환경 항목도 넣으면 안 됩니다. 따라서 기술 정보 바이트는 다른
+복제본에서도 그대로 사용할 수 있지만 Agent Connection과 프로젝트 식별 정보는 각
+Runtime Home에 로컬로 남습니다.
+
+저장소 발견 시작 시 MCP 어댑터는 일반 프로세스 환경과 기본값 규칙으로 로컬 Runtime
+Home을 선택하고, 호스트 프로세스의 현재 디렉터리에서 정규화된 Git worktree 루트를
+찾고, 그 정확한 저장소 루트 등록을 조회합니다. 이어서 그 프로젝트를 Connection
+Projects에 포함하고 기술 정보의 호스트와 일치하는 활성 `shared` 프로젝트 범위 Agent
+Connection이 정확히 하나인지 요구한 뒤 세션을 해당 프로젝트 하나로 좁힙니다. 등록되지
+않은 복제본, 일치하는 연결 없음, 일치하는 연결이 둘 이상인 경우에는 init, verify, list,
+중복 제거 동작을 이름 붙인 진단과 함께 닫힌 방식으로 실패합니다. 저장소 메타데이터에서
+내부 ID를 가져오거나 파생하지 않습니다.
+
+로컬 정책과 호스트 오버레이에는 Connection/프로젝트 ID, 절대 명령, Runtime Home 선택,
+허용 목록에 든 로컬 환경 값을 유지할 수 있지만 공유 MCP 기술 정보로 취급하면 안 됩니다.
+이전에 생성된 명시적 로컬 바인딩 형태의 공유 항목은 저장된 관리 지문이 안전한
+마이그레이션을 승인할 때만 인식합니다. Init을 다시 실행하면 관련 없는 호스트 내용을
+보존하면서 이식 가능한 기술 정보로 한 번 교체하고, 수렴한 뒤에는 무동작이 됩니다. 새
+공유 상태 보기는 이전 바인딩 형태를 만들지 않습니다.
 
 기준 범위에서 직접 관리하는 호스트 종류는 `codex`와 `claude_code`입니다. 호스트 중립
 MCP 설정은 사용자 관리입니다. 사용자 관리 설정은 지원되는 Agent Connection이 이미
@@ -337,6 +363,13 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 `User Channel`을 통해 필요한 최종 판단을 기록할 때까지 `missing_final_acceptance`로 막힌
 상태에 남을 수 있습니다.
 
+[테스트 전략](../architecture-guide/testing-strategy.md)의 명시적 실제 판단 테스트 하네스는
+설치된 호스트로 더 작은 연결 왕복을 실행합니다. 표식 `Task` 생성, 제품 결정 판단 생성,
+호스트 고유 MCP User Channel을 통한 사람의 답변, 그 결과인 Task 상태 새로 고침을
+확인합니다. 저장된 해결 근거가 `mcp_elicitation_user_channel`이어야 합니다. 대기 CLI
+inbox 대체 경로는 실행 가능한 복구이지만 성공한 고유 왕복으로 세지 않습니다. 이
+테스트 하네스는 기본적으로 무시되며 이식 가능한 호스트 적합성이나 보안 테스트가 아닙니다.
+
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을
 지니는 답변을 기록하는 지원 로컬 사용자 경로는
@@ -409,6 +442,11 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 - 사람이 대기 중인 판단을 확인하고 Core 생성 선택지를 골라 기록하는 지원 로컬 CLI
   경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord inbox`
   명령군입니다.
+- `volicord.record_user_observation`은 `user_only`이며 Agent Connection에 노출되지
+  않습니다. `volicord inbox observe`가 대상 결합 User Channel Evidence를
+  기록합니다. Agent Connection은 일반 `record_run` 주장, staged artifact, tool
+  metadata, raw guard payload를 사용자 소유 producer/relevance 레코드 대신 사용할
+  수 없습니다.
 - 초기화된 MCP 클라이언트가 `capabilities.elicitation`을 선언하면
   `volicord mcp --stdio`는 `volicord.request_user_judgment`가 만든 대기 판단에 대해 서버
   시작 사용자 입력 요청을 User Channel 경로로 사용할 수 있습니다. 전송 동작은

@@ -31,12 +31,13 @@
 - 현재 적용 범위
 - 기록된 경우 현재 적용 Change Unit 효과 계약
 - 기준선
+- 현재 Task 작업 단계와 Change Unit에 기록된 작업 공간 맥락
 - 필요한 별도 민감 동작 승인
 - 확인된 호출 맥락
 
 확인이 허용되면 열린 쓰기 티켓 하나를 발급합니다. 이 티켓은 현재 `Task`와 Change Unit 안에서 권한 있는 쓰기 의도를 나타내는 Volicord 권한 기록입니다. 파일시스템 집행, OS 권한, 셸 권한, 쓰기가 실제로 일어났다는 증명이 아닙니다. 확인이 허용되지 않으면 쓰기 티켓 경로를 거부하거나 미룹니다.
 
-`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. 이는 호환되는 advisor `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
+`Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. 이는 호환되는 shaping `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
 
 보안 비주장은 [보안](../security.md)이 담당합니다.
 
@@ -73,10 +74,12 @@ PrepareWriteRequest:
 요구사항:
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
-- 모드가 `direct` 또는 `work`인 현재 Task. `advisor`는 쓰기 준비와 호환되지 않습니다.
+- 모드가 `direct` 또는 `work`이고 `work_phase=implementation`인 현재 Task. `advisor`와 shaping은 쓰기 준비와 호환되지 않습니다.
 - 호환되는 현재 적용 범위
 - 기록된 경우 제품 파일 쓰기에 대해 호환되는 현재 적용 Change Unit 효과 계약
-- 호환되는 기준선
+- 현재 Task 기준선과 현재 Change Unit 쓰기 근거에 모두 정확히 일치하는 요청 기준선
+- Product Repository가 Git 기반이면 확인된 현재 Git 작업 공간 맥락과 기준선 시점에
+  Change Unit에 기록된 맥락이 정확히 일치할 것
 - 필요한 사용자 소유 판단
 - 필요한 경우 `accepted` 결과의 별도 민감 동작 승인(`sensitive_approval`)
 - 에이전트 워크플로 호출에 호환되는 `actor_source`
@@ -138,6 +141,7 @@ PrepareWriteRequest:
 - `write_ticket.observed_paths`는 기준 범위에서 `[]`입니다. `detective` 호스트 훅과 감시자 관찰은 별도의 호스트 관찰 및 미기록 변경 기록을 사용합니다.
 - `control_surface`와 `write_ticket.control_surface`는 기준 비집행 모델에서 `os_enforced=false`를 포함해 현재 Volicord 제어 표면을 공개합니다.
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
+- 재실행을 사용하려면 현재 검증된 호출이 원래 재실행 행에 포착된 선택적 Git 작업 공간 맥락을 정확히 유지해야 합니다. 맥락이 달라지거나 새로 없어지거나 생기면 저장된 허용 응답이나 그 쓰기 티켓을 노출하지 않고 `INVOCATION_CONTEXT_MISMATCH`를 반환합니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.
 - `active_user_judgment_refs`는 별도 `sensitive_approval`을 포함해 쓰기 선행조건을 만족하는 현재 `accepted` 결과의 사용자 소유 판단을 가리킬 수 있습니다.
 
@@ -174,6 +178,7 @@ PrepareWriteRequest:
 | `sensitive_approval_missing` | `sensitive_approval` | 필요한 별도 `sensitive_approval` 사용자 판단이 없습니다. |
 | `user_judgment_unresolved` | `user_judgment` | 쓰기 선행조건에 필요한 사용자 소유 판단이 아직 해결되지 않았습니다. |
 | `baseline_mismatch` | `baseline` | `baseline_ref`가 쓰기 호환성 기준과 맞지 않습니다. |
+| `workspace_context_mismatch` | `workspace` | 현재 Git 공통 디렉터리, worktree 식별 정보, 브랜치 또는 detached HEAD 상태, HEAD SHA, 작업 공간 지문 가운데 하나가 Change Unit 기준선 맥락과 다릅니다. `update_scope`가 명시적 현재 기준선으로 Change Unit을 교체할 때까지 티켓을 발급하지 않습니다. |
 | `effect_contract_forbids_product_file_write` | `effect_contract` | 현재 적용 Change Unit 효과 계약이 제품 파일 쓰기를 명시적으로 금지합니다. |
 | `effect_contract_effect_not_allowed` | `effect_contract` | 현재 적용 Change Unit 효과 계약의 비어 있지 않은 허용 효과 목록에 `product_file_write`가 없습니다. |
 | `effect_contract_path_not_allowed` | `effect_contract` | 하나 이상의 `intended_paths`가 현재 적용 Change Unit 효과 계약의 `allowed_paths` 밖에 있습니다. |

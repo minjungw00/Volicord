@@ -27,15 +27,22 @@
 - 직접 응답 또는 결과
 - 구현 작업
 
-현재 저장된 `Task.mode`와 요청한 `kind`는 아래 완전한 행렬과 일치해야 합니다.
+현재 저장된 `Task.mode`, `work_phase`, 요청한 `kind`는 아래 완전한 행렬과
+일치해야 합니다.
 
-| 현재 `Task.mode` | 허용되는 `RecordRunRequest.kind` |
-|---|---|
-| `advisor` | `shaping_update` |
-| `direct` | `direct` |
-| `work` | `shaping_update`, `implementation` |
+| 현재 `Task.mode` | 현재 `work_phase` | 허용되는 `RecordRunRequest.kind` |
+|---|---|---|
+| `advisor` | `shaping` | `shaping_update` |
+| `direct` | `implementation` | `direct` |
+| `work` | `shaping` | `shaping_update` |
+| `work` | `implementation` | `implementation` |
 
 Core는 호환되지 않는 조합을 커밋 전에 거절합니다. `advisor` 실행 기록은 Product Repository 파일 효과에 대해 읽기 전용이며 추가로 `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, `write_ticket_id=null`을 요구합니다. 호환되는 `shaping_update`는 Run과 메서드 소유 증거 상태를 기록하는 Core 상태 변경으로 커밋됩니다.
+
+모든 Run은 확인된 현재 Git 작업 공간 맥락이 현재 Change Unit 쓰기 근거와 일치해야
+합니다. 이 규칙은 제품 쓰기 Run뿐 아니라 쓰기가 없는 증거와 닫기 평가 Run에도
+적용되므로, 명시적인 `replace_current` 재기준 설정 없이 브랜치, HEAD, worktree를 바꿔
+Run 권한을 다른 작업 공간으로 옮길 수 없습니다.
 
 이 메서드는 현재 닫기 근거와 대상별 간결한 증거 범위를 갱신하고, 안정적인
 수락 기준 또는 보충 주장 대상에 대한 증거 관찰을 기록하고, 제품 쓰기를
@@ -116,8 +123,8 @@ ResidualRiskInput:
   않습니다.
 - `EvidenceObservationInput.source_refs`와 `EvidenceUpdateProvenance.source_refs`는 구조가 검증된 권한 효력이 없는 출처를 보존합니다. Core는 이 참조를 위해 파일을 읽거나, Git 객체를 해석하거나, 명령을 실행하거나, URI를 가져오거나, 메시지를 조회하지 않습니다. 선택적인 명령 또는 Git diff 아티팩트 참조는 이 프로젝트와 Task가 소유하는 기존 기준 아티팩트와 일치해야 합니다. 출처 참조는 증거 충분성이나 닫기 권한을 만들지 않습니다.
 - `EvidenceObservationInput.observed_by_actor_source`는 권한 효력이 있는 입력이
-  아닙니다. 제출된 멤버가 null이 아니어도 Core는 확인된 호출 맥락에서
-  `observed_by_actor_source`를 가져와 기록합니다.
+  아닙니다. Core는 검증된 producer 레코드가 있으면 그 레코드에서 커밋된
+  관찰자를 파생하고, 그렇지 않으면 확인된 호출 맥락에서 파생합니다.
 
 닫기 평가 참조 규칙:
 - 호출자가 제공한 `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 `record_kind=run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
@@ -135,29 +142,36 @@ ResidualRiskInput:
 - 요청 측 `source_kind`와 `assurance_level`은 유효한 조합이어야 하지만 그
   조합만으로 더 강한 출처를 스스로 선언할 수 없습니다. Core는 커밋할 조합을
   다음과 같이 파생합니다.
-  - `external_tool` / `external_tool_result`는 대상이 일치하는 관찰에 현재
-    바이트를 사용할 수 있고 검증된 기준 출력 아티팩트가 하나 이상 있을 때만
-    유지됩니다. `tool_name`, `tool_invocation_id`, `tool_metadata`, `SourceRef`는
-    설명용이며 이 앵커를 제공하지 않습니다.
-  - 직접 제출한 `connection_observation`과 `user_observation`은 기준 범위에서
-    강한 출처가 아닙니다. `record_run`에는 이 값을 결합할 대상별 확인된 연결
-    관찰 기록이나 User Channel 관찰 기록이 없기 때문입니다.
+  - 정규 아티팩트는 바이트 identity와 현재 무결성만 증명합니다. 누가 그
+    바이트를 만들었는지 또는 해당 대상을 뒷받침하는지는 증명하지 않습니다.
+  - `user_observation` / `user_observed`는 `input_refs`가
+    [`volicord.record_user_observation`](method-record-user-observation.md)이 만든
+    현재의 대상 결합 `UserEvidenceObservation`을 식별하고 정확한 출력
+    아티팩트가 일치할 때만 유지됩니다. Core는 로컬 사용자 actor, 검증 근거,
+    relevance, Task, Change Unit, scope, baseline, 대상, 현재 바이트를 다시
+    확인합니다.
+  - 기준 구현에는 authority-owned verified command/tool invocation producer나
+    등록된 connection observation producer 레코드가 없습니다. 따라서 직접
+    요청한 `external_tool`과 `connection_observation`은 연결된 아티팩트가
+    사용 가능하고 무결성 검증되어도 강등됩니다. 설명용 tool 필드,
+    `SourceRef`, staging 메타데이터, guard hook payload는 producer 또는
+    relevance 앵커가 될 수 없습니다.
   - 호출자가 직접 제출한 `reused_evidence`는 검증된 재사용 경로가 아닙니다.
   - 입증되지 않은 강한 주장은 `agent_report` / `cooperative_report`로 커밋됩니다.
     `unverified_claim` / `unverified`는 확인되지 않은 상태로 유지됩니다.
 - `supported` 갱신이 강하고 사용할 수 있으며 대상이 일치하는
   `observation_refs`에만 의존하면 Core는 현재 실행 기록에
-  `source_kind=reused_evidence` 관찰을 기록합니다. 그 `input_refs`는 원래 관찰
+  `source_kind=reused_evidence` 관찰을 기록합니다. 그 단일 `input_ref`는 원래 관찰
   참조를 보존하므로 이력 관찰을 현재 관찰로 다시 이름 붙이지 않고 출처 입력으로
-  유지합니다. 재사용 관찰은 현재 갱신이 이름 붙인 출력 아티팩트와 재사용 한계를
-  담지만, 원래 관찰의 출력 아티팩트나 한계를 암묵적으로 복사하지 않습니다. 그
-  정보는 보존된 입력 참조를 통해 계속 추적할 수 있습니다.
+  유지합니다. 재사용 관찰은 원래 관찰의 정확한 정규 아티팩트 출력과 재사용
+  한계를 담습니다. 현재 갱신이 승계된 producer chain에 다른 바이트를 대입할
+  수 없습니다.
 - 이 재사용 관찰을 만들기 전에 Core는 원래 관찰의 identity와 대상, `Task`와
   Change Unit 소유권, 출처 실행 기록, 현재 범위 리비전과 기준선, 승계한 보장
-  수준, 원래 앵커를 다시 검증합니다. 외부 도구 재사용은 원래 관찰과 아티팩트의
-  연결 및 현재 아티팩트 바이트도 다시 확인합니다. 재귀 재사용은 같은 현재
-  앵커가 있는 원래 보장 수준으로 이어져야 하며, 오래되었거나, 없거나, 손상됐거나,
-  일치하지 않거나, 순환하는 체인은 거절됩니다.
+  수준, producer 앵커, 정확한 출력, 분리된 relevance 평가를 다시 검증합니다.
+  각 재귀 단계는 저장된 권한 메타데이터를 엄격히 decode하고 같은 현재 앵커가
+  있는 보장 수준으로 이어져야 합니다. stale, 누락, 모순, 손상, 불일치, 출력
+  대체, 순환 체인은 거부됩니다.
 - `supported`가 아닌 상태에서는 대상이 일치하는 현재 협력적 또는 확인되지 않은
   관찰 참조를 설명용 뒷받침으로 보존할 수 있습니다. 강한 재사용 요구는 참조로
   `supported`를 세울 때만 적용됩니다.
@@ -203,6 +217,8 @@ ResidualRiskInput:
 - 티켓과 그 `WriteTicketAttemptScope`가 기록하려는 Run과 같은 `task_id`와 `change_unit_id`를 식별합니다.
 - `WriteTicketAttemptScope`가 포착한 시도에 `product_file_write_intended=true`가 있습니다.
 - `WriteTicketAttemptScope`가 포착한 시도의 `baseline_ref`가 Run의 `baseline_ref`와 일치합니다.
+- 확인된 현재 Git 작업 공간 맥락이 티켓 발급 시 포착한 현재 Change Unit 쓰기 근거와
+  계속 정확히 일치합니다. 발급 뒤 브랜치, HEAD, worktree, 지문이 바뀌면 소비를 거절합니다.
 - 관찰된 민감 범주가 포착한 시도의 정규화된 `sensitive_categories`와 일치합니다.
 - `Product Repository` 경로 정규화 뒤의 관찰된 변경 경로가 포착한 시도와 호환됩니다.
 
@@ -212,7 +228,7 @@ ResidualRiskInput:
 
 만료는 문자열 사전식 비교가 아니라 파싱한 UTC 타임스탬프로 계산합니다. 만료된 쓰기 티켓은 절대 소비되지 않습니다. 만료된 쓰기 티켓 사용은 `ToolError.details.write_ticket_reason=expired`와 함께 `WRITE_TICKET_INVALID`를 반환합니다.
 
-호환성 불일치 거절은 `WRITE_TICKET_INVALID`를 사용하고 `ToolError.details.write_ticket_reason`에 `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `sensitive_category_mismatch`, `path_mismatch` 같은 값을 담습니다.
+호환성 불일치 거절은 `WRITE_TICKET_INVALID`를 사용하고 `ToolError.details.write_ticket_reason`에 `task_mismatch`, `change_unit_mismatch`, `product_write_flag_mismatch`, `baseline_mismatch`, `workspace_context_mismatch`, `sensitive_category_mismatch`, `path_mismatch` 같은 값을 담습니다.
 
 ## 메서드 결과 필드
 
@@ -259,10 +275,11 @@ ResidualRiskInput:
 
 아래 경우는 `ToolRejectedResponse`를 반환합니다.
 
-- 현재 저장된 `Task.mode`와 호환되지 않는 `kind`
+- 현재 저장된 `Task.mode`와 `work_phase`에 호환되지 않는 `kind`
 - 제품 파일 쓰기, 비어 있지 않은 변경 경로, 또는 `null`이 아닌 쓰기 티켓을 보고하는 `advisor` 요청
 - 오래된 `expected_state_version`
 - 오래된 쓰기 티켓 기준
+- 오래되었거나 일치하지 않는 현재 Git 작업 공간 맥락
 - 제품 쓰기에 필요한 쓰기 티켓 누락 또는 무효
 - 만료된 쓰기 티켓
 - 쓰기 티켓 경로, 기준선, 제품 쓰기 플래그, 민감 범주, Task, Change Unit 비호환
@@ -340,7 +357,7 @@ params:
 
 ## 최소 유효 요청
 
-이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 대상과 연결된 스테이징 아티팩트는 외부 도구 관찰의 기준 출력 아티팩트 앵커가 됩니다. 요청은 `observed_by_actor_source=null`로 두며 응답은 확인된 호출에서 파생된 행위자 출처를 보여 줍니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
+이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 대상과 연결된 스테이징 아티팩트는 바이트 무결성을 설정하지만 authority-owned tool producer가 없으므로 요청한 외부 도구 분류는 협력적 agent report로 커밋됩니다. 요청은 `observed_by_actor_source=null`로 두며 응답은 확인된 호출에서 파생된 행위자 출처를 보여 줍니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
 
 ```yaml
 method: volicord.record_run
@@ -570,8 +587,8 @@ evidence_observations:
     target:
       target_kind: acceptance_criterion
       acceptance_criterion_id: criterion_runprobe_count_001
-    source_kind: external_tool
-    assurance_level: external_tool_result
+    source_kind: agent_report
+    assurance_level: cooperative_report
     observed_by_actor_source: agent_connection:conn_run_probe
     tool_name: "search-count-validator"
     tool_invocation_id: null
@@ -580,7 +597,8 @@ evidence_observations:
     input_refs: []
     source_refs: []
     output_artifact_refs:
-      - artifact_id: artifact_runprobe_report_001
+      - &runprobe_output
+        artifact_id: artifact_runprobe_report_001
         project_id: proj_runprobe_001
         task_id: task_runprobe_001
         display_name: "search-result-count-validation.json"
@@ -598,6 +616,16 @@ evidence_observations:
           produced_at_state_version: 32
         created_by_actor_source: agent_connection:conn_run_probe
         storage_ref: "artifact-storage://search-result-count-validation"
+    producer_anchor:
+      producer_kind: unverified_caller
+      producer_ref: null
+      output_artifact_refs:
+        - *runprobe_output
+      verification_basis: null
+    relevance_assessment:
+      status: unassessed
+      assessment_ref: null
+      assessed_by_actor_source: null
     limitations: []
     observed_at: "<example-observed-at>"
     recorded_at: "<example-recorded-at>"

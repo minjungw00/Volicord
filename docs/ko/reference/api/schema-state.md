@@ -136,7 +136,12 @@ StateSummary:
   state_version: integer
   task_ref: StateRecordRef | null
   mode: string | null
+  work_phase: string | null
+  acceptance_policy: string | null
+  acceptance_policy_reason: string | null
+  lineage: TaskLineageSummary | null
   lifecycle: TaskLifecycleState | null
+  scope_revision: integer
   goal_summary: string | null
   scope_summary: string | null
   non_goals: string[]
@@ -145,6 +150,7 @@ StateSummary:
   active_change_unit_ref: StateRecordRef | null
   effect_contract: ChangeUnitEffectContract | null
   baseline_ref: string | null
+  workspace_context: WorkspaceContext | null
   shaping_readiness: ShapingReadiness | null
   pending_user_judgment_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
@@ -160,21 +166,89 @@ StateSummary:
 의미:
 - `StateSummary`는 상태 참조, 요약, 닫기 준비 상태 필드를 담는 간결한 응답 형태입니다.
 - 메서드의 `include` 플래그는 이 형태의 일부만 선택할 수 있습니다. 메서드 담당 문서가 어떤 상태 보기를 선택하지 않는다고 말하면 `evidence_summary`, `evidence_gate`, `close_state`, `close_blockers`, `guard_health`, `guarantee_display` 같은 `include` 제어 필드는 `null`이나 빈 값으로 반환하지 않고 생략합니다. 반환된 빈 배열은 그 상태 보기를 계산했고 비어 있음을 뜻합니다.
-- `mode`와 `close_state`는 값이 있을 때 제어 값 문자열입니다.
+- `mode`, `work_phase`, `acceptance_policy`, `close_state`는 값이 있을 때 제어
+  값 문자열입니다. `acceptance_policy_reason`은 Core가 Task 소유의 최종 수락
+  정책을 선택한 이유이며 승인이나 면제가 아닙니다.
+- `lineage`는 Task의 정규 predecessor edge 하나와 carry-forward 감사
+  기록입니다. `scope_revision`은 현재 Task 범위 리비전입니다.
 - `goal_summary`, `scope_summary`, `non_goals`, `autonomy_boundary`는 자유 형식
   표시 문자열입니다. `acceptance_criteria`는 `Task`의 현재 기준 기록을
   정규 형태로 담으며 폐기된 기준을 현재 기준으로 표시하지 않습니다.
 - `effect_contract`는 현재 적용 Change Unit의 선택적 추가 효과 계약입니다. `null`은 추가 Change Unit 효과 계약이 기록되어 있지 않다는 뜻입니다. 넓은 안전성이나 제한 없는 실행처럼 설명하면 안 됩니다.
 - `baseline_ref`는 불투명 기준선 식별자입니다.
+- `workspace_context`는 현재 Change Unit 기준선에 결합한 선택적 검증 Git
+  좌표입니다. 그 경로와 해시는 로컬 권한 사실이며 portable repository
+  identity나 보안 보장이 아닙니다.
 - `pending_user_judgment_refs`는 응답 보기에 관련된 현재 대기 판단을 나열합니다. 대기 판단은 `required_for` 대상, 판단 종류, `Task`, Change Unit, 영향받는 참조, 근거가 해당 작업과 호환될 때만 작업을 차단합니다.
 
 의미하지 않는 것:
 - `StateSummary` 필드가 있다는 사실만으로 메서드 커밋 여부가 정의되지 않습니다.
 
 담당 문서 링크:
-- `mode`와 `close_state` 값: [`Task` 생명주기 값](schema-value-sets.md#task-lifecycle-values)
+- Task, lineage, workspace, 닫기 값: [`Task` 생명주기 값](schema-value-sets.md#task-lifecycle-values)
 - 커밋 결정 분기: [공통 응답 분기](schema-core.md#common-response)
 - 메서드별 커밋 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
+
+<a id="task-lineage-workspace-and-authority-receipt"></a>
+### Task lineage, workspace, authority receipt
+
+```yaml
+TaskLineageSummary:
+  predecessor_task_ref: StateRecordRef
+  relation: string
+  creation_reason: string
+  carry_forward: CarryForwardDisposition[]
+
+CarryForwardDisposition:
+  kind: string
+  status: string
+  source_refs: StateRecordRef[]
+
+TaskFlowItem:
+  task_ref: StateRecordRef
+  predecessor_task_ref: StateRecordRef | null
+  relation: string | null
+  mode: string
+  work_phase: string
+  lifecycle_phase: string
+
+WorkspaceContext:
+  vcs: string
+  git_common_dir: string
+  worktree_id: string
+  branch_ref: string | null
+  head_sha: string | null
+  workspace_fingerprint: string
+
+AuthorityReceipt:
+  project_id: string
+  state_version: integer
+  task_ref: StateRecordRef
+  change_unit_ref: StateRecordRef | null
+  scope_revision: integer
+  latest_run_ref: StateRecordRef | null
+  product_file_write_observed: boolean
+  evidence_gate: EvidenceGateSummary | null
+  close_state: string
+  close_blockers: CloseReadinessBlocker[]
+  next_actor: string
+  next_action: NextActionSummary | null
+```
+
+의미:
+
+- `TaskLineageSummary`는 predecessor 관계 하나를 기록합니다. `applied`
+  carry-forward는 새로 검증된 Task 입력이 되고 `reference_only`는 이전 권한을
+  현재 상태로 만들지 않은 채 predecessor 맥락만 보존합니다.
+- `TaskFlowItem[]`은 full status가 연결된 predecessor component를 표시하는
+  파생 보기이며 새 parent-goal 레코드가 아닙니다.
+- `WorkspaceContext`는 local integration과 Core 쓰기 검사가 함께 사용하는 정규
+  Git common-directory 및 linked-worktree identity입니다. branch가 null이면
+  detached HEAD이고 Non-Git repository에서는 context가 null입니다.
+- `AuthorityReceipt`는 한 번 새로 읽은 project state version에서 Core가
+  생성합니다. 선택적 status projection을 생략해도 blocker 목록은 전체입니다.
+  `product_file_write_observed`는 모든 과거 Run이 아니라 최신 기록 Run을
+  설명합니다. receipt 자체는 커밋, 닫기, 수락, 제품 정확성 증명이 아닙니다.
 
 <a id="guard-health-summary"></a>
 ## `GuardHealthSummary`와 관찰 범위
@@ -727,6 +801,8 @@ EvidenceObservation:
   target: EvidenceTarget
   source_kind: string
   assurance_level: string
+  producer_anchor: EvidenceProducerAnchor
+  relevance_assessment: EvidenceRelevanceAssessment
   observed_by_actor_source: string | null
   tool_name: string | null
   tool_invocation_id: string | null
@@ -735,6 +811,33 @@ EvidenceObservation:
   source_refs: SourceRef[]
   output_artifact_refs: ArtifactRef[]
   limitations: string[]
+  observed_at: string
+  recorded_at: string
+
+EvidenceProducerAnchor:
+  producer_kind: string
+  producer_ref: StateRecordRef | null
+  output_artifact_refs: ArtifactRef[]
+  verification_basis: string | null
+
+EvidenceRelevanceAssessment:
+  status: string
+  assessment_ref: StateRecordRef | null
+  assessed_by_actor_source: string | null
+
+UserEvidenceObservation:
+  observation_id: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  relevance_status: string
+  output_artifact_refs: ArtifactRef[]
+  summary: string
+  observed_by_actor_source: string
+  verification_basis: string
   observed_at: string
   recorded_at: string
 
@@ -799,17 +902,33 @@ ObservedChanges:
   `observation_refs`, `supporting_artifact_refs`, `gap_refs`는 대상별 관찰,
   아티팩트, 공백 관계를 보존합니다.
 - `EvidenceSummary.observation_refs`와 `EvidenceCoverageItem.observation_refs`는 Core가 요약이나 대상과 관련지은 커밋된 증거 관찰에 대한 `StateRecordRef` 값을 나열합니다.
-- `EvidenceObservation`은 하나의 증거 대상에 대한 영속 출처 기록입니다. 출처, 보장 수준, 관찰자 행위자 출처, 선택적 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 관찰 타임스탬프를 기록합니다.
+- `EvidenceObservation`은 하나의 증거 대상에 대한 영속 출처 기록입니다.
+  `producer_anchor`는 Core가 검증한 producer 레코드와 정확한 출력을 별도로
+  식별하고, `relevance_assessment`는 권한 출처가 해당 출력과 대상의 관련성을
+  평가했는지 별도로 식별합니다. 바이트 무결성, producer provenance, 근거
+  freshness, 대상 identity, claim relevance는 서로 다른 검사입니다.
+- `UserEvidenceObservation`은 `volicord.record_user_observation`이 만드는 User
+  Channel 소유의 대상 및 근거 결합 레코드입니다. 정확한 정규 아티팩트 ref를
+  결합하며 relevance가 `supported`일 때 user-observed provenance를 설정할 수
+  있습니다. `UserJudgment`나 최종 수락은 아닙니다.
 - `source_refs`는 `SourceRef`를 사용합니다. `input_refs`는 별도 `StateRecordRef[]`로 유지되며 출처 참조는 Core 상태 참조나 닫기 근거 결과 참조가 되지 않습니다.
 - `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`, 관찰자 행위자 출처를 채웁니다. 요청 측 출처와 보장 수준 값은 출처 주장이지 호출자가 부여하는 보장이 아닙니다.
 - `evidence_requirement=required`인 현재 기준의 범위만 닫기 권한에 참여합니다.
   필요한 기준은 `coverage_state=not_applicable`을 거부하며, `optional`,
   `not_required`, 보충 대상, 폐기된 대상은 닫기에 권한 효력이 없습니다.
-- 제출된 `observed_by_actor_source`는 커밋할 행위자를 선택하지 않습니다. Core는 항상 확인된 호출 맥락에서 커밋 값을 파생합니다. null이 아닌 제출 값으로 신뢰를 높이거나 다른 행위자 출처를 가장할 수 없습니다.
+- 제출된 `observed_by_actor_source`는 커밋할 행위자를 선택하지 않습니다. Core는
+  검증된 producer 레코드가 있으면 그 레코드에서, 그렇지 않으면 확인된 호출에서
+  값을 파생합니다. 제출 값으로 신뢰를 높이거나 다른 actor를 가장할 수 없습니다.
 - Core는 확인된 앵커에서 커밋할 `source_kind`와 `assurance_level`을 파생합니다. 앵커가 없는 직접 `connection_observation`, `user_observation`, `external_tool`, 호출자 선언 `reused_evidence` 입력은 `agent_report` / `cooperative_report`로 커밋됩니다. 이 필드 자체는 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락이나 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.
-- `external_tool` / `external_tool_result`에는 대상이 일치하며 현재 바이트를 사용할 수 있고 검증된 기준 출력 아티팩트가 하나 이상 필요합니다. 설명용 도구 필드와 `SourceRef` 값은 이 앵커가 아닙니다.
-- `reused_evidence`는 Core가 원래 관찰의 identity, 대상, 현재 범위와 기준선, 출처 실행 기록, 승계한 보장 수준, 원래 앵커를 다시 검증한 뒤에만 파생합니다. 외부 도구 재사용은 원래 관찰과 아티팩트의 관계 및 현재 바이트도 다시 검증합니다.
-- 기준 범위에는 직접 `record_run` 입력을 위한 대상별 확인된 User Channel 또는 연결 관찰 기록이 없습니다. 따라서 직접 `user_observation`과 `connection_observation`에는 강한 보장 수준을 부여하지 않습니다. 사용자 귀속 관찰이 있더라도 증거일 뿐 최종 수락이나 다른 권한 효력이 있는 사용자 판단은 아닙니다.
+- 기준 구현에는 authority-owned verified command/tool producer나 등록된
+  connection-observation producer가 없습니다. 따라서 직접 `external_tool`과
+  `connection_observation` 입력은 아티팩트 바이트가 검증되어도 협력적 상태입니다.
+- `user_observation`은 현재 `UserEvidenceObservation`, 정확한 출력 일치,
+  `relevance_status=supported`, 검증된 로컬 사용자 provenance, 일치하는 Task,
+  Change Unit, scope, baseline, 대상을 요구합니다.
+- `reused_evidence`는 각 재귀 관찰의 엄격한 저장 producer/relevance
+  메타데이터, 정확한 출력, 대상, 현재 근거, 출처 Run, 승계 보장을 다시 검증한
+  뒤에만 Core가 파생합니다.
 - `unverified_claim`과 `unverified`는 확인된 관찰 없는 주장을 보존하며 그 자체로 충분한 증거가 아닙니다.
 - `tool_metadata`는 설명용 메타데이터이며 권한, 승인, 저장 효과로 취급하면 안 됩니다.
 - `ObservedChanges.changed_paths`는 경로 문자열입니다.

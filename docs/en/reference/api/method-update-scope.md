@@ -33,6 +33,17 @@ This document does not own:
 
 This method is the supported path that turns shaping into a first safe Change Unit when user-owned blockers have been handled.
 
+For `direct` and `work` Tasks, a committed `create_current` or
+`replace_current` operation records `work_phase=implementation`. It also binds
+the new Change Unit's baseline to the verified current workspace context. On a
+Git-backed Product Repository that context contains the common Git directory,
+exact worktree identity, branch or detached-HEAD state, HEAD SHA, and workspace
+fingerprint. Replacing the Change Unit with a current baseline is the explicit
+retarget or rebaseline path after those coordinates change. `keep_current`
+never silently retargets an existing Change Unit. When a current Change Unit
+exists, `keep_current` rejects a Task `baseline_ref` change; the caller must use
+`replace_current` so Task and Change Unit baselines change atomically.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
@@ -84,6 +95,7 @@ Nested owner links:
 A committed non-dry-run request requires:
 
 - verified invocation context with `operation_category=agent_workflow`
+- a verified current workspace context when the Product Repository is Git-backed
 - a compatible same-project Task
 - enough scope to make the next safe action honest when creating or replacing the currently applied Change Unit
 
@@ -104,6 +116,7 @@ Core marks a `status=active` write ticket `status=stale` when its basis no longe
 - non-goals
 - autonomy boundary
 - currently applied Change Unit
+- recorded workspace binding for the currently applied Change Unit
 - project state
 
 Non-claim: `status=stale` does not consume, revoke, expire, or silently reuse the write ticket.
@@ -139,7 +152,7 @@ Returns `UpdateScopeResult` with:
 
 The supported `change_unit.operation` values are owned by [API Value Sets](schema-value-sets.md#method-local-values). This method owns how each operation is reflected in `change_unit_ref`, `state.active_change_unit_ref`, stale write-ticket refs, blocker refs, and `next_actions`.
 
-When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` may be recorded on the new current Change Unit. The effect contract is optional Core state. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records.
+When `change_unit.operation=create_current` or `change_unit.operation=replace_current`, `change_unit.effect_contract` may be recorded on the new current Change Unit. The effect contract is optional Core state. It can express allowed effects, forbidden effects, allowed Product Repository paths, expected outputs, invariants, evidence expectations, and sensitive-action expectations without creating a workflow engine or replacing user-owned authority records. The same operation records the verified workspace coordinate used by later write preparation. A non-Git repository records no VCS binding and does not receive Git-specific comparison checks.
 
 `linked_scope_decision_refs` contains only scope decisions that passed the compatibility and provenance checks above. Historical or rejected scope decisions may remain addressable judgment records, but they are not linked as applied authority.
 
@@ -278,6 +291,7 @@ state:
     close_reason: none
     result: none
     closed_at: null
+  work_phase: implementation
   goal_summary: "Limit saved search filters to owner and label fields."
   scope_summary: "Saved-filter owner and label edit validation."
   non_goals:
@@ -294,6 +308,13 @@ state:
     task_id: task_filter_001
     produced_at_state_version: 19
   baseline_ref: baseline_filter_001
+  workspace_context:
+    vcs: git
+    git_common_dir: "/work/search/.git"
+    worktree_id: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    branch_ref: "refs/heads/filter-scope"
+    head_sha: "0123456789abcdef0123456789abcdef01234567"
+    workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []

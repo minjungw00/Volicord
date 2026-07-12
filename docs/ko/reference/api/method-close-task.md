@@ -92,6 +92,11 @@ API 경계 블록:
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
 - 해당 `Task`의 쓰기 티켓이 아직 열려 있거나, `active` 쓰기 티켓이 해결 없이 만료되었거나, 호스트 훅 또는 감시자 관찰이 티켓 범위 밖의 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다.
 - 유효한 `Task.mode=advisor` 상태에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 이 모드의 닫기 준비 상태 결과는 쓰기 티켓 갱신 항목을 만들거나 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
+- 최종 수락은 intake에서 선택한 Task 소유 `acceptance_policy`를 따릅니다.
+  `required`는 항상 호환 최종 수락을 확인하고, advisor Task에만 허용되는
+  `not_required`는 그 확인만 생략하며, `policy_dependent`는 쓰기 가능한 Task와
+  잔여 위험이 있는 advisor 결과에 수락을 요구합니다. 어떤 정책도 Evidence,
+  위험 수락, 다른 blocker를 면제하지 않습니다.
 - `detective` 프로필에서는 호스트 훅 경로 안전성, 프롬프트 캡처 가능 여부, 미해결 미기록 변경, 호스트 훅이 감지한 쓰기 티켓 문제, `session-watch` 가용성을 포함한 `GuardHealthSummary` 상태도 확인합니다. 호스트 훅 상태를 선택하면 도출된 `CoverageSummary`도 보고합니다. `record` 프로필에서는 호스트 훅이 필요하지 않습니다. 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다.
 - 호스트 훅과 `session-watch` 관찰은 Product Repository 쓰기를 막거나 파일을 바꾼 행위자를 식별하지 않습니다. 예상 쓰기 또는 쓰기 티켓 기록과의 협력형 탐지 및 상관관계만 지원합니다.
 - 현재 수락 기준 중 `evidence_requirement=required`인 항목만 증거 닫기
@@ -100,6 +105,10 @@ API 경계 블록:
   닫기를 차단하지 않습니다. 더 강한 출처가 필요한 기준에는 확인되지 않은
   주장, 출처 없는 증거, 오래됨, 반박됨, 부분적임, 뒷받침되지 않음,
   협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
+  Strong 평가는 현재 바이트 무결성, authority-owned producer 레코드, 정확한
+  출력 결합, 현재 Task/scope/baseline 및 대상, supported relevance를 독립적으로
+  요구합니다. 재사용 Evidence는 원래 producer 및 relevance 레코드를 모든
+  단계에서 재귀 검증합니다.
 - `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `Task`, 현재 범위 리비전, 현재 적용 Change Unit에 묶인 근거를 가진 현재 수락된 취소 판단을 요구합니다. 완료 전용 증거, 최종 수락, 잔여 위험 수락은 필요하지 않습니다.
 - `intent=supersede`는 요청한 종료 경로를 평가합니다. 증거 충분성, 최종 수락, 잔여 위험 수락이 아닙니다.
 

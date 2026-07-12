@@ -35,6 +35,7 @@ The tree is representative after the relevant storage features have been used; i
 ```text
 ~/.volicord/
   registry.sqlite
+  diagnostics.sqlite   # created lazily after a diagnostic session is observed
   projects/
     prj_<internal>/
       state.sqlite
@@ -45,6 +46,7 @@ The tree is representative after the relevant storage features have been used; i
 Storage placement:
 
 - `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, host-hook installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
+- `diagnostics.sqlite` is a lazily created, bounded, non-authority local operability store. It is separate from `registry.sqlite` and every project `state.sqlite` and has no foreign keys into either database.
 - `projects/{project_internal_id}/` is the default Volicord project home shape for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state and project-scoped host-observation records for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used; it may be created lazily when artifact storage is first needed. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority; it may be created lazily when staging occurs. These directories need not exist immediately after project registration.
@@ -78,6 +80,8 @@ Baseline storage persists only the record families defined by this baseline stor
 
 | Stored area | Record family | Stored category | Layout summary |
 |---|---|---|---|
+| `diagnostics.sqlite` | `diagnostic_sessions` | Bounded local operability session | Session, optional connection and project identifiers, transport, optional host kind, producer package/build identity, and start/update timestamps. |
+| `diagnostics.sqlite` | `diagnostic_events` | Content-free operability observation | Session relation, event/tool category, latency and byte counters, validation/retry/Core/replay flags, optional User Channel or fallback category, observed product-write count, authoritative-refresh-failure flag, categorical outcome, and timestamp. |
 | `registry.sqlite` | Runtime Home identity | Runtime identity | One stored `runtime_home_id`, Runtime Home path, registry database path, schema/storage profile, metadata, and timestamps. |
 | `registry.sqlite` | Installation profile | Executable profile | Selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps established by `volicord init`. |
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
@@ -92,7 +96,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record for detected Product Repository changes that are not yet matched to a Core run or other owner-defined record. |
 | `state.sqlite` | `session_watch_baselines` | Session watch baseline | Project-scoped session watch status and baseline snapshot for a registered Product Repository or watched path set, including effective exclusions, snapshot digest metadata, and compact snapshot entries. |
 | `state.sqlite` | `session_watch_observations` | Session watch observation | Project-scoped detective observation derived from comparing a later safe snapshot to a baseline, with observed changed paths, optional expected-write or write-ticket correlation, and optional link to an existing unrecorded-change row. |
-| `state.sqlite` | `tasks` | Work-unit state | User-value work unit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal close summary, current Change Unit pointer, and creator actor source. |
+| `state.sqlite` | `tasks` | Work-unit state | User-value unit with mode and work phase, Task-owned acceptance policy and reason, optional predecessor relation and carry-forward audit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal summary, current Change Unit pointer, and creator actor source. |
 | `state.sqlite` | `acceptance_criteria` | Acceptance criterion | Core-generated criterion identity, owning `Task`, statement, evidence requirement, replacement order, active/retired state, and timestamps. |
 | `state.sqlite` | `evidence_claims` | Supplemental evidence claim | Caller-assigned `Task`-scoped claim identity with one immutable non-empty statement. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
@@ -105,10 +109,11 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
 | `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
-| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for exactly one acceptance-criterion or supplemental-claim target, including Core-derived source kind, assurance level, verified-invocation observer actor source, tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and timestamps. |
+| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one target, including Core-derived source and assurance, producer anchor, separate relevance assessment, exact outputs, observer, refs, limitations, and timestamps. |
+| `state.sqlite` | `user_evidence_observations` | User Channel evidence observation | Local-user-owned target relevance record bound to one current Task/Change Unit/scope/baseline and exact canonical artifact outputs. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
-| `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source and operation category. |
+| `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source, operation category, and the optional canonical Git workspace context captured from the verified invocation. |
 
 ## Record Layout Rules
 
@@ -125,6 +130,10 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - Project-scoped rows belong to a registered project.
 - Agent Sessions, host-hook events, prompt captures, expected writes, unrecorded changes, session watch baselines, and session watch observations belong to one project-local `state.sqlite` and name the Agent Connection that observed or produced the record.
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.
+- A Task has at most one same-project predecessor. Predecessor id, relation, and
+  non-empty reason are either all absent or all present, and self-predecessor
+  edges are rejected. `carry_forward_json` is the explicit disposition audit;
+  it does not bypass current authority checks.
 - An `AcceptanceCriterionId` is Core-generated and project-unique. Its composite same-Task key supports target foreign keys; once a criterion is retired, the row remains retired and is not reused as an active identity.
 - An `EvidenceClaimId` is caller-assigned and unique only within its owning `Task`. The same spelling may exist independently in another `Task`, while the statement for an existing same-Task ID is immutable.
 - Each evidence observation names exactly one same-Task acceptance criterion or supplemental evidence claim. The two target columns cannot both be null or both be populated.
@@ -171,7 +180,7 @@ Storage must validate stored relationships before commit, including:
 
 Ordinary baseline Core operations preserve authority rows through lifecycle or status transitions. Completing, cancelling, or superseding a `Task` changes the relevant lifecycle/status meaning while keeping committed authority rows addressable for audit and recovery.
 
-This preservation applies to `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
+This preservation applies to `tasks`, `change_units`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
 
 ### Host-Observation Records
 
@@ -198,6 +207,45 @@ An unresolved `unrecorded_changes` row means that an observed Product Repository
 - An observation stores changed product paths found by comparing a later safe snapshot with the baseline. It may include expected-write, write-ticket, and unrecorded-change correlation refs.
 - Linking an observation to an expected write or one active matching write ticket is deterministic correlation only.
 - Linking an observation to an `unrecorded_changes` row records local reconciliation context. It does not create a close blocker by itself.
+
+<a id="local-diagnostics-store"></a>
+### Local Diagnostics Store
+
+`diagnostics.sqlite` is independent local operability storage, not a Core,
+registry, evidence, User Channel, or host-observation authority database. Its
+schema version is local to this store. `diagnostic_sessions.session_id` owns
+each event through an internal cascading foreign key, but the database has no
+cross-database relation to `registry.sqlite` or a project `state.sqlite`.
+Connection and project identifiers are non-authority correlation labels only.
+
+Default local collection records only bounded aggregates and categorical
+observations:
+
+- event kind: `mcp_tool_call`, `guard_hook`, or `session`
+- outcome: `success`, `rejected`, `validation_failure`, `tool_error`,
+  `transport_error`, or `unavailable`
+- optional verified User Channel category: `mcp_elicitation`,
+  `prompt_capture`, `local_web_consent`, or `cli_inbox`
+- optional pending fallback category: `prompt_capture`,
+  `local_web_consent`, or `cli_inbox`
+- call, latency, request/response byte, validation failure, retry,
+  Core-reached, Core-committed, replay, observed product-write, and
+  authoritative-refresh-failure counters
+
+The schema has no prompt, path, file-body, error-detail, secret, Judgment
+question, answer, rationale, or note column. The bounded tool field accepts an
+identifier, not arbitrary request text. Content-bearing detailed trace is not
+supported. Any future detailed trace requires a separate explicit opt-in,
+retention, and redaction contract rather than widening these tables.
+
+Retention is enforced on diagnostic writes: sessions older than 7 days are
+removed, at most 64 sessions remain, and at most 1,024 events remain per
+session. Time-based retention compares parsed timestamp values, not lexical
+timestamp text. Absence, corruption, incompatible version, read-only storage,
+or write failure in this database is nonfatal to MCP, guard, Core, and User
+Channel outcomes. Diagnostics must never update `state_version`, evidence,
+assurance, close readiness, judgments, authority events, or replay rows, and
+the authority-bundle export excludes this database.
 
 ### Current Close Basis
 
@@ -259,6 +307,7 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `blocker` |
 | `evidence_observations.source_kind` | `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` |
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
+| `user_evidence_observations.relevance_status` | `supported`, `contradicted` |
 | `blockers.status` | `active`, `resolved`, `superseded` |
 | `tool_invocations.status` | `committed` |
 | `authority_events.operation_category` and `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
@@ -270,14 +319,17 @@ is not sufficient strong provenance by enum value alone. Core records the pair
 after method-owned derivation and records `observed_by_actor_source` from the
 verified invocation rather than trusting the request member. Current close and
 reuse evaluation fail closed and revalidate the target, Task and Change Unit,
-source Run, current scope revision and baseline, and the source-specific anchor.
-For `external_tool` / `external_tool_result`, the row must have a matching
-`artifact_links.owner_record_kind=evidence_observation` relation and the linked
-output artifact must still have available, verified current bytes. A
-`reused_evidence` row must point to exactly one original evidence observation;
-Core recursively revalidates that original identity, inherited assurance, and
-anchor. Descriptive tool metadata and `source_refs_json` cannot satisfy these
-checks.
+source Run, current scope revision and baseline, exact current output bytes,
+the typed producer anchor, and the separate relevance assessment. The baseline
+has no authority-owned external-tool or registered-connection producer path,
+so those direct claims remain cooperative even when their artifact bytes are
+available and verified. A `user_observation` row must point to a current
+`user_evidence_observations` record with exact outputs and
+`relevance_status=supported`. A `reused_evidence` row must point to exactly one
+original evidence observation; Core recursively revalidates that original
+identity, inherited assurance, outputs, producer, and relevance. Descriptive
+tool metadata, raw guard payloads, artifact integrity, and `source_refs_json`
+cannot substitute for a producer or relevance record.
 
 ## Storage-Owned JSON
 
@@ -302,7 +354,7 @@ Rules:
 | `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-judgment reference; it must not store full sensitive command or prompt content. |
 | `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
 | `session_watch_observations` | Observed changed path arrays, compact change-summary JSON, snapshot entry arrays, and metadata for a session watch observation. Snapshot and change summaries do not prove actor identity, intent, product correctness, or close readiness. |
-| `tasks` | Shaping summary, bounded lists, autonomy boundary, current close basis, terminal close summary, and lifecycle summary. Acceptance criteria and supplemental evidence claims use their canonical relational tables instead of Task JSON. |
+| `tasks` | Shaping summary, bounded lists, autonomy boundary, carry-forward dispositions, current close basis, terminal close summary, and lifecycle summary. Acceptance policy, work phase, and lineage edge identity use dedicated columns; acceptance criteria and supplemental evidence claims use their canonical relational tables. |
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |
 | `user_judgments` | Judgment request, context, options, affected refs, artifact refs, basis snapshot, sensitive-action scope, machine-readable resolution, and descriptive rationale metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
@@ -312,10 +364,11 @@ Rules:
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |
 | `evidence_summaries` | Evidence coverage, supporting refs, gap refs, and non-authority metadata. |
-| `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and non-authority metadata for one evidence observation. `source_refs_json` does not create a separate source-record family, authority row, or provenance anchor. |
+| `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and typed Core-derived producer/relevance authority metadata. `source_refs_json` does not create authority. |
+| `user_evidence_observations` | Current basis coordinates, target identity, relevance, exact artifact refs, local-user actor, verification basis, summary, and timestamps. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
 | `authority_events` | Event payloads for committed Core authority mutations. |
-| `tool_invocations` | Committed replay responses. |
+| `tool_invocations` | Committed replay responses and optional canonical Git workspace-context JSON used for replay compatibility. |
 
 Task and Change Unit shaping JSON stores compact summaries and bounded lists only. It does not create an additional persisted record family.
 

@@ -35,6 +35,7 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 | Package-manager installation | **Out of scope.** | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is claimed by this repository. | Use a source build, local Docker build, an existing `volicord` executable, or a release installer backed by a verified published asset set. |
 | Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
 | Codex Detective profile host-hook root resolution | **Supported and verified** for local Git work trees. | Generated Codex detective host-hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects Detective profile setup when that root strategy cannot be supported. | For the Codex Detective profile, use a Product Repository with a `.git` work-tree root and ensure the Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
+| Git workspace-coordinate reference storage | The Git `files` reference backend is **supported and verified** for loose refs, `packed-refs`, normal worktrees, and linked worktrees. Git `reftable` reference storage is **out of scope**. | Workspace-coordinate capture reads bounded Git control files without invoking Git. It detects an explicit non-`files` `extensions.refStorage` value and fails closed instead of treating an existing branch as unborn. | Use the `files` reference backend for a Git-backed Product Repository whose Change Unit/write-ticket path relies on workspace coordinates. Convert an unsupported repository before using that path. |
 
 ## Toolchain Requirements
 
@@ -168,11 +169,13 @@ Requirement summary:
 
 - The installation profile must identify a `volicord` command that can be
   found.
-- Host processes that load the configuration must be able to start the configured `volicord`
-  command with `mcp --stdio --connection <connection_id>` arguments.
-- Shared project host configuration must not embed a personal Runtime Home
-  path. It uses `volicord` as a command name that the host environment
-  must resolve through `PATH`.
+- Host processes that load personal/local bindings must be able to start the
+  configured `volicord` command with `mcp --stdio --connection
+  <connection_id>` arguments.
+- Shared Codex and Claude Code project configuration must use the exact
+  PATH-resolved `volicord mcp --stdio --discover-repository --host <host>`
+  descriptor and must not embed local IDs, an absolute command, a Runtime Home
+  path, or an environment map.
 - User-managed generic host configuration remains user-managed and has no
   host-specific observable loadability gate.
 
@@ -255,21 +258,36 @@ Baseline host and connection-intent requirements:
 | Host | Connection intent | Environment prerequisite |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` or `HOME` must identify the user Codex configuration location; `codex` must be available on `PATH` for the availability check. |
-| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the Codex host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; Codex project trust may still be required. |
+| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the Codex host must resolve `volicord` through `PATH`, start `mcp --stdio --discover-repository --host codex` from inside the clone, and select the intended local Runtime Home through inherited environment/default rules; the shared entry has no local IDs or environment map; Codex project trust may still be required. |
 | Claude Code | `personal`, `global` | The `claude` executable must be launchable by the administrative process so Volicord can use `claude mcp` commands. |
-| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the Claude Code host must be able to start project-bound `volicord mcp --stdio` through `PATH`; the shared file must not embed a personal Runtime Home path; project MCP approval may still be required. |
+| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the Claude Code host must resolve `volicord` through `PATH`, start `mcp --stdio --discover-repository --host claude-code` from inside the clone, and select the intended local Runtime Home through inherited environment/default rules; the shared entry has no local IDs or environment map; project MCP approval may still be required. |
 | Generic | user-managed | Volicord does not write generic MCP host configuration. A supported Agent Connection must already exist before an external host can be configured manually. The external host remains user-managed and unverified until loaded and checked by a host-specific mechanism. |
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
 
 ## MCP Host Environment Requirements
 
-The baseline MCP host environment must be able to start `volicord mcp --stdio --connection <connection_id> [--project <project_id>]` as a local child process and communicate over stdin/stdout. The `connection_id` process argument names the stored `connection_internal_id` written by generated host configuration or selected for user-managed generic host configuration; the optional `project_id` process argument names a stored `project_internal_id` allowed for that connection. Neither is a public MCP tool argument. This is not a network listener requirement.
+The baseline MCP host environment must be able to start one supported local
+child-process shape and communicate over stdin/stdout:
+
+- a personal/local binding: `volicord mcp --stdio --connection
+  <connection_id> [--project <project_id>]`
+- a shared repository descriptor: `volicord mcp --stdio
+  --discover-repository --host codex|claude-code`
+
+In the local-binding shape, the IDs name stored internal records and are not
+public MCP tool arguments. In discovery shape, the process current directory
+must be inside the intended Git clone, that canonical repository must be
+registered in the selected Runtime Home, and exactly one enabled shared
+connection for the selected host must include it. This is not a network
+listener requirement.
 
 The host process environment must provide:
 
 - an executable `volicord` command according to the configured command path or `PATH`
-- `VOLICORD_HOME` when the intended Runtime Home is not the default home-derived location and the host configuration is allowed to carry a personal environment value
+- `VOLICORD_HOME` when the intended Runtime Home is not the default home-derived
+  location; personal/local configuration may carry it, while a shared
+  repository entry relies on the host's inherited local environment
 - local filesystem access to the Runtime Home and each explicitly allowed `Product Repository`
 
 `volicord mcp --check --connection <connection_id>` is a startup validation check for that process binding. It is not complete host integration verification. Complete host verification requires the administrative result gates defined by [Administrative CLI](admin-cli.md).

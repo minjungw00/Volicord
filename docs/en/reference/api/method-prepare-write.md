@@ -31,12 +31,13 @@ This document does not own:
 - current scope
 - current Change Unit effect contract, when one is recorded
 - baseline
+- current Task work phase and the Change Unit's recorded workspace context
 - required separate sensitive-action approval
 - verified invocation context
 
 When the check is allowed, the method issues one open write ticket. The ticket is a Volicord authority record for authorized write intent within the current Task and Change Unit. It is not filesystem enforcement, OS permission, shell permission, or proof that a write occurred. When the check is not allowed, the method denies or defers the ticket path.
 
-`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. This does not prevent a compatible advisor `record_run` call from committing Core Run or evidence state.
+`Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. This does not prevent a compatible shaping `record_run` call from committing Core Run or evidence state.
 
 Security non-claims belong to [Security](../security.md).
 
@@ -73,10 +74,14 @@ Field notes:
 Requires:
 
 - verified invocation context with `operation_category=agent_workflow`
-- a current Task whose mode is `direct` or `work`; `advisor` is incompatible with write preparation
+- a current Task whose mode is `direct` or `work` and whose `work_phase` is `implementation`; `advisor` and shaping are incompatible with write preparation
 - compatible current scope
 - compatible current Change Unit effect contract for product-file writes, when one is recorded
-- compatible baseline
+- a request baseline that exactly matches both the current Task baseline and
+  the current Change Unit write basis
+- an exact match between the verified current Git workspace context and the
+  Change Unit context captured at its baseline, when the Product Repository is
+  Git-backed
 - required user-owned judgments
 - any separate accepted sensitive-action approval (`sensitive_approval`)
 - compatible `actor_source` for the agent workflow invocation
@@ -138,6 +143,7 @@ For `decision=allowed`:
 - `write_ticket.observed_paths` is `[]` in the baseline; detective host-hook and watcher observations use separate host-observation and unrecorded-change records
 - `control_surface` and `write_ticket.control_surface` disclose the current Volicord control surface, including `os_enforced=false` in the baseline non-enforcement model
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
+- replay eligibility requires the current verified invocation to retain the exact optional Git workspace context captured with the original replay row; a changed, newly absent, or newly present workspace context returns `INVOCATION_CONTEXT_MISMATCH` without exposing the stored allowed response or its write ticket
 - the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`
 - `active_user_judgment_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
@@ -174,6 +180,7 @@ The production meanings below apply only when this method reaches a committed no
 | `sensitive_approval_missing` | `sensitive_approval` | A required separate `sensitive_approval` user judgment is absent. |
 | `user_judgment_unresolved` | `user_judgment` | A user-owned judgment required for the write preconditions remains unresolved. |
 | `baseline_mismatch` | `baseline` | `baseline_ref` does not match the write-compatibility basis. |
+| `workspace_context_mismatch` | `workspace` | The current Git common directory, worktree identity, branch or detached-HEAD state, HEAD SHA, or workspace fingerprint differs from the Change Unit baseline context. No ticket is issued until `update_scope` replaces the Change Unit with an explicit current baseline. |
 | `effect_contract_forbids_product_file_write` | `effect_contract` | The current Change Unit effect contract explicitly forbids product-file writes. |
 | `effect_contract_effect_not_allowed` | `effect_contract` | The current Change Unit effect contract has a non-empty allowed-effect list that does not include `product_file_write`. |
 | `effect_contract_path_not_allowed` | `effect_contract` | One or more `intended_paths` are outside the current Change Unit effect contract `allowed_paths`. |

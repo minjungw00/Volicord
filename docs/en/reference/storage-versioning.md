@@ -53,13 +53,13 @@ Write-ticket issuance and compatibility consumption follow normal state-version 
 
 The storage unique key is exactly `(project_id, tool_name, idempotency_key)`. `request_hash` is the conflict discriminator for the public request payload. It does not absorb invocation context such as `actor_source`, `operation_category`, `connection_id`, or `verification_basis`.
 
-New replay rows store complete non-null `actor_source` and `operation_category` from the verified invocation context. A current replay row requires complete matching `actor_source` and `operation_category`. Missing required replay identity is invalid stored state, not a compatibility projection.
+New replay rows store complete non-null `actor_source` and `operation_category` from the verified invocation context. When the verified invocation carries a Git workspace context, the row also stores its canonical JSON as `git_workspace_context_json`; absence is stored as `null`. A current replay row requires complete matching `actor_source` and `operation_category` plus an exact match between the stored and current optional Git workspace contexts. Missing required replay identity is invalid stored state, not a compatibility projection.
 
 Replay eligibility:
 
 - a stored response must never be returned before the current invocation has a verified invocation context
 - Core checks invocation-context compatibility before request-hash compatibility
-- incompatible context returns `INVOCATION_CONTEXT_MISMATCH` and must not expose the stored response
+- incompatible context, including a changed or newly absent/present Git workspace context, returns `INVOCATION_CONTEXT_MISMATCH` and must not expose the stored response
 - compatible context plus the same `idempotency_key` and same `request_hash` returns the stored original committed response exactly
 - compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT`
 

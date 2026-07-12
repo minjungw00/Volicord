@@ -53,8 +53,8 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **`Volicord Runtime Home`**
 
-- **Contains:** `registry.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel judgments, artifacts, and session-watch records.
-- **Used by:** `volicord init`, project, connection, inbox, changes, doctor, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, and artifacts.
+- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel judgments, artifacts, and session-watch records. The separate diagnostics database stores only bounded local operability aggregates.
+- **Used by:** `volicord init`, project, connection, inbox, changes, doctor, diagnostics, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord diagnostics session` reads only the bounded diagnostics store after normal setup checks. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, artifacts, and best-effort operability aggregation.
 - **Boundary:** It is not a Product Repository, external host configuration, or installation directory. It does not provide or prove OS sandboxing, network isolation, scanning, host trust, actor attribution, write prevention, tamper-proof audit, full filesystem monitoring, correctness, test sufficiency, review completion, final acceptance, or residual-risk acceptance.
 
 **`Product Repository`**
@@ -71,7 +71,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **External MCP host configuration**
 
-- **Contains:** Host-owned or user-managed configuration that can name `volicord mcp --stdio`, an internal Agent Connection binding, and environment values such as `VOLICORD_HOME`.
+- **Contains:** Host-owned or user-managed configuration that can name a `volicord mcp --stdio` process. Personal/local overlays may carry an internal Agent Connection binding, absolute command, and local environment such as `VOLICORD_HOME`. Repository-visible shared Codex and Claude Code entries carry only the typed `volicord mcp --stdio --discover-repository --host <host>` descriptor with no local IDs or environment map.
 - **Used by:** The external host for loading and trust decisions. `volicord` may write supported direct configuration only when [Administrative CLI](admin-cli.md) defines that behavior.
 - **Boundary:** It is not Runtime Home registry state or Core authority, and it does not prove Volicord authority. When stored in a `Product Repository`, it is only an explicit integration file.
 
@@ -83,7 +83,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **`volicord mcp --stdio` MCP adapter process**
 
-- **Handles:** One Agent Connection in a local stdio child process. It resolves Runtime Home, validates connection state, exposes tools by `connection.mode`, selects allowed projects, derives adapter-owned invocation facts, and routes public method calls through Core and Store.
+- **Handles:** One local stdio child process bound to one Agent Connection, either by an explicit local ID or by a unique local repository-discovery result. It resolves Runtime Home, validates connection state, exposes tools by `connection.mode`, selects allowed projects, derives adapter-owned invocation facts, and routes public method calls through Core and Store. Repository discovery canonicalizes the current Git worktree and narrows the process to the one registered project selected in the local Runtime Home.
 - **Started by:** An MCP host, which communicates through stdin/stdout.
 - **Boundary:** It does not grant arbitrary product-file edit authority or authority to record user judgments. It does not enforce host trust, provide sandboxing, or open an MCP network transport listener. Unless disabled, the process may separately bind an ephemeral loopback-only HTTP listener for local User Channel consent; that listener is not the MCP transport.
 
@@ -151,15 +151,29 @@ configuration and rule paths. `.volicord/policy.json` declares
 must not be committed as a shared projection. Generated wrapper scripts are
 also local because they carry process-binding paths and identifiers.
 
+For one Product Repository, these repository-local surfaces represent one
+selected supported host, active intent, and profile. An init that changes the
+selected host, intent, or profile must preserve unrelated mixed-owner content,
+retire matching Volicord-owned prior-host, opposite-intent, or
+no-longer-applicable projections, and keep the union of prior and requested
+local-only Git excludes until migration succeeds. Safe retirement is
+conditional on the planned ownership marker, projection, or managed
+fingerprint; changed or unmanaged content is a conflict.
+
 Codex `.codex/hooks.json` is exact-owned by the Volicord integration and
 different existing JSON is a conflict. Claude Code
 `.claude/settings.local.json` preserves unrelated settings through a managed
 projection, but the host treats the whole file as local, so personal init
 excludes the complete path. Shared hook configuration and rule files remain
 repository-visible. Whether to commit those shared surfaces is a Product
-Repository policy decision, but a shared `.codex/config.toml` or `.mcp.json`
-containing local `connection_id` and `project_id` values is not a clone-portable
-discovery descriptor: those values must resolve in the selected Runtime Home.
+Repository policy decision. The Volicord MCP entry in a shared
+`.codex/config.toml` or `.mcp.json` is clone-portable only in the exact
+host-specific repository-discovery shape: command `volicord`, arguments
+`mcp --stdio --discover-repository --host codex|claude-code`, and no environment
+map. Connection/project IDs, absolute commands, Runtime Home paths, and
+secret-like or other environment keys belong only to local overlays and are
+invalid in that shared entry. Each clone must still be registered with a unique
+enabled shared connection in its selected local Runtime Home.
 
 For a linked worktree, the common `info/exclude` contains only the
 intent-independent policy and wrapper paths read safely by every sibling.
@@ -294,6 +308,7 @@ Must not claim:
 May claim:
 - Storage/runtime owners define what operational data belongs in `Volicord Runtime Home`.
 - Storage/runtime owners define validation, storage effects, record layout, artifact storage, versioning, and recovery behavior for that data.
+- `diagnostics.sqlite` may live at the Runtime Home root while remaining separate from the registry and every project authority database. Its location does not give its observations Core, evidence, close-readiness, User Channel, or security authority.
 
 Must not claim:
 - `Volicord Runtime Home` is the `Product Repository`.

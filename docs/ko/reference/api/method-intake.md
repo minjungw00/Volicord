@@ -45,10 +45,26 @@ Task 세분성 지침:
   불명확하면 shaping 상태에 알려진 경계만 두거나 사용자에게 묻고, 더 큰 목표를
   추론하지 않습니다.
 
+Core는 이 구분을 오래 유지되는 상태로 만듭니다. 새 Task는 Task 생명주기와 별도로
+`work_phase`를 기록합니다. `advisor`와 `work`는 `shaping`에서 시작하고 `direct`는
+`implementation`에서 시작합니다. 현재 적용 Change Unit을 만들거나 교체하면 `work`
+Task는 `implementation`으로 전환됩니다. Task를 재개하면 기록된 단계를 유지합니다.
+이 단계는 Run 종류와 쓰기 티켓 호환성을 제한하지만 두 번째 Task, 개발 방법론 엔진,
+현재 적용 범위의 대체물이 아닙니다.
+
+Task를 만들 때 선행 Task 관계 하나도 기록할 수 있습니다. 이 관계는 새 Task가 생긴
+이유와 선택적으로 승계한 선행 자료를 보존하지만 선행 Task 권한을 현재 상태로 만들지
+않습니다. 상태 조회는 저장된 선행 관계를 사용해 연결된 Task 흐름을 보여 줄 수 있습니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `plain_language_request`, `requested_mode`, `resume_policy`.
+- `acceptance_policy`. `required`, `not_required`, `policy_dependent`, JSON
+  `null` 가운데 하나를 반드시 제공합니다. `null`이면 Core가 모드 기본값을 선택하고,
+  선택한 정책과 이유는 여전히 Task에 기록됩니다.
+- `lineage`. `TaskLineageInput` 또는 JSON `null`을 반드시 제공합니다. Task 재개에는
+  `null`을 사용하고, 새 후속 Task에는 선행 Task 하나를 지정할 수 있습니다.
 - 알고 있는 첫 범위 후보는 `initial_scope.boundary`,
   `initial_scope.non_goals`, `initial_scope.acceptance_criteria`에 둡니다.
   알려진 목록 항목이 없으면 빈 배열을 사용합니다. 각 기준 입력은 문장과
@@ -67,9 +83,17 @@ IntakeRequest:
   plain_language_request: string
   requested_mode: string
   resume_policy: string
+  acceptance_policy: string | null
+  lineage: TaskLineageInput | null
   initial_scope: object
   initial_context_refs: StateRecordRef[]
   initial_source_refs: SourceRef[]
+
+TaskLineageInput:
+  predecessor_task_id: string
+  relation: string
+  creation_reason: string
+  carry_forward: string[]
 ```
 
 중첩 형태 담당 문서:
@@ -78,6 +102,54 @@ IntakeRequest:
 - `initial_context_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#state-references)가 담당합니다.
 - `initial_source_refs`는 [API 상태 스키마](schema-state.md#non-authoritative-source-references)가 담당하는 권한 효력이 없는 `SourceRef[]` 형태를 사용합니다. Core는 이 참조의 구조를 검증해 Task 맥락으로 저장하지만 그 내용을 검사하거나 범위를 넓히거나 기준선을 선택하거나 증거 또는 권한을 만들 때 사용하지 않습니다.
 - `requested_mode`와 `resume_policy` 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)과 [메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.
+- `acceptance_policy`, `lineage.relation`, `lineage.carry_forward` 값은
+  [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다.
+
+수락 정책 규칙:
+
+- `acceptance_policy=null`은 `advisor`에서 `not_required`, `direct` 또는 `work`에서
+  `required`를 선택합니다.
+- `resume_policy=resume_active`는 `acceptance_policy=null`을 요구하고 선택한 Task에
+  저장된 정책과 이유를 유지합니다. 접수 재개로 이 값을 바꾸지 않습니다.
+- `not_required`는 접수 시 `advisor` Task에만 유효합니다. Agent Connection은 이 값을
+  선택해 쓰기 가능한 작업의 최종 수락을 면제할 수 없습니다.
+- `policy_dependent`는 현재 결과와 위험 기준에 따라 Core가 담당 문서의 닫기 정책을
+  평가해야 한다는 뜻입니다. 닫기 시점의 에이전트 재량이 아닙니다.
+- 커밋된 `StateSummary`는 선택한 정책과 Core가 만든 이유를 함께 노출합니다. 정책은
+  증거, 잔여 위험 수락, 민감 동작 승인, 다른 차단 사유를 대체하지 않습니다.
+
+Task 계보와 선택적 승계 규칙:
+
+- `lineage`는 접수가 새 Task를 만들 때만 허용됩니다. 선행 Task는 같은 프로젝트에
+  존재하는 다른 Task여야 하고 `creation_reason`은 비어 있으면 안 됩니다.
+- 관계 값은 `continues`, `derived_from`, `split_from`, `replaces`,
+  `implements_advice_from`입니다. `implements_advice_from`은 `result=advice_only`로
+  완료된 `advisor` 선행 Task를 요구합니다.
+- `carry_forward`는 `scope`, `non_goals`, `user_decisions`, `source_refs`,
+  `context_refs`, `known_limitations`, `unresolved_obligations`, `residual_risks`,
+  `baseline` 가운데 중복 없이 명시적으로 고르는 목록입니다.
+- 명시적으로 선택한 범주에는 실제로 승계하거나 참조할 수 있는 선행 자료가 있어야
+  합니다. 접수는 자료가 없는 범위, 제외 목표, 출처 참조, 맥락 참조, 기준선, 참조 전용
+  선택을 거절하며 오해를 부르는 `applied` 또는 `reference_only` disposition을 기록하지
+  않습니다.
+- 선택한 범위와 제외 목표는 제출된 첫 범위와 호환될 때만 새 Task 입력이 됩니다.
+  범위 자료로 검증 기준 문장과 증거 요구 수준을 복사할 수 있지만 새 Task에는 새
+  `AcceptanceCriterionId`가 만들어집니다.
+- 선택한 출처와 맥락 참조는 권한 효력이 없는 맥락으로 남습니다. `source_refs`를
+  선택하면 선행 Task에 실제로 저장된 참조만 복사합니다. artifact를 포함한 참조는
+  선행 Task 범위를 유지하며, Core는 이를 새 Task artifact로 바꿔 표시하지 않고 정확한
+  artifact 소유 관계와 무결성을 다시 검증합니다.
+- 선택한 사용자 판단, 알려진 한계, 의무, 잔여 위험은 정확한 활성 선행 연속성 레코드
+  또는 호환되는 현재 close-basis Run/위험 참조를 가리키는 reference-only disposition을
+  만듭니다. 활성 호환 레코드가 없는 범주를 선택하면 접수를 거절하며 선행 Task만
+  가리키는 disposition을 꾸며 내지 않습니다. 참조된 사실이 새 Task의 범위, 수락,
+  위험, 쓰기 요구사항을 만족하려면 여전히 새 owner 검사가 필요합니다.
+- 선택한 기준선은 선행 기준선이 존재하고 선행 Task 기준선이 현재 Change Unit 쓰기
+  근거와 정확히 같으며, 기록된 Git worktree, 브랜치 또는 detached HEAD 상태, HEAD SHA,
+  작업 공간 지문이 계속 호환될 때만 복사합니다. 그렇지 않으면 접수는 승계를 거절하고
+  명시적 재기준 설정을 요구하며 오래된 기준선 권한을 복사하지 않습니다.
+- Core는 선택한 범주별 승계 처리 결과를 하나씩 기록하여 상태 조회가 적용된 자료와
+  참조 전용 맥락을 구분할 수 있게 합니다.
 
 ## 접근 요구사항
 
@@ -184,6 +256,8 @@ params:
   plain_language_request: "새 작업 공간 설정을 위한 첫 실행 체크리스트를 만드세요."
   requested_mode: work
   resume_policy: create_new
+  acceptance_policy: null
+  lineage: null
   initial_scope:
     boundary: "새 작업 공간 설정용 첫 실행 체크리스트."
     non_goals:
@@ -225,6 +299,10 @@ state:
     task_id: task_onboard_001
     produced_at_state_version: 18
   mode: work
+  work_phase: shaping
+  acceptance_policy: required
+  acceptance_policy_reason: "쓰기 가능한 작업에는 최종 수락이 필요합니다."
+  lineage: null
   lifecycle:
     lifecycle_phase: shaping
     close_reason: none

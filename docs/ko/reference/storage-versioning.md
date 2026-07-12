@@ -53,13 +53,13 @@
 
 저장소 고유 키는 `(project_id, tool_name, idempotency_key)`입니다. `request_hash`는 공개 요청 본문의 충돌을 구분합니다. `actor_source`, `operation_category`, `connection_id`, `verification_basis` 같은 호출 맥락은 해시에 포함하지 않습니다.
 
-새 재실행 행은 검증된 호출 맥락의 `actor_source`와 `operation_category`를 빠짐없이 `NULL`이 아닌 값으로 저장합니다. 현재 재실행 행을 사용하려면 두 값이 모두 현재 호출과 일치해야 합니다. 필수 재실행 식별 정보가 빠진 행은 호환성 상태 보기가 아니라 유효하지 않은 저장 상태입니다.
+새 재실행 행은 검증된 호출 맥락의 `actor_source`와 `operation_category`를 빠짐없이 `NULL`이 아닌 값으로 저장합니다. 검증된 호출에 Git 작업 공간 맥락이 있으면 그 정규 JSON도 `git_workspace_context_json`에 저장하고, 없으면 `null`로 저장합니다. 현재 재실행 행을 사용하려면 `actor_source`와 `operation_category`가 모두 일치하고 저장된 선택적 Git 작업 공간 맥락과 현재 값도 정확히 일치해야 합니다. 필수 재실행 식별 정보가 빠진 행은 호환성 상태 보기가 아니라 유효하지 않은 저장 상태입니다.
 
 재실행 조건:
 
 - 현재 호출의 맥락을 검증하기 전에는 저장된 응답을 반환하면 안 됩니다.
 - Core는 요청 해시보다 호출 맥락의 호환성을 먼저 확인합니다.
-- 호출 맥락이 호환되지 않으면 `INVOCATION_CONTEXT_MISMATCH`를 반환하고 저장된 응답을 노출하지 않습니다.
+- Git 작업 공간 맥락이 달라지거나 한쪽에만 있는 경우를 포함해 호출 맥락이 호환되지 않으면 `INVOCATION_CONTEXT_MISMATCH`를 반환하고 저장된 응답을 노출하지 않습니다.
 - 호출 맥락, `idempotency_key`, `request_hash`가 모두 같으면 처음 커밋해 저장한 응답을 그대로 반환합니다.
 - 호출 맥락과 `idempotency_key`는 같지만 `request_hash`가 다르면 `STATE_VERSION_CONFLICT`를 반환합니다.
 

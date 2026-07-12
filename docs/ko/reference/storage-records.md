@@ -35,6 +35,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 ```text
 ~/.volicord/
   registry.sqlite
+  diagnostics.sqlite   # 진단 세션을 관찰한 뒤 필요할 때 생성
   projects/
     prj_<internal>/
       state.sqlite
@@ -45,6 +46,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 저장 위치:
 
 - `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필, 프로젝트 등록 매핑과 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, 레지스트리 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
+- `diagnostics.sqlite`는 필요할 때 생성되는 크기 제한 비권한 로컬 운영 진단 저장소입니다. `registry.sqlite` 및 모든 프로젝트 `state.sqlite`와 분리되며 어느 데이터베이스에도 외래 키를 두지 않습니다.
 - `projects/{project_internal_id}/`는 등록된 프로젝트 하나에 대한 기본 Volicord 프로젝트 홈 형태입니다. `repo_root`와 같은 위치나 권한이 아닙니다.
 - `state.sqlite`는 등록된 프로젝트의 로컬 Core 상태와 프로젝트 범위 호스트 관찰 기록을 저장합니다.
 - `artifacts/`는 아티팩트 저장소를 사용할 때의 프로젝트 아티팩트 저장소이며, 아티팩트 저장소가 처음 필요할 때 늦게 만들어질 수 있습니다. `artifacts/tmp/`는 아티팩트 스테이징에 필요할 때 쓰는 임시 스테이징 공간이며 증거 권한이 아닙니다. 이 디렉터리도 스테이징이 일어날 때 늦게 만들어질 수 있습니다. 이 디렉터리들은 프로젝트 등록 직후에 반드시 존재할 필요가 없습니다.
@@ -78,6 +80,8 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 
 | 저장 영역 | 기록 계열 | 저장 범주 | 배치 요약 |
 |---|---|---|---|
+| `diagnostics.sqlite` | `diagnostic_sessions` | 크기 제한 로컬 운영 세션 | 세션, 선택적 연결 및 프로젝트 식별 정보, 전송, 선택적 호스트 종류, 기록 생성 패키지/빌드 식별 정보, 시작/갱신 타임스탬프. |
+| `diagnostics.sqlite` | `diagnostic_events` | 내용을 담지 않는 운영 관찰 | 세션 관계, 이벤트/도구 범주, 지연과 바이트 카운터, 검증/재시도/Core/재실행 플래그, 선택적 User Channel 또는 대체 경로 범주, 관찰된 제품 쓰기 수, 권한 상태 새로 고침 실패 플래그, 범주형 결과, 타임스탬프. |
 | `registry.sqlite` | Runtime Home 식별 정보 | 런타임 식별 | 저장된 `runtime_home_id` 하나, Runtime Home 경로, 레지스트리 데이터베이스 경로, 스키마/저장 프로필, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 설치 프로필 | 실행 파일 프로필 | `volicord init`이 마련한 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 프로젝트 등록과 별칭 | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, 별칭에서 내부 식별 정보로 가는 매핑. |
@@ -92,7 +96,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `unrecorded_changes` | 미기록 Product Repository 변경 | Core 실행 또는 담당 문서가 정의한 다른 기록과 아직 연결되지 않은 관찰된 Product Repository 변경에 대한 프로젝트 범위 미해결 또는 해결 기록. |
 | `state.sqlite` | `session_watch_baselines` | 세션 감시 기준선 | 등록된 Product Repository 또는 감시 경로 집합에 대한 프로젝트 범위 세션 감시 상태와 기준선 스냅샷입니다. 유효한 제외 항목, 스냅샷 다이제스트 메타데이터, 간결한 스냅샷 항목을 포함합니다. |
 | `state.sqlite` | `session_watch_observations` | 세션 감시 관찰 | 이후의 안전한 스냅샷을 기준선과 비교해 얻은 프로젝트 범위 `detective` 관찰입니다. 관찰된 변경 경로, 선택적 예상 쓰기 또는 쓰기 티켓 상관 관계, 기존 미기록 변경 행에 대한 선택적 연결을 포함합니다. |
-| `state.sqlite` | `tasks` | 작업 단위 상태 | 사용자 가치 작업 단위, 구체화 요약, 범위와 닫기 근거의 개정 정보, `null` 허용 현재 닫기 근거, 생명주기/결과/종료 닫기 요약, 현재 적용 Change Unit 포인터, 생성자 행위자 출처. |
+| `state.sqlite` | `tasks` | 작업 단위 상태 | 모드와 work phase, Task 소유 acceptance policy와 이유, 선택적 predecessor 관계와 carry-forward 감사, 구체화 요약, 범위와 닫기 근거 리비전, `null` 허용 현재 닫기 근거, 생명주기/결과/종료 요약, 현재 Change Unit 포인터, 생성자 actor source를 가진 사용자 가치 단위. |
 | `state.sqlite` | `acceptance_criteria` | 수락 기준 | Core가 생성한 기준 identity, 소유 `Task`, 문장, 증거 요구 수준, 교체 순서, 활성/폐기 상태, 타임스탬프. |
 | `state.sqlite` | `evidence_claims` | 보충 증거 주장 | 호출자가 부여한 `Task` 범위 주장 identity와 비어 있지 않은 불변 문장 하나. |
 | `state.sqlite` | `change_units` | 범위 있는 작업 경계 | 범위 요약, 쓰기 근거, Change Unit 생명주기, 소유 `Task` 관계. |
@@ -105,10 +109,11 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite`와 아티팩트 저장소 | `artifacts` | 영속 아티팩트 기록 | 영속 아티팩트 메타데이터 또는 본문 위치, 콘텐츠 타입, SHA-256, 크기, 무결성 상태, 가림 처리, 보존, 생산자, 가용성 사실. |
 | `state.sqlite` | `artifact_links` | 아티팩트 소유 관계 | 아티팩트와 기준 범위 Core/API 기록 계열 사이의 소유 관계. |
 | `state.sqlite` | `evidence_summaries` | 증거 요약 | 간결한 증거 범위, 뒷받침 참조, 공백 참조. |
-| `state.sqlite` | `evidence_observations` | 증거 관찰 | 수락 기준 또는 보충 주장 대상 중 정확히 하나에 대한 영속 출처 기록입니다. Core가 파생한 출처 종류와 보장 수준, 확인된 호출에서 가져온 관찰자 행위자 출처, 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
+| `state.sqlite` | `evidence_observations` | 증거 관찰 | 대상 하나에 대한 영속 provenance 레코드입니다. Core 파생 source/assurance, producer 앵커, 분리된 relevance 평가, 정확한 출력, 관찰자, ref, 한계, 타임스탬프를 포함합니다. |
+| `state.sqlite` | `user_evidence_observations` | User Channel 증거 관찰 | 현재 Task/Change Unit/scope/baseline 하나와 정확한 정규 아티팩트 출력에 결합된 로컬 사용자 소유 대상 relevance 레코드입니다. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
-| `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행. 행위자 출처와 작업 범주를 포함합니다. |
+| `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행입니다. 행위자 출처, 작업 범주, 검증된 호출에서 포착한 선택적 정규 Git 작업 공간 맥락을 포함합니다. |
 
 ## 기록 배치 규칙
 
@@ -125,6 +130,10 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 - 프로젝트 범위 행은 등록된 프로젝트에 속합니다.
 - 에이전트 세션, 호스트 훅 이벤트, 프롬프트 캡처, 예상 쓰기, 미기록 변경, 세션 감시 기준선, 세션 감시 관찰은 프로젝트별 `state.sqlite` 하나에 속하며 그 기록을 관찰했거나 만든 Agent Connection을 이름 붙입니다.
 - `Task` 범위 행은 자신을 소유한 `tasks` 행과 같은 프로젝트와 같은 `Task`에 속합니다.
+- Task에는 같은 프로젝트의 predecessor가 최대 하나 있습니다. Predecessor ID,
+  관계, 비어 있지 않은 이유는 모두 없거나 모두 있어야 하고 self-predecessor
+  edge는 거부됩니다. `carry_forward_json`은 명시적 disposition 감사 기록이며
+  현재 권한 검사를 우회하지 않습니다.
 - `AcceptanceCriterionId`는 Core가 생성하며 프로젝트 안에서 고유합니다. 같은 `Task` 복합 키는 대상 외래 키를 지원합니다. 기준이 폐기되면 그 행은 폐기 상태로 남고 활성 identity로 다시 쓰이지 않습니다.
 - `EvidenceClaimId`는 호출자가 부여하며 소유 `Task` 안에서만 고유합니다. 다른 `Task`에서는 같은 철자를 독립적으로 사용할 수 있지만, 기존 같은 `Task` ID의 문장은 바꿀 수 없습니다.
 - 각 증거 관찰은 같은 `Task` 수락 기준 또는 보충 증거 주장 중 정확히 하나를 이름 붙입니다. 두 대상 열을 모두 `null`로 두거나 둘 다 채울 수 없습니다.
@@ -169,7 +178,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 
 일반적인 기준 범위 Core 동작은 생명주기 또는 상태 전환을 통해 권한 행을 보존합니다. `Task`를 완료, 취소, 대체하면 관련 생명주기/상태 의미가 바뀝니다. 그래도 커밋된 권한 행은 감사와 복구를 위해 계속 주소 지정 가능해야 합니다.
 
-이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
+이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
 ### 호스트 관찰 기록
 
@@ -196,6 +205,39 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 - 관찰은 이후의 안전한 스냅샷을 기준선과 비교해 찾은 변경 제품 경로를 저장합니다. 예상 쓰기, 쓰기 티켓, 미기록 변경의 선택적 상관 참조도 포함할 수 있습니다.
 - 관찰을 예상 쓰기나 일치하는 `active` 쓰기 티켓 하나에 연결하는 것은 결정적 상관관계일 뿐입니다.
 - 관찰을 `unrecorded_changes` 행에 연결하면 로컬 조정 맥락을 기록합니다. 그 자체로 닫기 차단 사유를 만들지는 않습니다.
+
+<a id="local-diagnostics-store"></a>
+### 로컬 진단 저장소
+
+`diagnostics.sqlite`는 독립된 로컬 운영 저장소이며 Core, 레지스트리, 증거,
+User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키마 버전은 이 저장소에만
+적용됩니다. `diagnostic_sessions.session_id`는 데이터베이스 내부의 연쇄 외래 키로 각
+이벤트를 소유하지만, `registry.sqlite`나 프로젝트 `state.sqlite`와 데이터베이스 간
+관계를 두지 않습니다. 연결 및 프로젝트 식별 정보는 권한 효력이 없는 상관 라벨일
+뿐입니다.
+
+기본 로컬 수집은 크기가 제한된 집계와 범주형 관찰만 기록합니다.
+
+- 이벤트 종류: `mcp_tool_call`, `guard_hook`, `session`
+- 결과: `success`, `rejected`, `validation_failure`, `tool_error`,
+  `transport_error`, `unavailable`
+- 선택적 확인 User Channel 범주: `mcp_elicitation`, `prompt_capture`,
+  `local_web_consent`, `cli_inbox`
+- 선택적 대기 대체 경로 범주: `prompt_capture`, `local_web_consent`, `cli_inbox`
+- 호출, 지연, 요청/응답 바이트, 검증 실패, 재시도, Core 도달, Core 커밋,
+  재실행, 관찰된 제품 쓰기, 권한 상태 새로 고침 실패 카운터
+
+스키마에는 프롬프트, 경로, 파일 본문, 오류 세부 정보, 비밀값, 판단 질문·답변·이유·메모
+열이 없습니다. 크기가 제한된 도구 필드는 임의 요청 텍스트가 아니라 식별 정보만
+받습니다. 내용을 담는 상세 추적은 지원하지 않습니다. 향후 상세 추적을 추가하려면
+이 테이블을 넓히는 대신 별도의 명시적 opt-in, 보존, 가림 계약이 필요합니다.
+
+진단 쓰기 때 보존 한도를 적용합니다. 7일보다 오래된 세션을 제거하고, 세션은 최대
+64개, 세션별 이벤트는 최대 1,024개를 유지합니다. 시간 기반 보존은 타임스탬프 텍스트의
+사전식 순서가 아니라 해석한 시간 값을 비교합니다. 이 데이터베이스의 부재, 손상,
+비호환 버전, 읽기 전용 상태, 쓰기 실패는 MCP, guard, Core, User Channel 결과에 치명적이지
+않습니다. 진단은 `state_version`, 증거, 보장 수준, 닫기 준비 상태, 판단, 권한 이벤트,
+재실행 행을 갱신하면 안 되며 권한 번들 내보내기는 이 데이터베이스를 제외합니다.
 
 ### 현재 닫기 근거
 
@@ -257,6 +299,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `blocker` |
 | `evidence_observations.source_kind` | `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` |
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
+| `user_evidence_observations.relevance_status` | `supported`, `contradicted` |
 | `blockers.status` | `active`, `resolved`, `superseded` |
 | `tool_invocations.status` | `committed` |
 | `authority_events.operation_category`와 `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
@@ -267,13 +310,15 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 충분한 강한 출처가 되지 않습니다. Core는 메서드 소유 파생 뒤에 이 조합을 기록하고,
 요청 멤버를 신뢰하지 않고 확인된 호출에서 `observed_by_actor_source`를 가져옵니다. 현재
 닫기 평가와 재사용 평가는 대상, `Task`와 Change Unit, 출처 실행 기록, 현재 범위 리비전과
-기준선, 출처별 앵커를 다시 검증하고 입증되지 않으면 차단합니다.
-`external_tool` / `external_tool_result` 행에는 일치하는
-`artifact_links.owner_record_kind=evidence_observation` 관계가 있어야 하고, 연결된 출력
-아티팩트의 현재 바이트를 계속 사용할 수 있으며 검증된 상태여야 합니다.
-`reused_evidence` 행은 원래 증거 관찰 하나만 가리켜야 하며 Core는 그 identity, 승계한
-보장 수준, 앵커를 재귀적으로 다시 검증합니다. 설명용 도구 메타데이터와
-`source_refs_json`은 이 검사를 만족할 수 없습니다.
+기준선, 정확한 현재 출력 바이트, 타입이 지정된 producer 앵커, 별도의 relevance 평가를
+다시 검증하고 입증되지 않으면 차단합니다. 기준 구현에는 authority-owned 외부 도구 또는
+등록 연결 producer 경로가 없으므로 해당 직접 주장은 아티팩트 바이트를 사용할 수 있고
+검증된 상태여도 협력적 상태로 남습니다. `user_observation` 행은 정확한 출력과
+`relevance_status=supported`를 가진 현재 `user_evidence_observations` 레코드를 가리켜야
+합니다. `reused_evidence` 행은 원래 증거 관찰 하나만 가리켜야 하며 Core는 그 identity,
+승계한 보장 수준, 출력, producer, relevance를 재귀적으로 다시 검증합니다. 설명용 도구
+메타데이터, raw guard payload, 아티팩트 무결성, `source_refs_json`은 producer 또는
+relevance 레코드를 대신할 수 없습니다.
 
 ## 저장소 소유 JSON
 
@@ -298,7 +343,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `unrecorded_changes` | 미기록 Product Repository 변경의 관찰 경로 배열, 탐지 JSON, 해결 JSON, 메타데이터. 해결 JSON은 간결한 해결 근거, 캡처 근거, 해결 메서드, 선택적 연결 사용자 판단 참조를 저장합니다. 전체 민감 명령이나 프롬프트 내용을 저장하면 안 됩니다. |
 | `session_watch_baselines` | 세션 감시 기준선을 위한 감시 경로 배열, 유효한 제외 배열, 스냅샷 항목 배열, 메타데이터. 스냅샷 항목은 경로, 종류, 크기, 해시 또는 건너뛴 이유 메타데이터만 저장하며 파일 내용을 저장하지 않습니다. |
 | `session_watch_observations` | 세션 감시 관찰을 위한 관찰된 변경 경로 배열, 간결한 변경 요약 JSON, 스냅샷 항목 배열, 메타데이터. 스냅샷과 변경 요약은 행위자 식별, 의도, 제품 정확성, 닫기 준비 상태를 증명하지 않습니다. |
-| `tasks` | 구체화 요약, 제한된 목록, 자율성 경계, 현재 닫기 근거, 종료 닫기 요약, 생명주기 요약. 수락 기준과 보충 증거 주장은 `Task` JSON 대신 각 정규 관계형 테이블을 사용합니다. |
+| `tasks` | 구체화 요약, 제한된 목록, 자율성 경계, carry-forward disposition, 현재 닫기 근거, 종료 닫기 요약, 생명주기 요약. Acceptance policy, work phase, lineage edge identity는 전용 열을 사용하고 수락 기준과 보충 증거 주장은 각 정규 관계형 테이블을 사용합니다. |
 | `change_units` | 범위 요약, 제한된 목록, 쓰기 근거 요약, 선택적 효과 계약 데이터, 생명주기 지원 데이터. |
 | `user_judgments` | 판단 요청, 맥락, 선택지, 영향 참조, 아티팩트 참조, 근거 스냅샷, 민감 동작 범위, 기계 판독 가능 해결, 설명용 판단 이유 메타데이터. |
 | `project_continuity_records` | 오래 유지하는 프로젝트 맥락을 위한 적용 대상 경로, 적용 대상 참조, 원천 참조, 아티팩트 참조, 대체된 참조, 검토 트리거, 비권한 메타데이터. |
@@ -308,10 +353,11 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `artifacts` | 보존, 생산자, 비권한 메타데이터. |
 | `artifact_links` | 비권한 메타데이터. |
 | `evidence_summaries` | 증거 범위, 뒷받침 참조, 공백 참조, 비권한 메타데이터. |
-| `evidence_observations` | 증거 관찰 하나의 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 `SourceRef` JSON, 출력 아티팩트 참조, 한계, 권한 효력이 없는 메타데이터입니다. `source_refs_json`은 별도 출처 기록 계열, 권한 행, 출처 앵커를 만들지 않습니다. |
+| `evidence_observations` | 증거 관찰 하나의 도구 메타데이터, Core 기록 입력 ref, 권한 효력이 없는 `SourceRef` JSON, 출력 아티팩트 ref, 한계, 타입이 지정된 Core 파생 producer/relevance 권한 메타데이터입니다. `source_refs_json`은 권한을 만들지 않습니다. |
+| `user_evidence_observations` | 현재 근거 좌표, 대상 identity, relevance, 정확한 아티팩트 ref, 로컬 사용자 actor, 검증 근거, 요약, 타임스탬프입니다. |
 | `blockers` | 차단 사유 소유 참조, 관련 참조, 세부 정보, 비권한 메타데이터. |
 | `authority_events` | 커밋된 Core 권한 변경의 이벤트 페이로드. |
-| `tool_invocations` | 커밋된 재실행 응답. |
+| `tool_invocations` | 커밋된 재실행 응답과 재실행 호환성에 사용하는 선택적 정규 Git 작업 공간 맥락 JSON. |
 
 `Task`와 Change Unit 구체화 JSON은 간결한 요약과 제한된 목록만 저장합니다. 추가 영속 기록 계열을 만들지 않습니다.
 

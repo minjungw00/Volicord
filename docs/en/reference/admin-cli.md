@@ -70,6 +70,7 @@ volicord --version
 volicord init --host codex|claude-code --repo PATH [--shared] [--profile record|detective] [--home PATH] [--mcp-command PATH] [--dry-run] [--json]
 volicord status [--repo PATH] [--task active|ID] [--json]
 volicord doctor [--json] [--privacy-footprint]
+volicord diagnostics session [--session ID] [--json]
 volicord connection add [HOST] [--repo PATH] [--shared|--global] [--read-only] [--dry-run] [--json]
 volicord connection list [--repo PATH] [--json]
 volicord connection status [HOST] [--repo PATH] [--shared|--global] [--json]
@@ -82,6 +83,7 @@ volicord project list [--json]
 volicord project rename NAME [--repo PATH] [--json]
 volicord project forget [PATH|NAME] [--json]
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
+volicord mcp --stdio --discover-repository --host codex|claude-code
 volicord mcp --check --connection <connection_id>
 volicord mcp --check --connection <connection_id> --project <project_id>
 volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-listen 0.0.0.0:8765] [--home PATH] [--connection <connection_id>] [--project PATH]... [--token-file PATH | --token TOKEN | --generate-token] [--allow-origin ORIGIN]
@@ -90,6 +92,7 @@ volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
 volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
 volicord inbox open <judgment-id> [--repo PATH] [--json]
+volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
 ```
 
 Supported `HOST` values are `codex` and `claude-code`. When `HOST` is omitted,
@@ -227,7 +230,7 @@ Arguments:
 | Argument | Meaning |
 |---|---|
 | `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
-| `--mcp-command PATH` | Stores the exact `volicord` command that managed host configuration should use before the `mcp --stdio --connection <connection_id> [--project <project_id>]` arguments when init creates or updates the installation profile. Omission uses the running `volicord` executable selected by init. |
+| `--mcp-command PATH` | Stores the exact local `volicord` command in the installation profile for personal/local connection bindings, verification, and other local startup flows. Omission uses the running `volicord` executable selected by init. A shared repository-visible MCP entry never embeds this path; it uses the fixed PATH-resolved `volicord` repository-discovery descriptor. |
 | `--json` | Selects machine-readable, noninteractive output. Init does not prompt in JSON mode. |
 
 Init effects that relate to Runtime Home and installation profile selection:
@@ -358,27 +361,27 @@ Connection modes:
   the selected connection without requiring users to edit host configuration.
 
 The internal host configuration key `server_name` defaults to `volicord`.
-Ordinary CLI flows do not expose a server-name option. A generated host
-configuration may contain `connection_id` and, when safely project-bound,
-`project_id` process-binding values derived from stored internal identities,
-server name, and command arguments so that the host can start
-`volicord mcp --stdio`; those values are saved process-binding details, not
-user authority tokens. Text-mode command input uses the selected host, intent,
-and repository root instead.
+Ordinary CLI flows do not expose a server-name option. A generated personal,
+local, or user-wide host configuration may contain `connection_id` and, when
+safely project-bound, `project_id` values derived from stored internal
+identities so that the host can start `volicord mcp --stdio`; those values are
+saved local process-binding details, not user authority tokens. A shared
+repository-visible entry instead contains only the typed host-specific
+repository-discovery descriptor. Text-mode command input uses the selected
+host, intent, and repository root rather than internal IDs.
 
 Ordinary `volicord connection add` commands use the saved profile in the resolved
 Runtime Home instead of asking for an MCP command path or Runtime Home path.
 Personal, local, or user-wide host configuration may carry that Runtime Home as
 `VOLICORD_HOME`. Shared project host configuration must not embed a personal
-Runtime Home path; it uses `volicord` as the command name and project-bound
-`mcp --stdio --connection <connection_id> --project <project_id>` arguments
-when the generated entry is for one selected project. Connection-only generated
-arguments are reserved for entries that intentionally serve more than one
-connected project. The host environment must resolve the command through
-`PATH`. The saved `connection_id` and `project_id` still have to resolve in the
-selected local Runtime Home. A project-scoped file containing those values is
-not a clone-portable repository-discovery descriptor, and init does not derive
-replacement local IDs from repository metadata.
+Runtime Home path. It uses command `volicord`, no environment map, and exactly
+`mcp --stdio --discover-repository --host codex` or
+`mcp --stdio --discover-repository --host claude-code`. The host environment
+must resolve `volicord` through `PATH` and select its local Runtime Home through
+the inherited process environment or platform default. Startup resolves the
+canonical current Git repository to the unique enabled shared connection and
+project registered for that host in that Runtime Home. Repository metadata is
+never used to derive local IDs.
 
 <a id="agent-host-setup-and-init"></a>
 ### Host setup profiles
@@ -391,8 +394,9 @@ intent flag, init creates a `personal` connection: Codex uses its user
 configuration target, while Claude Code uses its repository-local CLI scope.
 Adding `--shared` selects the project-scoped host layout in
 `.codex/config.toml` or `.mcp.json`; that generated entry starts
-`volicord mcp --stdio --connection <connection_id> --project <project_id>`
-through `PATH` and does not embed a personal Runtime Home path.
+`volicord mcp --stdio --discover-repository --host codex|claude-code` through
+`PATH` and contains no local IDs, absolute command, Runtime Home path, or
+environment map.
 
 Connection intent selects the managed Agent Connection target. Init separately
 keeps its current repository integration inventory for both `personal` and
@@ -407,6 +411,18 @@ Personal Claude Code detective settings use `.claude/settings.local.json`;
 shared detective settings use `.claude/settings.json`. Those integration files
 do not change the stored connection intent or its primary host scope.
 
+For one Product Repository, init owns one selected supported host and one active
+repository-local integration intent and profile. Re-running init with a
+different supported host, the opposite `personal` or `shared` intent, or a
+change between `record` and `detective`, is a managed migration rather than an
+additional coexisting local integration. The migration must identify the prior
+host, intent, and profile from the validated local policy, preserve unrelated
+mixed-owner content, retire only matching Volicord-owned host entries, hook
+handlers, managed blocks, and exact files, and fail on modified or unmanaged
+lookalikes rather than deleting them. The prior Agent Connection may remain as
+disabled history, but it must no longer be an enabled Connection Project for
+that repository.
+
 For every init in a Git-backed Product Repository, Volicord recomputes one
 managed block in the selected worktree's effective Git `info/exclude`. It
 resolves a normal `.git` directory, a `.git` gitdir file, and a linked worktree
@@ -415,9 +431,13 @@ always excludes `/.volicord/` and the dedicated Volicord wrapper scripts under
 `.codex/hooks/` and `.claude/hooks/`; those files contain local process-binding
 facts even for `shared` detective init. In a standalone worktree, `personal`
 init additionally excludes the exact personal hook configuration and rule
-paths. Re-running init as `shared` removes those personal-only patterns while
-retaining the intent-independent patterns, and re-running as `personal`
-restores them.
+paths. During a host, intent, or profile migration, init first keeps a fail-safe
+union of the prior and requested local-only paths. It narrows the block to the new
+intent only after the new projection is installed and every required retirement
+succeeds. A failed or interrupted migration therefore keeps the broader local
+protection, and rerunning the same init converges idempotently. A completed
+`shared` migration removes the retired personal-only patterns; a completed
+`personal` migration restores them.
 
 The block does not exclude all of `.codex/` or `.claude/`, and it does not
 exclude `AGENTS.md`, `.mcp.json`, `.claude/settings.json`, or shared Codex hook
@@ -437,18 +457,24 @@ rejects that combination with
 Git-metadata files. Use `--profile record`, a `--shared` Detective integration,
 or a standalone worktree.
 
-`volicord doctor` reports this boundary as
-`checks[].id=personal_local_git_tracking`. It checks the intent-independent
-local paths for connected Git repositories and reads the validated local policy
-inventory to decide whether the additional personal paths apply. A missing or
-invalid policy is a bounded audit error and uses the conservative personal-path
-check; a current `shared` policy does not inherit personal-only checks merely
-because an older personal connection record still exists. A tracked local-only
-path or an existing local-only path that is not ignored is a warning with bounded
-`tracked_paths` and `unignored_existing_paths` details. Doctor does not change
-the index: it recommends rerunning init with the intended connection intent to
-restore the exclude block and removing tracked local-only paths from the index
-without deleting their working-tree files.
+`volicord doctor` reports local Git protection as
+`checks[].id=personal_local_git_tracking`. It checks both the intent-independent
+and known personal-only local paths for every connected Git repository,
+regardless of the current policy intent. A missing or invalid policy is a
+bounded audit error. A tracked local-only path or an existing local-only path
+that is not ignored is a warning with bounded `tracked_paths` and
+`unignored_existing_paths` details.
+
+Doctor also reports `checks[].id=integration_intent_drift`. It compares the
+validated local policy with enabled Connection Project inventory and inspects
+the bounded, known prior-host and opposite-intent projection paths for
+Volicord-owned content. It warns about a prior-host or opposite-intent
+projection, simultaneous enabled integrations for multiple supported hosts or
+intents, a policy intent or host that disagrees with enabled inventory, or
+detective hooks left active under a record policy. Doctor does not change files
+or the Git index. Its recovery action reruns init with the policy's exact host,
+intent flag, and profile; index cleanup remains an explicit user action that
+must not delete working-tree files.
 
 `--profile` selects the public integration profile:
 
@@ -522,9 +548,9 @@ Non-dry-run `volicord init`:
   the Codex user target or Claude Code local CLI target for `personal`, and
   project-scoped Codex `.codex/config.toml` or Claude Code `.mcp.json` for
   explicit `--shared`
-- for an explicit shared connection, writes
-  `volicord mcp --stdio --connection <connection_id> --project <project_id>`
-  and, for Codex, managed launch provenance environment markers
+- for an explicit shared connection, writes the exact portable
+  `volicord mcp --stdio --discover-repository --host codex|claude-code`
+  descriptor with no environment map
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` as a `local_overlay` policy carrying the
   selected `connection_intent` and detective host hook commands that invoke the
@@ -549,13 +575,20 @@ Non-dry-run `volicord init`:
 - reports the required host restart, reload, approval, or trust action when the
   host must load the new MCP or detective host hook configuration
 
-Re-running init is idempotent for matching Volicord-managed content. It updates
-managed blocks, policy files, host MCP entries, and detective installation records
-without duplicating them. If an existing target contains unmanaged content where
-Volicord requires ownership markers or a managed fingerprint, init must report a
-conflict instead of overwriting it. Follow-up status and verification commands,
-dry-run diagnostics, and repair commands preserve the selected intent: they
-include `--shared` only for a shared init result.
+Re-running init is idempotent for matching Volicord-managed content and for a
+partially completed host, intent, or profile migration. It updates managed
+blocks, policy files, host MCP entries, and detective installation records without
+duplicating them; an already retired matching projection is a successful no-op.
+An older shared MCP entry with explicit connection/project bindings is eligible
+for one conditional migration only when its current fingerprint matches the
+stored managed fingerprint; successful migration replaces it with the portable
+descriptor, and later reruns are no-ops.
+If an existing target contains unmanaged content where Volicord requires
+ownership markers or a managed fingerprint, or a previously managed retirement
+target has changed, init must report a conflict instead of overwriting or
+deleting it. Follow-up status and verification commands, dry-run diagnostics,
+and repair commands preserve the selected intent: they include `--shared` only
+for a shared init result.
 
 On Unix, a newly created `.volicord/policy.json` uses user-only mode `0600`.
 When a regular existing policy carries Volicord ownership metadata, a matching
@@ -566,6 +599,8 @@ only `VOLICORD_HOME`, `VOLICORD_MCP_LAUNCH`, `VOLICORD_MCP_HOST`,
 `VOLICORD_MCP_CONNECTION_ID`, and `VOLICORD_MCP_PROJECT_ID`; secret-like and
 all other environment keys are rejected without including their values in the
 diagnostic. This allowlist is not a general secret-content scanner.
+This is a local-overlay schema; none of these environment fields is permitted
+in a shared `.codex/config.toml` or `.mcp.json` Volicord entry.
 The policy schema also requires `storage_scope=local_overlay`, the selected
 `connection_intent`, a non-empty host/repository/connection identity set, an MCP
 command with string arguments and string environment values, and a host-hook
@@ -1026,13 +1061,20 @@ Lifecycle behavior:
   `resolved_verification_basis=user_prompt_submit_hook`,
   omits the full prompt text from prompt-capture storage, and returns
   model-visible recorded-context output instead of treating the command as
-  ordinary agent instruction.
+  ordinary agent instruction. The recognized-command object reports
+  `replayed=true` only when the same durable judgment recording was returned
+  from idempotent replay. Local diagnostics count every successful recognized
+  command as Core-reached, but count only a non-replay as Core-committed.
 - `stop` checks whether the active task can safely be treated as complete.
   Before it can return `allow` for an active task, it obtains a current Core
   status response with close data. Only a response with
-  `base.response_kind=result` is authoritative for this decision. A non-result
-  response, or a response whose required status fields are missing or
-  malformed, returns `deny` with reason code `authoritative_refresh_failed`.
+  `base.response_kind=result` and `base.effect_kind=read_only` is eligible for
+  this decision. Its Core-owned `AuthorityReceipt` must match the refreshed
+  status state version, project, Task, Task reference version, scope revision,
+  current Change Unit, evidence gate, close state, close blockers, and the
+  guard context captured for this hook event. A mismatch, non-result response,
+  or response whose required status fields are missing or malformed returns
+  `deny` with reason code `authoritative_refresh_failed`.
   For that denial,
   `result.close_status.authoritative_refresh` contains only the recognized
   `response_kind` value, or `null` when it is missing or malformed, and an
@@ -1041,6 +1083,7 @@ Lifecycle behavior:
   failure to call Core remains an internal hook-command failure on the existing
   error path. The refresh is read-only and a refresh-failure denial creates no
   Core state effect beyond ordinary hook-observation recording. A valid result
+  injects the matched receipt as `result.close_status.authority_receipt` and
   returns `deny` when close-readiness blockers remain, user-owned judgments are
   pending, or unresolved unrecorded changes remain; otherwise it returns
   `allow`.
@@ -1082,7 +1125,8 @@ through the `Judgment Inbox` and reruns the command.
 <a id="user-interaction-commands"></a>
 
 `volicord inbox` commands provide the local CLI path for a human user to list and
-answer pending user judgments through the `User Channel`. They
+answer pending user judgments or record target-bound evidence observations
+through the `User Channel`. They
 do not create an Agent Connection, install MCP host configuration, or make an
 Agent Connection eligible to act as the user.
 
@@ -1121,6 +1165,12 @@ Commands:
   still pending, then reports `action_required` because this CLI process does
   not own a local consent URL. It directs the user to a URL already shown in an
   MCP Judgment Inbox item when available, or to the CLI answer command.
+- `volicord inbox observe` invokes
+  `volicord.record_user_observation` through the direct local-user User Channel.
+  It resolves each `--artifact` ID to current verified bytes and records either
+  supported relevance (default) or `--contradicted` relevance for exactly one
+  `--criterion` or existing `--claim`. It is evidence provenance, not a
+  judgment or final acceptance.
 
 Recording one judgment records only the addressed judgment. Final acceptance and
 residual-risk acceptance remain separate judgment kinds and actions; this
@@ -1132,8 +1182,9 @@ When pending judgments are present, text output also summarizes available
 answer paths so unavailable host prompt input does not hide chat capture, local
 consent, or CLI inbox paths. They do not create evidence, final acceptance,
 residual-risk acceptance, or close readiness. Only
-`volicord inbox answer` mutates the addressed pending judgment, and it
-does so only through the selected Core-generated option.
+`volicord inbox answer` mutates only the addressed pending judgment through the
+selected Core-generated option. `volicord inbox observe` separately creates one
+User Channel evidence observation and never resolves a judgment.
 
 <a id="dry-run"></a>
 ## Dry run and JSON output
@@ -1219,12 +1270,65 @@ actor attribution, write prevention, tamper-proof audit, full filesystem
 monitoring, OS enforcement, correctness, test sufficiency, review completion,
 final acceptance, and residual-risk acceptance. The command must not print
 stored row bodies, Product Repository file contents, or prompt text.
+When `diagnostics.sqlite` is present, the stored-category summary includes its
+bounded identifier, categorical, counter, byte-size, and latency footprint and
+states that the excluded diagnostics content categories are not stored.
 
 Setup and doctor JSON must include `status_meaning` so diagnostic consumers can
 distinguish setup action status from installation-profile health.
 Doctor JSON must separate blocking local repairs in `actions_required[]` from
 warning-only follow-up in `actions_recommended[]` when the top-level status
 remains `complete`.
+
+<a id="session-diagnostics"></a>
+## Session diagnostics
+
+`volicord diagnostics session [--session ID] [--json]` reads bounded local
+operability aggregates from the selected Runtime Home. Without `--session`, it
+selects the session with the latest diagnostic update. A Runtime Home with no
+diagnostic database or no matching session returns `status=no_data`; the read
+does not create the database. Normal setup preconditions can read the
+installation profile, but the report itself reads only `diagnostics.sqlite`
+and does not open a project `state.sqlite`.
+
+Safe aggregate collection is enabled by default for MCP tool-call boundaries
+and supported guard-hook observations. Diagnostic persistence is best effort:
+failure, corruption, or write denial in `diagnostics.sqlite` must not change an
+MCP result, guard decision, User Channel result, Core commit, or CLI authority
+result. The command is observational and must not change `state_version`,
+evidence or assurance, close readiness, a UserJudgment, or any authority row.
+
+JSON output has these top-level fields:
+
+- `schema_version`, `status`, and `scope`
+- `storage`, including `database_file`, `retention_days`, `max_sessions`, and
+  `max_events_per_session`
+- `redaction`, declaring the excluded content categories
+- `authority_isolation`, declaring that the report does not open project state
+  or change authority categories
+- `current_build`, with this CLI's package version and `build_id`
+- nullable `session`
+
+An available `session` includes bounded session, connection, project,
+transport, host-kind, producer-build, and timestamp identifiers; `tools[]`;
+`totals`; `user_channel_counts`; and `fallback_counts`. Per-tool aggregates
+report call count, total/maximum/average latency in microseconds, request and
+response byte counts, schema-validation failures, retries after a validation
+failure, Core-reached count, Core-committed count, and replay count. Totals also
+report observed product-file-write count and authoritative-refresh failures.
+These are local diagnostic observations, not evidence, actor attribution,
+write authority, host conformance, or a correctness claim. A fallback count
+means that path was selected for a pending answer; it does not mean the user
+resolved the judgment through that path.
+
+The default store accepts no prompt body, Product Repository path or file
+content, error body, secret text, Judgment question, answer, rationale, or note.
+It stores only allowlisted identifiers and categorical outcomes plus counters,
+byte sizes, latency, and build identity. Content-bearing or detailed trace mode
+is not supported. Any future detailed trace must be a separately documented,
+explicit opt-in surface with its own retention and redaction contract; it must
+not silently widen this default collection. Exact placement and retention are
+owned by [Storage Records](storage-records.md#local-diagnostics-store).
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive behavior

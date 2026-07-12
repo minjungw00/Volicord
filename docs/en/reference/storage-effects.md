@@ -306,6 +306,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
+| `volicord.record_user_observation` | records target-bound User Channel evidence | See [`volicord.record_user_observation`](#volicordrecord_user_observation) |
 | `volicord.reconcile_changes` | resolves Unrecorded Changes, creates pending user judgments, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | close-readiness check with optional session-watch diagnostics | See [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | persists a successful `complete` terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
@@ -318,6 +319,8 @@ This table summarizes persistence effects. Method behavior and response unions r
 Committed `dry_run=false` may:
 
 - create the Task
+- store its mode, work phase, acceptance policy and reason, and optional
+  predecessor relation with carry-forward dispositions
 - create ordered active `acceptance_criteria` rows with Core-generated identities
 - preserve validated `initial_source_refs` as non-authoritative Task context in the Task owner JSON
 - create an optional Change Unit
@@ -347,6 +350,9 @@ Committed `dry_run=false` may:
 - update current-scope Task fields
 - for a non-null criterion replacement, update retained active same-Task criterion rows in replacement order, create rows for null IDs, and retire omitted active rows without reactivating retired identities
 - create or replace current `change_units`, including effect-contract JSON when supplied by the method owner
+- capture the verified optional Git workspace context in the Change Unit write
+  basis and advance a non-advisor Task to `work_phase=implementation` when a
+  current Change Unit is created or replaced
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
 - mark incompatible judgment basis rows stale or superseded as owner-defined compatibility requires
@@ -606,6 +612,26 @@ Recording a user judgment does not increment `tasks.scope_revision` or `tasks.cl
 Owner links:
 
 - [`volicord.record_user_judgment` method](api/method-record-user-judgment.md#volicordrecord_user_judgment)
+- [Storage Records](storage-records.md)
+
+<a id="volicordrecord_user_observation"></a>
+### `volicord.record_user_observation`
+
+Committed `dry_run=false` may:
+
+- insert one `user_evidence_observations` row with current Task, Change Unit,
+  scope revision, baseline, target, relevance, exact canonical artifact refs,
+  local-user actor, verification basis, summary, and timestamps
+- append `user_evidence_observation_recorded`
+- create a replay row
+- increment `project_state.state_version` once
+
+It does not create a Run, EvidenceSummary, EvidenceObservation, UserJudgment,
+approval, or artifact. Dry run and rejection have no storage effect.
+
+Owner links:
+
+- [`volicord.record_user_observation` method](api/method-record-user-observation.md)
 - [Storage Records](storage-records.md)
 
 <a id="volicordreconcile_changes"></a>

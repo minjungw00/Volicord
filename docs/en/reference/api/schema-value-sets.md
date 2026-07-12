@@ -67,6 +67,7 @@ volicord.stage_artifact
 volicord.record_run
 volicord.request_user_judgment
 volicord.record_user_judgment
+volicord.record_user_observation
 volicord.reconcile_changes
 volicord.close_task
 ```
@@ -77,7 +78,7 @@ Method behavior is owned by method owner documents routed from [API Methods](met
 <a id="actor-values"></a>
 ## Actor source values
 
-Actor provenance fields such as `EvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, and `UserJudgmentResolution.resolved_by_actor_source` use the `ActorSource` value set:
+Actor provenance fields such as `EvidenceObservation.observed_by_actor_source`, `UserEvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, and `UserJudgmentResolution.resolved_by_actor_source` use the `ActorSource` value set:
 
 | Value | Used by | Owner route |
 |---|---|---|
@@ -175,6 +176,7 @@ user_judgment
 run
 evidence_summary
 evidence_observation
+user_evidence_observation
 artifact
 blocker
 task_event
@@ -221,15 +223,69 @@ work
 
 `requested_mode` for `volicord.intake` also accepts `auto` as an input-only value. Output `Task.mode` fields use `advisor`, `direct`, or `work`; intake resolution behavior is owned by [Intake method](method-intake.md).
 
-Mode constrains Run-kind compatibility and terminal completion result:
+Mode and `work_phase` jointly constrain Run-kind compatibility:
 
-| `Task.mode` | Allowed `RunKind` values | Successful `intent=complete` result |
-|---|---|---|
-| `advisor` | `shaping_update` | `advice_only` |
-| `direct` | `direct` | `completed` |
-| `work` | `shaping_update`, `implementation` | `completed` |
+| `Task.mode` | `work_phase` | Allowed `RunKind` | Successful `intent=complete` result |
+|---|---|---|---|
+| `advisor` | `shaping` | `shaping_update` | `advice_only` |
+| `direct` | `implementation` | `direct` | `completed` |
+| `work` | `shaping` | `shaping_update` | `completed` |
+| `work` | `implementation` | `implementation` | `completed` |
 
 `advisor` is read-only with respect to Product Repository file effects. It does not use `prepare_write` or a write ticket, and its compatible Run has `product_file_write_observed=false`, an empty `changed_paths` list, and `write_ticket_id=null`. A compatible `shaping_update` still allows `record_run` to commit Run and method-owned Core evidence state.
+
+`StateSummary.work_phase` and `TaskFlowItem.work_phase` use:
+
+```text
+shaping
+implementation
+```
+
+This phase preserves one Task's longer-lived outcome while separating analysis
+from write-capable execution. It is independent of `lifecycle_phase`.
+
+`StateSummary.acceptance_policy` uses:
+
+```text
+required
+not_required
+policy_dependent
+```
+
+The policy is selected and reasoned at intake. `not_required` is limited to
+advisor Tasks; `policy_dependent` is evaluated by the close owner and is not an
+agent-selected waiver.
+
+`TaskLineageSummary.relation` uses:
+
+```text
+continues
+derived_from
+split_from
+replaces
+implements_advice_from
+```
+
+`CarryForwardDisposition.kind` uses:
+
+```text
+scope
+non_goals
+user_decisions
+source_refs
+context_refs
+known_limitations
+unresolved_obligations
+residual_risks
+baseline
+```
+
+Its `status` uses `applied` or `reference_only`. Applied material is validated
+again as new-Task input. Reference-only context does not revive predecessor
+scope, judgment, evidence, acceptance, risk acceptance, or write authority.
+
+`WorkspaceContext.vcs` currently uses only `git`. `branch_ref=null` represents
+detached HEAD. `AuthorityReceipt.next_actor` uses `agent`, `user`, or `none`.
 
 `Task.lifecycle_phase` uses:
 
@@ -287,6 +343,19 @@ Run failures, violations, blocked closes, and evidence gaps are not terminal `Ta
 
 <a id="method-local-values"></a>
 ## Method-local values
+
+MCP mutation argument `detail` uses:
+
+```text
+summary
+workflow
+full
+```
+
+`summary` is the default compact authority receipt, `workflow` adds normalized
+next actions, and `full` returns the full method result. The transport still
+uses its compatibility text member, but the text is a bounded summary rather
+than a duplicate full JSON document.
 
 `resume_policy` for `volicord.intake` uses:
 
@@ -737,8 +806,14 @@ assurance.
 Source-kind meanings:
 - `agent_report` records a report made by an agent actor context. It is not an external tool result by itself.
 - `connection_observation` names an observation backed by a target-scoped verified connection-observation record. The baseline direct `record_run` path has no such record and downgrades this requested value to `agent_report`.
-- `external_tool` records output or status from an external tool only when the target-matching observation has a canonical output artifact with currently available, verified bytes. It is not a product correctness proof by itself.
-- `user_observation` names a user-attributed observation backed by a target-scoped verified User Channel observation. The baseline direct `record_run` path has no such record and downgrades this requested value to `agent_report`; it is never final acceptance or another authority-bearing judgment by itself.
+- `external_tool` requires an authority-owned verified tool or command producer
+  record bound to the exact outputs. The baseline currently has no such
+  producer transition, so direct requests downgrade; verified artifact bytes
+  alone are insufficient.
+- `user_observation` names an observation backed by a current target-bound
+  `UserEvidenceObservation` from `volicord.record_user_observation`. Direct
+  unanchored selection downgrades, and the observation is never final acceptance
+  or another authority-bearing judgment.
 - `reused_evidence` records Core-validated reuse of a prior strong observation. Direct caller selection is downgraded, and validated reuse is not a new observation by itself.
 - `unverified_claim` preserves a claim without verified observation. It is not sufficient evidence by itself.
 
@@ -755,17 +830,42 @@ unverified
 Assurance-level meanings:
 - `cooperative_report` is a cooperative report from the submitting actor context.
 - `registered_connection_observed` requires a target-scoped verified connection-observation anchor; it is not derived from the current Agent Connection invocation alone.
-- `external_tool_result` requires the canonical, target-matching, currently verified output-artifact anchor defined above.
-- `user_observed` requires a target-scoped verified User Channel observation anchor.
+- `external_tool_result` requires the authority-owned producer record, exact
+  canonical output binding, current bytes, and separate supported relevance
+  assessment defined above.
+- `user_observed` requires a current target-scoped User Channel observation,
+  exact outputs, and `relevance_status=supported`.
 - `unverified` records absence of verified observation assurance.
 
 Core downgrades a requested strong pair without its required anchor to
 `agent_report` / `cooperative_report`. For `reused_evidence`, Core revalidates
 the original identity, target, Task and Change Unit, source Run, scope revision,
-baseline, inherited assurance, and original anchor; an external artifact's
-observation relation and current bytes are checked again. These values do not
+baseline, inherited assurance, exact outputs, producer anchor, and relevance
+assessment at every recursive hop. These values do not
 grant user authority, satisfy final acceptance or residual-risk acceptance,
 prove product correctness, or change `GuaranteeDisplay.level`.
+
+`EvidenceProducerAnchor.producer_kind` uses:
+
+```text
+unverified_caller
+user_channel_observation
+registered_connection_observation
+verified_tool_invocation
+verified_command_execution
+reused_evidence
+```
+
+Only `user_channel_observation` and recursively validated `reused_evidence`
+have authority-owned producer paths in the baseline. The connection, tool, and
+command values reserve canonical classifications for future owner-defined
+producer transitions; caller input and raw guard payloads cannot create them.
+
+`EvidenceRelevanceAssessment.status` and
+`UserEvidenceObservation.relevance_status` use `unassessed`, `supported`, and
+`contradicted`; the User Channel method accepts only `supported` or
+`contradicted`. Strong evidence requires a separate current `supported`
+assessment.
 
 <a id="source-ref-values"></a>
 ### Source reference values

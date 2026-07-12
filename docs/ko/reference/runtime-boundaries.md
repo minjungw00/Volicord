@@ -53,8 +53,8 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **`Volicord Runtime Home`**
 
-- **포함하는 것:** `registry.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 판단, 아티팩트, 세션 감시 기록을 저장할 수 있습니다.
-- **사용 경로:** `volicord init`, `project`, `connection`, `inbox`, `changes`, `doctor`, 숨겨진 내부 훅 명령이 각 담당 경로에 따라 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 행 본문을 출력하지 않고 저장 범주와 개수를 보고합니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 처리 경로, Core 상태, 아티팩트를 위해 Runtime Home 상태를 사용합니다.
+- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 판단, 아티팩트, 세션 감시 기록을 저장할 수 있습니다. 별도 진단 데이터베이스는 크기가 제한된 로컬 운영 집계만 저장합니다.
+- **사용 경로:** `volicord init`, `project`, `connection`, `inbox`, `changes`, `doctor`, `diagnostics`, 숨겨진 내부 훅 명령이 각 담당 경로에 따라 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 행 본문을 출력하지 않고 저장 범주와 개수를 보고합니다. `volicord diagnostics session`은 일반 설정 점검 뒤 크기 제한 진단 저장소만 읽습니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 처리 경로, Core 상태, 아티팩트, 최선 노력 운영 집계를 위해 Runtime Home 상태를 사용합니다.
 - **경계:** Product Repository, 외부 호스트 설정, 설치 디렉터리가 아닙니다. OS 샌드박스, 네트워크 격리, 악성코드·비밀값 검사, 호스트 신뢰, 행위자 귀속, 쓰기 방지, 변조 방지 감사, 전체 파일시스템 감시, 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락을 제공하거나 증명하지 않습니다.
 
 **`Product Repository`**
@@ -71,7 +71,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **외부 MCP 호스트 설정**
 
-- **포함하는 것:** `volicord mcp --stdio`, 내부 Agent Connection 바인딩, `VOLICORD_HOME` 같은 환경 값을 지정할 수 있는 호스트 소유 또는 사용자 관리 설정입니다.
+- **포함하는 것:** `volicord mcp --stdio` 프로세스를 지정할 수 있는 호스트 소유 또는 사용자 관리 설정입니다. 개인·로컬 오버레이에는 내부 Agent Connection 바인딩, 절대 명령 경로, `VOLICORD_HOME` 같은 로컬 환경이 들어갈 수 있습니다. 저장소에서 보이는 공유 Codex와 Claude Code 항목에는 로컬 ID나 환경 맵 없이 형식이 지정된 `volicord mcp --stdio --discover-repository --host <host>` 기술 정보만 들어갑니다.
 - **사용 경로:** 외부 호스트가 로드와 신뢰 결정을 담당합니다. [관리 CLI](admin-cli.md)가 동작을 정의한 경우에만 `volicord`가 지원되는 직접 설정을 쓸 수 있습니다.
 - **경계:** Runtime Home 레지스트리 상태나 Core 권한이 아니며 Volicord 권한을 증명하지 않습니다. `Product Repository`에 저장되었다면 명시적 통합 파일일 뿐입니다.
 
@@ -83,7 +83,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **`volicord mcp --stdio` MCP 어댑터 프로세스**
 
-- **담당하는 것:** 하나의 Agent Connection에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home과 연결 상태를 확인하고, `connection.mode`에 맞는 도구를 노출하고, 허용된 프로젝트를 선택하고, 어댑터가 담당하는 호출 사실을 파생하고, 공개 메서드 호출을 Core와 Store로 전달합니다.
+- **담당하는 것:** 명시적 로컬 ID 또는 고유한 로컬 저장소 발견 결과로 Agent Connection 하나에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home과 연결 상태를 확인하고, `connection.mode`에 맞는 도구를 노출하고, 허용된 프로젝트를 선택하고, 어댑터가 담당하는 호출 사실을 파생하고, 공개 메서드 호출을 Core와 Store로 전달합니다. 저장소 발견은 현재 Git worktree를 정규화하고 로컬 Runtime Home에서 선택한 등록 프로젝트 하나로 프로세스를 좁힙니다.
 - **시작 주체:** `stdin`/`stdout`으로 통신하는 MCP 호스트입니다.
 - **경계:** 임의 제품 파일 편집 권한이나 사용자 판단 기록 권한을 부여하지 않습니다. 호스트 신뢰를 강제하거나 샌드박싱을 제공하거나 MCP 네트워크 전송 리스너를 열지 않습니다. 비활성화하지 않으면 로컬 User Channel 동의를 위한 별도 임시 루프백 전용 HTTP 리스너를 열 수 있지만, 이 리스너는 MCP 전송이 아닙니다.
 
@@ -146,14 +146,25 @@ init은 개인 훅 설정과 규칙 경로도 보호합니다. `.volicord/policy
 상태 보기로 커밋하면 안 됩니다. 생성된 래퍼 스크립트도 프로세스 바인딩 경로와
 식별자를 담으므로 로컬 파일입니다.
 
+Product Repository 하나에서 이 저장소 로컬 표면은 선택한 지원 호스트, 활성 의도,
+프로필을 각각 하나씩 나타냅니다. 선택한 호스트, 의도, 프로필 중 하나를 바꾸는 init은
+여러 주체가 소유한 파일의 관련 없는 내용을 보존하고, 일치하는 Volicord 소유 이전
+호스트·반대 의도·더 이상 적용되지 않는 상태 보기를 폐기하며, 마이그레이션이 성공할
+때까지 이전 상태와 요청 상태의 로컬 전용 Git 제외를 합쳐 유지해야 합니다. 안전한
+폐기는 계획된 소유 마커, 상태 보기, 관리 지문과 일치할 때만 가능하며 바뀌었거나 비관리
+상태인 내용은 충돌입니다.
+
 Codex `.codex/hooks.json`은 Volicord 통합이 파일 전체를 소유하며, 다른 기존 JSON은
 충돌입니다. Claude Code `.claude/settings.local.json`은 관리 상태 보기로 관련 없는
 설정을 보존하지만 호스트가 파일 전체를 로컬로 취급하므로 개인 init은 경로 전체를
 제외합니다. 공유 훅 설정과 규칙 파일은 저장소에 보이는 상태로 남습니다. 이 공유
-표면을 커밋할지는 Product Repository 정책 결정이지만, 로컬 `connection_id`와
-`project_id`가 든 공유 `.codex/config.toml` 또는 `.mcp.json`은 복제본에서 그대로 쓸
-수 있는 저장소 발견용 기술 정보가 아닙니다. 이 값은 선택된 Runtime Home에서
-해석되어야 합니다.
+표면을 커밋할지는 Product Repository 정책 결정입니다. 공유 `.codex/config.toml` 또는
+`.mcp.json`의 Volicord MCP 항목은 호스트별 저장소 발견 형태와 정확히 일치할 때만
+복제본에서 그대로 쓸 수 있습니다. 명령은 `volicord`, 인자는
+`mcp --stdio --discover-repository --host codex|claude-code`, 환경 맵은 없음입니다.
+Connection/프로젝트 ID, 절대 명령, Runtime Home 경로, 비밀값 형태를 포함한 모든 환경
+키는 로컬 오버레이에만 속하며 이 공유 항목에서는 유효하지 않습니다. 각 복제본은 선택한
+로컬 Runtime Home에서 고유한 활성 공유 연결로 별도로 등록되어야 합니다.
 
 연결된 worktree에서 공통 `info/exclude`는 모든 형제가 안전하게 읽을 수 있는 의도와
 무관한 정책 및 래퍼 경로만 담습니다. 개인 Detective init은 추가 개인 전용 경로를
@@ -281,6 +292,7 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 주장할 수 있는 것:
 - 저장소/런타임 담당 문서는 어떤 운영 데이터가 `Volicord Runtime Home`에 속하는지 정의합니다.
 - 저장소/런타임 담당 문서는 그 데이터의 검증, 저장 효과, 기록 배치, 아티팩트 저장, 버전 관리, 복구 동작을 정의합니다.
+- `diagnostics.sqlite`는 Runtime Home 루트에 있을 수 있지만 레지스트리 및 모든 프로젝트 권한 데이터베이스와 분리됩니다. 그 위치는 진단 관찰에 Core, 증거, 닫기 준비 상태, User Channel, 보안 권한을 부여하지 않습니다.
 
 주장하면 안 되는 것:
 - `Volicord Runtime Home`이 `Product Repository`라는 주장.

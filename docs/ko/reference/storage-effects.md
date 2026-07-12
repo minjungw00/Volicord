@@ -304,6 +304,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | 대기 중인 판단 요청 생성 | [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | 사용자 판단 해결 | [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
+| `volicord.record_user_observation` | 대상 결합 User Channel 증거 기록 | [`volicord.record_user_observation`](#volicordrecord_user_observation) |
 | `volicord.reconcile_changes` | 미기록 변경 해결, 대기 사용자 판단 생성, 선택적 세션 감시 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | 선택적 세션 감시 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | 성공한 `complete` 종료 효과를 영속 저장하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
@@ -316,6 +317,8 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `Task`를 생성합니다.
+- 모드, work phase, acceptance policy와 이유, 선택적 predecessor 관계와
+  carry-forward disposition을 저장합니다.
 - Core가 생성한 identity와 함께 순서가 있는 활성 `acceptance_criteria` 행을 생성합니다.
 - 검증된 `initial_source_refs`를 Task 소유자 JSON의 비권위적 Task 맥락으로 보존합니다.
 - 선택적 Change Unit을 생성합니다.
@@ -345,6 +348,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - 현재 적용 `Task` 범위 필드를 갱신합니다.
 - 기준 교체가 null이 아니면 유지한 활성 같은 `Task` 기준 행을 교체 순서대로 갱신하고, null ID에 새 행을 만들며, 빠진 활성 행을 폐기하되 폐기된 identity를 다시 활성화하지 않습니다.
 - 메서드 담당 문서가 제공한 효과 계약 JSON을 포함해 현재 적용 `change_units` 행을 만들거나 교체합니다.
+- 검증된 선택적 Git workspace context를 Change Unit write basis에 캡처하고 현재
+  Change Unit을 만들거나 교체할 때 advisor가 아닌 Task를
+  `work_phase=implementation`으로 진행합니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
 - 담당 문서가 정의한 호환성에 따라 호환되지 않는 판단 근거 행을 오래됨 또는 대체됨으로 표시합니다.
@@ -605,6 +611,26 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 
 - [`volicord.record_user_judgment` 메서드](api/method-record-user-judgment.md#volicordrecord_user_judgment)
 - [저장소 기록](storage-records.md)
+
+<a id="volicordrecord_user_observation"></a>
+### `volicord.record_user_observation`
+
+커밋된 `dry_run=false`는 다음 효과를 만들 수 있습니다.
+
+- 현재 Task, Change Unit, scope revision, baseline, 대상, relevance, 정확한
+  정규 아티팩트 ref, 로컬 사용자 actor, 검증 근거, 요약, 타임스탬프를 담은
+  `user_evidence_observations` 행 하나 삽입
+- `user_evidence_observation_recorded` 이벤트 추가
+- replay 행 생성
+- `project_state.state_version` 한 번 증가
+
+Run, EvidenceSummary, EvidenceObservation, UserJudgment, 승인, 아티팩트를 만들지
+않습니다. Dry run과 거부는 저장 효과가 없습니다.
+
+담당 문서:
+
+- [`volicord.record_user_observation` 메서드](api/method-record-user-observation.md)
+- [저장 레코드](storage-records.md)
 
 <a id="volicordreconcile_changes"></a>
 ### `volicord.reconcile_changes`

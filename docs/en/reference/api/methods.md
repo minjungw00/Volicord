@@ -26,6 +26,7 @@ The labels below use the vocabulary in [Documentation Policy](../../maintain/doc
 <a id="volicordrecord_run"></a>
 <a id="volicordrequest_user_judgment"></a>
 <a id="volicordrecord_user_judgment"></a>
+<a id="volicordrecord_user_observation"></a>
 <a id="volicordreconcile_changes"></a>
 <a id="volicordcheck_close"></a>
 <a id="volicordclose_task"></a>
@@ -40,6 +41,7 @@ The labels below use the vocabulary in [Documentation Policy](../../maintain/doc
 | `volicord.record_run` | [Record-run method](method-record-run.md) |
 | `volicord.request_user_judgment` | [Request-user-judgment method](method-request-user-judgment.md#volicordrequest_user_judgment) |
 | `volicord.record_user_judgment` | [Record-user-judgment method](method-record-user-judgment.md#volicordrecord_user_judgment) |
+| `volicord.record_user_observation` | [Record-user-observation method](method-record-user-observation.md#volicordrecord_user_observation) |
 | `volicord.reconcile_changes` | [Reconcile-changes method](method-reconcile-changes.md#volicordreconcile_changes) |
 | `volicord.check_close` | [Close method](method-close-task.md#volicordcheck_close) |
 | `volicord.close_task` | [Close method](method-close-task.md#volicordclose_task) |

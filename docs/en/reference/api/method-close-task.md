@@ -92,6 +92,11 @@ Close condition:
 - `intent=complete` can close only after preflight succeeds, the close readiness evaluation over the current `CurrentCloseBasis` is valid, current close-basis refs satisfy their artifact and Run compatibility rules, and no close blocker remains.
 - Close readiness blocks when any write ticket for the Task remains open, any active write ticket has expired without resolution, or any host-hook or watcher observation reports unresolved out-of-scope Product Repository paths for the ticket scope.
 - A valid `Task.mode=advisor` state has no write ticket or product-file write path. Its close-readiness result does not produce a write-ticket refresh finding or recommend `volicord.prepare_write`; missing current result or close-basis work routes to the compatible `volicord.record_run` path instead.
+- Final acceptance follows the Task-owned `acceptance_policy` selected at
+  intake. `required` always checks compatible final acceptance; `not_required`
+  omits only that check and is limited to advisor Tasks; `policy_dependent`
+  requires acceptance for write-capable Tasks and for advisor results with
+  residual risks. No policy waives evidence, risk acceptance, or other blockers.
 - In `detective` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. The result reports derived `CoverageSummary` coverage facts when guard health is selected. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
 - Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
 - Only current acceptance criteria with `evidence_requirement=required` create
@@ -100,6 +105,10 @@ Close condition:
   targets never block close. Unverified, provenance-free, stale,
   contradicted, partial, unsupported, or cooperative-agent-only evidence does
   not satisfy a required criterion when stronger provenance is required.
+  Strong evaluation independently requires current byte integrity, an
+  authority-owned producer record, exact output binding, a current Task/scope/
+  baseline and target, and supported relevance. Reused evidence recursively
+  revalidates every original producer and relevance record.
 - `intent=cancel` requires a current accepted cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the Task, current scope revision, and current Change Unit. It does not require completion-only evidence, final acceptance, or residual-risk acceptance.
 - `intent=supersede` evaluates the requested terminal path. It is not evidence sufficiency, final acceptance, or residual-risk acceptance.
 

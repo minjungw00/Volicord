@@ -33,6 +33,16 @@
 
 이 메서드는 사용자 소유 차단 사유가 처리되면 shaping 상태를 안전한 첫 Change Unit으로 옮기는 지원 경로입니다.
 
+`direct`와 `work` Task에서 커밋된 `create_current` 또는 `replace_current` 작업은
+`work_phase=implementation`을 기록합니다. 또한 새 Change Unit의 기준선을 확인된 현재
+작업 공간 맥락에 결합합니다. Git 기반 Product Repository에서는 공통 Git 디렉터리,
+정확한 worktree 식별 정보, 브랜치 또는 detached HEAD 상태, HEAD SHA, 작업 공간 지문을
+기록합니다. 이 좌표가 바뀐 뒤 현재 기준선으로 Change Unit을 교체하는 작업이 명시적
+대상 변경 또는 재기준 설정 경로입니다. `keep_current`는 기존 Change Unit의 대상을
+암묵적으로 바꾸지 않습니다. 현재 Change Unit이 있으면 `keep_current`는 Task
+`baseline_ref` 변경을 거절합니다. Task와 Change Unit 기준선을 원자적으로 바꾸려면
+호출자가 `replace_current`를 사용해야 합니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
@@ -83,6 +93,7 @@ UpdateScopeRequest:
 커밋되는 `dry_run`이 아닌 요청에는 아래 조건이 필요합니다.
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
+- Product Repository가 Git 기반이면 확인된 현재 작업 공간 맥락
 - 같은 프로젝트의 호환되는 `Task`
 - 현재 적용 Change Unit을 만들거나 교체할 때 다음 안전한 행동을 정직하게 만들 만큼 충분한 범위
 
@@ -103,6 +114,7 @@ UpdateScopeRequest:
 - 범위 밖 항목
 - 자율성 경계
 - 현재 적용 Change Unit
+- 현재 적용 Change Unit에 기록된 작업 공간 결합
 - 프로젝트 상태
 
 비주장: `status=stale` 표시는 쓰기 티켓을 소비, 철회, 만료하거나 조용히 재사용하지 않습니다.
@@ -138,7 +150,7 @@ UpdateScopeRequest:
 
 지원되는 `change_unit.operation` 값은 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다. 이 메서드는 각 작업이 `change_unit_ref`, `state.active_change_unit_ref`, 오래된 쓰기 티켓 참조, 차단 사유 참조, `next_actions`에 어떻게 반영되는지를 담당합니다.
 
-`change_unit.operation=create_current` 또는 `change_unit.operation=replace_current`일 때 `change_unit.effect_contract`를 새 현재 적용 Change Unit에 기록할 수 있습니다. 효과 계약은 선택적 Core 상태입니다. 워크플로 엔진을 만들거나 사용자 소유 권한 기록을 대신하지 않으면서 허용 효과, 금지 효과, 허용 Product Repository 경로, 기대 출력, 불변 조건, 증거 기대, 민감 동작 기대를 표현할 수 있습니다.
+`change_unit.operation=create_current` 또는 `change_unit.operation=replace_current`일 때 `change_unit.effect_contract`를 새 현재 적용 Change Unit에 기록할 수 있습니다. 효과 계약은 선택적 Core 상태입니다. 워크플로 엔진을 만들거나 사용자 소유 권한 기록을 대신하지 않으면서 허용 효과, 금지 효과, 허용 Product Repository 경로, 기대 출력, 불변 조건, 증거 기대, 민감 동작 기대를 표현할 수 있습니다. 같은 작업은 이후 쓰기 준비에 사용할 확인된 작업 공간 좌표도 기록합니다. Git 저장소가 아니면 VCS 결합을 기록하지 않고 Git 전용 비교 검사도 적용하지 않습니다.
 
 `linked_scope_decision_refs`에는 위의 호환성과 출처 확인을 통과한 범위 결정만 들어갑니다. 이력 또는 거절된 범위 결정은 주소 지정 가능한 판단 기록으로 남을 수 있지만 적용된 권한으로 연결되지 않습니다.
 
@@ -277,6 +289,7 @@ state:
     close_reason: none
     result: none
     closed_at: null
+  work_phase: implementation
   goal_summary: "저장된 검색 필터를 담당자와 라벨 필드로 제한합니다."
   scope_summary: "저장 필터의 담당자·라벨 편집 검증."
   non_goals:
@@ -293,6 +306,13 @@ state:
     task_id: task_filter_001
     produced_at_state_version: 19
   baseline_ref: baseline_filter_001
+  workspace_context:
+    vcs: git
+    git_common_dir: "/work/search/.git"
+    worktree_id: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    branch_ref: "refs/heads/filter-scope"
+    head_sha: "0123456789abcdef0123456789abcdef01234567"
+    workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   shaping_readiness: null
   pending_user_judgment_refs: []
   blocker_refs: []

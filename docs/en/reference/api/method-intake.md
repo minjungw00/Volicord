@@ -47,10 +47,28 @@ Task-granularity guidance:
   advice. When a broader outcome is unclear, it keeps only the known boundary
   in shaping state or asks the user; it does not infer a larger goal.
 
+Core makes that distinction durable. A newly created Task records a
+`work_phase` separately from the Task lifecycle: `advisor` and `work` begin in
+`shaping`, while `direct` begins in `implementation`. Creating or replacing the
+current Change Unit advances a `work` Task to `implementation`. Resuming a Task
+keeps its recorded phase. The phase constrains Run-kind and write-ticket
+compatibility; it is not a second Task, a methodology engine, or a substitute
+for current scope.
+
+Task creation can also record one predecessor relation. The relation preserves
+why the new Task exists and which predecessor material was selected for
+carry-forward; it does not make predecessor authority current. Status can use
+the stored predecessor edges to show the connected Task flow.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `plain_language_request`, `requested_mode`, and `resume_policy`.
+- `acceptance_policy`, present as `required`, `not_required`,
+  `policy_dependent`, or JSON `null`. `null` asks Core to select the mode
+  default and still records the selected policy and its reason on the Task.
+- `lineage`, present as `TaskLineageInput` or JSON `null`. A resumed Task uses
+  `null`; a newly created follow-up may name exactly one predecessor.
 - Any known initial scope candidate in `initial_scope.boundary`,
   `initial_scope.non_goals`, and `initial_scope.acceptance_criteria`; use empty
   arrays when no list items are known. Each criterion input supplies a statement
@@ -69,9 +87,17 @@ IntakeRequest:
   plain_language_request: string
   requested_mode: string
   resume_policy: string
+  acceptance_policy: string | null
+  lineage: TaskLineageInput | null
   initial_scope: object
   initial_context_refs: StateRecordRef[]
   initial_source_refs: SourceRef[]
+
+TaskLineageInput:
+  predecessor_task_id: string
+  relation: string
+  creation_reason: string
+  carry_forward: string[]
 ```
 
 Nested owner links:
@@ -80,6 +106,66 @@ Nested owner links:
 - `initial_context_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
 - `initial_source_refs` uses the non-authoritative `SourceRef[]` shape owned by [API State Schemas](schema-state.md#non-authoritative-source-references). Core structurally validates and stores these refs as Task context; it does not inspect their content or use them to expand scope, select a baseline, establish evidence, or create authority.
 - `requested_mode` and `resume_policy` values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values) and [method-local values](schema-value-sets.md#method-local-values).
+- `acceptance_policy`, `lineage.relation`, and `lineage.carry_forward` values
+  are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values).
+
+Acceptance-policy rules:
+
+- `acceptance_policy=null` selects `not_required` for `advisor` and `required`
+  for `direct` or `work`.
+- `resume_policy=resume_active` requires `acceptance_policy=null` and preserves
+  the selected Task's stored policy and reason; intake does not mutate them on
+  resume.
+- `not_required` is valid only for an `advisor` Task at intake. An Agent
+  Connection cannot waive final acceptance for write-capable work by selecting
+  that value.
+- `policy_dependent` records that Core must evaluate the owner-defined close
+  policy from the current result and risk basis. It is not agent discretion at
+  close time.
+- The committed `StateSummary` exposes both the selected policy and a
+  Core-generated reason. A policy never substitutes for evidence,
+  residual-risk acceptance, sensitive-action approval, or another blocker.
+
+Lineage and carry-forward rules:
+
+- `lineage` is accepted only when intake creates a new Task. Its predecessor
+  must be an existing different Task in the same project, and
+  `creation_reason` must be non-empty.
+- Relations are `continues`, `derived_from`, `split_from`, `replaces`, and
+  `implements_advice_from`. `implements_advice_from` requires a completed
+  `advisor` predecessor with `result=advice_only`.
+- `carry_forward` is an explicit duplicate-free selection from `scope`,
+  `non_goals`, `user_decisions`, `source_refs`, `context_refs`,
+  `known_limitations`, `unresolved_obligations`, `residual_risks`, and
+  `baseline`.
+- An explicitly selected category must identify predecessor material that
+  exists and can be carried or referenced. Intake rejects empty scope,
+  non-goal, source-ref, context-ref, baseline, or reference-only selections
+  instead of recording a misleading `applied` or `reference_only` disposition.
+- Selected scope and non-goal material becomes new-Task input only when it is
+  compatible with the submitted initial scope. Criterion statements and
+  evidence requirements may be copied as scope material, but the new Task gets
+  new `AcceptanceCriterionId` values.
+- Selected source and context refs remain non-authoritative context. A
+  `source_refs` selection copies only refs actually stored on the predecessor;
+  an artifact-bearing ref remains predecessor-Task-scoped and Core revalidates
+  that exact artifact ownership and integrity instead of relabeling it as a
+  new-Task artifact.
+- Selected user decisions, known limitations, obligations, and residual risks
+  produce reference-only dispositions to exact active predecessor continuity
+  records or compatible current close-basis Run/risk refs. Intake rejects a
+  selected category with no active compatible record; it does not fabricate a
+  disposition that merely points at the predecessor Task. A new-Task owner
+  check is still required before any referenced fact can satisfy scope,
+  acceptance, risk, or write rules.
+- A selected baseline is copied only when the predecessor baseline exists and
+  the predecessor Task baseline exactly equals its current Change Unit write
+  basis, while the recorded Git worktree, branch or detached-HEAD state, HEAD
+  SHA, and workspace fingerprint remain compatible. Otherwise intake rejects
+  that carry-forward and requires an explicit rebaseline; it does not copy
+  stale baseline authority.
+- Core records one carry-forward disposition per selected category so status
+  can distinguish applied material from reference-only context.
 
 ## Access requirements
 
@@ -186,6 +272,8 @@ params:
   plain_language_request: "Create a first-run checklist for new workspace setup."
   requested_mode: work
   resume_policy: create_new
+  acceptance_policy: null
+  lineage: null
   initial_scope:
     boundary: "First-run checklist for new workspace setup."
     non_goals:
@@ -227,6 +315,10 @@ state:
     task_id: task_onboard_001
     produced_at_state_version: 18
   mode: work
+  work_phase: shaping
+  acceptance_policy: required
+  acceptance_policy_reason: "Write-capable work requires final acceptance."
+  lineage: null
   lifecycle:
     lifecycle_phase: shaping
     close_reason: none

@@ -29,6 +29,8 @@ This document does not own:
 - project continuity, guarantee display, and next safe actions
 
 Every successful result also includes the compact `summary_card`.
+When a Task is selected, every successful result also includes a freshly
+computed `authority_receipt`, independent of optional `include` fields.
 
 ## Required inputs
 
@@ -98,13 +100,28 @@ Include projection contract:
 - When evidence or close details are selected, `summary_card.evidence` is exactly `evidence_gate.state`. It uses `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, or `blocked`; it does not derive a second gate from evidence attachment display state.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns active `ProjectContinuitySummary[]` entries for durable project-level context.
+- `include.continuity` also returns `task_flow`, the connected predecessor
+  component for the selected Task, including branches joined by canonical
+  lineage edges.
 - `summary_card` is always returned on successful `StatusResult` responses. It summarizes the owner-selected view with public display terminology and one selected `next` action when knowable. It does not add authority beyond the structured fields it summarizes.
 - `include.evidence=false` omits `evidence_summary`; `evidence_gate` is still returned when `include.close=true`.
-- `include.close=false` omits `CurrentCloseBasis`, close state, close blockers, `GuardHealthSummary` hook-state facts, `CoverageSummary`, residual-risk coverage, and close-only next actions. When `include.evidence=true`, Core still evaluates the same read-only close basis internally so evidence provenance, freshness, and artifact blockers feed the canonical gate, but it does not expose those close-only fields.
+- `include.close=false` omits `CurrentCloseBasis`, optional close-state and
+  blocker projections, `GuardHealthSummary` hook-state facts,
+  `CoverageSummary`, residual-risk coverage, and close-only top-level actions.
+  Core still evaluates the same read-only close basis for the mandatory
+  `authority_receipt`; the receipt carries the full blocker set even when those
+  optional top-level fields are omitted.
 - `include.guarantees=false` means guarantee display is not derived and not returned.
 - `include.continuity=false` means project continuity summaries are not read or returned.
 
 Truthful projection rules:
+- `authority_receipt.latest_run_ref` uses durable `run_recorded` authority-event
+  commit order. Run IDs and equal-millisecond timestamps never determine which
+  Run is latest.
+- A terminal selected Task projects its stored terminal state as `closed`,
+  `cancelled`, or `superseded`, with an empty close-blocker set and no next
+  action. A non-terminal `ready` close state selects `volicord.close_task` as
+  the Agent's next action before generic workflow suggestions.
 - Uncomputed or unselected optional projections are omitted where the schema permits. Fixed-shape top-level fields remain `null` or empty when their corresponding `include` flag is false; interpret those values together with the request's `include` object.
 - When a projection is selected, `null` means it was computed but no value is available, and an empty array, including empty close blockers, means it was computed and no entries were found.
 - Capability declarations alone do not create guarantees. A cooperative-only deployment must not claim `detective`.
@@ -138,6 +155,8 @@ Truthful projection rules:
 | `coverage_summary` | `CoverageSummary | null` selected into the close status view. Shape and value meanings are owned by [API State Schemas](schema-state.md#guard-health-summary). It distinguishes record authority from detective observation and reports coverage non-guarantees. |
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuitySummary[]` when `include.continuity=true`; omitted when the projection is not selected. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
+| `task_flow` | `TaskFlowItem[]` when `include.continuity=true` and a Task is selected; omitted otherwise. It is the connected lineage projection, not inherited current authority. |
+| `authority_receipt` | Fresh `AuthorityReceipt` whenever a Task is selected, otherwise `null`. It uses the same observed `state_version` and carries the complete close-blocker set, latest recorded Run, product-write observation, evidence gate, and next actor/action. Shape is owned by [API State Schemas](schema-state.md#task-lineage-workspace-and-authority-receipt). |
 
 Nested `UserChannelAvailability` and `JudgmentInboxItem` shapes are owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
 
@@ -156,6 +175,9 @@ Returns `ToolRejectedResponse` only when the read cannot be safely served, such 
 - unsupported invocation context for the requested protected detail
 - missing current Task for a Task-scoped read
 - stale or unavailable projection when a projection-backed view was requested
+- corrupt Task, close-basis, evidence, or other owner state required to build
+  the canonical authority receipt, even when its optional top-level projection
+  was not requested
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
 

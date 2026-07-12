@@ -72,7 +72,7 @@ base URL을 사용합니다.
 
 ```sh
 repo=OWNER/REPO
-version=v0.2.0
+version=v0.3.0
 base="https://github.com/$repo/releases/download/$version"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
@@ -83,7 +83,7 @@ GitHub가 아닌 릴리스 mirror에서는 target 이름이 붙은 tarball과 ch
 디렉터리에 설치 스크립트 자산도 함께 제공합니다.
 
 ```sh
-base="https://example.invalid/releases/v0.2.0"
+base="https://example.invalid/releases/v0.3.0"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
 VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
@@ -123,7 +123,7 @@ Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 
 ```powershell
 $repo = "OWNER/REPO"
-$version = "v0.2.0"
+$version = "v0.3.0"
 $base = "https://github.com/$repo/releases/download/$version"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
@@ -133,7 +133,7 @@ Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 GitHub가 아닌 릴리스 mirror에서는 아래처럼 실행합니다.
 
 ```powershell
-$base = "https://example.invalid/releases/v0.2.0"
+$base = "https://example.invalid/releases/v0.3.0"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 & $tmp -ReleaseBaseUrl $base -RequireChecksum

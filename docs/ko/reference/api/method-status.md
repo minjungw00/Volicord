@@ -29,6 +29,8 @@
 - 프로젝트 연속성, 보장 표시, 다음 안전한 행동
 
 성공한 결과에는 항상 간결한 `summary_card`도 포함됩니다.
+Task가 선택되면 성공한 모든 결과는 선택적 `include` 필드와 무관하게 새로 계산한
+`authority_receipt`도 포함합니다.
 
 ## 필수 입력
 
@@ -98,13 +100,25 @@ StatusRequest:
 - 증거나 닫기 세부사항이 선택되면 `summary_card.evidence`는 정확히 `evidence_gate.state`입니다. `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, `blocked` 중 하나를 사용하며 증거 첨부 표시 상태에서 두 번째 gate를 파생하지 않습니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
 - `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성 `ProjectContinuitySummary[]` 항목을 반환합니다.
+- `include.continuity`는 선택한 Task의 연결된 predecessor component인
+  `task_flow`도 반환합니다. 정규 lineage edge로 연결된 branch를 포함합니다.
 - `summary_card`는 성공한 `StatusResult` 응답에서 항상 반환됩니다. 담당 문서가 선택한 보기를 공개 표시 용어와, 알 수 있을 때 선택된 다음 행동 하나인 `next`로 요약합니다. 요약하는 구조화 필드 너머의 권한을 추가하지 않습니다.
 - `include.evidence=false`이면 `evidence_summary`를 생략합니다. `include.close=true`이면 `evidence_gate`는 계속 반환합니다.
-- `include.close=false`이면 `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, `GuardHealthSummary` 상태 정보, `CoverageSummary`, 잔여 위험 범위, 닫기 전용 다음 행동을 생략합니다. `include.evidence=true`이면 Core는 증거 출처, 최신성, 아티팩트 차단 사유가 기준 gate에 반영되도록 내부에서 동일한 읽기 전용 닫기 근거를 평가하지만 닫기 전용 필드는 노출하지 않습니다.
+- `include.close=false`이면 `CurrentCloseBasis`, 선택적 닫기 상태와 blocker
+  projection, `GuardHealthSummary` 상태 정보, `CoverageSummary`, 잔여 위험 범위,
+  닫기 전용 최상위 행동을 생략합니다. Core는 필수 `authority_receipt`를 위해
+  같은 읽기 전용 닫기 근거를 계속 평가합니다. Receipt는 선택적 최상위 필드를
+  생략해도 전체 blocker 집합을 담습니다.
 - `include.guarantees=false`는 보장 표시를 파생하지도 반환하지도 않는다는 뜻입니다.
 - `include.continuity=false`는 프로젝트 연속성 요약을 읽거나 반환하지 않는다는 뜻입니다.
 
 정직한 상태 보기 규칙:
+- `authority_receipt.latest_run_ref`는 오래 유지되는 `run_recorded` 권한 이벤트 커밋
+  순서를 사용합니다. Run ID나 밀리초가 같은 시각 값으로 최신 Run을 정하지 않습니다.
+- 선택한 종료 Task는 저장된 종료 상태를 `closed`, `cancelled`, `superseded` 중 하나로
+  표시하고 닫기 차단 사유는 빈 목록, 다음 행동은 없음으로 둡니다. 종료되지 않은
+  `ready` 닫기 상태에서는 일반 작업 흐름 제안보다 먼저 에이전트의 다음 행동으로
+  `volicord.close_task`를 선택합니다.
 - 계산하지 않았거나 선택하지 않은 선택 상태 보기는 스키마가 허용하는 곳에서 생략합니다. 고정 형태의 최상위 필드는 해당 `include` 플래그가 `false`이면 `null` 또는 빈 배열로 남으므로 요청의 `include` 객체와 함께 해석해야 합니다.
 - 상태 보기가 선택된 경우 `null`은 계산했지만 사용할 값이 없음을 뜻하고, 닫기 차단 사유를 포함한 빈 배열은 계산했지만 항목이 없음을 뜻합니다.
 - 호스트 지침, 연결 모드, 생성된 텍스트만으로는 보장이 생기지 않습니다. 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
@@ -138,6 +152,8 @@ StatusRequest:
 | `coverage_summary` | 닫기 상태 조회 보기에 선택된 `CoverageSummary | null`입니다. 형태와 값 의미는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. `record` 권한 기록과 `detective` 관찰을 구분하고 관찰 범위의 비보장을 보고합니다. |
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
 | `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
+| `task_flow` | `include.continuity=true`이고 Task를 선택했을 때의 `TaskFlowItem[]`이며 그 밖에는 생략합니다. 연결된 lineage projection이지 승계된 현재 권한이 아닙니다. |
+| `authority_receipt` | Task를 선택했을 때 새로 계산한 `AuthorityReceipt`이며 Task가 없으면 `null`입니다. 같은 관찰 `state_version`에서 전체 close blocker, 최신 기록 Run, product-write 관찰, Evidence gate, 다음 actor/action을 담습니다. 형태는 [API 상태 스키마](schema-state.md#task-lineage-workspace-and-authority-receipt)가 담당합니다. |
 
 중첩된 `UserChannelAvailability`와 `JudgmentInboxItem` 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. 중첩된 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
 
@@ -156,6 +172,8 @@ StatusRequest:
 - 요청한 보호 세부정보에 대한 지원되지 않는 호출 맥락
 - `Task` 범위 읽기에 필요한 현재 `Task` 없음
 - 상태 보기 기반 응답을 요청했지만 상태 보기가 오래되었거나 사용 불가
+- 선택적 최상위 projection을 요청하지 않았더라도 정규 authority receipt를
+  만드는 데 필요한 Task, close basis, Evidence 또는 다른 owner state가 손상됨
 
 공개 오류 코드 의미, 우선순위, 거절 응답 처리 경로는 아래 오류 담당 문서가 담당합니다.
 
