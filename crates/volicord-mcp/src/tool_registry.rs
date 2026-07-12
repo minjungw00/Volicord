@@ -60,10 +60,10 @@ pub(crate) struct McpToolExample {
     pub arguments_json: &'static str,
 }
 
-const INTAKE_CREATE_NEW_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Create an onboarding checklist.","requested_mode":"work","resume_policy":"create_new","initial_scope":{"boundary":"Onboarding checklist setup.","non_goals":[],"acceptance_criteria":[{"statement":"The checklist is available to new workspace users.","evidence_requirement":"required"}]}}"#;
-const INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Continue the active onboarding checklist work.","requested_mode":"auto","resume_policy":"resume_active","initial_scope":{"boundary":"Continue the current onboarding checklist scope.","non_goals":[],"acceptance_criteria":[]}}"#;
-const INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Replace the active onboarding work with the revised checklist.","requested_mode":"work","resume_policy":"supersede_active","initial_scope":{"boundary":"Revised onboarding checklist setup.","non_goals":["Changing account creation."],"acceptance_criteria":[{"statement":"The revised checklist replaces the active work.","evidence_requirement":"required"}]}}"#;
-const INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Start an onboarding checklist only when no Task is active.","requested_mode":"advisor","resume_policy":"reject_if_active","initial_scope":{"boundary":"Onboarding checklist guidance.","non_goals":[],"acceptance_criteria":[{"statement":"Provide onboarding checklist guidance.","evidence_requirement":"not_required"}]}}"#;
+const INTAKE_CREATE_NEW_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Create an onboarding checklist.","requested_mode":"work","resume_policy":"create_new","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Onboarding checklist setup.","non_goals":[],"acceptance_criteria":[{"statement":"The checklist is available to new workspace users.","evidence_requirement":"required"}]}}"#;
+const INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Continue the active onboarding checklist work.","requested_mode":"auto","resume_policy":"resume_active","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Continue the current onboarding checklist scope.","non_goals":[],"acceptance_criteria":[]}}"#;
+const INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Replace the active onboarding work with the revised checklist.","requested_mode":"work","resume_policy":"supersede_active","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Revised onboarding checklist setup.","non_goals":["Changing account creation."],"acceptance_criteria":[{"statement":"The revised checklist replaces the active work.","evidence_requirement":"required"}]}}"#;
+const INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Start an onboarding checklist only when no Task is active.","requested_mode":"advisor","resume_policy":"reject_if_active","acceptance_policy":null,"lineage":null,"initial_scope":{"boundary":"Onboarding checklist guidance.","non_goals":[],"acceptance_criteria":[{"statement":"Provide onboarding checklist guidance.","evidence_requirement":"not_required"}]}}"#;
 
 pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
 pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
@@ -77,9 +77,9 @@ pub(crate) const STATUS_READ_ONLY_ARGUMENTS_JSON: &str = r#"{"detail":"workflow"
 const STATUS_FULL_ARGUMENTS_JSON: &str = r#"{"detail":"full"}"#;
 
 pub(crate) const PREPARE_WRITE_SIMPLE_EXAMPLE_ID: &str = "simple_prepare_write";
-pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"intended_operation":"Update the profile preference save flow.","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"baseline_ref":"baseline_pref_001"}"#;
+pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"detail":"full","intended_operation":"Update the profile preference save flow.","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"baseline_ref":"baseline_pref_001"}"#;
 
-const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
+const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"detail":"full","task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
 
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
     "advisor_no_product_write_record_run";
@@ -90,7 +90,8 @@ pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "final_acceptance_request";
 pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_close_001","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"required_for":["close_complete"]}"#;
 
-const RECONCILE_CHANGES_ARGUMENTS_JSON: &str = r#"{"task_id":"task_reconcile_001"}"#;
+const RECONCILE_CHANGES_ARGUMENTS_JSON: &str =
+    r#"{"detail":"full","task_id":"task_reconcile_001"}"#;
 
 pub(crate) const CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "check_close_missing_final_acceptance";
@@ -436,10 +437,10 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         }
         STATUS_TOOL_NAME => "Read the current Core status view without creating Core authority state.",
         PREPARE_WRITE_TOOL_NAME => {
-            "Check one proposed Product Repository write against current Core scope, authority, and freshness."
+            "Check one proposed Product Repository write against current Core scope, authority, and freshness. Use detail=full when the write-ticket payload is needed."
         }
         STAGE_ARTIFACT_TOOL_NAME => {
-            "Prepare an Evidence attachment input; staging alone is not recorded Evidence."
+            "Prepare an Evidence attachment input; staging alone is not recorded Evidence. Use detail=full to receive the staged handle."
         }
         RECORD_RUN_TOOL_NAME => {
             "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
@@ -448,7 +449,7 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
             "Create one focused user-owned judgment; authority-bearing choices remain Core-owned."
         }
         RECONCILE_CHANGES_TOOL_NAME => {
-            "Reconcile unresolved Product Repository changes without agent-only dismissal."
+            "Reconcile unresolved Product Repository changes without agent-only dismissal. Use detail=full when per-finding results are needed."
         }
         CHECK_CLOSE_TOOL_NAME => {
             "Read current close readiness without requesting a terminal mutation."

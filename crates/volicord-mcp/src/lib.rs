@@ -15,6 +15,7 @@ mod http;
 mod local_http;
 mod local_web_consent;
 mod prelude;
+mod repository_discovery;
 mod routing;
 mod schema_validation;
 mod stdio;
@@ -36,10 +37,17 @@ pub use local_http::{
     run_local_http_server, LocalHttpListenScope, LocalHttpServerConfig, LocalHttpTokenSource,
     LOCAL_HTTP_MCP_ENDPOINT_PATH,
 };
-pub use routing::{McpConnectionContext, McpConnectionStartupInspection, McpProjectAvailability};
+pub use repository_discovery::{
+    RepositoryDiscoveryDescriptor, RepositoryDiscoveryDescriptorError, RepositoryDiscoveryHost,
+};
+pub use routing::{
+    McpConnectionContext, McpConnectionStartupInspection, McpProjectAvailability,
+    RepositoryDiscoveryResolution,
+};
 pub use stdio::{
     preflight_check, resolve_runtime_home, resolve_runtime_home_from_env,
-    run_preflight_check_from_env, run_stdio, run_stdio_from_env,
+    run_preflight_check_from_env, run_stdio, run_stdio_discover_repository_from_env,
+    run_stdio_from_env,
 };
 pub use tool_registry::{
     adapter_utility_tools, mcp_tools, mcp_tools_for_mode, public_method_tools, McpToolAnnotations,

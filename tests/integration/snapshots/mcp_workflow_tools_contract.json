@@ -27,16 +27,19 @@
       "input_schema": {
         "definitions": [
           "AcceptanceCriterionInput",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "CarryForwardKind",
           "CommandSource",
           "EvidenceRequirement",
           "ExternalUriSource",
           "GitCommitSource",
           "GitDiffSource",
           "InitialScope",
+          "MutationDetailLevel",
           "RedactionState",
           "RepositoryFileSource",
           "RequestedMode",
@@ -45,34 +48,47 @@
           "SourceRef",
           "StateRecordKind",
           "StateRecordRef",
+          "TaskLineageInput",
+          "TaskLineageRelation",
           "UserContextSource",
           "UtcTimestamp"
         ],
         "root_properties": [
+          "acceptance_policy",
+          "detail",
           "initial_context_refs",
           "initial_scope",
           "initial_source_refs",
+          "lineage",
           "plain_language_request",
           "project_selector",
           "requested_mode",
           "resume_policy"
         ],
         "root_required": [
+          "acceptance_policy",
           "initial_scope",
+          "lineage",
           "plain_language_request",
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:b73a21ccda1f085f408dc352decade4392f2756e732367629cca70be919459e3"
+        "sha256": "sha256:a6dbe3de1b9df9a2acac62f59e909e5bd549a77e14192e4c0c8759fc05e85a4a"
       },
       "name": "volicord.intake",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -105,11 +121,16 @@
           "HostKind",
           "IntakeResult",
           "IntegrationProfile",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -129,8 +150,11 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -139,12 +163,15 @@
           "ToolResponse_for_IntakeResult",
           "ToolResultBase",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a4b730dbf7dd02a1900f287d232eaaf76764381480e6a27d03b550062a709658"
+        "sha256": "sha256:a781701a6dae26f2af1891968f120d38c95da0f99d5632cd18a07cafc003b4a6"
       }
     },
     {
@@ -163,6 +190,7 @@
           "ChangeUnitOperation",
           "ChangeUnitUpdate",
           "EvidenceRequirement",
+          "MutationDetailLevel",
           "ScopeUpdate",
           "StateRecordKind",
           "StateRecordRef"
@@ -172,6 +200,7 @@
           "autonomy_boundary",
           "baseline_ref",
           "change_unit",
+          "detail",
           "goal_summary",
           "non_goals",
           "project_selector",
@@ -184,16 +213,22 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:1499cfbf9566fe3528666ee676866b265ef6fdd0ed018ae253470b40edb5bc74"
+        "sha256": "sha256:70bb270e8893bf5d01a790bbeae00bb6dc94f86220e84cf223db73c7bb1c3d4a"
       },
       "name": "volicord.update_scope",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -225,11 +260,16 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -249,8 +289,11 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -260,12 +303,15 @@
           "ToolResultBase",
           "UpdateScopeResult",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bf5cb48b1b82a56df23ec0c23fa5de0cd8e6f7c91236f4eae94917a3cf12d6f8"
+        "sha256": "sha256:4204dfda729617d9a94c16d8d798accb904f05618cbac517048bdf6b6e7a4ed2"
       }
     },
     {
@@ -292,10 +338,16 @@
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -369,8 +421,11 @@
           "StatusCloseState",
           "StatusResult",
           "SummaryCard",
+          "TaskFlowItem",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -382,12 +437,15 @@
           "UserChannelPathAvailability",
           "UserJudgmentStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ca3f449cde70ade5fc323ad9f92d9e7d3efd7fc0604b00e8b19b71e9f776631a"
+        "sha256": "sha256:bc47e24067be1ce0843742931624ec65f780b6bd8ec8677e1bf93ea14c444b34"
       }
     },
     {
@@ -397,12 +455,15 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Check one proposed Product Repository write against current Core scope, authority, and freshness.",
+      "description": "Check one proposed Product Repository write against current Core scope, authority, and freshness. Use detail=full when the write-ticket payload is needed.",
       "input_schema": {
-        "definitions": [],
+        "definitions": [
+          "MutationDetailLevel"
+        ],
         "root_properties": [
           "baseline_ref",
           "change_unit_id",
+          "detail",
           "intended_operation",
           "intended_paths",
           "product_file_write_intended",
@@ -416,17 +477,23 @@
           "intended_paths",
           "product_file_write_intended"
         ],
-        "sha256": "sha256:b9688b8b87b2f55e34aae393eea7bf820a7b5f55330b32aee44a8a2d4aaad00c"
+        "sha256": "sha256:7693ce1d007e660d4a6d66a8889f350be40788ef9c7c567b430e7b66402bc6a8"
       },
       "name": "volicord.prepare_write",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "AcceptedRiskInput",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -462,11 +529,16 @@
           "JudgmentPresentation",
           "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -488,8 +560,11 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -502,6 +577,9 @@
           "UserJudgmentOption",
           "UserJudgmentOptionAction",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteDecisionCategory",
           "WriteDecisionReason",
           "WriteTicket",
@@ -514,7 +592,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e4101bf844f20374682e3f5fec1b6b1b6aac767fe3bdb6c2c1cdcf03e0781741"
+        "sha256": "sha256:1179a1fd3194344989292877edf77b185c21d972fb7c658be3b2dc57eac42dc5"
       }
     },
     {
@@ -524,13 +602,15 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Prepare an Evidence attachment input; staging alone is not recorded Evidence.",
+      "description": "Prepare an Evidence attachment input; staging alone is not recorded Evidence. Use detail=full to receive the staged handle.",
       "input_schema": {
         "definitions": [
+          "MutationDetailLevel",
           "RedactionState"
         ],
         "root_properties": [
           "content_type",
+          "detail",
           "display_name",
           "expected_sha256",
           "expected_size_bytes",
@@ -547,24 +627,37 @@
           "safe_bytes_or_notice",
           "task_id"
         ],
-        "sha256": "sha256:9007fdbe6dbc9e01ce86a4c3c475fbb03c459bcebdccd5ffdd00ffc359845aef"
+        "sha256": "sha256:5dbed98346db6a2da10faf5a3343fbc843b6d8a65b47c17b2673e1d12a0108a0"
       },
       "name": "volicord.stage_artifact",
       "output_schema": {
         "definitions": [
           "ActorSource",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CloseReadinessBlocker",
+          "CloseReadinessBlockerCategory",
+          "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
           "EvidenceDisplayState",
+          "EvidenceGateState",
+          "EvidenceGateSummary",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "IntegrationProfile",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -579,6 +672,7 @@
           "StagedArtifactHandle",
           "StateRecordKind",
           "StateRecordRef",
+          "StatusCloseState",
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
@@ -588,7 +682,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4df7d9214d764009ca49032dc16e781129cabbd1467aa5ef0341dcdc08563f5a"
+        "sha256": "sha256:0f3cbb868f11edafc366720fe268302646fed63413664c37b89219aa796e1d88"
       }
     },
     {
@@ -619,6 +713,7 @@
           "GitDiffSource",
           "McpEvidenceCoverageUpdate",
           "McpEvidenceObservationInput",
+          "MutationDetailLevel",
           "ObservedChanges",
           "RedactionState",
           "RepositoryFileSource",
@@ -637,6 +732,7 @@
           "baseline_ref",
           "change_unit_id",
           "close_assessment",
+          "detail",
           "evidence_observations",
           "evidence_updates",
           "kind",
@@ -655,16 +751,22 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:88b2b68531631dbea437ea905d6b9123688e1cd9b22b63e51b08e89d14d05e59"
+        "sha256": "sha256:9951f9f045946f6f46e02e4b67eccbc343a3b93ebd6f86311bb97499726f4120"
       },
       "name": "volicord.record_run",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -685,6 +787,10 @@
           "EvidenceGateState",
           "EvidenceGateSummary",
           "EvidenceObservation",
+          "EvidenceProducerAnchor",
+          "EvidenceProducerKind",
+          "EvidenceRelevanceAssessment",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceSourceKind",
           "EvidenceStatus",
@@ -704,11 +810,16 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -737,8 +848,11 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -748,12 +862,15 @@
           "ToolResultBase",
           "UserContextSource",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:dac7b7dba70e2f01525766addb620f947b7fd2e6d1842d2d133e90c97532dbdf"
+        "sha256": "sha256:e5581775d81e288bc73faddb71572de41252763cb44754da9c765b73d8f30031"
       }
     },
     {
@@ -774,6 +891,7 @@
           "JudgmentKind",
           "JudgmentPresentation",
           "JudgmentRequiredFor",
+          "MutationDetailLevel",
           "RedactionState",
           "SensitiveActionScope",
           "StateRecordKind",
@@ -786,6 +904,7 @@
           "affected_refs",
           "change_unit_id",
           "context",
+          "detail",
           "expires_at",
           "judgment_kind",
           "options",
@@ -804,17 +923,23 @@
           "required_for",
           "task_id"
         ],
-        "sha256": "sha256:12042ef2b213f22930171abc01728542a48ce47f102c3423b44b5a4a1461dfc8"
+        "sha256": "sha256:925149a24db13164fa4b50f9cdb1418aa9211e26f3177952874d89d08c785ff6"
       },
       "name": "volicord.request_user_judgment",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "AcceptedRiskInput",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -857,12 +982,17 @@
           "JudgmentRationale",
           "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpRequestUserJudgmentResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -886,8 +1016,11 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -905,12 +1038,15 @@
           "UserJudgmentResolution",
           "UserJudgmentStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f6c045fbb51608ac17490941ff7a4fad1dbaf072358b45092b6428f6b769cc43"
+        "sha256": "sha256:a8078bb9df72c1a2d91478614a8473ad4416e85181ad0d93e5580c656e037ac9"
       }
     },
     {
@@ -920,13 +1056,15 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Reconcile unresolved Product Repository changes without agent-only dismissal.",
+      "description": "Reconcile unresolved Product Repository changes without agent-only dismissal. Use detail=full when per-finding results are needed.",
       "input_schema": {
         "definitions": [
+          "MutationDetailLevel",
           "UnrecordedChangeResolutionBasis",
           "UnrecordedChangeResolutionRequest"
         ],
         "root_properties": [
+          "detail",
           "project_selector",
           "resolution_requests",
           "task_id"
@@ -934,16 +1072,22 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:e0808826e87136b1bd1f56353548dc08c79002d056dcf34106e28dec5b696627"
+        "sha256": "sha256:49a25ff6a65d09c05d20b3cf9f631a6ec780e0e3e1b6d7d4516f96566253aecd"
       },
       "name": "volicord.reconcile_changes",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -975,11 +1119,16 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -1000,9 +1149,12 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "SummaryCard",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -1016,12 +1168,15 @@
           "UnrecordedChangeResolutionSummary",
           "UnrecordedChangeStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:695f0b1be9f3388123aa8f042ce9d58976123dc254987a898a4e3d1916a54da4"
+        "sha256": "sha256:bd575691e6f07f7f99fd7cf4680d0523074e9686c9b8ca4d7c2c855adb9c7ed3"
       }
     },
     {
@@ -1047,10 +1202,14 @@
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -1125,6 +1284,8 @@
           "SummaryCard",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -1136,12 +1297,15 @@
           "UserChannelPathAvailability",
           "UserJudgmentStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8ce0f34ac8c9426913a57c482c1ad662e2ef816ac5acfd5523bfde398d0a8055"
+        "sha256": "sha256:5d9f062cf615bd5b3b2aa16b5ca28f8dba96f8263fa2b343d5611efe43700ce0"
       }
     },
     {
@@ -1155,10 +1319,12 @@
       "input_schema": {
         "definitions": [
           "CloseMutationIntent",
-          "CloseReason"
+          "CloseReason",
+          "MutationDetailLevel"
         ],
         "root_properties": [
           "close_reason",
+          "detail",
           "intent",
           "project_selector",
           "superseding_task_id",
@@ -1169,16 +1335,22 @@
           "intent",
           "task_id"
         ],
-        "sha256": "sha256:3f553ac427e23f1ec3cb1f15fb36e69a36f44af9dc70b5fdb76dc1c3ee774a87"
+        "sha256": "sha256:c068b6d49c301e6fdbf8ee405e85f72c88c70ffbf5495e00cdb2ac5a9d5125f5"
       },
       "name": "volicord.close_task",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -1220,11 +1392,16 @@
           "JudgmentInboxChoice",
           "JudgmentInboxItem",
           "JudgmentRequiredFor",
+          "McpAuthoritativeRefreshFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded",
+          "McpMutationWorkflowResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
+          "MutationDetailLevel",
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
@@ -1250,9 +1427,12 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "SummaryCard",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -1264,12 +1444,15 @@
           "UserChannelPathAvailability",
           "UserJudgmentStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8ce0f34ac8c9426913a57c482c1ad662e2ef816ac5acfd5523bfde398d0a8055"
+        "sha256": "sha256:1768165f5fbbdfdc87ca80db47f3588539d84d8f3aba4952eebf8be30a549f0f"
       }
     },
     {

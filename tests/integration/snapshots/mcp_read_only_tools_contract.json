@@ -40,10 +40,16 @@
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -117,8 +123,11 @@
           "StatusCloseState",
           "StatusResult",
           "SummaryCard",
+          "TaskFlowItem",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -130,12 +139,15 @@
           "UserChannelPathAvailability",
           "UserJudgmentStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ca3f449cde70ade5fc323ad9f92d9e7d3efd7fc0604b00e8b19b71e9f776631a"
+        "sha256": "sha256:bc47e24067be1ce0843742931624ec65f780b6bd8ec8677e1bf93ea14c444b34"
       }
     },
     {
@@ -161,10 +173,14 @@
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
+          "AcceptancePolicy",
           "ActorSource",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "CarryForwardDisposition",
+          "CarryForwardDispositionStatus",
+          "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
           "CloseReadinessBlocker",
@@ -239,6 +255,8 @@
           "SummaryCard",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
+          "TaskLineageRelation",
+          "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
           "ToolDryRunResponse",
@@ -250,12 +268,15 @@
           "UserChannelPathAvailability",
           "UserJudgmentStatus",
           "UtcTimestamp",
+          "WorkPhase",
+          "WorkspaceContext",
+          "WorkspaceVcs",
           "WriteTicketStateSummary",
           "WriteTicketStatus"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8ce0f34ac8c9426913a57c482c1ad662e2ef816ac5acfd5523bfde398d0a8055"
+        "sha256": "sha256:5d9f062cf615bd5b3b2aa16b5ca28f8dba96f8263fa2b343d5611efe43700ce0"
       }
     },
     {

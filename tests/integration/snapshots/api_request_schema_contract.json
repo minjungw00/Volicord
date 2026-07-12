@@ -22,6 +22,7 @@
     "volicord.record_run",
     "volicord.request_user_judgment",
     "volicord.record_user_judgment",
+    "volicord.record_user_observation",
     "volicord.reconcile_changes",
     "volicord.close_task"
   ],
@@ -67,10 +68,12 @@
     "volicord.intake": {
       "definitions": [
         "AcceptanceCriterionInput",
+        "AcceptancePolicy",
         "ActorSource",
         "ArtifactAvailability",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
+        "CarryForwardKind",
         "CommandSource",
         "EvidenceRequirement",
         "ExternalUriSource",
@@ -85,29 +88,35 @@
         "SourceRef",
         "StateRecordKind",
         "StateRecordRef",
+        "TaskLineageInput",
+        "TaskLineageRelation",
         "ToolEnvelope",
         "UserContextSource",
         "UtcTimestamp"
       ],
       "root_properties": [
+        "acceptance_policy",
         "envelope",
         "initial_context_refs",
         "initial_scope",
         "initial_source_refs",
+        "lineage",
         "plain_language_request",
         "requested_mode",
         "resume_policy"
       ],
       "root_required": [
+        "acceptance_policy",
         "envelope",
         "initial_context_refs",
         "initial_scope",
         "initial_source_refs",
+        "lineage",
         "plain_language_request",
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:5382ee38ac687327232a1654bc3e59288d04e06a6eed4b209f48572bfd54da31"
+      "sha256": "sha256:9c114b261ea2c83f8428ca786954cfca86b8607895de78d5c98d714731d3b834"
     },
     "volicord.prepare_write": {
       "definitions": [
@@ -216,7 +225,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:b976809a8e54b29212772bb1ade7b1392f7934e184d3bf0c2b5a22157195a236"
+      "sha256": "sha256:b281fe09d1f2b1d2d479eedea286664d9b94623ae56724ac4fe39dbfeed1d103"
     },
     "volicord.record_user_judgment": {
       "definitions": [
@@ -255,7 +264,36 @@
         "selected_option_id",
         "user_judgment_id"
       ],
-      "sha256": "sha256:346e3431608be567933742d44f0257c3f0dadb27b59b35819f592c4c906e2f96"
+      "sha256": "sha256:7da0b4a4a8d37cf573476dda225e0e83689ee64f572375164cdf99a17cefdafc"
+    },
+    "volicord.record_user_observation": {
+      "definitions": [
+        "EvidenceRelevanceStatus",
+        "EvidenceTarget",
+        "ToolEnvelope",
+        "UtcTimestamp"
+      ],
+      "root_properties": [
+        "artifact_ids",
+        "change_unit_id",
+        "envelope",
+        "observed_at",
+        "relevance_status",
+        "summary",
+        "target",
+        "task_id"
+      ],
+      "root_required": [
+        "artifact_ids",
+        "change_unit_id",
+        "envelope",
+        "observed_at",
+        "relevance_status",
+        "summary",
+        "target",
+        "task_id"
+      ],
+      "sha256": "sha256:be11046488a867d08987583b62ae1c0c3cb567a5a3829a406beced63c5779e63"
     },
     "volicord.request_user_judgment": {
       "definitions": [
@@ -302,7 +340,7 @@
         "required_for",
         "task_id"
       ],
-      "sha256": "sha256:6dce00adf8a9d72bf2f8ab866509d0540266d2332c6cdf13fb35522da227e640"
+      "sha256": "sha256:bc37531bcc8657972be9f67734c8ce02540e7e9615f958f1e139d7d1c9b68dc9"
     },
     "volicord.stage_artifact": {
       "definitions": [
@@ -387,7 +425,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:44216356456d8d7d37801cf8c063d97dafe2e9c2e09dd3a83f8b3a4b3aa2b69d"
+      "sha256": "sha256:fbdd95f4f7eea27797f2a4d46562888de7e105abafbd57e4c1bbf6b0bb68fa13"
     }
   }
 }

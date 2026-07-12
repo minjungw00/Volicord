@@ -19,6 +19,7 @@ use crate::prelude::*;
 use crate::stdio::{
     classify_launch_origin, pending_judgment_from_response, percent_encode_query,
     run_stdio_with_env_marker, tool_execution_error_result, McpLaunchOrigin,
+    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
     routing::McpStorageCapability,
@@ -37,6 +38,7 @@ use volicord_store::agent_connections::{
     AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
+use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
 use volicord_store::guards::{
     list_unresolved_unrecorded_changes, upsert_guard_installation, GuardInstallationUpsert,
 };
@@ -203,6 +205,16 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             "{} output schema should cover structured adapter failures",
             tool.name
         );
+        if !matches!(
+            tool.name,
+            STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME | LIST_PROJECTS_TOOL_NAME
+        ) {
+            assert!(
+                schema_has_definition(&tool.output_schema, "McpMutationResponseBudgetExceeded"),
+                "{} output schema should cover compact response-budget failures",
+                tool.name
+            );
+        }
 
         let expected_annotations = match tool.name {
             STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME | LIST_PROJECTS_TOOL_NAME => {
@@ -246,6 +258,19 @@ fn request_user_judgment_output_schema_covers_elicited_recording_response() {
 
     assert!(schema_has_definition(&schema, "RequestUserJudgmentResult"));
     assert!(schema_has_definition(&schema, "RecordUserJudgmentResult"));
+    assert!(schema_has_definition(&schema, "AuthorityReceipt"));
+    assert!(schema_has_definition(
+        &schema,
+        "McpMutationWorkflowResponse"
+    ));
+    assert!(schema_has_definition(
+        &schema,
+        "McpAuthoritativeRefreshFailure"
+    ));
+    assert!(schema_has_definition(
+        &schema,
+        "McpMutationResponseBudgetExceeded"
+    ));
 }
 
 #[test]
@@ -337,6 +362,42 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
                 "{tool_name}.{field} omission should decode to the advertised default"
             );
         }
+    }
+
+    for tool_name in [
+        INTAKE_TOOL_NAME,
+        UPDATE_SCOPE_TOOL_NAME,
+        PREPARE_WRITE_TOOL_NAME,
+        STAGE_ARTIFACT_TOOL_NAME,
+        RECORD_RUN_TOOL_NAME,
+        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        RECONCILE_CHANGES_TOOL_NAME,
+        CLOSE_TASK_TOOL_NAME,
+    ] {
+        let tool = tool_definition(tool_name);
+        assert!(!root_required_fields(&tool.input_schema)
+            .iter()
+            .any(|field| field == "detail"));
+        assert_eq!(
+            tool.input_schema["properties"]["detail"]["default"],
+            "summary"
+        );
+        let example = canonical_tool_examples(tool_name)
+            .first()
+            .expect("mutation tool should advertise an example");
+        let decoded = decode_mcp_arguments_to_value(
+            tool_name,
+            serde_json::from_str(example.arguments_json)?,
+        )?;
+        let example_detail = if matches!(
+            tool_name,
+            PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME | RECONCILE_CHANGES_TOOL_NAME
+        ) {
+            "full"
+        } else {
+            "summary"
+        };
+        assert_eq!(decoded["detail"], example_detail);
     }
 
     assert_eq!(
@@ -1804,6 +1865,8 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
                 "plain_language_request": "Exercise read-only rejection.",
                 "requested_mode": "work",
                 "resume_policy": "create_new",
+                "acceptance_policy": null,
+                "lineage": null,
                 "initial_scope": {
                     "boundary": "Read-only rejection.",
                     "non_goals": [],
@@ -2030,6 +2093,132 @@ fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
 }
 
 #[test]
+fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_duplication(
+) -> Result<(), Box<dyn Error>> {
+    fn intake_result(prefix: &str, detail: Option<&str>) -> Result<Value, Box<dyn Error>> {
+        let fixture = CoreFixture::new(prefix)?;
+        let adapter = adapter(&fixture)?;
+        let mut arguments = intake_args(None);
+        if let Some(detail) = detail {
+            arguments["detail"] = json!(detail);
+        }
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({})),
+            initialized_notification(),
+            tools_call(2, INTAKE_TOOL_NAME, arguments),
+        ])?);
+        let mut output = Vec::new();
+        run_stdio(adapter, BufReader::new(input), &mut output)?;
+        let responses = stdio_responses(&output)?;
+        assert_eq!(responses.len(), 2);
+        Ok(responses[1]["result"].clone())
+    }
+
+    let summary = intake_result("mcp-mutation-summary", None)?;
+    assert_eq!(summary["isError"], false);
+    let summary_keys = summary["structuredContent"]
+        .as_object()
+        .expect("summary receipt")
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        summary_keys,
+        BTreeSet::from([
+            "change_unit_ref",
+            "close_blockers",
+            "close_state",
+            "evidence_gate",
+            "latest_run_ref",
+            "next_action",
+            "next_actor",
+            "product_file_write_observed",
+            "project_id",
+            "scope_revision",
+            "state_version",
+            "task_ref",
+        ])
+    );
+    let summary_text = summary["content"][0]["text"]
+        .as_str()
+        .expect("summary compatibility text");
+    assert!(summary_text.contains("authority receipt"));
+    assert!(summary_text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES);
+    assert!(serde_json::from_str::<Value>(summary_text).is_err());
+    assert!(serde_json::to_vec(&summary)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+
+    let workflow = intake_result("mcp-mutation-workflow", Some("workflow"))?;
+    let workflow_keys = workflow["structuredContent"]
+        .as_object()
+        .expect("workflow receipt")
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        workflow_keys,
+        BTreeSet::from(["authority_receipt", "next_actions"])
+    );
+    assert!(workflow["structuredContent"]["next_actions"].is_array());
+    assert!(serde_json::to_vec(&workflow)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+
+    let full = intake_result("mcp-mutation-full", Some("full"))?;
+    assert_eq!(full["structuredContent"]["base"]["response_kind"], "result");
+    assert!(full["structuredContent"]["state"].is_object());
+    let full_text = full["content"][0]["text"]
+        .as_str()
+        .expect("full compatibility text");
+    assert!(full_text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES);
+    assert!(serde_json::from_str::<Value>(full_text).is_err());
+    Ok(())
+}
+
+#[test]
+fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-compact-terminal-close")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&setup_adapter)?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            CLOSE_TASK_TOOL_NAME,
+            json!({
+                "task_id": task_id,
+                "intent": "cancel",
+                "close_reason": "cancelled",
+                "superseding_task_id": null,
+                "user_note": null
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], false);
+    assert_eq!(result["structuredContent"]["close_state"], "blocked");
+    assert_eq!(
+        result["structuredContent"]["task_ref"]["record_id"],
+        task_id
+    );
+    assert!(result["structuredContent"]["state_version"]
+        .as_u64()
+        .is_some_and(|version| version >= 1));
+    assert!(serde_json::from_str::<Value>(
+        result["content"][0]["text"]
+            .as_str()
+            .expect("compatibility text")
+    )
+    .is_err());
+    Ok(())
+}
+
+#[test]
 fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-accept")?;
     let setup_adapter = adapter(&fixture)?;
@@ -2043,7 +2232,7 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
             "volicord.request_user_judgment",
             product_judgment_args(&fixture, &task_id, state_version),
         ),
-        elicitation_accept("keep", None),
+        elicitation_accept("keep", Some("diagnostic-private-note-must-not-be-stored")),
     ])?);
     let mut output = Vec::new();
 
@@ -2072,6 +2261,113 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
         stored_resolution_basis(&fixture, &task_id, &response)?,
         VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
     );
+    let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
+        .expect("stdio tool call should create bounded diagnostics");
+    assert_eq!(diagnostics.totals.tool_call_count, 1);
+    assert_eq!(diagnostics.totals.core_reached_count, 1);
+    assert_eq!(diagnostics.totals.core_committed_count, 1);
+    assert_eq!(diagnostics.user_channel_counts["mcp_elicitation"], 1);
+    assert!(diagnostics.fallback_counts.is_empty());
+    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
+    assert!(!String::from_utf8_lossy(&diagnostics_bytes)
+        .contains("diagnostic-private-note-must-not-be-stored"));
+    Ok(())
+}
+
+#[test]
+fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-diagnostics-validation-retry")?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+    let sensitive_sentinel = "diagnostic-request-secret-and-file-/private/example.txt";
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            STATUS_TOOL_NAME,
+            json!({"unexpected_private_value": sensitive_sentinel}),
+        ),
+        tools_call(3, STATUS_TOOL_NAME, json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 3);
+    assert_eq!(responses[1]["result"]["isError"], true);
+    assert_eq!(responses[2]["result"]["isError"], false);
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home_path(), None)?.expect("diagnostics session");
+    let status = diagnostics
+        .tools
+        .iter()
+        .find(|tool| tool.tool_name == STATUS_TOOL_NAME)
+        .expect("status metrics");
+    assert_eq!(status.call_count, 2);
+    assert_eq!(status.validation_failures, 1);
+    assert_eq!(status.retries_after_validation_failure, 1);
+    assert_eq!(status.core_reached_count, 1);
+    assert_eq!(fixture.counts()?, before);
+    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
+    assert!(!String::from_utf8_lossy(&diagnostics_bytes).contains(sensitive_sentinel));
+    Ok(())
+}
+
+#[test]
+fn stdio_diagnostics_never_store_unknown_caller_tool_names() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-diagnostics-unknown-tool-private")?;
+    let adapter = adapter(&fixture)?;
+    let sensitive_tool_name = "token=abc123-private-tool-name";
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, sensitive_tool_name, json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses[1]["error"]["code"], -32602);
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home_path(), None)?.expect("diagnostics session");
+    assert!(diagnostics
+        .tools
+        .iter()
+        .all(|tool| tool.tool_name != sensitive_tool_name));
+    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
+    assert!(!String::from_utf8_lossy(&diagnostics_bytes).contains(sensitive_tool_name));
+    Ok(())
+}
+
+#[test]
+fn corrupt_diagnostics_store_is_nonfatal_to_mcp_core_result() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-diagnostics-corrupt-nonfatal")?;
+    fs::write(
+        diagnostics_db_path(fixture.runtime_home_path()),
+        b"not a sqlite diagnostics database",
+    )?;
+    let before = fixture.counts()?;
+    let adapter = adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, STATUS_TOOL_NAME, json!({})),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[1]["result"]["isError"], false);
+    let response = volicord_response_from_tool(&responses[1])?;
+    assert_eq!(response["base"]["response_kind"], "result");
+    assert_eq!(response["base"]["effect_kind"], "read_only");
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -2266,6 +2562,9 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
     assert!(fallback.contains("CLI inbox path"));
     assert!(fallback.contains("volicord inbox answer"));
     assert!(!fallback.contains("Volicord: answer J-1 1 #"));
+    let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
+        .expect("CLI fallback should create bounded diagnostics");
+    assert_eq!(diagnostics.fallback_counts["cli_inbox"], 1);
     Ok(())
 }
 
@@ -2314,6 +2613,9 @@ fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
     assert!(fallback.contains("Host prompt input is unavailable"));
     assert!(fallback.contains("Volicord: answer J-1 1 #"));
     assert!(fallback.contains("Volicord: note J-1 \"text\" #"));
+    let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
+        .expect("prompt capture fallback should create bounded diagnostics");
+    assert_eq!(diagnostics.fallback_counts["prompt_capture"], 1);
     Ok(())
 }
 
@@ -2412,6 +2714,9 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
         validation,
         LocalWebConsentTokenValidation::Valid(_)
     ));
+    let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
+        .expect("local web fallback should create bounded diagnostics");
+    assert_eq!(diagnostics.fallback_counts["local_web_consent"], 1);
     Ok(())
 }
 
@@ -3320,6 +3625,8 @@ fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
             "plain_language_request": "Create a task for User Channel tests.",
             "requested_mode": "work",
             "resume_policy": "create_new",
+            "acceptance_policy": null,
+            "lineage": null,
             "initial_scope": {
                 "boundary": "User Channel test task.",
                 "non_goals": ["Changing unrelated behavior."],
@@ -3461,6 +3768,8 @@ fn intake_args(project_selector: Option<&str>) -> Value {
         "plain_language_request": "Exercise MCP lifecycle gating.",
         "requested_mode": "work",
         "resume_policy": "create_new",
+        "acceptance_policy": null,
+        "lineage": null,
         "initial_scope": {
             "boundary": "MCP lifecycle gating test.",
             "non_goals": ["Changing Core method behavior."],
@@ -3523,6 +3832,7 @@ fn judgment_args(
     required_for: Value,
 ) -> Value {
     json!({
+        "detail": "full",
         "task_id": task_id,
         "change_unit_id": null,
         "judgment_kind": judgment_kind,
@@ -3588,15 +3898,11 @@ fn json_lines(messages: &[Value]) -> Result<Vec<u8>, serde_json::Error> {
 
 fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>> {
     assert_eq!(response["result"]["isError"], json!(false));
-    let text = response["result"]["content"][0]["text"]
-        .as_str()
-        .ok_or("tools/call response should include text content")?;
-    let parsed: Value = serde_json::from_str(text)?;
-    assert_eq!(
-        response["result"]["structuredContent"], parsed,
-        "structuredContent should equal the compatibility JSON text"
-    );
-    Ok(parsed)
+    response["result"]
+        .get("structuredContent")
+        .filter(|value| value.is_object())
+        .cloned()
+        .ok_or_else(|| "tools/call response should include structured content".into())
 }
 
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {

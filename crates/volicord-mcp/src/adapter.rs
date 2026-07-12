@@ -4,6 +4,7 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
+use volicord_platform_fs::capture_git_workspace_snapshot;
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +35,7 @@ pub struct McpDerivedInvocationContext {
     pub session_id: Option<String>,
     pub host_elicitation_available: bool,
     pub local_web_consent_available: bool,
+    pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
 impl McpDerivedInvocationContext {
@@ -46,6 +48,9 @@ impl McpDerivedInvocationContext {
         )
         .with_host_elicitation_available(self.host_elicitation_available)
         .with_local_web_consent_available(self.local_web_consent_available);
+        if let Some(workspace) = self.git_workspace_context.as_ref() {
+            invocation = invocation.with_git_workspace_context(workspace.clone());
+        }
         if let Some(session_id) = self.session_id.as_ref() {
             invocation = invocation.with_session_id(session_id.clone());
         }
@@ -614,8 +619,24 @@ impl McpAdapter {
         operation_category: OperationCategory,
         session_id: Option<&str>,
         host_elicitation_available: bool,
-    ) -> McpDerivedInvocationContext {
-        McpDerivedInvocationContext {
+    ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
+        let store = CoreProjectStore::open(&self.runtime_home, &envelope.project_id)
+            .map_err(McpAdapterError::Store)?;
+        let git_workspace_context =
+            capture_git_workspace_snapshot(&store.project_record().repo_root)
+                .map_err(|error| {
+                    McpAdapterError::Environment(format!(
+                "failed to capture the selected Product Repository Git workspace context: {error}"
+            ))
+                })?
+                .map(|snapshot| GitWorkspaceContext {
+                    git_common_dir: snapshot.layout.common_dir.display().to_string(),
+                    worktree_id: snapshot.worktree_id,
+                    branch_ref: snapshot.branch_ref,
+                    head_sha: snapshot.head_sha,
+                    workspace_fingerprint: snapshot.workspace_fingerprint,
+                });
+        Ok(McpDerivedInvocationContext {
             project_id: envelope.project_id.clone(),
             actor_source: ActorSource::agent_connection(
                 self.context.connection_internal_id.clone(),
@@ -625,7 +646,8 @@ impl McpAdapter {
             session_id: session_id.map(str::to_owned),
             host_elicitation_available,
             local_web_consent_available: self.local_web_consent.is_some(),
-        }
+            git_workspace_context,
+        })
     }
 
     /// Calls one public Volicord method tool and returns Core's response.
@@ -718,6 +740,8 @@ impl McpAdapter {
                 plain_language_request: args.plain_language_request,
                 requested_mode: args.requested_mode,
                 resume_policy: args.resume_policy,
+                acceptance_policy: args.acceptance_policy,
+                lineage: args.lineage,
                 initial_scope: args.initial_scope,
                 initial_context_refs: args.initial_context_refs,
                 initial_source_refs: args.initial_source_refs,
@@ -788,6 +812,31 @@ impl McpAdapter {
             StatusRequest {
                 envelope,
                 include: args.detail.include(),
+            },
+            CoreService::status,
+            session_id,
+            host_elicitation_available,
+        )
+    }
+
+    pub(crate) fn refresh_authority_status(
+        &self,
+        project_id: &ProjectId,
+        task_id: &TaskId,
+        session_id: Option<&str>,
+        host_elicitation_available: bool,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let envelope = self.generated_envelope(
+            STATUS_TOOL_NAME,
+            project_id,
+            Some(task_id),
+            OperationCategory::Read,
+        )?;
+        self.call_core_request(
+            STATUS_TOOL_NAME,
+            StatusRequest {
+                envelope,
+                include: StatusDetailLevel::Workflow.include(),
             },
             CoreService::status,
             session_id,
@@ -1113,7 +1162,7 @@ impl McpAdapter {
             operation_category,
             session_id,
             host_elicitation_available,
-        );
+        )?;
         call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }
 

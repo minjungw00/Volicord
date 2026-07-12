@@ -9,26 +9,32 @@ pub(crate) use std::{
     str,
     sync::atomic::Ordering,
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub(crate) use serde::Serialize;
 pub(crate) use serde_json::{json, Map, Value};
 pub(crate) use volicord_core::{
-    rejected_response, tool_error, CoreBoundary, CorePipelineError, CoreService, InvocationContext,
-    LocalWebConsentJudgmentRequest, PipelineResponse,
+    rejected_response, tool_error, CoreBoundary, CorePipelineError, CoreService,
+    GitWorkspaceContext, InvocationContext, LocalWebConsentJudgmentRequest, PipelineResponse,
 };
 pub(crate) use volicord_store::{
     agent_connections::{
         agent_connection_project_access_read_only, agent_connection_record_read_only,
-        list_connection_projects_read_only, AgentConnectionRecord, ConnectionProjectRecord,
-        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
+        list_agent_connections_read_only, list_connection_projects_read_only,
+        AgentConnectionRecord, ConnectionProjectRecord, CONNECTION_INTENT_SHARED,
+        CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW, HOST_SCOPE_PROJECT,
     },
     bootstrap::{
-        require_installation_profile_read_only, runtime_home_record_read_only,
-        ACTIVE_PROJECT_STATUS,
+        project_record_by_repo_root_read_only, require_installation_profile_read_only,
+        runtime_home_record_read_only, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, UserJudgmentRecord},
+    diagnostics::{
+        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
+        DiagnosticFallbackKind, DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart,
+        DiagnosticTransport, DiagnosticUserChannelKind,
+    },
     guards::{
         agent_session, guard_health_record, insert_agent_session, prompt_capture_availability,
         AgentSessionInsert,
@@ -51,20 +57,23 @@ pub(crate) use volicord_store::{
 };
 pub(crate) use volicord_types::{
     chat_judgment_verification_code, mcp_request_schema, mcp_response_schema, ActorSource,
-    AgentConnectionId, AgentConnectionMode, CheckCloseRequest, CloseTaskRequest, ErrorCode,
-    GuaranteeDisclosure, IdempotencyKey, IntakeRequest, IntegrationProfile, JsonObject,
-    JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome, McpCheckCloseArguments,
-    McpCloseTaskArguments, McpIntakeArguments, McpPrepareWriteArguments,
-    McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserJudgmentArguments,
-    McpStageArtifactArguments, McpStatusArguments, McpToolErrorCode, McpToolErrorIssue,
-    McpToolErrorResponse, McpToolIssueCode, McpUpdateScopeArguments, MethodOperationCategory,
-    OperationCategory, PersistedJudgmentBasis, PersistedUserJudgmentOptions, PrepareWriteRequest,
-    ProjectId, ReconcileChangesRequest, RecordRunRequest, RecordUserJudgmentPayload,
-    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequiredNullable,
-    SessionWatchCoverageBasis, SessionWatchScanSummary, SessionWatchStatus, StageArtifactRequest,
-    StateRecordRef, StatusRequest, ToolEnvelope, UpdateScopeRequest, UserJudgment,
-    UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction, UserJudgmentStatus,
-    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
+    AgentConnectionId, AgentConnectionMode, AuthorityReceipt, CheckCloseRequest, CloseTaskRequest,
+    EffectKind, ErrorCode, GuaranteeDisclosure, IdempotencyKey, IntakeRequest, IntegrationProfile,
+    JsonObject, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome,
+    McpAuthoritativeRefreshFailure, McpCheckCloseArguments, McpCloseTaskArguments,
+    McpIntakeArguments, McpMutationProjectionErrorCode, McpMutationResponseBudgetExceeded,
+    McpMutationWorkflowResponse, McpPrepareWriteArguments, McpReconcileChangesArguments,
+    McpRecordRunArguments, McpRequestUserJudgmentArguments, McpStageArtifactArguments,
+    McpStatusArguments, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
+    McpToolIssueCode, McpUpdateScopeArguments, MethodName, MethodOperationCategory,
+    MutationDetailLevel, NextActionSummary, OperationCategory, PersistedJudgmentBasis,
+    PersistedUserJudgmentOptions, PrepareWriteRequest, ProjectId, ReconcileChangesRequest,
+    RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RequestId,
+    RequestUserJudgmentRequest, RequiredNullable, ResponseKind, SessionWatchCoverageBasis,
+    SessionWatchScanSummary, SessionWatchStatus, StageArtifactRequest, StateRecordRef,
+    StatusDetailLevel, StatusRequest, StatusResult, TaskId, ToolEnvelope, UpdateScopeRequest,
+    UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentOptionAction,
+    UserJudgmentStatus, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
     MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,

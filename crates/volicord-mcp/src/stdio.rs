@@ -3,6 +3,7 @@ use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
 use crate::local_http::generate_bearer_token;
 use crate::local_web_consent::start_stdio_local_web_consent_listener;
 use crate::prelude::*;
+use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
 
@@ -13,6 +14,8 @@ const VOLICORD_MCP_CONNECTION_ID: &str = "VOLICORD_MCP_CONNECTION_ID";
 const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
 const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
 const CODEX_HOST_VALUE: &str = "codex";
+pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
+pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
 
 pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
 where
@@ -48,6 +51,7 @@ where
     W: Write,
 {
     let mut state = ConnectionState::for_launch_origin(options.launch_origin);
+    start_transport_diagnostic_session_best_effort(&adapter, &state);
     let _startup_observation =
         if options.startup_session_watch && state.managed_host_lifecycle_observations {
             adapter.managed_lifecycle_observation_best_effort(
@@ -122,6 +126,41 @@ pub fn run_stdio_from_env(
         stdout.lock(),
         StdioRunOptions {
             startup_session_watch,
+            launch_origin,
+        },
+    )
+}
+
+/// Runs stdio from a clone-portable repository descriptor.
+///
+/// The descriptor carries only the host selector. Connection and project
+/// identities are resolved from the current Git repository and the selected
+/// local Runtime Home before the transport starts.
+pub fn run_stdio_discover_repository_from_env(
+    host: RepositoryDiscoveryHost,
+) -> Result<(), McpAdapterError> {
+    let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
+    let launch_origin = if mcp_verification_launch(process_env_var) {
+        McpLaunchOrigin::CliVerification
+    } else {
+        McpLaunchOrigin::ManagedHost
+    };
+    let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
+    let resolution = RepositoryDiscoveryResolution::resolve(&runtime_home, &current_dir, host)?;
+    let local_web_consent =
+        start_stdio_local_web_consent_listener(&runtime_home, &resolution.context).ok();
+    let mut adapter = McpAdapter::new(runtime_home, resolution.context);
+    if let Some(local_web_consent) = local_web_consent {
+        adapter = adapter.with_local_web_consent(local_web_consent);
+    }
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    run_stdio_with_options(
+        adapter,
+        stdin.lock(),
+        stdout.lock(),
+        StdioRunOptions {
+            startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
             launch_origin,
         },
     )
@@ -694,33 +733,89 @@ where
     R: BufRead,
     W: Write,
 {
+    let diagnostic_started = Instant::now();
+    let diagnostic_request_bytes = params
+        .as_ref()
+        .and_then(|value| serde_json::to_vec(value).ok())
+        .map(|bytes| bytes.len() as u64)
+        .unwrap_or(0);
+    let diagnostic_tool_name = params
+        .as_ref()
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("name"))
+        .and_then(Value::as_str)
+        .filter(|tool_name| is_known_mcp_tool(tool_name))
+        .map(str::to_owned);
     let object = match required_object_params(id, params, "tools/call") {
         Ok(object) => object,
-        Err(error) => return Ok(Err(error)),
+        Err(error) => {
+            record_tool_diagnostic_best_effort(
+                adapter,
+                state,
+                diagnostic_started,
+                diagnostic_request_bytes,
+                diagnostic_tool_name.as_deref(),
+                Some(&error),
+                ToolDiagnosticFacts::default(),
+                true,
+                DiagnosticOutcome::ValidationFailure,
+            );
+            return Ok(Err(error));
+        }
     };
     if object.contains_key("task") {
-        return Ok(Err(invalid_params_response(
-            id,
-            "tools/call task augmentation is not supported",
-        )));
+        let error = invalid_params_response(id, "tools/call task augmentation is not supported");
+        record_tool_diagnostic_best_effort(
+            adapter,
+            state,
+            diagnostic_started,
+            diagnostic_request_bytes,
+            diagnostic_tool_name.as_deref(),
+            Some(&error),
+            ToolDiagnosticFacts::default(),
+            true,
+            DiagnosticOutcome::ValidationFailure,
+        );
+        return Ok(Err(error));
     }
 
     let tool_name = match object.get("name").and_then(Value::as_str) {
         Some(tool_name) => tool_name,
         None => {
-            return Ok(Err(invalid_params_response(
-                id,
-                "tools/call params.name must be a string",
-            )))
+            let error = invalid_params_response(id, "tools/call params.name must be a string");
+            record_tool_diagnostic_best_effort(
+                adapter,
+                state,
+                diagnostic_started,
+                diagnostic_request_bytes,
+                None,
+                Some(&error),
+                ToolDiagnosticFacts::default(),
+                true,
+                DiagnosticOutcome::ValidationFailure,
+            );
+            return Ok(Err(error));
         }
     };
     if !is_known_mcp_tool(tool_name) {
-        return Ok(Err(json_rpc_error(
+        let error = json_rpc_error(
             id.clone(),
             -32602,
             "Invalid params",
             Some(format!("unknown MCP tool: {tool_name}")),
-        )));
+        );
+        record_tool_diagnostic_best_effort(
+            adapter,
+            state,
+            diagnostic_started,
+            diagnostic_request_bytes,
+            None,
+            Some(&error),
+            ToolDiagnosticFacts::default(),
+            true,
+            DiagnosticOutcome::ValidationFailure,
+        );
+        return Ok(Err(error));
     }
     record_managed_lifecycle_event(
         adapter,
@@ -736,12 +831,23 @@ where
             .cloned()
             .expect("arguments object should be present"),
         Some(_) => {
-            return Ok(Err(invalid_params_response(
-                id,
-                "tools/call params.arguments must be an object",
-            )))
+            let error =
+                invalid_params_response(id, "tools/call params.arguments must be an object");
+            record_tool_diagnostic_best_effort(
+                adapter,
+                state,
+                diagnostic_started,
+                diagnostic_request_bytes,
+                Some(tool_name),
+                Some(&error),
+                ToolDiagnosticFacts::default(),
+                true,
+                DiagnosticOutcome::ValidationFailure,
+            );
+            return Ok(Err(error));
         }
     };
+    let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
 
     let session_id = state.session_id.clone();
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
@@ -761,30 +867,124 @@ where
                     writer,
                 )?
             }
-            Ok(response) => ToolCallOutput::success(response.response_json)?,
-            Err(error @ McpAdapterError::InvalidParams { .. })
-            | Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                return Ok(Ok(tool_execution_error_result(tool_name, &error)));
+            Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
+            Err(error @ McpAdapterError::InvalidParams { .. }) => {
+                let response = tool_execution_error_result(tool_name, &error);
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    true,
+                    DiagnosticOutcome::ValidationFailure,
+                );
+                return Ok(Ok(response));
             }
-            Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
+            Err(error @ McpAdapterError::ToolExecution { .. }) => {
+                let response = tool_execution_error_result(tool_name, &error);
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::ToolError,
+                );
+                return Ok(Ok(response));
+            }
+            Err(error) => {
+                let response = json_rpc_error_for_adapter(id.clone(), error);
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::TransportError,
+                );
+                return Ok(Err(response));
+            }
         }
     } else {
         let response = match adapter.call_adapter_tool(tool_name, arguments, Some(&session_id)) {
             Ok(response) => response,
-            Err(error @ McpAdapterError::InvalidParams { .. })
-            | Err(error @ McpAdapterError::ToolExecution { .. }) => {
-                return Ok(Ok(tool_execution_error_result(tool_name, &error)));
+            Err(error @ McpAdapterError::InvalidParams { .. }) => {
+                let response = tool_execution_error_result(tool_name, &error);
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    true,
+                    DiagnosticOutcome::ValidationFailure,
+                );
+                return Ok(Ok(response));
             }
-            Err(error) => return Ok(Err(json_rpc_error_for_adapter(id.clone(), error))),
+            Err(error @ McpAdapterError::ToolExecution { .. }) => {
+                let response = tool_execution_error_result(tool_name, &error);
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::ToolError,
+                );
+                return Ok(Ok(response));
+            }
+            Err(error) => {
+                let response = json_rpc_error_for_adapter(id.clone(), error);
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&response),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::TransportError,
+                );
+                return Ok(Err(response));
+            }
         };
         let text = serde_json::to_string(&response)
             .map_err(McpAdapterError::Json)
             .map_err(|error| json_rpc_error_for_adapter(id.clone(), error));
         match text {
             Ok(text) => ToolCallOutput::success(text)?,
-            Err(error) => return Ok(Err(error)),
+            Err(error) => {
+                record_tool_diagnostic_best_effort(
+                    adapter,
+                    state,
+                    diagnostic_started,
+                    diagnostic_request_bytes,
+                    Some(tool_name),
+                    Some(&error),
+                    ToolDiagnosticFacts::default(),
+                    false,
+                    DiagnosticOutcome::TransportError,
+                );
+                return Ok(Err(error));
+            }
         }
     };
+    let output = finalize_mutation_output(adapter, state, tool_name, mutation_detail, output)?;
 
     record_managed_lifecycle_event(
         adapter,
@@ -792,7 +992,66 @@ where
         ManagedLifecycleEvent::ToolCallCompleted,
         Some(tool_name),
     );
-    Ok(Ok(tool_call_result_from_output(output)))
+    let diagnostic_facts = output.diagnostic_facts();
+    let diagnostic_outcome =
+        if output.structured_content["base"]["response_kind"].as_str() == Some("rejected") {
+            DiagnosticOutcome::Rejected
+        } else if output.is_error {
+            DiagnosticOutcome::ToolError
+        } else {
+            DiagnosticOutcome::Success
+        };
+    let response = tool_call_result_from_output(output);
+    record_tool_diagnostic_best_effort(
+        adapter,
+        state,
+        diagnostic_started,
+        diagnostic_request_bytes,
+        Some(tool_name),
+        Some(&response),
+        diagnostic_facts,
+        false,
+        diagnostic_outcome,
+    );
+    Ok(Ok(response))
+}
+
+fn mutation_detail_for_tool(tool_name: &str, arguments: &Value) -> Option<MutationDetailLevel> {
+    (!READ_ONLY_METHOD_TOOL_NAMES.contains(&tool_name)
+        && PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name))
+    .then(|| {
+        arguments
+            .get("detail")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default()
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MutationRefreshContext {
+    project_id: ProjectId,
+    task_id: TaskId,
+}
+
+impl MutationRefreshContext {
+    fn from_pipeline_response(response: &PipelineResponse) -> Option<Self> {
+        Some(Self {
+            project_id: response.verified_invocation.as_ref()?.project_id.clone(),
+            task_id: response.resolved_task_id.clone()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ToolDiagnosticFacts {
+    core_reached: bool,
+    core_committed: bool,
+    replayed: bool,
+    user_channel_kind: Option<DiagnosticUserChannelKind>,
+    fallback_kind: Option<DiagnosticFallbackKind>,
+    product_file_write_count: u64,
+    authoritative_refresh_failure: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -801,6 +1060,8 @@ pub(crate) struct ToolCallOutput {
     structured_content: Value,
     extra_texts: Vec<String>,
     is_error: bool,
+    diagnostic_facts: ToolDiagnosticFacts,
+    mutation_refresh_context: Option<MutationRefreshContext>,
 }
 
 impl ToolCallOutput {
@@ -817,7 +1078,48 @@ impl ToolCallOutput {
             structured_content,
             extra_texts: Vec::new(),
             is_error: false,
+            diagnostic_facts: ToolDiagnosticFacts::default(),
+            mutation_refresh_context: None,
         })
+    }
+
+    fn from_pipeline_response(response: &PipelineResponse) -> Result<Self, McpAdapterError> {
+        let mut output = Self::success(response.response_json.clone())?;
+        output.apply_pipeline_diagnostics(response);
+        Ok(output)
+    }
+
+    fn with_pipeline_diagnostics(mut self, response: &PipelineResponse) -> Self {
+        self.apply_pipeline_diagnostics(response);
+        self
+    }
+
+    fn apply_pipeline_diagnostics(&mut self, response: &PipelineResponse) {
+        self.diagnostic_facts.core_reached = response.verified_invocation.is_some();
+        self.diagnostic_facts.core_committed = !response.replayed
+            && response.response_value["base"]["effect_kind"].as_str() == Some("core_committed");
+        self.diagnostic_facts.replayed = response.replayed;
+        self.diagnostic_facts.product_file_write_count = response
+            .response_value
+            .pointer("/run_summary/observed_changes/product_file_write_observed")
+            .and_then(Value::as_bool)
+            .is_some_and(|observed| observed)
+            as u64;
+        self.mutation_refresh_context = MutationRefreshContext::from_pipeline_response(response);
+    }
+
+    fn with_user_channel(mut self, channel: DiagnosticUserChannelKind) -> Self {
+        self.diagnostic_facts.user_channel_kind = Some(channel);
+        self
+    }
+
+    fn with_fallback(mut self, fallback: DiagnosticFallbackKind) -> Self {
+        self.diagnostic_facts.fallback_kind = Some(fallback);
+        self
+    }
+
+    fn diagnostic_facts(&self) -> ToolDiagnosticFacts {
+        self.diagnostic_facts
     }
 
     fn with_extra(mut self, text: impl Into<String>) -> Self {
@@ -829,6 +1131,341 @@ impl ToolCallOutput {
         self.extra_texts.extend(texts);
         self
     }
+}
+
+fn finalize_mutation_output(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    tool_name: &str,
+    detail: Option<MutationDetailLevel>,
+    output: ToolCallOutput,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    finalize_mutation_output_with_refresh(tool_name, detail, output, |context| {
+        adapter.refresh_authority_status(
+            &context.project_id,
+            &context.task_id,
+            Some(&state.session_id),
+            state.client_supports_elicitation,
+        )
+    })
+}
+
+fn finalize_mutation_output_with_refresh<F>(
+    tool_name: &str,
+    detail: Option<MutationDetailLevel>,
+    mut output: ToolCallOutput,
+    refresh: F,
+) -> Result<ToolCallOutput, McpAdapterError>
+where
+    F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
+{
+    let Some(detail) = detail else {
+        return Ok(output);
+    };
+    if output.is_error {
+        return Ok(output);
+    }
+    if output.structured_content["base"]["response_kind"].as_str() != Some("result") {
+        output.primary_text = bounded_mutation_compatibility_text(format!(
+            "Volicord {tool_name} returned response_kind={}; inspect structuredContent for the authoritative result.",
+            output.structured_content["base"]["response_kind"]
+                .as_str()
+                .unwrap_or("unknown")
+        ));
+        return Ok(output);
+    }
+
+    let Some(context) = output.mutation_refresh_context.clone() else {
+        return authoritative_refresh_failure_output(tool_name, output.diagnostic_facts);
+    };
+    let (receipt, next_actions) = match refresh(&context) {
+        Ok(response) => match validated_authority_refresh(&context, &response) {
+            Ok(refreshed) => refreshed,
+            Err(()) => {
+                return authoritative_refresh_failure_output(tool_name, output.diagnostic_facts)
+            }
+        },
+        Err(_) => return authoritative_refresh_failure_output(tool_name, output.diagnostic_facts),
+    };
+
+    output.primary_text = authority_receipt_compatibility_text(tool_name, &receipt)?;
+    output.mutation_refresh_context = None;
+    match detail {
+        MutationDetailLevel::Summary => {
+            output.structured_content =
+                serde_json::to_value(&receipt).map_err(McpAdapterError::Json)?;
+        }
+        MutationDetailLevel::Workflow => {
+            output.structured_content = serde_json::to_value(McpMutationWorkflowResponse {
+                authority_receipt: receipt,
+                next_actions,
+            })
+            .map_err(McpAdapterError::Json)?;
+        }
+        MutationDetailLevel::Full => return Ok(output),
+    }
+
+    let compact_result = tool_call_result_from_output(output.clone());
+    if serde_json::to_vec(&compact_result)
+        .map_err(McpAdapterError::Json)?
+        .len()
+        > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+    {
+        return mutation_response_budget_exceeded_output(
+            tool_name,
+            detail,
+            output.diagnostic_facts,
+        );
+    }
+    Ok(output)
+}
+
+fn validated_authority_refresh(
+    context: &MutationRefreshContext,
+    response: &PipelineResponse,
+) -> Result<(AuthorityReceipt, Vec<NextActionSummary>), ()> {
+    let status =
+        serde_json::from_value::<StatusResult>(response.response_value.clone()).map_err(|_| ())?;
+    if status.base.response_kind != ResponseKind::Result
+        || status.base.effect_kind != EffectKind::ReadOnly
+        || status.base.dry_run
+    {
+        return Err(());
+    }
+    let state_version = status.base.state_version.ok_or(())?;
+    let receipt = status.authority_receipt.clone().ok_or(())?;
+    let active_task = status.active_task.as_ref().ok_or(())?;
+    let active_task_ref = active_task.task_ref.as_ref().ok_or(())?;
+    if receipt.project_id != context.project_id
+        || receipt.task_ref.project_id != context.project_id
+        || receipt.task_ref.record_id.as_str() != context.task_id.as_str()
+        || receipt.task_ref.task_id.as_ref() != Some(&context.task_id)
+        || receipt.state_version != state_version
+        || receipt.task_ref.produced_at_state_version.as_ref() != Some(&state_version)
+        || active_task.project_id != context.project_id
+        || active_task.state_version != state_version
+        || active_task_ref != &receipt.task_ref
+        || active_task.scope_revision != receipt.scope_revision
+        || active_task.active_change_unit_ref != receipt.change_unit_ref
+        || status.close_state != Some(receipt.close_state)
+        || status.close_blockers.as_ref() != Some(&receipt.close_blockers)
+        || status
+            .evidence_gate
+            .as_ref()
+            .and_then(RequiredNullable::as_ref)
+            != receipt.evidence_gate.as_ref()
+        || receipt
+            .next_action
+            .as_ref()
+            .is_some_and(|action| !status.next_actions.contains(action))
+    {
+        return Err(());
+    }
+    Ok((receipt, status.next_actions))
+}
+
+fn authority_receipt_compatibility_text(
+    tool_name: &str,
+    receipt: &AuthorityReceipt,
+) -> Result<String, McpAdapterError> {
+    let close_state = serde_json::to_value(receipt.close_state)
+        .map_err(McpAdapterError::Json)?
+        .as_str()
+        .unwrap_or("unknown")
+        .to_owned();
+    let next_actor = serde_json::to_value(receipt.next_actor)
+        .map_err(McpAdapterError::Json)?
+        .as_str()
+        .unwrap_or("unknown")
+        .to_owned();
+    Ok(bounded_mutation_compatibility_text(format!(
+        "Volicord {tool_name} refreshed Task {} at state_version {}; close_state={close_state}; next_actor={next_actor}. Inspect structuredContent for the authority receipt.",
+        receipt.task_ref.record_id.as_str(),
+        receipt.state_version,
+    )))
+}
+
+fn mutation_response_budget_exceeded_output(
+    tool_name: &str,
+    requested_detail: MutationDetailLevel,
+    mut facts: ToolDiagnosticFacts,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
+        McpAdapterError::Protocol(format!(
+            "missing MethodName mapping for mutation tool {tool_name}"
+        ))
+    })?;
+    let requested_detail_label = match requested_detail {
+        MutationDetailLevel::Summary => "summary",
+        MutationDetailLevel::Workflow => "workflow",
+        MutationDetailLevel::Full => "full",
+    };
+    facts.authoritative_refresh_failure = false;
+    let structured_content = serde_json::to_value(McpMutationResponseBudgetExceeded {
+        code: McpMutationProjectionErrorCode::McpResponseBudgetExceeded,
+        tool_name: method_name,
+        requested_detail,
+        reached_core: facts.core_reached,
+        committed: facts.core_committed,
+        authoritative_refresh_succeeded: true,
+        response_projection_omitted: true,
+        completion_claim_withheld: true,
+    })
+    .map_err(McpAdapterError::Json)?;
+    Ok(ToolCallOutput {
+        primary_text: bounded_mutation_compatibility_text(format!(
+            "Volicord {tool_name} reached Core (committed={}) and refreshed current authority, but the requested {requested_detail_label} projection exceeded the MCP response budget. No authority data was truncated; read volicord.status before acting.",
+            facts.core_committed
+        )),
+        structured_content,
+        extra_texts: Vec::new(),
+        is_error: true,
+        diagnostic_facts: facts,
+        mutation_refresh_context: None,
+    })
+}
+
+fn authoritative_refresh_failure_output(
+    tool_name: &str,
+    mut facts: ToolDiagnosticFacts,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
+        McpAdapterError::Protocol(format!(
+            "missing MethodName mapping for mutation tool {tool_name}"
+        ))
+    })?;
+    facts.authoritative_refresh_failure = true;
+    let structured_content = serde_json::to_value(McpAuthoritativeRefreshFailure {
+        code: ErrorCode::McpUnavailable,
+        tool_name: method_name,
+        reached_core: facts.core_reached,
+        committed: facts.core_committed,
+        completion_claim_withheld: true,
+    })
+    .map_err(McpAdapterError::Json)?;
+    Ok(ToolCallOutput {
+        primary_text: bounded_mutation_compatibility_text(format!(
+            "Volicord withheld the {tool_name} success or completion claim because authoritative status refresh was unavailable. Inspect current status before acting."
+        )),
+        structured_content,
+        extra_texts: Vec::new(),
+        is_error: true,
+        diagnostic_facts: facts,
+        mutation_refresh_context: None,
+    })
+}
+
+fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
+    match tool_name {
+        INTAKE_TOOL_NAME => Some(MethodName::Intake),
+        UPDATE_SCOPE_TOOL_NAME => Some(MethodName::UpdateScope),
+        PREPARE_WRITE_TOOL_NAME => Some(MethodName::PrepareWrite),
+        STAGE_ARTIFACT_TOOL_NAME => Some(MethodName::StageArtifact),
+        RECORD_RUN_TOOL_NAME => Some(MethodName::RecordRun),
+        REQUEST_USER_JUDGMENT_TOOL_NAME => Some(MethodName::RequestUserJudgment),
+        RECONCILE_CHANGES_TOOL_NAME => Some(MethodName::ReconcileChanges),
+        CLOSE_TASK_TOOL_NAME => Some(MethodName::CloseTask),
+        _ => None,
+    }
+}
+
+fn bounded_mutation_compatibility_text(mut text: String) -> String {
+    if text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES {
+        return text;
+    }
+    let mut boundary = MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES.saturating_sub(3);
+    while boundary > 0 && !text.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    text.truncate(boundary);
+    text.push_str("...");
+    text
+}
+
+fn start_transport_diagnostic_session_best_effort(adapter: &McpAdapter, state: &ConnectionState) {
+    let connection = agent_connection_record_read_only(
+        &adapter.runtime_home,
+        adapter.context.connection_internal_id.as_str(),
+    )
+    .ok()
+    .flatten();
+    let host_kind = connection
+        .as_ref()
+        .map(|record| DiagnosticHostKind::from_connection_host_kind(&record.host_kind));
+    let project_id = adapter
+        .context
+        .project_allowlist
+        .as_ref()
+        .filter(|projects| projects.len() == 1)
+        .and_then(|projects| projects.first())
+        .map(|project| project.as_str().to_owned())
+        .or_else(|| {
+            list_connection_projects_read_only(
+                &adapter.runtime_home,
+                adapter.context.connection_internal_id.as_str(),
+            )
+            .ok()
+            .filter(|projects| projects.len() == 1)
+            .and_then(|projects| projects.first().map(|project| project.project_id.clone()))
+        });
+    let transport = if state.launch_origin == McpLaunchOrigin::Unknown.as_str() {
+        DiagnosticTransport::LocalHttp
+    } else {
+        DiagnosticTransport::McpStdio
+    };
+    let build = crate::build_info();
+    let _ = start_diagnostic_session(
+        &adapter.runtime_home,
+        DiagnosticSessionStart {
+            session_id: &state.session_id,
+            connection_id: Some(adapter.context.connection_internal_id.as_str()),
+            project_id: project_id.as_deref(),
+            transport,
+            host_kind,
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_tool_diagnostic_best_effort(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    started: Instant,
+    request_bytes: u64,
+    tool_name: Option<&str>,
+    response: Option<&Value>,
+    facts: ToolDiagnosticFacts,
+    validation_failure: bool,
+    outcome: DiagnosticOutcome,
+) {
+    let elapsed = started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
+    let response_bytes = response
+        .and_then(|value| serde_json::to_vec(value).ok())
+        .map(|bytes| bytes.len() as u64)
+        .unwrap_or(0);
+    start_transport_diagnostic_session_best_effort(adapter, state);
+    let _ = record_diagnostic_event(
+        &adapter.runtime_home,
+        DiagnosticEvent {
+            session_id: &state.session_id,
+            event_kind: DiagnosticEventKind::McpToolCall,
+            tool_name,
+            latency_micros: elapsed,
+            request_bytes,
+            response_bytes,
+            validation_failure,
+            core_reached: facts.core_reached,
+            core_committed: facts.core_committed,
+            replayed: facts.replayed,
+            user_channel_kind: facts.user_channel_kind,
+            fallback_kind: facts.fallback_kind,
+            product_file_write_count: facts.product_file_write_count,
+            authoritative_refresh_failure: facts.authoritative_refresh_failure,
+            outcome,
+        },
+    );
 }
 
 pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
@@ -863,24 +1500,30 @@ where
     W: Write,
 {
     let Some(pending) = pending_judgment_from_response(&pending_response) else {
-        return ToolCallOutput::success(pending_response.response_json);
+        return ToolCallOutput::from_pipeline_response(&pending_response);
     };
 
     if !client_supports_elicitation {
         let fallback = user_judgment_fallback(adapter, &pending)?;
+        let fallback_kind = fallback.kind;
         return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
             &pending_response,
             &fallback,
         )?)?
+        .with_pipeline_diagnostics(&pending_response)
+        .with_fallback(fallback_kind)
         .with_extras(fallback.texts));
     }
 
     if let Some(reason) = elicitation_secret_request_risk(&pending) {
         let fallback = user_judgment_fallback(adapter, &pending)?;
+        let fallback_kind = fallback.kind;
         return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
             &pending_response,
             &fallback,
         )?)?
+            .with_pipeline_diagnostics(&pending_response)
+            .with_fallback(fallback_kind)
             .with_extra(format!(
                 "Volicord did not open host prompt input for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through host prompt input.",
                 pending.judgment_id.as_str()
@@ -898,59 +1541,62 @@ where
             selected_option_id,
             note,
         } => match record_elicited_judgment(adapter, &pending, &selected_option_id, note)? {
-            ElicitedRecordOutcome::Recorded(recorded) => Ok(ToolCallOutput::success(
-                recorded.response_json,
-            )?
-            .with_extra(format!(
+            ElicitedRecordOutcome::Recorded(recorded) => Ok(
+                ToolCallOutput::from_pipeline_response(&recorded)?
+                    .with_user_channel(DiagnosticUserChannelKind::McpElicitation)
+                    .with_extra(format!(
                 "Volicord recorded pending judgment `{}` through host prompt input with User Channel basis `{}`.",
                 pending.judgment_id.as_str(),
                 VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-            ))),
-            ElicitedRecordOutcome::InvalidSelection(message) => Ok(ToolCallOutput::success(
-                pending_response.response_json,
-            )?
-            .with_extra(format!(
+            )),
+            ),
+            ElicitedRecordOutcome::InvalidSelection(message) => Ok(
+                ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
                 "{message} The pending judgment remains unresolved."
-            ))),
+            )),
+            ),
         },
         ElicitationReply::Declined => match reject_option_id(&pending) {
             Some(option_id) => match record_elicited_judgment(adapter, &pending, option_id, None)? {
-                ElicitedRecordOutcome::Recorded(recorded) => Ok(ToolCallOutput::success(
-                    recorded.response_json,
-                )?
-                .with_extra(format!(
+                ElicitedRecordOutcome::Recorded(recorded) => Ok(
+                    ToolCallOutput::from_pipeline_response(&recorded)?
+                        .with_user_channel(DiagnosticUserChannelKind::McpElicitation)
+                        .with_extra(format!(
                     "Volicord recorded pending judgment `{}` as rejected through host prompt input with User Channel basis `{}`.",
                     pending.judgment_id.as_str(),
                     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
-                ))),
-                ElicitedRecordOutcome::InvalidSelection(message) => Ok(ToolCallOutput::success(
-                    pending_response.response_json,
-                )?
-                .with_extra(format!(
+                )),
+                ),
+                ElicitedRecordOutcome::InvalidSelection(message) => Ok(
+                    ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
                     "{message} The pending judgment remains unresolved."
-                ))),
+                )),
+                ),
             },
-            None => Ok(ToolCallOutput::success(pending_response.response_json)?.with_extra(
-                "The MCP client declined the host prompt request, but this judgment has no reject option to record. The pending judgment remains unresolved.",
-            )),
+            None => Ok(ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(
+                    "The MCP client declined the host prompt request, but this judgment has no reject option to record. The pending judgment remains unresolved.",
+                )),
         },
-        ElicitationReply::Cancelled => Ok(ToolCallOutput::success(pending_response.response_json)?
-            .with_extra(format!(
+        ElicitationReply::Cancelled => Ok(
+            ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
                 "The MCP client cancelled or dismissed host prompt input for pending judgment `{}`. Volicord did not record an answer; the judgment remains pending.",
                 pending.judgment_id.as_str()
-            ))),
-        ElicitationReply::Invalid(message) => Ok(ToolCallOutput::success(
-            pending_response.response_json,
-        )?
-        .with_extra(format!(
+            )),
+        ),
+        ElicitationReply::Invalid(message) => Ok(
+            ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
             "Volicord rejected the host prompt response: {message}. The pending judgment remains unresolved."
-        ))),
+        )),
+        ),
         ElicitationReply::Unavailable(message) => {
             let fallback = user_judgment_fallback(adapter, &pending)?;
+            let fallback_kind = fallback.kind;
             Ok(ToolCallOutput::success(response_json_with_inbox_capture(
                 &pending_response,
                 &fallback,
             )?)?
+            .with_pipeline_diagnostics(&pending_response)
+            .with_fallback(fallback_kind)
             .with_extra(format!(
                 "Host prompt input was unavailable after the client advertised support: {message}."
             ))
@@ -1134,7 +1780,7 @@ pub(crate) fn read_elicitation_response<R: BufRead>(
 }
 
 pub(crate) enum ElicitedRecordOutcome {
-    Recorded(PipelineResponse),
+    Recorded(Box<PipelineResponse>),
     InvalidSelection(String),
 }
 
@@ -1195,6 +1841,7 @@ pub(crate) fn record_elicited_judgment(
     adapter
         .core
         .record_user_judgment(request, invocation)
+        .map(Box::new)
         .map(ElicitedRecordOutcome::Recorded)
         .map_err(McpAdapterError::Core)
 }
@@ -1326,6 +1973,7 @@ pub(crate) struct UserJudgmentFallback {
     texts: Vec<String>,
     preferred_capture_path: Option<Value>,
     fallbacks: Vec<Value>,
+    kind: DiagnosticFallbackKind,
 }
 
 pub(crate) fn user_judgment_fallback(
@@ -1444,6 +2092,7 @@ pub(crate) fn chat_capture_fallback(
         texts: vec![human_text, structured_text],
         preferred_capture_path: Some(prompt_capture_path_json()),
         fallbacks: vec![cli_inbox_capture_path_json(judgment)],
+        kind: DiagnosticFallbackKind::PromptCapture,
     })
 }
 
@@ -1507,6 +2156,7 @@ pub(crate) fn local_web_consent_fallback(
             &url,
         )),
         fallbacks: vec![cli_inbox_capture_path_json(judgment)],
+        kind: DiagnosticFallbackKind::LocalWebConsent,
     })
 }
 
@@ -1536,6 +2186,7 @@ pub(crate) fn cli_recovery_fallback(
         texts: vec![human_text, structured_text],
         preferred_capture_path: Some(cli_inbox_capture_path_json(judgment)),
         fallbacks: Vec::new(),
+        kind: DiagnosticFallbackKind::CliInbox,
     }
 }
 
@@ -1879,4 +2530,215 @@ pub(crate) fn write_json_line(
 ) -> Result<(), McpAdapterError> {
     serde_json::to_writer(&mut *writer, &value).map_err(McpAdapterError::Json)?;
     writer.write_all(b"\n").map_err(McpAdapterError::Io)
+}
+
+#[cfg(test)]
+mod mutation_output_tests {
+    use super::*;
+    use volicord_test_support::core_fixtures::CoreFixture;
+
+    #[test]
+    fn idempotent_mutation_replay_default_summary_returns_refreshed_authority_receipt(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-mutation-replay-summary")?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let request = fixture.intake_request(
+            "req_mcp_mutation_replay_summary",
+            "idem_mcp_mutation_replay_summary",
+            false,
+            Some(0),
+        );
+        let workflow_invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            )
+        };
+
+        let committed = core.intake(request.clone(), workflow_invocation())?;
+        assert!(!committed.replayed);
+        let replayed = core.intake(request, workflow_invocation())?;
+        assert!(replayed.replayed);
+        let task_id = replayed
+            .resolved_task_id
+            .clone()
+            .expect("replay preserves the resolved Task identity");
+
+        let detail = mutation_detail_for_tool(INTAKE_TOOL_NAME, &json!({}));
+        assert_eq!(detail, Some(MutationDetailLevel::Summary));
+        let output = ToolCallOutput::from_pipeline_response(&replayed)?;
+        let output =
+            finalize_mutation_output_with_refresh(INTAKE_TOOL_NAME, detail, output, |context| {
+                assert_eq!(context.project_id.as_str(), fixture.project_id());
+                assert_eq!(context.task_id, task_id);
+                core.status(
+                    fixture.status_request(
+                        "req_mcp_mutation_replay_summary_refresh",
+                        Some(context.task_id.as_str()),
+                    ),
+                    InvocationContext::new(
+                        context.project_id.clone(),
+                        ActorSource::agent_connection(fixture.connection_id()),
+                        OperationCategory::Read,
+                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+                    ),
+                )
+                .map_err(McpAdapterError::Core)
+            })?;
+
+        assert!(!output.is_error);
+        assert!(output.diagnostic_facts.replayed);
+        assert!(output.diagnostic_facts.core_reached);
+        assert!(!output.diagnostic_facts.core_committed);
+        assert_eq!(
+            output.structured_content["project_id"],
+            fixture.project_id()
+        );
+        assert_eq!(
+            output.structured_content["task_ref"]["record_id"],
+            task_id.as_str()
+        );
+        assert!(output.structured_content["state_version"].is_u64());
+        assert!(output.structured_content.get("code").is_none());
+        assert!(output
+            .structured_content
+            .get("completion_claim_withheld")
+            .is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_failure_withholds_success_and_does_not_return_private_error_body() {
+        let private_error = "private-refresh-owner-body-must-not-escape";
+        let mut output = ToolCallOutput::success(
+            json!({
+                "base": {
+                    "response_kind": "result",
+                    "effect_kind": "core_committed"
+                }
+            })
+            .to_string(),
+        )
+        .expect("tool output");
+        output.diagnostic_facts.core_reached = true;
+        output.diagnostic_facts.core_committed = true;
+        output.mutation_refresh_context = Some(MutationRefreshContext {
+            project_id: ProjectId::new("project_refresh_failure"),
+            task_id: TaskId::new("task_refresh_failure"),
+        });
+
+        let output = finalize_mutation_output_with_refresh(
+            INTAKE_TOOL_NAME,
+            Some(MutationDetailLevel::Summary),
+            output,
+            |_| Err(McpAdapterError::Environment(private_error.to_owned())),
+        )
+        .expect("fail-closed output");
+
+        assert!(output.is_error);
+        assert_eq!(output.structured_content["code"], "MCP_UNAVAILABLE");
+        assert_eq!(output.structured_content["reached_core"], true);
+        assert_eq!(output.structured_content["committed"], true);
+        assert_eq!(output.structured_content["completion_claim_withheld"], true);
+        assert!(output.diagnostic_facts.authoritative_refresh_failure);
+        let rendered =
+            serde_json::to_string(&tool_call_result_from_output(output)).expect("rendered result");
+        assert!(!rendered.contains(private_error));
+        assert!(!rendered.contains("response_kind\":\"result"));
+    }
+
+    #[test]
+    fn oversized_valid_blocker_projection_preserves_commit_and_refresh_truth_within_budget(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-mutation-oversized-fresh-receipt")?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let workflow_invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            )
+        };
+        let committed = core.intake(
+            fixture.intake_request(
+                "req_mcp_mutation_oversized_fresh_receipt",
+                "idem_mcp_mutation_oversized_fresh_receipt",
+                false,
+                Some(0),
+            ),
+            workflow_invocation(),
+        )?;
+        let task_id = committed
+            .resolved_task_id
+            .clone()
+            .expect("committed intake resolves the Task");
+        let mut refreshed = core.status(
+            fixture.status_request(
+                "req_mcp_mutation_oversized_fresh_receipt_status",
+                Some(task_id.as_str()),
+            ),
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::Read,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            ),
+        )?;
+        let mut blocker = refreshed.response_value["authority_receipt"]["close_blockers"]
+            .as_array()
+            .and_then(|blockers| blockers.first())
+            .cloned()
+            .expect("fresh intake status should expose a close blocker");
+        let omitted_marker = "oversized-valid-criterion-blocker-must-not-escape";
+        blocker["message"] = Value::String(format!(
+            "{omitted_marker}{}",
+            "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES * 2)
+        ));
+        let oversized_blockers = Value::Array(vec![blocker]);
+        refreshed.response_value["authority_receipt"]["close_blockers"] =
+            oversized_blockers.clone();
+        refreshed.response_value["close_blockers"] = oversized_blockers;
+        refreshed.response_json = serde_json::to_string(&refreshed.response_value)?;
+
+        for detail in [MutationDetailLevel::Summary, MutationDetailLevel::Workflow] {
+            let output = ToolCallOutput::from_pipeline_response(&committed)?;
+            let refreshed = refreshed.clone();
+            let output = finalize_mutation_output_with_refresh(
+                INTAKE_TOOL_NAME,
+                Some(detail),
+                output,
+                |_| Ok(refreshed),
+            )?;
+
+            assert!(output.is_error);
+            assert_eq!(
+                output.structured_content["code"],
+                "MCP_RESPONSE_BUDGET_EXCEEDED"
+            );
+            assert_eq!(
+                output.structured_content["requested_detail"],
+                serde_json::to_value(detail)?
+            );
+            assert_eq!(output.structured_content["reached_core"], true);
+            assert_eq!(output.structured_content["committed"], true);
+            assert_eq!(
+                output.structured_content["authoritative_refresh_succeeded"],
+                true
+            );
+            assert_eq!(
+                output.structured_content["response_projection_omitted"],
+                true
+            );
+            assert_eq!(output.structured_content["completion_claim_withheld"], true);
+            assert!(!output.diagnostic_facts.authoritative_refresh_failure);
+
+            let rendered = serde_json::to_vec(&tool_call_result_from_output(output))?;
+            assert!(rendered.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+            assert!(!String::from_utf8(rendered)?.contains(omitted_marker));
+        }
+        Ok(())
+    }
 }
