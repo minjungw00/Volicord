@@ -586,14 +586,19 @@ fn record_managed_lifecycle_event(
 }
 
 pub(crate) fn initialize_result() -> Value {
+    let build = crate::build_info();
+    let package_version = build.package_version;
     json!({
+        "_meta": {
+            "io.volicord/build": build
+        },
         "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
         "capabilities": {
             "tools": {}
         },
         "serverInfo": {
             "name": SERVER_NAME,
-            "version": env!("CARGO_PKG_VERSION")
+            "version": package_version
         },
         "instructions": SERVER_INSTRUCTIONS
     })

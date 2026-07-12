@@ -271,6 +271,36 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert_success(&doctor);
     let value = json_stdout(&doctor)?;
     assert_eq!(value["status"], "action_required");
+    assert_eq!(value["build_id"], volicord_mcp::build_id());
+    assert_eq!(
+        value["build"],
+        serde_json::to_value(volicord_mcp::build_info())?
+    );
+    assert_eq!(value["states"]["build_id"], volicord_mcp::build_id());
+    let build_check = value["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "build_identity")
+        .expect("build identity check");
+    let build = volicord_mcp::build_info();
+    let exact_clean = build.git_commit != "unknown"
+        && build.git_dirty == Some(false)
+        && build.metadata_source != "unknown"
+        && build.profile_exact
+        && build.build_profile.is_some()
+        && build.target_triple != "unknown"
+        && build.opt_level != "unknown"
+        && build.debug.is_some();
+    assert_eq!(
+        build_check["status"],
+        if exact_clean { "passed" } else { "warning" }
+    );
+    assert_eq!(
+        build_check["details"]["metadata_source"],
+        build.metadata_source
+    );
+    assert_eq!(build_check["details"]["profile_exact"], build.profile_exact);
     assert_eq!(
         value["status_meaning"],
         "local init or profile repair is required before Volicord workflows are usable"
@@ -296,6 +326,7 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert_success(&doctor_text);
     let text = stdout(&doctor_text);
     assert!(text.contains("Volicord doctor action_required"));
+    assert!(text.contains(&format!("Build:\n  {}", volicord_mcp::build_id())));
     assert!(text.contains("Task lifecycle: not shown in this view"));
     assert!(
         text.contains("Volicord record effect for this command: local diagnostic observation only")

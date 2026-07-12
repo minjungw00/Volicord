@@ -50,7 +50,11 @@ fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Bo
     assert_success(&version);
     assert_eq!(
         stdout(&version),
-        format!("volicord {}\n", env!("CARGO_PKG_VERSION"))
+        format!(
+            "volicord {} (build_id={})\n",
+            env!("CARGO_PKG_VERSION"),
+            volicord_mcp::build_id()
+        )
     );
 
     let no_args = run_without_binding([])?;
@@ -209,6 +213,37 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
         responses[&1]["result"]["serverInfo"]["version"],
         json!(env!("CARGO_PKG_VERSION"))
     );
+    assert_eq!(
+        responses[&1]["result"]["serverInfo"]
+            .as_object()
+            .expect("serverInfo should be an object")
+            .len(),
+        2,
+        "serverInfo should contain only standard Implementation fields"
+    );
+    assert_eq!(
+        responses[&1]["result"]["_meta"]["io.volicord/build"],
+        serde_json::to_value(volicord_mcp::build_info())?
+    );
+    let build_id = responses[&1]["result"]["_meta"]["io.volicord/build"]["build_id"]
+        .as_str()
+        .expect("build metadata build_id should be a string");
+    for component in [
+        ";git=",
+        ";tree=",
+        ";metadata_source=",
+        ";target=",
+        ";profile=",
+        ";profile_class=",
+        ";profile_exact=",
+        ";opt=",
+        ";debug=",
+    ] {
+        assert!(
+            build_id.contains(component),
+            "missing {component}: {build_id}"
+        );
+    }
     assert_eq!(
         responses[&1]["result"]["protocolVersion"],
         json!("2025-11-25")

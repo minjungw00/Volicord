@@ -104,8 +104,13 @@ Exit and stream behavior:
 - `failed`, runtime errors, storage errors, verification failures, and
   conflicts exit `1`.
 - Usage errors write diagnostics to stderr and exit with code `2`.
-- `volicord --version` writes `volicord <version>` to stdout and does not
-  require Runtime Home resolution.
+- `volicord --version` writes `volicord <package-version> (build_id=<build-id>)`
+  to stdout and does not require Runtime Home resolution. The package version
+  remains SemVer. The separate build descriptor records Git commit and tree
+  state, metadata source, target, exact builder-supplied profile or approximate
+  Cargo profile class, optimization level, and debug state. It contains no
+  build timestamp. A dirty descriptor labels the tree as dirty but does not
+  identify the exact dirty contents.
 - `--json` writes exactly one JSON document to stdout and does not mix human
   explanation into stdout. JSON output is the automation surface for result
   states, diagnostics, `summary_card`, `checks`, `actions`, and stable fields.
@@ -244,6 +249,12 @@ top-level status answers whether the current profile is usable.
 
 It checks:
 
+- the embedded package and build descriptor; unknown Git metadata, a dirty
+  tree, an approximate profile, or incomplete compilation metadata is a
+  warning. A dirty build remains usable but the descriptor does not identify
+  its exact modified contents. Only known clean Git metadata with an exact
+  builder-supplied profile and complete compilation dimensions passes this
+  check
 - Runtime Home access, registry schema, and installation-profile presence
 - stored command readiness and availability through `PATH`
 - command-link or shim readiness when link metadata exists
@@ -264,8 +275,14 @@ configuration, change connection mode, or answer user judgments. Human text may
 summarize profile and observation limits; exact `selected_profile`,
 `observation_summary`, and `control_surface` fields stay in JSON.
 
-Text and JSON output include a diagnostic disclosure and compact `summary_card`.
-JSON uses
+Text output includes the `build_id`. JSON includes top-level `build_id`, the
+structured `build` object, a `checks[]` entry with `id=build_identity`, a
+diagnostic disclosure, and a compact `summary_card`. The `build` object exposes
+`package_version`, `git_commit`, nullable `git_dirty`, `metadata_source`,
+`target_triple`, nullable `build_profile`, `profile_class`, `profile_exact`,
+`opt_level`, nullable `debug`, and `build_id`. `metadata_source` is
+`repository`, `environment`, or `unknown`; `profile_exact=false` means only the
+Cargo `debug`/`release` profile class is known. JSON uses
 `disclosure.guarantee_class=detective_observation` and `non_guarantees` values
 such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`, `NotTestSufficiencyProof`,

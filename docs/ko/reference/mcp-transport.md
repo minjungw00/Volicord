@@ -109,7 +109,8 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
   검증을 실행하고 프로젝트 세부 진단을 허용 목록 안의 `project_internal_id` 값 하나로
   제한합니다.
 - `-h`와 `--help`는 사용법과 환경 요약을 출력한 뒤 종료 코드 `0`으로 끝납니다.
-- `-V`와 `--version`은 `volicord <version>`을 출력한 뒤 종료 코드 `0`으로 끝납니다.
+- `-V`와 `--version`은
+  `volicord <package-version> (build_id=<build-id>)`를 출력한 뒤 종료 코드 `0`으로 끝납니다.
 - 모드 없음, `--connection` 없는 `--check` 또는 `--stdio`, 알 수 없는 옵션, 결합된
   명령줄 모드, 필요한 옵션 값 누락, 추가 위치 인자는 사용법 진단을 stderr에 쓰고 종료
   코드 `2`로 끝납니다.
@@ -535,6 +536,16 @@ JSON-RPC 응답을 만들지 않습니다. 그러나 그런 `params`는 수명�
 예시는 위에 나열한 필드를 사용합니다. `volicord mcp --stdio`는 2025-11-25 스키마가
 허용하는 추가 MCP `Implementation` 메타데이터, 예를 들어 `title`, `description`,
 `icons`, `websiteUrl`을 받을 수 있습니다.
+
+성공한 initialize 결과는 `serverInfo.name=volicord-mcp`를 반환하고 상속된 Cargo
+패키지 SemVer를 `serverInfo.version`에 유지합니다. `serverInfo`에는 표준 MCP
+`Implementation` 필드만 둡니다. 표준 initialize Result의 `_meta` 객체는 Volicord
+확장 `_meta["io.volicord/build"]`를 노출하며, 비표준 `serverInfo.buildId` 필드는
+사용하지 않습니다. 확장 값은 `volicord doctor --json`에 문서화된 구조화 빌드 객체와
+같으며 `build_id`, Git 메타데이터 출처, 타깃, 정확한 프로필 또는 근사 프로필 계열,
+최적화 수준, 디버그 상태를 포함합니다. 빌드 시각은 포함하지 않습니다. 알 수 없는 Git
+메타데이터는 명시적으로 표현하고, dirty 작업 트리는 수정된 내용을 정확히 식별한다고
+주장하지 않은 채 표시합니다.
 
 프로토콜 버전 협상:
 

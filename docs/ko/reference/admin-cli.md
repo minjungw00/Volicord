@@ -99,8 +99,13 @@ volicord inbox open <judgment-id> [--repo PATH] [--json]
 - `failed`, 런타임 오류, 저장소 오류, 검증 실패, 충돌은 종료 코드 `1`로
   끝납니다.
 - 사용법 오류는 진단을 stderr에 쓰고 종료 코드 `2`로 끝납니다.
-- `volicord --version`은 stdout에 `volicord <version>`을 쓰며 Runtime Home 해석을
-  요구하지 않습니다.
+- `volicord --version`은 stdout에
+  `volicord <package-version> (build_id=<build-id>)`를 쓰며 Runtime Home 해석을
+  요구하지 않습니다. 패키지 버전은 SemVer로 유지합니다. 별도 빌드 설명자는 Git
+  커밋과 작업 트리 상태, 메타데이터 출처, 타깃, 빌더가 명시한 정확한 프로필 또는
+  근사 Cargo 프로필 계열, 최적화 수준, 디버그 상태를 기록하며 빌드 시각은 포함하지
+  않습니다. dirty 설명자는 작업 트리가 dirty임을 표시하지만 수정된 내용을 정확히
+  식별하지는 않습니다.
 - `--json`은 stdout에 JSON 문서 정확히 하나를 쓰며 사람용 설명을 섞지 않습니다. JSON
   출력은 결과 상태, 진단, `summary_card`, `checks`, `actions`, 안정 필드를 위한 자동화
   표면입니다. 자동화는 기본 사람용 텍스트 출력을 파싱하면 안 됩니다.
@@ -221,6 +226,11 @@ Runtime Home과 설치 프로필 선택에 관련된 init 효과:
 
 다음을 점검합니다.
 
+- 포함된 패키지·빌드 설명자. Git 메타데이터가 알려지지 않았거나, 작업 트리가
+  dirty이거나, 프로필이 근삿값이거나, 컴파일 메타데이터가 불완전하면 경고합니다.
+  dirty 빌드는 사용할 수 있지만 설명자가 수정된 내용을 정확히 식별하지는 않습니다.
+  알려진 clean Git 메타데이터, 빌더가 명시한 정확한 프로필, 완전한 컴파일 차원이 모두
+  있을 때만 이 점검을 통과합니다.
 - Runtime Home 접근, 레지스트리 스키마, 설치 프로필 존재 여부
 - 저장된 명령의 준비 상태와 `PATH`를 통한 사용 가능 여부
 - 링크 메타데이터가 있을 때의 명령 링크 또는 호환 실행 파일 준비 상태
@@ -239,7 +249,13 @@ Doctor는 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연
 판단에 답하지 않습니다. 사람용 텍스트는 프로필과 관찰 한계를 요약할 수 있습니다. 정확한
 `selected_profile`, `observation_summary`, `control_surface` 필드는 JSON에 둡니다.
 
-텍스트와 JSON 출력은 진단 고지와 간결한 `summary_card`를 포함합니다. JSON은
+텍스트 출력은 `build_id`를 포함합니다. JSON은 최상위 `build_id`, 구조화된 `build`
+객체, `id=build_identity`인 `checks[]` 항목, 진단 고지, 간결한 `summary_card`를
+포함합니다. `build` 객체는 `package_version`, `git_commit`, null일 수 있는
+`git_dirty`, `metadata_source`, `target_triple`, null일 수 있는 `build_profile`,
+`profile_class`, `profile_exact`, `opt_level`, null일 수 있는 `debug`, `build_id`를
+노출합니다. `metadata_source`는 `repository`, `environment`, `unknown` 중 하나입니다.
+`profile_exact=false`이면 Cargo의 `debug`/`release` 프로필 계열만 알려졌다는 뜻입니다. JSON은
 `disclosure.guarantee_class=detective_observation`을 사용하고,
 `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`,

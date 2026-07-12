@@ -160,6 +160,7 @@ where
     let mut checks = Vec::new();
     let mut actions = Vec::new();
 
+    inspect_build_identity(&mut checks);
     inspect_runtime_home_path(&runtime_home, &mut checks, &mut actions);
     let mut profile = None;
     let mut project_count = None;
@@ -299,6 +300,39 @@ fn parse_doctor_options(args: &[String]) -> Result<DoctorOptions, DoctorCommandE
         output,
         privacy_footprint,
     })
+}
+
+fn inspect_build_identity(checks: &mut Vec<DiagnosticCheck>) {
+    let build = volicord_mcp::build_info();
+    let git_metadata_known = build.git_commit != "unknown"
+        && build.git_dirty.is_some()
+        && build.metadata_source != "unknown";
+    let compilation_metadata_known =
+        build.target_triple != "unknown" && build.opt_level != "unknown" && build.debug.is_some();
+    let exact_clean_identity = git_metadata_known
+        && build.git_dirty == Some(false)
+        && build.profile_exact
+        && build.build_profile.is_some()
+        && compilation_metadata_known;
+    let summary = if !git_metadata_known {
+        "build descriptor reports unknown Git metadata"
+    } else if build.git_dirty == Some(true) {
+        "build descriptor reports a dirty source tree without identifying its exact contents"
+    } else if !build.profile_exact || build.build_profile.is_none() {
+        "build descriptor reports only an approximate Cargo profile class"
+    } else if !compilation_metadata_known {
+        "build descriptor reports incomplete compilation metadata"
+    } else {
+        "build descriptor reports a clean source commit and exact build profile"
+    };
+    let check = if exact_clean_identity {
+        DiagnosticCheck::passed("build_identity", summary)
+    } else {
+        DiagnosticCheck::warning("build_identity", summary)
+    };
+    checks.push(check.with_details(
+        serde_json::to_value(build).expect("BuildInfo serialization should be infallible"),
+    ));
 }
 
 fn render_privacy_footprint_output(
@@ -1569,6 +1603,8 @@ fn render_doctor_output(
             serde_json::to_string_pretty(&json!({
                 "status": status.as_str(),
                 "status_meaning": doctor_status_meaning(status, checks),
+                "build_id": volicord_mcp::build_id(),
+                "build": volicord_mcp::build_info(),
                 "summary_card": &summary_card,
                 "disclosure": detective_observation_disclosure_json(),
                 "runtime_home": path_text(runtime_home),
@@ -1611,6 +1647,7 @@ fn render_compact_doctor_text(
         yes_no(doctor_host_reload_required(checks, actions)),
     ));
     text.push_str(&format!("\nRuntime Home:\n  {}\n", runtime_home.display()));
+    text.push_str(&format!("\nBuild:\n  {}\n", volicord_mcp::build_id()));
     append_doctor_check_summary(&mut text, checks, actions);
     append_doctor_next_actions(&mut text, status, actions);
     text.push_str(
@@ -1744,6 +1781,7 @@ fn doctor_states_json(
     actions: &[DiagnosticAction],
 ) -> Value {
     let mut states = json!({
+        "build_id": volicord_mcp::build_id(),
         "runtime_home": doctor_runtime_home_state(runtime_home, checks),
         "installation_profile": doctor_installation_profile_state(checks),
         "command_availability": doctor_command_state(checks),

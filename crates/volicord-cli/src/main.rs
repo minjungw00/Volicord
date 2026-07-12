@@ -452,7 +452,11 @@ fn mcp_usage() -> String {
 }
 
 fn version() -> String {
-    format!("volicord {}\n", env!("CARGO_PKG_VERSION"))
+    let build = volicord_mcp::build_info();
+    format!(
+        "volicord {} (build_id={})\n",
+        build.package_version, build.build_id
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -622,7 +626,14 @@ mod tests {
         )
         .expect("version should not need Runtime Home");
 
-        assert_eq!(output, format!("volicord {}\n", env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            output,
+            format!(
+                "volicord {} (build_id={})\n",
+                env!("CARGO_PKG_VERSION"),
+                volicord_mcp::build_id()
+            )
+        );
     }
 
     #[test]

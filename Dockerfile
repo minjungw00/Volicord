@@ -6,7 +6,19 @@ COPY crates ./crates
 COPY tests ./tests
 COPY xtask ./xtask
 
-RUN cargo build --release -p volicord-cli --bin volicord
+ARG VOLICORD_BUILD_GIT_COMMIT=
+ARG VOLICORD_BUILD_GIT_DIRTY=
+RUN set -eu; \
+    if [ -z "$VOLICORD_BUILD_GIT_COMMIT" ] && [ -z "$VOLICORD_BUILD_GIT_DIRTY" ]; then \
+        unset VOLICORD_BUILD_GIT_COMMIT VOLICORD_BUILD_GIT_DIRTY; \
+    elif [ -n "$VOLICORD_BUILD_GIT_COMMIT" ] && [ -n "$VOLICORD_BUILD_GIT_DIRTY" ]; then \
+        export VOLICORD_BUILD_GIT_COMMIT VOLICORD_BUILD_GIT_DIRTY; \
+    else \
+        echo "VOLICORD_BUILD_GIT_COMMIT and VOLICORD_BUILD_GIT_DIRTY must be provided together" >&2; \
+        exit 2; \
+    fi; \
+    VOLICORD_BUILD_PROFILE=release \
+    cargo build --locked --release -p volicord-cli --bin volicord
 
 FROM debian:bookworm-slim AS runtime
 

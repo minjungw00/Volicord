@@ -145,8 +145,86 @@ jobs:
           rustup default $env:RUST_VERSION
           rustup target add "${{ matrix.target }}"
 
+      - name: Prepare exact build identity
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          git_status="$(git status --porcelain=v1 --untracked-files=normal)"
+          if [ -n "$git_status" ]; then
+            echo "refusing to stamp a clean release build from a dirty checkout:" >&2
+            printf '%s\n' "$git_status" >&2
+            exit 1
+          fi
+          git_commit="$(git rev-parse --verify HEAD | tr '[:upper:]' '[:lower:]')"
+          if [ "$git_commit" != "$GITHUB_SHA" ]; then
+            echo "checkout HEAD does not match GITHUB_SHA" >&2
+            printf 'checkout HEAD: %s\n' "$git_commit" >&2
+            printf 'GITHUB_SHA:   %s\n' "$GITHUB_SHA" >&2
+            exit 1
+          fi
+
+      - name: Prepare exact build identity (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gitStatus = @(& git status --porcelain=v1 --untracked-files=normal)
+          if ($LASTEXITCODE -ne 0) {
+              throw "git status failed with exit code $LASTEXITCODE"
+          }
+          if ($gitStatus.Count -ne 0) {
+              throw "refusing to stamp a clean release build from a dirty checkout:`n$($gitStatus -join "`n")"
+          }
+          $gitCommitOutput = & git rev-parse --verify HEAD
+          if ($LASTEXITCODE -ne 0) {
+              throw "git rev-parse failed with exit code $LASTEXITCODE"
+          }
+          $gitCommit = ($gitCommitOutput | Out-String).Trim().ToLowerInvariant()
+          if ($gitCommit -ne $env:GITHUB_SHA) {
+              throw "checkout HEAD $gitCommit does not match GITHUB_SHA $env:GITHUB_SHA"
+          }
+
       - name: Build volicord
+        env:
+          VOLICORD_BUILD_GIT_COMMIT: ${{ github.sha }}
+          VOLICORD_BUILD_GIT_DIRTY: "false"
+          VOLICORD_BUILD_PROFILE: release
         run: cargo build --locked --release -p volicord-cli --bin volicord --target "${{ matrix.target }}"
+
+      - name: Verify exact build identity
+        if: runner.os != 'Windows'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          binary="target/$TARGET/release/volicord"
+          actual="$("$binary" --version)"
+          required=";git=$GITHUB_SHA;tree=clean;metadata_source=environment;target=$TARGET;profile=release;profile_class=release;profile_exact=true;"
+          case "$actual" in
+            "volicord "*" (build_id="*"$required"*")") ;;
+            *)
+              echo "release binary build identity mismatch" >&2
+              printf 'required identity segment: %s\n' "$required" >&2
+              printf 'actual:                    %s\n' "$actual" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Verify exact build identity (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = "${{ matrix.target }}"
+          $binary = "target/$target/release/volicord.exe"
+          $actual = (& $binary --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+              throw "release binary --version failed with exit code $LASTEXITCODE"
+          }
+          $sha = [regex]::Escape($env:GITHUB_SHA)
+          $escapedTarget = [regex]::Escape($target)
+          $pattern = "^volicord [^ ]+ \(build_id=[^;]+;git=$sha;tree=clean;metadata_source=environment;target=$escapedTarget;profile=release;profile_class=release;profile_exact=true;.*\)$"
+          if ($actual -notmatch $pattern) {
+              throw "release binary build identity mismatch`nrequired pattern: $pattern`nactual:           $actual"
+          }
 
       - name: Smoke test binary
         if: runner.os != 'Windows'
@@ -227,8 +305,46 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Prepare exact container build identity
+        run: |
+          set -eu
+          git_status="$(git status --porcelain=v1 --untracked-files=normal)"
+          if [ -n "$git_status" ]; then
+            echo "refusing to stamp a clean container build from a dirty checkout:" >&2
+            printf '%s\n' "$git_status" >&2
+            exit 1
+          fi
+          git_commit="$(git rev-parse --verify HEAD | tr '[:upper:]' '[:lower:]')"
+          if [ "$git_commit" != "$GITHUB_SHA" ]; then
+            echo "checkout HEAD does not match GITHUB_SHA" >&2
+            printf 'checkout HEAD: %s\n' "$git_commit" >&2
+            printf 'GITHUB_SHA:   %s\n' "$GITHUB_SHA" >&2
+            exit 1
+          fi
+
       - name: Build image
-        run: docker build -t volicord:${{ github.sha }} .
+        run: |
+          docker build \
+            --build-arg "VOLICORD_BUILD_GIT_COMMIT=${{ github.sha }}" \
+            --build-arg "VOLICORD_BUILD_GIT_DIRTY=false" \
+            -t volicord:${{ github.sha }} \
+            .
+
+      - name: Verify exact container build identity
+        run: |
+          set -eu
+          target="x86_64-unknown-linux-gnu"
+          actual="$(docker run --rm volicord:${{ github.sha }} --version)"
+          required=";git=$GITHUB_SHA;tree=clean;metadata_source=environment;target=$target;profile=release;profile_class=release;profile_exact=true;"
+          case "$actual" in
+            "volicord "*" (build_id="*"$required"*")") ;;
+            *)
+              echo "container build identity mismatch" >&2
+              printf 'required identity segment: %s\n' "$required" >&2
+              printf 'actual:                    %s\n' "$actual" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Smoke test image
         run: |

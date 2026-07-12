@@ -80,8 +80,12 @@ work. Core is the local authority record for Volicord state.
    without a tag, use `cargo run --locked -p xtask -- release-version-check`
    to check workspace inheritance. The existing `volicord --version` and MCP
    initialize `serverInfo.version` surfaces derive from the inherited package
-   version; do not add separate commit-SHA or build-metadata fields for this
-   workflow.
+   version. The separate operational `build_id` records source and compilation
+   dimensions, with unknown and approximate values labeled explicitly. It is
+   not a second SemVer, tag source, binary digest, exact fingerprint of a dirty
+   tree, or cryptographic attestation, and it does not include a build
+   timestamp. Release builds provide and verify their clean source commit and
+   exact profile through the checked-in workflow.
 
 8. Run validation.
 

@@ -129,7 +129,8 @@ Baseline command-line behavior:
   one allowed `project_internal_id` value.
 - `-h` and `--help` print usage and environment summary, then exit with code
   `0`.
-- `-V` and `--version` print `volicord <version>`, then exit with code `0`.
+- `-V` and `--version` print
+  `volicord <package-version> (build_id=<build-id>)`, then exit with code `0`.
 - No mode, `--check` or `--stdio` without `--connection`, unknown options,
   combined command-line modes, missing required option values, and extra
   positional arguments write usage diagnostics to stderr and exit with code
@@ -603,6 +604,18 @@ do not create Volicord behavior by themselves.
 Examples use the fields listed above. `volicord mcp --stdio` may accept additional MCP
 `Implementation` metadata allowed by the 2025-11-25 schema, such as `title`,
 `description`, `icons`, or `websiteUrl`.
+
+The successful initialize result returns `serverInfo.name=volicord-mcp` and
+keeps the inherited Cargo package SemVer in `serverInfo.version`.
+`serverInfo` contains only standard MCP `Implementation` fields. The standard
+initialize Result `_meta` object exposes the Volicord extension
+`_meta["io.volicord/build"]`; no non-standard `serverInfo.buildId` field is
+used. The extension value is the same structured build object documented for
+`volicord doctor --json`, including its `build_id`, Git metadata source,
+target, exact profile or approximate profile class, optimization level, and
+debug state. It has no build timestamp. Unknown Git metadata is explicit, and
+a dirty tree is labeled without claiming to identify its exact modified
+contents.
 
 Protocol-version negotiation:
 
