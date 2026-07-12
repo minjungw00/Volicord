@@ -64,7 +64,7 @@ fn write_fake_mcp_with_workflow_tools(
          printf 'verification_scope: startup_check_only\\n'\n\
          exit 0\n\
          fi\n\
-         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--stdio\" ] && [ \"$3\" = \"--connection\" ]; then\n\
+         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--stdio\" ] && { [ \"$3\" = \"--connection\" ] || [ \"$3\" = \"--discover-repository\" ]; }; then\n\
          while IFS= read -r line; do\n\
          case \"$line\" in\n\
          *'\"method\":\"initialize\"'*) printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"volicord-mcp\",\"version\":\"test\"},\"instructions\":\"Use Volicord.\"}}' ;;\n\
@@ -118,7 +118,7 @@ pub(crate) fn write_basic_fake_mcp(dir: &Path) -> Result<PathBuf, Box<dyn Error>
          printf 'verification_scope: startup_check_only\\n'\n\
          exit 0\n\
          fi\n\
-         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--stdio\" ] && [ \"$3\" = \"--connection\" ]; then\n\
+         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"--stdio\" ] && { [ \"$3\" = \"--connection\" ] || [ \"$3\" = \"--discover-repository\" ]; }; then\n\
          while IFS= read -r line; do\n\
          case \"$line\" in\n\
          *'\"method\":\"initialize\"'*) printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"volicord-mcp\",\"version\":\"test\"},\"instructions\":\"Use Volicord.\"}}' ;;\n\

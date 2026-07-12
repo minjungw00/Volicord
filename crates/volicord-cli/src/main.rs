@@ -8,6 +8,7 @@ use volicord_cli::{
         connection_usage, init_usage, run_connection_command, run_init_command,
         ConnectionCommandError, ProductionConnectionProcess,
     },
+    diagnostics_command::{diagnostics_usage, run_diagnostics_command, DiagnosticsCommandError},
     doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
     export_command::{export_usage, run_export_command, ExportCommandError},
     guard_command::{run_guard_command, GuardCommandError},
@@ -40,6 +41,12 @@ fn main() {
             if let Err(error) =
                 volicord_mcp::run_stdio_from_env(&connection_id, project_id.as_deref())
             {
+                eprintln!("error: {error}");
+                process::exit(1);
+            }
+        }
+        Err(CliError::McpRepositoryStdio { host }) => {
+            if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -96,6 +103,15 @@ where
             }
         }
         "doctor" => command_outcome(run_doctor_command(&args[2..], &env_var, current_dir)?),
+        "diagnostics" => {
+            if !matches!(
+                args.get(2).map(String::as_str),
+                None | Some("-h" | "--help" | "help")
+            ) {
+                require_setup_completed(&env_var, current_dir)?;
+            }
+            run_diagnostics_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        }
         "mcp" => command_mcp(&args[2..], env_var, current_dir),
         "serve" => command_serve(&args[2..], env_var, current_dir),
         "init" => {
@@ -303,6 +319,7 @@ where
             connection_id,
             project_id,
         }),
+        McpCommand::RepositoryStdio { host } => Err(CliError::McpRepositoryStdio { host }),
     }
 }
 
@@ -311,6 +328,9 @@ enum McpCommand {
     Stdio {
         connection_id: String,
         project_id: Option<String>,
+    },
+    RepositoryStdio {
+        host: volicord_mcp::RepositoryDiscoveryHost,
     },
     Help,
     Version,
@@ -331,8 +351,10 @@ fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
 
     let mut stdio = false;
     let mut check = false;
+    let mut discover_repository = false;
     let mut connection_id = None;
     let mut project_id = None;
+    let mut discovery_host = None;
     let mut index = 0;
 
     while index < args.len() {
@@ -349,6 +371,32 @@ fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
                     return Err(CliError::usage("--check was supplied more than once"));
                 }
                 check = true;
+                index += 1;
+            }
+            "--discover-repository" => {
+                if discover_repository {
+                    return Err(CliError::usage(
+                        "--discover-repository was supplied more than once",
+                    ));
+                }
+                discover_repository = true;
+                index += 1;
+            }
+            "--host" => {
+                if discovery_host.is_some() {
+                    return Err(CliError::usage("--host was supplied more than once"));
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| CliError::usage("--host requires a value"))?;
+                if value.starts_with('-') {
+                    return Err(CliError::usage("--host requires a value"));
+                }
+                discovery_host = Some(
+                    volicord_mcp::RepositoryDiscoveryHost::parse(value)
+                        .map_err(|error| CliError::usage(error.to_string()))?,
+                );
                 index += 1;
             }
             "--connection" => {
@@ -394,6 +442,21 @@ fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
     if stdio && check {
         return Err(CliError::usage("cannot combine --stdio and --check"));
     }
+    if discover_repository && (!stdio || check) {
+        return Err(CliError::usage(
+            "--discover-repository is only valid with --stdio",
+        ));
+    }
+    if discovery_host.is_some() && !discover_repository {
+        return Err(CliError::usage(
+            "--host is only valid with --discover-repository",
+        ));
+    }
+    if discover_repository && (connection_id.is_some() || project_id.is_some()) {
+        return Err(CliError::usage(
+            "repository discovery cannot be combined with --connection or --project",
+        ));
+    }
     if project_id.is_some() && !check && !stdio {
         return Err(CliError::usage(
             "--project is only valid with --stdio or --check",
@@ -403,6 +466,13 @@ fn dispatch_mcp_args(args: &[String]) -> Result<McpCommand, CliError> {
         return Err(CliError::usage(
             "MCP mode is required; use --stdio or --check",
         ));
+    }
+
+    if discover_repository {
+        let host = discovery_host.ok_or_else(|| {
+            CliError::usage("--host is required for repository discovery MCP startup")
+        })?;
+        return Ok(McpCommand::RepositoryStdio { host });
     }
 
     let connection_id = connection_id.ok_or_else(|| {
@@ -429,7 +499,7 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments.\nThese are local administrative commands, not public Volicord API methods.\n",
+        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments and evidence observations.\nThese are local administrative commands, not public Volicord API methods.\n",
         indent_usage_block(&init_usage()),
         indent_usage_block(&status_usage()),
         indent_usage_block(&doctor_usage()),
@@ -440,6 +510,7 @@ fn usage() -> String {
         indent_usage_block(&export_usage()),
         indent_usage_block(&mcp_usage()),
         indent_usage_block(&serve_usage()),
+        indent_usage_block(&diagnostics_usage()),
     )
 }
 
@@ -448,7 +519,7 @@ fn indent_usage_block(block: &str) -> String {
 }
 
 fn mcp_usage() -> String {
-    "volicord mcp --stdio --connection <connection_id> [--project <project_id>]\nvolicord mcp --check --connection <connection_id>\nvolicord mcp --check --connection <connection_id> --project <project_id>\n".to_owned()
+    "volicord mcp --stdio --connection <connection_id> [--project <project_id>]\nvolicord mcp --stdio --discover-repository --host codex|claude-code\nvolicord mcp --check --connection <connection_id>\nvolicord mcp --check --connection <connection_id> --project <project_id>\n".to_owned()
 }
 
 fn version() -> String {
@@ -472,6 +543,9 @@ enum CliError {
     McpStdio {
         connection_id: String,
         project_id: Option<String>,
+    },
+    McpRepositoryStdio {
+        host: volicord_mcp::RepositoryDiscoveryHost,
     },
     ServeLocalHttp {
         config: Box<volicord_mcp::LocalHttpServerConfig>,
@@ -501,6 +575,11 @@ impl fmt::Display for CliError {
                     "MCP stdio requested for connection {connection_id}"
                 )
             }
+            Self::McpRepositoryStdio { host } => write!(
+                formatter,
+                "MCP stdio requested through {} repository discovery",
+                host.as_str()
+            ),
             Self::ServeLocalHttp { config } => {
                 write!(
                     formatter,
@@ -578,6 +657,15 @@ impl From<DoctorCommandError> for CliError {
         match error {
             DoctorCommandError::Usage(message) => Self::Usage(message),
             DoctorCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
+impl From<DiagnosticsCommandError> for CliError {
+    fn from(error: DiagnosticsCommandError) -> Self {
+        match error {
+            DiagnosticsCommandError::Usage(message) => Self::Usage(message),
+            DiagnosticsCommandError::Runtime(message) => Self::Runtime(message),
         }
     }
 }
@@ -661,17 +749,63 @@ mod tests {
         assert!(output.contains("volicord init"));
         assert!(output.contains("volicord status"));
         assert!(output.contains("volicord doctor"));
+        assert!(output.contains("volicord diagnostics session"));
         assert!(output.contains("volicord project use"));
         assert!(output.contains("volicord connection add"));
         assert!(output.contains("volicord connection list"));
         assert!(output.contains("volicord export authority-bundle"));
         assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
+        assert!(
+            output.contains("volicord mcp --stdio --discover-repository --host codex|claude-code")
+        );
         assert!(output.contains("volicord serve --transport local-http"));
         assert!(output.contains("\n  volicord connection verify"));
         assert!(output.contains("\n  volicord inbox"));
         assert!(!output.contains("\nvolicord connection verify"));
         assert!(!output.contains("\nvolicord inbox"));
         assert!(!output.contains("volicord _hook"));
+    }
+
+    #[test]
+    fn mcp_repository_discovery_mode_is_host_only_and_mutually_exclusive() {
+        assert_eq!(
+            dispatch_mcp_args(&[
+                "--stdio".to_owned(),
+                "--discover-repository".to_owned(),
+                "--host".to_owned(),
+                "codex".to_owned(),
+            ])
+            .expect("portable discovery args"),
+            McpCommand::RepositoryStdio {
+                host: volicord_mcp::RepositoryDiscoveryHost::Codex,
+            }
+        );
+        assert!(dispatch_mcp_args(&[
+            "--stdio".to_owned(),
+            "--discover-repository".to_owned(),
+            "--host".to_owned(),
+            "claude-code".to_owned(),
+            "--connection".to_owned(),
+            "connection_local".to_owned(),
+        ])
+        .expect_err("discovery must reject local identity")
+        .to_string()
+        .contains("cannot be combined"));
+        assert!(dispatch_mcp_args(&[
+            "--stdio".to_owned(),
+            "--discover-repository".to_owned(),
+            "--host".to_owned(),
+            "unsupported".to_owned(),
+        ])
+        .expect_err("unknown discovery host")
+        .to_string()
+        .contains("codex or claude-code"));
+        assert!(
+            dispatch_mcp_args(&["--stdio".to_owned(), "--discover-repository".to_owned(),])
+                .expect_err("host is required")
+                .to_string()
+                .contains("--host is required")
+        );
     }
 
     #[test]
@@ -749,6 +883,23 @@ mod tests {
         assert!(error
             .to_string()
             .contains("VOLICORD_HOME must not be empty"));
+    }
+
+    #[test]
+    fn diagnostics_session_json_dispatches_without_creating_empty_storage() {
+        let runtime_home =
+            TempRuntimeHome::new("cli-diagnostics-empty").expect("temp runtime home");
+        setup_runtime_home(&runtime_home).expect("fixture setup should succeed");
+
+        let output = run_with_home(
+            runtime_home.path(),
+            ["volicord", "diagnostics", "session", "--json"],
+        )
+        .expect("diagnostics should report no data");
+        let value = json_value(&output);
+        assert_eq!(value["status"], "no_data");
+        assert_eq!(value["session"], Value::Null);
+        assert!(!volicord_store::diagnostics::diagnostics_db_path(runtime_home.path()).exists());
     }
 
     #[test]
