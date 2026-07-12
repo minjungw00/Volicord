@@ -466,6 +466,10 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
         replacement_response.response_value["state"]["close_blockers"],
         status.response_value["close_blockers"]
     );
+    assert_eq!(
+        replacement_response.response_value["state"]["evidence_gate"],
+        status.response_value["evidence_gate"]
+    );
 
     let before_reuse = harness.counts()?;
     let mut retired_reuse = update_scope_request(

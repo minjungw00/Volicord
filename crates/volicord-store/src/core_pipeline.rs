@@ -1072,6 +1072,24 @@ impl CoreProjectStore {
         artifact_has_task_owner_link(&self.conn, &self.project.project_id, artifact_id, task_id)
     }
 
+    /// Returns whether a persistent artifact has one exact owner relation.
+    pub fn artifact_has_owner_link(
+        &self,
+        artifact_id: &str,
+        task_id: &str,
+        owner_record_kind: &str,
+        owner_record_id: &str,
+    ) -> StoreResult<bool> {
+        artifact_has_owner_link(
+            &self.conn,
+            &self.project.project_id,
+            artifact_id,
+            task_id,
+            owner_record_kind,
+            owner_record_id,
+        )
+    }
+
     /// Lists pending user-judgment refs for a Task.
     pub fn pending_user_judgment_refs(
         &self,
@@ -2083,6 +2101,34 @@ fn artifact_has_task_owner_link(
             AND artifact_id = ?2
             AND task_id = ?3",
         params![project_id, artifact_id, task_id],
+        |row| Ok(row.get::<_, i64>(0)? > 0),
+    )
+    .map_err(StoreError::from)
+}
+
+fn artifact_has_owner_link(
+    conn: &Connection,
+    project_id: &str,
+    artifact_id: &str,
+    task_id: &str,
+    owner_record_kind: &str,
+    owner_record_id: &str,
+) -> StoreResult<bool> {
+    conn.query_row(
+        "SELECT COUNT(*)
+           FROM artifact_links
+          WHERE project_id = ?1
+            AND artifact_id = ?2
+            AND task_id = ?3
+            AND owner_record_kind = ?4
+            AND owner_record_id = ?5",
+        params![
+            project_id,
+            artifact_id,
+            task_id,
+            owner_record_kind,
+            owner_record_id
+        ],
         |row| Ok(row.get::<_, i64>(0)? > 0),
     )
     .map_err(StoreError::from)

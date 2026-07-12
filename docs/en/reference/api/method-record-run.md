@@ -55,7 +55,8 @@ any attachment link or promotion according to the evidence rules below.
 - A supported evidence update must be backed by a target-matching
   `EvidenceObservationInput`, a usable target-matching evidence observation ref,
   or `EvidenceCoverageUpdate.provenance` from which Core can create an evidence
-  observation with explicit `source_kind` and `assurance_level`.
+  observation. Request-side `source_kind` and `assurance_level` select a claimed
+  provenance pair; Core derives the committed pair from verified anchors.
 - Acceptance-criterion targets must identify a current criterion for this Task.
   Supplemental targets use a caller-assigned Task-scoped `EvidenceClaimId`; its
   statement becomes immutable on first committed use. A required criterion
@@ -115,6 +116,9 @@ Path and access notes:
   target-scoped evidence or observations; their presence in the request is not
   evidence sufficiency.
 - `EvidenceObservationInput.source_refs` and `EvidenceUpdateProvenance.source_refs` preserve structurally validated, non-authoritative provenance. Core performs no file read, Git resolution, command execution, URI fetch, or message lookup for these refs. Optional command or Git-diff artifact refs must canonicalize to an existing artifact owned by this project and Task. Source refs never establish evidence sufficiency or close authority.
+- `EvidenceObservationInput.observed_by_actor_source` is not authoritative input.
+  Core always records `observed_by_actor_source` from the verified invocation
+  context, including when the submitted member is non-null.
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
@@ -130,6 +134,20 @@ Evidence update provenance rules:
   no explicit target-matching observation input is supplied, Core creates an
   `EvidenceObservation` for the current Run and links its ref into the committed
   evidence summary.
+- Request-side `source_kind` and `assurance_level` must form a valid pair, but
+  the pair cannot self-assert stronger provenance. Core derives the committed
+  pair as follows:
+  - `external_tool` / `external_tool_result` is retained only when the
+    target-matching observation has at least one canonical output artifact whose
+    current bytes are available and verified. `tool_name`,
+    `tool_invocation_id`, `tool_metadata`, and `SourceRef` values are descriptive
+    and do not supply that anchor.
+  - Direct `connection_observation` and `user_observation` inputs are not strong
+    in the baseline because `record_run` has no target-scoped verified
+    connection-observation or User Channel observation record to bind them to.
+  - Direct caller-supplied `reused_evidence` is not a validated reuse path.
+  - An unproved strong claim is committed as `agent_report` /
+    `cooperative_report`; `unverified_claim` / `unverified` remains unverified.
 - When a supported update relies only on strong, usable target-matching
   `observation_refs`, Core records a current-Run `source_kind=reused_evidence`
   observation. Its `input_refs` retain each original observation ref, so the
@@ -138,10 +156,18 @@ Evidence update provenance rules:
   update and a reuse limitation; it does not silently copy the original
   observation's artifact outputs or limitations, which remain reachable through
   the retained input ref.
+- Before creating that reuse observation, Core revalidates the original
+  observation identity and target, Task and Change Unit ownership, source Run,
+  current scope revision and baseline, inherited assurance, and the original
+  anchor. External-tool reuse rechecks the original observation-to-artifact
+  link and current artifact bytes. Recursive reuse must lead to the same current,
+  anchored original assurance; a stale, missing, corrupt, mismatched, or cyclic
+  chain is rejected.
 - For non-supported states, current target-matching cooperative or unverified
   observation refs may be retained as descriptive support; the strong-reuse
   requirement applies only when refs are used to establish `supported`.
-- Committed evidence observations keep the explicit provenance class through `source_kind` and `assurance_level`, including `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, and `unverified_claim`.
+- Committed `source_kind` and `assurance_level` contain Core's derived
+  provenance class, not a caller assurance grant.
 - `unverified_claim`, `unverified`, and cooperative `agent_report` observations may be recorded as evidence observations, but close readiness evaluates them as weak provenance when stronger provenance is required.
 - Evidence observations do not replace user-owned judgment, final acceptance, residual-risk acceptance, or close readiness.
 
@@ -151,7 +177,7 @@ Requires:
 
 - verified invocation context with `operation_category=agent_workflow`
 
-For `source_kind=staged_artifact`:
+For `ArtifactInput.source_kind=staged_artifact`:
 
 - the current verified `actor_source` must match the staged handle's recorded provenance
 
@@ -320,7 +346,7 @@ params:
 
 ## Minimal valid request
 
-This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The precondition is local to this document and does not reuse any other method example.
+This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The target-linked staged artifact becomes the canonical output-artifact anchor for the external-tool observation. The request leaves `observed_by_actor_source=null`; the response shows the actor source derived from the verified invocation. The precondition is local to this document and does not reuse any other method example.
 
 ```yaml
 method: volicord.record_run
@@ -382,7 +408,7 @@ params:
         acceptance_criterion_id: criterion_runprobe_count_001
       source_kind: external_tool
       assurance_level: external_tool_result
-      observed_by_actor_source: agent_connection:conn_run_probe
+      observed_by_actor_source: null
       tool_name: "search-count-validator"
       tool_invocation_id: null
       tool_metadata:

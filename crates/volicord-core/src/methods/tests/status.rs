@@ -12,7 +12,6 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
         },
         invocation(OperationCategory::Read),
     )?;
-
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(response.response_value["base"]["dry_run"], false);
@@ -110,6 +109,19 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
         },
         invocation(OperationCategory::Read),
     )?;
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_status_evidence_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
 
     assert_eq!(
         response.response_value["evidence_summary"]["status"],
@@ -117,11 +129,11 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
     );
     assert_eq!(
         response.response_value["evidence_summary"]["evidence_state"],
-        "attached"
+        "accepted_for_close"
     );
     assert_eq!(
         response.response_value["summary_card"]["evidence"],
-        "attached"
+        response.response_value["evidence_gate"]["state"]
     );
     assert_eq!(
         response.response_value["evidence_summary"]["coverage_items"][0]["target"]["target_kind"],
@@ -130,6 +142,22 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
     assert_eq!(
         response.response_value["active_task"]["evidence_summary"],
         response.response_value["evidence_summary"]
+    );
+    assert_eq!(
+        response.response_value["active_task"]["evidence_gate"],
+        response.response_value["evidence_gate"]
+    );
+    assert_eq!(
+        response.response_value["evidence_gate"],
+        check.response_value["evidence_gate"]
+    );
+    assert_eq!(
+        response.response_value["summary_card"]["evidence"],
+        check.response_value["summary_card"]["evidence"]
+    );
+    assert_eq!(
+        check.response_value["state"]["evidence_gate"],
+        check.response_value["evidence_gate"]
     );
     assert_field_absent(&response.response_value, "current_close_basis");
     assert_field_absent(&response.response_value, "close_state");
@@ -224,7 +252,7 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     );
     assert_eq!(
         status.response_value["summary_card"]["evidence"],
-        "accepted_for_close"
+        status.response_value["evidence_gate"]["state"]
     );
     assert_eq!(
         status.response_value["evidence_summary"]["evidence_state"],
@@ -238,7 +266,7 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     );
     assert_eq!(
         check.response_value["summary_card"]["evidence"],
-        "accepted_for_close"
+        check.response_value["evidence_gate"]["state"]
     );
     assert_eq!(
         check.response_value["evidence_summary"]["evidence_state"],
@@ -256,6 +284,18 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
     assert_eq!(
         status.response_value["close_blockers"],
         check.response_value["blockers"]
+    );
+    assert_eq!(
+        status.response_value["evidence_gate"],
+        check.response_value["evidence_gate"]
+    );
+    assert_eq!(
+        status.response_value["active_task"]["evidence_gate"],
+        status.response_value["evidence_gate"]
+    );
+    assert_eq!(
+        check.response_value["state"]["evidence_gate"],
+        check.response_value["evidence_gate"]
     );
     assert_close_blocker(&status.response_value, "missing_final_acceptance");
     let next_actions = status.response_value["next_actions"]
@@ -470,6 +510,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     assert!(none.response_value["active_task"].is_null());
     assert!(none.response_value["write_ticket_summary"].is_null());
     assert_field_absent(&none.response_value, "evidence_summary");
+    assert_field_absent(&none.response_value, "evidence_gate");
     assert_field_absent(&none.response_value, "close_state");
     assert_field_absent(&none.response_value, "current_close_basis");
     assert_field_absent(&none.response_value, "risk_acceptance_coverage");
@@ -503,6 +544,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
         evidence_only.response_value["evidence_summary"]["status"],
         "sufficient"
     );
+    assert!(evidence_only.response_value["evidence_gate"].is_object());
     assert_field_absent(&evidence_only.response_value, "close_state");
     assert_field_absent(&evidence_only.response_value, "close_blockers");
     assert_field_absent(&evidence_only.response_value, "guarantee_display");
@@ -525,6 +567,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
     )?;
     assert!(close_only.response_value["active_task"].is_null());
     assert_field_absent(&close_only.response_value, "evidence_summary");
+    assert!(close_only.response_value["evidence_gate"].is_object());
     assert_field_absent(&close_only.response_value, "guarantee_display");
     assert_close_blocker(&close_only.response_value, "missing_final_acceptance");
 
@@ -601,6 +644,7 @@ fn status_close_false_does_not_read_corrupt_close_basis() -> Result<(), Box<dyn 
     assert_field_absent(&excluded.response_value, "close_blockers");
     assert_field_absent(&excluded.response_value["active_task"], "close_state");
     assert_field_absent(&excluded.response_value["active_task"], "close_blockers");
+    assert_field_absent(&excluded.response_value["active_task"], "evidence_gate");
     assert_no_close_next_actions(&excluded.response_value);
     assert_eq!(harness.counts()?, before);
 

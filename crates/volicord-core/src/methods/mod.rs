@@ -37,25 +37,25 @@ use volicord_types::{
     CloseTaskRequest, CloseTaskResult, ControlSurfaceSummary, CoverageHostHookState,
     CoverageSessionWatcherState, CoverageSummary, CurrentCloseBasis, DryRunSummary, DurableIdKind,
     EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
-    EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceObservation,
-    EvidenceObservationId, EvidenceObservationInput, EvidenceRequirement, EvidenceSourceKind,
-    EvidenceStatus, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
-    GuaranteeLevel, GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary,
-    GuardInstallationId, GuardInstallationStatus, GuardObservationStatus, IntegrationProfile,
-    JsonObject, JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
-    JudgmentCapturePath, JudgmentInboxChoice, JudgmentInboxItem, JudgmentKind,
-    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, JudgmentResolutionOutcome,
-    MethodName, MethodOperationCategory, NextActionKind, NextActionPresentationRole,
-    NextActionSummary, NonGuarantee, ObservedChanges, OperationCategory, PersistedEvidenceMetadata,
-    PersistedJudgmentBasis, PersistedUserJudgmentOptions, PersistedUserJudgmentRequest,
-    PersistedUserJudgmentResolution, PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect,
-    PrepareWriteRequest, PrepareWriteResult, ProjectContinuityKind, ProjectContinuityRecord,
-    ProjectContinuityRecordId, ProjectContinuityStatus, ProjectContinuitySummary,
-    ProjectEnforcementProfile, ProjectId, ReconcileChangesRequest, ReconcileChangesResult,
-    RecordId, RecordRunRequest, RecordRunResult, RecordUserJudgmentPayload,
-    RecordUserJudgmentRequest, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
-    ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind, RunSummary,
-    SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
+    EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState,
+    EvidenceGateSummary, EvidenceObservation, EvidenceObservationId, EvidenceObservationInput,
+    EvidenceRequirement, EvidenceSourceKind, EvidenceStatus, EvidenceSummary, EvidenceTarget,
+    EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel, GuardConfigurationStatus,
+    GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId, GuardInstallationStatus,
+    GuardObservationStatus, IntegrationProfile, JsonObject, JudgmentAnswerConstraints,
+    JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentCapturePath, JudgmentInboxChoice,
+    JudgmentInboxItem, JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
+    JudgmentResolutionOutcome, MethodName, MethodOperationCategory, NextActionKind,
+    NextActionPresentationRole, NextActionSummary, NonGuarantee, ObservedChanges,
+    OperationCategory, PersistedEvidenceMetadata, PersistedJudgmentBasis,
+    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
+    PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteRequest,
+    PrepareWriteResult, ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
+    ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
+    ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
+    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
+    RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind,
+    RunSummary, SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
     SessionWatchStatus, SourceRef, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
     StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
     StatusRequest, StorageRef, SummaryCard, TaskId, TaskLifecyclePhase, TaskLifecycleState,
@@ -98,9 +98,8 @@ use crate::policy::{
     },
     evidence::{
         evidence_assurance_matches_source, evidence_item_has_no_support,
-        evidence_item_related_refs, evidence_provenance_class, evidence_status_for_items,
-        state_record_ref_identity_key, unique_artifact_refs, unique_state_record_refs,
-        EvidenceProvenanceClass,
+        evidence_item_related_refs, evidence_status_for_items, state_record_ref_identity_key,
+        unique_artifact_refs, unique_state_record_refs, EvidenceProvenanceClass,
     },
     judgment_answer::{
         answer_branch_matches_kind, answer_outcome_agreement, is_authority_bearing_judgment,
@@ -164,6 +163,7 @@ struct CloseTaskPlan {
     current_close_basis: Option<CurrentCloseBasis>,
     risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
     blockers: Vec<CloseReadinessBlocker>,
+    evidence_gate: EvidenceGateSummary,
     guard_health: Option<GuardHealthSummary>,
 }
 
@@ -2546,6 +2546,7 @@ struct SummaryBuild<'a> {
     blocker_refs: Vec<StateRecordRef>,
     write_ticket_summary: Option<WriteTicketStateSummary>,
     evidence_summary: Option<EvidenceSummary>,
+    evidence_gate: Option<EvidenceGateSummary>,
     close_state: Option<CloseState>,
     close_blockers: Vec<CloseReadinessBlocker>,
     guard_health: Option<GuardHealthSummary>,
@@ -2563,6 +2564,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         blocker_refs,
         write_ticket_summary,
         evidence_summary,
+        evidence_gate,
         close_state,
         close_blockers,
         guard_health,
@@ -2632,6 +2634,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         blocker_refs,
         write_ticket_summary,
         evidence_summary,
+        evidence_gate,
         close_state,
         close_blockers,
         guard_health,
@@ -3000,6 +3003,134 @@ fn evidence_summary_with_required_criteria(
     Some(summary)
 }
 
+fn evaluate_evidence_gate(
+    acceptance_criteria: &[AcceptanceCriterion],
+    evidence_summary: Option<&EvidenceSummary>,
+    close_blockers: &[CloseReadinessBlocker],
+) -> EvidenceGateSummary {
+    let required_ids = acceptance_criteria
+        .iter()
+        .filter(|criterion| criterion.evidence_requirement == EvidenceRequirement::Required)
+        .map(|criterion| criterion.acceptance_criterion_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let optional_ids = acceptance_criteria
+        .iter()
+        .filter(|criterion| criterion.evidence_requirement == EvidenceRequirement::Optional)
+        .map(|criterion| criterion.acceptance_criterion_id.as_str())
+        .collect::<BTreeSet<_>>();
+
+    if required_ids.is_empty() && optional_ids.is_empty() {
+        return EvidenceGateSummary {
+            state: EvidenceGateState::NotRequired,
+        };
+    }
+
+    let coverage_items = evidence_summary
+        .map(|summary| summary.coverage_items.as_slice())
+        .unwrap_or_default();
+    let criterion_item = |criterion_id: &str| {
+        coverage_items.iter().find(|item| {
+            matches!(
+                &item.target,
+                EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id
+                } if acceptance_criterion_id.as_str() == criterion_id
+            )
+        })
+    };
+    let required_items = coverage_items.iter().filter(|item| {
+        matches!(
+            &item.target,
+            EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id
+            } if required_ids.contains(acceptance_criterion_id.as_str())
+        )
+    });
+    let required_artifact_ids = required_items
+        .clone()
+        .flat_map(|item| item.supporting_artifact_refs.iter())
+        .map(|artifact_ref| artifact_ref.artifact_id.as_str())
+        .collect::<BTreeSet<_>>();
+
+    let has_blocking_evidence_condition = close_blockers.iter().any(|blocker| {
+        blocker.category == CloseReadinessBlockerCategory::Evidence
+            || (blocker.category == CloseReadinessBlockerCategory::ArtifactAvailability
+                && blocker.related_refs.iter().any(|record_ref| {
+                    record_ref.record_kind == StateRecordKind::Artifact
+                        && required_artifact_ids.contains(record_ref.record_id.as_str())
+                }))
+            || (blocker.category == CloseReadinessBlockerCategory::EvidenceProvenance
+                && blocker.code != "evidence_provenance_stale")
+    }) || required_items
+        .clone()
+        .any(|item| item.coverage_state == EvidenceCoverageState::Contradicted);
+    if has_blocking_evidence_condition {
+        return EvidenceGateSummary {
+            state: EvidenceGateState::Blocked,
+        };
+    }
+
+    let has_stale_evidence = close_blockers.iter().any(|blocker| {
+        blocker.category == CloseReadinessBlockerCategory::EvidenceProvenance
+            && blocker.code == "evidence_provenance_stale"
+    }) || required_items
+        .clone()
+        .any(|item| item.coverage_state == EvidenceCoverageState::Stale);
+    if has_stale_evidence {
+        return EvidenceGateSummary {
+            state: EvidenceGateState::Stale,
+        };
+    }
+
+    let item_is_sufficient =
+        |item: &EvidenceCoverageItem| item.coverage_state == EvidenceCoverageState::Supported;
+    let item_has_recorded_evidence =
+        |item: &EvidenceCoverageItem| !evidence_item_has_no_support(item);
+    let has_evidence_claim_blocker = close_blockers
+        .iter()
+        .any(|blocker| blocker.category == CloseReadinessBlockerCategory::EvidenceClaim);
+
+    if !required_ids.is_empty() {
+        if !has_evidence_claim_blocker
+            && required_ids
+                .iter()
+                .all(|criterion_id| criterion_item(criterion_id).is_some_and(item_is_sufficient))
+        {
+            return EvidenceGateSummary {
+                state: EvidenceGateState::Sufficient,
+            };
+        }
+        let any_required_evidence = required_ids.iter().any(|criterion_id| {
+            criterion_item(criterion_id).is_some_and(item_has_recorded_evidence)
+        });
+        return EvidenceGateSummary {
+            state: if any_required_evidence {
+                EvidenceGateState::Partial
+            } else {
+                EvidenceGateState::RequiredMissing
+            },
+        };
+    }
+
+    let optional_items = optional_ids
+        .iter()
+        .filter_map(|criterion_id| criterion_item(criterion_id))
+        .filter(|item| item_has_recorded_evidence(item))
+        .collect::<Vec<_>>();
+    if optional_items.is_empty() {
+        return EvidenceGateSummary {
+            state: EvidenceGateState::OptionalNone,
+        };
+    }
+    EvidenceGateSummary {
+        state: if optional_items.iter().all(|item| item_is_sufficient(item)) {
+            EvidenceGateState::Sufficient
+        } else {
+            EvidenceGateState::Partial
+        },
+    }
+}
+
 fn close_context_with_record_run_projection(
     mut context: CloseTaskContext,
     run_ref: StateRecordRef,
@@ -3327,28 +3458,25 @@ fn evidence_summary_has_attached_evidence(summary: &EvidenceSummary) -> bool {
         })
 }
 
-fn evidence_summary_text(
-    selected: bool,
-    summary: Option<&EvidenceSummary>,
-    prepared_input_available: bool,
-) -> String {
+fn evidence_gate_summary_text(selected: bool, summary: Option<&EvidenceGateSummary>) -> String {
     if !selected {
         return "not_selected".to_owned();
     }
-    if let Some(state) = summary.and_then(|summary| summary.evidence_state) {
-        return evidence_display_state_text(state).to_owned();
-    }
-    if prepared_input_available {
-        return evidence_display_state_text(EvidenceDisplayState::Prepared).to_owned();
-    }
-    "none".to_owned()
+    summary
+        .map(|summary| evidence_gate_state_text(summary.state))
+        .unwrap_or("none")
+        .to_owned()
 }
 
-fn evidence_display_state_text(state: EvidenceDisplayState) -> &'static str {
+fn evidence_gate_state_text(state: EvidenceGateState) -> &'static str {
     match state {
-        EvidenceDisplayState::Prepared => "prepared",
-        EvidenceDisplayState::Attached => "attached",
-        EvidenceDisplayState::AcceptedForClose => "accepted_for_close",
+        EvidenceGateState::NotRequired => "not_required",
+        EvidenceGateState::OptionalNone => "optional_none",
+        EvidenceGateState::RequiredMissing => "required_missing",
+        EvidenceGateState::Partial => "partial",
+        EvidenceGateState::Sufficient => "sufficient",
+        EvidenceGateState::Stale => "stale",
+        EvidenceGateState::Blocked => "blocked",
     }
 }
 

@@ -10,12 +10,12 @@ use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
     ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput, CloseReadinessBlocker,
     ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EvidenceCoverageUpdate,
-    EvidenceObservation, EvidenceObservationInput, EvidenceSummary, EvidenceTarget,
-    EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject, JudgmentInboxItem,
-    JudgmentRationale, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
-    RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RunSummary,
-    SensitiveActionScope, SourceRef, StagedArtifactHandle, StateRecordRef, StateSummary,
-    SummaryCard, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput, EvidenceSummary,
+    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject,
+    JudgmentInboxItem, JudgmentRationale, NextActionSummary, ObservedChanges,
+    ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage,
+    RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle, StateRecordRef,
+    StateSummary, SummaryCard, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserChannelAvailability, UserJudgment,
     UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput, WriteDecisionReason,
     WriteTicket, WriteTicketStateSummary,
@@ -391,6 +391,8 @@ pub struct StatusResult {
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence_summary: Option<RequiredNullable<EvidenceSummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence_gate: Option<RequiredNullable<EvidenceGateSummary>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub close_state: Option<StatusCloseState>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -915,6 +917,7 @@ pub struct CloseTaskResult {
     pub guard_health: Option<GuardHealthSummary>,
     pub coverage_summary: Option<CoverageSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
+    pub evidence_gate: EvidenceGateSummary,
     pub artifact_refs: Vec<ArtifactRef>,
 }
 

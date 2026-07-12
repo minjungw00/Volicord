@@ -93,14 +93,14 @@ StatusRequest:
 - `include.pending_user_judgments`는 현재 대기 판단 참조, 사용자 행동을 위한 `pending_judgment_inbox_items`, 현재 호출 맥락에서 지원되는 답변 경로를 나타내는 `user_channel_availability`를 반환합니다. 관련 있는 오래됨 또는 대체됨 판단 상태는 `blocker_refs`, `next_actions.required_refs` 같은 기존 결과 필드로 나타납니다.
 - `include.write_ticket`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다.
 - `write_ticket_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
-- `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위를 반환합니다.
-- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 호스트 훅 경로 안전성을 포함한 `GuardHealthSummary` 상태 정보, 도출된 `CoverageSummary`, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
-- 증거나 닫기 세부사항이 선택되면 `summary_card.evidence`는 공개 증거 표시 상태를 사용합니다. 스테이징만 된 첨부 입력은 `prepared`, Run에 연결된 증거는 `attached`로 나타날 수 있습니다. `accepted_for_close`는 닫기 세부사항이 선택되고 현재 닫기 근거가 선택된 증거를 참조할 때 나타납니다.
+- `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위, 기준 `evidence_gate` 상태 보기를 반환합니다.
+- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 호스트 훅 경로 안전성을 포함한 `GuardHealthSummary` 상태 정보, 도출된 `CoverageSummary`, 관련 다음 행동, 동일한 기준 `evidence_gate`를 반환합니다. 차단 사유는 `volicord.check_close`와 같은 닫기 준비 상태 계산을 사용합니다.
+- 증거나 닫기 세부사항이 선택되면 `summary_card.evidence`는 정확히 `evidence_gate.state`입니다. `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, `blocked` 중 하나를 사용하며 증거 첨부 표시 상태에서 두 번째 gate를 파생하지 않습니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 호출 맥락, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
 - `include.continuity`는 오래 유지하는 프로젝트 수준 맥락의 활성 `ProjectContinuitySummary[]` 항목을 반환합니다.
 - `summary_card`는 성공한 `StatusResult` 응답에서 항상 반환됩니다. 담당 문서가 선택한 보기를 공개 표시 용어와, 알 수 있을 때 선택된 다음 행동 하나인 `next`로 요약합니다. 요약하는 구조화 필드 너머의 권한을 추가하지 않습니다.
-- `include.evidence=false`는 증거 요약, 범위, 아티팩트 증거 참조, 증거 전용 다음 행동을 계산하지도 반환하지도 않는다는 뜻입니다.
-- `include.close=false`는 닫기 준비 상태를 계산하지 않는다는 뜻입니다. `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, `GuardHealthSummary` 상태 정보, `CoverageSummary`, 잔여 위험 범위, 닫기 전용 다음 행동도 반환하지 않습니다.
+- `include.evidence=false`이면 `evidence_summary`를 생략합니다. `include.close=true`이면 `evidence_gate`는 계속 반환합니다.
+- `include.close=false`이면 `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, `GuardHealthSummary` 상태 정보, `CoverageSummary`, 잔여 위험 범위, 닫기 전용 다음 행동을 생략합니다. `include.evidence=true`이면 Core는 증거 출처, 최신성, 아티팩트 차단 사유가 기준 gate에 반영되도록 내부에서 동일한 읽기 전용 닫기 근거를 평가하지만 닫기 전용 필드는 노출하지 않습니다.
 - `include.guarantees=false`는 보장 표시를 파생하지도 반환하지도 않는다는 뜻입니다.
 - `include.continuity=false`는 프로젝트 연속성 요약을 읽거나 반환하지 않는다는 뜻입니다.
 
@@ -110,7 +110,7 @@ StatusRequest:
 - 호스트 지침, 연결 모드, 생성된 텍스트만으로는 보장이 생기지 않습니다. 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
 - `GuaranteeDisplay.capability_refs`는 해당 참조를 사용할 수 있을 때 호출 바인딩, Agent Connection, 관찰 사실을 식별해야 합니다.
 
-`include.close=true`와 [`volicord.check_close`](method-close-task.md#volicordcheck_close)는 같은 닫기 준비 상태 계산을 사용합니다. `volicord.status`는 재실행 행, 이벤트, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다. 세션에 묶인 Agent Connection으로 호출되면 런타임은 이후 메서드 경계 확인에서 Product Repository 스냅샷을 비교할 수 있도록 `session-watch` 진단 기록을 초기화할 수 있습니다.
+`include.evidence=true` 또는 `include.close=true`와 [`volicord.check_close`](method-close-task.md#volicordcheck_close)는 같은 닫기 준비 상태 증거 gate 계산을 사용합니다. 따라서 같은 상태 버전의 증거 전용 status 결과와 check-close 결과는 같은 `evidence_gate`를 반환합니다. 닫기 선택 여부는 닫기 필드 노출만 제어하며 별도 gate 계산을 만들지 않습니다. `volicord.status`는 재실행 행, 이벤트, Core 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다. 세션에 묶인 Agent Connection으로 호출되면 런타임은 이후 메서드 경계 확인에서 Product Repository 스냅샷을 비교할 수 있도록 `session-watch` 진단 기록을 초기화할 수 있습니다.
 
 ## 메서드 결과 필드
 
@@ -119,7 +119,7 @@ StatusRequest:
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 읽기 전용 상태 조회 결과는 `events: []`와 권한 기록 공개를 사용합니다. 공통 응답 분기에 `EventRef.event_kind`가 있을 때 그 값은 불투명한 예시용 분류 문자열로 남습니다. |
-| `summary_card` | 선택된 상태 조회 보기에 대한 `SummaryCard`입니다. 증거나 닫기 세부사항이 선택되면 증거 표시는 공개 증거 상태를 사용하며, `accepted_for_close`는 닫기 준비 상태 출력에만 사용됩니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
+| `summary_card` | 선택된 상태 조회 보기에 대한 `SummaryCard`입니다. 증거나 닫기 세부사항이 선택되면 증거 표시는 `evidence_gate.state`를 복사합니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `active_task` | 현재 선택된 `Task` 요약의 `StateSummary | null`입니다. |
 | `status_summary` | 현재 상태 조회 보기를 요약하는 자유 형식 표시 문자열입니다. 닫기 준비 상태 보기가 선택되면 현재 닫기 준비 상태나 첫 번째 닫기 차단 사유 코드를 요약할 수 있습니다. 구조화된 권한 사실은 다른 결과 필드에 남습니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. 비어 있지 않은 목록에는 `presentation_role=primary`인 항목이 정확히 하나 있으며 `summary_card.next_action`은 배열 위치가 아니라 그 행동을 선택합니다. |
@@ -129,6 +129,7 @@ StatusRequest:
 | `blocker_refs` | 현재 상태 조회 보기에 보이는 차단 사유 기록의 `StateRecordRef[]`입니다. |
 | `write_ticket_summary` | 쓰기 티켓 상태 보기의 `WriteTicketStateSummary | null`입니다. `include.write_ticket=true`인데 `null`이면 관련 쓰기 티켓을 사용할 수 없음을 뜻하고, 해당 상태 보기를 선택하지 않으면 이 고정 형태 필드는 `null`로 남습니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `evidence_summary` | `include.evidence=true`일 때의 `EvidenceSummary | null`입니다. 명시적 `null`은 선택한 상태 보기에서 현재 증거 요약을 찾지 못했음을 뜻하고, `include.evidence=false`이면 이 필드를 생략합니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
+| `evidence_gate` | `include.evidence=true` 또는 `include.close=true`일 때의 `EvidenceGateSummary | null`입니다. 명시적 `null`은 Task 범위 gate를 사용할 수 없다는 뜻이고, 두 상태 보기를 모두 선택하지 않으면 필드를 생략합니다. `active_task.evidence_gate`와 `summary_card.evidence`는 이 상태 보기를 복사합니다. |
 | `close_state` | 현재 보기의 닫기 상태 값입니다. 현재 닫기 상태가 없을 때의 `none`을 포함한 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. |
 | `current_close_basis` | 닫기 상태 조회 보기에 선택된 `CurrentCloseBasis | null`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `risk_acceptance_coverage` | 닫기 상태 조회 보기에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
@@ -138,7 +139,7 @@ StatusRequest:
 | `guarantee_display` | 현재 상태 조회 보기에 대한 `GuaranteeDisplay | null`입니다. |
 | `continuity_summary` | `include.continuity=true`일 때의 `ProjectContinuitySummary[]`입니다. 이 상태 보기를 선택하지 않으면 생략합니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 
-중첩된 `UserChannelAvailability`와 `JudgmentInboxItem` 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. 중첩된 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
+중첩된 `UserChannelAvailability`와 `JudgmentInboxItem` 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. 중첩된 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
 
 ## 차단 결과
 
@@ -250,6 +251,8 @@ active_task:
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
+  evidence_gate:
+    state: not_required
   close_state: blocked
   close_blockers:
     - category: pending_user_judgment
@@ -345,6 +348,8 @@ pending_judgment_inbox_items:
       available: true
       command: "volicord inbox answer uj_export_columns_001 --choice <choice>"
 blocker_refs: []
+evidence_gate:
+  state: not_required
 close_state: blocked
 current_close_basis: null
 risk_acceptance_coverage: []

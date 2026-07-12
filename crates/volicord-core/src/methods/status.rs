@@ -96,12 +96,11 @@ fn status_result_fields(
     let mut blocker_refs = Vec::new();
     let mut write_ticket_summary = None;
     let mut evidence_summary = None;
+    let mut evidence_gate = None;
     let mut close_state = None;
     let mut current_close_basis = None;
     let mut risk_acceptance_coverage = None;
     let mut close_blockers = None;
-    let mut card_evidence_summary = None;
-    let mut prepared_input_available = false;
     let mut guard_health = None;
     let mut coverage_summary = None;
     let mut continuity_summary = None;
@@ -145,12 +144,7 @@ fn status_result_fields(
             None
         };
         write_ticket_summary = projected_write_ticket.clone();
-        let mut projected_evidence = if include.evidence || include.close {
-            projected_evidence_summary(store, project_id, state_version, task)?
-        } else {
-            None
-        };
-        let close_plan = if include.close {
+        let close_plan = if include.evidence || include.close {
             let plan = close_task::plan_close_task(
                 store,
                 project_state,
@@ -165,35 +159,31 @@ fn status_result_fields(
                 }),
                 &utc_timestamp(now),
             )?;
-            close_state = Some(status_close_state(plan.close_state));
+            evidence_gate = Some(plan.evidence_gate);
             current_close_basis = plan.current_close_basis.clone();
-            risk_acceptance_coverage = Some(plan.risk_acceptance_coverage.clone());
-            close_blockers = Some(plan.blockers.clone());
-            guard_health = plan.guard_health.clone();
-            coverage_summary = plan
-                .guard_health
-                .as_ref()
-                .map(close_task::coverage_summary_from_guard_health);
-            next_actions.extend(close_next_actions(&plan.blockers));
+            if include.close {
+                close_state = Some(status_close_state(plan.close_state));
+                risk_acceptance_coverage = Some(plan.risk_acceptance_coverage.clone());
+                close_blockers = Some(plan.blockers.clone());
+                guard_health = plan.guard_health.clone();
+                coverage_summary = plan
+                    .guard_health
+                    .as_ref()
+                    .map(close_task::coverage_summary_from_guard_health);
+                next_actions.extend(close_next_actions(&plan.blockers));
+            }
             Some(plan)
         } else {
             None
         };
-        projected_evidence = projected_evidence
-            .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
+        let projected_evidence = if include.evidence || include.close {
+            projected_evidence_summary(store, project_id, state_version, task)?
+                .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()))
+        } else {
+            None
+        };
         if include.evidence {
             evidence_summary = projected_evidence.clone();
-        }
-        card_evidence_summary = projected_evidence.clone();
-        if (include.evidence || include.close)
-            && projected_evidence
-                .as_ref()
-                .and_then(|summary| summary.evidence_state)
-                .is_none()
-        {
-            prepared_input_available = store
-                .has_prepared_artifact_input(&task_id, &utc_timestamp(now))
-                .map_err(CorePipelineError::from)?;
         }
         if include.pending_user_judgments {
             let user_channel = UserChannelContext {
@@ -224,14 +214,27 @@ fn status_result_fields(
                 blocker_refs: blocker_refs.clone(),
                 write_ticket_summary: projected_write_ticket,
                 evidence_summary: projected_evidence.clone(),
-                close_state: close_plan.as_ref().map(|plan| plan.close_state),
-                close_blockers: close_plan
-                    .as_ref()
-                    .map(|plan| plan.blockers.clone())
-                    .unwrap_or_default(),
-                guard_health: close_plan
-                    .as_ref()
-                    .and_then(|plan| plan.guard_health.clone()),
+                evidence_gate,
+                close_state: include
+                    .close
+                    .then(|| close_plan.as_ref().map(|plan| plan.close_state))
+                    .flatten(),
+                close_blockers: if include.close {
+                    close_plan
+                        .as_ref()
+                        .map(|plan| plan.blockers.clone())
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                },
+                guard_health: include
+                    .close
+                    .then(|| {
+                        close_plan
+                            .as_ref()
+                            .and_then(|plan| plan.guard_health.clone())
+                    })
+                    .flatten(),
                 guarantee_display: guarantee_projection.clone(),
             })?;
             if let Some(task_ref) = &state.task_ref {
@@ -264,10 +267,9 @@ fn status_result_fields(
             include.write_ticket,
             write_ticket_summary.as_ref(),
         ),
-        evidence: evidence_summary_text(
+        evidence: evidence_gate_summary_text(
             include.evidence || include.close,
-            card_evidence_summary.as_ref(),
-            prepared_input_available,
+            evidence_gate.as_ref(),
         ),
         pending_user_judgments: card_pending_user_judgment_count,
         changes: changes_summary_text(
@@ -294,6 +296,7 @@ fn status_result_fields(
         blocker_refs,
         write_ticket_summary,
         evidence_summary: include.evidence.then(|| evidence_summary.into()),
+        evidence_gate: (include.evidence || include.close).then(|| evidence_gate.into()),
         close_state,
         current_close_basis: include.close.then(|| current_close_basis.into()),
         risk_acceptance_coverage,
@@ -407,6 +410,9 @@ fn status_state_summary_value(
     }
     if !include.evidence {
         object.remove("evidence_summary");
+    }
+    if !include.evidence && !include.close {
+        object.remove("evidence_gate");
     }
     if !include.close {
         object.remove("close_state");

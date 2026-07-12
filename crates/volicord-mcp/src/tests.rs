@@ -213,10 +213,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
                     open_world_hint: false,
                 }
             }
-            PREPARE_WRITE_TOOL_NAME
-            | STAGE_ARTIFACT_TOOL_NAME
-            | RECORD_RUN_TOOL_NAME
-            | REQUEST_USER_JUDGMENT_TOOL_NAME => McpToolAnnotations {
+            PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => McpToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: false,
                 idempotent_hint: false,
@@ -224,6 +221,8 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             },
             INTAKE_TOOL_NAME
             | UPDATE_SCOPE_TOOL_NAME
+            | RECORD_RUN_TOOL_NAME
+            | REQUEST_USER_JUDGMENT_TOOL_NAME
             | RECONCILE_CHANGES_TOOL_NAME
             | CLOSE_TASK_TOOL_NAME => McpToolAnnotations {
                 read_only_hint: false,
@@ -662,6 +661,8 @@ fn record_run_evidence_example_expands_nested_omission_defaults() -> Result<(), 
     assert!(coverage.get("provenance").is_none());
 
     let observation = &decoded["evidence_observations"][0];
+    assert_eq!(observation["source_kind"], "agent_report");
+    assert_eq!(observation["assurance_level"], "cooperative_report");
     assert!(observation["observed_by_actor_source"].is_null());
     assert!(observation["tool_name"].is_null());
     assert!(observation["tool_invocation_id"].is_null());

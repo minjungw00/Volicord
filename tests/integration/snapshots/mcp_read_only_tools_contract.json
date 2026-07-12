@@ -62,6 +62,8 @@
           "EvidenceCoverageItem",
           "EvidenceCoverageState",
           "EvidenceDisplayState",
+          "EvidenceGateState",
+          "EvidenceGateSummary",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -133,7 +135,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8c39411f78200357205f211929e0989c1aff98f0b4da049cd30584e40a48da39"
+        "sha256": "sha256:ca3f449cde70ade5fc323ad9f92d9e7d3efd7fc0604b00e8b19b71e9f776631a"
       }
     },
     {
@@ -182,6 +184,8 @@
           "EvidenceCoverageItem",
           "EvidenceCoverageState",
           "EvidenceDisplayState",
+          "EvidenceGateState",
+          "EvidenceGateSummary",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -251,7 +255,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8a232dffea8fb18b167dad0ef86e4266433c2639f6b3a20cffec630293ab7685"
+        "sha256": "sha256:8ce0f34ac8c9426913a57c482c1ad662e2ef816ac5acfd5523bfde398d0a8055"
       }
     },
     {

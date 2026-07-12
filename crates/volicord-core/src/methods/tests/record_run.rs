@@ -791,6 +791,14 @@ fn record_run_without_evidence_updates_separates_result_state_and_close_evidence
         status.response_value["close_blockers"],
         check.response_value["blockers"]
     );
+    assert_eq!(
+        second.response_value["state"]["evidence_gate"],
+        status.response_value["evidence_gate"]
+    );
+    assert_eq!(
+        status.response_value["evidence_gate"],
+        check.response_value["evidence_gate"]
+    );
     assert_close_blocker(&second.response_value["state"], "evidence_claim_missing");
     Ok(())
 }
@@ -2289,7 +2297,7 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
 }
 
 #[test]
-fn record_run_observations_preserve_provenance_classification() -> Result<(), Box<dyn Error>> {
+fn record_run_observations_derive_provenance_and_actor_fail_closed() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) =
@@ -2306,22 +2314,29 @@ fn record_run_observations_preserve_provenance_classification() -> Result<(), Bo
             "Registered connection observation.",
             EvidenceSourceKind::ConnectionObservation,
             EvidenceAssuranceLevel::RegisteredConnectionObserved,
-            "connection_observation",
-            "registered_connection_observed",
+            "agent_report",
+            "cooperative_report",
         ),
         (
             "External tool result.",
             EvidenceSourceKind::ExternalTool,
             EvidenceAssuranceLevel::ExternalToolResult,
-            "external_tool",
-            "external_tool_result",
+            "agent_report",
+            "cooperative_report",
         ),
         (
             "User observation.",
             EvidenceSourceKind::UserObservation,
             EvidenceAssuranceLevel::UserObserved,
-            "user_observation",
-            "user_observed",
+            "agent_report",
+            "cooperative_report",
+        ),
+        (
+            "Caller-declared reused evidence.",
+            EvidenceSourceKind::ReusedEvidence,
+            EvidenceAssuranceLevel::ExternalToolResult,
+            "agent_report",
+            "cooperative_report",
         ),
         (
             "Unverified claim.",
@@ -2352,7 +2367,7 @@ fn record_run_observations_preserve_provenance_classification() -> Result<(), Bo
                 target: supplemental_evidence_target(claim),
                 source_kind: *source_kind,
                 assurance_level: *assurance_level,
-                observed_by_actor_source: None.into(),
+                observed_by_actor_source: Some(ActorSource::LocalUser).into(),
                 tool_name: Some("fixture-evidence-check".to_owned()).into(),
                 tool_invocation_id: None.into(),
                 tool_metadata: JsonObject::new(),
@@ -2378,6 +2393,7 @@ fn record_run_observations_preserve_provenance_classification() -> Result<(), Bo
     {
         assert_eq!(observation["source_kind"], source_value);
         assert_eq!(observation["assurance_level"], assurance_value);
+        assert_eq!(observation["observed_by_actor_source"], AGENT_ACTOR_SOURCE);
         assert!(observation.get("guarantee_display").is_none());
     }
     Ok(())
@@ -2700,7 +2716,7 @@ fn reused_strong_observation_creates_current_observation_and_canonicalizes_artif
         &change_unit_id,
     );
     reuse.evidence_updates = vec![EvidenceCoverageUpdate {
-        target,
+        target: target.clone(),
         coverage_state: EvidenceCoverageUpdateState::Supported,
         provenance: None,
         supporting_run_refs: Vec::new(),
@@ -2739,6 +2755,56 @@ fn reused_strong_observation_creates_current_observation_and_canonicalizes_artif
             ["supporting_artifact_refs"][0]["integrity_status"],
         "verified"
     );
+
+    let reused_state_version = reused_response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("reused state version should be present");
+    let reused_observation_id = reused_observation["observation_id"]
+        .as_str()
+        .expect("reused observation ID should be present")
+        .to_owned();
+    set_artifact_integrity(
+        &harness,
+        artifact_ref.artifact_id.as_str(),
+        "corrupt",
+        None,
+        None,
+        None,
+    )?;
+    let before_rejected_reuse = harness.counts()?;
+    let mut stale_anchor_reuse = record_run_request(
+        "req_reused_observation_stale_anchor",
+        "idem_reused_observation_stale_anchor",
+        false,
+        Some(reused_state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    stale_anchor_reuse.evidence_updates = vec![EvidenceCoverageUpdate {
+        target,
+        coverage_state: EvidenceCoverageUpdateState::Supported,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: vec![state_ref(
+            StateRecordKind::EvidenceObservation,
+            &reused_observation_id,
+            &ProjectId::new(PROJECT_ID),
+            Some(&TaskId::new(&task_id)),
+            Some(reused_state_version),
+        )],
+        supporting_artifact_refs: Vec::new(),
+        gap_refs: Vec::new(),
+    }];
+    let rejected = harness.service.record_run(
+        stale_anchor_reuse,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        rejected.response_value["errors"][0]["details"]["field"],
+        "evidence_updates[].observation_refs"
+    );
+    assert_eq!(harness.counts()?, before_rejected_reuse);
     Ok(())
 }
 

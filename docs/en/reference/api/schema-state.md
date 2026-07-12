@@ -148,6 +148,7 @@ StateSummary:
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
+  evidence_gate: EvidenceGateSummary | null
   close_state: string | null
   close_blockers: CloseReadinessBlocker[]
   guard_health: GuardHealthSummary | null
@@ -156,7 +157,7 @@ StateSummary:
 
 Meaning:
 - `StateSummary` is a compact response shape for state references, summaries, and close-readiness fields.
-- Method include flags may select only part of this shape. When a method owner says a projection is not selected, include-controlled fields such as `evidence_summary`, `close_state`, `close_blockers`, `guard_health`, or `guarantee_display` are omitted instead of being returned as null or empty. A returned empty array means the projection was computed and found empty.
+- Method include flags may select only part of this shape. When a method owner says a projection is not selected, include-controlled fields such as `evidence_summary`, `evidence_gate`, `close_state`, `close_blockers`, `guard_health`, or `guarantee_display` are omitted instead of being returned as null or empty. A returned empty array means the projection was computed and found empty.
 - `mode` and `close_state` are controlled value strings when present.
 - `goal_summary`, `scope_summary`, `non_goals`, and `autonomy_boundary` are
   free-form display strings. `acceptance_criteria` contains the current
@@ -563,7 +564,7 @@ WriteDecisionReason:
 
 Meaning:
 - `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for Task, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
-- When selected evidence has a public evidence state, `SummaryCard.evidence` uses the display states owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). It may show `prepared` for staged-only attachment input; that value is not evidence accepted for close.
+- When evidence or close projection is selected, `SummaryCard.evidence` is the exact `EvidenceGateSummary.state` value owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). It does not independently infer a state from staged input or `EvidenceSummary.evidence_state`.
 - `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
@@ -679,6 +680,9 @@ EvidenceSummary:
   observation_refs: StateRecordRef[]
   updated_by_run_ref: StateRecordRef | null
 
+EvidenceGateSummary:
+  state: string
+
 EvidenceCoverageItem:
   target: EvidenceTarget
   coverage_state: string
@@ -769,6 +773,7 @@ Meaning:
   contains caller-assigned Task-scoped `evidence_claim_id` and a non-empty
   immutable `statement`. Variant fields must not be mixed.
 - `EvidenceSummary.evidence_state`, when present, is an evidence display state. It is omitted for coverage-gap summaries that do not yet have attached evidence or a current close-basis evidence ref.
+- `EvidenceGateSummary` is the canonical derived evidence-gate projection for the current active criteria and close-evaluation basis. Core computes it once from criterion requirements and coverage plus current evidence provenance, freshness, artifact availability, and evidence-related close blockers. `StateSummary`, status and close results, and `SummaryCard.evidence` copy that result; they do not recalculate it independently. It is not a stored authority record or an `AuthorityReceipt`.
 - `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`,
   `EvidenceCoverageUpdate.coverage_state`, `EvidenceUpdateProvenance.source_kind`,
   `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`,
@@ -788,15 +793,16 @@ Meaning:
 - `EvidenceSummary.observation_refs` and `EvidenceCoverageItem.observation_refs` list `StateRecordRef` values for committed evidence observations that Core relates to the summary or target.
 - `EvidenceObservation` is a durable provenance record for one evidence target. It records source, assurance, observer actor source, optional tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and observation timestamps.
 - `source_refs` uses `SourceRef`. `input_refs` remains a separate `StateRecordRef[]`; a source ref never becomes a Core state ref or close-basis result ref.
-- `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, and `recorded_at` when it commits.
+- `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, `recorded_at`, and the observer actor source when it commits. Request-side source and assurance values are provenance claims, not caller-granted assurance.
 - Only coverage for a current criterion with
   `evidence_requirement=required` participates in close authority. Required
   criteria reject `coverage_state=not_applicable`; optional, `not_required`,
   supplemental, and retired targets remain non-authoritative for close.
-- `observed_by_actor_source`, when present, must be an `ActorSource` value. When it is null in an observation input, Core may fill it from the verified invocation context.
-- `source_kind` and `assurance_level` describe provenance and observation assurance. They do not by themselves prove product correctness, grant user authority, satisfy final acceptance, satisfy residual-risk acceptance, or raise `GuaranteeDisplay.level`.
-- `user_observation` records a user-attributed observation, not final acceptance or any other authority-bearing user judgment.
-- `external_tool` and `external_tool_result` record an external tool result. They are not a product correctness proof without the applicable evidence, artifact, close-readiness, and security owners.
+- Submitted `observed_by_actor_source` does not select the committed actor. Core always derives the committed value from the verified invocation context; a non-null submitted value cannot raise trust or impersonate another actor source.
+- Core derives committed `source_kind` and `assurance_level` from verified anchors. An unanchored direct `connection_observation`, `user_observation`, `external_tool`, or caller-declared `reused_evidence` input is committed as `agent_report` / `cooperative_report`. These fields never by themselves prove product correctness, grant user authority, satisfy final acceptance, satisfy residual-risk acceptance, or raise `GuaranteeDisplay.level`.
+- `external_tool` / `external_tool_result` requires at least one target-matching canonical output artifact with currently available, verified bytes. Descriptive tool fields and `SourceRef` values are not that anchor.
+- `reused_evidence` is Core-derived only after the original observation identity, target, current scope and baseline, source Run, inherited assurance, and original anchor are revalidated. External-tool reuse also revalidates the original observation-to-artifact relation and current bytes.
+- The baseline has no target-scoped verified User Channel or connection-observation record for direct `record_run` input. Direct `user_observation` and `connection_observation` therefore do not receive strong assurance; a user-attributed observation would still be evidence rather than final acceptance or another authority-bearing user judgment.
 - `unverified_claim` and `unverified` preserve an asserted claim without verified observation and are not sufficient evidence by themselves.
 - `tool_metadata` is descriptive metadata and must not be treated as authority, approval, or a storage effect.
 - `ObservedChanges.changed_paths` are path strings.

@@ -19,8 +19,8 @@ use volicord_store::{
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
     ActorSource, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME,
-    PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_USER_JUDGMENT_TOOL_NAME,
-    REQUEST_USER_JUDGMENT_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
+    PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
+    RECORD_USER_JUDGMENT_TOOL_NAME, REQUEST_USER_JUDGMENT_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
@@ -796,6 +796,8 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
             name,
             INTAKE_TOOL_NAME
                 | UPDATE_SCOPE_TOOL_NAME
+                | RECORD_RUN_TOOL_NAME
+                | REQUEST_USER_JUDGMENT_TOOL_NAME
                 | RECONCILE_CHANGES_TOOL_NAME
                 | CLOSE_TASK_TOOL_NAME
         );

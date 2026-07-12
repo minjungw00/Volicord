@@ -846,7 +846,7 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
     let artifact_service = core(&artifact_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&artifact_fixture, &artifact_service, "artifact_close")?;
-    let staged = stage_artifact_for_record_run(&artifact_fixture, &artifact_service, &task_id)?;
+    let staged = stage_artifact_for_record_run(&artifact_fixture, &artifact_service, &task_id, 2)?;
     let mut run = artifact_fixture.record_run_request(
         "req_close_artifact_evidence",
         "idem_close_artifact_evidence",
@@ -3125,7 +3125,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     let corrupt_service = core(&corrupt_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&corrupt_fixture, &corrupt_service, "artifact_corrupt")?;
-    let staged = stage_artifact_for_record_run(&corrupt_fixture, &corrupt_service, &task_id)?;
+    let staged = stage_artifact_for_record_run(&corrupt_fixture, &corrupt_service, &task_id, 2)?;
     let mut run = corrupt_fixture.record_run_request(
         "req_artifact_corrupt_run",
         "idem_artifact_corrupt_run",
@@ -3542,7 +3542,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     let stage_service = service_at(&stage_before, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&stage_before, &stage_service, "timestamp_stage_before")?;
-    let mut handle = stage_artifact_for_record_run(&stage_before, &stage_service, &task_id)?;
+    let mut handle = stage_artifact_for_record_run(&stage_before, &stage_service, &task_id, 2)?;
     handle.expires_at = UtcTimestamp::parse("2026-06-19T09:00:00+09:00")?;
     let mut run = stage_before.record_run_request(
         "req_timestamp_stage_before_run",
@@ -3574,7 +3574,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     let stage_service = service_at(&stage_exact, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&stage_exact, &stage_service, "timestamp_stage_exact")?;
-    let handle = stage_artifact_for_record_run(&stage_exact, &stage_service, &task_id)?;
+    let handle = stage_artifact_for_record_run(&stage_exact, &stage_service, &task_id, 2)?;
     let mut run = stage_exact.record_run_request(
         "req_timestamp_stage_exact_run",
         "idem_timestamp_stage_exact_run",
@@ -3608,7 +3608,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         &corrupt_service,
         "timestamp_stage_corrupt",
     )?;
-    let handle = stage_artifact_for_record_run(&corrupt_fixture, &corrupt_service, &task_id)?;
+    let handle = stage_artifact_for_record_run(&corrupt_fixture, &corrupt_service, &task_id, 2)?;
     corrupt_fixture.set_staged_artifact_expires_at(handle.handle_id.as_str(), "tomorrow")?;
     let mut run = corrupt_fixture.record_run_request(
         "req_timestamp_stage_corrupt_run",
@@ -3913,9 +3913,15 @@ fn stage_artifact_for_record_run(
     fixture: &CoreFixture,
     service: &CoreService,
     task_id: &str,
+    expected_state_version: u64,
 ) -> Result<StagedArtifactHandle, Box<dyn Error>> {
-    let mut request =
-        fixture.stage_artifact_request("req_stage_close_artifact", None, false, Some(2), task_id);
+    let mut request = fixture.stage_artifact_request(
+        &format!("req_stage_close_artifact_{expected_state_version}"),
+        None,
+        false,
+        Some(expected_state_version),
+        task_id,
+    );
     request.display_name = "close-evidence.json".to_owned();
     request.content_type = "application/json".to_owned();
     request.safe_bytes_or_notice = "{\"fixture\":\"close\"}".to_owned();
@@ -3953,6 +3959,18 @@ fn record_close_evidence(
     evidence_update.target = EvidenceTarget::AcceptanceCriterion {
         acceptance_criterion_id,
     };
+    if supported {
+        let staged =
+            stage_artifact_for_record_run(fixture, service, task_id, expected_state_version)?;
+        let mut artifact_input = artifact_input_for_handle(
+            &format!("artifact_input_close_evidence_{expected_state_version}"),
+            staged,
+            Some("validation_report"),
+            Some("Close claim supported."),
+        );
+        artifact_input.evidence_target = Some(evidence_update.target.clone()).into();
+        request.artifact_inputs = vec![artifact_input];
+    }
     request.evidence_updates = vec![evidence_update];
     request.close_assessment = Some(CloseAssessmentInput {
         result_summary: "Close claim supported.".to_owned(),
@@ -4425,7 +4443,7 @@ fn promote_artifact_for_record_run(
     expected_state_version: u64,
     suffix: &str,
 ) -> Result<(u64, ArtifactRef), Box<dyn Error>> {
-    let handle = stage_artifact_for_record_run(fixture, service, task_id)?;
+    let handle = stage_artifact_for_record_run(fixture, service, task_id, expected_state_version)?;
     let mut request = fixture.record_run_request(
         &format!("req_promote_artifact_{suffix}"),
         &format!("idem_promote_artifact_{suffix}"),

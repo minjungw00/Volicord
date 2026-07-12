@@ -759,16 +759,20 @@ MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 �
 | 도구 종류 | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
-| `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment` | `false` | `false` | `false` | `false` |
-| `volicord.intake`, `volicord.update_scope`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
+| `volicord.prepare_write`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
+| `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
-파괴적이지 않은 변경 도구 행에서 `destructiveHint=false`는 MCP 클라이언트를 위해 도구의
-주된 준비 또는 기록 목적을 분류합니다. 호출이 읽기 전용이거나, 추가 기록만 만들거나,
-재실행해도 안전하거나, 영속 상태의 교체·소비 효과가 없다는 뜻은 아닙니다. 특히 커밋된
-`volicord.record_run`은 호환되는 쓰기 티켓이나 스테이징 입력을 소비하고, 증거와 차단
-사유를 갱신하고, `close_basis_revision`을 증가시키며, 현재 닫기 근거를 교체하거나 이전
-근거를 오래된 상태로 만들 수 있습니다. 정확한 효과는 메서드와 저장 효과 담당 문서가
-정하며, 이 효과 때문에 `readOnlyHint`와 `idempotentHint`는 계속 `false`입니다.
+파괴적이지 않은 변경 도구 행에서 `destructiveHint=false`는 커밋되는 저장 갱신이 기존
+권한 상태를 교체하거나 무효화하거나 소비하지 않고 추가된다는 뜻입니다. 호출이 읽기
+전용이거나 이후의 별도 MCP 호출을 안전하게 재실행할 수 있다는 뜻은 아닙니다.
+
+`volicord.record_run`은 커밋할 때 호환되는 쓰기 티켓이나 스테이징 입력을 소비하고,
+증거와 차단 사유를 갱신하고, `close_basis_revision`을 증가시키고, 현재 판단을
+무효화하고, 현재 닫기 근거를 교체하거나 이전 근거를 오래된 상태로 만들 수 있으므로
+`destructiveHint=true`를 사용합니다. 커밋된 `volicord.request_user_judgment`도 대기
+판단을 만들면서 `Task` 생명주기를 바꿀 수 있습니다. 정확한 효과는 메서드와 저장 효과
+담당 문서가 정하며, annotation은 이 도구가 기존 권한 상태를 바꿀 수 있음을 MCP
+클라이언트에 보수적으로 알립니다.
 
 모든 변경 도구는 MCP에 보이는 각 호출마다 어댑터가 관리하는 새 요청 식별 정보를
 받으므로 `idempotentHint=false`입니다. 하나의 생성된 식별 정보에 대한 Core 재실행 처리는

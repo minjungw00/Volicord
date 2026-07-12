@@ -16,16 +16,16 @@ use crate::values::{
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
     CoverageHostHookState, CoverageSessionWatcherState, EffectKind, EnabledEnforcementMechanism,
     ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceCoverageUpdateState,
-    EvidenceDisplayState, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus, GuaranteeClass,
-    GuaranteeLevel, GuardConfigurationStatus, GuardDecision, GuardEffectiveStatus,
-    GuardInstallationStatus, GuardObservationStatus, HostKind, IntegrationProfile,
-    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation, JudgmentRequiredFor,
-    JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionPresentationRole,
-    NonGuarantee, OperationCategory, PlannedBlockerSourceKind, ProjectContinuityKind,
-    ProjectContinuityStatus, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
-    PromptCaptureStatus, RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis,
-    SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult,
-    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
+    EvidenceDisplayState, EvidenceGateState, EvidenceRequirement, EvidenceSourceKind,
+    EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
+    GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
+    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    NextActionPresentationRole, NonGuarantee, OperationCategory, PlannedBlockerSourceKind,
+    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
+    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
+    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
+    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
     UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteDecisionCategory,
     WriteTicketState, WriteTicketStatus,
 };
@@ -741,6 +741,7 @@ pub struct StateSummary {
     pub blocker_refs: Vec<StateRecordRef>,
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
+    pub evidence_gate: Option<EvidenceGateSummary>,
     pub close_state: Option<CloseState>,
     pub close_blockers: Vec<CloseReadinessBlocker>,
     pub guard_health: Option<GuardHealthSummary>,
@@ -951,6 +952,13 @@ pub struct EvidenceSummary {
     pub artifact_refs: Vec<ArtifactRef>,
     pub observation_refs: Vec<StateRecordRef>,
     pub updated_by_run_ref: Option<StateRecordRef>,
+}
+
+/// Canonical derived evidence gate projection copied across status-like views.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceGateSummary {
+    pub state: EvidenceGateState,
 }
 
 /// Evidence claim coverage item.

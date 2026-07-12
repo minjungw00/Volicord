@@ -178,7 +178,7 @@ CloseTaskRequest:
 
 1. 요청 래퍼, 메서드 필드, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처를 확인합니다.
-3. 선택된 결정적 `session-watch` 확인을 실행합니다. 선택된 호스트 훅 상태를 포함해 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 방식으로 현재 닫기 준비 상태를 계산하고 `CloseTaskResult`를 반환합니다.
+3. 선택된 결정적 `session-watch` 확인을 실행합니다. 선택된 호스트 훅 상태를 포함해 [`volicord.status`](method-status.md)에서 증거나 닫기 상태 보기를 선택했을 때와 같은 방식으로 현재 닫기 준비 상태와 기준 `EvidenceGateSummary`를 계산하고 `CloseTaskResult`를 반환합니다. 최상위 gate, `state.evidence_gate`, `summary_card.evidence`는 이 하나의 결과를 재사용합니다.
 
 구현은 `volicord.close_task`를 아래 순서로 평가합니다.
 
@@ -223,7 +223,7 @@ CloseTaskRequest:
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 문서는 `volicord.check_close`에는 `base.effect_kind=read_only`를, 성공한 종료 상태 변경에는 `base.effect_kind=core_committed`를, 차단 사유가 있는 상태 변경 `intent`에는 `base.effect_kind=no_effect`를 선택합니다. |
-| `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 판단, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. 증거 표시는 `prepared`, `attached`, `accepted_for_close`를 보여 줄 수 있습니다. `accepted_for_close`는 이 닫기 준비 상태 계산에 사용할 수 있다는 뜻이며 증명이나 최종 수락이 아닙니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
+| `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 판단, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. `summary_card.evidence`는 정확히 `evidence_gate.state`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `close_state` | 요청한 경로에 대한 메서드 결과 닫기 상태입니다. 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. `close_state=blocked`는 유효한 닫기 또는 종료 경로 평가 뒤의 메서드 결과이지 `ToolRejectedResponse`가 아닙니다. |
 | `state` | 확인, 종료 상태 변경, 또는 응답 전용 차단 평가 뒤 선택된 Task의 `StateSummary`입니다. `close_blockers`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `current_close_basis` | 결과에 선택된 닫기 준비 상태에 사용한 `CurrentCloseBasis | null`입니다. `null`은 이 결과에 사용할 현재 닫기 근거가 없다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
@@ -234,6 +234,7 @@ CloseTaskRequest:
 | `guard_health` | 닫기 준비 상태 결과에 선택된 호스트 훅 상태 정보의 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `coverage_summary` | 현재 적용 프로필, 호스트 훅과 세션 감시자의 관찰 상태, 추적된 타임스탬프, 미해결 미기록 변경 수, 관찰 범위의 비보장을 담는 `CoverageSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 현재 닫기 근거가 선택된 요약을 참조하면 `evidence_summary.evidence_state`는 `accepted_for_close`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
+| `evidence_gate` | `blockers`를 만든 동일한 닫기 평가에서 파생된 필수 `EvidenceGateSummary`입니다. `state.evidence_gate`와 `summary_card.evidence`가 이 값을 복사합니다. 값은 [API 값 집합](schema-value-sets.md#evidence-gate-values)이 담당합니다. |
 | `artifact_refs` | 결과에 선택된 닫기 관련 아티팩트의 `ArtifactRef[]`입니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당합니다. |
 
 `CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 `presentation_role=primary`인 차단 사유 행동에서 선택된 단일 표시 다음 행동이며 배열 위치는 선택 계약이 아닙니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 결과 하나의 `blockers[*].next_actions` 전체에는 primary가 정확히 하나 있으며 뒤쪽의 차단 사유 목록에는 additional 행동만 있을 수 있습니다.
@@ -451,6 +452,8 @@ state:
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
+  evidence_gate:
+    state: not_required
   close_state: blocked
   close_blockers:
     - category: final_acceptance
@@ -496,13 +499,15 @@ blockers:
             task_id: task_close_001
             produced_at_state_version: 72
 evidence_summary: null
+evidence_gate:
+  state: not_required
 artifact_refs: []
 ```
 
 ## 담당 문서 링크
 
 - 요청 래퍼, 공통 응답 분기, `dry_run` 요약: [API 코어 스키마](schema-core.md).
-- `CloseTaskResult.blockers`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ProjectContinuitySummary`, `EvidenceSummary`, `StateSummary`, `NextActionSummary` 형태: [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes).
+- `CloseTaskResult.blockers`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ProjectContinuitySummary`, `EvidenceSummary`, `EvidenceGateSummary`, `StateSummary`, `NextActionSummary` 형태: [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes).
 - `ArtifactRef` 형태: [API 아티팩트 스키마](schema-artifacts.md#artifactref).
 - `intent` 값: [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values).
 - 닫기 상태, 생명주기, 닫기 이유 값: [API 값 집합의 Task 생명주기 값](schema-value-sets.md#task-lifecycle-values).

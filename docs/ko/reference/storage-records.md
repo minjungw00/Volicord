@@ -105,7 +105,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite`와 아티팩트 저장소 | `artifacts` | 영속 아티팩트 기록 | 영속 아티팩트 메타데이터 또는 본문 위치, 콘텐츠 타입, SHA-256, 크기, 무결성 상태, 가림 처리, 보존, 생산자, 가용성 사실. |
 | `state.sqlite` | `artifact_links` | 아티팩트 소유 관계 | 아티팩트와 기준 범위 Core/API 기록 계열 사이의 소유 관계. |
 | `state.sqlite` | `evidence_summaries` | 증거 요약 | 간결한 증거 범위, 뒷받침 참조, 공백 참조. |
-| `state.sqlite` | `evidence_observations` | 증거 관찰 | 수락 기준 또는 보충 주장 대상 중 정확히 하나에 대한 영속 출처 기록입니다. 출처 종류, 보장 수준, 관찰자 행위자 출처, 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
+| `state.sqlite` | `evidence_observations` | 증거 관찰 | 수락 기준 또는 보충 주장 대상 중 정확히 하나에 대한 영속 출처 기록입니다. Core가 파생한 출처 종류와 보장 수준, 확인된 호출에서 가져온 관찰자 행위자 출처, 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 타임스탬프를 포함합니다. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
 | `state.sqlite` | `tool_invocations` | 재실행 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행. 행위자 출처와 작업 범주를 포함합니다. |
@@ -263,6 +263,18 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 
 공개 API 값을 반영하는 행은 [API 값 집합](api/schema-value-sets.md), 관련 스키마 담당 문서, 메서드 담당 문서와 정확히 맞아야 합니다. 이 문서는 `tasks.mode`, `tasks.lifecycle_phase`, `tasks.result`, `runs.kind`, `runs.status`, `evidence_summaries.status` 같은 필드의 공개 API 값을 다시 정의하지 않습니다. 공개 API 값은 [API 값 집합](api/schema-value-sets.md), [API 상태 스키마](api/schema-state.md), 메서드 담당 문서를 봅니다.
 
+행에 저장된 `evidence_observations.source_kind` / `assurance_level` 조합은 enum 값만으로
+충분한 강한 출처가 되지 않습니다. Core는 메서드 소유 파생 뒤에 이 조합을 기록하고,
+요청 멤버를 신뢰하지 않고 확인된 호출에서 `observed_by_actor_source`를 가져옵니다. 현재
+닫기 평가와 재사용 평가는 대상, `Task`와 Change Unit, 출처 실행 기록, 현재 범위 리비전과
+기준선, 출처별 앵커를 다시 검증하고 입증되지 않으면 차단합니다.
+`external_tool` / `external_tool_result` 행에는 일치하는
+`artifact_links.owner_record_kind=evidence_observation` 관계가 있어야 하고, 연결된 출력
+아티팩트의 현재 바이트를 계속 사용할 수 있으며 검증된 상태여야 합니다.
+`reused_evidence` 행은 원래 증거 관찰 하나만 가리켜야 하며 Core는 그 identity, 승계한
+보장 수준, 앵커를 재귀적으로 다시 검증합니다. 설명용 도구 메타데이터와
+`source_refs_json`은 이 검사를 만족할 수 없습니다.
+
 ## 저장소 소유 JSON
 
 JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임의 JSON을 저장해도 된다는 뜻이 아닙니다.
@@ -296,7 +308,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `artifacts` | 보존, 생산자, 비권한 메타데이터. |
 | `artifact_links` | 비권한 메타데이터. |
 | `evidence_summaries` | 증거 범위, 뒷받침 참조, 공백 참조, 비권한 메타데이터. |
-| `evidence_observations` | 증거 관찰 하나의 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 `SourceRef` JSON, 출력 아티팩트 참조, 한계, 권한 효력이 없는 메타데이터입니다. `source_refs_json`은 별도 출처 기록 계열이나 권한 행을 만들지 않습니다. |
+| `evidence_observations` | 증거 관찰 하나의 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 `SourceRef` JSON, 출력 아티팩트 참조, 한계, 권한 효력이 없는 메타데이터입니다. `source_refs_json`은 별도 출처 기록 계열, 권한 행, 출처 앵커를 만들지 않습니다. |
 | `blockers` | 차단 사유 소유 참조, 관련 참조, 세부 정보, 비권한 메타데이터. |
 | `authority_events` | 커밋된 Core 권한 변경의 이벤트 페이로드. |
 | `tool_invocations` | 커밋된 재실행 응답. |

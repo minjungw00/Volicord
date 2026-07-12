@@ -1495,7 +1495,7 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
                 "limitations",
                 "observed_at",
             ],
-            r#"{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_001"},"source_kind":"external_tool","assurance_level":"external_tool_result","observed_by_actor_source":null,"tool_name":null,"tool_invocation_id":null,"tool_metadata":{},"input_refs":[],"source_refs":[],"output_artifact_refs":[],"limitations":[],"observed_at":"2026-06-18T00:00:00Z"}"#,
+            r#"{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_001"},"source_kind":"agent_report","assurance_level":"cooperative_report","observed_by_actor_source":null,"tool_name":null,"tool_invocation_id":null,"tool_metadata":{},"input_refs":[],"source_refs":[],"output_artifact_refs":[],"limitations":[],"observed_at":"2026-06-18T00:00:00Z"}"#,
         )
     })
     .or_else(|| {

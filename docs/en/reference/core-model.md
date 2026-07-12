@@ -468,10 +468,28 @@ Evidence authority:
   block close for missing, stale, contradicted, partial, unsupported, or
   provenance-insufficient evidence. `optional`, `not_required`, supplemental,
   and retired targets remain non-authoritative for close.
+- Core derives one `EvidenceGateSummary` from the active criterion requirements
+  and coverage plus canonical observation freshness, provenance, artifact
+  availability, and evidence-related close blockers. Close policy, status and
+  close results, nested `StateSummary`, and `SummaryCard` reuse that projection;
+  none is a second evidence-sufficiency evaluator. The summary is not a durable
+  authority record and adds no storage table or `AuthorityReceipt`.
 - A required criterion cannot be recorded as `not_applicable`. Close evidence
   support requires target-matching observation provenance that remains current
   for the close basis when the close owner requires evidence. Coverage without
   current observation provenance is not sufficient by itself.
+- Evidence assurance is Core-derived rather than caller-granted. A valid
+  request-side `source_kind` / `assurance_level` pair is only a provenance claim.
+  The baseline direct `record_run` path downgrades unanchored external-tool,
+  connection, user, and caller-declared reuse claims to a cooperative agent
+  report. It derives the observer actor source from the verified invocation.
+- Strong external-tool provenance requires a target-matching canonical output
+  artifact whose current bytes are available and verified. Descriptive tool
+  fields and `SourceRef` values are not an assurance anchor.
+- Reused strong evidence must retain exactly one original observation identity
+  and remain compatible with the target, Task, Change Unit, source Run, scope
+  revision, baseline, inherited assurance, and original anchor. Close and reuse
+  evaluation recheck that chain and the current bytes of an external artifact.
 - `unverified_claim` and cooperative agent reports can be retained as evidence records, but they do not satisfy required close evidence when stronger provenance is required.
 - A user observation is evidence provenance, not final acceptance or another user-owned judgment.
 - A `SourceRef` can preserve reported file, Git, command, external-resource, or user-context provenance inside a Task or evidence observation. It is not a Core state ref and does not establish scope, approval, evidence sufficiency, final acceptance, residual-risk acceptance, close readiness, or a guarantee. Core does not resolve or execute the referenced source when recording it.

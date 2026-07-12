@@ -854,18 +854,22 @@ uses its exact adapter-utility result schema. A server result that includes
 | Tool class | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
-| `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment` | `false` | `false` | `false` | `false` |
-| `volicord.intake`, `volicord.update_scope`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
+| `volicord.prepare_write`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
+| `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
-For the non-destructive mutation row, `destructiveHint=false` classifies the
-tool's primary preparation or recording purpose for MCP clients. It does not
-mean that the call is read-only, append-only, replay-safe, or free of durable
-replacement and consumption effects. In particular, a committed
-`volicord.record_run` may consume a compatible write ticket or staged input,
-update evidence and blockers, increment `close_basis_revision`, and replace the
-current close basis or leave a previous basis stale, exactly as the method and
-storage-effect owners define. Those effects are why its `readOnlyHint` and
-`idempotentHint` remain `false`.
+For the non-destructive mutation row, `destructiveHint=false` means the tool's
+committed storage updates are additive rather than replacing, invalidating, or
+consuming existing authority state. It does not mean that the call is read-only
+or that a later distinct MCP call is replay-safe.
+
+`volicord.record_run` uses `destructiveHint=true` because a commit may consume a
+compatible write ticket or staged input, update evidence and blockers,
+increment `close_basis_revision`, invalidate current judgments, and replace the
+current close basis or leave a previous basis stale. A committed
+`volicord.request_user_judgment` may also change the Task lifecycle while it
+creates the pending judgment. The method and storage-effect owners define the
+exact effects; the annotation conservatively tells MCP clients that these tools
+can alter existing authority state.
 
 All mutation tools have `idempotentHint=false` because each distinct
 MCP-visible call receives fresh adapter-managed request identity. Core replay

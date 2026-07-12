@@ -105,7 +105,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
 | `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
-| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for exactly one acceptance-criterion or supplemental-claim target, including source kind, assurance level, observer actor source, tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and timestamps. |
+| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for exactly one acceptance-criterion or supplemental-claim target, including Core-derived source kind, assurance level, verified-invocation observer actor source, tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and timestamps. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
 | `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source and operation category. |
@@ -265,6 +265,20 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 
 Rows that mirror public API values must match [API Value Sets](api/schema-value-sets.md), the relevant schema owner, and the method owner exactly. This document does not redefine public API values for fields such as `tasks.mode`, `tasks.lifecycle_phase`, `tasks.result`, `runs.kind`, `runs.status`, or `evidence_summaries.status`; see [API Value Sets](api/schema-value-sets.md), [API State Schemas](api/schema-state.md), and method owners.
 
+An `evidence_observations.source_kind` / `assurance_level` pair stored in the row
+is not sufficient strong provenance by enum value alone. Core records the pair
+after method-owned derivation and records `observed_by_actor_source` from the
+verified invocation rather than trusting the request member. Current close and
+reuse evaluation fail closed and revalidate the target, Task and Change Unit,
+source Run, current scope revision and baseline, and the source-specific anchor.
+For `external_tool` / `external_tool_result`, the row must have a matching
+`artifact_links.owner_record_kind=evidence_observation` relation and the linked
+output artifact must still have available, verified current bytes. A
+`reused_evidence` row must point to exactly one original evidence observation;
+Core recursively revalidates that original identity, inherited assurance, and
+anchor. Descriptive tool metadata and `source_refs_json` cannot satisfy these
+checks.
+
 ## Storage-Owned JSON
 
 SQLite `TEXT` columns that store JSON are a storage representation choice, not permission to persist arbitrary JSON.
@@ -298,7 +312,7 @@ Rules:
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |
 | `evidence_summaries` | Evidence coverage, supporting refs, gap refs, and non-authority metadata. |
-| `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and non-authority metadata for one evidence observation. `source_refs_json` does not create a separate source-record family or authority row. |
+| `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and non-authority metadata for one evidence observation. `source_refs_json` does not create a separate source-record family, authority row, or provenance anchor. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
 | `authority_events` | Event payloads for committed Core authority mutations. |
 | `tool_invocations` | Committed replay responses. |

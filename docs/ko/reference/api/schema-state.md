@@ -150,6 +150,7 @@ StateSummary:
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
+  evidence_gate: EvidenceGateSummary | null
   close_state: string | null
   close_blockers: CloseReadinessBlocker[]
   guard_health: GuardHealthSummary | null
@@ -158,7 +159,7 @@ StateSummary:
 
 의미:
 - `StateSummary`는 상태 참조, 요약, 닫기 준비 상태 필드를 담는 간결한 응답 형태입니다.
-- 메서드의 `include` 플래그는 이 형태의 일부만 선택할 수 있습니다. 메서드 담당 문서가 어떤 상태 보기를 선택하지 않는다고 말하면 `evidence_summary`, `close_state`, `close_blockers`, `guard_health`, `guarantee_display` 같은 `include` 제어 필드는 `null`이나 빈 값으로 반환하지 않고 생략합니다. 반환된 빈 배열은 그 상태 보기를 계산했고 비어 있음을 뜻합니다.
+- 메서드의 `include` 플래그는 이 형태의 일부만 선택할 수 있습니다. 메서드 담당 문서가 어떤 상태 보기를 선택하지 않는다고 말하면 `evidence_summary`, `evidence_gate`, `close_state`, `close_blockers`, `guard_health`, `guarantee_display` 같은 `include` 제어 필드는 `null`이나 빈 값으로 반환하지 않고 생략합니다. 반환된 빈 배열은 그 상태 보기를 계산했고 비어 있음을 뜻합니다.
 - `mode`와 `close_state`는 값이 있을 때 제어 값 문자열입니다.
 - `goal_summary`, `scope_summary`, `non_goals`, `autonomy_boundary`는 자유 형식
   표시 문자열입니다. `acceptance_criteria`는 `Task`의 현재 기준 기록을
@@ -570,7 +571,7 @@ WriteDecisionReason:
 
 의미:
 - `SummaryCard`는 주요 사용자 대상 상태 보기에 쓰는 안정적인 간결 요약 형태입니다. `Task`, `Recording`, `Profile`, `Write Ticket`, `Evidence`, `User Judgment`, `Changes`, `Close Status`, `Transport`, 다음 행동 하나, 짧은 `Guarantee` 줄에 공개 표시 문자열을 사용합니다.
-- 선택된 증거에 공개 증거 상태가 있으면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당하는 표시 상태를 사용합니다. 스테이징만 된 첨부 입력에는 `prepared`를 표시할 수 있으며, 이 값은 닫기에 수락된 증거가 아닙니다.
+- 증거 또는 닫기 상태 보기를 선택하면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#evidence-gate-values)이 담당하는 `EvidenceGateSummary.state` 값을 그대로 사용합니다. 스테이징 입력이나 `EvidenceSummary.evidence_state`에서 별도 상태를 추론하지 않습니다.
 - `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 구조화된 행동이 적용되면 요약은 `presentation_role=primary`인 행동을 선택하며 배열 위치는 선택 계약이 아닙니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
@@ -687,6 +688,9 @@ EvidenceSummary:
   observation_refs: StateRecordRef[]
   updated_by_run_ref: StateRecordRef | null
 
+EvidenceGateSummary:
+  state: string
+
 EvidenceCoverageItem:
   target: EvidenceTarget
   coverage_state: string
@@ -777,6 +781,7 @@ ObservedChanges:
   부여한 `Task` 범위 `evidence_claim_id`와 비어 있지 않은 불변 `statement`가
   있습니다. 변형별 필드를 섞을 수 없습니다.
 - `EvidenceSummary.evidence_state`는 값이 있으면 증거 표시 상태입니다. 아직 첨부된 증거나 현재 닫기 근거 증거 참조가 없는 범위 공백 요약에서는 생략됩니다.
+- `EvidenceGateSummary`는 현재 활성 기준과 닫기 평가 근거에 대한 기준 파생 증거 gate 상태 보기입니다. Core는 기준 요구 수준과 범위, 현재 증거 출처, 최신성, 아티팩트 가용성, 증거 관련 닫기 차단 사유를 사용해 한 번 계산합니다. `StateSummary`, status와 close 결과, `SummaryCard.evidence`는 그 결과를 복사하며 독립적으로 다시 계산하지 않습니다. 저장되는 권한 기록이나 `AuthorityReceipt`가 아닙니다.
 - `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`,
   `EvidenceCoverageUpdate.coverage_state`, `EvidenceUpdateProvenance.source_kind`,
   `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`,
@@ -796,14 +801,15 @@ ObservedChanges:
 - `EvidenceSummary.observation_refs`와 `EvidenceCoverageItem.observation_refs`는 Core가 요약이나 대상과 관련지은 커밋된 증거 관찰에 대한 `StateRecordRef` 값을 나열합니다.
 - `EvidenceObservation`은 하나의 증거 대상에 대한 영속 출처 기록입니다. 출처, 보장 수준, 관찰자 행위자 출처, 선택적 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 관찰 타임스탬프를 기록합니다.
 - `source_refs`는 `SourceRef`를 사용합니다. `input_refs`는 별도 `StateRecordRef[]`로 유지되며 출처 참조는 Core 상태 참조나 닫기 근거 결과 참조가 되지 않습니다.
-- `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`을 채웁니다.
+- `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`, 관찰자 행위자 출처를 채웁니다. 요청 측 출처와 보장 수준 값은 출처 주장이지 호출자가 부여하는 보장이 아닙니다.
 - `evidence_requirement=required`인 현재 기준의 범위만 닫기 권한에 참여합니다.
   필요한 기준은 `coverage_state=not_applicable`을 거부하며, `optional`,
   `not_required`, 보충 대상, 폐기된 대상은 닫기에 권한 효력이 없습니다.
-- `observed_by_actor_source`는 값이 있으면 `ActorSource` 값이어야 합니다. 관찰 입력에서 null이면 Core가 확인된 호출 맥락에서 값을 채울 수 있습니다.
-- `source_kind`와 `assurance_level`은 출처와 관찰 보장 수준을 설명합니다. 그 자체로 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락을 만족하거나, 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.
-- `user_observation`은 사용자 귀속 관찰을 기록하지만 최종 수락이나 그 밖의 권한 효력이 있는 사용자 판단이 아닙니다.
-- `external_tool`과 `external_tool_result`는 외부 도구 결과를 기록합니다. 관련 증거, 아티팩트, 닫기 준비 상태, 보안 담당 문서 없이는 제품 정확성 증명이 아닙니다.
+- 제출된 `observed_by_actor_source`는 커밋할 행위자를 선택하지 않습니다. Core는 항상 확인된 호출 맥락에서 커밋 값을 파생합니다. null이 아닌 제출 값으로 신뢰를 높이거나 다른 행위자 출처를 가장할 수 없습니다.
+- Core는 확인된 앵커에서 커밋할 `source_kind`와 `assurance_level`을 파생합니다. 앵커가 없는 직접 `connection_observation`, `user_observation`, `external_tool`, 호출자 선언 `reused_evidence` 입력은 `agent_report` / `cooperative_report`로 커밋됩니다. 이 필드 자체는 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락이나 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.
+- `external_tool` / `external_tool_result`에는 대상이 일치하며 현재 바이트를 사용할 수 있고 검증된 기준 출력 아티팩트가 하나 이상 필요합니다. 설명용 도구 필드와 `SourceRef` 값은 이 앵커가 아닙니다.
+- `reused_evidence`는 Core가 원래 관찰의 identity, 대상, 현재 범위와 기준선, 출처 실행 기록, 승계한 보장 수준, 원래 앵커를 다시 검증한 뒤에만 파생합니다. 외부 도구 재사용은 원래 관찰과 아티팩트의 관계 및 현재 바이트도 다시 검증합니다.
+- 기준 범위에는 직접 `record_run` 입력을 위한 대상별 확인된 User Channel 또는 연결 관찰 기록이 없습니다. 따라서 직접 `user_observation`과 `connection_observation`에는 강한 보장 수준을 부여하지 않습니다. 사용자 귀속 관찰이 있더라도 증거일 뿐 최종 수락이나 다른 권한 효력이 있는 사용자 판단은 아닙니다.
 - `unverified_claim`과 `unverified`는 확인된 관찰 없는 주장을 보존하며 그 자체로 충분한 증거가 아닙니다.
 - `tool_metadata`는 설명용 메타데이터이며 권한, 승인, 저장 효과로 취급하면 안 됩니다.
 - `ObservedChanges.changed_paths`는 경로 문자열입니다.

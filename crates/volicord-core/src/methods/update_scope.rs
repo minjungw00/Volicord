@@ -433,6 +433,7 @@ fn plan_update_scope(
         blocker_refs: blocker_refs.clone(),
         write_ticket_summary,
         evidence_summary,
+        evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
         guard_health: close_plan.guard_health,

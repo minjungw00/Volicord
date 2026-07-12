@@ -333,6 +333,7 @@ fn plan_intake(
         blocker_refs,
         write_ticket_summary,
         evidence_summary,
+        evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
         guard_health: close_plan.guard_health,

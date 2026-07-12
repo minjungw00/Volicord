@@ -353,6 +353,7 @@ fn test_state_record_ref(
 }
 
 mod close_task;
+mod evidence_gate;
 mod intake;
 mod preflight;
 mod prepare_write;
@@ -1579,6 +1580,28 @@ fn record_close_evidence_with_updates(
         task_id,
         change_unit_id,
     );
+    for (index, update) in evidence_updates.iter().enumerate() {
+        if update.provenance.as_ref().is_some_and(|provenance| {
+            provenance.source_kind == EvidenceSourceKind::ExternalTool
+                && provenance.assurance_level == EvidenceAssuranceLevel::ExternalToolResult
+        }) {
+            let artifact_suffix = format!("close_evidence_{suffix}_{index}");
+            let handle = stage_artifact_for_record_run(
+                harness,
+                task_id,
+                &artifact_suffix,
+                expected_state_version,
+            )?;
+            let mut artifact_input = artifact_input_for_handle(
+                &format!("artifact_input_{artifact_suffix}"),
+                handle,
+                Some("evidence observation output"),
+                None,
+            );
+            artifact_input.evidence_target = Some(update.target.clone()).into();
+            request.artifact_inputs.push(artifact_input);
+        }
+    }
     request.evidence_updates = evidence_updates;
     request.close_assessment = Some(volicord_types::CloseAssessmentInput {
         result_summary: result_summary.to_owned(),

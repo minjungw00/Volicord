@@ -334,6 +334,36 @@ mod tests {
     }
 
     #[test]
+    fn summary_card_text_preserves_every_evidence_gate_state() {
+        for state in [
+            "not_required",
+            "optional_none",
+            "required_missing",
+            "partial",
+            "sufficient",
+            "stale",
+            "blocked",
+        ] {
+            let card = SummaryCard {
+                task: "selected".to_owned(),
+                recording: "read_only".to_owned(),
+                profile: "record".to_owned(),
+                write_ticket: "none".to_owned(),
+                evidence: state.to_owned(),
+                user_judgment: "none".to_owned(),
+                changes: "none".to_owned(),
+                close_status: "blocked".to_owned(),
+                transport: "local CLI".to_owned(),
+                next: "none".to_owned(),
+                next_action: None,
+                guarantee: "Local authority record.".to_owned(),
+            };
+
+            assert!(render_summary_card_text(&card).contains(&format!("Evidence: {state}\n")));
+        }
+    }
+
+    #[test]
     fn close_and_next_action_totals_count_complete_top_level_arrays() {
         let value = json!({
             "close_blockers": [{"code": "ONE"}, {"code": "TWO"}],

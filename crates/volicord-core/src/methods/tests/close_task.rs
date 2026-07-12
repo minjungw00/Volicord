@@ -1791,7 +1791,15 @@ fn external_tool_provenance_supports_the_attached_close_claim() -> Result<(), Bo
     assert_eq!(response.response_value["close_state"], "closed");
     assert_eq!(
         response.response_value["summary_card"]["evidence"],
-        "accepted_for_close"
+        response.response_value["evidence_gate"]["state"]
+    );
+    assert_eq!(
+        response.response_value["evidence_gate"]["state"],
+        "sufficient"
+    );
+    assert_eq!(
+        response.response_value["state"]["evidence_gate"],
+        response.response_value["evidence_gate"]
     );
     assert_eq!(
         response.response_value["evidence_summary"]["evidence_state"],
@@ -1812,6 +1820,86 @@ fn external_tool_provenance_supports_the_attached_close_claim() -> Result<(), Bo
         response.response_value["coverage_summary"]["unresolved_unrecorded_change_count"],
         0
     );
+    Ok(())
+}
+
+#[test]
+fn unanchored_external_tool_claim_is_downgraded_and_does_not_support_close(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "close_external_tool_unanchored")?;
+    let criterion_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
+        &harness, &task_id,
+    )?);
+    set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
+    let mut run = record_run_request(
+        "req_close_external_tool_unanchored_run",
+        "idem_close_external_tool_unanchored_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    run.evidence_updates = vec![evidence_update_for_acceptance_criterion(
+        supported_evidence_update("Unanchored external claim."),
+        &criterion_id,
+    )];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Unanchored external claim.",
+        Vec::new(),
+    ))
+    .into();
+    let run_response = harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        run_response.response_value["evidence_observations"][0]["source_kind"],
+        "agent_report"
+    );
+    assert_eq!(
+        run_response.response_value["evidence_observations"][0]["assurance_level"],
+        "cooperative_report"
+    );
+    let observation_id = run_response.response_value["evidence_observations"][0]["observation_id"]
+        .as_str()
+        .expect("observation ID should be present");
+    harness.conn()?.execute(
+        "UPDATE evidence_observations
+            SET source_kind = 'external_tool',
+                assurance_level = 'external_tool_result'
+          WHERE project_id = ?1
+            AND evidence_observation_id = ?2",
+        rusqlite::params![PROJECT_ID, observation_id],
+    )?;
+    let after_evidence = run_response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state version should be present");
+    let after_final = record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_evidence,
+        "external_tool_unanchored",
+    )?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_external_tool_unanchored",
+            idempotency_key: Some("idem_close_external_tool_unanchored"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "evidence_provenance_insufficient");
+    assert_no_close_blocker(&response.response_value, "evidence_agent_report_only");
     Ok(())
 }
 
@@ -2003,7 +2091,8 @@ fn optional_not_required_and_supplemental_evidence_do_not_block_close() -> Resul
 }
 
 #[test]
-fn user_observation_evidence_does_not_replace_final_acceptance() -> Result<(), Box<dyn Error>> {
+fn unanchored_user_observation_is_downgraded_and_does_not_support_close(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "close_user_observation")?;
@@ -2037,7 +2126,7 @@ fn user_observation_evidence_does_not_replace_final_acceptance() -> Result<(), B
 
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
-    assert_no_close_blocker(&response.response_value, "evidence_provenance_insufficient");
+    assert_close_blocker(&response.response_value, "evidence_agent_report_only");
     Ok(())
 }
 

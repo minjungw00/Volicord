@@ -659,7 +659,7 @@ sufficient
 blocked
 ```
 
-`StageArtifactResult.evidence_state`, `EvidenceSummary.evidence_state`, 선택된 증거 표시 요약은 해당 필드가 있을 때 아래 증거 표시 상태 값을 사용합니다.
+`StageArtifactResult.evidence_state`와 `EvidenceSummary.evidence_state`는 해당 필드가 있을 때 아래 증거 첨부 표시 상태 값을 사용합니다.
 
 ```text
 prepared
@@ -668,6 +668,33 @@ accepted_for_close
 ```
 
 이 값들은 사용자에게 보이는 표시 상태입니다. `accepted_for_close`는 증거가 현재 닫기 준비 상태 계산에 사용될 수 있다는 뜻입니다. 정확성 증명, 테스트 충분성 증명, QA 결과, 최종 수락, 잔여 위험 수락이 아닙니다.
+
+<a id="evidence-gate-values"></a>
+### 증거 gate 값
+
+`EvidenceGateSummary.state`와 선택된 `SummaryCard.evidence`는 정확히 아래 값을 사용합니다.
+
+```text
+not_required
+optional_none
+required_missing
+partial
+sufficient
+stale
+blocked
+```
+
+| 값 | 의미 |
+|---|---|
+| `not_required` | 활성 기준 중 증거가 `required` 또는 `optional`인 기준이 없습니다. 기준이 없거나 모두 `not_required`인 집합이 이 값을 사용합니다. |
+| `optional_none` | 활성 기준 중 하나 이상이 `optional`이고 `required`는 없으며, 선택적 기준에 기록된 증거 지원이 없습니다. |
+| `required_missing` | 활성 기준 중 하나 이상이 `required`이고, 필요한 기준 어느 것에도 기록된 증거 지원이 없습니다. |
+| `partial` | 필요한 증거 지원이 일부 있지만 필요한 집합이 충분하지 않거나, 선택적 기준만 있는 상태에서 기록된 증거 항목이 모두 `supported`는 아닙니다. |
+| `sufficient` | 모든 필요한 기준이 정확히 `supported`이고 증거 주장, 출처, 아티팩트 가용성 차단 사유가 없습니다. 선택적 기준만 있으면 기록된 지원이 있는 선택적 항목이 모두 `supported`입니다. |
+| `stale` | 필요한 증거나 그 출처가 현재 닫기 근거에 비해 오래되었고 더 높은 우선순위의 증거 차단 상태는 없습니다. |
+| `blocked` | 필요한 기준이 모순되었거나, 오래됨 이외의 증거 또는 출처 조건이 증거 gate를 차단하거나, 사용할 수 없는 아티팩트 차단 사유가 필요한 기준을 뒷받침하는 아티팩트를 가리킵니다. |
+
+Core는 활성 기준의 요구 수준과 범위, 기준 증거 관찰의 최신성과 출처, 필요한 기준을 뒷받침하는 기준 아티팩트의 가용성, 증거 관련 닫기 차단 사유를 사용해 이 파생 상태 보기를 한 번 계산합니다. `blocked`가 `stale`보다 우선하고, 그 다음 필요한 범위에 따라 `sufficient`, `partial`, `required_missing`을 선택합니다. `optional`과 `not_required` 기준은 닫기 차단 사유를 만들지 않으며 충분한 필수 gate를 낮추지 않습니다. 필요한 기준을 뒷받침하지 않는 닫기 근거 결과 아티팩트의 가용성 차단 사유를 포함해 증거와 무관한 닫기 차단 사유는 증거 gate를 바꾸지 않습니다. 계산 결과는 status와 close 결과, `StateSummary.evidence_gate`, `SummaryCard.evidence`에 복사되며 첨부 표시 상태가 별도 gate 계산이 되지 않습니다.
 
 `AcceptanceCriterion.evidence_requirement`, intake 기준 입력, update-scope
 기준 교체 입력은 아래 값을 사용합니다.
@@ -718,12 +745,16 @@ reused_evidence
 unverified_claim
 ```
 
+`EvidenceUpdateProvenance`와 `EvidenceObservationInput`에서 이 값은 요청한 출처
+분류입니다. 커밋된 `EvidenceObservation`에서는 Core가 파생한 분류입니다. 유효한
+요청 조합 자체가 보장 수준을 부여하지는 않습니다.
+
 출처 종류 의미:
 - `agent_report`는 에이전트 행위자 맥락이 만든 보고를 기록합니다. 그 자체로 외부 도구 결과가 아닙니다.
-- `connection_observation`은 등록된 Agent Connection에 귀속된 관찰을 기록합니다. 그 자체로 증명이 아닙니다.
-- `external_tool`은 외부 도구의 출력이나 상태를 기록합니다. 그 자체로 제품 정확성 증명이 아닙니다.
-- `user_observation`은 사용자 귀속 관찰을 기록합니다. 그 자체로 최종 수락이나 그 밖의 권한 효력이 있는 판단이 아닙니다.
-- `reused_evidence`는 이전 증거나 아티팩트 재사용을 기록합니다. 그 자체로 새 관찰이 아닙니다.
+- `connection_observation`은 대상별 확인된 연결 관찰 기록으로 뒷받침되는 관찰을 이름 붙입니다. 기준 범위의 직접 `record_run` 경로에는 이런 기록이 없으므로 요청된 값을 `agent_report`로 강등합니다.
+- `external_tool`은 대상이 일치하는 관찰에 현재 바이트를 사용할 수 있고 검증된 기준 출력 아티팩트가 있을 때만 외부 도구의 출력이나 상태를 기록합니다. 그 자체로 제품 정확성 증명은 아닙니다.
+- `user_observation`은 대상별 확인된 User Channel 관찰로 뒷받침되는 사용자 귀속 관찰을 이름 붙입니다. 기준 범위의 직접 `record_run` 경로에는 이런 기록이 없으므로 요청된 값을 `agent_report`로 강등합니다. 그 자체로 최종 수락이나 다른 권한 효력이 있는 판단은 아닙니다.
+- `reused_evidence`는 Core가 검증한 이전 강한 관찰의 재사용을 기록합니다. 호출자가 직접 선택한 값은 강등되며 검증된 재사용 자체도 새 관찰은 아닙니다.
 - `unverified_claim`은 확인된 관찰 없는 주장을 보존합니다. 그 자체로 충분한 증거가 아닙니다.
 
 `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.assurance_level`, `EvidenceObservationInput.assurance_level`은 아래 값을 사용합니다.
@@ -738,12 +769,17 @@ unverified
 
 보장 수준 의미:
 - `cooperative_report`는 제출 행위자 맥락의 협력형 보고입니다.
-- `registered_connection_observed`는 등록된 Agent Connection이 기록된 연결 맥락 안에서 그 주장을 관찰했음을 기록합니다.
-- `external_tool_result`는 관찰이 외부 도구 결과에 기반함을 기록합니다.
-- `user_observed`는 사용자 귀속 관찰 출처를 기록합니다.
+- `registered_connection_observed`에는 대상별 확인된 연결 관찰 앵커가 필요합니다. 현재 Agent Connection 호출만으로 파생되지 않습니다.
+- `external_tool_result`에는 위에서 정의한 대상 일치 기준 출력 아티팩트와 현재 바이트 검증 앵커가 필요합니다.
+- `user_observed`에는 대상별 확인된 User Channel 관찰 앵커가 필요합니다.
 - `unverified`는 확인된 관찰 보장 수준이 없음을 기록합니다.
 
-이 값들은 증거 관찰 출처를 분류합니다. 사용자 권한을 부여하거나, 최종 수락 또는 잔여 위험 수락을 만족하거나, 제품 정확성을 증명하거나, `GuaranteeDisplay.level`을 바꾸지 않습니다.
+Core는 필요한 앵커가 없는 요청된 강한 조합을 `agent_report` /
+`cooperative_report`로 강등합니다. `reused_evidence`에서는 원래 identity, 대상,
+`Task`와 Change Unit, 출처 실행 기록, 범위 리비전, 기준선, 승계한 보장 수준,
+원래 앵커를 다시 검증합니다. 외부 아티팩트의 관찰 관계와 현재 바이트도 다시
+확인합니다. 이 값들은 사용자 권한을 부여하거나, 최종 수락 또는 잔여 위험 수락을
+만족하거나, 제품 정확성을 증명하거나, `GuaranteeDisplay.level`을 바꾸지 않습니다.
 
 <a id="source-ref-values"></a>
 ### 출처 참조 값

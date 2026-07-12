@@ -531,6 +531,7 @@ fn plan_prepare_write(
             })
             .transpose()?,
         evidence_summary,
+        evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_state),
         close_blockers,
         guard_health: close_plan.guard_health,

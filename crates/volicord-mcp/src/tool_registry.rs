@@ -84,7 +84,7 @@ const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_trace_
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
     "advisor_no_product_write_record_run";
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advisor_analysis_001","change_unit_id":"cu_advisor_analysis_001","kind":"shaping_update","baseline_ref":"baseline_advisor_analysis_001","summary":"Advisor analysis completed without Product Repository file writes.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_advisor_analysis_001"}}"#;
-const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation passed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"external_tool","assurance_level":"external_tool_result","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation passed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
+const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation reviewed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"agent_report","assurance_level":"cooperative_report","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation reviewed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
 
 pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "final_acceptance_request";
@@ -415,12 +415,13 @@ pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
 fn tool_annotations(name: &str) -> McpToolAnnotations {
     match name {
         STATUS_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => McpToolAnnotations::read_only(),
-        PREPARE_WRITE_TOOL_NAME
-        | STAGE_ARTIFACT_TOOL_NAME
-        | RECORD_RUN_TOOL_NAME
-        | REQUEST_USER_JUDGMENT_TOOL_NAME => McpToolAnnotations::non_destructive_mutation(),
+        PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => {
+            McpToolAnnotations::non_destructive_mutation()
+        }
         INTAKE_TOOL_NAME
         | UPDATE_SCOPE_TOOL_NAME
+        | RECORD_RUN_TOOL_NAME
+        | REQUEST_USER_JUDGMENT_TOOL_NAME
         | RECONCILE_CHANGES_TOOL_NAME
         | CLOSE_TASK_TOOL_NAME => McpToolAnnotations::destructive_mutation(),
         _ => panic!("missing MCP annotation policy for tool `{name}`"),

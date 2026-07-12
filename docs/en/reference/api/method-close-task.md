@@ -178,7 +178,7 @@ Implementations evaluate `volicord.check_close` in this order:
 
 1. Validate the envelope, method fields, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, and actor source.
-3. Run any selected deterministic session-watch check, compute current close readiness, including selected host-hook health facts, with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return `CloseTaskResult`.
+3. Run any selected deterministic session-watch check, compute current close readiness and the canonical `EvidenceGateSummary`, including selected host-hook health facts, with the same calculation used by [`volicord.status`](method-status.md) when evidence or close is selected, and return `CloseTaskResult`. The top-level gate, `state.evidence_gate`, and `summary_card.evidence` reuse this one result.
 
 Implementations evaluate `volicord.close_task` in this order:
 
@@ -223,7 +223,7 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close`, `base.effect_kind=core_committed` for a successful terminal mutation, and `base.effect_kind=no_effect` for a blocked mutating intent. |
-| `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending judgment, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Its evidence display can show `prepared`, `attached`, or `accepted_for_close`; `accepted_for_close` means available to this close-readiness calculation, not proof or final acceptance. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
+| `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending judgment, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. `summary_card.evidence` is exactly `evidence_gate.state`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
 | `state` | `StateSummary` for the selected Task after the check, terminal mutation, or response-only blocked evaluation. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
 | `current_close_basis` | `CurrentCloseBasis | null` used for close readiness when selected into the result. `null` means no current close basis is available for this result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -234,6 +234,7 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | `guard_health` | `GuardHealthSummary | null` for hook-state facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `coverage_summary` | `CoverageSummary | null` for the derived active profile, host-hook coverage state, session-watcher coverage state, tracked timestamps, unresolved unrecorded-change count, and coverage non-guarantees. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. When the current close basis references the selected summary, `evidence_summary.evidence_state` is `accepted_for_close`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
+| `evidence_gate` | Required `EvidenceGateSummary` derived by the same close evaluation that produced `blockers`. `state.evidence_gate` and `summary_card.evidence` copy it. Its values are owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). |
 | `artifact_refs` | `ArtifactRef[]` for close-relevant artifacts selected into the result. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref). |
 
 `CloseTaskResult` does not have a top-level `next_actions` list. `summary_card.next` is the single display next action selected from the `presentation_role=primary` blocker action; array position is not the selection contract. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes). Across `blockers[*].next_actions` in one result, exactly one action is primary; later blocker-local lists can contain only additional actions.
@@ -452,6 +453,8 @@ state:
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
+  evidence_gate:
+    state: not_required
   close_state: blocked
   close_blockers:
     - category: final_acceptance
@@ -497,13 +500,15 @@ blockers:
             task_id: task_close_001
             produced_at_state_version: 72
 evidence_summary: null
+evidence_gate:
+  state: not_required
 artifact_refs: []
 ```
 
 ## Owner links
 
 - Request envelope, common response branches, and `dry_run` summaries: [API Schema Core](schema-core.md).
-- `CloseTaskResult.blockers`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ProjectContinuitySummary`, `EvidenceSummary`, `StateSummary`, and `NextActionSummary` shapes: [API State Schemas](schema-state.md#close-readiness-and-validation-shapes).
+- `CloseTaskResult.blockers`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `ProjectContinuitySummary`, `EvidenceSummary`, `EvidenceGateSummary`, `StateSummary`, and `NextActionSummary` shapes: [API State Schemas](schema-state.md#close-readiness-and-validation-shapes).
 - `ArtifactRef` shape: [API Artifact Schemas](schema-artifacts.md#artifactref).
 - `intent` values: [API Value Sets method-local values](schema-value-sets.md#method-local-values).
 - Close state, lifecycle, and close reason values: [API Value Sets task lifecycle values](schema-value-sets.md#task-lifecycle-values).

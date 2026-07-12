@@ -86,30 +86,6 @@ pub(crate) fn evidence_assurance_matches_source(
     }
 }
 
-pub(crate) fn evidence_provenance_class(
-    source_kind: EvidenceSourceKind,
-    assurance_level: EvidenceAssuranceLevel,
-) -> EvidenceProvenanceClass {
-    match (source_kind, assurance_level) {
-        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult)
-        | (
-            EvidenceSourceKind::ConnectionObservation,
-            EvidenceAssuranceLevel::RegisteredConnectionObserved,
-        )
-        | (EvidenceSourceKind::UserObservation, EvidenceAssuranceLevel::UserObserved)
-        | (
-            EvidenceSourceKind::ReusedEvidence,
-            EvidenceAssuranceLevel::ExternalToolResult
-            | EvidenceAssuranceLevel::RegisteredConnectionObserved
-            | EvidenceAssuranceLevel::UserObserved,
-        ) => EvidenceProvenanceClass::Strong,
-        (EvidenceSourceKind::AgentReport, EvidenceAssuranceLevel::CooperativeReport) => {
-            EvidenceProvenanceClass::CooperativeAgentReport
-        }
-        _ => EvidenceProvenanceClass::Weak,
-    }
-}
-
 pub(crate) fn evidence_item_has_no_support(item: &EvidenceCoverageItem) -> bool {
     item.supporting_run_refs.is_empty()
         && item.observation_refs.is_empty()

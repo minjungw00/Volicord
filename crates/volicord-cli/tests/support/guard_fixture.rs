@@ -50,14 +50,16 @@ use volicord_test_support::{
 
 #[cfg(unix)]
 use volicord_types::{
-    AcceptanceCriterionId, AcceptanceCriterionInput, AcceptanceCriterionReplacement, BaselineRef,
-    ChangeUnitId, ChangeUnitUpdate, CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent,
-    CloseReason, CloseTaskRequest, EvidenceRequirement, EvidenceTarget, IdempotencyKey,
-    InitialScope, IntakeRequest, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
-    ObservedChanges, PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
-    RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy,
-    RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
-    UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
+    AcceptanceCriterionId, AcceptanceCriterionInput, AcceptanceCriterionReplacement, ArtifactInput,
+    ArtifactInputId, ArtifactInputSourceKind, BaselineRef, ChangeUnitId, ChangeUnitUpdate,
+    CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent, CloseReason, CloseTaskRequest,
+    EvidenceRequirement, EvidenceTarget, IdempotencyKey, InitialScope, IntakeRequest,
+    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
+    PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
+    RecordUserJudgmentRequest, RedactionState, RequestId, RequestUserJudgmentRequest,
+    RequestedMode, ResumePolicy, RunKind, ScopeUpdate, StageArtifactRequest, StagedArtifactHandle,
+    StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UpdateScopeRequest, UserJudgmentContext,
+    UserJudgmentOptionId, WriteTicketId,
 };
 
 #[cfg(unix)]
@@ -907,9 +909,43 @@ impl GuardedLifecycleFixture {
             )
             .into());
         };
-        let mut evidence_update = supported_evidence_update("Lifecycle close claim supported.");
-        evidence_update.target = EvidenceTarget::AcceptanceCriterion {
+        let target = EvidenceTarget::AcceptanceCriterion {
             acceptance_criterion_id: AcceptanceCriterionId::new(&criterion.acceptance_criterion_id),
+        };
+        let mut evidence_update = supported_evidence_update("Lifecycle close claim supported.");
+        evidence_update.target = target.clone();
+        let current_state_version = self.state_version()?;
+        let staged = self.service().stage_artifact(
+            StageArtifactRequest {
+                envelope: self.envelope(
+                    &format!("req_{suffix}_stage_evidence"),
+                    Some(&format!("idem_{suffix}_stage_evidence")),
+                    Some(current_state_version),
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                display_name: format!("{suffix}-evidence.json"),
+                content_type: "application/json".to_owned(),
+                redaction_state: RedactionState::None,
+                safe_bytes_or_notice: "{\"fixture\":\"lifecycle-close-evidence\"}".to_owned(),
+                expected_sha256: None.into(),
+                expected_size_bytes: None.into(),
+                relation_hint: Some("evidence observation output".to_owned()).into(),
+            },
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let handle: StagedArtifactHandle =
+            serde_json::from_value(staged.response_value["staged_artifact_handle"].clone())?;
+        let artifact_input = ArtifactInput {
+            artifact_input_id: ArtifactInputId::new(format!("artifact_input_{suffix}_evidence")),
+            source_kind: ArtifactInputSourceKind::StagedArtifact,
+            staged_artifact_handle: Some(handle.clone()).into(),
+            existing_artifact_ref: None.into(),
+            relation_hint: Some("evidence observation output".to_owned()).into(),
+            evidence_target: Some(target).into(),
+            expected_sha256: Some(handle.sha256).into(),
+            expected_size_bytes: Some(handle.size_bytes).into(),
+            redaction_state: Some(handle.redaction_state).into(),
         };
         let request = RecordRunRequest {
             envelope: self.envelope(
@@ -935,7 +971,7 @@ impl GuardedLifecycleFixture {
                 sensitive_categories: Vec::new(),
                 baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
             },
-            artifact_inputs: Vec::new(),
+            artifact_inputs: vec![artifact_input],
             evidence_updates: vec![evidence_update],
             evidence_observations: Vec::new(),
             close_assessment: Some(CloseAssessmentInput {

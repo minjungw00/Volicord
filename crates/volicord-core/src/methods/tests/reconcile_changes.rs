@@ -136,6 +136,10 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
     );
     assert_eq!(response.response_value["summary_card"]["changes"], "none");
     assert_eq!(
+        response.response_value["summary_card"]["evidence"],
+        response.response_value["state"]["evidence_gate"]["state"]
+    );
+    assert_eq!(
         response.response_value["summary_card"]["next"],
         response.response_value["close_blockers"][0]["next_actions"][0]["label"]
     );
@@ -183,6 +187,10 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         invocation(OperationCategory::Read),
     )?;
     assert_no_close_blocker(&after.response_value, "unresolved_unrecorded_changes");
+    assert_eq!(
+        response.response_value["state"]["evidence_gate"],
+        after.response_value["evidence_gate"]
+    );
     Ok(())
 }
 

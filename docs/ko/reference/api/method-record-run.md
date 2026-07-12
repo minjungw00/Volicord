@@ -52,9 +52,10 @@ Core는 호환되지 않는 조합을 커밋 전에 거절합니다. `advisor` �
 - 제품 쓰기 실행은 `volicord.prepare_write`가 발급한 호환되는 `status=active` 쓰기 티켓이 필요합니다.
 - 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `volicord.record_run`은 새 바이트를 스테이징하지 않습니다. 이 핸들은 커밋된 실행 결과에서 받아들여지기 전까지 증거 첨부 입력으로 남습니다.
 - `supported` 증거 갱신은 대상이 일치하는 `EvidenceObservationInput`, 사용할
-  수 있는 대상 일치 증거 관찰 참조, 또는 Core가 명시적인 `source_kind`와
-  `assurance_level`을 가진 증거 관찰을 만들 수 있는
-  `EvidenceCoverageUpdate.provenance`로 뒷받침되어야 합니다.
+  수 있는 대상 일치 증거 관찰 참조, 또는 Core가 증거 관찰을 만들 수 있는
+  `EvidenceCoverageUpdate.provenance`로 뒷받침되어야 합니다. 요청 측
+  `source_kind`와 `assurance_level`은 주장하는 출처 조합을 선택하며 Core는
+  확인된 앵커에서 커밋할 조합을 파생합니다.
 - 수락 기준 대상은 이 `Task`의 현재 기준을 식별해야 합니다. 보충 대상은
   호출자가 부여한 `Task` 범위 `EvidenceClaimId`를 사용하며 처음 커밋된 사용
   뒤에는 문장이 바뀌지 않습니다. 필요한 기준은
@@ -114,6 +115,9 @@ ResidualRiskInput:
   증거를 뒷받침합니다. 요청 안에 있다는 사실만으로 증거가 충분해지지는
   않습니다.
 - `EvidenceObservationInput.source_refs`와 `EvidenceUpdateProvenance.source_refs`는 구조가 검증된 권한 효력이 없는 출처를 보존합니다. Core는 이 참조를 위해 파일을 읽거나, Git 객체를 해석하거나, 명령을 실행하거나, URI를 가져오거나, 메시지를 조회하지 않습니다. 선택적인 명령 또는 Git diff 아티팩트 참조는 이 프로젝트와 Task가 소유하는 기존 기준 아티팩트와 일치해야 합니다. 출처 참조는 증거 충분성이나 닫기 권한을 만들지 않습니다.
+- `EvidenceObservationInput.observed_by_actor_source`는 권한 효력이 있는 입력이
+  아닙니다. 제출된 멤버가 null이 아니어도 Core는 확인된 호출 맥락에서
+  `observed_by_actor_source`를 가져와 기록합니다.
 
 닫기 평가 참조 규칙:
 - 호출자가 제공한 `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 `record_kind=run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
@@ -128,6 +132,19 @@ ResidualRiskInput:
 - `supported` 항목에 `EvidenceCoverageUpdate.provenance`가 제공되고 대상이
   일치하는 명시적 관찰 입력이 없으면 Core는 현재 실행 기록에 대한
   `EvidenceObservation`을 만들고 그 참조를 커밋된 증거 요약에 연결합니다.
+- 요청 측 `source_kind`와 `assurance_level`은 유효한 조합이어야 하지만 그
+  조합만으로 더 강한 출처를 스스로 선언할 수 없습니다. Core는 커밋할 조합을
+  다음과 같이 파생합니다.
+  - `external_tool` / `external_tool_result`는 대상이 일치하는 관찰에 현재
+    바이트를 사용할 수 있고 검증된 기준 출력 아티팩트가 하나 이상 있을 때만
+    유지됩니다. `tool_name`, `tool_invocation_id`, `tool_metadata`, `SourceRef`는
+    설명용이며 이 앵커를 제공하지 않습니다.
+  - 직접 제출한 `connection_observation`과 `user_observation`은 기준 범위에서
+    강한 출처가 아닙니다. `record_run`에는 이 값을 결합할 대상별 확인된 연결
+    관찰 기록이나 User Channel 관찰 기록이 없기 때문입니다.
+  - 호출자가 직접 제출한 `reused_evidence`는 검증된 재사용 경로가 아닙니다.
+  - 입증되지 않은 강한 주장은 `agent_report` / `cooperative_report`로 커밋됩니다.
+    `unverified_claim` / `unverified`는 확인되지 않은 상태로 유지됩니다.
 - `supported` 갱신이 강하고 사용할 수 있으며 대상이 일치하는
   `observation_refs`에만 의존하면 Core는 현재 실행 기록에
   `source_kind=reused_evidence` 관찰을 기록합니다. 그 `input_refs`는 원래 관찰
@@ -135,10 +152,17 @@ ResidualRiskInput:
   유지합니다. 재사용 관찰은 현재 갱신이 이름 붙인 출력 아티팩트와 재사용 한계를
   담지만, 원래 관찰의 출력 아티팩트나 한계를 암묵적으로 복사하지 않습니다. 그
   정보는 보존된 입력 참조를 통해 계속 추적할 수 있습니다.
+- 이 재사용 관찰을 만들기 전에 Core는 원래 관찰의 identity와 대상, `Task`와
+  Change Unit 소유권, 출처 실행 기록, 현재 범위 리비전과 기준선, 승계한 보장
+  수준, 원래 앵커를 다시 검증합니다. 외부 도구 재사용은 원래 관찰과 아티팩트의
+  연결 및 현재 아티팩트 바이트도 다시 확인합니다. 재귀 재사용은 같은 현재
+  앵커가 있는 원래 보장 수준으로 이어져야 하며, 오래되었거나, 없거나, 손상됐거나,
+  일치하지 않거나, 순환하는 체인은 거절됩니다.
 - `supported`가 아닌 상태에서는 대상이 일치하는 현재 협력적 또는 확인되지 않은
   관찰 참조를 설명용 뒷받침으로 보존할 수 있습니다. 강한 재사용 요구는 참조로
   `supported`를 세울 때만 적용됩니다.
-- 커밋된 증거 관찰은 `source_kind`와 `assurance_level`을 통해 `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` 같은 명시적 출처 분류를 보존합니다.
+- 커밋된 `source_kind`와 `assurance_level`은 호출자가 부여한 보장이 아니라
+  Core가 파생한 출처 분류를 담습니다.
 - `unverified_claim`, `unverified`, 협력적 `agent_report` 관찰은 증거 관찰로 기록될 수 있지만, 더 강한 출처가 필요할 때 닫기 준비 상태에서는 약한 출처로 평가됩니다.
 - 증거 관찰은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 대신하지 않습니다.
 
@@ -148,7 +172,7 @@ ResidualRiskInput:
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
 
-`source_kind=staged_artifact`인 경우:
+`ArtifactInput.source_kind=staged_artifact`인 경우:
 
 - 현재 확인된 `actor_source`가 스테이징 핸들의 기록된 출처와 일치해야 합니다.
 
@@ -316,7 +340,7 @@ params:
 
 ## 최소 유효 요청
 
-이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
+이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 대상과 연결된 스테이징 아티팩트는 외부 도구 관찰의 기준 출력 아티팩트 앵커가 됩니다. 요청은 `observed_by_actor_source=null`로 두며 응답은 확인된 호출에서 파생된 행위자 출처를 보여 줍니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
 
 ```yaml
 method: volicord.record_run
@@ -378,7 +402,7 @@ params:
         acceptance_criterion_id: criterion_runprobe_count_001
       source_kind: external_tool
       assurance_level: external_tool_result
-      observed_by_actor_source: agent_connection:conn_run_probe
+      observed_by_actor_source: null
       tool_name: "search-count-validator"
       tool_invocation_id: null
       tool_metadata:

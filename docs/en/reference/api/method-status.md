@@ -93,14 +93,14 @@ Include projection contract:
 - `include.pending_user_judgments` returns current pending judgment refs, `pending_judgment_inbox_items` for user action, and `user_channel_availability` for supported answer paths in the current invocation context. Relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
 - `include.write_ticket` returns active, expired, stale, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
-- `include.evidence` returns current `EvidenceSummary` and coverage when available.
-- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, the derived `CoverageSummary`, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.check_close`.
-- When evidence or close details are selected, `summary_card.evidence` uses the public evidence display state. A staged-only attachment input can appear as `prepared`, and evidence linked to a Run can appear as `attached`. `accepted_for_close` appears when close details are selected and the current close basis references the selected evidence.
+- `include.evidence` returns current `EvidenceSummary` and coverage when available, plus the canonical `evidence_gate` projection.
+- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, `GuardHealthSummary` hook-state facts including hook path safety when available, the derived `CoverageSummary`, relevant next actions, and the same canonical `evidence_gate`. The blockers use the same close-readiness calculation as `volicord.check_close`.
+- When evidence or close details are selected, `summary_card.evidence` is exactly `evidence_gate.state`. It uses `not_required`, `optional_none`, `required_missing`, `partial`, `sufficient`, `stale`, or `blocked`; it does not derive a second gate from evidence attachment display state.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified invocation context, enabled enforcement mechanisms, and supported baseline scope.
 - `include.continuity` returns active `ProjectContinuitySummary[]` entries for durable project-level context.
 - `summary_card` is always returned on successful `StatusResult` responses. It summarizes the owner-selected view with public display terminology and one selected `next` action when knowable. It does not add authority beyond the structured fields it summarizes.
-- `include.evidence=false` means evidence summaries, coverage, artifact evidence refs, and evidence-only next actions are not computed and not returned.
-- `include.close=false` means close readiness is not computed and `CurrentCloseBasis`, close state, close blockers, `GuardHealthSummary` hook-state facts, `CoverageSummary`, residual-risk coverage, and close-only next actions are not returned.
+- `include.evidence=false` omits `evidence_summary`; `evidence_gate` is still returned when `include.close=true`.
+- `include.close=false` omits `CurrentCloseBasis`, close state, close blockers, `GuardHealthSummary` hook-state facts, `CoverageSummary`, residual-risk coverage, and close-only next actions. When `include.evidence=true`, Core still evaluates the same read-only close basis internally so evidence provenance, freshness, and artifact blockers feed the canonical gate, but it does not expose those close-only fields.
 - `include.guarantees=false` means guarantee display is not derived and not returned.
 - `include.continuity=false` means project continuity summaries are not read or returned.
 
@@ -110,7 +110,7 @@ Truthful projection rules:
 - Capability declarations alone do not create guarantees. A cooperative-only deployment must not claim `detective`.
 - `GuaranteeDisplay.capability_refs` should identify invocation binding, Agent Connection, or observation facts when those refs are available.
 
-`include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment. When called through a session-bound Agent Connection, the runtime may initialize session-watch diagnostic records so later method-boundary checks can compare Product Repository snapshots.
+`include.evidence=true` or `include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness evidence-gate calculation. Therefore an evidence-only status result and check-close result at the same state version return the same `evidence_gate`; selecting close controls exposure of close fields, not a second gate calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment. When called through a session-bound Agent Connection, the runtime may initialize session-watch diagnostic records so later method-boundary checks can compare Product Repository snapshots.
 
 ## Method result fields
 
@@ -119,7 +119,7 @@ Truthful projection rules:
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape is owned by [API Schema Core](schema-core.md#common-response). Read-only status results use `events: []` and an authority-record disclosure; `EventRef.event_kind`, when present in a common response branch, remains an opaque illustrative classification string. |
-| `summary_card` | `SummaryCard` for the selected status view. Its evidence display uses public evidence states when evidence or close details are selected, with `accepted_for_close` limited to close-readiness output. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
+| `summary_card` | `SummaryCard` for the selected status view. Its evidence display copies `evidence_gate.state` when evidence or close details are selected. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `active_task` | `StateSummary | null` for the currently selected Task summary. |
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. A non-empty list has exactly one `presentation_role=primary`; `summary_card.next_action` selects that action rather than relying on array position. |
@@ -129,6 +129,7 @@ Truthful projection rules:
 | `blocker_refs` | `StateRecordRef[]` for blocker records visible in the current status view. |
 | `write_ticket_summary` | `WriteTicketStateSummary | null` for the write-ticket projection. When `include.write_ticket=true`, `null` means no relevant write ticket is available; when the projection is not selected, this fixed-shape field remains `null`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `evidence_summary` | `EvidenceSummary | null` when `include.evidence=true`; explicit `null` means the selected projection found no current evidence summary. The field is omitted when `include.evidence=false`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
+| `evidence_gate` | `EvidenceGateSummary | null` when `include.evidence=true` or `include.close=true`; explicit `null` means no Task-scoped gate is available. The field is omitted when neither projection is selected. `active_task.evidence_gate` and `summary_card.evidence` copy this projection. |
 | `close_state` | Status close-state value for the current view. Supported values, including `none` when no current close state is available, are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
@@ -138,7 +139,7 @@ Truthful projection rules:
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuitySummary[]` when `include.continuity=true`; omitted when the projection is not selected. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 
-Nested `UserChannelAvailability` and `JudgmentInboxItem` shapes are owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
+Nested `UserChannelAvailability` and `JudgmentInboxItem` shapes are owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). Nested `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`, `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`, `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`, `GuardHealthSummary`, `CoverageSummary`, `GuaranteeDisplay`, and `NextActionSummary` shapes are owned by [API State Schemas](schema-state.md).
 
 ## Blocked result
 
@@ -250,6 +251,8 @@ active_task:
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
+  evidence_gate:
+    state: not_required
   close_state: blocked
   close_blockers:
     - category: pending_user_judgment
@@ -345,6 +348,8 @@ pending_judgment_inbox_items:
       available: true
       command: "volicord inbox answer uj_export_columns_001 --choice <choice>"
 blocker_refs: []
+evidence_gate:
+  state: not_required
 close_state: blocked
 current_close_basis: null
 risk_acceptance_coverage: []

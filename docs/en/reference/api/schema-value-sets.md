@@ -643,7 +643,7 @@ sufficient
 blocked
 ```
 
-`StageArtifactResult.evidence_state`, `EvidenceSummary.evidence_state`, and selected evidence display summaries use the evidence display state values below when that field is present:
+`StageArtifactResult.evidence_state` and `EvidenceSummary.evidence_state` use the evidence attachment display values below when that field is present:
 
 ```text
 prepared
@@ -652,6 +652,33 @@ accepted_for_close
 ```
 
 These values are user-facing presentation states. `accepted_for_close` means evidence is available to the current close-readiness calculation; it is not a correctness proof, test-sufficiency proof, QA result, final acceptance, or residual-risk acceptance.
+
+<a id="evidence-gate-values"></a>
+### Evidence gate values
+
+`EvidenceGateSummary.state` and a selected `SummaryCard.evidence` use exactly:
+
+```text
+not_required
+optional_none
+required_missing
+partial
+sufficient
+stale
+blocked
+```
+
+| Value | Meaning |
+|---|---|
+| `not_required` | No active criterion has `required` or `optional` evidence; zero criteria and an all-`not_required` set use this value. |
+| `optional_none` | At least one active criterion is `optional`, none is `required`, and no optional criterion has recorded evidence support. |
+| `required_missing` | At least one active criterion is `required` and none of the required criteria has recorded evidence support. |
+| `partial` | Some required evidence support exists but the required set is not sufficient, or optional-only recorded evidence is not all `supported`. |
+| `sufficient` | Every required criterion is exactly `supported` with no evidence-claim, provenance, or artifact-availability blocker; when there are only optional criteria, every optional item that has recorded support is `supported`. |
+| `stale` | Required evidence or its provenance is stale against the current close basis and no higher-precedence evidence condition is blocked. |
+| `blocked` | A required criterion is contradicted, or a non-stale evidence or provenance condition blocks the evidence gate, or an unavailable artifact blocker names an artifact that supports a required criterion. |
+
+Core computes this derived projection once from active criterion requirements and coverage, canonical evidence observation freshness and provenance, canonical availability of required-criterion supporting artifacts, and evidence-related close blockers. `blocked` takes precedence over `stale`; then required coverage selects `sufficient`, `partial`, or `required_missing`. Optional and `not_required` criteria never create close blockers and never lower a sufficient required gate. Non-evidence close blockers, including unavailable close-basis result artifacts that do not support a required criterion, do not change the evidence gate. The projection is copied into status and close results, `StateSummary.evidence_gate`, and `SummaryCard.evidence`; attachment display states are not another gate calculation.
 
 `AcceptanceCriterion.evidence_requirement`, intake criterion input, and
 update-scope criterion replacement input use:
@@ -702,12 +729,17 @@ reused_evidence
 unverified_claim
 ```
 
+On `EvidenceUpdateProvenance` and `EvidenceObservationInput`, these values are
+requested provenance classifications. On committed `EvidenceObservation`, they
+are Core-derived classifications. A valid request pair does not grant its own
+assurance.
+
 Source-kind meanings:
 - `agent_report` records a report made by an agent actor context. It is not an external tool result by itself.
-- `connection_observation` records an observation attributed to a registered Agent Connection. It is not proof by itself.
-- `external_tool` records output or status from an external tool. It is not a product correctness proof by itself.
-- `user_observation` records a user-attributed observation. It is not final acceptance or any other authority-bearing judgment by itself.
-- `reused_evidence` records reuse of prior evidence or artifacts. It is not a new observation by itself.
+- `connection_observation` names an observation backed by a target-scoped verified connection-observation record. The baseline direct `record_run` path has no such record and downgrades this requested value to `agent_report`.
+- `external_tool` records output or status from an external tool only when the target-matching observation has a canonical output artifact with currently available, verified bytes. It is not a product correctness proof by itself.
+- `user_observation` names a user-attributed observation backed by a target-scoped verified User Channel observation. The baseline direct `record_run` path has no such record and downgrades this requested value to `agent_report`; it is never final acceptance or another authority-bearing judgment by itself.
+- `reused_evidence` records Core-validated reuse of a prior strong observation. Direct caller selection is downgraded, and validated reuse is not a new observation by itself.
 - `unverified_claim` preserves a claim without verified observation. It is not sufficient evidence by itself.
 
 `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.assurance_level`, and `EvidenceObservationInput.assurance_level` use:
@@ -722,12 +754,18 @@ unverified
 
 Assurance-level meanings:
 - `cooperative_report` is a cooperative report from the submitting actor context.
-- `registered_connection_observed` records that a registered Agent Connection observed the claim within its recorded connection context.
-- `external_tool_result` records that the observation is based on an external tool result.
-- `user_observed` records user-attributed observation provenance.
+- `registered_connection_observed` requires a target-scoped verified connection-observation anchor; it is not derived from the current Agent Connection invocation alone.
+- `external_tool_result` requires the canonical, target-matching, currently verified output-artifact anchor defined above.
+- `user_observed` requires a target-scoped verified User Channel observation anchor.
 - `unverified` records absence of verified observation assurance.
 
-These values classify evidence observation provenance. They do not grant user authority, satisfy final acceptance or residual-risk acceptance, prove product correctness, or change `GuaranteeDisplay.level`.
+Core downgrades a requested strong pair without its required anchor to
+`agent_report` / `cooperative_report`. For `reused_evidence`, Core revalidates
+the original identity, target, Task and Change Unit, source Run, scope revision,
+baseline, inherited assurance, and original anchor; an external artifact's
+observation relation and current bytes are checked again. These values do not
+grant user authority, satisfy final acceptance or residual-risk acceptance,
+prove product correctness, or change `GuaranteeDisplay.level`.
 
 <a id="source-ref-values"></a>
 ### Source reference values

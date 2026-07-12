@@ -158,11 +158,11 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
     assert_eq!(status.response_value["close_state"], "blocked");
     assert_eq!(
         status.response_value["summary_card"]["evidence"],
-        "prepared"
+        "required_missing"
     );
-    assert_ne!(
+    assert_eq!(
         status.response_value["summary_card"]["evidence"],
-        "accepted_for_close"
+        status.response_value["evidence_gate"]["state"]
     );
     assert_eq!(
         status.response_value["evidence_summary"]["status"],
@@ -193,10 +193,17 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
     assert_close_blocker(&status.response_value, "missing_current_close_basis");
     assert_close_blocker(&status.response_value, "evidence_claim_missing");
     assert_eq!(check.response_value["close_state"], "blocked");
-    assert_eq!(check.response_value["summary_card"]["evidence"], "prepared");
-    assert_ne!(
+    assert_eq!(
         check.response_value["summary_card"]["evidence"],
-        "accepted_for_close"
+        "required_missing"
+    );
+    assert_eq!(
+        check.response_value["summary_card"]["evidence"],
+        check.response_value["evidence_gate"]["state"]
+    );
+    assert_eq!(
+        status.response_value["evidence_gate"],
+        check.response_value["evidence_gate"]
     );
     assert_field_absent(&check.response_value["evidence_summary"], "evidence_state");
     assert_close_blocker(&check.response_value, "missing_current_close_basis");

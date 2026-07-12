@@ -571,24 +571,19 @@ pub(super) fn plan_close_task_with_context(
         .evidence_summary
         .clone()
         .map(|summary| evidence_summary_for_display(summary, result_current_close_basis.as_ref()));
-    let prepared_input_available = if result_evidence_summary
-        .as_ref()
-        .and_then(|summary| summary.evidence_state)
-        .is_none()
-    {
-        store
-            .has_prepared_artifact_input(&request.task_id, now)
-            .map_err(CorePipelineError::from)?
-    } else {
-        false
-    };
+    let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
+    let evidence_gate = evaluate_evidence_gate(
+        &acceptance_criteria,
+        result_evidence_summary.as_ref(),
+        &blockers,
+    );
 
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
-        acceptance_criteria: active_acceptance_criteria_for_task(store, &request.task_id)?,
+        acceptance_criteria,
         pending_user_judgment_refs: context.pending_user_judgment_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
         write_ticket_summary: projected_write_ticket_summary(
@@ -599,6 +594,7 @@ pub(super) fn plan_close_task_with_context(
             guarantee_display.clone(),
         )?,
         evidence_summary: result_evidence_summary.clone(),
+        evidence_gate: Some(evidence_gate),
         close_state: Some(close_state),
         close_blockers: blockers.clone(),
         guard_health: context.guard_health.clone(),
@@ -650,11 +646,7 @@ pub(super) fn plan_close_task_with_context(
             result_state.guarantee_display.as_ref(),
         ),
         write_ticket: write_ticket_summary_text(true, result_state.write_ticket_summary.as_ref()),
-        evidence: evidence_summary_text(
-            true,
-            result_evidence_summary.as_ref(),
-            prepared_input_available,
-        ),
+        evidence: evidence_gate_summary_text(true, result_state.evidence_gate.as_ref()),
         pending_user_judgments: result_state.pending_user_judgment_refs.len(),
         changes: changes_summary_text(
             true,
@@ -682,6 +674,7 @@ pub(super) fn plan_close_task_with_context(
         guard_health: context.guard_health.clone(),
         coverage_summary: result_coverage_summary,
         evidence_summary: result_evidence_summary.clone(),
+        evidence_gate,
         artifact_refs: result_artifact_refs.clone(),
     };
 
@@ -699,6 +692,7 @@ pub(super) fn plan_close_task_with_context(
         current_close_basis: result_current_close_basis,
         risk_acceptance_coverage: result_risk_acceptance_coverage,
         blockers,
+        evidence_gate,
         guard_health: context.guard_health,
     })
 }
@@ -3951,7 +3945,13 @@ fn close_evidence_issue_for_item(
                 has_stale = true;
                 continue;
             }
-            match evidence_provenance_class(observation.source_kind, observation.assurance_level) {
+            match projected_evidence_observation_provenance_class(
+                store,
+                request,
+                basis,
+                context,
+                observation,
+            )? {
                 EvidenceProvenanceClass::Strong => return Ok(None),
                 EvidenceProvenanceClass::CooperativeAgentReport => {
                     has_current_cooperative_agent_report = true;
@@ -3979,7 +3979,18 @@ fn close_evidence_issue_for_item(
             has_stale = true;
             continue;
         }
-        match evidence_observation_provenance_class(&record)? {
+        match super::record_run::stored_evidence_observation_provenance_class(
+            store,
+            &record,
+            &super::record_run::StoredEvidenceProvenanceBasis {
+                project_id: &request.envelope.project_id,
+                task_id: &request.task_id,
+                change_unit_id: basis.change_unit_id.as_str(),
+                scope_revision: basis.scope_revision,
+                baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
+                target: &item.target,
+            },
+        )? {
             EvidenceProvenanceClass::Strong => return Ok(None),
             EvidenceProvenanceClass::CooperativeAgentReport => {
                 has_current_cooperative_agent_report = true;
@@ -4052,22 +4063,108 @@ fn evidence_observation_record_matches_target(
     }
 }
 
-fn evidence_observation_provenance_class(
-    record: &EvidenceObservationRecord,
+fn projected_evidence_observation_provenance_class(
+    store: &CoreProjectStore,
+    request: &CloseTaskPlanRequest,
+    basis: &CurrentCloseBasis,
+    context: &CloseTaskContext,
+    observation: &EvidenceObservation,
 ) -> CoreResult<EvidenceProvenanceClass> {
-    let source_kind: EvidenceSourceKind = parse_owner_storage_value(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "source_kind",
-        &record.source_kind,
-    )?;
-    let assurance_level: EvidenceAssuranceLevel = parse_owner_storage_value(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "assurance_level",
-        &record.assurance_level,
-    )?;
-    Ok(evidence_provenance_class(source_kind, assurance_level))
+    if !evidence_assurance_matches_source(observation.source_kind, observation.assurance_level) {
+        return Ok(EvidenceProvenanceClass::Weak);
+    }
+    match (observation.source_kind, observation.assurance_level) {
+        (EvidenceSourceKind::AgentReport, EvidenceAssuranceLevel::CooperativeReport) => {
+            Ok(EvidenceProvenanceClass::CooperativeAgentReport)
+        }
+        (EvidenceSourceKind::ExternalTool, EvidenceAssuranceLevel::ExternalToolResult) => Ok(
+            if projected_external_observation_has_verified_artifact(
+                store,
+                request,
+                context,
+                observation,
+            )? {
+                EvidenceProvenanceClass::Strong
+            } else {
+                EvidenceProvenanceClass::Weak
+            },
+        ),
+        (EvidenceSourceKind::ReusedEvidence, EvidenceAssuranceLevel::ExternalToolResult) => {
+            let [source_ref] = observation.input_refs.as_slice() else {
+                return Ok(EvidenceProvenanceClass::Weak);
+            };
+            if source_ref.record_kind != StateRecordKind::EvidenceObservation
+                || source_ref.project_id != request.envelope.project_id
+                || source_ref.task_id.as_ref() != Some(&request.task_id)
+            {
+                return Ok(EvidenceProvenanceClass::Weak);
+            }
+            let Some(source_record) = store
+                .evidence_observation_record(source_ref.record_id.as_str())
+                .map_err(CorePipelineError::from)?
+            else {
+                return Ok(EvidenceProvenanceClass::Weak);
+            };
+            super::record_run::stored_evidence_observation_provenance_class(
+                store,
+                &source_record,
+                &super::record_run::StoredEvidenceProvenanceBasis {
+                    project_id: &request.envelope.project_id,
+                    task_id: &request.task_id,
+                    change_unit_id: basis.change_unit_id.as_str(),
+                    scope_revision: basis.scope_revision,
+                    baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
+                    target: &observation.target,
+                },
+            )
+        }
+        _ => Ok(EvidenceProvenanceClass::Weak),
+    }
+}
+
+fn projected_external_observation_has_verified_artifact(
+    store: &CoreProjectStore,
+    request: &CloseTaskPlanRequest,
+    context: &CloseTaskContext,
+    observation: &EvidenceObservation,
+) -> CoreResult<bool> {
+    for artifact_ref in &observation.output_artifact_refs {
+        if artifact_ref.project_id != request.envelope.project_id
+            || artifact_ref.task_id != request.task_id
+            || artifact_ref.availability != ArtifactAvailability::Available
+            || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
+        {
+            continue;
+        }
+        if context.projected_artifacts.iter().any(|projected| {
+            projected.artifact_id == artifact_ref.artifact_id
+                && projected.project_id == artifact_ref.project_id
+                && projected.task_id == artifact_ref.task_id
+                && projected.availability == ArtifactAvailability::Available
+                && projected.integrity_status == ArtifactIntegrityStatus::Verified
+        }) {
+            return Ok(true);
+        }
+        let Some(artifact) = store
+            .artifact_record(artifact_ref.artifact_id.as_str())
+            .map_err(CorePipelineError::from)?
+        else {
+            continue;
+        };
+        if artifact.project_id == request.envelope.project_id.as_str()
+            && artifact.task_id == request.task_id.as_str()
+            && store
+                .artifact_has_task_owner_link(
+                    artifact_ref.artifact_id.as_str(),
+                    request.task_id.as_str(),
+                )
+                .map_err(CorePipelineError::from)?
+            && persistent_artifact_is_verified_current(store, &artifact)?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn unavailable_close_artifact_refs(

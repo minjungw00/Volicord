@@ -1042,8 +1042,8 @@ mod tests {
                 "evidence_claim_id": "claim_saved_filter_001",
                 "statement": "Saved-filter validation passed."
             },
-            "source_kind": "external_tool",
-            "assurance_level": "external_tool_result",
+            "source_kind": "agent_report",
+            "assurance_level": "cooperative_report",
             "observed_at": "2026-07-12T00:00:00Z"
         });
         let observation: McpEvidenceObservationInput =
@@ -1058,8 +1058,8 @@ mod tests {
                     "evidence_claim_id": "claim_saved_filter_001",
                     "statement": "Saved-filter validation passed."
                 },
-                "source_kind": "external_tool",
-                "assurance_level": "external_tool_result",
+                "source_kind": "agent_report",
+                "assurance_level": "cooperative_report",
                 "observed_by_actor_source": null,
                 "tool_name": null,
                 "tool_invocation_id": null,
@@ -1341,6 +1341,23 @@ mod tests {
                 "user_observation",
                 "unverified_claim",
             ],
+        );
+
+        let evidence_gate_states = schema_enum_strings(
+            serde_json::to_value(schemars::schema_for!(EvidenceGateState))
+                .expect("EvidenceGateState schema should serialize"),
+        );
+        assert_eq!(
+            evidence_gate_states,
+            BTreeSet::from([
+                "blocked".to_owned(),
+                "not_required".to_owned(),
+                "optional_none".to_owned(),
+                "partial".to_owned(),
+                "required_missing".to_owned(),
+                "stale".to_owned(),
+                "sufficient".to_owned(),
+            ])
         );
 
         let continuity_kinds = schema_enum_strings(
