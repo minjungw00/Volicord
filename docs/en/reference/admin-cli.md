@@ -423,6 +423,38 @@ lookalikes rather than deleting them. The prior Agent Connection may remain as
 disabled history, but it must no longer be an enabled Connection Project for
 that repository.
 
+When the requested host or intent uses a different Agent Connection, init keeps
+the requested project membership inactive during migration. A newly registered
+requested connection uses `enabled=false`; an already-enabled requested
+connection can continue serving its other projects but does not gain this
+project yet. A prior connection that was eligible when migration began remains
+eligible while init installs the requested host and guard projections; an
+explicitly disabled prior remains disabled. Only after those steps succeed does one
+Registry transaction revalidate the staged membership inventory, add the
+requested project membership, enable the requested connection, and record the
+requested guard installation. It removes a superseded project membership when
+that connection still has other projects. When this is its last project, the
+transaction disables the superseded connection but retains that one membership
+as durable pending-host-cleanup inventory. A cleanup transaction revalidates
+that the retained connection is still disabled with exactly that membership
+and then releases the Registry write lock. After host retirement, a final
+Registry transaction revalidates and removes the retained membership. External
+host retirement cannot be rolled back if the final cleanup commit fails, but
+the durable membership keeps the same init rerun discoverable and convergent.
+Generic connection registration, enable/disable, and membership APIs cannot
+create, overwrite, or remove this Store-owned marker. A fresh migration also
+includes any older valid pending cleanup for the repository and rebinds it to
+the new replacement, while unrelated disabled connections remain untouched.
+The validated local policy connection is included even when it was explicitly
+disabled. A profile-only migration reuses the current connection and does not
+require that Registry transition. This staging boundary prevents a failed host
+or intent migration from making both old and requested connections eligible for
+the same project. A staging upsert never disables a target that another init
+has concurrently enabled. Init classifies requested membership and exact
+pending-cleanup state in one Registry transaction; if another attempt completed
+the switch it resumes cleanup, and otherwise it fails without removing an
+observed active requested membership.
+
 For every init in a Git-backed Product Repository, Volicord recomputes one
 managed block in the selected worktree's effective Git `info/exclude`. It
 resolves a normal `.git` directory, a `.git` gitdir file, and a linked worktree
@@ -471,10 +503,21 @@ the bounded, known prior-host and opposite-intent projection paths for
 Volicord-owned content. It warns about a prior-host or opposite-intent
 projection, simultaneous enabled integrations for multiple supported hosts or
 intents, a policy intent or host that disagrees with enabled inventory, or
-detective hooks left active under a record policy. Doctor does not change files
-or the Git index. Its recovery action reruns init with the policy's exact host,
-intent flag, and profile; index cleanup remains an explicit user action that
-must not delete working-tree files.
+detective hooks left active under a record policy. A disabled opposite
+host/intent connection that retains this project membership and the exact
+Store-owned pending-cleanup marker is reported as
+`findings[].kind=pending_host_cleanup`; rerunning the policy-selected init
+finishes its host retirement and removes the durable cleanup membership. Doctor
+reports a present but inexact reserved marker as
+`findings[].kind=invalid_pending_host_cleanup_marker` rather than treating it as
+resumable cleanup. That finding has
+`actions[].id=restore_invalid_pending_cleanup_registry` with no command: init will not
+mutate malformed Store-owned recovery state, so the operator must restore
+`registry.sqlite` from a known-good Runtime Home backup or obtain
+maintainer-assisted Registry repair first. Other intent-drift recovery reruns
+init with the policy's exact host, intent flag, and profile. Doctor does not
+change files or the Git index; index cleanup remains an explicit user action
+that must not delete working-tree files.
 
 `--profile` selects the public integration profile:
 
@@ -589,6 +632,43 @@ target has changed, init must report a conflict instead of overwriting or
 deleting it. Follow-up status and verification commands, dry-run diagnostics,
 and repair commands preserve the selected intent: they include `--shared` only
 for a shared init result.
+
+If a migration fails after staging or file application begins, init exits with
+a failed partial-application result rather than implying that nothing changed.
+Text output names `Migration state: partial_application`, the stable migration
+ID, observed requested connection and membership state, prior inventory state,
+Registry transition state, host projection state, the cause, and rerun
+arguments. JSON output has
+`action=init`, `status=failed`, `retryable=true`, `retry_arguments`, `next`, and
+a `migration` object with `migration_id`, `state=partial_application`,
+`requested_connection_id`, `requested_connection_enabled`,
+`requested_project_membership_active`, `prior_connection_ids`,
+`prior_connection_inventory`, `prior_connection_states`,
+`registry_transition`, and `host_projection`. Each
+`prior_connection_states[]` entry has `connection_id` and its live `state`.
+The two requested-state fields are live Registry reads: each is a Boolean when
+readable and `null` when the failure also prevents that diagnostic read. Before
+a connection Registry transition starts, `registry_transition=not_applied` and
+`prior_connection_inventory=unchanged`. An error while the atomic transaction
+is attempted conservatively reports both as `unknown`. A later verification or
+verification-report failure reports `registry_transition=applied` and
+`prior_connection_inventory=retired_for_project`. `host_projection` is one of
+`partially_applied_or_pending_verification`,
+`applied_registry_transition_unknown`,
+`partially_applied_after_registry_transition`,
+`cleanup_inventory_changed_after_registry_transition`, or
+`applied_pending_verification` for those phases. While verified host cleanup
+remains pending, `prior_connection_inventory=disabled_pending_host_cleanup`;
+after it finishes, a later failure reports `retired_for_project`. Different
+live states across prior connections report the aggregate value `mixed` and
+remain distinguishable in `prior_connection_states`. Cleanup inventory that
+fails its final revalidation reports `unknown`. The migration ID is stable for
+the requested connection, Product Repository, intent, and profile, and the
+retry arguments include the selected `--home` so a rerun returns to the same
+Runtime Home. A profile-only migration reports
+`registry_transition=not_required`. Host or guard files may already have been
+created, updated, or retired, so the operator must resolve the named conflict,
+inspect status or doctor when needed, and rerun the supplied init arguments.
 
 On Unix, a newly created `.volicord/policy.json` uses user-only mode `0600`.
 When a regular existing policy carries Volicord ownership metadata, a matching

@@ -182,6 +182,40 @@ Product Repository 하나에서 `volicord init`은 선택한 지원 호스트 �
 사용에서 폐기합니다. 단일 로컬 정책에 여러 호스트 통합이나 서로 다른 로컬 통합 의도를
 암묵적으로 동시에 활성화하지 않습니다.
 
+다른 connection을 선택하는 호스트 또는 의도 마이그레이션에서는 외부 호스트와 guard 상태
+보기를 적용하는 동안 요청한 project membership을 비활성 상태로 유지합니다. 새로 등록한
+요청 connection은 비활성화하고, 이미 활성화된 요청 connection은 다른 project를 계속
+처리할 수 있지만 아직 이 project membership은 얻지 않습니다. 마이그레이션 시작 시 사용할
+수 있었던 이전 connection은 이 상태 보기 단계가 성공할 때까지 계속 사용할 수 있고,
+명시적으로 비활성화된 이전 connection은 비활성 상태를 유지합니다. 그런 다음 Registry transaction 하나가
+요청 project membership을 추가하고, 다른 project가 남은 connection의 대체 project
+membership을 폐기하고, 요청한 connection을 활성화하고, 요청한 guard installation을
+기록합니다. 마지막 project인 대체 connection은 transaction이 비활성화하되
+project membership은 내구성 있는 pending host cleanup inventory로 유지합니다. Cleanup
+경로는 짧은 transaction에서 이 비활성 marker를 검증하고 호스트 상태 보기 폐기 동안
+Registry 쓰기 잠금을 해제한 뒤, 마지막 transaction에서 marker를 다시 검증하고 membership을
+제거합니다. 일반 Agent Connection과 Connection Projects 변경 API는 이 Store 소유 marker를
+위조하거나 변경할 수 없습니다. 전환 전 외부 상태 보기 단계가
+실패하면 요청한 project membership은 비활성 상태로 남습니다. 이후 cleanup이 실패하면
+요청 connection은 계속 사용할 수 있고 대체 connection은 비활성 상태이면서 재실행이 발견할
+수 있게 남습니다. Init은 두 경우 모두 안정적인 migration ID와 재실행 인자를 포함한 부분
+적용 migration 결과를 보고합니다. 적격성 전환은 원자적이지만 호스트 파일 폐기는 cleanup
+저장소 변경과 함께 rollback되지 않으며, 여러 파일과 외부 호스트를 아우르는 주변
+마이그레이션은 하나의 파일시스템 transaction이 아니라 수렴 가능한 과정입니다.
+
+새 호스트 또는 의도 마이그레이션은 같은 project에 남은 이전의 유효한 pending-cleanup
+marker를 포함해 요청한 새 replacement로 다시 연결한 뒤 cleanup합니다. 따라서 먼저 실패한
+마이그레이션을 방치하지 않습니다. 검증된 이전 로컬 정책이 지목한 connection은 운영자가
+비활성화했더라도 대체 inventory에 포함하지만, 관련 없는 비활성 대안은 보존합니다.
+
+내구성 있는 marker는 비활성화된 대체 connection의 정확한
+`metadata_json.pending_host_cleanup` 객체이며 `project_id`와
+`replacement_connection_id`를 담습니다. Membership을 유지하는 비활성 connection이라도 같은
+project의 유효한 marker가 없으면 일반 비활성 connection이므로 cleanup 재개나 Doctor의 대기
+cleanup 처리에 들어가면 안 됩니다. 같은 project의 유효한 이전 replacement marker는
+연쇄 또는 중단 마이그레이션이 보이도록 Doctor가 보고하고, init이 cleanup 전에 새
+replacement로 다시 연결합니다.
+
 `shared` 주 호스트 파일에는 형식이 지정된 저장소 발견 기술 정보만 들어갑니다. Codex는
 `volicord mcp --stdio --discover-repository --host codex`, Claude Code는 같은 명령의
 `--host claude-code` 형태를 사용합니다. Connection ID, 프로젝트 ID, 절대 실행 파일,
@@ -365,10 +399,12 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 
 [테스트 전략](../architecture-guide/testing-strategy.md)의 명시적 실제 판단 테스트 하네스는
 설치된 호스트로 더 작은 연결 왕복을 실행합니다. 표식 `Task` 생성, 제품 결정 판단 생성,
-호스트 고유 MCP User Channel을 통한 사람의 답변, 그 결과인 Task 상태 새로 고침을
-확인합니다. 저장된 해결 근거가 `mcp_elicitation_user_channel`이어야 합니다. 대기 CLI
-inbox 대체 경로는 실행 가능한 복구이지만 성공한 고유 왕복으로 세지 않습니다. 이
-테스트 하네스는 기본적으로 무시되며 이식 가능한 호스트 적합성이나 보안 테스트가 아닙니다.
+호스트 고유 MCP User Channel을 통한 사람의 답변, 기본 간결한 결과에서 선택 option 소비,
+선택에 매핑된 비쓰기 Run, 그 결과인 Task 상태 새로 고침을 확인합니다. 저장된 해결 근거가
+`mcp_elicitation_user_channel`이어야 하고, 저장된 `selected_option_id`와 최신 Run 표식이
+일치해야 합니다. 대기 CLI inbox 대체 경로는 실행 가능한 복구이지만 성공한 고유 왕복으로
+세지 않습니다. 이 테스트 하네스는 기본적으로 무시되며 이식 가능한 호스트 적합성이나 보안
+테스트가 아닙니다.
 
 `volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
 경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을

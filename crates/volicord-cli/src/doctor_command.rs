@@ -9,7 +9,11 @@ use std::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_store::{
-    agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
+    agent_connections::{
+        connection_metadata_contains_pending_host_cleanup_key,
+        connection_metadata_pending_host_cleanup_replacement, CONNECTION_MODE_READ_ONLY,
+        CONNECTION_MODE_WORKFLOW,
+    },
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
@@ -933,6 +937,40 @@ fn inspect_integration_intent_drift(
                 &mut truncated,
             );
         }
+        for connection in snapshot.agent_connections.iter().filter(|connection| {
+            !connection.enabled
+                && matches!(connection.host_kind.as_str(), "codex" | "claude_code")
+                && matches!(connection.intent.as_str(), "personal" | "shared")
+                && connection_is_attached_to_project(snapshot, connection, project)
+                && connection_metadata_contains_pending_host_cleanup_key(&connection.metadata_json)
+        }) {
+            let pending_replacement_connection_id =
+                connection_metadata_pending_host_cleanup_replacement(
+                    &connection.metadata_json,
+                    &project.project_id,
+                );
+            push_bounded_intent_finding(
+                &mut findings,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "kind": if pending_replacement_connection_id.is_some() {
+                        "pending_host_cleanup"
+                    } else {
+                        "invalid_pending_host_cleanup_marker"
+                    },
+                    "policy_connection_id": policy.connection_id,
+                    "pending_replacement_connection_id": pending_replacement_connection_id,
+                    "connection_id": connection.connection_internal_id,
+                    "policy_intent": policy.connection_intent,
+                    "recorded_intent": connection.intent,
+                    "host": policy.host,
+                    "policy_host": policy.host,
+                    "recorded_host": public_connection_host(&connection.host_kind),
+                }),
+                &mut truncated,
+            );
+        }
 
         let guard_matches = active_installations.iter().any(|installation| {
             installation.guard_installation_id == policy.guard_installation_id
@@ -993,6 +1031,9 @@ fn inspect_integration_intent_drift(
         }
     }
 
+    let has_invalid_pending_cleanup_marker = findings
+        .iter()
+        .any(|finding| finding["kind"].as_str() == Some("invalid_pending_host_cleanup_marker"));
     let has_warning = !findings.is_empty() || !audit_errors.is_empty() || truncated;
     let details = json!({
         "connected_project_count": connected_project_count,
@@ -1004,15 +1045,27 @@ fn inspect_integration_intent_drift(
         "max_findings": MAX_INTENT_DRIFT_FINDINGS,
     });
     if has_warning {
-        push_unique_diagnostic_action(
-            actions,
-            DiagnosticAction {
-                id: "repair_integration_intent_drift".to_owned(),
-                instruction: "Rerun init with the policy-selected host, intent, and profile so Volicord can safely retire only its owned stale host or intent projection."
-                    .to_owned(),
-                command: first_repair_command,
-            },
-        );
+        if has_invalid_pending_cleanup_marker {
+            push_unique_diagnostic_action(
+                actions,
+                DiagnosticAction {
+                    id: "restore_invalid_pending_cleanup_registry".to_owned(),
+                    instruction: "The Store-owned pending cleanup marker is malformed, so init will not mutate it. Restore registry.sqlite from a known-good Runtime Home backup or obtain maintainer-assisted Registry repair before rerunning init."
+                        .to_owned(),
+                    command: None,
+                },
+            );
+        } else {
+            push_unique_diagnostic_action(
+                actions,
+                DiagnosticAction {
+                    id: "repair_integration_intent_drift".to_owned(),
+                    instruction: "Rerun init with the policy-selected host, intent, and profile so Volicord can safely retire only its owned stale host or intent projection."
+                        .to_owned(),
+                    command: first_repair_command,
+                },
+            );
+        }
         checks.push(
             DiagnosticCheck::warning(
                 "integration_intent_drift",
@@ -3309,7 +3362,7 @@ mod tests {
             format!("#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n"),
         )?;
 
-        let snapshot = cross_host_snapshot(&repo.path);
+        let mut snapshot = cross_host_snapshot(&repo.path);
         let mut checks = Vec::new();
         let mut actions = Vec::new();
         inspect_integration_intent_drift(&snapshot, &mut checks, &mut actions);
@@ -3339,6 +3392,120 @@ mod tests {
             finding["kind"] == "opposite_host_projection_present"
                 && finding["projection_host"] == "claude-code"
                 && finding["path"] == ".claude/hooks/volicord-pre-tool.sh"
+        }));
+        assert!(actions
+            .iter()
+            .any(|action| action.id == "repair_integration_intent_drift"));
+
+        snapshot.agent_connections[1].metadata_json = "{}".to_owned();
+        snapshot.agent_connections[1].enabled = true;
+        snapshot.agent_connections[0].enabled = false;
+        snapshot.agent_connections[0].metadata_json = serde_json::to_string(&json!({
+            "pending_host_cleanup": {
+                "project_id": "project-public",
+                "replacement_connection_id": "conn-other",
+                "unexpected": true
+            }
+        }))?;
+        let mut current_policy_checks = Vec::new();
+        let mut current_policy_actions = Vec::new();
+        inspect_integration_intent_drift(
+            &snapshot,
+            &mut current_policy_checks,
+            &mut current_policy_actions,
+        );
+        let current_policy_check = current_policy_checks
+            .iter()
+            .find(|check| check.id == "integration_intent_drift")
+            .expect("current-policy invalid marker check");
+        assert!(current_policy_check
+            .details
+            .as_ref()
+            .and_then(|details| details["findings"].as_array())
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["kind"] == "invalid_pending_host_cleanup_marker"
+                    && finding["connection_id"] == "conn-codex"
+            })));
+        assert!(current_policy_actions
+            .iter()
+            .any(|action| action.id == "restore_invalid_pending_cleanup_registry"));
+        Ok(())
+    }
+
+    #[test]
+    fn intent_drift_reports_disabled_membership_as_pending_host_cleanup(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = TestDirectory::new("pending-host-cleanup")?;
+        write_record_policy(&repo.path, "codex", "shared", "conn-codex", "guard-codex")?;
+        let mut snapshot = cross_host_snapshot(&repo.path);
+        snapshot.agent_connections[1].enabled = false;
+        let mut unmarked_checks = Vec::new();
+        let mut unmarked_actions = Vec::new();
+        inspect_integration_intent_drift(&snapshot, &mut unmarked_checks, &mut unmarked_actions);
+        let unmarked = unmarked_checks
+            .iter()
+            .find(|check| check.id == "integration_intent_drift")
+            .expect("unmarked intent drift check");
+        assert_eq!(unmarked.status, "passed");
+        assert!(unmarked_actions.is_empty());
+
+        snapshot.agent_connections[1].metadata_json = serde_json::to_string(&json!({
+            "pending_host_cleanup": {
+                "project_id": "project-public",
+                "replacement_connection_id": "conn-older-request",
+                "unexpected": true
+            }
+        }))?;
+        let mut inexact_checks = Vec::new();
+        let mut inexact_actions = Vec::new();
+        inspect_integration_intent_drift(&snapshot, &mut inexact_checks, &mut inexact_actions);
+        let inexact = inexact_checks
+            .iter()
+            .find(|check| check.id == "integration_intent_drift")
+            .expect("inexact intent drift check");
+        assert_eq!(inexact.status, "warning");
+        assert!(inexact
+            .details
+            .as_ref()
+            .and_then(|details| details["findings"].as_array())
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["kind"] == "invalid_pending_host_cleanup_marker"
+                    && finding["connection_id"] == "conn-claude"
+            })));
+        assert!(inexact_actions.iter().any(|action| action.id
+            == "restore_invalid_pending_cleanup_registry"
+            && action.command.is_none()));
+        assert!(!inexact_actions
+            .iter()
+            .any(|action| action.id == "repair_integration_intent_drift"));
+
+        snapshot.agent_connections[1].metadata_json = serde_json::to_string(&json!({
+            "pending_host_cleanup": {
+                "project_id": "project-public",
+                "replacement_connection_id": "conn-older-request"
+            }
+        }))?;
+        let mut checks = Vec::new();
+        let mut actions = Vec::new();
+
+        inspect_integration_intent_drift(&snapshot, &mut checks, &mut actions);
+
+        let check = checks
+            .iter()
+            .find(|check| check.id == "integration_intent_drift")
+            .expect("intent drift check");
+        assert_eq!(check.status, "warning");
+        let findings = check
+            .details
+            .as_ref()
+            .and_then(|details| details.get("findings"))
+            .and_then(Value::as_array)
+            .expect("intent drift findings");
+        assert!(findings.iter().any(|finding| {
+            finding["kind"] == "pending_host_cleanup"
+                && finding["connection_id"] == "conn-claude"
+                && finding["recorded_host"] == "claude-code"
+                && finding["pending_replacement_connection_id"] == "conn-older-request"
         }));
         assert!(actions
             .iter()

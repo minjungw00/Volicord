@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
@@ -8,6 +11,10 @@ use crate::{
     bootstrap::{
         raw_project_record_from_conn, validate_current_project_registration, validate_project_id,
         ProjectRecord,
+    },
+    guards::{
+        guard_installation_from_conn, upsert_guard_installation_in_transaction,
+        GuardInstallationRecord, GuardInstallationUpsert,
     },
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
@@ -52,6 +59,8 @@ pub const VERIFIED_STATUS_COMPLETE: &str = "complete";
 pub const VERIFIED_STATUS_ACTION_REQUIRED: &str = "action_required";
 /// Agent Connection verification failed.
 pub const VERIFIED_STATUS_FAILED: &str = "failed";
+
+const PENDING_HOST_CLEANUP_METADATA_KEY: &str = "pending_host_cleanup";
 
 /// Agent Connection creation or compatible update input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,6 +137,53 @@ pub struct ConnectionProjectRegistration {
     pub project_id: String,
 }
 
+/// One superseded connection/project pair retired by an atomic activation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupersededConnectionProject {
+    pub connection_internal_id: String,
+    pub project_id: String,
+}
+
+/// Transactionally classified Registry state for a staged connection migration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StagedConnectionMigrationState {
+    /// The requested project membership is still inactive and may be staged.
+    Staged,
+    /// Another attempt completed the Registry switch and host cleanup may resume.
+    CleanupResume { pending_connection_ids: Vec<String> },
+}
+
+/// Failure while completing durable host-cleanup inventory after a connection
+/// switch.
+#[derive(Debug)]
+pub enum PendingHostCleanupError<E> {
+    Store(StoreError),
+    Host(E),
+}
+
+impl<E> From<StoreError> for PendingHostCleanupError<E> {
+    fn from(error: StoreError) -> Self {
+        Self::Store(error)
+    }
+}
+
+impl<E> From<rusqlite::Error> for PendingHostCleanupError<E> {
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Store(StoreError::from(error))
+    }
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for PendingHostCleanupError<E> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Store(error) => error.fmt(formatter),
+            Self::Host(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for PendingHostCleanupError<E> {}
+
 /// Explicit project allowlist row with current project registration facts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionProjectRecord {
@@ -146,6 +202,141 @@ pub struct AgentConnectionProjectAccess {
     pub connection_enabled: bool,
     pub project_allowed: bool,
     pub project: Option<ProjectRecord>,
+}
+
+/// Returns whether connection metadata records one exact pending host cleanup.
+pub fn connection_metadata_has_pending_host_cleanup(
+    metadata_json: &str,
+    project_id: &str,
+    replacement_connection_id: &str,
+) -> bool {
+    connection_metadata_pending_host_cleanup_replacement(metadata_json, project_id).as_deref()
+        == Some(replacement_connection_id)
+}
+
+/// Returns the replacement connection named by valid pending host-cleanup
+/// metadata for one project.
+pub fn connection_metadata_pending_host_cleanup_replacement(
+    metadata_json: &str,
+    project_id: &str,
+) -> Option<String> {
+    serde_json::from_str::<Value>(metadata_json)
+        .ok()
+        .and_then(|metadata| metadata.get(PENDING_HOST_CLEANUP_METADATA_KEY).cloned())
+        .and_then(|pending| {
+            let pending = pending.as_object()?;
+            if pending.len() != 2
+                || !pending.contains_key("project_id")
+                || !pending.contains_key("replacement_connection_id")
+                || pending["project_id"].as_str() != Some(project_id)
+            {
+                return None;
+            }
+            pending["replacement_connection_id"]
+                .as_str()
+                .filter(|replacement| !replacement.is_empty())
+                .map(str::to_owned)
+        })
+}
+
+/// Returns whether connection metadata records pending host cleanup for one
+/// project, irrespective of the currently recorded replacement connection.
+pub fn connection_metadata_has_pending_host_cleanup_for_project(
+    metadata_json: &str,
+    project_id: &str,
+) -> bool {
+    connection_metadata_pending_host_cleanup_replacement(metadata_json, project_id).is_some()
+}
+
+/// Returns whether connection metadata contains the Store-owned cleanup key,
+/// including a malformed value that must not be treated as resumable cleanup.
+pub fn connection_metadata_contains_pending_host_cleanup_key(metadata_json: &str) -> bool {
+    serde_json::from_str::<Value>(metadata_json)
+        .ok()
+        .and_then(|metadata| metadata.as_object().cloned())
+        .is_some_and(|metadata| metadata.contains_key(PENDING_HOST_CLEANUP_METADATA_KEY))
+}
+
+fn reject_pending_host_cleanup_metadata(metadata_json: &str) -> StoreResult<()> {
+    if connection_metadata_contains_pending_host_cleanup_key(metadata_json) {
+        Err(StoreError::InvalidInput {
+            detail: format!(
+                "agent_connections.metadata_json reserves {PENDING_HOST_CLEANUP_METADATA_KEY} for Store-owned migration recovery"
+            ),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn reject_generic_pending_host_cleanup_mutation(
+    connection: &AgentConnectionRecord,
+) -> StoreResult<()> {
+    if connection_metadata_contains_pending_host_cleanup_key(&connection.metadata_json) {
+        Err(StoreError::Conflict {
+            entity: "agent_connection",
+            id: connection.connection_internal_id.clone(),
+            detail: "pending host cleanup must be completed by the migration recovery path"
+                .to_owned(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn require_rebasable_pending_host_cleanup_metadata(
+    connection: &AgentConnectionRecord,
+    project_id: &str,
+) -> StoreResult<()> {
+    if !connection_metadata_contains_pending_host_cleanup_key(&connection.metadata_json)
+        || connection_metadata_has_pending_host_cleanup_for_project(
+            &connection.metadata_json,
+            project_id,
+        )
+    {
+        return Ok(());
+    }
+
+    Err(StoreError::Conflict {
+        entity: "agent_connection",
+        id: connection.connection_internal_id.clone(),
+        detail: "pending host cleanup must be an exact valid marker for the migration project before it can be rebound"
+            .to_owned(),
+    })
+}
+
+fn metadata_with_pending_host_cleanup(
+    metadata_json: &str,
+    project_id: &str,
+    replacement_connection_id: &str,
+) -> StoreResult<String> {
+    let mut metadata = serde_json::from_str::<Value>(metadata_json).map_err(|_| {
+        StoreError::corrupt_stored_json("registry", "agent_connections.metadata_json")
+    })?;
+    let object = metadata.as_object_mut().ok_or_else(|| {
+        StoreError::corrupt_stored_json("registry", "agent_connections.metadata_json")
+    })?;
+    object.insert(
+        PENDING_HOST_CLEANUP_METADATA_KEY.to_owned(),
+        serde_json::json!({
+            "project_id": project_id,
+            "replacement_connection_id": replacement_connection_id,
+        }),
+    );
+    serde_json::to_string(&metadata)
+        .map_err(|_| StoreError::corrupt_stored_json("registry", "agent_connections.metadata_json"))
+}
+
+fn metadata_without_pending_host_cleanup(metadata_json: &str) -> StoreResult<String> {
+    let mut metadata = serde_json::from_str::<Value>(metadata_json).map_err(|_| {
+        StoreError::corrupt_stored_json("registry", "agent_connections.metadata_json")
+    })?;
+    let object = metadata.as_object_mut().ok_or_else(|| {
+        StoreError::corrupt_stored_json("registry", "agent_connections.metadata_json")
+    })?;
+    object.remove(PENDING_HOST_CLEANUP_METADATA_KEY);
+    serde_json::to_string(&metadata)
+        .map_err(|_| StoreError::corrupt_stored_json("registry", "agent_connections.metadata_json"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +382,41 @@ pub fn ensure_agent_connection(
             last_user_actions_json: registration.last_user_actions_json,
             metadata_json: registration.metadata_json,
         },
+        false,
+    )
+}
+
+/// Registers or updates a migration target while preserving a concurrently
+/// enabled existing connection. New targets remain disabled until activation.
+pub fn ensure_staged_agent_connection(
+    runtime_home: impl AsRef<Path>,
+    registration: AgentConnectionRegistration,
+) -> StoreResult<AgentConnectionRecord> {
+    validate_agent_connection_registration(&registration)?;
+    if registration.enabled {
+        return Err(StoreError::InvalidInput {
+            detail: "staged Agent Connection registration must request enabled=false".to_owned(),
+        });
+    }
+    write_agent_connection(
+        runtime_home,
+        AgentConnectionWriteRegistration {
+            connection_internal_id: registration.connection_internal_id,
+            host_kind: registration.host_kind,
+            intent: registration.intent,
+            host_scope: registration.host_scope,
+            project_internal_id: None,
+            server_name: registration.server_name,
+            config_target: registration.config_target,
+            mode: registration.mode,
+            enabled: false,
+            managed_fingerprint: registration.managed_fingerprint,
+            last_verification_status: registration.last_verification_status,
+            last_verification_report_json: registration.last_verification_report_json,
+            last_user_actions_json: registration.last_user_actions_json,
+            metadata_json: registration.metadata_json,
+        },
+        true,
     )
 }
 
@@ -242,6 +468,7 @@ pub fn ensure_agent_connection_for_target(
             last_user_actions_json: registration.last_user_actions_json,
             metadata_json: registration.metadata_json,
         },
+        false,
     )
 }
 
@@ -283,6 +510,7 @@ pub fn agent_connection_record_for_target(
 fn write_agent_connection(
     runtime_home: impl AsRef<Path>,
     registration: AgentConnectionWriteRegistration,
+    preserve_existing_enabled: bool,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_agent_connection_write_registration(&registration)?;
 
@@ -306,6 +534,7 @@ fn write_agent_connection(
     if let Some(existing) =
         agent_connection_record_from_conn(&tx, &registration.connection_internal_id)?
     {
+        reject_generic_pending_host_cleanup_mutation(&existing)?;
         if !connection_target_is_compatible(&existing, &registration) {
             return Err(conflict(
                 "agent_connection",
@@ -313,6 +542,7 @@ fn write_agent_connection(
                 "connection_internal_id is already bound to a different host target",
             ));
         }
+        let enabled = registration.enabled || (preserve_existing_enabled && existing.enabled);
         tx.execute(
             "UPDATE agent_connections
                 SET mode = ?2,
@@ -328,7 +558,7 @@ fn write_agent_connection(
             params![
                 registration.connection_internal_id,
                 registration.mode,
-                enabled_as_i64(registration.enabled),
+                enabled_as_i64(enabled),
                 registration.managed_fingerprint,
                 registration.last_verification_status,
                 registration.last_verification_report_json,
@@ -393,14 +623,13 @@ fn write_agent_connection(
             ],
         )?;
     }
-    tx.commit()?;
-
-    agent_connection_record_from_conn(&conn, &registration.connection_internal_id)?.ok_or_else(
-        || StoreError::NotFound {
+    let connection = agent_connection_record_from_conn(&tx, &registration.connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
             entity: "agent_connection",
-            id: registration.connection_internal_id,
-        },
-    )
+            id: registration.connection_internal_id.clone(),
+        })?;
+    tx.commit()?;
+    Ok(connection)
 }
 
 /// Reads one Agent Connection.
@@ -499,6 +728,8 @@ pub fn set_connection_enabled(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
+    let connection = require_agent_connection(&tx, connection_internal_id)?;
+    reject_generic_pending_host_cleanup_mutation(&connection)?;
     let changed = tx.execute(
         "UPDATE agent_connections
             SET enabled = ?2,
@@ -699,6 +930,7 @@ pub fn add_connection_project(
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, &registration.connection_internal_id)?;
+    reject_generic_pending_host_cleanup_mutation(&connection)?;
     let project =
         require_current_project_registration(&tx, &runtime_home, &registration.project_id)?;
     tx.execute(
@@ -747,6 +979,7 @@ pub fn remove_connection_project(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let connection = require_agent_connection(&tx, connection_internal_id)?;
+    reject_generic_pending_host_cleanup_mutation(&connection)?;
     let Some(project) = raw_project_record_from_conn(&tx, project_id)? else {
         tx.commit()?;
         return Ok(false);
@@ -762,6 +995,465 @@ pub fn remove_connection_project(
     )?;
     tx.commit()?;
     Ok(changed > 0)
+}
+
+/// Adds one staged project binding and guard installation, retires or disables
+/// superseded bindings, and activates the requested connection in one registry
+/// transaction. A disabled last-project binding remains as durable pending
+/// host-cleanup inventory until the caller completes that cleanup.
+pub fn staged_connection_migration_state(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+    project_id: &str,
+    expected_superseded: &[SupersededConnectionProject],
+) -> StoreResult<(AgentConnectionRecord, StagedConnectionMigrationState)> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_project_id(project_id)?;
+    let expected_ids = expected_superseded
+        .iter()
+        .map(|superseded| {
+            validate_identifier(
+                "superseded.connection_internal_id",
+                &superseded.connection_internal_id,
+            )?;
+            validate_project_id(&superseded.project_id)?;
+            if superseded.project_id != project_id {
+                return Err(StoreError::InvalidInput {
+                    detail: "superseded project must match the staged migration project".to_owned(),
+                });
+            }
+            Ok(superseded.connection_internal_id.clone())
+        })
+        .collect::<StoreResult<BTreeSet<_>>>()?;
+    if expected_ids.len() != expected_superseded.len() || expected_ids.is_empty() {
+        return Err(StoreError::InvalidInput {
+            detail: "staged migration requires unique superseded connection bindings".to_owned(),
+        });
+    }
+
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    let mut conn = open_registry_database(&registry_path)?;
+    let tx = begin_immediate_transaction(&mut conn)?;
+    require_runtime_home(&tx, &registry_path)?;
+    let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
+    let requested = require_agent_connection(&tx, connection_internal_id)?;
+    reject_generic_pending_host_cleanup_mutation(&requested)?;
+    let requested_membership_count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM connection_projects
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project.project_internal_id],
+        |row| row.get(0),
+    )?;
+    if requested_membership_count == 0 {
+        tx.commit()?;
+        return Ok((requested, StagedConnectionMigrationState::Staged));
+    }
+    if requested_membership_count != 1 || !requested.enabled {
+        return Err(StoreError::Conflict {
+            entity: "connection_project",
+            id: format!("{connection_internal_id}/{project_id}"),
+            detail: "requested migration membership is active without a resumable Registry switch"
+                .to_owned(),
+        });
+    }
+
+    let mut stmt = tx.prepare(
+        "SELECT ac.connection_internal_id, ac.enabled, ac.metadata_json
+           FROM connection_projects AS cp
+           JOIN agent_connections AS ac
+             ON ac.connection_internal_id = cp.connection_internal_id
+          WHERE cp.project_internal_id = ?1
+            AND ac.connection_internal_id <> ?2
+            AND ac.host_kind IN ('codex', 'claude_code')
+            AND ac.intent IN ('personal', 'shared')
+          ORDER BY ac.connection_internal_id",
+    )?;
+    let rows = stmt.query_map(
+        params![project.project_internal_id, connection_internal_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, bool>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
+    let mut pending_ids = BTreeSet::new();
+    for row in rows {
+        let (candidate_id, enabled, metadata_json) = row?;
+        if connection_metadata_has_pending_host_cleanup(
+            &metadata_json,
+            project_id,
+            connection_internal_id,
+        ) {
+            if enabled {
+                return Err(StoreError::Conflict {
+                    entity: "agent_connection",
+                    id: candidate_id,
+                    detail: "pending host cleanup connection became enabled".to_owned(),
+                });
+            }
+            pending_ids.insert(candidate_id);
+        } else if enabled
+            || connection_metadata_has_pending_host_cleanup_for_project(&metadata_json, project_id)
+        {
+            return Err(StoreError::Conflict {
+                entity: "connection_project",
+                id: project_id.to_owned(),
+                detail: "active migration inventory does not match the requested replacement"
+                    .to_owned(),
+            });
+        }
+    }
+    drop(stmt);
+    if pending_ids != expected_ids {
+        return Err(StoreError::Conflict {
+            entity: "connection_project",
+            id: project_id.to_owned(),
+            detail: "requested migration membership changed while staging was in progress"
+                .to_owned(),
+        });
+    }
+    let pending_connection_ids = pending_ids.into_iter().collect();
+    tx.commit()?;
+    Ok((
+        requested,
+        StagedConnectionMigrationState::CleanupResume {
+            pending_connection_ids,
+        },
+    ))
+}
+
+pub fn activate_staged_connection(
+    runtime_home: impl AsRef<Path>,
+    connection_internal_id: &str,
+    project_id: &str,
+    superseded: &[SupersededConnectionProject],
+    guard_upsert: GuardInstallationUpsert,
+) -> StoreResult<(AgentConnectionRecord, GuardInstallationRecord, Vec<String>)> {
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_project_id(project_id)?;
+    if guard_upsert.connection_internal_id != connection_internal_id
+        || guard_upsert.project_id.as_deref() != Some(project_id)
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "the staged guard installation must match the requested connection and project"
+                .to_owned(),
+        });
+    }
+    for retired in superseded {
+        validate_identifier(
+            "superseded.connection_internal_id",
+            &retired.connection_internal_id,
+        )?;
+        validate_project_id(&retired.project_id)?;
+        if retired.connection_internal_id == connection_internal_id {
+            return Err(StoreError::InvalidInput {
+                detail: "the staged connection cannot supersede itself".to_owned(),
+            });
+        }
+        if retired.project_id != project_id {
+            return Err(StoreError::InvalidInput {
+                detail: "every superseded binding must belong to the requested project".to_owned(),
+            });
+        }
+    }
+
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    let mut conn = open_registry_database(&registry_path)?;
+    let tx = begin_immediate_transaction(&mut conn)?;
+    require_runtime_home(&tx, &registry_path)?;
+    let staged_connection = require_agent_connection(&tx, connection_internal_id)?;
+    reject_generic_pending_host_cleanup_mutation(&staged_connection)?;
+    if guard_upsert.host_kind != staged_connection.host_kind {
+        return Err(StoreError::InvalidInput {
+            detail: "the staged guard installation host must match the requested connection"
+                .to_owned(),
+        });
+    }
+    let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
+    let expected_superseded = superseded
+        .iter()
+        .map(|retired| retired.connection_internal_id.clone())
+        .collect::<BTreeSet<_>>();
+    if expected_superseded.len() != superseded.len() {
+        return Err(StoreError::InvalidInput {
+            detail: "superseded connection bindings must not be duplicated".to_owned(),
+        });
+    }
+    let mut current_stmt = tx.prepare(
+        "SELECT ac.connection_internal_id, ac.enabled, ac.metadata_json
+           FROM connection_projects AS cp
+           JOIN agent_connections AS ac
+             ON ac.connection_internal_id = cp.connection_internal_id
+          WHERE cp.project_internal_id = ?1
+            AND ac.connection_internal_id <> ?2
+            AND ac.host_kind IN ('codex', 'claude_code')
+            AND ac.intent IN ('personal', 'shared')
+          ORDER BY ac.connection_internal_id",
+    )?;
+    let current_rows = current_stmt.query_map(
+        params![project.project_internal_id, connection_internal_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, bool>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
+    let mut current_superseded = BTreeSet::new();
+    for row in current_rows {
+        let (current_connection_id, enabled, metadata_json) = row?;
+        if enabled
+            || expected_superseded.contains(&current_connection_id)
+            || connection_metadata_has_pending_host_cleanup_for_project(&metadata_json, project_id)
+        {
+            current_superseded.insert(current_connection_id);
+        }
+    }
+    drop(current_stmt);
+    if current_superseded != expected_superseded {
+        return Err(StoreError::Conflict {
+            entity: "connection_project",
+            id: project_id.to_owned(),
+            detail: "the supported integration membership inventory changed while the migration was staged"
+                .to_owned(),
+        });
+    }
+    let target_membership_count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM connection_projects
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project.project_internal_id],
+        |row| row.get(0),
+    )?;
+    if target_membership_count != 0 {
+        return Err(StoreError::InvalidInput {
+            detail: "the requested project membership must remain inactive while staged".to_owned(),
+        });
+    }
+    tx.execute(
+        "INSERT INTO connection_projects (
+            connection_internal_id,
+            project_internal_id,
+            created_at
+        ) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        params![
+            staged_connection.connection_internal_id,
+            project.project_internal_id
+        ],
+    )?;
+
+    let mut pending_host_cleanup_connections = Vec::new();
+    for retired in superseded {
+        let retired_connection = require_agent_connection(&tx, &retired.connection_internal_id)?;
+        require_rebasable_pending_host_cleanup_metadata(&retired_connection, project_id)?;
+        let project_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM connection_projects WHERE connection_internal_id = ?1",
+            [&retired_connection.connection_internal_id],
+            |row| row.get(0),
+        )?;
+        if project_count == 1 {
+            let metadata_json = metadata_with_pending_host_cleanup(
+                &retired_connection.metadata_json,
+                project_id,
+                connection_internal_id,
+            )?;
+            tx.execute(
+                "UPDATE agent_connections
+                    SET enabled = 0,
+                        metadata_json = ?2,
+                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                  WHERE connection_internal_id = ?1",
+                params![retired_connection.connection_internal_id, metadata_json],
+            )?;
+            pending_host_cleanup_connections
+                .push(retired_connection.connection_internal_id.clone());
+        } else if connection_metadata_has_pending_host_cleanup_for_project(
+            &retired_connection.metadata_json,
+            project_id,
+        ) {
+            return Err(StoreError::Conflict {
+                entity: "agent_connection",
+                id: retired_connection.connection_internal_id,
+                detail: "pending host cleanup gained another project membership".to_owned(),
+            });
+        } else if let Some(project) = raw_project_record_from_conn(&tx, &retired.project_id)? {
+            tx.execute(
+                "DELETE FROM connection_projects
+                  WHERE connection_internal_id = ?1
+                    AND project_internal_id = ?2",
+                params![
+                    retired_connection.connection_internal_id,
+                    project.project_internal_id
+                ],
+            )?;
+        }
+    }
+
+    tx.execute(
+        "UPDATE agent_connections
+            SET enabled = 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE connection_internal_id = ?1",
+        [connection_internal_id],
+    )?;
+    upsert_guard_installation_in_transaction(&tx, &guard_upsert)?;
+    let connection =
+        agent_connection_record_from_conn(&tx, connection_internal_id)?.ok_or_else(|| {
+            StoreError::NotFound {
+                entity: "agent_connection",
+                id: connection_internal_id.to_owned(),
+            }
+        })?;
+    let installation = guard_installation_from_conn(&tx, &guard_upsert.guard_installation_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "guard_installation",
+            id: guard_upsert.guard_installation_id.clone(),
+        })?;
+    tx.commit()?;
+    Ok((connection, installation, pending_host_cleanup_connections))
+}
+
+/// Removes durable disabled memberships after caller-owned host cleanup.
+///
+/// The callback runs after an initial durable-state validation and before the
+/// final Registry transaction. Generic connection APIs cannot mutate marked
+/// rows, and the final transaction revalidates every marker before removing it.
+/// External callback effects cannot be rolled back if the later Registry
+/// commit fails; the retained disabled memberships make cleanup retryable.
+pub fn complete_pending_host_cleanup<E>(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    replacement_connection_id: &str,
+    pending_connection_ids: &[String],
+    cleanup_host_configuration: impl FnOnce(&[String]) -> Result<(), E>,
+) -> Result<(), PendingHostCleanupError<E>> {
+    validate_project_id(project_id)?;
+    validate_identifier(
+        "replacement_connection_internal_id",
+        replacement_connection_id,
+    )?;
+    let unique_ids = pending_connection_ids.iter().collect::<BTreeSet<_>>();
+    if unique_ids.len() != pending_connection_ids.len() {
+        return Err(StoreError::InvalidInput {
+            detail: "pending host-cleanup connection ids must not be duplicated".to_owned(),
+        }
+        .into());
+    }
+    for connection_id in pending_connection_ids {
+        validate_identifier("pending.connection_internal_id", connection_id)?;
+    }
+
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let registry_path = registry_db_path(&runtime_home);
+    validate_pending_host_cleanup_inventory(
+        &runtime_home,
+        &registry_path,
+        project_id,
+        replacement_connection_id,
+        pending_connection_ids,
+    )?;
+    cleanup_host_configuration(pending_connection_ids).map_err(PendingHostCleanupError::Host)?;
+
+    let mut conn = open_registry_database(&registry_path)?;
+    let tx = begin_immediate_transaction(&mut conn)?;
+    require_runtime_home(&tx, &registry_path)?;
+    let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
+    validate_pending_host_cleanup_inventory_in_transaction(
+        &tx,
+        &project,
+        project_id,
+        replacement_connection_id,
+        pending_connection_ids,
+    )?;
+    for connection_id in pending_connection_ids {
+        tx.execute(
+            "DELETE FROM connection_projects
+              WHERE connection_internal_id = ?1
+                AND project_internal_id = ?2",
+            params![connection_id, project.project_internal_id],
+        )?;
+        let connection = require_agent_connection(&tx, connection_id)?;
+        let metadata_json = metadata_without_pending_host_cleanup(&connection.metadata_json)?;
+        tx.execute(
+            "UPDATE agent_connections
+                SET metadata_json = ?2,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              WHERE connection_internal_id = ?1",
+            params![connection_id, metadata_json],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+fn validate_pending_host_cleanup_inventory<E>(
+    runtime_home: &Path,
+    registry_path: &Path,
+    project_id: &str,
+    replacement_connection_id: &str,
+    pending_connection_ids: &[String],
+) -> Result<(), PendingHostCleanupError<E>> {
+    let mut conn = open_registry_database(registry_path)?;
+    let tx = begin_immediate_transaction(&mut conn)?;
+    require_runtime_home(&tx, registry_path)?;
+    let project = require_current_project_registration(&tx, runtime_home, project_id)?;
+    validate_pending_host_cleanup_inventory_in_transaction(
+        &tx,
+        &project,
+        project_id,
+        replacement_connection_id,
+        pending_connection_ids,
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn validate_pending_host_cleanup_inventory_in_transaction<E>(
+    tx: &Connection,
+    project: &ProjectRecord,
+    project_id: &str,
+    replacement_connection_id: &str,
+    pending_connection_ids: &[String],
+) -> Result<(), PendingHostCleanupError<E>> {
+    for connection_id in pending_connection_ids {
+        let connection = require_agent_connection(tx, connection_id)?;
+        let total_project_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM connection_projects WHERE connection_internal_id = ?1",
+            [connection_id],
+            |row| row.get(0),
+        )?;
+        let target_project_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM connection_projects
+              WHERE connection_internal_id = ?1
+                AND project_internal_id = ?2",
+            params![connection_id, project.project_internal_id],
+            |row| row.get(0),
+        )?;
+        if connection.enabled
+            || total_project_count != 1
+            || target_project_count != 1
+            || !connection_metadata_has_pending_host_cleanup(
+                &connection.metadata_json,
+                project_id,
+                replacement_connection_id,
+            )
+        {
+            return Err(StoreError::Conflict {
+                entity: "connection_project",
+                id: format!("{connection_id}/{project_id}"),
+                detail: "pending host cleanup no longer has one disabled retained membership"
+                    .to_owned(),
+            }
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// Lists the explicitly allowed projects for one Agent Connection.
@@ -995,7 +1687,8 @@ fn validate_agent_connection_registration(
     validate_json_object(
         "agent_connections.metadata_json",
         &registration.metadata_json,
-    )
+    )?;
+    reject_pending_host_cleanup_metadata(&registration.metadata_json)
 }
 
 fn validate_agent_connection_natural_key_registration(
@@ -1022,7 +1715,8 @@ fn validate_agent_connection_natural_key_registration(
     validate_json_object(
         "agent_connections.metadata_json",
         &registration.metadata_json,
-    )
+    )?;
+    reject_pending_host_cleanup_metadata(&registration.metadata_json)
 }
 
 fn validate_agent_connection_natural_key(key: &AgentConnectionNaturalKey) -> StoreResult<()> {
@@ -1063,7 +1757,8 @@ fn validate_agent_connection_write_registration(
     validate_json_object(
         "agent_connections.metadata_json",
         &registration.metadata_json,
-    )
+    )?;
+    reject_pending_host_cleanup_metadata(&registration.metadata_json)
 }
 
 fn validate_connection_project_registration(
@@ -1446,6 +2141,8 @@ mod tests {
     };
 
     const PROJECT_ID: &str = "project_a";
+    const PRIOR_OTHER_PROJECT_ID: &str = "project_b";
+    const TARGET_OTHER_PROJECT_ID: &str = "project_c";
 
     #[test]
     fn agent_connection_registration_updates_and_lists() -> Result<(), Box<dyn Error>> {
@@ -1491,6 +2188,52 @@ mod tests {
         .expect_err("duplicate target should be rejected");
 
         assert!(matches!(error, StoreError::Conflict { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn staged_registration_preserves_a_concurrently_enabled_target() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-staged-upsert-race")?;
+        let staged = ensure_staged_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                enabled: false,
+                ..connection("conn_staged_race")
+            },
+        )?;
+        assert!(!staged.enabled);
+        set_connection_enabled(fixture.runtime_home.path(), "conn_staged_race", true)?;
+
+        let refreshed = ensure_staged_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                enabled: false,
+                managed_fingerprint: "refreshed-staging-plan".to_owned(),
+                ..connection("conn_staged_race")
+            },
+        )?;
+
+        assert!(refreshed.enabled);
+        assert_eq!(refreshed.managed_fingerprint, "refreshed-staging-plan");
+        Ok(())
+    }
+
+    #[test]
+    fn generic_registration_rejects_store_owned_cleanup_metadata() -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-reserved-cleanup-metadata")?;
+        let error = ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                metadata_json: format!(
+                    r#"{{"{PENDING_HOST_CLEANUP_METADATA_KEY}":{{"project_id":"{PROJECT_ID}","replacement_connection_id":"conn_next"}}}}"#
+                ),
+                ..connection("conn_forged")
+            },
+        )
+        .expect_err("generic registration must not forge Store-owned cleanup state");
+
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
+        assert!(agent_connection_record(fixture.runtime_home.path(), "conn_forged")?.is_none());
         Ok(())
     }
 
@@ -1558,6 +2301,567 @@ mod tests {
     }
 
     #[test]
+    fn intentionally_disabled_membership_is_not_pending_host_cleanup() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = registry_fixture("connection-disabled-not-cleanup")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_disabled"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_disabled".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        set_connection_enabled(fixture.runtime_home.path(), "conn_disabled", false)?;
+
+        let error = complete_pending_host_cleanup(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "conn_replacement",
+            &["conn_disabled".to_owned()],
+            |_| -> Result<(), StoreError> {
+                panic!("unmarked disabled connection must not reach host cleanup")
+            },
+        )
+        .expect_err("an explicit cleanup marker is required");
+
+        assert!(matches!(
+            error,
+            PendingHostCleanupError::Store(StoreError::Conflict { .. })
+        ));
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_disabled")?.len(),
+            1
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn staged_connection_activation_retires_superseded_binding_atomically(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-staged-activation")?;
+        register_project(
+            fixture.runtime_home.path(),
+            ProjectRegistration {
+                project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
+                repo_root: fixture
+                    .runtime_home
+                    .create_product_repo("prior-other-repo")?,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        register_project(
+            fixture.runtime_home.path(),
+            ProjectRegistration {
+                project_id: TARGET_OTHER_PROJECT_ID.to_owned(),
+                repo_root: fixture
+                    .runtime_home
+                    .create_product_repo("target-other-repo")?,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_prior"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
+            },
+        )?;
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                connection_internal_id: "conn_staged".to_owned(),
+                config_target: "/tmp/volicord-test-staged.toml".to_owned(),
+                ..connection("conn_staged")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_staged".to_owned(),
+                project_id: TARGET_OTHER_PROJECT_ID.to_owned(),
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_staged".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let invalid = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+        )
+        .expect_err("an active target membership must not bypass staged activation");
+        assert!(matches!(invalid, StoreError::InvalidInput { .. }));
+        assert!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
+                .expect("prior connection")
+                .enabled
+        );
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            2
+        );
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+        )?;
+        assert!(remove_connection_project(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID
+        )?);
+        let conflict = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_conflicting", "conn_staged", PROJECT_ID),
+        )
+        .expect_err("a guard scope conflict must roll back the registry transition");
+        assert!(matches!(conflict, StoreError::Conflict { .. }));
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            2
+        );
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_staged")?.len(),
+            1
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_conflicting"
+        )?
+        .is_none());
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                connection_internal_id: "conn_competing".to_owned(),
+                config_target: "/tmp/volicord-test-competing.toml".to_owned(),
+                ..connection("conn_competing")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_competing".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let stale_inventory = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+        )
+        .expect_err("a competing project binding must invalidate the staged inventory");
+        assert!(matches!(stale_inventory, StoreError::Conflict { .. }));
+        set_connection_enabled(fixture.runtime_home.path(), "conn_competing", false)?;
+
+        let (activated, installation, disabled_superseded) = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+        )?;
+
+        assert!(activated.enabled);
+        assert!(disabled_superseded.is_empty());
+        assert_eq!(installation.connection_internal_id, "conn_staged");
+        assert_eq!(installation.project_id.as_deref(), Some(PROJECT_ID));
+        let prior = agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
+            .expect("prior connection remains as history");
+        assert!(prior.enabled);
+        let prior_projects = list_connection_projects(fixture.runtime_home.path(), "conn_prior")?;
+        assert_eq!(prior_projects.len(), 1);
+        assert_eq!(prior_projects[0].project_id, PRIOR_OTHER_PROJECT_ID);
+        let staged_projects = list_connection_projects(fixture.runtime_home.path(), "conn_staged")?;
+        assert_eq!(staged_projects.len(), 2);
+        assert!(staged_projects
+            .iter()
+            .any(|membership| membership.project_id == PROJECT_ID));
+        assert!(staged_projects
+            .iter()
+            .any(|membership| membership.project_id == TARGET_OTHER_PROJECT_ID));
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_competing")?.len(),
+            1,
+            "an unrelated disabled alternative must not enter migration inventory"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn staged_connection_activation_rolls_back_flags_on_late_guard_conflict(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-staged-activation-rollback")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_prior"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                connection_internal_id: "conn_staged".to_owned(),
+                config_target: "/tmp/volicord-test-staged-disabled.toml".to_owned(),
+                enabled: false,
+                ..connection("conn_staged")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_staged".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        crate::guards::upsert_guard_installation(
+            fixture.runtime_home.path(),
+            guard_installation_upsert("guard_existing", "conn_staged", PROJECT_ID),
+        )?;
+        assert!(remove_connection_project(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID
+        )?);
+
+        let conflict = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_conflicting", "conn_staged", PROJECT_ID),
+        )
+        .expect_err("the late guard conflict must roll back connection flags and memberships");
+
+        assert!(matches!(conflict, StoreError::Conflict { .. }));
+        assert!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
+                .expect("prior connection")
+                .enabled
+        );
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            1
+        );
+        assert!(
+            !agent_connection_record(fixture.runtime_home.path(), "conn_staged")?
+                .expect("staged connection")
+                .enabled
+        );
+        assert!(list_connection_projects(fixture.runtime_home.path(), "conn_staged")?.is_empty());
+        assert!(
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_existing")?
+                .is_some()
+        );
+        assert!(crate::guards::guard_installation(
+            fixture.runtime_home.path(),
+            "guard_conflicting"
+        )?
+        .is_none());
+        let (_, _, pending_host_cleanup) = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_existing", "conn_staged", PROJECT_ID),
+        )?;
+        assert_eq!(pending_host_cleanup, vec!["conn_prior"]);
+        assert!(
+            !agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
+                .expect("prior connection")
+                .enabled
+        );
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            1
+        );
+        assert!(
+            agent_connection_record(fixture.runtime_home.path(), "conn_staged")?
+                .expect("activated connection")
+                .enabled
+        );
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_staged")?.len(),
+            1
+        );
+        let (resumed_connection, resumed_state) = staged_connection_migration_state(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+        )?;
+        assert!(resumed_connection.enabled);
+        assert_eq!(
+            resumed_state,
+            StagedConnectionMigrationState::CleanupResume {
+                pending_connection_ids: vec!["conn_prior".to_owned()]
+            },
+            "a stale second migration snapshot must classify the completed switch as cleanup resume"
+        );
+
+        register_project(
+            fixture.runtime_home.path(),
+            ProjectRegistration {
+                project_id: TARGET_OTHER_PROJECT_ID.to_owned(),
+                repo_root: fixture
+                    .runtime_home
+                    .create_product_repo("marked-target-other-repo")?,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        let marked_target = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_prior",
+            TARGET_OTHER_PROJECT_ID,
+            &[],
+            guard_installation_upsert("guard_marked_target", "conn_prior", TARGET_OTHER_PROJECT_ID),
+        )
+        .expect_err("a pending-cleanup row must not be activated for another project");
+        assert!(matches!(marked_target, StoreError::Conflict { .. }));
+
+        let generic_update = ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                enabled: false,
+                ..connection("conn_prior")
+            },
+        )
+        .expect_err("generic ensure must not overwrite a cleanup marker");
+        assert!(matches!(generic_update, StoreError::Conflict { .. }));
+        let generic_enable =
+            set_connection_enabled(fixture.runtime_home.path(), "conn_prior", true)
+                .expect_err("generic enable must not bypass cleanup recovery");
+        assert!(matches!(generic_enable, StoreError::Conflict { .. }));
+        let generic_add = add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )
+        .expect_err("generic membership addition must not mutate cleanup inventory");
+        assert!(matches!(generic_add, StoreError::Conflict { .. }));
+        let generic_remove =
+            remove_connection_project(fixture.runtime_home.path(), "conn_prior", PROJECT_ID)
+                .expect_err("generic membership removal must not orphan cleanup inventory");
+        assert!(matches!(generic_remove, StoreError::Conflict { .. }));
+
+        let cleanup_failure = complete_pending_host_cleanup(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "conn_staged",
+            &pending_host_cleanup,
+            |connection_ids| {
+                assert_eq!(connection_ids, ["conn_prior"]);
+                Err(StoreError::Conflict {
+                    entity: "host_configuration",
+                    id: "conn_prior".to_owned(),
+                    detail: "fixture cleanup failure".to_owned(),
+                })
+            },
+        )
+        .expect_err("failed external cleanup must retain durable cleanup inventory");
+        assert!(matches!(
+            cleanup_failure,
+            PendingHostCleanupError::Host(StoreError::Conflict { .. })
+        ));
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            1
+        );
+        let revalidation_failure = complete_pending_host_cleanup(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "conn_staged",
+            &pending_host_cleanup,
+            |_| {
+                let registry_path = registry_db_path(fixture.runtime_home.path());
+                let conn = open_registry_database(&registry_path)?;
+                let prior = require_agent_connection(&conn, "conn_prior")?;
+                let rebased_metadata = metadata_with_pending_host_cleanup(
+                    &prior.metadata_json,
+                    PROJECT_ID,
+                    "conn_newer",
+                )?;
+                conn.execute(
+                    "UPDATE agent_connections SET metadata_json = ?2 WHERE connection_internal_id = ?1",
+                    params!["conn_prior", rebased_metadata],
+                )?;
+                Ok::<(), StoreError>(())
+            },
+        )
+        .expect_err("final cleanup must revalidate a marker changed during host cleanup");
+        assert!(matches!(
+            revalidation_failure,
+            PendingHostCleanupError::Store(StoreError::Conflict { .. })
+        ));
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            1
+        );
+        complete_pending_host_cleanup(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "conn_newer",
+            &pending_host_cleanup,
+            |_| {
+                set_connection_mode(
+                    fixture.runtime_home.path(),
+                    "conn_staged",
+                    CONNECTION_MODE_READ_ONLY,
+                )?;
+                Ok::<(), StoreError>(())
+            },
+        )?;
+        assert!(list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn staged_activation_preserves_a_malformed_pending_cleanup_marker() -> Result<(), Box<dyn Error>>
+    {
+        assert_staged_activation_rejects_non_rebasable_marker(
+            "connection-cleanup-marker-malformed",
+            r#"{"preserved":true,"pending_host_cleanup":{"project_id":"project_a","replacement_connection_id":"conn_old","unexpected":true}}"#,
+        )
+    }
+
+    #[test]
+    fn staged_activation_preserves_a_foreign_project_pending_cleanup_marker(
+    ) -> Result<(), Box<dyn Error>> {
+        assert_staged_activation_rejects_non_rebasable_marker(
+            "connection-cleanup-marker-foreign-project",
+            r#"{"preserved":true,"pending_host_cleanup":{"project_id":"project_b","replacement_connection_id":"conn_foreign"}}"#,
+        )
+    }
+
+    #[test]
+    fn staged_activation_rebases_older_pending_cleanup_to_the_new_replacement(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture("connection-cleanup-marker-chain")?;
+        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_prior"))?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        for (connection_id, target) in [
+            ("conn_middle", "/tmp/volicord-test-middle.toml"),
+            ("conn_next", "/tmp/volicord-test-next.toml"),
+        ] {
+            ensure_agent_connection(
+                fixture.runtime_home.path(),
+                AgentConnectionRegistration {
+                    connection_internal_id: connection_id.to_owned(),
+                    config_target: target.to_owned(),
+                    enabled: false,
+                    ..connection(connection_id)
+                },
+            )?;
+        }
+        let (_, _, first_pending) = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_middle",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_middle", "conn_middle", PROJECT_ID),
+        )?;
+        assert_eq!(first_pending, ["conn_prior"]);
+
+        let (_, _, rebased_pending) = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_next",
+            PROJECT_ID,
+            &[
+                SupersededConnectionProject {
+                    connection_internal_id: "conn_prior".to_owned(),
+                    project_id: PROJECT_ID.to_owned(),
+                },
+                SupersededConnectionProject {
+                    connection_internal_id: "conn_middle".to_owned(),
+                    project_id: PROJECT_ID.to_owned(),
+                },
+            ],
+            guard_installation_upsert("guard_next", "conn_next", PROJECT_ID),
+        )?;
+
+        assert_eq!(
+            rebased_pending.into_iter().collect::<BTreeSet<_>>(),
+            BTreeSet::from(["conn_middle".to_owned(), "conn_prior".to_owned()])
+        );
+        for connection_id in ["conn_prior", "conn_middle"] {
+            let connection = agent_connection_record(fixture.runtime_home.path(), connection_id)?
+                .expect("superseded connection");
+            assert!(!connection.enabled);
+            assert!(connection_metadata_has_pending_host_cleanup(
+                &connection.metadata_json,
+                PROJECT_ID,
+                "conn_next"
+            ));
+        }
+        complete_pending_host_cleanup(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "conn_next",
+            &["conn_prior".to_owned(), "conn_middle".to_owned()],
+            |_| Ok::<(), StoreError>(()),
+        )?;
+        Ok(())
+    }
+
+    #[test]
     fn connection_cannot_be_removed_while_projects_remain() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-remove-blocked")?;
         ensure_agent_connection(fixture.runtime_home.path(), connection("conn_blocked"))?;
@@ -1597,6 +2901,87 @@ mod tests {
         Ok(RegistryFixture { runtime_home })
     }
 
+    fn assert_staged_activation_rejects_non_rebasable_marker(
+        fixture_name: &str,
+        marker_metadata: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = registry_fixture(fixture_name)?;
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                enabled: false,
+                ..connection("conn_prior")
+            },
+        )?;
+        add_connection_project(
+            fixture.runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        ensure_agent_connection(
+            fixture.runtime_home.path(),
+            AgentConnectionRegistration {
+                connection_internal_id: "conn_staged".to_owned(),
+                config_target: "/tmp/volicord-test-non-rebasable-marker.toml".to_owned(),
+                enabled: false,
+                ..connection("conn_staged")
+            },
+        )?;
+
+        let registry_path = registry_db_path(fixture.runtime_home.path());
+        let conn = open_registry_database(&registry_path)?;
+        assert_eq!(
+            conn.execute(
+                "UPDATE agent_connections
+                    SET metadata_json = ?2
+                  WHERE connection_internal_id = ?1",
+                params!["conn_prior", marker_metadata],
+            )?,
+            1
+        );
+        drop(conn);
+
+        let error = activate_staged_connection(
+            fixture.runtime_home.path(),
+            "conn_staged",
+            PROJECT_ID,
+            &[SupersededConnectionProject {
+                connection_internal_id: "conn_prior".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            }],
+            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+        )
+        .expect_err("non-rebasable cleanup metadata must block staged activation");
+
+        assert!(matches!(
+            error,
+            StoreError::Conflict {
+                entity: "agent_connection",
+                ref id,
+                ..
+            } if id == "conn_prior"
+        ));
+        let prior = agent_connection_record(fixture.runtime_home.path(), "conn_prior")?
+            .expect("superseded connection must remain present");
+        assert!(!prior.enabled);
+        assert_eq!(prior.metadata_json, marker_metadata);
+        assert_eq!(
+            list_connection_projects(fixture.runtime_home.path(), "conn_prior")?.len(),
+            1
+        );
+        let staged = agent_connection_record(fixture.runtime_home.path(), "conn_staged")?
+            .expect("staged connection must remain present");
+        assert!(!staged.enabled);
+        assert!(list_connection_projects(fixture.runtime_home.path(), "conn_staged")?.is_empty());
+        assert!(
+            crate::guards::guard_installation(fixture.runtime_home.path(), "guard_staged")?
+                .is_none()
+        );
+        Ok(())
+    }
+
     fn connection(connection_internal_id: &str) -> AgentConnectionRegistration {
         AgentConnectionRegistration {
             connection_internal_id: connection_internal_id.to_owned(),
@@ -1611,6 +2996,31 @@ mod tests {
             last_verification_status: VERIFIED_STATUS_NOT_VERIFIED.to_owned(),
             last_verification_report_json: "{}".to_owned(),
             last_user_actions_json: "[]".to_owned(),
+            metadata_json: "{}".to_owned(),
+        }
+    }
+
+    fn guard_installation_upsert(
+        guard_installation_id: &str,
+        connection_internal_id: &str,
+        project_id: &str,
+    ) -> GuardInstallationUpsert {
+        GuardInstallationUpsert {
+            guard_installation_id: guard_installation_id.to_owned(),
+            connection_internal_id: connection_internal_id.to_owned(),
+            project_id: Some(project_id.to_owned()),
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "record".to_owned(),
+            host_capability_json: "{}".to_owned(),
+            installation_status: "configured".to_owned(),
+            installed_at: None,
+            last_checked_at: "2026-07-13T00:00:00Z".to_owned(),
+            first_seen_at: None,
+            last_seen_at: None,
+            last_seen_phase: None,
+            observed_host_kind: None,
+            observed_policy_hash: None,
+            observed_binary_version: None,
             metadata_json: "{}".to_owned(),
         }
     }

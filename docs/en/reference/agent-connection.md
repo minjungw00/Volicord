@@ -217,6 +217,45 @@ managed host and hook projections and retires the prior Connection Project from
 active use; it does not silently activate multiple host integrations or intents
 against the singleton local policy.
 
+For a host or intent migration that selects a different connection, the
+requested project membership remains inactive while external host and guard
+projections are applied. A newly registered requested connection is disabled;
+an already-enabled requested connection can continue serving its other
+projects but does not gain this project membership yet. A prior connection that
+was eligible when migration began remains eligible until those projection
+steps succeed; an explicitly disabled prior remains disabled. One Registry
+transaction then adds the requested project membership, retires the
+superseded project membership when that connection has other projects, enables
+the requested connection, and records the requested guard installation. For a
+superseded connection's last project, the transaction disables that connection
+but retains its project membership as durable pending host-cleanup inventory. A
+cleanup path revalidates that disabled marker in a short transaction, releases
+the Registry write lock for host retirement, and then uses a final transaction
+to revalidate the marker and remove the membership. Generic Agent Connection
+and Connection Projects mutation APIs cannot forge or mutate this Store-owned
+marker. If an external projection step fails before the switch,
+the requested project membership remains inactive; a later cleanup failure
+leaves the requested connection eligible and the superseded connection disabled
+and discoverable for retry. Init reports either case as a partial-application
+migration result with a stable migration ID and rerun arguments. The eligibility
+switch is atomic; host-file retirement is not rolled back with cleanup storage,
+and the surrounding multi-file and external-host migration is convergent rather
+than one filesystem transaction.
+
+A new host or intent migration includes older valid pending-cleanup markers for
+the same project and rebinds them to its requested replacement before cleanup;
+it does not strand an earlier failed migration. The connection named by the
+validated prior local policy remains part of the superseded inventory even if
+an operator disabled it, while unrelated disabled alternatives are preserved.
+
+The durable marker is the exact `metadata_json.pending_host_cleanup` object on
+the disabled superseded connection, with `project_id` and
+`replacement_connection_id`. A disabled connection that retains membership but
+does not carry a valid marker for that project is an ordinary disabled
+connection and must not enter cleanup-resume or Doctor pending-cleanup
+handling. Doctor reports an older valid replacement marker so a chained or
+interrupted migration remains visible; init rebinds it before cleanup.
+
 A `shared` primary host file contains only a typed repository-discovery
 descriptor: `volicord mcp --stdio --discover-repository --host codex` for
 Codex, or the same command with `--host claude-code` for Claude Code. It must
@@ -430,11 +469,13 @@ The opt-in live Judgment harness in
 [Testing Strategy](../architecture-guide/testing-strategy.md) exercises a
 smaller connection round trip with an installed host: marker Task creation,
 product-decision Judgment creation, a human answer through the host-native MCP
-User Channel, and the resulting Task-state refresh. It requires the stored
-resolution basis `mcp_elicitation_user_channel`; a pending CLI inbox fallback
-is actionable recovery but is not counted as a successful native round trip.
-The harness is ignored by default and is not a portable host-conformance or
-security test.
+User Channel, consumption of the selected option from the default compact
+result, a choice-mapped no-write Run, and the resulting Task-state refresh. It
+requires the stored resolution basis `mcp_elicitation_user_channel`, the stored
+`selected_option_id`, and the latest Run marker to agree. A pending CLI inbox
+fallback is actionable recovery but is not counted as a successful native round
+trip. The harness is ignored by default and is not a portable host-conformance
+or security test.
 
 `volicord.record_user_judgment` has `operation_category=user_only`. It is a
 public Core API method for the User Channel path, but it is not exposed by Agent

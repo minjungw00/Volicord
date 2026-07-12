@@ -387,6 +387,33 @@ Product Repository 하나에서 init은 선택한 지원 호스트 하나와 활
 실패해야 합니다. 이전 Agent Connection은 비활성 이력으로 남을 수 있지만 해당 저장소의
 활성 Connection Project로 남으면 안 됩니다.
 
+요청한 호스트나 의도가 다른 Agent Connection을 사용하면 init은 마이그레이션 동안 요청한
+project membership을 비활성 상태로 유지합니다. 새로 등록하는 요청 connection은
+`enabled=false`를 사용합니다. 요청 connection이 이미 활성 상태라면 다른 project는 계속
+처리할 수 있지만 아직 이 project membership은 얻지 않습니다. 마이그레이션 시작 시 사용할
+수 있었던 이전 connection은 init이 요청한 호스트·guard 상태 보기를 설치하는 동안 계속
+사용할 수 있고, 명시적으로 비활성화된 이전 connection은 비활성 상태를 유지합니다. 이 단계가 모두
+성공한 뒤에만 Registry transaction 하나가 staging한 membership inventory를 다시 검증하고,
+요청 project membership을 추가하고, 요청 connection을 활성화하고, 요청한 guard
+installation을 기록합니다. 대체 connection에 다른 project가 남아 있으면 해당 project
+membership을 제거합니다. 마지막 project라면 대체 connection을 비활성화하되 membership
+하나는 내구성 있는 pending host cleanup inventory로 유지합니다. Cleanup transaction은 이
+connection이 여전히 비활성 상태이고 해당 membership 하나만 갖는지 다시 검증한 뒤 Registry
+쓰기 잠금을 해제합니다. 호스트 폐기 뒤 마지막 Registry transaction이 marker를 다시 검증하고
+보존한 membership을 제거합니다. 외부 호스트 폐기는 마지막 cleanup commit이 실패해도 되돌릴
+수 없지만, 내구성 있는 membership 덕분에 같은 init 재실행이 이를 발견하고 수렴할 수
+있습니다. 일반 connection 등록, 활성화·비활성화, membership API는 이 Store 소유 marker를
+만들거나 덮어쓰거나 제거할 수 없습니다. 새 마이그레이션은 저장소에 남은 이전의 유효한
+pending cleanup도 포함해 새 replacement로 다시 연결하고, 관련 없는 비활성 connection은
+건드리지 않습니다. 검증된 로컬 정책이 선택한 connection은 명시적으로 비활성화됐더라도 이전
+대상에 포함합니다. 프로필만 바꾸는 마이그레이션은 현재 connection을 재사용하므로 이 Registry
+전환이 필요하지 않습니다. 이 staging 경계는 호스트나 의도 마이그레이션 실패 뒤 이전
+connection과 요청한 connection이 같은 project에 동시에 적용되는 일을 막습니다. Staging
+upsert는 다른 init이 동시에 활성화한 대상을 비활성화하지 않습니다. Init은 Registry
+transaction 하나에서 요청 membership과 정확한 pending-cleanup 상태를 분류합니다. 다른 시도가
+전환을 완료했으면 cleanup을 재개하고, 그렇지 않으면 관찰된 활성 요청 membership을 제거하지
+않고 실패합니다.
+
 Git 기반 Product Repository의 모든 init은 선택한 worktree에 실제로 적용되는 Git
 `info/exclude`의 관리 블록 하나를 다시 계산합니다. 일반 `.git` 디렉터리, `.git`
 gitdir 파일, 연결된 worktree의 `commondir`를 해석해 실제 공통 Git 디렉터리를
@@ -427,9 +454,18 @@ Doctor는 `checks[].id=integration_intent_drift`도 보고합니다. 검증된 �
 Connection Project 구성과 비교하고, 범위가 제한된 알려진 이전 호스트 및 반대 의도 상태
 보기 경로에서 Volicord 소유 내용을 검사합니다. 이전 호스트나 반대 의도 상태 보기, 한
 저장소에서 여러 지원 호스트 또는 의도의 통합이 동시에 활성화된 상태, 정책의 의도나
-호스트와 맞지 않는 활성 구성, `record` 정책 아래 남은 탐지 훅을 경고합니다. Doctor는
-파일이나 Git index를 바꾸지 않습니다. 복구 동작은 정책의 정확한 호스트·의도
-플래그·프로필로 init을 다시 실행합니다. index 정리는 작업 트리 파일을 삭제하지 않는
+호스트와 맞지 않는 활성 구성, `record` 정책 아래 남은 탐지 훅을 경고합니다. 비활성 상태인
+반대 호스트·의도 connection이 이 project membership과 정확한 Store 소유 pending-cleanup
+marker를 보존하고 있으면
+`findings[].kind=pending_host_cleanup`으로 보고합니다. 정책이 선택한 init을 다시 실행하면
+호스트 폐기를 마치고 내구성 있는 cleanup membership을 제거합니다. 정확하지 않은 예약
+marker가 존재하면 재개 가능한 cleanup으로 처리하지 않고
+`findings[].kind=invalid_pending_host_cleanup_marker`로 보고합니다. 이 finding은 명령 없이
+`actions[].id=restore_invalid_pending_cleanup_registry`를 제공합니다. Init은 잘못된 Store 소유 복구
+상태를 변경하지 않으므로 운영자는 먼저 알려진 정상 Runtime Home 백업에서
+`registry.sqlite`를 복원하거나 maintainer 지원을 받아 Registry를 복구해야 합니다. 그 밖의
+의도 drift 복구 동작은 정책의 정확한 호스트·의도 플래그·프로필로 init을 다시 실행합니다.
+Doctor는 파일이나 Git index를 바꾸지 않으며, index 정리는 작업 트리 파일을 삭제하지 않는
 명시적 사용자 동작으로 남습니다.
 
 `--profile`은 공개 통합 프로필을 선택합니다.
@@ -530,6 +566,38 @@ Volicord 소유 마커나 관리 지문이 필요한 위치의 비관리 내용�
 대상이 바뀌었으면 init은 이를 덮어쓰거나 삭제하지 않고 충돌로 보고해야 합니다. 후속
 상태 조회와 검증 명령, dry-run 진단, 복구 명령은 선택한 의도를 보존하며 공유 init
 결과일 때만 `--shared`를 포함합니다.
+
+Staging이나 파일 적용을 시작한 뒤 마이그레이션이 실패하면 init은 아무것도 바뀌지 않았다는
+인상을 주지 않고 실패한 부분 적용 결과로 종료합니다. 텍스트 출력은
+`Migration state: partial_application`, 안정적인 migration ID, 요청 connection 상태,
+관찰한 요청 project membership 상태, 이전 inventory 상태, Registry 전환 상태, 호스트 상태
+보기 상태, 원인, 재실행 인자를 표시합니다. JSON 출력은 `action=init`, `status=failed`, `retryable=true`,
+`retry_arguments`, `next`와 함께 `migration_id`, `state=partial_application`,
+`requested_connection_id`, `requested_connection_enabled`,
+`requested_project_membership_active`, `prior_connection_ids`,
+`prior_connection_inventory`, `prior_connection_states`, `registry_transition`,
+`host_projection`을 담은 `migration` 객체를 반환합니다. 각
+`prior_connection_states[]` 항목에는 `connection_id`와 현재 `state`가 있습니다. 두 요청 상태
+필드는 현재 Registry를 읽은 결과이므로 읽을 수 있으면
+Boolean이고, 실패 때문에 진단 읽기도 할 수 없으면 `null`입니다. Connection Registry 전환을
+시작하기 전에는 `registry_transition=not_applied`,
+`prior_connection_inventory=unchanged`를 보고합니다. 원자적 transaction을 시도하는 도중
+오류가 나면 두 필드를 보수적으로 `unknown`으로 보고합니다. 이후 검증이나 검증 보고서 기록이
+실패하면 `registry_transition=applied`,
+`prior_connection_inventory=retired_for_project`를 보고합니다. 각 단계의
+`host_projection` 값은 `partially_applied_or_pending_verification`,
+`applied_registry_transition_unknown`, `partially_applied_after_registry_transition`,
+`cleanup_inventory_changed_after_registry_transition`, `applied_pending_verification` 중
+하나입니다. 검증된 호스트 cleanup이 남아 있는 동안
+`prior_connection_inventory=disabled_pending_host_cleanup`이고, cleanup 뒤에 발생한 실패는
+`retired_for_project`를 보고합니다. 이전 connection들의 현재 상태가 서로 다르면 집계 값은
+`mixed`이고 `prior_connection_states`에서 각각을 구분할 수 있습니다. 마지막 재검증에 실패한
+cleanup inventory는 `unknown`을 보고합니다. Migration ID는 요청 connection, Product
+Repository, 의도, 프로필 조합에 대해 안정적이고 재실행 인자는 같은 Runtime Home으로
+돌아가도록 선택한 `--home`을 포함합니다. 프로필만 바꾸는 마이그레이션은
+`registry_transition=not_required`를 보고합니다. 호스트나 guard 파일은
+이미 생성·갱신·폐기됐을 수 있으므로 운영자는 표시된 충돌을 해결하고 필요하면 status나
+doctor를 확인한 뒤 제공된 init 인자로 다시 실행해야 합니다.
 
 Unix에서 새 `.volicord/policy.json`은 사용자 전용 모드 `0600`으로 만듭니다. 기존
 일반 파일 정책에 Volicord 소유권 메타데이터가 있으면 같은 init을 다시 실행할 때

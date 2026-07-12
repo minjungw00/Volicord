@@ -73,10 +73,26 @@ Dry-run 프로비저닝은 계획과 렌더링 뒤에 멈춥니다. Runtime Home
 Dry-run이 아닌 프로비저닝은 Runtime Home 상태를 초기화하거나 재사용하고, 선택된 Product
 Repository 프로젝트를 등록하거나 재사용하며, Agent Connection 기록을 만들거나 갱신하고,
 선택된 프로젝트 구성원 경계를 적용하며, Connection Projects 구성원 관계를 추가하거나
-확인합니다. 그다음 CLI는 선택한 호스트 어댑터로 호스트 계획을 적용합니다. 이 과정에서
-guard 대상이나 상위 디렉터리가 생기거나 바뀔 수 있습니다. 따라서 초기화는 결과
-파일시스템 상태를 기준으로 guard 통합 계획을 다시 만들고 적용합니다. 프로젝트와 Agent
-Connection 정보가 준비된 뒤에는 guard 설치 메타데이터를 기록합니다.
+확인합니다. Init이 다른 호스트나 의도로 전환할 때는 이미 사용할 수 있었던 이전
+connection을 계속 사용할 수 있게 두고, 명시적으로 비활성화된 이전 connection은 비활성
+상태로 유지하며, 요청한 project membership을 비활성 상태로 유지합니다. 새 요청 Agent
+Connection은 비활성 상태로 staging하지만 이미 활성화된 connection은 다른 project를 계속
+처리할 수 있습니다. 그다음 CLI는 선택한 호스트 어댑터로 호스트 계획을 적용합니다. 이
+과정에서 guard 대상이나 상위 디렉터리가 생기거나 바뀔 수 있습니다. 따라서 초기화는 결과
+파일시스템 상태를 기준으로 guard 통합 계획을 다시 만들고 적용합니다. Guard 설치
+메타데이터를 만든 뒤 Store의 immediate transaction 도우미로 그 메타데이터 기록, 요청
+project membership 추가, 다른 project가 남은 connection의 대체 membership 폐기, 요청
+connection 활성화를 함께 처리합니다. 마지막 project인 대체 connection은 도우미가
+비활성화하되 membership을 내구성
+있는 pending cleanup inventory로 유지합니다. 두 번째 immediate transaction이 이 비활성
+inventory를 다시 검증한 뒤 host cleanup 동안 Registry 잠금을 해제합니다. 마지막 immediate
+transaction이 Store 소유 marker를 다시 검증하고 보존한 membership을 제거합니다. 일반
+일반 등록, 활성화·비활성화, membership 변경, staging 대상 활성화는 marker invariant를
+바꾸는 작업을 거절합니다. Mode와 검증 보고서 갱신은 marker를 바꾸지 않습니다. 새 마이그레이션은
+이전의 유효한 cleanup marker를 새 replacement에 다시 연결하고 관련 없는 비활성 대안은
+보존합니다.
+Staging upsert는 기존 활성 bit를 보존하고 transaction 분류는 비활성 staging과 정확한 cleanup
+재개를 구분합니다. 오래된 계획 snapshot으로 활성 요청 membership을 제거하지 않습니다.
 
 검증은 호스트와 guard 적용 뒤 실행됩니다. 호스트 어댑터에 관찰 가능한 호스트 정보를
 요청하고, 해석된 Runtime Home과 Agent Connection 연결 정보로 CLI MCP 사전 점검을
@@ -86,8 +102,10 @@ Connection 정보가 준비된 뒤에는 guard 설치 메타데이터를 기록�
 
 프로비저닝은 Runtime Home 레지스트리 상태, Product Repository 파일, 외부 호스트 설정,
 guard 파일, MCP 프로세스 점검을 하나의 트랜잭션으로 처리하지 않습니다. 앞 단계에서
-상태가 이미 저장된 뒤 나중 단계가 실패할 수 있습니다. 이후 상태 조회, 검증, 프로젝트,
-제거 작업 흐름은 앞 단계의 결과를 확인할 수 있습니다.
+상태가 이미 저장된 뒤 나중 단계가 실패하면 init은 명시적인 부분 적용 결과를 렌더링합니다.
+이후 상태 조회, 검증, 프로젝트, doctor, 제거 작업 흐름은 앞 단계의 결과를 확인할 수
+있습니다. 좁은 Registry 활성 전환은 transaction으로 처리하지만 더 넓은 작업 흐름은 여러
+표면에서 수렴하는 동작으로 남습니다.
 
 ## 연결 상태와 검증
 

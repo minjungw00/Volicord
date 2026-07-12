@@ -81,11 +81,31 @@ running MCP preflight, or performing tool discovery.
 Non-dry-run provisioning initializes or reuses Runtime Home state, registers or
 reuses the selected Product Repository project, creates or updates the Agent
 Connection record, enforces the selected project membership boundary, and adds
-or confirms Connection Projects membership. The CLI then applies the host plan
-through the selected host adapter. Because that apply can create or change
-directories shared with guard targets, init rebuilds the guard integration plan
-against the resulting filesystem state before applying it. It then records
-guard installation metadata after the project and Agent Connection facts exist.
+or confirms Connection Projects membership. When init is moving to a different
+host or intent, the requested project membership stays inactive while a prior
+connection that was already eligible remains eligible. An explicitly disabled
+prior remains disabled. A new requested Agent Connection is staged
+disabled; an existing enabled connection can keep serving its other projects.
+The CLI then applies the host plan through the selected host adapter. Because
+that apply can create or change directories shared with guard targets, init
+rebuilds the guard integration plan against the resulting filesystem state
+before applying it. It derives guard installation metadata, then uses the
+Store's immediate-transaction helper to record that metadata, add the
+requested membership, retire superseded memberships from connections that have
+other projects, and activate the requested connection together. For a
+superseded connection's last project,
+the helper disables it but retains the membership as durable pending-cleanup
+inventory. A second immediate transaction revalidates that disabled inventory,
+then releases the Registry lock before host cleanup. A final immediate
+transaction revalidates the Store-owned marker and removes the retained
+membership. Generic registration, enable/disable, membership mutation, and
+staged-target activation reject invariant-changing operations on marked rows;
+mode and verification-report updates do not change the marker.
+Fresh migrations rebase older valid cleanup markers to their new replacement
+and preserve unrelated disabled alternatives.
+The staging upsert preserves an existing enabled bit, and a transactional
+classification distinguishes inactive staging from an exact cleanup resume.
+No stale planning snapshot removes an active requested membership.
 
 Verification runs after host and guard application. It asks the host adapter for
 observable host facts, runs CLI MCP preflight using the resolved Runtime Home
@@ -97,8 +117,10 @@ result with any user-controlled next actions.
 Provisioning is not a single transaction across Runtime Home registry state,
 Product Repository files, external host configuration, guard files, and MCP
 process checks. If a later boundary reports a failure after earlier durable
-effects were applied, later status, verify, project, or remove workflows can
-observe those earlier effects.
+effects were applied, init renders an explicit partial-application result and
+later status, verify, project, doctor, or remove workflows can observe those
+earlier effects. The narrow Registry activation transition is transactional;
+the wider workflow remains a convergent multi-surface operation.
 
 ## Connection status and verify
 

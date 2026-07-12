@@ -34,41 +34,57 @@ pub(crate) fn record_guard_installation(
     project_id: &str,
     integration: &GuardIntegrationPlan,
 ) -> Result<GuardInstallationRecord, GuardIntegrationError> {
+    let input = guard_installation_upsert(
+        host_kind,
+        profile,
+        installation_status,
+        connection_id,
+        project_id,
+        integration,
+    )?;
+    upsert_guard_installation(runtime_home, input)
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+}
+
+pub(crate) fn guard_installation_upsert(
+    host_kind: HostKind,
+    profile: IntegrationProfile,
+    installation_status: GuardInstallationStatus,
+    connection_id: &str,
+    project_id: &str,
+    integration: &GuardIntegrationPlan,
+) -> Result<GuardInstallationUpsert, GuardIntegrationError> {
     let now = current_timestamp();
-    upsert_guard_installation(
-        runtime_home,
-        GuardInstallationUpsert {
-            guard_installation_id: integration.guard_installation_id.clone(),
-            connection_internal_id: connection_id.to_owned(),
-            project_id: Some(project_id.to_owned()),
-            host_kind: host_kind.as_str().to_owned(),
-            guard_mode: profile.as_str().to_owned(),
-            host_capability_json: host_hook_capability_json(integration)?,
-            installation_status: installation_status.as_str().to_owned(),
-            installed_at: (profile != IntegrationProfile::Record).then_some(now.clone()),
-            last_checked_at: now,
-            first_seen_at: None,
-            last_seen_at: None,
-            last_seen_phase: None,
-            observed_host_kind: None,
-            observed_policy_hash: None,
-            observed_binary_version: None,
-            metadata_json: serde_json::to_string(&json!({
-                "created_by": INIT_METADATA_CREATED_BY,
-                "policy_file": VOLICORD_POLICY_FILE,
-                "selected_profile": integration.guard_profile,
-                "connection_intent": integration.connection_intent,
-                "required_phases": required_guard_phase_names(),
-                "observation_status": if profile == IntegrationProfile::Record {
-                    "disabled"
-                } else {
-                    "not_observed"
-                },
-            }))
-            .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?,
-        },
-    )
-    .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+    Ok(GuardInstallationUpsert {
+        guard_installation_id: integration.guard_installation_id.clone(),
+        connection_internal_id: connection_id.to_owned(),
+        project_id: Some(project_id.to_owned()),
+        host_kind: host_kind.as_str().to_owned(),
+        guard_mode: profile.as_str().to_owned(),
+        host_capability_json: host_hook_capability_json(integration)?,
+        installation_status: installation_status.as_str().to_owned(),
+        installed_at: (profile != IntegrationProfile::Record).then_some(now.clone()),
+        last_checked_at: now,
+        first_seen_at: None,
+        last_seen_at: None,
+        last_seen_phase: None,
+        observed_host_kind: None,
+        observed_policy_hash: None,
+        observed_binary_version: None,
+        metadata_json: serde_json::to_string(&json!({
+            "created_by": INIT_METADATA_CREATED_BY,
+            "policy_file": VOLICORD_POLICY_FILE,
+            "selected_profile": integration.guard_profile,
+            "connection_intent": integration.connection_intent,
+            "required_phases": required_guard_phase_names(),
+            "observation_status": if profile == IntegrationProfile::Record {
+                "disabled"
+            } else {
+                "not_observed"
+            },
+        }))
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?,
+    })
 }
 
 pub(crate) fn host_hook_capability_json(

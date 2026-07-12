@@ -125,6 +125,9 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 - 프로젝트 등록에는 고유한 `project_internal_id`, 고유한 프로젝트 별칭, 고유한 저장소 루트, 고유한 프로젝트 홈, 고유한 상태 데이터베이스 경로가 필요합니다. `project_name`은 표시 이름이고 `project_alias`는 CLI 선택 보조 값입니다.
 - Agent Connection 식별 정보는 `connection_internal_id`별로 고유합니다.
 - Connection Projects 멤버십은 `connection_internal_id`와 `project_internal_id`의 조합별로 고유하며, 하나의 연결이 등록된 프로젝트를 주소 지정할 수 있게 하는 유일한 레지스트리 멤버십입니다.
+- 비활성 connection은 일반적으로 membership을 유지할 수 있으며, 그것만으로 마이그레이션 cleanup 기록이 되지 않습니다. 마지막 project 호스트 마이그레이션 cleanup은 `project_id`와 `replacement_connection_id`를 담은 정확한 `agent_connections.metadata_json.pending_host_cleanup` 객체로만 식별합니다. Cleanup transaction은 호스트 폐기와 membership 제거 전에 이 marker, 비활성 상태, 보존된 membership 하나가 모두 일치하는지 검증해야 합니다.
+- `agent_connections.metadata_json.pending_host_cleanup`은 Store 소유 복구 상태입니다. 일반 Agent Connection 등록과 갱신 입력은 이 예약 키를 거절해야 하고, 일반 활성화·비활성화 또는 Connection Projects membership 변경은 marker가 있는 행을 거절해야 합니다. 마이그레이션은 marker가 있는 행을 요청 대상으로 활성화하면 안 됩니다. 마이그레이션 전환과 cleanup 작업은 project membership을 다시 검증할 때만 대체 inventory의 marker를 다시 연결하거나 제거할 수 있습니다.
+- `pending_host_cleanup` 값에 구성원이 빠졌거나, 추가됐거나, 비어 있거나, 형식이 잘못되면 재개 가능한 cleanup이 아닙니다. Doctor는 이를 유효하지 않은 예약 marker로 보고해야 하며 cleanup과 마이그레이션 발견은 유효한 inventory로 해석하면 안 됩니다.
 - 호스트 훅 설치 식별 정보는 `guard_installation_id`별로 고유합니다. 프로젝트 범위 호스트 훅 설치는 등록된 프로젝트와 그 프로젝트에 대한 Connection Projects 멤버십을 가진 Agent Connection을 이름 붙여야 합니다.
 - 로컬 웹 동의 토큰 식별 정보는 하나의 프로젝트 상태 데이터베이스 안에 저장된 토큰 해시입니다. 원문 토큰은 저장하면 안 됩니다. 대기 토큰은 프로젝트, 선택된 Agent Connection, 대기 판단, `capture_basis`, 만료를 이름 붙여야 합니다. 토큰 소비와 대응하는 사용자 판단 해결은 하나의 프로젝트 상태 트랜잭션 또는 동등한 원자적 작업이어야 합니다.
 - 프로젝트 범위 행은 등록된 프로젝트에 속합니다.

@@ -34,6 +34,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct GuardIntegrationPlan {
     pub(crate) repo_root: PathBuf,
+    pub(crate) prior_connection_id: Option<String>,
+    pub(crate) migration_required: bool,
     pub(crate) generated_files: Vec<GeneratedFilePlan>,
     pub(crate) retired_files: Vec<ManagedFileRetirementPlan>,
     pub(crate) migration_protection: Option<GeneratedFilePlan>,
@@ -176,6 +178,11 @@ pub(crate) fn plan_guard_integration(
                     || prior.connection_intent != connection_intent
                     || prior.selected_profile != profile)
         });
+    let migration_required = prior_policy.as_ref().is_some_and(|prior| {
+        prior.host != public_host_label(host_kind)
+            || prior.connection_intent != connection_intent
+            || prior.selected_profile != profile
+    });
     let migration_protection = plan_git_excludes_with_personal_protection(
         repo_root,
         connection_intent,
@@ -185,6 +192,8 @@ pub(crate) fn plan_guard_integration(
     let managed_status = managed_status_for_profile(profile);
     Ok(GuardIntegrationPlan {
         repo_root: repo_root.to_path_buf(),
+        prior_connection_id: prior_policy.map(|prior| prior.connection_id),
+        migration_required,
         generated_files,
         retired_files,
         migration_protection,

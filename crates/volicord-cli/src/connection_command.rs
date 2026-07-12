@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt, fs,
     path::{Path, PathBuf},
 };
@@ -10,11 +10,15 @@ use sha2::{Digest, Sha256};
 use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
 use volicord_store::{
     agent_connections::{
-        add_connection_project, ensure_agent_connection, list_agent_connections,
-        list_connection_projects, remove_agent_connection_if_unused, remove_connection_project,
-        set_connection_enabled, set_connection_mode, update_agent_connection_verification_report,
+        activate_staged_connection, add_connection_project, agent_connection_record,
+        complete_pending_host_cleanup, connection_metadata_has_pending_host_cleanup,
+        connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
+        ensure_staged_agent_connection, list_agent_connections, list_connection_projects,
+        remove_agent_connection_if_unused, remove_connection_project, set_connection_mode,
+        staged_connection_migration_state, update_agent_connection_verification_report,
         AgentConnectionRecord, AgentConnectionRegistration, ConnectionProjectRecord,
-        ConnectionProjectRegistration, CONNECTION_INTENT_GLOBAL, CONNECTION_INTENT_PERSONAL,
+        ConnectionProjectRegistration, PendingHostCleanupError, StagedConnectionMigrationState,
+        SupersededConnectionProject, CONNECTION_INTENT_GLOBAL, CONNECTION_INTENT_PERSONAL,
         CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
         HOST_KIND_CLAUDE_CODE, HOST_KIND_CODEX, HOST_KIND_GENERIC, HOST_SCOPE_EXPORT,
         HOST_SCOPE_LOCAL, HOST_SCOPE_PROJECT, HOST_SCOPE_USER, VERIFIED_STATUS_NOT_VERIFIED,
@@ -40,7 +44,7 @@ use crate::guard_integration::audit::{guard_file_findings, script_is_executable,
 use crate::guard_integration::CODEX_DISPATCH_WRAPPER;
 use crate::guard_integration::{
     apply_guard_integration, apply_guard_migration_protection, guard_has_prompt_capture_commands,
-    initial_guard_installation_status, lifecycle_phase_names,
+    guard_installation_upsert, initial_guard_installation_status, lifecycle_phase_names,
     observe_hook_root_unsupported_message, plan_guard_integration, record_guard_installation,
     FilePlanStatus, GeneratedFilePlan, GuardIntegrationError, GuardIntegrationPlan,
     GuardIntegrationPlanRequest, HookWrapperResolutionStatus,

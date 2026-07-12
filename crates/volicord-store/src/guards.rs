@@ -312,36 +312,50 @@ pub fn upsert_guard_installation(
     runtime_home: impl AsRef<Path>,
     input: GuardInstallationUpsert,
 ) -> StoreResult<GuardInstallationRecord> {
-    validate_guard_installation_upsert(&input)?;
-
     let runtime_home = runtime_home.as_ref().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
     let mut conn = open_registry_database(&registry_path)?;
-    let runtime_home_id = require_runtime_home_id(&conn)?;
-    let connection_id = input.connection_internal_id.clone();
-    require_connection(&conn, &connection_id)?;
+    let tx = begin_immediate_transaction(&mut conn)?;
+    upsert_guard_installation_in_transaction(&tx, &input)?;
+    tx.commit()?;
+
+    guard_installation(&runtime_home, &input.guard_installation_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "guard_installation",
+            id: input.guard_installation_id,
+        }
+    })
+}
+
+pub(crate) fn upsert_guard_installation_in_transaction(
+    conn: &Connection,
+    input: &GuardInstallationUpsert,
+) -> StoreResult<()> {
+    validate_guard_installation_upsert(input)?;
+    let runtime_home_id = require_runtime_home_id(conn)?;
+    let connection_id = input.connection_internal_id.as_str();
+    require_connection(conn, connection_id)?;
     let project_internal_id = input
         .project_id
         .as_deref()
         .map(|project_id| {
-            let project = raw_project_record_from_conn(&conn, project_id)?.ok_or_else(|| {
+            let project = raw_project_record_from_conn(conn, project_id)?.ok_or_else(|| {
                 StoreError::NotFound {
                     entity: "project",
                     id: project_id.to_owned(),
                 }
             })?;
             require_connection_project_membership(
-                &conn,
-                &connection_id,
+                conn,
+                connection_id,
                 &project.project_internal_id,
             )?;
             Ok::<String, StoreError>(project.project_internal_id)
         })
         .transpose()?;
 
-    let tx = begin_immediate_transaction(&mut conn)?;
     if let Some(existing_id) = guard_installation_id_for_scope(
-        &tx,
+        conn,
         &input.connection_internal_id,
         project_internal_id.as_deref(),
         &input.guard_mode,
@@ -349,12 +363,12 @@ pub fn upsert_guard_installation(
         if existing_id != input.guard_installation_id {
             return Err(StoreError::Conflict {
                 entity: "guard_installation",
-                id: input.guard_installation_id,
+                id: input.guard_installation_id.clone(),
                 detail: "connection/project/guard_mode scope is already recorded by another guard_installation_id".to_owned(),
             });
         }
     }
-    tx.execute(
+    conn.execute(
         "INSERT INTO guard_installations (
             guard_installation_id,
             runtime_home_id,
@@ -424,33 +438,26 @@ pub fn upsert_guard_installation(
             metadata_json = excluded.metadata_json,
             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         params![
-            input.guard_installation_id,
+            &input.guard_installation_id,
             runtime_home_id,
-            input.connection_internal_id,
-            project_internal_id,
-            input.host_kind,
-            input.guard_mode,
-            input.host_capability_json,
-            input.installation_status,
-            input.installed_at,
-            input.last_checked_at,
-            input.first_seen_at,
-            input.last_seen_at,
-            input.last_seen_phase,
-            input.observed_host_kind,
-            input.observed_policy_hash,
-            input.observed_binary_version,
-            input.metadata_json,
+            &input.connection_internal_id,
+            project_internal_id.as_deref(),
+            &input.host_kind,
+            &input.guard_mode,
+            &input.host_capability_json,
+            &input.installation_status,
+            input.installed_at.as_deref(),
+            &input.last_checked_at,
+            input.first_seen_at.as_deref(),
+            input.last_seen_at.as_deref(),
+            input.last_seen_phase.as_deref(),
+            input.observed_host_kind.as_deref(),
+            input.observed_policy_hash.as_deref(),
+            input.observed_binary_version.as_deref(),
+            &input.metadata_json,
         ],
     )?;
-    tx.commit()?;
-
-    guard_installation(&runtime_home, &input.guard_installation_id)?.ok_or_else(|| {
-        StoreError::NotFound {
-            entity: "guard_installation",
-            id: input.guard_installation_id,
-        }
-    })
+    Ok(())
 }
 
 /// Reads one guard installation by id.
@@ -2069,7 +2076,7 @@ fn validate_optional_session_scope(
     Ok(())
 }
 
-fn guard_installation_from_conn(
+pub(crate) fn guard_installation_from_conn(
     conn: &Connection,
     guard_installation_id: &str,
 ) -> StoreResult<Option<GuardInstallationRecord>> {

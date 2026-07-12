@@ -51,8 +51,8 @@ use serde_json::json;
 use volicord_store::{
     agent_connections::{
         agent_connection_record, list_agent_connections, list_connection_projects,
-        update_agent_connection_verification_report, CONNECTION_MODE_READ_ONLY,
-        VERIFIED_STATUS_ACTION_REQUIRED,
+        set_connection_enabled, update_agent_connection_verification_report,
+        CONNECTION_MODE_READ_ONLY, VERIFIED_STATUS_ACTION_REQUIRED,
     },
     guards::{guard_event, insert_agent_session, list_guard_installations, AgentSessionInsert},
     session_watch::{
@@ -1008,6 +1008,303 @@ fn claude_personal_to_codex_shared_retires_prior_host_and_converges() -> Result<
 
 #[cfg(unix)]
 #[test]
+fn migration_preserves_superseded_connection_used_by_another_project() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-migration-multi-project-prior")?;
+    let repo_a = create_real_git_repo(&runtime_home, "product-repo-a")?;
+    let repo_b = create_real_git_repo(&runtime_home, "product-repo-b")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let first = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_a).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&first);
+    let first = json_stdout(&first)?;
+    let prior_connection_id = first["connection"]["connection_id"]
+        .as_str()
+        .expect("Codex connection id")
+        .to_owned();
+    let second = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_b).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&second);
+    let second = json_stdout(&second)?;
+    assert_eq!(second["connection"]["connection_id"], prior_connection_id);
+    let codex_config_path = codex_home.join("config.toml");
+    let codex_config_before = fs::read_to_string(&codex_config_path)?;
+
+    let migrated = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_a).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&migrated);
+    assert_eq!(fs::read_to_string(&codex_config_path)?, codex_config_before);
+
+    let prior = agent_connection_record(runtime_home.path(), &prior_connection_id)?
+        .expect("shared Codex connection remains");
+    assert!(prior.enabled);
+    let remaining_projects = list_connection_projects(runtime_home.path(), &prior_connection_id)?;
+    assert_eq!(remaining_projects.len(), 1);
+    assert_eq!(remaining_projects[0].project.repo_root, repo_b);
+    assert!(repo_a.join(".mcp.json").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn migration_retires_disabled_prior_policy_connection_but_preserves_disabled_alternative(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-migration-disabled-prior-policy")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let prior = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&prior);
+    let prior = json_stdout(&prior)?;
+    let prior_connection_id = prior["connection"]["connection_id"]
+        .as_str()
+        .expect("prior connection id")
+        .to_owned();
+    let project_id = prior["connection"]["project_id"]
+        .as_str()
+        .expect("project id")
+        .to_owned();
+    set_connection_enabled(runtime_home.path(), &prior_connection_id, false)?;
+
+    let unrelated_connection_id = "conn_disabled_unrelated";
+    ensure_agent_connection(
+        runtime_home.path(),
+        AgentConnectionRegistration {
+            connection_internal_id: unrelated_connection_id.to_owned(),
+            host_kind: "claude_code".to_owned(),
+            intent: "personal".to_owned(),
+            host_scope: "user".to_owned(),
+            server_name: "volicord-unrelated".to_owned(),
+            config_target: path_text(&runtime_home.path().join("unrelated-host-target")),
+            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            enabled: false,
+            managed_fingerprint: "unrelated-disabled-fixture".to_owned(),
+            last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+            last_verification_report_json: "{}".to_owned(),
+            last_user_actions_json: "[]".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    add_connection_project(
+        runtime_home.path(),
+        ConnectionProjectRegistration {
+            connection_internal_id: unrelated_connection_id.to_owned(),
+            project_id,
+        },
+    )?;
+
+    let migrated = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&migrated);
+
+    assert!(list_connection_projects(runtime_home.path(), &prior_connection_id)?.is_empty());
+    let unrelated = agent_connection_record(runtime_home.path(), unrelated_connection_id)?
+        .expect("unrelated disabled alternative remains");
+    assert!(!unrelated.enabled);
+    assert_eq!(
+        list_connection_projects(runtime_home.path(), unrelated_connection_id)?.len(),
+        1
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn migration_reuses_enabled_requested_connection_without_disrupting_existing_project(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-migration-reused-target")?;
+    let repo_a = create_real_git_repo(&runtime_home, "product-repo-a")?;
+    let repo_b = create_real_git_repo(&runtime_home, "product-repo-b")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_claude_code(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let requested = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_b).as_str(),
+            "--profile",
+            "detective",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&requested);
+    let requested = json_stdout(&requested)?;
+    let requested_connection_id = requested["connection"]["connection_id"]
+        .as_str()
+        .expect("requested Codex connection id")
+        .to_owned();
+    let codex_config_path = codex_home.join("config.toml");
+    let codex_config_before = fs::read_to_string(&codex_config_path)?;
+
+    let prior = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_a).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&prior);
+    let prior = json_stdout(&prior)?;
+    let prior_connection_id = prior["connection"]["connection_id"]
+        .as_str()
+        .expect("prior Claude connection id")
+        .to_owned();
+
+    let migrated = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_a).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&migrated);
+    let migrated = json_stdout(&migrated)?;
+    assert_eq!(
+        migrated["connection"]["connection_id"],
+        requested_connection_id
+    );
+    assert_eq!(fs::read_to_string(&codex_config_path)?, codex_config_before);
+
+    let requested = agent_connection_record(runtime_home.path(), &requested_connection_id)?
+        .expect("requested connection remains active");
+    assert!(requested.enabled);
+    let requested_projects =
+        list_connection_projects(runtime_home.path(), &requested_connection_id)?;
+    assert_eq!(requested_projects.len(), 2);
+    assert!(requested_projects
+        .iter()
+        .any(|membership| membership.project.repo_root == repo_a));
+    assert!(requested_projects
+        .iter()
+        .any(|membership| membership.project.repo_root == repo_b));
+    let prior = agent_connection_record(runtime_home.path(), &prior_connection_id)?
+        .expect("prior connection remains as disabled history");
+    assert!(!prior.enabled);
+    assert!(list_connection_projects(runtime_home.path(), &prior_connection_id)?.is_empty());
+    let retired_project_mcp: Value =
+        serde_json::from_str(&fs::read_to_string(repo_a.join(".mcp.json"))?)?;
+    assert!(retired_project_mcp["mcpServers"].get("volicord").is_none());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-cross-host-migration-fail-safe")?;
@@ -1046,7 +1343,6 @@ fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
         .to_owned();
 
     let local_settings_path = repo_root.join(".claude/settings.local.json");
-    let local_settings: Value = serde_json::from_str(&fs::read_to_string(&local_settings_path)?)?;
     let claude_state_path = claude.with_extension("state");
     let original_claude_state = fs::read_to_string(&claude_state_path)?;
     let changed_claude_state = original_claude_state.replace(
@@ -1072,23 +1368,71 @@ fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
         &env,
     )?;
     assert!(!shared.status.success(), "migration unexpectedly succeeded");
-    assert!(stderr(&shared).contains("Claude Code MCP entry changed"));
+    let failed_migration = json_stdout(&shared)?;
+    assert_eq!(failed_migration["status"], "failed");
+    assert_eq!(
+        failed_migration["migration"]["state"],
+        "partial_application"
+    );
+    let migration_id = failed_migration["migration"]["migration_id"]
+        .as_str()
+        .expect("stable migration id");
+    assert!(migration_id.starts_with("migration_"));
+    assert_ne!(
+        migration_id,
+        failed_migration["migration"]["requested_connection_id"]
+            .as_str()
+            .expect("requested connection id")
+    );
+    assert_eq!(
+        failed_migration["migration"]["requested_connection_enabled"],
+        true
+    );
+    assert_eq!(
+        failed_migration["migration"]["registry_transition"],
+        "applied"
+    );
+    assert_eq!(
+        failed_migration["migration"]["requested_project_membership_active"],
+        true
+    );
+    assert_eq!(
+        failed_migration["migration"]["prior_connection_inventory"],
+        "disabled_pending_host_cleanup"
+    );
+    assert_eq!(
+        failed_migration["migration"]["host_projection"],
+        "partially_applied_after_registry_transition"
+    );
+    assert!(failed_migration["error"]
+        .as_str()
+        .expect("migration error")
+        .contains("Claude Code MCP entry changed"));
+    assert!(failed_migration["retry_arguments"]
+        .as_array()
+        .expect("retry arguments")
+        .iter()
+        .any(|argument| argument == "--shared"));
+    assert!(failed_migration["retry_arguments"]
+        .as_array()
+        .expect("retry arguments")
+        .windows(2)
+        .any(|arguments| {
+            arguments[0] == "--home" && arguments[1] == path_text(runtime_home.path())
+        }));
     assert!(repo_root.join(".codex/config.toml").exists());
-    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert!(repo_root.join(".codex/hooks.json").exists());
     assert_eq!(
         fs::read_to_string(&claude_state_path)?,
         changed_claude_state
     );
-    assert_eq!(
-        serde_json::from_str::<Value>(&fs::read_to_string(&local_settings_path)?)?,
-        local_settings
-    );
+    assert!(!local_settings_path.exists());
     let policy: Value = serde_json::from_str(&fs::read_to_string(
         repo_root.join(".volicord/policy.json"),
     )?)?;
-    assert_eq!(policy["host"], "claude-code");
-    assert_eq!(policy["connection_intent"], "personal");
-    assert!(fs::read_to_string(repo_root.join(".git/info/exclude"))?
+    assert_eq!(policy["host"], "codex");
+    assert_eq!(policy["connection_intent"], "shared");
+    assert!(!fs::read_to_string(repo_root.join(".git/info/exclude"))?
         .contains("/.claude/settings.local.json"));
     let connections = list_agent_connections(runtime_home.path())?;
     assert_eq!(connections.len(), 2);
@@ -1097,7 +1441,31 @@ fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
             .iter()
             .filter(|connection| connection.enabled)
             .count(),
-        2
+        1
+    );
+    let staged_connection = connections
+        .iter()
+        .find(|connection| connection.connection_internal_id != prior_connection_id)
+        .expect("requested connection is active while host cleanup remains pending");
+    assert!(staged_connection.enabled);
+    assert_eq!(
+        failed_migration["migration"]["requested_connection_id"],
+        staged_connection.connection_internal_id
+    );
+    assert_eq!(
+        list_connection_projects(
+            runtime_home.path(),
+            &staged_connection.connection_internal_id
+        )?
+        .len(),
+        1
+    );
+    let prior_connection = agent_connection_record(runtime_home.path(), &prior_connection_id)?
+        .expect("prior connection remains as pending cleanup inventory");
+    assert!(!prior_connection.enabled);
+    assert_eq!(
+        list_connection_projects(runtime_home.path(), &prior_connection_id)?.len(),
+        1
     );
 
     let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
@@ -1110,18 +1478,73 @@ fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
         .find(|check| check["id"] == "integration_intent_drift")
         .expect("intent drift check");
     assert_eq!(intent_check["status"], "warning", "{intent_check:#}");
-    assert!(intent_check["details"]["findings"]
+    assert!(
+        intent_check["details"]["findings"]
+            .as_array()
+            .expect("intent drift findings")
+            .iter()
+            .any(|finding| finding["kind"] == "pending_host_cleanup"),
+        "{intent_check:#}"
+    );
+
+    let middle_connection_id = staged_connection.connection_internal_id.clone();
+    let chained = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "detective",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert!(
+        !chained.status.success(),
+        "chained migration unexpectedly hid the older cleanup failure"
+    );
+    let chained = json_stdout(&chained)?;
+    assert_eq!(
+        chained["migration"]["prior_connection_inventory"],
+        "disabled_pending_host_cleanup"
+    );
+    let chained_connection_id = chained["migration"]["requested_connection_id"]
+        .as_str()
+        .expect("chained requested connection id")
+        .to_owned();
+    assert_ne!(chained_connection_id, middle_connection_id);
+    let chained_prior_ids = chained["migration"]["prior_connection_ids"]
         .as_array()
-        .expect("intent drift findings")
+        .expect("chained prior connection ids")
         .iter()
-        .any(|finding| finding["kind"] == "additional_active_host_projection"));
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        chained_prior_ids,
+        BTreeSet::from([middle_connection_id.as_str(), prior_connection_id.as_str(),])
+    );
+    for superseded_connection_id in [&prior_connection_id, &middle_connection_id] {
+        let superseded = agent_connection_record(runtime_home.path(), superseded_connection_id)?
+            .expect("chained superseded connection remains durable");
+        let metadata: Value = serde_json::from_str(&superseded.metadata_json)?;
+        assert_eq!(
+            metadata["pending_host_cleanup"]["replacement_connection_id"],
+            chained_connection_id
+        );
+        assert_eq!(
+            list_connection_projects(runtime_home.path(), superseded_connection_id)?.len(),
+            1
+        );
+    }
 
     fs::write(&claude_state_path, original_claude_state)?;
     let recovered = run_with_home_env(
         runtime_home.path(),
         [
             "init",
-            "--shared",
             "--host",
             "codex",
             "--repo",
@@ -1139,13 +1562,18 @@ fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
         repo_root.join(".volicord/policy.json"),
     )?)?;
     assert_eq!(recovered_policy["host"], "codex");
-    assert_eq!(recovered_policy["connection_intent"], "shared");
-    assert!(!fs::read_to_string(repo_root.join(".git/info/exclude"))?
-        .contains("/.claude/settings.local.json"));
+    assert_eq!(recovered_policy["connection_intent"], "personal");
+    let recovered_excludes = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(recovered_excludes.contains("/.codex/hooks.json"));
     let prior_connection = agent_connection_record(runtime_home.path(), &prior_connection_id)?
         .expect("prior connection remains as disabled history");
     assert!(!prior_connection.enabled);
     assert!(list_connection_projects(runtime_home.path(), &prior_connection_id)?.is_empty());
+    assert!(list_connection_projects(runtime_home.path(), &middle_connection_id)?.is_empty());
+    let recovered_connection =
+        agent_connection_record(runtime_home.path(), &chained_connection_id)?
+            .expect("chained requested connection remains active");
+    assert!(recovered_connection.enabled);
     Ok(())
 }
 
