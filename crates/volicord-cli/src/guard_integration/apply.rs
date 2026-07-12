@@ -24,7 +24,9 @@ pub(crate) fn apply_guard_integration(
     Ok(plan)
 }
 
-fn apply_generated_file(file: &GeneratedFilePlan) -> Result<FilePlanStatus, GuardIntegrationError> {
+pub(crate) fn apply_generated_file(
+    file: &GeneratedFilePlan,
+) -> Result<FilePlanStatus, GuardIntegrationError> {
     ensure_generated_file_plan_fresh(file)?;
     if file.status == FilePlanStatus::Unchanged {
         return Ok(FilePlanStatus::Unchanged);

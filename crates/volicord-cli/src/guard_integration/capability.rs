@@ -54,6 +54,7 @@ pub(crate) fn record_guard_installation(
                 "created_by": INIT_METADATA_CREATED_BY,
                 "policy_file": VOLICORD_POLICY_FILE,
                 "selected_profile": integration.guard_profile,
+                "connection_intent": integration.connection_intent,
                 "required_phases": required_guard_phase_names(),
                 "observation_status": if profile == IntegrationProfile::Record {
                     "disabled"
@@ -76,6 +77,7 @@ pub(crate) fn host_hook_capability_json(
         "schema": "volicord-host-hook-capability-v1",
         "policy_hash": plan.policy_hash,
         "selected_profile": plan.guard_profile,
+        "connection_intent": plan.connection_intent,
         "native_host_output_adapter": plan.native_host_output_adapter,
         "native_host_output_adapter_verified": plan.native_host_output_adapter_verified,
         "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,

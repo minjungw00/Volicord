@@ -9,9 +9,7 @@ use std::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_store::{
-    agent_connections::{
-        CONNECTION_INTENT_PERSONAL, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
-    },
+    agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
@@ -31,7 +29,8 @@ use crate::{
         all_recorded_values_true, guard_file_findings_for_inspection,
         missing_required_hooks_from_capability_json, GuardFileFindings,
     },
-    guard_integration::git_exclude::{personal_git_exclude_path, personal_local_paths},
+    guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
+    guard_integration::policy::validate_policy_schema,
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
@@ -508,23 +507,23 @@ fn inspect_registry_snapshot(
 
 const MAX_PERSONAL_GIT_PROJECTS: usize = 32;
 const MAX_PERSONAL_GIT_FINDINGS: usize = 64;
+const MAX_LOCAL_POLICY_BYTES: u64 = 1024 * 1024;
 
 fn inspect_personal_local_git_tracking(
     snapshot: &RegistryInspectionSnapshot,
     checks: &mut Vec<DiagnosticCheck>,
     actions: &mut Vec<DiagnosticAction>,
 ) {
-    let personal_connections = snapshot
+    let connected_connections = snapshot
         .agent_connections
         .iter()
-        .filter(|connection| connection.intent == CONNECTION_INTENT_PERSONAL)
         .map(|connection| connection.connection_internal_id.as_str())
         .collect::<BTreeSet<_>>();
     let mut project_internal_ids = snapshot
         .connection_projects
         .iter()
         .filter(|membership| {
-            personal_connections.contains(membership.connection_internal_id.as_str())
+            connected_connections.contains(membership.connection_internal_id.as_str())
         })
         .map(|membership| membership.project_internal_id.as_str())
         .collect::<BTreeSet<_>>();
@@ -532,10 +531,8 @@ fn inspect_personal_local_git_tracking(
         snapshot
             .agent_connections
             .iter()
-            .filter(|connection| connection.intent == CONNECTION_INTENT_PERSONAL)
             .filter_map(|connection| connection.project_internal_id.as_deref()),
     );
-
     let mut projects = snapshot
         .projects
         .iter()
@@ -545,7 +542,7 @@ fn inspect_personal_local_git_tracking(
     if projects.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "personal_local_git_tracking",
-            "no personal repository connection is recorded",
+            "no repository connection is recorded",
         ));
         return;
     }
@@ -556,10 +553,12 @@ fn inspect_personal_local_git_tracking(
     let mut tracked_paths = Vec::new();
     let mut unignored_paths = Vec::new();
     let mut audit_errors = Vec::new();
+    let mut effective_personal_project_count = 0usize;
 
     'projects: for project in &projects {
-        let exclude_path = match personal_git_exclude_path(&project.repo_root) {
-            Ok(path) => path,
+        let exclude_path = match git_exclude_path(&project.repo_root) {
+            Ok(Some(path)) => path,
+            Ok(None) => continue,
             Err(error) => {
                 push_bounded_git_finding(
                     &mut audit_errors,
@@ -573,7 +572,33 @@ fn inspect_personal_local_git_tracking(
                 continue;
             }
         };
-        for local_path in personal_local_paths() {
+        let include_personal_paths = match local_policy_connection_intent(&project.repo_root) {
+            Ok(intent) => {
+                let personal = intent == "personal";
+                effective_personal_project_count += usize::from(personal);
+                personal
+            }
+            Err(detail) => {
+                push_bounded_git_finding(
+                    &mut audit_errors,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "path": "/.volicord/policy.json",
+                        "detail": detail,
+                    }),
+                    &mut truncated,
+                );
+                true
+            }
+        };
+        let local_paths = always_local_paths().iter().copied().chain(
+            include_personal_paths
+                .then_some(personal_only_paths().iter().copied())
+                .into_iter()
+                .flatten(),
+        );
+        for local_path in local_paths {
             if tracked_paths.len() + unignored_paths.len() + audit_errors.len()
                 >= MAX_PERSONAL_GIT_FINDINGS
             {
@@ -671,13 +696,15 @@ fn inspect_personal_local_git_tracking(
     }
 
     let details = json!({
-        "personal_project_count": project_count,
+        "connected_project_count": project_count,
+        "effective_personal_project_count": effective_personal_project_count,
         "audited_project_count": projects.len(),
         "tracked_paths": tracked_paths,
         "unignored_existing_paths": unignored_paths,
         "audit_errors": audit_errors,
         "truncated": truncated,
-        "does_not_read_file_contents": true,
+        "reads_local_policy_file": true,
+        "does_not_read_other_local_integration_file_contents": true,
     });
     let has_warning = details["tracked_paths"]
         .as_array()
@@ -694,22 +721,53 @@ fn inspect_personal_local_git_tracking(
             actions,
             DiagnosticAction {
                 id: "protect_personal_local_files".to_owned(),
-                instruction: "Review the listed personal repositories, rerun personal init to restore repository-local excludes, and remove any listed local-only paths from the Git index without deleting their working-tree files."
+                instruction: "Review the listed repositories, rerun init with the intended connection intent to restore repository-local excludes, and remove any listed local-only paths from the Git index without deleting their working-tree files."
                     .to_owned(),
                 command: None,
             },
         );
         DiagnosticCheck::warning(
             "personal_local_git_tracking",
-            "personal local-only files need Git tracking follow-up",
+            "local integration files need Git tracking follow-up",
         )
     } else {
         DiagnosticCheck::passed(
             "personal_local_git_tracking",
-            "personal local-only files are outside the Git index and ignored",
+            "local integration files are outside the Git index and ignored",
         )
     };
     checks.push(check.with_details(details));
+}
+
+fn local_policy_connection_intent(repo_root: &Path) -> Result<String, String> {
+    let policy_dir = repo_root.join(".volicord");
+    let policy_path = policy_dir.join("policy.json");
+    let directory_metadata = fs::symlink_metadata(&policy_dir)
+        .map_err(|error| format!("failed to inspect the local policy directory: {error}"))?;
+    if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
+        return Err("the local policy directory is not a regular directory".to_owned());
+    }
+    let metadata = fs::symlink_metadata(&policy_path)
+        .map_err(|error| format!("failed to inspect the local policy file: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("the local policy file is not a regular file".to_owned());
+    }
+    if metadata.len() > MAX_LOCAL_POLICY_BYTES {
+        return Err(format!(
+            "the local policy file exceeds the {MAX_LOCAL_POLICY_BYTES}-byte audit limit"
+        ));
+    }
+    let text = fs::read_to_string(&policy_path)
+        .map_err(|error| format!("failed to read the local policy file: {error}"))?;
+    let policy = serde_json::from_str::<Value>(&text)
+        .map_err(|error| format!("the local policy file is not valid JSON: {error}"))?;
+    let connection_intent = policy
+        .get("connection_intent")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "the local policy is missing connection_intent".to_owned())?;
+    validate_policy_schema(&policy, connection_intent)
+        .map_err(|error| format!("the local policy schema is invalid: {error}"))?;
+    Ok(connection_intent.to_owned())
 }
 
 fn push_bounded_git_finding(values: &mut Vec<Value>, value: Value, truncated: &mut bool) {

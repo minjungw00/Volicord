@@ -345,6 +345,9 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 `mcp --stdio --connection <connection_id> --project <project_id>` 인자를 사용합니다.
 여러 연결 프로젝트를 의도적으로 다루는 항목에만 연결 전용 생성 인자를 남깁니다.
 호스트 환경은 명령을 `PATH`로 해석해야 합니다.
+저장된 `connection_id`와 `project_id`는 선택된 로컬 Runtime Home에서 계속 해석되어야
+합니다. 이 값이 든 프로젝트 범위 파일은 복제본에서 그대로 쓸 수 있는 저장소 발견용
+기술 정보가 아니며, init은 저장소 메타데이터에서 대체 로컬 ID를 파생하지 않습니다.
 
 <a id="agent-host-setup-and-init"></a>
 ### 호스트 설정 프로필
@@ -361,30 +364,51 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 
 연결 의도는 관리 Agent Connection 대상을 선택합니다. 이와 별도로 init은
 `personal`과 `shared` 모두에서 현재 저장소 통합 파일 구성을 유지합니다.
-`AGENTS.md`의 관리 블록과 `.volicord/policy.json`은 저장소 로컬 파일이고,
-공유 Claude Code init은 저장소의 `.mcp.json` 상태 보기도 함께 관리합니다. 개인
-Claude Code init은 MCP 등록에 호스트의 로컬 CLI 대상만 사용합니다. Detective
-profile은 지원되는 저장소 로컬 훅, 래퍼, 규칙 파일을 추가합니다. 개인 Claude Code
-탐지 설정은 `.claude/settings.local.json`을 사용하고, 공유 탐지 설정은
+`AGENTS.md`의 관리 블록은 저장소 안내이고, `.volicord/policy.json`은 의도와
+무관한 로컬 오버레이입니다. 정책은 `storage_scope=local_overlay`와 선택한
+`connection_intent`를 기록하며 공유 저장소 상태 보기가 될 수 없습니다. 공유
+Claude Code init은 저장소의 `.mcp.json` 상태 보기도 함께 관리합니다. 개인 Claude
+Code init은 MCP 등록에 호스트의 로컬 CLI 대상만 사용합니다. Detective profile은
+지원되는 저장소 훅 설정과 규칙에 더해 로컬 래퍼 스크립트를 추가합니다. 개인 Claude
+Code 탐지 설정은 `.claude/settings.local.json`을 사용하고, 공유 탐지 설정은
 `.claude/settings.json`을 사용합니다. 이런 통합 파일은 저장된 연결 의도나 주 호스트
 범위를 바꾸지 않습니다.
 
-`personal` init에서는 선택한 작업 트리에 실제로 적용되는 Git `info/exclude`에도
-Volicord 관리 블록을 둡니다. 일반 `.git` 디렉터리, `.git` gitdir 파일, 연결된
-worktree의 `commondir`를 해석해 실제 공통 Git 디렉터리를 찾습니다. 관리 블록은
-`/.volicord/`, Volicord 전용 훅 래퍼와 규칙 경로, 개인 훅 설정 파일인
-`/.codex/hooks.json`과 `/.claude/settings.local.json`만 제외합니다.
-`.codex/`나 `.claude/` 전체를 제외하지 않으며, `AGENTS.md`, `.mcp.json`,
-`.claude/settings.json`처럼 여러 주체가 함께 관리할 수 있는 상태 보기 파일도
-제외하지 않습니다. init은 추적되는 `.gitignore`를 쓰거나 바꾸지 않습니다.
-`shared` init은 개인 로컬 제외 블록을 추가하지 않으며, 이전 개인 init이 남긴
-블록을 제거하지도 않습니다.
+Git 기반 Product Repository의 모든 init은 선택한 worktree에 실제로 적용되는 Git
+`info/exclude`의 관리 블록 하나를 다시 계산합니다. 일반 `.git` 디렉터리, `.git`
+gitdir 파일, 연결된 worktree의 `commondir`를 해석해 실제 공통 Git 디렉터리를
+찾습니다. 의도와 무관한 부분은 항상 `/.volicord/`와 `.codex/hooks/` 및
+`.claude/hooks/` 아래의 Volicord 전용 래퍼 스크립트를 제외합니다. 이 파일들은 공유
+Detective init에서도 로컬 프로세스 바인딩 사실을 담습니다. 독립형 worktree의
+`personal` init은 개인 전용 훅 설정과 규칙 경로도 추가로 제외합니다. init을
+`shared`로 다시 실행하면 의도와 무관한 패턴은 유지하고 개인 전용 패턴은 제거하며,
+`personal`로 다시 실행하면 개인 전용 패턴을 복원합니다.
+
+관리 블록은 `.codex/`나 `.claude/` 전체를 제외하지 않으며, `AGENTS.md`,
+`.mcp.json`, `.claude/settings.json`, 공유 Codex 훅 설정과 규칙도 제외하지 않습니다.
+이 통합에서 `.codex/hooks.json`은 Volicord가 파일 전체를 소유하므로 다른 기존 JSON은
+충돌입니다. Claude Code `.claude/settings.local.json`은 관련 없는 설정을 보존하는
+여러 주체 소유 JSON이지만, 호스트는 파일 전체를 로컬 표면으로 정의하므로 개인
+init은 경로 전체를 제외합니다. init은 추적되는 `.gitignore`를 쓰거나 바꾸지
+않습니다.
+
+연결된 worktree의 공통 `info/exclude`는 모든 형제 worktree가 읽으므로 의도와 무관한
+경로만 담을 수 있습니다. 개인 Detective 설정에는 공유 형제에 영향을 주지 않고 이
+위치에서 숨길 수 없는 개인 전용 훅 설정이나 규칙 경로도 필요합니다. 따라서 init은
+저장소 또는 Git 메타데이터 파일을 적용하기 전에 이 조합을
+`LINKED_WORKTREE_PERSONAL_DETECTIVE_UNSUPPORTED`로 거부합니다. `--profile record`,
+`--shared` Detective 통합, 또는 독립형 worktree를 사용합니다.
 
 `volicord doctor`는 이 경계를 `checks[].id=personal_local_git_tracking`으로 보고합니다.
-로컬 전용 경로가 추적 중이거나 존재하지만 제외되지 않았으면 경고하고, 크기가 제한된
-`tracked_paths`와 `unignored_existing_paths` 세부사항을 제공합니다. Doctor는 index를
-바꾸지 않습니다. 개인 init을 다시 실행해 제외 블록을 복구하고, 작업 트리 파일을
-삭제하지 않은 채 추적 중인 로컬 전용 경로를 index에서 제거하도록 권고합니다.
+연결된 Git 저장소에서는 의도와 무관한 로컬 경로를 확인하고, 검증된 로컬 정책 파일
+구성을 읽어 추가 개인 경로의 적용 여부를 판단합니다. 정책이 없거나 잘못되었으면
+크기가 제한된 감사 오류로 보고하고 보수적으로 개인 경로도 확인합니다. 현재 정책이
+`shared`이면 이전 개인 연결 기록이 남아 있다는 이유만으로 개인 전용 경로를 검사하지
+않습니다. 로컬 전용 경로가 추적 중이거나 존재하지만 제외되지 않았으면 경고하고,
+크기가 제한된 `tracked_paths`와 `unignored_existing_paths` 세부사항을 제공합니다.
+Doctor는 index를 바꾸지 않습니다. 의도한 연결 의도로 init을 다시 실행해 제외 블록을
+복구하고, 작업 트리 파일을 삭제하지 않은 채 추적 중인 로컬 전용 경로를 index에서
+제거하도록 권고합니다.
 
 `--profile`은 공개 통합 프로필을 선택합니다.
 
@@ -453,10 +477,12 @@ Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호
   `volicord mcp --stdio --connection <connection_id> --project <project_id>`를 쓰며,
   Codex에는 관리 시작 출처 환경 변수 마커도 넣습니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
-- 숨겨진 내부 훅 명령군을 호출하는 탐지용 호스트 훅 명령을 담은
-  `.volicord/policy.json`을 씁니다.
-- `personal`에서는 실제 Git `info/exclude`의 Volicord 관리 로컬 경로 블록을 쓰거나
-  갱신합니다. 명시적 `--shared`는 이 블록을 추가하지 않습니다.
+- 선택한 `connection_intent`와 숨겨진 내부 훅 명령군을 호출하는 탐지용 호스트 훅
+  명령을 담은 `local_overlay` 정책으로 `.volicord/policy.json`을 씁니다.
+- Git 기반 저장소에서는 두 의도 모두 실제 Git `info/exclude`의 Volicord 관리 로컬
+  경로 블록을 쓰거나 갱신합니다. 이 블록은 항상 `.volicord/`와 생성된 래퍼
+  스크립트를 보호하고, 독립형 `personal` init에서는 개인 전용 훅 설정과 규칙 경로도
+  추가합니다.
 - 필수 탐지 생명주기 단계를 위한 Volicord 관리 훅 래퍼 스크립트를
   `.codex/hooks/` 또는 `.claude/hooks/` 아래에 씁니다.
 - `.codex/hooks.json` 또는 `.claude/settings.json` 같은 지원 호스트 훅 파일을
@@ -468,6 +494,8 @@ Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호
   거부합니다.
 - Windows 호스트 훅 래퍼와 감시기 동작이 구현되고 테스트되지 않았으므로 네이티브
   Windows에서 `detective` 초기화를 거부합니다.
+- 개인 전용 경로를 형제 worktree와 격리할 수 없으면 연결된 worktree의 개인
+  Detective 초기화를 거부합니다.
 - 호스트가 새 MCP 또는 탐지용 호스트 훅 설정을 불러와야 할 때 필요한 재시작, 설정 다시
   불러오기, 신뢰, 승인 동작을 보고합니다.
 
@@ -485,6 +513,24 @@ Unix에서 새 `.volicord/policy.json`은 사용자 전용 모드 `0600`으로 �
 `VOLICORD_MCP_CONNECTION_ID`, `VOLICORD_MCP_PROJECT_ID`만 허용합니다. 비밀값을
 나타내는 형태의 키와 그 밖의 환경 키는 값을 진단에 포함하지 않고 거부합니다. 이
 허용 목록은 일반적인 비밀값 내용 검사기가 아닙니다.
+정책 스키마는 `storage_scope=local_overlay`, 선택한 `connection_intent`, 비어 있지 않은
+호스트·저장소·연결 식별자 집합, 문자열 인자와 문자열 환경 값을 가진 MCP 명령, 그리고
+`selected_profile`과 일치하는 호스트 훅 활성 상태도 요구합니다. 최상위, `mcp`,
+`host_hook`, 필수 단계 명령, 개별 명령 객체는 닫힌 필드 집합을 사용합니다. 알 수 없는
+필드나 단계, 문자열이 아닌 인자 또는 환경 값은 거부됩니다. 감사에서는 현재 기록된
+정책이 이 형태를 어기거나 기록된 의도와 맞지 않으면 깨진 상태로 취급합니다. 대응하는
+기록된 호스트 capability에도 문자열 `connection_intent`가 있어야 합니다. 값이 없거나
+문자열이 아니면 호환 대체 경로를 사용하지 않고 깨진 상태로 취급합니다.
+
+닫힌 정책 객체가 허용하는 필드는 정확히 다음과 같습니다.
+
+- 최상위: `schema`, `managed_by`, `storage_scope`, `connection_intent`, `host`,
+  `repo_root`, `connection_id`, `guard_installation_id`, `selected_profile`, `mcp`,
+  `host_hook`
+- `mcp`: `command`, `args`, `env`
+- `host_hook`: `enabled`, `commands`
+- `host_hook.commands`: `session_start`, `pre_tool`, `post_tool`, `prompt_capture`, `stop`
+- 각 단계 명령: `command`, `args`
 
 init에서 계획된 관찰 훅 통합 관리 파일은 같은 디렉터리의 조건부 커밋으로 적용합니다.
 이 규칙은 관리 지침, 정책, 훅, 래퍼, 규칙, Git 제외 파일에 적용됩니다. 프로젝트
@@ -512,6 +558,9 @@ commondir 제어 파일, 디렉터리가 아닌 Git 대상, 심볼릭 링크나 
 Repository가 아니라 해석된 공통 Git 디렉터리를 고정한 뒤 씁니다. 부모 경로에서
 심볼릭 링크를 따라가지 않는 규칙, 오래된 계획 거부, 조건부 교체, 복구 규칙은 이
 경로에도 동일하게 적용됩니다.
+공통 관리 블록에는 의도와 무관한 로컬 오버레이 경로만 들어갑니다. 연결된 개인
+Detective 계획은 추가 개인 전용 경로를 공통 메타데이터에 안전하게 둘 수 없으므로
+관리 파일을 적용하기 전에 거부됩니다.
 
 조건부 쓰기 점검은 일반적인 동시 작성자가 관리 대상이나 부모 경로를 바꾸는 경우를
 다룹니다. 구현 전용 보조 항목 이름은 활성 CLI 시도에 예약됩니다. 같은 권한을 가진 로컬

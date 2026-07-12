@@ -375,7 +375,10 @@ Runtime Home path; it uses `volicord` as the command name and project-bound
 when the generated entry is for one selected project. Connection-only generated
 arguments are reserved for entries that intentionally serve more than one
 connected project. The host environment must resolve the command through
-`PATH`.
+`PATH`. The saved `connection_id` and `project_id` still have to resolve in the
+selected local Runtime Home. A project-scoped file containing those values is
+not a clone-portable repository-discovery descriptor, and init does not derive
+replacement local IDs from repository metadata.
 
 <a id="agent-host-setup-and-init"></a>
 ### Host setup profiles
@@ -393,35 +396,59 @@ through `PATH` and does not embed a personal Runtime Home path.
 
 Connection intent selects the managed Agent Connection target. Init separately
 keeps its current repository integration inventory for both `personal` and
-`shared`: the managed `AGENTS.md` block and
-`.volicord/policy.json` are repository-local. Shared Claude Code init also
-maintains the repository `.mcp.json` projection; personal Claude Code init uses
-only the host's local CLI target for MCP registration. The Detective profile
-adds the supported repository-local hook, wrapper, and rule files. Personal
-Claude Code detective settings use `.claude/settings.local.json`; shared
-detective settings use `.claude/settings.json`. Those integration files do not
-change the stored connection intent or its primary host scope.
+`shared`. The managed `AGENTS.md` block is repository guidance, while
+`.volicord/policy.json` is an intent-independent local overlay. The policy
+records `storage_scope=local_overlay` and the selected `connection_intent`; it
+is never a shared repository projection. Shared Claude Code init also maintains
+the repository `.mcp.json` projection; personal Claude Code init uses only the
+host's local CLI target for MCP registration. The Detective profile adds the
+supported repository hook configuration and rules plus local wrapper scripts.
+Personal Claude Code detective settings use `.claude/settings.local.json`;
+shared detective settings use `.claude/settings.json`. Those integration files
+do not change the stored connection intent or its primary host scope.
 
-For a `personal` init, Volicord also maintains a block in the selected work
-tree's effective Git `info/exclude`. It resolves a normal `.git` directory, a
-`.git` gitdir file, and a linked worktree `commondir` to the actual common Git
-directory. The block excludes `/.volicord/`, dedicated Volicord hook wrapper
-and rule paths, and the exact personal hook configuration files
-`/.codex/hooks.json` and `/.claude/settings.local.json`. It does not exclude all
-of `.codex/` or `.claude/`, and it does not exclude multi-owner or shared
-projection files such as `AGENTS.md`, `.mcp.json`, or
-`.claude/settings.json`. Init does not write or change the tracked
-`.gitignore`. A `shared` init does not add this
-personal-local exclude block and does not remove a block left by a prior
-personal init.
+For every init in a Git-backed Product Repository, Volicord recomputes one
+managed block in the selected worktree's effective Git `info/exclude`. It
+resolves a normal `.git` directory, a `.git` gitdir file, and a linked worktree
+`commondir` to the actual common Git directory. The intent-independent part
+always excludes `/.volicord/` and the dedicated Volicord wrapper scripts under
+`.codex/hooks/` and `.claude/hooks/`; those files contain local process-binding
+facts even for `shared` detective init. In a standalone worktree, `personal`
+init additionally excludes the exact personal hook configuration and rule
+paths. Re-running init as `shared` removes those personal-only patterns while
+retaining the intent-independent patterns, and re-running as `personal`
+restores them.
+
+The block does not exclude all of `.codex/` or `.claude/`, and it does not
+exclude `AGENTS.md`, `.mcp.json`, `.claude/settings.json`, or shared Codex hook
+configuration and rules. `.codex/hooks.json` is an exact-owned Volicord file for
+this integration: different existing JSON is a conflict. Claude Code
+`.claude/settings.local.json` is mixed-owner JSON whose unrelated settings are
+preserved, but the host defines the entire file as a local surface, so a
+personal init excludes the whole path. Init does not write or change the
+tracked `.gitignore`.
+
+A linked worktree's common `info/exclude` may contain only the
+intent-independent paths because every sibling worktree reads it. Personal
+Detective setup also needs personal-only hook configuration or rule paths that
+cannot be hidden there without affecting a shared sibling. Init therefore
+rejects that combination with
+`LINKED_WORKTREE_PERSONAL_DETECTIVE_UNSUPPORTED` before applying repository or
+Git-metadata files. Use `--profile record`, a `--shared` Detective integration,
+or a standalone worktree.
 
 `volicord doctor` reports this boundary as
-`checks[].id=personal_local_git_tracking`. A tracked local-only path or an
-existing local-only path that is not ignored is a warning with bounded
+`checks[].id=personal_local_git_tracking`. It checks the intent-independent
+local paths for connected Git repositories and reads the validated local policy
+inventory to decide whether the additional personal paths apply. A missing or
+invalid policy is a bounded audit error and uses the conservative personal-path
+check; a current `shared` policy does not inherit personal-only checks merely
+because an older personal connection record still exists. A tracked local-only
+path or an existing local-only path that is not ignored is a warning with bounded
 `tracked_paths` and `unignored_existing_paths` details. Doctor does not change
-the index: it recommends rerunning personal init to restore the exclude block
-and removing tracked local-only paths from the index without deleting their
-working-tree files.
+the index: it recommends rerunning init with the intended connection intent to
+restore the exclude block and removing tracked local-only paths from the index
+without deleting their working-tree files.
 
 `--profile` selects the public integration profile:
 
@@ -499,10 +526,13 @@ Non-dry-run `volicord init`:
   `volicord mcp --stdio --connection <connection_id> --project <project_id>`
   and, for Codex, managed launch provenance environment markers
 - writes or updates only the Volicord-managed block in `AGENTS.md`
-- writes `.volicord/policy.json` with detective host hook commands that invoke
-  the hidden internal hook namespace
-- for `personal`, writes or updates the Volicord-managed local-path block in
-  the effective Git `info/exclude`; explicit `--shared` does not add that block
+- writes `.volicord/policy.json` as a `local_overlay` policy carrying the
+  selected `connection_intent` and detective host hook commands that invoke the
+  hidden internal hook namespace
+- in a Git-backed repository, writes or updates the Volicord-managed local-path
+  block in the effective Git `info/exclude` for both intents; the block always
+  protects `.volicord/` and generated wrapper scripts, while a standalone
+  `personal` init also adds personal-only hook configuration and rule paths
 - writes Volicord-managed hook wrapper scripts under `.codex/hooks/` or
   `.claude/hooks/` for required detective lifecycle phases
 - writes supported host hook files such as `.codex/hooks.json` or
@@ -514,6 +544,8 @@ Non-dry-run `volicord init`:
   session watcher support is missing
 - rejects `detective` initialization on native Windows because Windows host-hook
   wrappers and watcher behavior are not implemented and tested
+- rejects personal Detective initialization in a linked worktree when its
+  personal-only paths cannot be isolated from sibling worktrees
 - reports the required host restart, reload, approval, or trust action when the
   host must load the new MCP or detective host hook configuration
 
@@ -534,6 +566,27 @@ only `VOLICORD_HOME`, `VOLICORD_MCP_LAUNCH`, `VOLICORD_MCP_HOST`,
 `VOLICORD_MCP_CONNECTION_ID`, and `VOLICORD_MCP_PROJECT_ID`; secret-like and
 all other environment keys are rejected without including their values in the
 diagnostic. This allowlist is not a general secret-content scanner.
+The policy schema also requires `storage_scope=local_overlay`, the selected
+`connection_intent`, a non-empty host/repository/connection identity set, an MCP
+command with string arguments and string environment values, and a host-hook
+enabled state that matches `selected_profile`. The top-level, `mcp`,
+`host_hook`, required phase-command, and individual command objects use closed
+field sets; unknown fields, phases, and non-string argument or environment
+values are rejected. Audit treats a current recorded policy that violates this
+shape or disagrees with its recorded intent as broken. The matching recorded
+host capability must carry a string `connection_intent`; a missing or non-string
+value is broken rather than a compatibility fallback.
+
+The closed policy objects allow exactly these fields:
+
+- top level: `schema`, `managed_by`, `storage_scope`, `connection_intent`,
+  `host`, `repo_root`, `connection_id`, `guard_installation_id`,
+  `selected_profile`, `mcp`, and `host_hook`
+- `mcp`: `command`, `args`, and `env`
+- `host_hook`: `enabled` and `commands`
+- `host_hook.commands`: `session_start`, `pre_tool`, `post_tool`,
+  `prompt_capture`, and `stop`
+- each phase command: `command` and `args`
 
 Applying a planned guard-integration managed file during init is a conditional
 same-directory commit. This rule covers managed guidance, policy, hook, wrapper,
@@ -564,6 +617,9 @@ directory path that resolves through a symbolic link or non-canonical
 component. For linked worktrees the pinned write root is the resolved common
 Git directory rather than the Product Repository. The same no-follow parent,
 stale-plan, conditional replacement, and recovery rules apply there.
+The common block contains only intent-independent local overlay paths. A linked
+personal Detective plan is rejected before managed files are applied because
+its additional personal-only paths cannot safely be placed in common metadata.
 
 The conditional-write checks cover changes to the managed target and its parent
 path by ordinary concurrent writers. Implementation-private sibling names are

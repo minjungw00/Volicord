@@ -111,15 +111,16 @@ Volicord 런타임 상태, SQLite 데이터베이스, 생성 기록, 런타임 �
 
 - Codex `.codex/config.toml` 또는 Claude Code `.mcp.json` 같은 프로젝트 범위 호스트 설정
 - `AGENTS.md` 안의 Volicord 관리 블록
-- `.volicord/policy.json`에 있는 저장소 로컬 Volicord 탐지형 호스트 훅 정책 파일
+- `.volicord/policy.json`에 있는 의도와 무관한 로컬 정책 오버레이
 - Codex `.codex/hooks.json`, 개인 Claude Code `.claude/settings.local.json`, 공유
   Claude Code `.claude/settings.json` 같은 호스트 훅 설정
 - Codex `.codex/hooks/` 또는 Claude Code `.claude/hooks/` 아래의 Volicord 관리 호스트 훅
   래퍼 스크립트
 - Codex `.codex/rules/*.rules` 또는 `.claude/rules/` 아래의 Claude Code 파일 같은
   Volicord 관리 호스트 규칙 파일
-- 개인 init에서 작업 트리에 실제로 적용되는 Git `info/exclude`의 Volicord 관리
-  블록. 이는 추적되지 않는 Git 메타데이터이며 Product Repository 파일이 아닙니다.
+- Git 기반의 모든 init에서 worktree에 실제로 적용되는 Git `info/exclude`의 Volicord
+  관리 블록. 이는 추적되지 않는 Git 메타데이터이며 Product Repository 파일이
+  아닙니다.
 
 요청된 `guard` 통합 관리 파일을 적용하는 동안 대상 디렉터리에 스테이징, 이전 파일
 밀어 두기, 되돌리기를 위한 구현 전용 보조 항목을 사용할 수 있습니다. 이 항목들은
@@ -138,10 +139,26 @@ Record profile init에서 기본 개인 Codex 연결은 Codex 사용자 설정 �
 공유 init은 저장소 `.mcp.json` 프로젝트
 파일을 주 호스트 대상으로 선택합니다. 개인 Claude Code 탐지 훅은
 `.claude/settings.local.json`을 사용하고 공유 탐지 훅은 `.claude/settings.json`을
-사용합니다. 개인 init은 `.gitignore`를 바꾸지 않고 Git `info/exclude`를 통해
-`/.volicord/`와 정확한 Volicord 소유 로컬 훅 경로를 추적 대상에서 제외합니다. 공유
-init은 이 블록을 추가하지 않습니다. 이 파일들은 로컬 통합 파일이지 Runtime Home
-데이터가 아닙니다. 공유 통합 파일을 커밋할지는 `Product Repository` 정책 결정입니다.
+사용합니다. 두 의도 모두 `.gitignore`를 바꾸지 않고 Git `info/exclude`를 통해
+`/.volicord/`와 생성된 훅 래퍼 스크립트를 추적 대상에서 제외합니다. 독립형 개인
+init은 개인 훅 설정과 규칙 경로도 보호합니다. `.volicord/policy.json`은
+`storage_scope=local_overlay`를 선언하고 선택한 `connection_intent`를 기록하므로 공유
+상태 보기로 커밋하면 안 됩니다. 생성된 래퍼 스크립트도 프로세스 바인딩 경로와
+식별자를 담으므로 로컬 파일입니다.
+
+Codex `.codex/hooks.json`은 Volicord 통합이 파일 전체를 소유하며, 다른 기존 JSON은
+충돌입니다. Claude Code `.claude/settings.local.json`은 관리 상태 보기로 관련 없는
+설정을 보존하지만 호스트가 파일 전체를 로컬로 취급하므로 개인 init은 경로 전체를
+제외합니다. 공유 훅 설정과 규칙 파일은 저장소에 보이는 상태로 남습니다. 이 공유
+표면을 커밋할지는 Product Repository 정책 결정이지만, 로컬 `connection_id`와
+`project_id`가 든 공유 `.codex/config.toml` 또는 `.mcp.json`은 복제본에서 그대로 쓸
+수 있는 저장소 발견용 기술 정보가 아닙니다. 이 값은 선택된 Runtime Home에서
+해석되어야 합니다.
+
+연결된 worktree에서 공통 `info/exclude`는 모든 형제가 안전하게 읽을 수 있는 의도와
+무관한 정책 및 래퍼 경로만 담습니다. 개인 Detective init은 추가 개인 전용 경로를
+공통 메타데이터에서 격리할 수 없으므로 파일을 적용하기 전에 거부됩니다. 이런 통합
+표면은 Runtime Home 데이터가 아닙니다.
 
 규칙:
 

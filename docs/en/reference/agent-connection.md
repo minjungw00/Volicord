@@ -199,9 +199,18 @@ is not a security level and not an authority grant.
 For `volicord init`, `personal` is the default and `--shared` explicitly
 selects `shared`; init does not create a `global` connection. Connection
 intent classifies the primary managed host target. Repository-local guidance,
-policy, and profile-dependent hook integration files applied by init remain a
-separate administrative integration surface and do not change the stored
-connection intent or host scope.
+local policy, and profile-dependent hook integration files applied by init
+remain a separate administrative integration surface and do not change the
+stored connection intent or host scope. In particular,
+`.volicord/policy.json` is an intent-independent `local_overlay`, and generated
+hook wrappers remain local even for `shared`.
+
+A `shared` primary host file can still contain `connection_id` and `project_id`
+process-binding values for one local Runtime Home. Those values are internal
+identities, not repository-stable selectors. The file is therefore not a
+clone-portable discovery contract unless a separate focused owner defines a
+repository-bound discovery mechanism; the current baseline defines no such
+mechanism.
 
 The baseline directly managed host kinds are `codex` and `claude_code`.
 Host-neutral MCP configuration is user-managed. User-managed configuration can

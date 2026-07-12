@@ -111,7 +111,7 @@ The only baseline exceptions are explicitly requested integration files:
 
 - project-scoped host configuration, such as Codex `.codex/config.toml` or Claude Code `.mcp.json`
 - a Volicord-managed block in `AGENTS.md`
-- a repository-local Volicord detective host hook policy file at `.volicord/policy.json`
+- an intent-independent local policy overlay at `.volicord/policy.json`
 - host hook configuration, such as Codex `.codex/hooks.json` or Claude Code
   `.claude/settings.local.json` for personal init and `.claude/settings.json`
   for shared init
@@ -119,8 +119,9 @@ The only baseline exceptions are explicitly requested integration files:
   Code `.claude/hooks/`
 - Volicord-managed host rule files, such as Codex `.codex/rules/*.rules` or
   Claude Code files under `.claude/rules/`
-- for personal init, a Volicord-managed block in the worktree's effective Git
-  `info/exclude`; this is untracked Git metadata, not a Product Repository file
+- for every Git-backed init, a Volicord-managed block in the worktree's
+  effective Git `info/exclude`; this is untracked Git metadata, not a Product
+  Repository file
 
 A requested guard-integration managed-file application may use
 implementation-private sibling entries in the target directory for staging,
@@ -142,11 +143,29 @@ Claude Code personal init uses only the local CLI target for MCP registration;
 shared init selects the repository `.mcp.json` project file as the primary host
 target. Personal Claude Code detective hooks use
 `.claude/settings.local.json`, while shared detective hooks use
-`.claude/settings.json`. Personal init keeps `/.volicord/` and the exact
-Volicord-owned local hook paths untracked through Git `info/exclude` without
-changing `.gitignore`; shared init does not add that block. These are local
-integration files, not Runtime Home data. Whether to commit shared integration
-files is a `Product Repository` policy decision.
+`.claude/settings.json`. Both intents keep `/.volicord/` and generated hook
+wrapper scripts untracked through Git `info/exclude` without changing
+`.gitignore`; a standalone personal init also protects its personal hook
+configuration and rule paths. `.volicord/policy.json` declares
+`storage_scope=local_overlay` and records the selected `connection_intent`; it
+must not be committed as a shared projection. Generated wrapper scripts are
+also local because they carry process-binding paths and identifiers.
+
+Codex `.codex/hooks.json` is exact-owned by the Volicord integration and
+different existing JSON is a conflict. Claude Code
+`.claude/settings.local.json` preserves unrelated settings through a managed
+projection, but the host treats the whole file as local, so personal init
+excludes the complete path. Shared hook configuration and rule files remain
+repository-visible. Whether to commit those shared surfaces is a Product
+Repository policy decision, but a shared `.codex/config.toml` or `.mcp.json`
+containing local `connection_id` and `project_id` values is not a clone-portable
+discovery descriptor: those values must resolve in the selected Runtime Home.
+
+For a linked worktree, the common `info/exclude` contains only the
+intent-independent policy and wrapper paths read safely by every sibling.
+Personal Detective init is rejected before applying files because its
+additional personal-only paths cannot be isolated in that common metadata.
+These integration surfaces are not Runtime Home data.
 
 Rules:
 

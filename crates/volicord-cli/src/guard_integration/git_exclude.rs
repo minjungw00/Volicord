@@ -8,15 +8,16 @@ use crate::{
         files::{plan_managed_block_file, read_managed_text, GeneratedFilePlan},
         GuardIntegrationError,
     },
-    host_integration::HostIntegrationFileKind,
+    host_integration::{ConnectionIntent, HostIntegrationFileKind},
 };
+use volicord_types::IntegrationProfile;
 
 pub(crate) const GIT_EXCLUDE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED LOCAL EXCLUDES";
 pub(crate) const GIT_EXCLUDE_END_MARKER: &str = "# END VOLICORD MANAGED LOCAL EXCLUDES";
 
 const MAX_GIT_CONTROL_FILE_BYTES: usize = 4096;
 
-const PERSONAL_LOCAL_PATHS: &[&str] = &[
+const ALWAYS_LOCAL_PATHS: &[&str] = &[
     "/.volicord/",
     "/.codex/hooks/volicord-dispatch.sh",
     "/.codex/hooks/volicord-session-start.sh",
@@ -24,49 +25,88 @@ const PERSONAL_LOCAL_PATHS: &[&str] = &[
     "/.codex/hooks/volicord-post-tool.sh",
     "/.codex/hooks/volicord-prompt-capture.sh",
     "/.codex/hooks/volicord-stop.sh",
-    "/.codex/hooks.json",
-    "/.codex/rules/volicord.rules",
     "/.claude/hooks/volicord-session-start.sh",
     "/.claude/hooks/volicord-pre-tool.sh",
     "/.claude/hooks/volicord-post-tool.sh",
     "/.claude/hooks/volicord-prompt-capture.sh",
     "/.claude/hooks/volicord-stop.sh",
+];
+
+const PERSONAL_ONLY_PATHS: &[&str] = &[
+    "/.codex/hooks.json",
+    "/.codex/rules/volicord.rules",
     "/.claude/settings.local.json",
     "/.claude/rules/volicord.md",
 ];
 
-pub(crate) fn plan_personal_git_excludes(
+pub(crate) fn plan_git_excludes(
     repo_root: &Path,
-) -> Result<GeneratedFilePlan, GuardIntegrationError> {
+    connection_intent: ConnectionIntent,
+    profile: IntegrationProfile,
+) -> Result<Option<GeneratedFilePlan>, GuardIntegrationError> {
+    if connection_intent != ConnectionIntent::Personal
+        && matches!(
+            fs::symlink_metadata(repo_root.join(".git")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        )
+    {
+        return Ok(None);
+    }
     let target = resolve_git_exclude_target(repo_root)?;
+    if target.is_linked_worktree
+        && connection_intent == ConnectionIntent::Personal
+        && profile == IntegrationProfile::Detective
+    {
+        return Err(GuardIntegrationError::runtime(
+            "LINKED_WORKTREE_PERSONAL_DETECTIVE_UNSUPPORTED: personal detective init would require worktree-specific local hook paths, but this linked worktree exposes only the common Git info/exclude shared by sibling worktrees. Use --profile record, use --shared for a repository-managed detective integration, or initialize detective in a standalone Git worktree.",
+        ));
+    }
+    let include_personal_paths =
+        !target.is_linked_worktree && connection_intent == ConnectionIntent::Personal;
     plan_managed_block_file(
         HostIntegrationFileKind::GitInfoExclude,
         &target.anchor_root,
         &target.exclude_path,
-        &personal_exclude_block(),
+        &exclude_block(include_personal_paths),
         GIT_EXCLUDE_START_MARKER,
         GIT_EXCLUDE_END_MARKER,
         false,
     )
+    .map(Some)
 }
 
-pub(crate) fn personal_local_paths() -> &'static [&'static str] {
-    PERSONAL_LOCAL_PATHS
+pub(crate) fn always_local_paths() -> &'static [&'static str] {
+    ALWAYS_LOCAL_PATHS
 }
 
-pub(crate) fn personal_git_exclude_path(
-    repo_root: &Path,
-) -> Result<PathBuf, GuardIntegrationError> {
-    Ok(resolve_git_exclude_target(repo_root)?.exclude_path)
+pub(crate) fn personal_only_paths() -> &'static [&'static str] {
+    PERSONAL_ONLY_PATHS
 }
 
-fn personal_exclude_block() -> String {
+pub(crate) fn git_exclude_path(repo_root: &Path) -> Result<Option<PathBuf>, GuardIntegrationError> {
+    if matches!(
+        fs::symlink_metadata(repo_root.join(".git")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound
+    ) {
+        return Ok(None);
+    }
+    Ok(Some(resolve_git_exclude_target(repo_root)?.exclude_path))
+}
+
+fn exclude_block(include_personal_paths: bool) -> String {
     let mut block = String::from(GIT_EXCLUDE_START_MARKER);
     block.push('\n');
-    block.push_str("# Repository-local files created only for a personal Volicord integration.\n");
-    for path in PERSONAL_LOCAL_PATHS {
+    block.push_str("# Volicord local integration files that must remain outside Git.\n");
+    for path in ALWAYS_LOCAL_PATHS {
         block.push_str(path);
         block.push('\n');
+    }
+    if include_personal_paths {
+        block.push_str("# Additional host-local files for a personal Volicord integration.\n");
+        for path in PERSONAL_ONLY_PATHS {
+            block.push_str(path);
+            block.push('\n');
+        }
     }
     block.push_str(GIT_EXCLUDE_END_MARKER);
     block.push('\n');
@@ -77,6 +117,7 @@ fn personal_exclude_block() -> String {
 struct GitExcludeTarget {
     anchor_root: PathBuf,
     exclude_path: PathBuf,
+    is_linked_worktree: bool,
 }
 
 fn resolve_git_exclude_target(repo_root: &Path) -> Result<GitExcludeTarget, GuardIntegrationError> {
@@ -97,6 +138,7 @@ fn resolve_git_exclude_target(repo_root: &Path) -> Result<GitExcludeTarget, Guar
         return Ok(GitExcludeTarget {
             anchor_root: repo_root.to_path_buf(),
             exclude_path: marker.join("info").join("exclude"),
+            is_linked_worktree: false,
         });
     }
     if !metadata.is_file() {
@@ -117,18 +159,19 @@ fn resolve_git_exclude_target(repo_root: &Path) -> Result<GitExcludeTarget, Guar
     ensure_safe_directory(&git_dir)?;
 
     let commondir_path = git_dir.join("commondir");
-    let common_dir = match read_managed_text(&git_dir, &commondir_path)? {
+    let (common_dir, is_linked_worktree) = match read_managed_text(&git_dir, &commondir_path)? {
         Some(text) => {
             let value = parse_one_line_control_value(&text, &commondir_path)?;
             let path = resolve_control_path(&git_dir, value, &commondir_path)?;
             ensure_safe_directory(&path)?;
-            path
+            (path, true)
         }
-        None => git_dir,
+        None => (git_dir, false),
     };
     Ok(GitExcludeTarget {
         exclude_path: common_dir.join("info").join("exclude"),
         anchor_root: common_dir,
+        is_linked_worktree,
     })
 }
 
@@ -240,6 +283,8 @@ fn unsafe_git_path(path: &Path, detail: &str) -> GuardIntegrationError {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use crate::guard_integration::apply::apply_generated_file;
+
     use super::*;
 
     struct TestDirectory(PathBuf);
@@ -276,6 +321,7 @@ mod tests {
 
         assert_eq!(target.anchor_root, repo.path());
         assert_eq!(target.exclude_path, repo.path().join(".git/info/exclude"));
+        assert!(!target.is_linked_worktree);
         Ok(())
     }
 
@@ -297,12 +343,13 @@ mod tests {
 
         assert_eq!(target.anchor_root, common);
         assert_eq!(target.exclude_path, common.join("info/exclude"));
+        assert!(target.is_linked_worktree);
         Ok(())
     }
 
     #[test]
     fn personal_block_uses_only_dedicated_volicord_paths() {
-        let block = personal_exclude_block();
+        let block = exclude_block(true);
         assert!(block.contains("/.volicord/\n"));
         assert!(block.contains("/.codex/hooks/volicord-pre-tool.sh\n"));
         assert!(block.contains("/.claude/rules/volicord.md\n"));
@@ -312,5 +359,170 @@ mod tests {
         assert!(!block.contains("/.claude/\n"));
         assert!(!block.contains("/.mcp.json\n"));
         assert!(!block.contains("/.gitignore\n"));
+    }
+
+    #[test]
+    fn shared_block_keeps_only_intent_independent_local_overlay() {
+        let block = exclude_block(false);
+
+        assert!(block.contains("/.volicord/\n"));
+        assert!(block.contains("/.codex/hooks/volicord-pre-tool.sh\n"));
+        assert!(block.contains("/.claude/hooks/volicord-pre-tool.sh\n"));
+        assert!(!block.contains("/.codex/hooks.json\n"));
+        assert!(!block.contains("/.claude/settings.local.json\n"));
+    }
+
+    #[test]
+    fn normal_repository_recomputes_managed_paths_across_intent_transitions(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = TestDirectory::new("normal-intent-transition")?;
+        fs::create_dir_all(repo.path().join(".git/info"))?;
+
+        let personal = plan_git_excludes(
+            repo.path(),
+            ConnectionIntent::Personal,
+            IntegrationProfile::Record,
+        )?
+        .expect("normal Git repository should produce an exclude plan");
+        apply_generated_file(&personal)?;
+        let exclude_path = repo.path().join(".git/info/exclude");
+        let personal_text = fs::read_to_string(&exclude_path)?;
+        assert!(personal_text.contains("/.volicord/\n"));
+        assert!(personal_text.contains("/.codex/hooks.json\n"));
+        assert!(personal_text.contains("/.claude/settings.local.json\n"));
+
+        let shared = plan_git_excludes(
+            repo.path(),
+            ConnectionIntent::Shared,
+            IntegrationProfile::Record,
+        )?
+        .expect("normal Git repository should produce an exclude plan");
+        apply_generated_file(&shared)?;
+        let shared_text = fs::read_to_string(&exclude_path)?;
+        assert!(shared_text.contains("/.volicord/\n"));
+        assert!(shared_text.contains("/.codex/hooks/volicord-pre-tool.sh\n"));
+        assert!(shared_text.contains("/.claude/hooks/volicord-pre-tool.sh\n"));
+        assert!(!shared_text.contains("/.codex/hooks.json\n"));
+        assert!(!shared_text.contains("/.claude/settings.local.json\n"));
+        assert_eq!(shared_text.matches(GIT_EXCLUDE_START_MARKER).count(), 1);
+
+        let personal_again = plan_git_excludes(
+            repo.path(),
+            ConnectionIntent::Personal,
+            IntegrationProfile::Record,
+        )?
+        .expect("normal Git repository should produce an exclude plan");
+        apply_generated_file(&personal_again)?;
+        let personal_again_text = fs::read_to_string(&exclude_path)?;
+        assert!(personal_again_text.contains("/.codex/hooks.json\n"));
+        assert!(personal_again_text.contains("/.claude/settings.local.json\n"));
+        assert_eq!(
+            personal_again_text
+                .matches(GIT_EXCLUDE_START_MARKER)
+                .count(),
+            1
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn linked_personal_detective_is_rejected_before_a_file_plan_is_returned(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TestDirectory::new("linked-personal-detective")?;
+        let repo = fixture.path().join("repo");
+        let common = fixture.path().join("main/.git");
+        let git_dir = common.join("worktrees/repo");
+        fs::create_dir_all(&repo)?;
+        fs::create_dir_all(&git_dir)?;
+        fs::write(
+            repo.join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )?;
+        fs::write(git_dir.join("commondir"), "../..\n")?;
+
+        let error = plan_git_excludes(
+            &repo,
+            ConnectionIntent::Personal,
+            IntegrationProfile::Detective,
+        )
+        .expect_err("linked personal detective must not modify a common exclude");
+
+        assert!(error
+            .to_string()
+            .contains("LINKED_WORKTREE_PERSONAL_DETECTIVE_UNSUPPORTED"));
+        assert!(!common.join("info/exclude").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn linked_shared_plan_contains_only_intent_independent_paths(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TestDirectory::new("linked-shared")?;
+        let repo = fixture.path().join("repo");
+        let common = fixture.path().join("main/.git");
+        let git_dir = common.join("worktrees/repo");
+        fs::create_dir_all(&repo)?;
+        fs::create_dir_all(&git_dir)?;
+        fs::write(
+            repo.join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )?;
+        fs::write(git_dir.join("commondir"), "../..\n")?;
+
+        let plan = plan_git_excludes(
+            &repo,
+            ConnectionIntent::Shared,
+            IntegrationProfile::Detective,
+        )?
+        .expect("linked Git worktree should produce an exclude plan");
+
+        assert!(plan.content.contains("/.volicord/\n"));
+        assert!(plan
+            .content
+            .contains("/.codex/hooks/volicord-pre-tool.sh\n"));
+        assert!(plan
+            .content
+            .contains("/.claude/hooks/volicord-pre-tool.sh\n"));
+        assert!(!plan.content.contains("/.codex/hooks.json\n"));
+        assert!(!plan.content.contains("/.claude/settings.local.json\n"));
+        Ok(())
+    }
+
+    #[test]
+    fn linked_record_transition_never_adds_sibling_sensitive_paths(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TestDirectory::new("linked-record-transition")?;
+        let repo = fixture.path().join("repo");
+        let common = fixture.path().join("main/.git");
+        let git_dir = common.join("worktrees/repo");
+        fs::create_dir_all(&repo)?;
+        fs::create_dir_all(common.join("info"))?;
+        fs::create_dir_all(&git_dir)?;
+        fs::write(
+            repo.join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )?;
+        fs::write(git_dir.join("commondir"), "../..\n")?;
+
+        let shared =
+            plan_git_excludes(&repo, ConnectionIntent::Shared, IntegrationProfile::Record)?
+                .expect("linked Git worktree should produce an exclude plan");
+        apply_generated_file(&shared)?;
+        let personal = plan_git_excludes(
+            &repo,
+            ConnectionIntent::Personal,
+            IntegrationProfile::Record,
+        )?
+        .expect("linked Git worktree should produce an exclude plan");
+        assert_eq!(personal.status.as_str(), "unchanged");
+
+        let exclude_text = fs::read_to_string(common.join("info/exclude"))?;
+        assert!(exclude_text.contains("/.volicord/\n"));
+        assert!(exclude_text.contains("/.codex/hooks/volicord-pre-tool.sh\n"));
+        assert!(exclude_text.contains("/.claude/hooks/volicord-pre-tool.sh\n"));
+        assert!(!exclude_text.contains("/.codex/hooks.json\n"));
+        assert!(!exclude_text.contains("/.claude/settings.local.json\n"));
+        assert_eq!(exclude_text.matches(GIT_EXCLUDE_START_MARKER).count(), 1);
+        Ok(())
     }
 }

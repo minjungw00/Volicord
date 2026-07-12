@@ -607,12 +607,129 @@ fn doctor_warns_when_personal_local_files_are_unignored_or_tracked() -> Result<(
         .expect("tracked paths")
         .iter()
         .any(|finding| finding["path"] == "/.volicord/"));
-    assert_eq!(check["details"]["does_not_read_file_contents"], true);
+    assert_eq!(check["details"]["reads_local_policy_file"], true);
+    assert_eq!(
+        check["details"]["does_not_read_other_local_integration_file_contents"],
+        true
+    );
     assert!(value["actions"]
         .as_array()
         .expect("actions")
         .iter()
         .any(|action| action["id"] == "protect_personal_local_files"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-doctor-effective-local-intent")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex(&bin_dir)?;
+    let mcp_command = write_fake_mcp(&bin_dir)?;
+    let test_path = path_env_with_existing(&[bin_dir.as_path()])?;
+    let env = [
+        ("PATH", test_path),
+        ("CODEX_HOME", path_text(&codex_home)),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let personal = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&personal);
+
+    let personal_only_path = repo_root.join(".codex/hooks.json");
+    fs::create_dir_all(
+        personal_only_path
+            .parent()
+            .expect("personal-only path should have a parent"),
+    )?;
+    fs::write(&personal_only_path, "{}\n")?;
+
+    let shared = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&shared);
+
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["storage_scope"], "local_overlay");
+    assert_eq!(policy["connection_intent"], "shared");
+    let exclude_path = repo_root.join(".git/info/exclude");
+    let shared_excludes = fs::read_to_string(&exclude_path)?;
+    assert!(shared_excludes.contains("/.volicord/"));
+    assert!(shared_excludes.contains("/.codex/hooks/volicord-pre-tool.sh"));
+    assert!(!shared_excludes.contains("/.codex/hooks.json"));
+
+    let protected = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&protected);
+    let protected = json_stdout(&protected)?;
+    let protected_check = protected["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "personal_local_git_tracking")
+        .expect("local Git tracking check");
+    assert_eq!(protected_check["status"], "passed");
+    assert_eq!(
+        protected_check["details"]["effective_personal_project_count"],
+        0
+    );
+    assert_eq!(
+        protected_check["details"]["unignored_existing_paths"],
+        json!([])
+    );
+
+    fs::write(&exclude_path, "")?;
+    let unprotected = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert_success(&unprotected);
+    let unprotected = json_stdout(&unprotected)?;
+    let unprotected_check = unprotected["checks"]
+        .as_array()
+        .expect("checks should be an array")
+        .iter()
+        .find(|check| check["id"] == "personal_local_git_tracking")
+        .expect("local Git tracking check");
+    assert_eq!(unprotected_check["status"], "warning");
+    let unignored_paths = unprotected_check["details"]["unignored_existing_paths"]
+        .as_array()
+        .expect("unignored paths");
+    assert!(unignored_paths
+        .iter()
+        .any(|finding| finding["path"] == "/.volicord/"));
+    assert!(!unignored_paths
+        .iter()
+        .any(|finding| finding["path"] == "/.codex/hooks.json"));
     Ok(())
 }
 
@@ -740,6 +857,11 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(wrapper_text.contains("--host-output codex"));
     assert!(is_executable(&wrapper)?);
     assert!(repo_root.join(".codex/rules/volicord.rules").exists());
+    let exclude = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(exclude.contains("/.volicord/"));
+    assert!(exclude.contains("/.codex/hooks/volicord-pre-tool.sh"));
+    assert!(!exclude.contains("/.codex/hooks.json"));
+    assert!(!exclude.contains("/.codex/rules/volicord.rules"));
     Ok(())
 }
 
@@ -785,7 +907,10 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert!(repo_root.join(".mcp.json").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
-    assert!(!repo_root.join(".git/info/exclude").exists());
+    let exclude = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
+    assert!(exclude.contains("/.volicord/"));
+    assert!(exclude.contains("/.claude/hooks/volicord-pre-tool.sh"));
+    assert!(!exclude.contains("/.claude/settings.local.json"));
     let settings = fs::read_to_string(repo_root.join(".claude/settings.json"))?;
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-session-start.sh"));
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh"));
@@ -2130,10 +2255,12 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert_eq!(value["mcp"]["command"], "volicord");
     assert_eq!(value["mcp"]["args"][0], "mcp");
     assert_eq!(value["mcp"]["args"][1], "--stdio");
-    assert_eq!(value["generated_files"][0]["kind"], "agents_managed_block");
+    assert_eq!(value["generated_files"][0]["kind"], "git_info_exclude");
     assert_eq!(value["generated_files"][0]["status"], "planned_create");
-    assert_eq!(value["generated_files"][1]["kind"], "volicord_policy");
+    assert_eq!(value["generated_files"][1]["kind"], "agents_managed_block");
     assert_eq!(value["generated_files"][1]["status"], "planned_create");
+    assert_eq!(value["generated_files"][2]["kind"], "volicord_policy");
+    assert_eq!(value["generated_files"][2]["status"], "planned_create");
     assert!(value["generated_files"]
         .as_array()
         .expect("generated files should be an array")
@@ -2170,6 +2297,7 @@ fn init_dry_run_does_not_write_runtime_or_repo_files() -> Result<(), Box<dyn Err
     assert!(!repo_root.join(".codex/rules/volicord.rules").exists());
     assert!(!repo_root.join("AGENTS.md").exists());
     assert!(!repo_root.join(".volicord/policy.json").exists());
+    assert!(!repo_root.join(".git/info/exclude").exists());
 
     let text_output = run_with_home_env(
         runtime_home.path(),
@@ -2548,6 +2676,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     let policy: Value = serde_json::from_str(&fs::read_to_string(&policy_path)?)?;
     assert_eq!(policy["schema"], "volicord-policy-v1");
     assert_eq!(policy["managed_by"], "volicord");
+    assert_eq!(policy["storage_scope"], "local_overlay");
+    assert_eq!(policy["connection_intent"], "shared");
     assert_eq!(policy["host"], "codex");
     assert_eq!(policy["selected_profile"], "detective");
     assert_eq!(policy["mcp"]["command"], "volicord");
@@ -2599,6 +2729,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     );
     assert_eq!(capability["prompt_capture"], true);
     assert_eq!(capability["selected_profile"], "detective");
+    assert_eq!(capability["connection_intent"], "shared");
     assert_eq!(capability["native_host_output_adapter"], "codex");
     assert_eq!(capability["native_host_output_adapter_verified"], true);
     assert_eq!(capability["bash_shell_mutation_coverage"], true);

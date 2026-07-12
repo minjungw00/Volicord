@@ -19,7 +19,7 @@ use crate::host_integration::{
     HostIntegrationFileKind, HostKind, HostLifecyclePhase, REQUIRED_GUARD_PHASES,
 };
 
-use super::policy::required_guard_phase_names;
+use super::policy::{required_guard_phase_names, validate_policy_schema};
 
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
 pub(crate) const CODEX_DISPATCH_WRAPPER: &str = ".codex/hooks/volicord-dispatch.sh";
@@ -1190,6 +1190,21 @@ fn verify_managed_json_file(
             return;
         }
     };
+    let Some(connection_intent) = capability.get("connection_intent").and_then(Value::as_str)
+    else {
+        findings.broken_files.push(path_text.to_owned());
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "broken");
+        }
+        return;
+    };
+    if validate_policy_schema(&policy, connection_intent).is_err() {
+        findings.broken_files.push(path_text.to_owned());
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "broken");
+        }
+        return;
+    }
     let expected_policy_hash = capability
         .get("policy_hash")
         .and_then(Value::as_str)
@@ -1747,6 +1762,39 @@ fn path_text(path: &Path) -> String {
 mod tests {
     use super::*;
     use serde_json::{json, Value};
+
+    #[test]
+    fn policy_audit_requires_recorded_connection_intent() {
+        let policy = json!({"schema": "volicord-policy-v1"});
+        let text = serde_json::to_string(&policy).expect("policy should serialize");
+        let file = json!({"kind": "volicord_policy"});
+        let capability = json!({
+            "policy_hash": policy_hash(&policy).expect("policy should hash"),
+            "commands": {}
+        });
+        let mut findings = GuardFileFindings::default();
+
+        verify_managed_json_file(
+            &file,
+            Some(HostIntegrationFileKind::VolicordPolicy),
+            &capability,
+            "/repo/.volicord/policy.json",
+            &text,
+            &sha256_text(&text),
+            &mut findings,
+        );
+
+        assert!(findings
+            .broken_files
+            .contains(&"/repo/.volicord/policy.json".to_owned()));
+        assert_eq!(
+            findings
+                .file_kind_states
+                .get("volicord_policy")
+                .map(String::as_str),
+            Some("broken")
+        );
+    }
 
     #[test]
     fn claude_settings_projection_allows_unmanaged_hook_groups_but_rejects_duplicate_managed() {

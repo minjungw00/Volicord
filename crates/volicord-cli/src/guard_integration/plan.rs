@@ -11,10 +11,10 @@ use crate::{
             plan_managed_block_file, plan_policy_file, GeneratedFilePlan, AGENTS_FILE,
             GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
         },
-        git_exclude::plan_personal_git_excludes,
+        git_exclude::plan_git_excludes,
         hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand},
         hosts::plan_host_generated_files,
-        policy::{lifecycle_phase_names, policy_json},
+        policy::{lifecycle_phase_names, policy_json, LocalPolicyContext},
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
@@ -31,6 +31,7 @@ pub(crate) struct GuardIntegrationPlan {
     pub(crate) policy_hash: String,
     pub(crate) guard_installation_id: String,
     pub(crate) guard_profile: String,
+    pub(crate) connection_intent: String,
     pub(crate) managed_source: String,
     pub(crate) managed_bundle_hash: Option<String>,
     pub(crate) managed_verification_status: String,
@@ -80,9 +81,12 @@ pub(crate) fn plan_guard_integration(
     let policy = policy_json(
         host_kind,
         profile,
-        repo_root,
-        connection_id,
-        guard_installation_id,
+        LocalPolicyContext {
+            repo_root,
+            connection_id,
+            guard_installation_id,
+            connection_intent,
+        },
         mcp_entry,
         &policy_guard_commands,
     )?;
@@ -103,9 +107,10 @@ pub(crate) fn plan_guard_integration(
     } else {
         BTreeMap::new()
     };
+    let git_exclude_plan = plan_git_excludes(repo_root, connection_intent, profile)?;
     let mut generated_files = Vec::new();
-    if connection_intent == ConnectionIntent::Personal {
-        generated_files.push(plan_personal_git_excludes(repo_root)?);
+    if let Some(git_exclude_plan) = git_exclude_plan {
+        generated_files.push(git_exclude_plan);
     }
     let agents_path = repo_root.join(AGENTS_FILE);
     generated_files.push(plan_managed_block_file(
@@ -136,6 +141,7 @@ pub(crate) fn plan_guard_integration(
         policy_hash,
         guard_installation_id: guard_installation_id.to_owned(),
         guard_profile: profile.as_str().to_owned(),
+        connection_intent: connection_intent.as_str().to_owned(),
         managed_source: managed_source_for_profile(profile).to_owned(),
         managed_bundle_hash: None,
         managed_verification_status: managed_status.to_owned(),
