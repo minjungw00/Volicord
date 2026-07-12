@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.3.0, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.4.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -224,8 +224,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -403,8 +403,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -691,8 +691,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -817,8 +817,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1216,8 +1216,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1262,8 +1262,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1770,8 +1770,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1980,8 +1980,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v3
@@ -2115,8 +2115,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
