@@ -5,6 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Value};
 use volicord_core::{CorePipelineError, CoreService, InvocationContext, PipelineResponse};
 use volicord_store::{
@@ -13,12 +14,14 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    ActorSource, IdempotencyKey, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome,
-    OperationCategory, PersistedUserJudgmentOptions, ProjectId, RecordUserJudgmentPayload,
-    RecordUserJudgmentRequest, RequestId, SensitiveActionScope, StatusInclude, StatusRequest,
+    ActorSource, ArtifactId, EvidenceClaimId, EvidenceRelevanceStatus, EvidenceTarget,
+    IdempotencyKey, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome, OperationCategory,
+    PersistedUserJudgmentOptions, ProjectId, RecordUserJudgmentPayload, RecordUserJudgmentRequest,
+    RecordUserObservationRequest, RequestId, SensitiveActionScope, StatusInclude, StatusRequest,
     SummaryCard, TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    UtcTimestamp, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::disclosure::USER_CHANNEL_NON_GUARANTEE_TEXT;
@@ -99,6 +102,18 @@ struct ParsedInboxOptions {
     positionals: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct ParsedUserObservationOptions {
+    repo: Option<PathBuf>,
+    task: TaskSelector,
+    acceptance_criterion_id: Option<String>,
+    evidence_claim_id: Option<String>,
+    artifact_ids: Vec<String>,
+    summary: String,
+    relevance_status: EvidenceRelevanceStatus,
+    output: OutputFormat,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 enum TaskSelector {
     #[default]
@@ -133,7 +148,8 @@ pub fn inbox_usage() -> String {
     concat!(
         "volicord inbox [--repo PATH] [--task active|ID] [--json]\n",
         "volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]\n",
-        "volicord inbox open <judgment-id> [--repo PATH] [--json]\n"
+        "volicord inbox open <judgment-id> [--repo PATH] [--json]\n",
+        "volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]\n"
     )
     .to_owned()
 }
@@ -184,12 +200,197 @@ where
         }
         Some("answer") => command_inbox_answer(&args[1..], env_var, current_dir),
         Some("open") => command_inbox_open(&args[1..], env_var, current_dir),
+        Some("observe") => command_inbox_observe(&args[1..], env_var, current_dir),
         Some(token) if !token.starts_with('-') => Err(UserCommandError::Usage(format!(
             "unknown inbox command: {token}\n\n{}",
             inbox_usage()
         ))),
         _ => command_inbox_list(args, env_var, current_dir),
     }
+}
+
+fn command_inbox_observe<F>(
+    args: &[String],
+    env_var: F,
+    current_dir: &Path,
+) -> Result<String, UserCommandError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    let parsed = parse_user_observation_options(args, current_dir)?;
+    let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
+    let store = CoreProjectStore::open(
+        &resolved.runtime_home,
+        &ProjectId::new(&resolved.project_id),
+    )?;
+    let project_state = store.project_state()?;
+    let task_id = selected_or_active_task_id(&store, &parsed.task)?
+        .ok_or_else(|| UserCommandError::Runtime("no active Task is available".to_owned()))?;
+    let task = store
+        .task_record(&TaskId::new(&task_id))?
+        .ok_or_else(|| UserCommandError::Runtime("selected Task was not found".to_owned()))?;
+    let change_unit_id = task.current_change_unit_id.ok_or_else(|| {
+        UserCommandError::Runtime("selected Task has no current Change Unit".to_owned())
+    })?;
+    let target = if let Some(criterion_id) = parsed.acceptance_criterion_id {
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(criterion_id),
+        }
+    } else {
+        let claim_id = parsed
+            .evidence_claim_id
+            .expect("parser requires one evidence target");
+        let claim = store
+            .evidence_claim_record(&TaskId::new(&task_id), &claim_id)?
+            .ok_or_else(|| {
+                UserCommandError::Runtime(
+                    "selected supplemental evidence claim was not found".to_owned(),
+                )
+            })?;
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: EvidenceClaimId::new(claim_id),
+            statement: claim.statement,
+        }
+    };
+    let now = DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let response = CoreService::new(&resolved.runtime_home).record_user_observation(
+        RecordUserObservationRequest {
+            envelope: envelope(
+                &resolved.project_id,
+                Some(&task_id),
+                generated_id("req_user_evidence_observation"),
+                Some(generated_id("idem_user_evidence_observation")),
+                Some(project_state.state_version),
+            ),
+            task_id: TaskId::new(task_id),
+            change_unit_id: volicord_types::ChangeUnitId::new(change_unit_id),
+            target,
+            relevance_status: parsed.relevance_status,
+            artifact_ids: parsed
+                .artifact_ids
+                .into_iter()
+                .map(ArtifactId::new)
+                .collect(),
+            summary: parsed.summary,
+            observed_at: UtcTimestamp::parse(&now).map_err(|error| {
+                UserCommandError::Runtime(format!("failed to build observation timestamp: {error}"))
+            })?,
+        },
+        invocation_with_basis(
+            &resolved.project_id,
+            OperationCategory::UserOnly,
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        ),
+    )?;
+    if parsed.output == OutputFormat::Json {
+        pretty_response(&response)
+    } else if response_kind(&response) == Some("result") {
+        Ok(format!(
+            "User evidence observation recorded\nobservation: {}\nrelevance: {}\n",
+            response.response_value["user_observation_ref"]["record_id"]
+                .as_str()
+                .unwrap_or("unknown"),
+            response.response_value["user_observation"]["relevance_status"]
+                .as_str()
+                .unwrap_or("unknown")
+        ))
+    } else {
+        render_rejected_or_json(&response)
+    }
+}
+
+fn parse_user_observation_options(
+    args: &[String],
+    current_dir: &Path,
+) -> Result<ParsedUserObservationOptions, UserCommandError> {
+    let mut repo = None;
+    let mut task = TaskSelector::Active;
+    let mut criterion = None;
+    let mut claim = None;
+    let mut artifacts = Vec::new();
+    let mut summary = None;
+    let mut relevance_status = EvidenceRelevanceStatus::Supported;
+    let mut output = OutputFormat::Text;
+    let mut index = 0;
+    while index < args.len() {
+        let token = &args[index];
+        if matches!(token.as_str(), "-h" | "--help" | "help") {
+            return Err(UserCommandError::Usage(inbox_usage()));
+        }
+        let mut next_value = |name: &str| -> Result<String, UserCommandError> {
+            index += 1;
+            args.get(index)
+                .cloned()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| UserCommandError::Usage(format!("missing value for --{name}")))
+        };
+        match token.as_str() {
+            "--repo" => repo = Some(PathBuf::from(next_value("repo")?)),
+            "--task" => {
+                let value = next_value("task")?;
+                task = if value == "active" {
+                    TaskSelector::Active
+                } else {
+                    TaskSelector::Id(value)
+                };
+            }
+            "--criterion" => criterion = Some(next_value("criterion")?),
+            "--claim" => claim = Some(next_value("claim")?),
+            "--artifact" => artifacts.push(next_value("artifact")?),
+            "--summary" => summary = Some(next_value("summary")?),
+            "--contradicted" => relevance_status = EvidenceRelevanceStatus::Contradicted,
+            "--json" => output = OutputFormat::Json,
+            value if value.starts_with("--repo=") => {
+                repo = Some(PathBuf::from(&value[7..]));
+            }
+            value if value.starts_with("--task=") => {
+                let value = &value[7..];
+                task = if value == "active" {
+                    TaskSelector::Active
+                } else {
+                    TaskSelector::Id(value.to_owned())
+                };
+            }
+            value if value.starts_with("--criterion=") => {
+                criterion = Some(value[12..].to_owned());
+            }
+            value if value.starts_with("--claim=") => claim = Some(value[8..].to_owned()),
+            value if value.starts_with("--artifact=") => artifacts.push(value[11..].to_owned()),
+            value if value.starts_with("--summary=") => summary = Some(value[10..].to_owned()),
+            value if value.starts_with("--") => {
+                return Err(UserCommandError::Usage(format!("unknown option: {value}")));
+            }
+            value => {
+                return Err(UserCommandError::Usage(format!(
+                    "unexpected argument: {value}"
+                )));
+            }
+        }
+        index += 1;
+    }
+    if criterion.is_some() == claim.is_some() {
+        return Err(UserCommandError::Usage(
+            "exactly one of --criterion or --claim is required".to_owned(),
+        ));
+    }
+    if artifacts.is_empty() || artifacts.iter().any(|value| value.trim().is_empty()) {
+        return Err(UserCommandError::Usage(
+            "at least one non-empty --artifact is required".to_owned(),
+        ));
+    }
+    let summary = summary
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| UserCommandError::Usage("a non-empty --summary is required".to_owned()))?;
+    Ok(ParsedUserObservationOptions {
+        repo: repo.map(|path| absolute_path(current_dir, path)),
+        task,
+        acceptance_criterion_id: criterion,
+        evidence_claim_id: claim,
+        artifact_ids: artifacts,
+        summary,
+        relevance_status,
+        output,
+    })
 }
 
 fn command_status<F>(
@@ -1266,5 +1467,53 @@ fn json_object(value: Value) -> serde_json::Map<String, Value> {
     match value {
         Value::Object(object) => object,
         _ => serde_json::Map::new(),
+    }
+}
+
+#[cfg(test)]
+mod user_observation_tests {
+    use super::*;
+
+    #[test]
+    fn observe_cli_requires_one_target_and_preserves_repeated_artifact_ids() {
+        let parsed = parse_user_observation_options(
+            &[
+                "--criterion".to_owned(),
+                "criterion_1".to_owned(),
+                "--artifact".to_owned(),
+                "artifact_1".to_owned(),
+                "--artifact=artifact_2".to_owned(),
+                "--summary".to_owned(),
+                "User checked the exact outputs.".to_owned(),
+                "--contradicted".to_owned(),
+            ],
+            Path::new("/repo"),
+        )
+        .expect("valid observe options");
+
+        assert_eq!(
+            parsed.acceptance_criterion_id.as_deref(),
+            Some("criterion_1")
+        );
+        assert_eq!(parsed.artifact_ids, ["artifact_1", "artifact_2"]);
+        assert_eq!(
+            parsed.relevance_status,
+            EvidenceRelevanceStatus::Contradicted
+        );
+    }
+
+    #[test]
+    fn observe_cli_rejects_ambiguous_target() {
+        let error = parse_user_observation_options(
+            &[
+                "--criterion=criterion_1".to_owned(),
+                "--claim=claim_1".to_owned(),
+                "--artifact=artifact_1".to_owned(),
+                "--summary=Checked".to_owned(),
+            ],
+            Path::new("/repo"),
+        )
+        .expect_err("ambiguous evidence target must fail");
+        assert!(error.to_string().contains("exactly one"));
     }
 }
