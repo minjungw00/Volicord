@@ -1755,15 +1755,16 @@ fn cooperative_agent_report_only_blocks_when_stronger_evidence_is_required(
 }
 
 #[test]
-fn external_tool_provenance_supports_the_attached_close_claim() -> Result<(), Box<dyn Error>> {
+fn user_observation_provenance_supports_the_attached_close_claim() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "close_external_tool")?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "close_user_observation")?;
     let after_evidence = record_close_evidence(
         &harness,
         &task_id,
         &change_unit_id,
         2,
-        "external_tool",
+        "user_observation",
         true,
     )?;
     let after_final = record_final_acceptance(
@@ -1771,13 +1772,13 @@ fn external_tool_provenance_supports_the_attached_close_claim() -> Result<(), Bo
         &task_id,
         &change_unit_id,
         after_evidence,
-        "external_tool",
+        "user_observation",
     )?;
 
     let response = harness.service.close_task(
         close_task_request(CloseTaskFixture {
-            request_id: "req_close_external_tool",
-            idempotency_key: Some("idem_close_external_tool"),
+            request_id: "req_close_user_observation",
+            idempotency_key: Some("idem_close_user_observation"),
             dry_run: false,
             expected_state_version: Some(after_final),
             task_id: &task_id,
