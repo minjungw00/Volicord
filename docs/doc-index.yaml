@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.4.0, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.5.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
