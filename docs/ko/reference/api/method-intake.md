@@ -34,6 +34,17 @@
 - `volicord.intake`는 쓰기 가능한 작업의 첫 범위 후보를 만들 수 있습니다.
 - 이후 범위 변경은 `volicord.update_scope`가 담당합니다.
 
+Task 세분성 지침:
+
+- `plain_language_request`와 첫 범위에는 다음 분석 기법이나 다른 중간 단계로
+  축소하지 않은 사용자의 요청 결과를 유지합니다.
+- 분석이나 shaping이 요청된 구현 결과의 한 단계라면 호출자는 `work` Task를
+  선택하고 해당 단계를 나중에 `shaping_update`로 기록합니다. 분석이 먼저라는
+  이유만으로 고립된 `advisor` Task를 만들지 않습니다.
+- 요청된 결과 자체가 읽기 전용 조언일 때 `advisor`를 선택합니다. 더 넓은 결과가
+  불명확하면 shaping 상태에 알려진 경계만 두거나 사용자에게 묻고, 더 큰 목표를
+  추론하지 않습니다.
+
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.

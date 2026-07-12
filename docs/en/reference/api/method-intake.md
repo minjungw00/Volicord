@@ -34,6 +34,19 @@ Scope boundary:
 - `volicord.intake` may create the first scope candidate for write-capable work.
 - Later scope changes belong to `volicord.update_scope`.
 
+Task-granularity guidance:
+
+- `plain_language_request` and the initial scope preserve the user's requested
+  outcome, rather than reducing it to the next analysis technique or other
+  intermediate step.
+- When analysis or shaping is one phase of a requested implementation outcome,
+  the caller selects a `work` Task and records that phase later as a
+  `shaping_update`; it does not create an isolated `advisor` Task merely because
+  analysis happens first.
+- The caller selects `advisor` when the requested outcome itself is read-only
+  advice. When a broader outcome is unclear, it keeps only the known boundary
+  in shaping state or asks the user; it does not infer a larger goal.
+
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
