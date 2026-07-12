@@ -4,8 +4,9 @@ mod json;
 mod summary;
 mod text;
 
+use crate::guard_integration::files::RetirementPlanStatus;
 use crate::guard_integration::{
-    generated_files_json, hook_root_resolution_json, host_hook_commands_json,
+    generated_files_json, hook_root_resolution_json, host_hook_commands_json, retired_files_json,
 };
 use json::{
     actions_json_values, changed_repo_files_json, checks_json, connection_json,
@@ -21,8 +22,10 @@ pub(super) use text::{render_connection_remove_dry_run_output, render_connection
 enum RepoFileChangeStatus {
     Created,
     Updated,
+    Removed,
     PlannedCreate,
     PlannedUpdate,
+    PlannedRemove,
 }
 
 impl RepoFileChangeStatus {
@@ -30,8 +33,10 @@ impl RepoFileChangeStatus {
         match self {
             Self::Created => "created",
             Self::Updated => "updated",
+            Self::Removed => "removed",
             Self::PlannedCreate => "planned_create",
             Self::PlannedUpdate => "planned_update",
+            Self::PlannedRemove => "planned_remove",
         }
     }
 
@@ -39,13 +44,15 @@ impl RepoFileChangeStatus {
         match self {
             Self::Created => "created",
             Self::Updated => "updated",
+            Self::Removed => "removed",
             Self::PlannedCreate => "would create",
             Self::PlannedUpdate => "would update",
+            Self::PlannedRemove => "would remove",
         }
     }
 
     fn is_actual(self) -> bool {
-        matches!(self, Self::Created | Self::Updated)
+        matches!(self, Self::Created | Self::Updated | Self::Removed)
     }
 }
 
@@ -416,6 +423,7 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
                 "repo_file_changes": repo_file_changes_json(&repo_file_changes),
                 "changed_repo_files": changed_repo_files_json(&repo_file_changes),
                 "generated_files": generated_files_json(&data.integration.generated_files),
+                "retired_files": retired_files_json(&data.integration.retired_files),
                 "host_hook_commands": host_hook_commands_json(&data.integration.host_hook_commands),
                 "hook_root_resolution": hook_root_resolution_json(&data.integration.host_hook_commands),
                 "guard_installation": {
@@ -450,10 +458,29 @@ fn init_repo_file_changes(data: &InitOutput<'_>) -> Vec<RepoFileChange> {
             }
         }
     }
+    for file in &data.integration.retired_files {
+        if let Some(status) = repo_file_change_from_retirement_status(file.status) {
+            if let Some(path) = repo_relative_path(&file.path, data.repo_root) {
+                insert_repo_file_change(&mut changes, path, status);
+            }
+        }
+    }
     changes
         .into_iter()
         .map(|(path, status)| RepoFileChange { status, path })
         .collect()
+}
+
+fn repo_file_change_from_retirement_status(
+    status: RetirementPlanStatus,
+) -> Option<RepoFileChangeStatus> {
+    match status {
+        RetirementPlanStatus::PlannedRemove => Some(RepoFileChangeStatus::PlannedRemove),
+        RetirementPlanStatus::PlannedUpdate => Some(RepoFileChangeStatus::PlannedUpdate),
+        RetirementPlanStatus::Removed => Some(RepoFileChangeStatus::Removed),
+        RetirementPlanStatus::Updated => Some(RepoFileChangeStatus::Updated),
+        RetirementPlanStatus::Unchanged => None,
+    }
 }
 
 fn repo_file_change_from_host_plan(
@@ -511,6 +538,8 @@ fn merge_repo_file_change_status(
     match (existing, new) {
         (RepoFileChangeStatus::Created, _) | (RepoFileChangeStatus::PlannedCreate, _) => existing,
         (_, RepoFileChangeStatus::Created) | (_, RepoFileChangeStatus::PlannedCreate) => new,
+        (RepoFileChangeStatus::Removed, _) | (RepoFileChangeStatus::PlannedRemove, _) => existing,
+        (_, RepoFileChangeStatus::Removed) | (_, RepoFileChangeStatus::PlannedRemove) => new,
         _ => existing,
     }
 }

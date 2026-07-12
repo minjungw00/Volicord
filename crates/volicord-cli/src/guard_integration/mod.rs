@@ -10,9 +10,9 @@ pub(crate) mod hosts;
 pub(crate) mod plan;
 pub(crate) mod policy;
 
-pub(crate) use apply::apply_guard_integration;
 #[cfg(test)]
 pub(crate) use apply::set_script_executable;
+pub(crate) use apply::{apply_guard_integration, apply_guard_migration_protection};
 #[cfg(all(test, unix))]
 pub(crate) use audit::CODEX_DISPATCH_WRAPPER;
 pub(crate) use audit::{HookWrapperResolutionStatus, ManagedJsonProjection, HOOK_WRAPPER_MARKER};
@@ -20,7 +20,7 @@ pub(crate) use audit::{HookWrapperResolutionStatus, ManagedJsonProjection, HOOK_
 pub(crate) use capability::host_hook_capability_json;
 pub(crate) use capability::{
     generated_files_json, hook_root_resolution_json, host_hook_commands_json,
-    initial_guard_installation_status, record_guard_installation,
+    initial_guard_installation_status, record_guard_installation, retired_files_json,
 };
 pub(crate) use files::{FilePlanStatus, GeneratedFilePlan};
 #[cfg(test)]

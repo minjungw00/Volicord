@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use crate::{
     guard_integration::audit::{
-        is_volicord_codex_hook_config, script_is_executable, ManagedJsonProjection,
+        is_volicord_codex_hook_config, script_is_executable, sha256_text, ManagedJsonProjection,
         HOOK_WRAPPER_MARKER,
     },
     host_integration::{
@@ -185,6 +185,37 @@ pub(crate) enum FilePlanStatus {
     Unchanged,
     Created,
     Updated,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ManagedFileRetirementPlan {
+    pub(crate) kind: HostIntegrationFileKind,
+    pub(crate) repo_root: PathBuf,
+    pub(crate) path: PathBuf,
+    pub(crate) status: RetirementPlanStatus,
+    target_snapshot: ManagedTargetSnapshot,
+    replacement: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RetirementPlanStatus {
+    PlannedRemove,
+    PlannedUpdate,
+    Unchanged,
+    Removed,
+    Updated,
+}
+
+impl RetirementPlanStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::PlannedRemove => "planned_remove",
+            Self::PlannedUpdate => "planned_update",
+            Self::Unchanged => "unchanged",
+            Self::Removed => "removed",
+            Self::Updated => "updated",
+        }
+    }
 }
 
 impl FilePlanStatus {
@@ -2711,6 +2742,305 @@ pub(crate) fn read_managed_text(
         .map(str::to_owned))
 }
 
+pub(crate) fn plan_managed_file_retirement(
+    repo_root: &Path,
+    capability_file: &Value,
+) -> Result<ManagedFileRetirementPlan, GuardIntegrationError> {
+    let kind_text = capability_file
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime("retirement metadata is missing file kind")
+        })?;
+    let kind = host_integration_file_kind(kind_text).ok_or_else(|| {
+        GuardIntegrationError::runtime(format!(
+            "retirement metadata contains unsupported file kind {kind_text}"
+        ))
+    })?;
+    let path = capability_file
+        .get("path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime("retirement metadata is missing file path")
+        })?;
+    let target_snapshot = read_managed_target_snapshot(repo_root, &path)?;
+    let Some(existing) = target_snapshot.text() else {
+        return Ok(ManagedFileRetirementPlan {
+            kind,
+            repo_root: repo_root.to_path_buf(),
+            path,
+            status: RetirementPlanStatus::Unchanged,
+            target_snapshot,
+            replacement: None,
+        });
+    };
+    let expected_hash = capability_file
+        .get("content_hash")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime(format!(
+                "retirement metadata is missing content hash for {}",
+                path.display()
+            ))
+        })?;
+    let replacement = match capability_file.get("ownership").and_then(Value::as_str) {
+        Some("managed_block") => {
+            let start = capability_file
+                .get("managed_marker_start")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    GuardIntegrationError::runtime(
+                        "managed-block retirement is missing start marker",
+                    )
+                })?;
+            let end = capability_file
+                .get("managed_marker_end")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    GuardIntegrationError::runtime("managed-block retirement is missing end marker")
+                })?;
+            let (managed, remaining) = remove_verified_managed_block(existing, start, end)?;
+            if sha256_text(managed) != expected_hash {
+                return Err(retirement_changed_error(&path));
+            }
+            (!remaining.trim().is_empty()).then_some(remaining.to_owned())
+        }
+        Some("managed_json") | Some("managed_script") => {
+            if sha256_text(existing) != expected_hash {
+                return Err(retirement_changed_error(&path));
+            }
+            None
+        }
+        Some("managed_json_projection") => {
+            let projection = capability_file
+                .get("managed_projection")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    GuardIntegrationError::runtime(
+                        "managed JSON retirement is missing projection kind",
+                    )
+                })?;
+            if projection != ManagedJsonProjection::ClaudeCodeSettingsHooks.as_str() {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "managed JSON retirement does not support projection {projection}"
+                )));
+            }
+            let desired_text = capability_file
+                .get("managed_projection_json")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    GuardIntegrationError::runtime(
+                        "managed JSON retirement is missing projection content",
+                    )
+                })?;
+            if sha256_text(desired_text) != expected_hash {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "managed JSON retirement metadata is inconsistent for {}",
+                    path.display()
+                )));
+            }
+            let actual = serde_json::from_str::<Value>(existing).map_err(|error| {
+                GuardIntegrationError::runtime(format!(
+                    "existing managed JSON retirement target is invalid: {} ({error})",
+                    path.display()
+                ))
+            })?;
+            let desired = serde_json::from_str::<Value>(desired_text).map_err(|error| {
+                GuardIntegrationError::runtime(format!(
+                    "recorded managed JSON projection is invalid: {} ({error})",
+                    path.display()
+                ))
+            })?;
+            let retired = remove_claude_settings_hooks(&actual, &desired)
+                .map_err(|_| retirement_changed_error(&path))?;
+            if retired == actual {
+                return Ok(ManagedFileRetirementPlan {
+                    kind,
+                    repo_root: repo_root.to_path_buf(),
+                    path,
+                    status: RetirementPlanStatus::Unchanged,
+                    target_snapshot,
+                    replacement: None,
+                });
+            }
+            if retired.as_object().is_some_and(serde_json::Map::is_empty) {
+                None
+            } else {
+                let mut text = serde_json::to_string_pretty(&retired)
+                    .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
+                text.push('\n');
+                Some(text)
+            }
+        }
+        _ => {
+            return Err(GuardIntegrationError::runtime(format!(
+                "retirement metadata has unsupported ownership for {}",
+                path.display()
+            )));
+        }
+    };
+    let status = if replacement.is_some() {
+        RetirementPlanStatus::PlannedUpdate
+    } else {
+        RetirementPlanStatus::PlannedRemove
+    };
+    Ok(ManagedFileRetirementPlan {
+        kind,
+        repo_root: repo_root.to_path_buf(),
+        path,
+        status,
+        target_snapshot,
+        replacement,
+    })
+}
+
+pub(crate) fn apply_managed_file_retirement(
+    plan: &ManagedFileRetirementPlan,
+) -> Result<RetirementPlanStatus, GuardIntegrationError> {
+    match plan.status {
+        RetirementPlanStatus::Unchanged => return Ok(RetirementPlanStatus::Unchanged),
+        RetirementPlanStatus::PlannedUpdate | RetirementPlanStatus::PlannedRemove => {}
+        other => return Ok(other),
+    }
+    ensure_retirement_plan_fresh(plan)?;
+    if let Some(replacement) = &plan.replacement {
+        let replacement_plan = GeneratedFilePlan {
+            kind: plan.kind,
+            repo_root: plan.repo_root.clone(),
+            path: plan.path.clone(),
+            content: replacement.clone(),
+            status: FilePlanStatus::PlannedUpdate,
+            write_kind: GeneratedFileWriteKind::Json,
+            target_snapshot: plan.target_snapshot.clone(),
+        };
+        write_managed_file_if_fresh(&replacement_plan, replacement, false)?;
+        return Ok(RetirementPlanStatus::Updated);
+    }
+
+    let parent = match open_pinned_managed_parent(&plan.repo_root, &plan.path, false)? {
+        PinnedParentOpen::Missing => return Ok(RetirementPlanStatus::Unchanged),
+        PinnedParentOpen::Ready(parent) => parent,
+    };
+    parent.validate_attached()?;
+    ensure_expected_snapshot(&parent, &plan.target_snapshot)?;
+    let target_name = parent.target_name.clone();
+    let expected = RecoveryEntrySnapshot::from(&plan.target_snapshot);
+    remove_exact_entry(&parent, &target_name, &expected, "retired managed file")?;
+    if parent.read_target_snapshot()? != ManagedTargetSnapshot::Missing {
+        return Err(GuardIntegrationError::runtime(format!(
+            "retired managed file still exists after removal: {}",
+            plan.path.display()
+        )));
+    }
+    Ok(RetirementPlanStatus::Removed)
+}
+
+fn ensure_retirement_plan_fresh(
+    plan: &ManagedFileRetirementPlan,
+) -> Result<(), GuardIntegrationError> {
+    if read_managed_target_snapshot(&plan.repo_root, &plan.path)? == plan.target_snapshot {
+        Ok(())
+    } else {
+        Err(retirement_changed_error(&plan.path))
+    }
+}
+
+fn retirement_changed_error(path: &Path) -> GuardIntegrationError {
+    GuardIntegrationError::runtime(format!(
+        "managed retirement target changed or no longer matches Volicord ownership: {}",
+        path.display()
+    ))
+}
+
+fn remove_verified_managed_block<'a>(
+    existing: &'a str,
+    start_marker: &str,
+    end_marker: &str,
+) -> Result<(&'a str, String), GuardIntegrationError> {
+    if existing.matches(start_marker).count() != 1 || existing.matches(end_marker).count() != 1 {
+        return Err(GuardIntegrationError::runtime(
+            "managed retirement target has missing or duplicate block markers",
+        ));
+    }
+    let start = existing
+        .find(start_marker)
+        .expect("marker count was checked");
+    let end_from_start = existing[start..].find(end_marker).ok_or_else(|| {
+        GuardIntegrationError::runtime("managed retirement target has unpaired block markers")
+    })?;
+    let mut end = start + end_from_start + end_marker.len();
+    if existing[end..].starts_with("\r\n") {
+        end += 2;
+    } else if existing[end..].starts_with('\n') {
+        end += 1;
+    }
+    let managed = &existing[start..end];
+    let mut remaining = String::with_capacity(existing.len() - managed.len());
+    remaining.push_str(&existing[..start]);
+    remaining.push_str(&existing[end..]);
+    Ok((managed, remaining))
+}
+
+fn remove_claude_settings_hooks(current: &Value, desired: &Value) -> Result<Value, ()> {
+    let mut root = current.as_object().cloned().ok_or(())?;
+    let desired_hooks = desired.get("hooks").and_then(Value::as_object).ok_or(())?;
+    let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(Value::Object(root));
+    };
+    for (event_name, desired_groups) in desired_hooks {
+        let desired_group = desired_groups
+            .as_array()
+            .and_then(|groups| groups.first())
+            .ok_or(())?;
+        let Some(actual_groups) = hooks.get_mut(event_name).and_then(Value::as_array_mut) else {
+            continue;
+        };
+        let matching = actual_groups
+            .iter()
+            .filter(|group| *group == desired_group)
+            .count();
+        if matching > 1 || (matching == 0 && actual_groups.iter().any(json_value_mentions_volicord))
+        {
+            return Err(());
+        }
+        if matching == 0 {
+            continue;
+        }
+        actual_groups.retain(|group| group != desired_group);
+        if actual_groups.is_empty() {
+            hooks.remove(event_name);
+        }
+    }
+    if hooks.is_empty() {
+        root.remove("hooks");
+    }
+    Ok(Value::Object(root))
+}
+
+fn json_value_mentions_volicord(value: &Value) -> bool {
+    match value {
+        Value::String(value) => value.to_ascii_lowercase().contains("volicord"),
+        Value::Array(values) => values.iter().any(json_value_mentions_volicord),
+        Value::Object(values) => values.values().any(json_value_mentions_volicord),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn host_integration_file_kind(value: &str) -> Option<HostIntegrationFileKind> {
+    match value {
+        "volicord_policy" => Some(HostIntegrationFileKind::VolicordPolicy),
+        "git_info_exclude" => Some(HostIntegrationFileKind::GitInfoExclude),
+        "host_mcp_config" => Some(HostIntegrationFileKind::HostMcpConfig),
+        "host_hook_config" => Some(HostIntegrationFileKind::HostHookConfig),
+        "host_hook_dispatch" => Some(HostIntegrationFileKind::HostHookDispatch),
+        "host_hook_wrapper" => Some(HostIntegrationFileKind::HostHookWrapper),
+        "host_rule_instruction" => Some(HostIntegrationFileKind::HostRuleInstruction),
+        "agents_managed_block" => Some(HostIntegrationFileKind::AgentsManagedBlock),
+        _ => None,
+    }
+}
+
 pub(crate) fn plan_managed_exact_json_file(
     kind: HostIntegrationFileKind,
     repo_root: &Path,
@@ -3199,6 +3529,22 @@ mod tests {
         Ok(json!({ "hooks": hooks }))
     }
 
+    fn claude_settings_retirement_capability(
+        path: &Path,
+        desired: &Value,
+    ) -> Result<Value, GuardIntegrationError> {
+        let mut desired_text = canonical_json_text(desired)?;
+        desired_text.push('\n');
+        Ok(json!({
+            "kind": HostIntegrationFileKind::HostHookConfig.as_str(),
+            "path": path.to_string_lossy(),
+            "content_hash": sha256_text(&desired_text),
+            "ownership": "managed_json_projection",
+            "managed_projection": ManagedJsonProjection::ClaudeCodeSettingsHooks.as_str(),
+            "managed_projection_json": desired_text,
+        }))
+    }
+
     #[test]
     fn claude_settings_merge_is_idempotent_for_exact_projection(
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -3258,6 +3604,79 @@ mod tests {
         assert!(error
             .to_string()
             .contains("conflicting Volicord-managed PreToolUse hook entry"));
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_retirement_preserves_unmanaged_json_and_is_idempotent(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-retire-claude-settings")?;
+        let repo = fixture.path().join("repo");
+        let target = repo.join(".claude/settings.local.json");
+        fs::create_dir_all(target.parent().expect("settings parent"))?;
+        let current = json!({
+            "permissions": { "allow": ["Read"] },
+            "hooks": {
+                "PreToolUse": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "./user-owned-pre-tool.sh"
+                    }]
+                }]
+            }
+        });
+        let desired = claude_settings_projection()?;
+        let installed = merge_claude_settings_hooks(&current, &desired)?;
+        fs::write(&target, serde_json::to_string_pretty(&installed)? + "\n")?;
+        let capability = claude_settings_retirement_capability(&target, &desired)?;
+
+        let retirement = plan_managed_file_retirement(&repo, &capability)?;
+        assert_eq!(retirement.status, RetirementPlanStatus::PlannedUpdate);
+        assert_eq!(
+            apply_managed_file_retirement(&retirement)?,
+            RetirementPlanStatus::Updated
+        );
+        let preserved: Value = serde_json::from_str(&fs::read_to_string(&target)?)?;
+        assert_eq!(preserved["permissions"]["allow"], json!(["Read"]));
+        assert_eq!(
+            preserved["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+            "./user-owned-pre-tool.sh"
+        );
+        assert!(!fs::read_to_string(&target)?.contains("volicord"));
+
+        let rerun = plan_managed_file_retirement(&repo, &capability)?;
+        assert_eq!(rerun.status, RetirementPlanStatus::Unchanged);
+        assert_eq!(
+            apply_managed_file_retirement(&rerun)?,
+            RetirementPlanStatus::Unchanged
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn claude_settings_retirement_fails_closed_after_managed_projection_change(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-retire-changed-claude-settings")?;
+        let repo = fixture.path().join("repo");
+        let target = repo.join(".claude/settings.local.json");
+        fs::create_dir_all(target.parent().expect("settings parent"))?;
+        let desired = claude_settings_projection()?;
+        fs::write(&target, serde_json::to_string_pretty(&desired)? + "\n")?;
+        let capability = claude_settings_retirement_capability(&target, &desired)?;
+        let mut changed: Value = serde_json::from_str(&fs::read_to_string(&target)?)?;
+        changed["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"] = json!(99);
+        fs::write(&target, serde_json::to_string_pretty(&changed)? + "\n")?;
+
+        let error = plan_managed_file_retirement(&repo, &capability)
+            .expect_err("changed managed hook projection must not be retired");
+
+        assert!(error
+            .to_string()
+            .contains("no longer matches Volicord ownership"));
+        assert_eq!(
+            serde_json::from_str::<Value>(&fs::read_to_string(&target)?)?,
+            changed
+        );
         Ok(())
     }
 

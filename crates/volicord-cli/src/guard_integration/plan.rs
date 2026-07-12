@@ -1,6 +1,10 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use serde_json::Value;
+use volicord_store::guards::guard_installation;
 use volicord_store::session_watch::{snapshot_product_repository, WatchSnapshotOptions};
 use volicord_types::IntegrationProfile;
 
@@ -8,13 +12,17 @@ use crate::{
     guard_integration::{
         audit::policy_hash,
         files::{
-            plan_managed_block_file, plan_policy_file, GeneratedFilePlan, AGENTS_FILE,
-            GUIDANCE_END_MARKER, GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
+            plan_managed_block_file, plan_managed_file_retirement, plan_policy_file,
+            GeneratedFilePlan, ManagedFileRetirementPlan, AGENTS_FILE, GUIDANCE_END_MARKER,
+            GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
         },
-        git_exclude::plan_git_excludes,
+        git_exclude::{plan_git_excludes, plan_git_excludes_with_personal_protection},
         hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand},
         hosts::plan_host_generated_files,
-        policy::{lifecycle_phase_names, policy_json, LocalPolicyContext},
+        policy::{
+            lifecycle_phase_names, policy_json, recorded_local_policy, LocalPolicyContext,
+            RecordedLocalPolicy,
+        },
         public_host_label, GuardIntegrationError,
     },
     host_integration::{
@@ -25,7 +33,11 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub(crate) struct GuardIntegrationPlan {
+    pub(crate) repo_root: PathBuf,
     pub(crate) generated_files: Vec<GeneratedFilePlan>,
+    pub(crate) retired_files: Vec<ManagedFileRetirementPlan>,
+    pub(crate) migration_protection: Option<GeneratedFilePlan>,
+    pub(crate) migration_protection_applied: bool,
     pub(crate) host_hook_commands: Vec<HostHookCommand>,
     pub(crate) policy: Value,
     pub(crate) policy_hash: String,
@@ -107,6 +119,7 @@ pub(crate) fn plan_guard_integration(
     } else {
         BTreeMap::new()
     };
+    let prior_policy = recorded_local_policy(repo_root)?;
     let git_exclude_plan = plan_git_excludes(repo_root, connection_intent, profile)?;
     let mut generated_files = Vec::new();
     if let Some(git_exclude_plan) = git_exclude_plan {
@@ -133,9 +146,35 @@ pub(crate) fn plan_guard_integration(
         &guard_commands,
         &host_hook_commands,
     )?);
+    let retired_files = plan_retired_files(
+        runtime_home,
+        repo_root,
+        host_kind,
+        profile,
+        connection_intent,
+        prior_policy.as_ref(),
+        &generated_files,
+    )?;
+    let retain_personal_paths = connection_intent == ConnectionIntent::Personal
+        || prior_policy.as_ref().is_some_and(|prior| {
+            prior.host == public_host_label(host_kind)
+                && prior.connection_intent == ConnectionIntent::Personal
+                && (prior.connection_intent != connection_intent
+                    || prior.selected_profile != profile)
+        });
+    let migration_protection = plan_git_excludes_with_personal_protection(
+        repo_root,
+        connection_intent,
+        profile,
+        retain_personal_paths,
+    )?;
     let managed_status = managed_status_for_profile(profile);
     Ok(GuardIntegrationPlan {
+        repo_root: repo_root.to_path_buf(),
         generated_files,
+        retired_files,
+        migration_protection,
+        migration_protection_applied: false,
         host_hook_commands: host_hook_commands.into_values().collect(),
         policy,
         policy_hash,
@@ -154,6 +193,72 @@ pub(crate) fn plan_guard_integration(
         capabilities,
         missing_required_hooks,
     })
+}
+
+fn plan_retired_files(
+    runtime_home: &Path,
+    repo_root: &Path,
+    host_kind: HostKind,
+    profile: IntegrationProfile,
+    connection_intent: ConnectionIntent,
+    prior_policy: Option<&RecordedLocalPolicy>,
+    generated_files: &[GeneratedFilePlan],
+) -> Result<Vec<ManagedFileRetirementPlan>, GuardIntegrationError> {
+    let Some(prior) = prior_policy else {
+        return Ok(Vec::new());
+    };
+    if prior.host != public_host_label(host_kind)
+        || (prior.connection_intent == connection_intent && prior.selected_profile == profile)
+    {
+        return Ok(Vec::new());
+    }
+    if prior.selected_profile == IntegrationProfile::Record {
+        return Ok(Vec::new());
+    }
+    let installation = guard_installation(runtime_home, &prior.guard_installation_id)
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime(format!(
+                "INTEGRATION_MIGRATION_INVENTORY_MISSING: prior detective integration {} has no ownership inventory; restore or remove it explicitly before changing intent or profile",
+                prior.guard_installation_id
+            ))
+        })?;
+    let capability =
+        serde_json::from_str::<Value>(&installation.host_capability_json).map_err(|error| {
+            GuardIntegrationError::runtime(format!(
+                "prior integration ownership inventory is invalid: {error}"
+            ))
+        })?;
+    let files = capability
+        .get("files")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime("prior integration ownership inventory has no files")
+        })?;
+    let current_paths = generated_files
+        .iter()
+        .map(|file| file.path.as_path())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut retired = Vec::new();
+    for file in files {
+        let kind = file.get("kind").and_then(Value::as_str).unwrap_or_default();
+        if matches!(
+            kind,
+            "volicord_policy" | "git_info_exclude" | "agents_managed_block" | "host_mcp_config"
+        ) {
+            continue;
+        }
+        let Some(path) = file.get("path").and_then(Value::as_str).map(Path::new) else {
+            return Err(GuardIntegrationError::runtime(
+                "prior integration ownership inventory contains a file without a path",
+            ));
+        };
+        if current_paths.contains(path) {
+            continue;
+        }
+        retired.push(plan_managed_file_retirement(repo_root, file)?);
+    }
+    Ok(retired)
 }
 
 #[cfg(not(windows))]

@@ -398,6 +398,9 @@ impl<R: CommandRunner> HostAdapter for ClaudeCodeAdapter<R> {
                     ))
                     .map_err(HostConfigError::ExternalCommand)?;
                 let inspection = parse_claude_mcp_get_output(&output);
+                if inspection.state == ClaudeMcpState::Missing {
+                    return Ok(remove_effect(request, PlannedChange::Noop));
+                }
                 let current = fingerprint_from_claude_inspection(
                     request.host_scope,
                     &request.server_name,

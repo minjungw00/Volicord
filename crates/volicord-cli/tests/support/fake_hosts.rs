@@ -83,6 +83,10 @@ pub(crate) fn write_fake_claude_code(dir: &Path) -> Result<PathBuf, Box<dyn Erro
          } > \"$state\"\n\
          exit 0\n\
          fi\n\
+         if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"remove\" ]; then\n\
+         /bin/rm -f \"$state\"\n\
+         exit 0\n\
+         fi\n\
          printf 'unexpected claude invocation\\n' >&2\n\
          exit 2\n",
     );

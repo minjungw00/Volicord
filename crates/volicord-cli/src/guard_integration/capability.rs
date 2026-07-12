@@ -10,7 +10,10 @@ use volicord_types::{GuardInstallationStatus, IntegrationProfile};
 use crate::{
     guard_integration::{
         audit::{hook_wrapper_comment_value, hook_wrapper_exec_command, sha256_text},
-        files::{FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind, VOLICORD_POLICY_FILE},
+        files::{
+            FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind, ManagedFileRetirementPlan,
+            RetirementPlanStatus, VOLICORD_POLICY_FILE,
+        },
         policy::{
             guard_has_prompt_capture_commands, lifecycle_phase_names, required_guard_phase_names,
         },
@@ -112,11 +115,32 @@ pub(crate) fn initial_guard_installation_status(
                 FilePlanStatus::Created | FilePlanStatus::Updated
             )
         })
+        || integration.retired_files.iter().any(|file| {
+            matches!(
+                file.status,
+                RetirementPlanStatus::Removed | RetirementPlanStatus::Updated
+            )
+        })
     {
         GuardInstallationStatus::ReloadRequired
     } else {
         GuardInstallationStatus::Configured
     }
+}
+
+pub(crate) fn retired_files_json(files: &[ManagedFileRetirementPlan]) -> Value {
+    Value::Array(
+        files
+            .iter()
+            .map(|file| {
+                json!({
+                    "kind": file.kind.as_str(),
+                    "path": path_text(&file.path),
+                    "status": file.status.as_str(),
+                })
+            })
+            .collect(),
+    )
 }
 
 pub(crate) fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {

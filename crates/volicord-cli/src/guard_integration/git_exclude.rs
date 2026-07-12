@@ -1,11 +1,10 @@
-use std::{
-    fs,
-    path::{Component, Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
+
+use volicord_platform_fs::resolve_git_worktree_layout;
 
 use crate::{
     guard_integration::{
-        files::{plan_managed_block_file, read_managed_text, GeneratedFilePlan},
+        files::{plan_managed_block_file, GeneratedFilePlan},
         GuardIntegrationError,
     },
     host_integration::{ConnectionIntent, HostIntegrationFileKind},
@@ -14,8 +13,6 @@ use volicord_types::IntegrationProfile;
 
 pub(crate) const GIT_EXCLUDE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED LOCAL EXCLUDES";
 pub(crate) const GIT_EXCLUDE_END_MARKER: &str = "# END VOLICORD MANAGED LOCAL EXCLUDES";
-
-const MAX_GIT_CONTROL_FILE_BYTES: usize = 4096;
 
 const ALWAYS_LOCAL_PATHS: &[&str] = &[
     "/.volicord/",
@@ -44,15 +41,30 @@ pub(crate) fn plan_git_excludes(
     connection_intent: ConnectionIntent,
     profile: IntegrationProfile,
 ) -> Result<Option<GeneratedFilePlan>, GuardIntegrationError> {
-    if connection_intent != ConnectionIntent::Personal
-        && matches!(
-            fs::symlink_metadata(repo_root.join(".git")),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound
-        )
-    {
+    plan_git_excludes_with_personal_protection(
+        repo_root,
+        connection_intent,
+        profile,
+        connection_intent == ConnectionIntent::Personal,
+    )
+}
+
+pub(crate) fn plan_git_excludes_with_personal_protection(
+    repo_root: &Path,
+    connection_intent: ConnectionIntent,
+    profile: IntegrationProfile,
+    retain_personal_paths: bool,
+) -> Result<Option<GeneratedFilePlan>, GuardIntegrationError> {
+    let Some(target) = resolve_git_exclude_target(repo_root)? else {
+        if connection_intent == ConnectionIntent::Personal {
+            let marker = repo_root.join(".git");
+            return Err(GuardIntegrationError::runtime(format!(
+                "failed to inspect Git repository marker {}: file not found",
+                marker.display()
+            )));
+        }
         return Ok(None);
-    }
-    let target = resolve_git_exclude_target(repo_root)?;
+    };
     if target.is_linked_worktree
         && connection_intent == ConnectionIntent::Personal
         && profile == IntegrationProfile::Detective
@@ -61,8 +73,7 @@ pub(crate) fn plan_git_excludes(
             "LINKED_WORKTREE_PERSONAL_DETECTIVE_UNSUPPORTED: personal detective init would require worktree-specific local hook paths, but this linked worktree exposes only the common Git info/exclude shared by sibling worktrees. Use --profile record, use --shared for a repository-managed detective integration, or initialize detective in a standalone Git worktree.",
         ));
     }
-    let include_personal_paths =
-        !target.is_linked_worktree && connection_intent == ConnectionIntent::Personal;
+    let include_personal_paths = !target.is_linked_worktree && retain_personal_paths;
     plan_managed_block_file(
         HostIntegrationFileKind::GitInfoExclude,
         &target.anchor_root,
@@ -84,13 +95,7 @@ pub(crate) fn personal_only_paths() -> &'static [&'static str] {
 }
 
 pub(crate) fn git_exclude_path(repo_root: &Path) -> Result<Option<PathBuf>, GuardIntegrationError> {
-    if matches!(
-        fs::symlink_metadata(repo_root.join(".git")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound
-    ) {
-        return Ok(None);
-    }
-    Ok(Some(resolve_git_exclude_target(repo_root)?.exclude_path))
+    Ok(resolve_git_exclude_target(repo_root)?.map(|target| target.exclude_path))
 }
 
 fn exclude_block(include_personal_paths: bool) -> String {
@@ -120,168 +125,36 @@ struct GitExcludeTarget {
     is_linked_worktree: bool,
 }
 
-fn resolve_git_exclude_target(repo_root: &Path) -> Result<GitExcludeTarget, GuardIntegrationError> {
+fn resolve_git_exclude_target(
+    repo_root: &Path,
+) -> Result<Option<GitExcludeTarget>, GuardIntegrationError> {
     let marker = repo_root.join(".git");
-    let metadata = fs::symlink_metadata(&marker).map_err(|error| {
-        GuardIntegrationError::runtime(format!(
-            "failed to inspect Git repository marker {}: {error}",
-            marker.display()
-        ))
-    })?;
-    if metadata.file_type().is_symlink() {
-        return Err(unsafe_git_path(
-            &marker,
-            "the .git marker is a symbolic link",
-        ));
-    }
-    if metadata.is_dir() {
-        return Ok(GitExcludeTarget {
-            anchor_root: repo_root.to_path_buf(),
-            exclude_path: marker.join("info").join("exclude"),
-            is_linked_worktree: false,
-        });
-    }
-    if !metadata.is_file() {
-        return Err(unsafe_git_path(
-            &marker,
-            "the .git marker is neither a directory nor a regular gitdir file",
-        ));
-    }
-
-    let marker_text = read_control_file(repo_root, &marker, ".git")?;
-    let git_dir_text = marker_text.strip_prefix("gitdir: ").ok_or_else(|| {
-        unsafe_git_path(
-            &marker,
-            "the .git file does not contain one gitdir declaration",
-        )
-    })?;
-    let git_dir = resolve_control_path(repo_root, git_dir_text, &marker)?;
-    ensure_safe_directory(&git_dir)?;
-
-    let commondir_path = git_dir.join("commondir");
-    let (common_dir, is_linked_worktree) = match read_managed_text(&git_dir, &commondir_path)? {
-        Some(text) => {
-            let value = parse_one_line_control_value(&text, &commondir_path)?;
-            let path = resolve_control_path(&git_dir, value, &commondir_path)?;
-            ensure_safe_directory(&path)?;
-            (path, true)
+    let layout = resolve_git_worktree_layout(repo_root).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::InvalidData {
+            GuardIntegrationError::runtime(format!(
+                "unsafe Git metadata path at {}: {error}",
+                marker.display()
+            ))
+        } else {
+            GuardIntegrationError::runtime(format!(
+                "failed to inspect Git repository marker {}: {error}",
+                marker.display()
+            ))
         }
-        None => (git_dir, false),
-    };
-    Ok(GitExcludeTarget {
-        exclude_path: common_dir.join("info").join("exclude"),
-        anchor_root: common_dir,
-        is_linked_worktree,
-    })
-}
-
-fn read_control_file(
-    anchor_root: &Path,
-    path: &Path,
-    label: &str,
-) -> Result<String, GuardIntegrationError> {
-    let text = read_managed_text(anchor_root, path)?
-        .ok_or_else(|| unsafe_git_path(path, &format!("the {label} control file is missing")))?;
-    let value = parse_one_line_control_value(&text, path)?;
-    Ok(value.to_owned())
-}
-
-fn parse_one_line_control_value<'a>(
-    text: &'a str,
-    path: &Path,
-) -> Result<&'a str, GuardIntegrationError> {
-    if text.len() > MAX_GIT_CONTROL_FILE_BYTES || text.contains('\0') {
-        return Err(unsafe_git_path(
-            path,
-            "the Git control file is too large or contains NUL",
-        ));
-    }
-    let value = text
-        .strip_suffix("\r\n")
-        .or_else(|| text.strip_suffix('\n'))
-        .unwrap_or(text);
-    if value.is_empty() || value.contains(['\n', '\r']) {
-        return Err(unsafe_git_path(
-            path,
-            "the Git control file must contain one non-empty line",
-        ));
-    }
-    Ok(value)
-}
-
-fn resolve_control_path(
-    base: &Path,
-    value: &str,
-    control_file: &Path,
-) -> Result<PathBuf, GuardIntegrationError> {
-    let path = Path::new(value);
-    let joined = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        base.join(path)
-    };
-    normalize_absolute_path(&joined).map_err(|detail| unsafe_git_path(control_file, detail))
-}
-
-fn normalize_absolute_path(path: &Path) -> Result<PathBuf, &'static str> {
-    if !path.is_absolute() {
-        return Err("a resolved Git directory path is not absolute");
-    }
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-            Component::RootDir => normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err("a Git directory path escapes its filesystem root");
-                }
-            }
-            Component::Normal(component) => normalized.push(component),
-        }
-    }
-    Ok(normalized)
-}
-
-fn ensure_safe_directory(path: &Path) -> Result<(), GuardIntegrationError> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
-        GuardIntegrationError::runtime(format!(
-            "failed to inspect resolved Git directory {}: {error}",
-            path.display()
-        ))
     })?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(unsafe_git_path(
-            path,
-            "the resolved Git path is not a regular directory",
-        ));
-    }
-    let canonical = fs::canonicalize(path).map_err(|error| {
-        GuardIntegrationError::runtime(format!(
-            "failed to canonicalize resolved Git directory {}: {error}",
-            path.display()
-        ))
-    })?;
-    if canonical != path {
-        return Err(unsafe_git_path(
-            path,
-            "the resolved Git directory traverses a symbolic link or non-canonical component",
-        ));
-    }
-    Ok(())
-}
-
-fn unsafe_git_path(path: &Path, detail: &str) -> GuardIntegrationError {
-    GuardIntegrationError::runtime(format!(
-        "unsafe Git metadata path at {}: {detail}",
-        path.display()
-    ))
+    Ok(layout.map(|layout| GitExcludeTarget {
+        exclude_path: layout.common_dir.join("info").join("exclude"),
+        anchor_root: layout.common_dir,
+        is_linked_worktree: layout.is_linked_worktree,
+    }))
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use crate::guard_integration::apply::apply_generated_file;
 
@@ -317,9 +190,10 @@ mod tests {
         let repo = TestDirectory::new("normal")?;
         fs::create_dir(repo.path().join(".git"))?;
 
-        let target = resolve_git_exclude_target(repo.path())?;
+        let target = resolve_git_exclude_target(repo.path())?
+            .expect("normal repository should resolve Git layout");
 
-        assert_eq!(target.anchor_root, repo.path());
+        assert_eq!(target.anchor_root, repo.path().join(".git"));
         assert_eq!(target.exclude_path, repo.path().join(".git/info/exclude"));
         assert!(!target.is_linked_worktree);
         Ok(())
@@ -339,7 +213,8 @@ mod tests {
         )?;
         fs::write(git_dir.join("commondir"), "../..\n")?;
 
-        let target = resolve_git_exclude_target(&repo)?;
+        let target =
+            resolve_git_exclude_target(&repo)?.expect("linked worktree should resolve Git layout");
 
         assert_eq!(target.anchor_root, common);
         assert_eq!(target.exclude_path, common.join("info/exclude"));

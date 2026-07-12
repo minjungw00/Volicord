@@ -186,6 +186,7 @@ where
             guard_installation_count = Some(snapshot.guard_installations.len());
             inspect_guard_installations(snapshot, &mut checks, &mut actions);
             inspect_personal_local_git_tracking(snapshot, &mut checks, &mut actions);
+            inspect_integration_intent_drift(snapshot, &mut checks, &mut actions);
             inspect_session_watch_baselines(&runtime_home, snapshot, &mut checks);
         }
         DatabaseInspection::Unsupported { path, detail } => {
@@ -424,6 +425,7 @@ fn privacy_stores() -> Vec<&'static str> {
         "detective host-hook installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state",
         "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel judgments, and artifacts when those features are used",
         "session-watch baselines and observations with relative paths, file hashes, file sizes, skip reasons, scan summaries, timestamps, and observation links",
+        "bounded diagnostics.sqlite session, connection, project, transport, host, build, tool, categorical outcome, counter, byte-size, and latency observations when diagnostics are present",
     ]
 }
 
@@ -431,6 +433,7 @@ fn privacy_does_not_store() -> Vec<&'static str> {
     vec![
         "session-watch snapshots do not store Product Repository file contents",
         "prompt-capture availability and verification-code records do not include raw prompt text by default",
+        "diagnostics.sqlite does not store prompt bodies, Product Repository paths or file contents, error bodies, secrets, or Judgment question, answer, rationale, or note text",
         "doctor --privacy-footprint reports categories and counts, not stored row bodies",
     ]
 }
@@ -572,11 +575,10 @@ fn inspect_personal_local_git_tracking(
                 continue;
             }
         };
-        let include_personal_paths = match local_policy_connection_intent(&project.repo_root) {
+        match local_policy_connection_intent(&project.repo_root) {
             Ok(intent) => {
                 let personal = intent == "personal";
                 effective_personal_project_count += usize::from(personal);
-                personal
             }
             Err(detail) => {
                 push_bounded_git_finding(
@@ -589,15 +591,15 @@ fn inspect_personal_local_git_tracking(
                     }),
                     &mut truncated,
                 );
-                true
             }
-        };
-        let local_paths = always_local_paths().iter().copied().chain(
-            include_personal_paths
-                .then_some(personal_only_paths().iter().copied())
-                .into_iter()
-                .flatten(),
-        );
+        }
+        // Audit both intent projections regardless of the policy's current
+        // intent. A failed or interrupted migration can leave an opposite-
+        // intent local file behind, and that file must not become trackable.
+        let local_paths = always_local_paths()
+            .iter()
+            .copied()
+            .chain(personal_only_paths().iter().copied());
         for local_path in local_paths {
             if tracked_paths.len() + unignored_paths.len() + audit_errors.len()
                 >= MAX_PERSONAL_GIT_FINDINGS
@@ -739,7 +741,20 @@ fn inspect_personal_local_git_tracking(
     checks.push(check.with_details(details));
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalPolicyAudit {
+    host: String,
+    connection_intent: String,
+    selected_profile: String,
+    connection_id: String,
+    guard_installation_id: String,
+}
+
 fn local_policy_connection_intent(repo_root: &Path) -> Result<String, String> {
+    local_policy_audit(repo_root).map(|policy| policy.connection_intent)
+}
+
+fn local_policy_audit(repo_root: &Path) -> Result<LocalPolicyAudit, String> {
     let policy_dir = repo_root.join(".volicord");
     let policy_path = policy_dir.join("policy.json");
     let directory_metadata = fs::symlink_metadata(&policy_dir)
@@ -767,7 +782,454 @@ fn local_policy_connection_intent(repo_root: &Path) -> Result<String, String> {
         .ok_or_else(|| "the local policy is missing connection_intent".to_owned())?;
     validate_policy_schema(&policy, connection_intent)
         .map_err(|error| format!("the local policy schema is invalid: {error}"))?;
-    Ok(connection_intent.to_owned())
+    let required = |field: &str| {
+        policy
+            .get(field)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| format!("the local policy is missing {field}"))
+    };
+    Ok(LocalPolicyAudit {
+        host: required("host")?,
+        connection_intent: connection_intent.to_owned(),
+        selected_profile: required("selected_profile")?,
+        connection_id: required("connection_id")?,
+        guard_installation_id: required("guard_installation_id")?,
+    })
+}
+
+const MAX_INTENT_DRIFT_FINDINGS: usize = 64;
+
+fn inspect_integration_intent_drift(
+    snapshot: &RegistryInspectionSnapshot,
+    checks: &mut Vec<DiagnosticCheck>,
+    actions: &mut Vec<DiagnosticAction>,
+) {
+    let mut projects = connected_enabled_projects(snapshot);
+    projects.sort_by(|left, right| left.project_id.cmp(&right.project_id));
+    if projects.is_empty() {
+        checks.push(DiagnosticCheck::skipped(
+            "integration_intent_drift",
+            "no enabled repository integration is recorded",
+        ));
+        return;
+    }
+
+    let connected_project_count = projects.len();
+    let mut truncated = projects.len() > MAX_PERSONAL_GIT_PROJECTS;
+    projects.truncate(MAX_PERSONAL_GIT_PROJECTS);
+    let mut findings = Vec::new();
+    let mut audit_errors = Vec::new();
+    let active_installations = active_guard_installations(snapshot);
+    let mut first_repair_command = None;
+
+    for project in &projects {
+        let policy = match local_policy_audit(&project.repo_root) {
+            Ok(policy) => policy,
+            Err(detail) => {
+                push_bounded_intent_finding(
+                    &mut audit_errors,
+                    json!({
+                        "project_id": project.project_id,
+                        "repo_root": path_text(&project.repo_root),
+                        "detail": detail,
+                    }),
+                    &mut truncated,
+                );
+                continue;
+            }
+        };
+        first_repair_command.get_or_insert_with(|| integration_repair_command(&policy, project));
+        let registry_host_kind = match policy.host.as_str() {
+            "claude-code" => "claude_code",
+            other => other,
+        };
+
+        let attached = snapshot
+            .agent_connections
+            .iter()
+            .filter(|connection| {
+                connection.enabled
+                    && connection.host_kind == registry_host_kind
+                    && matches!(connection.intent.as_str(), "personal" | "shared")
+                    && connection_is_attached_to_project(snapshot, connection, project)
+            })
+            .collect::<Vec<_>>();
+        let expected = attached
+            .iter()
+            .find(|connection| connection.connection_internal_id == policy.connection_id);
+        if expected.is_none() {
+            push_bounded_intent_finding(
+                &mut findings,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "kind": "policy_connection_missing",
+                    "policy_connection_id": policy.connection_id,
+                    "policy_intent": policy.connection_intent,
+                    "host": policy.host,
+                }),
+                &mut truncated,
+            );
+        } else if expected.is_some_and(|connection| connection.intent != policy.connection_intent) {
+            push_bounded_intent_finding(
+                &mut findings,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "kind": "policy_connection_intent_mismatch",
+                    "policy_intent": policy.connection_intent,
+                    "recorded_intent": expected.map(|connection| connection.intent.as_str()),
+                    "host": policy.host,
+                }),
+                &mut truncated,
+            );
+        }
+        for connection in attached.iter().filter(|connection| {
+            connection.connection_internal_id != policy.connection_id
+                || connection.intent != policy.connection_intent
+        }) {
+            push_bounded_intent_finding(
+                &mut findings,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "kind": "additional_active_intent_projection",
+                    "policy_connection_id": policy.connection_id,
+                    "connection_id": connection.connection_internal_id,
+                    "policy_intent": policy.connection_intent,
+                    "recorded_intent": connection.intent,
+                    "host": policy.host,
+                }),
+                &mut truncated,
+            );
+        }
+
+        let guard_matches = active_installations.iter().any(|installation| {
+            installation.guard_installation_id == policy.guard_installation_id
+                && installation.connection_internal_id == policy.connection_id
+                && installation.guard_mode == policy.selected_profile
+                && installation.project_internal_id.as_deref()
+                    == Some(project.project_internal_id.as_str())
+        });
+        if !guard_matches {
+            push_bounded_intent_finding(
+                &mut findings,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "kind": "policy_guard_inventory_mismatch",
+                    "guard_installation_id": policy.guard_installation_id,
+                    "selected_profile": policy.selected_profile,
+                    "host": policy.host,
+                }),
+                &mut truncated,
+            );
+        }
+
+        match stale_opposite_projection_paths(&project.repo_root, &policy) {
+            Ok(paths) => {
+                for path in paths {
+                    push_bounded_intent_finding(
+                        &mut findings,
+                        json!({
+                            "project_id": project.project_id,
+                            "repo_root": path_text(&project.repo_root),
+                            "kind": "opposite_intent_projection_present",
+                            "path": path,
+                            "policy_intent": policy.connection_intent,
+                            "selected_profile": policy.selected_profile,
+                            "host": policy.host,
+                        }),
+                        &mut truncated,
+                    );
+                }
+            }
+            Err(detail) => push_bounded_intent_finding(
+                &mut audit_errors,
+                json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "detail": detail,
+                }),
+                &mut truncated,
+            ),
+        }
+    }
+
+    let has_warning = !findings.is_empty() || !audit_errors.is_empty() || truncated;
+    let details = json!({
+        "connected_project_count": connected_project_count,
+        "audited_project_count": projects.len(),
+        "findings": findings,
+        "audit_errors": audit_errors,
+        "truncated": truncated,
+        "max_projects": MAX_PERSONAL_GIT_PROJECTS,
+        "max_findings": MAX_INTENT_DRIFT_FINDINGS,
+    });
+    if has_warning {
+        push_unique_diagnostic_action(
+            actions,
+            DiagnosticAction {
+                id: "repair_integration_intent_drift".to_owned(),
+                instruction: "Rerun init with the policy-selected host, intent, and profile so Volicord can safely retire only its owned opposite-intent projection."
+                    .to_owned(),
+                command: first_repair_command,
+            },
+        );
+        checks.push(
+            DiagnosticCheck::warning(
+                "integration_intent_drift",
+                "one or more repository integrations have intent or profile drift",
+            )
+            .with_details(details),
+        );
+    } else {
+        checks.push(
+            DiagnosticCheck::passed(
+                "integration_intent_drift",
+                "repository integration intent and profile projections are converged",
+            )
+            .with_details(details),
+        );
+    }
+}
+
+fn connected_enabled_projects(
+    snapshot: &RegistryInspectionSnapshot,
+) -> Vec<&volicord_store::inspection::ProjectInspectionRecord> {
+    snapshot
+        .projects
+        .iter()
+        .filter(|project| {
+            snapshot.agent_connections.iter().any(|connection| {
+                connection.enabled
+                    && matches!(connection.host_kind.as_str(), "codex" | "claude_code")
+                    && matches!(connection.intent.as_str(), "personal" | "shared")
+                    && connection_is_attached_to_project(snapshot, connection, project)
+            })
+        })
+        .collect()
+}
+
+fn connection_is_attached_to_project(
+    snapshot: &RegistryInspectionSnapshot,
+    connection: &volicord_store::inspection::AgentConnectionInspectionRecord,
+    project: &volicord_store::inspection::ProjectInspectionRecord,
+) -> bool {
+    connection.project_internal_id.as_deref() == Some(project.project_internal_id.as_str())
+        || snapshot.connection_projects.iter().any(|membership| {
+            membership.connection_internal_id == connection.connection_internal_id
+                && membership.project_internal_id == project.project_internal_id
+        })
+}
+
+fn active_guard_installations(
+    snapshot: &RegistryInspectionSnapshot,
+) -> Vec<volicord_store::inspection::GuardInstallationInspectionRecord> {
+    snapshot
+        .guard_installations
+        .iter()
+        .filter(|installation| {
+            let Some(connection) = snapshot.agent_connections.iter().find(|connection| {
+                connection.enabled
+                    && connection.connection_internal_id == installation.connection_internal_id
+            }) else {
+                return false;
+            };
+            installation
+                .project_internal_id
+                .as_deref()
+                .is_none_or(|project_internal_id| {
+                    connection.project_internal_id.as_deref() == Some(project_internal_id)
+                        || snapshot.connection_projects.iter().any(|membership| {
+                            membership.connection_internal_id == connection.connection_internal_id
+                                && membership.project_internal_id == project_internal_id
+                        })
+                })
+        })
+        .cloned()
+        .collect()
+}
+
+fn stale_opposite_projection_paths(
+    repo_root: &Path,
+    policy: &LocalPolicyAudit,
+) -> Result<Vec<String>, String> {
+    let mut paths = Vec::new();
+    match policy.host.as_str() {
+        "claude-code" => {
+            let local_settings = ".claude/settings.local.json";
+            let shared_settings = ".claude/settings.json";
+            let local_has_hooks = managed_hooks_present(repo_root, local_settings)?;
+            let shared_has_hooks = managed_hooks_present(repo_root, shared_settings)?;
+            match (
+                policy.selected_profile.as_str(),
+                policy.connection_intent.as_str(),
+            ) {
+                ("detective", "personal") if shared_has_hooks => {
+                    paths.push(shared_settings.to_owned())
+                }
+                ("detective", "shared") if local_has_hooks => paths.push(local_settings.to_owned()),
+                ("record", _) => {
+                    if local_has_hooks {
+                        paths.push(local_settings.to_owned());
+                    }
+                    if shared_has_hooks {
+                        paths.push(shared_settings.to_owned());
+                    }
+                }
+                _ => {}
+            }
+            if policy.connection_intent == "personal"
+                && managed_mcp_projection_present(repo_root, ".mcp.json")?
+            {
+                paths.push(".mcp.json".to_owned());
+            }
+            if policy.selected_profile == "record"
+                && managed_marker_present(repo_root, ".claude/rules/volicord.md")?
+            {
+                paths.push(".claude/rules/volicord.md".to_owned());
+            }
+        }
+        "codex" if policy.selected_profile == "record" => {
+            if managed_hooks_present(repo_root, ".codex/hooks.json")? {
+                paths.push(".codex/hooks.json".to_owned());
+            }
+            if managed_marker_present(repo_root, ".codex/rules/volicord.rules")? {
+                paths.push(".codex/rules/volicord.rules".to_owned());
+            }
+        }
+        _ => {}
+    }
+    Ok(paths)
+}
+
+fn managed_hooks_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
+    let Some(text) = read_bounded_repo_text(repo_root, relative_path)? else {
+        return Ok(false);
+    };
+    let value = serde_json::from_str::<Value>(&text)
+        .map_err(|error| format!("{relative_path} is not valid JSON: {error}"))?;
+    Ok(value.get("hooks").is_some_and(json_value_contains_volicord))
+}
+
+fn managed_mcp_projection_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
+    let Some(text) = read_bounded_repo_text(repo_root, relative_path)? else {
+        return Ok(false);
+    };
+    let value = serde_json::from_str::<Value>(&text)
+        .map_err(|error| format!("{relative_path} is not valid JSON: {error}"))?;
+    Ok(value
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .is_some_and(|servers| servers.contains_key("volicord")))
+}
+
+fn managed_marker_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
+    Ok(read_bounded_repo_text(repo_root, relative_path)?
+        .is_some_and(|text| text.contains("VOLICORD MANAGED")))
+}
+
+fn json_value_contains_volicord(value: &Value) -> bool {
+    match value {
+        Value::String(value) => value.to_ascii_lowercase().contains("volicord"),
+        Value::Array(values) => values.iter().any(json_value_contains_volicord),
+        Value::Object(values) => values.values().any(json_value_contains_volicord),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn read_bounded_repo_text(repo_root: &Path, relative_path: &str) -> Result<Option<String>, String> {
+    let relative = Path::new(relative_path);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(format!(
+            "unsafe repository-relative diagnostic path: {relative_path}"
+        ));
+    }
+    let mut parent = repo_root.to_path_buf();
+    if let Some(relative_parent) = relative.parent() {
+        for component in relative_parent.components() {
+            parent.push(component.as_os_str());
+            let metadata = match fs::symlink_metadata(&parent) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => {
+                    return Err(format!("failed to inspect {}: {error}", path_text(&parent)))
+                }
+            };
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(format!(
+                    "repository integration parent is not a regular directory: {}",
+                    path_text(&parent)
+                ));
+            }
+        }
+    }
+    let path = repo_root.join(relative);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("failed to inspect {}: {error}", path_text(&path))),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!(
+            "repository integration target is not a regular file: {}",
+            path_text(&path)
+        ));
+    }
+    if metadata.len() > MAX_LOCAL_POLICY_BYTES {
+        return Err(format!(
+            "{} exceeds the {MAX_LOCAL_POLICY_BYTES}-byte audit limit",
+            path_text(&path)
+        ));
+    }
+    fs::read_to_string(&path)
+        .map(Some)
+        .map_err(|error| format!("failed to read {}: {error}", path_text(&path)))
+}
+
+fn integration_repair_command(
+    policy: &LocalPolicyAudit,
+    project: &volicord_store::inspection::ProjectInspectionRecord,
+) -> String {
+    let shared = if policy.connection_intent == "shared" {
+        " --shared"
+    } else {
+        ""
+    };
+    format!(
+        "volicord init --host {} --repo {}{} --profile {}",
+        policy.host,
+        doctor_shell_word(&path_text(&project.repo_root)),
+        shared,
+        policy.selected_profile,
+    )
+}
+
+fn doctor_shell_word(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_@%+=:,./-".contains(&byte))
+    {
+        value.to_owned()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+fn push_bounded_intent_finding(values: &mut Vec<Value>, value: Value, truncated: &mut bool) {
+    if values.len() < MAX_INTENT_DRIFT_FINDINGS {
+        values.push(value);
+    } else {
+        *truncated = true;
+    }
 }
 
 fn push_bounded_git_finding(values: &mut Vec<Value>, value: Value, truncated: &mut bool) {
@@ -821,7 +1283,8 @@ fn inspect_guard_installations(
     checks: &mut Vec<DiagnosticCheck>,
     actions: &mut Vec<DiagnosticAction>,
 ) {
-    if snapshot.guard_installations.is_empty() {
+    let installations = active_guard_installations(snapshot);
+    if installations.is_empty() {
         checks.push(DiagnosticCheck::skipped(
             "guard_files_installed",
             "no detective installations are recorded",
@@ -872,13 +1335,12 @@ fn inspect_guard_installations(
         return;
     }
 
-    let observed_profile_installations = snapshot
-        .guard_installations
+    let observed_profile_installations = installations
         .iter()
         .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
         .collect::<Vec<_>>();
     let mut file_findings = GuardFileFindings::default();
-    for installation in &snapshot.guard_installations {
+    for installation in &installations {
         file_findings.merge(guard_file_findings_for_inspection(
             installation,
             &snapshot.projects,
@@ -893,8 +1355,7 @@ fn inspect_guard_installations(
         ));
     }
     detective_file_findings.sort_dedup();
-    let selected_profile =
-        doctor_selected_profile_state(&snapshot.guard_installations, &file_findings);
+    let selected_profile = doctor_selected_profile_state(&installations, &file_findings);
     let missing_required_hooks = observed_profile_installations
         .iter()
         .flat_map(|installation| {
@@ -1151,8 +1612,8 @@ fn inspect_session_watch_baselines(
     snapshot: &RegistryInspectionSnapshot,
     checks: &mut Vec<DiagnosticCheck>,
 ) {
-    let detective_installations = snapshot
-        .guard_installations
+    let active_installations = active_guard_installations(snapshot);
+    let detective_installations = active_installations
         .iter()
         .filter(|installation| installation.guard_mode == IntegrationProfile::Detective.as_str())
         .collect::<Vec<_>>();

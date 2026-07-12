@@ -6,22 +6,89 @@ use std::path::Path;
 use crate::{
     guard_integration::{
         files::{
-            ensure_generated_file_plan_fresh, managed_block_conflict,
-            managed_json_projection_merge, write_managed_file_if_fresh, FilePlanStatus,
-            GeneratedFilePlan, GeneratedFileWriteKind,
+            apply_managed_file_retirement, ensure_generated_file_plan_fresh,
+            managed_block_conflict, managed_json_projection_merge, write_managed_file_if_fresh,
+            FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind,
         },
+        git_exclude::plan_git_excludes,
         GuardIntegrationError, GuardIntegrationPlan, ManagedJsonProjection,
     },
+    host_integration::{ConnectionIntent, HostIntegrationFileKind},
     managed_block,
 };
+use volicord_types::IntegrationProfile;
+
+pub(crate) fn apply_guard_migration_protection(
+    plan: &mut GuardIntegrationPlan,
+) -> Result<(), GuardIntegrationError> {
+    if plan.migration_protection_applied {
+        return Ok(());
+    }
+    if let Some(protection) = plan.migration_protection.as_mut() {
+        protection.status = apply_generated_file(protection)?;
+    }
+    plan.migration_protection_applied = true;
+    Ok(())
+}
 
 pub(crate) fn apply_guard_integration(
     mut plan: GuardIntegrationPlan,
 ) -> Result<GuardIntegrationPlan, GuardIntegrationError> {
+    apply_guard_migration_protection(&mut plan)?;
     for file in &mut plan.generated_files {
+        if matches!(
+            file.kind,
+            HostIntegrationFileKind::GitInfoExclude | HostIntegrationFileKind::VolicordPolicy
+        ) {
+            continue;
+        }
         file.status = apply_generated_file(file)?;
     }
+    for retirement in &mut plan.retired_files {
+        retirement.status = apply_managed_file_retirement(retirement)?;
+    }
+    for file in &mut plan.generated_files {
+        if file.kind == HostIntegrationFileKind::VolicordPolicy {
+            file.status = apply_generated_file(file)?;
+        }
+    }
+    let connection_intent = parse_connection_intent(&plan.connection_intent)?;
+    let profile = parse_integration_profile(&plan.guard_profile)?;
+    if let Some(mut final_exclude) = plan_git_excludes(&plan.repo_root, connection_intent, profile)?
+    {
+        final_exclude.status = apply_generated_file(&final_exclude)?;
+        if let Some(recorded) = plan
+            .generated_files
+            .iter_mut()
+            .find(|file| file.kind == HostIntegrationFileKind::GitInfoExclude)
+        {
+            *recorded = final_exclude;
+        } else {
+            plan.generated_files.insert(0, final_exclude);
+        }
+    }
     Ok(plan)
+}
+
+fn parse_connection_intent(value: &str) -> Result<ConnectionIntent, GuardIntegrationError> {
+    match value {
+        "personal" => Ok(ConnectionIntent::Personal),
+        "shared" => Ok(ConnectionIntent::Shared),
+        "global" => Ok(ConnectionIntent::Global),
+        _ => Err(GuardIntegrationError::runtime(
+            "guard integration has an unsupported connection intent",
+        )),
+    }
+}
+
+fn parse_integration_profile(value: &str) -> Result<IntegrationProfile, GuardIntegrationError> {
+    match value {
+        "record" => Ok(IntegrationProfile::Record),
+        "detective" => Ok(IntegrationProfile::Detective),
+        _ => Err(GuardIntegrationError::runtime(
+            "guard integration has an unsupported profile",
+        )),
+    }
 }
 
 pub(crate) fn apply_generated_file(

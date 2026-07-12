@@ -5,8 +5,9 @@ use volicord_types::IntegrationProfile;
 
 use crate::{
     guard_integration::{
-        files::VOLICORD_POLICY_SCHEMA, hooks::GuardCommandSpec, public_host_label,
-        GuardIntegrationError,
+        files::{read_managed_text, VOLICORD_POLICY_FILE, VOLICORD_POLICY_SCHEMA},
+        hooks::GuardCommandSpec,
+        public_host_label, GuardIntegrationError,
     },
     host_integration::{
         ConnectionIntent, HostKind, HostLifecyclePhase, ManagedServerEntry, REQUIRED_GUARD_PHASES,
@@ -50,6 +51,74 @@ pub(crate) struct LocalPolicyContext<'a> {
     pub(crate) connection_id: &'a str,
     pub(crate) guard_installation_id: &'a str,
     pub(crate) connection_intent: ConnectionIntent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordedLocalPolicy {
+    pub(crate) host: String,
+    pub(crate) connection_intent: ConnectionIntent,
+    pub(crate) selected_profile: IntegrationProfile,
+    pub(crate) connection_id: String,
+    pub(crate) guard_installation_id: String,
+}
+
+pub(crate) fn recorded_local_policy(
+    repo_root: &Path,
+) -> Result<Option<RecordedLocalPolicy>, GuardIntegrationError> {
+    let path = repo_root.join(VOLICORD_POLICY_FILE);
+    let Some(text) = read_managed_text(repo_root, &path)? else {
+        return Ok(None);
+    };
+    let policy = serde_json::from_str::<Value>(&text).map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "existing policy file is not valid JSON: {} ({error})",
+            path.display()
+        ))
+    })?;
+    let intent_text = policy
+        .get("connection_intent")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime("policy schema requires connection_intent")
+        })?;
+    validate_policy_schema(&policy, intent_text)?;
+    let connection_intent = match intent_text {
+        "personal" => ConnectionIntent::Personal,
+        "shared" => ConnectionIntent::Shared,
+        "global" => ConnectionIntent::Global,
+        _ => {
+            return Err(GuardIntegrationError::runtime(
+                "policy schema contains an unsupported connection_intent",
+            ));
+        }
+    };
+    let selected_profile = match policy.get("selected_profile").and_then(Value::as_str) {
+        Some("record") => IntegrationProfile::Record,
+        Some("detective") => IntegrationProfile::Detective,
+        _ => {
+            return Err(GuardIntegrationError::runtime(
+                "policy schema contains an unsupported selected_profile",
+            ));
+        }
+    };
+    let required = |field: &str| {
+        policy
+            .get(field)
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                GuardIntegrationError::runtime(format!(
+                    "policy schema requires a non-empty {field} string"
+                ))
+            })
+    };
+    Ok(Some(RecordedLocalPolicy {
+        host: required("host")?,
+        connection_intent,
+        selected_profile,
+        connection_id: required("connection_id")?,
+        guard_installation_id: required("guard_installation_id")?,
+    }))
 }
 
 pub(crate) fn policy_json(

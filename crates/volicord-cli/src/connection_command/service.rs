@@ -76,6 +76,12 @@ struct InitProvisioningPlan {
     server_name: String,
 }
 
+struct OppositeIntegration {
+    connection: AgentConnectionRecord,
+    selected_project: ConnectionProjectRecord,
+    host_plan: Option<HostPlan>,
+}
+
 pub(super) fn provision_init(
     request: InitProvisioningRequest<'_>,
     process: &mut impl ConnectionProcess,
@@ -268,7 +274,7 @@ fn apply_init_provisioning(
         process,
     )?;
     ensure_host_plan_has_no_conflict(&host_plan)?;
-    let _integration = plan_guard_integration(
+    let mut integration = plan_guard_integration(
         plan.host_kind,
         plan.init_mode.integration_profile(),
         &plan.runtime_home,
@@ -277,6 +283,14 @@ fn apply_init_provisioning(
         &plan.guard_installation_id,
         &host_plan.entry,
         plan.intent,
+    )?;
+    apply_guard_migration_protection(&mut integration)?;
+    let opposite_integrations = opposite_integrations_for_project(
+        &plan.runtime_home,
+        plan.host_kind,
+        plan.intent,
+        &project.repo_root,
+        process,
     )?;
     let mcp_command = PathBuf::from(&host_plan.entry.command);
     let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
@@ -313,7 +327,12 @@ fn apply_init_provisioning(
         },
     )?;
     apply_host_plan(plan.host_kind, &host_plan, process)?;
-    let integration = plan_guard_integration(
+    retire_opposite_host_configuration(&opposite_integrations, process)?;
+    // Host setup may create repository-local parent directories. Replan after
+    // those mutations so every managed-file snapshot is anchored to the
+    // current filesystem state. The protective union exclude was already
+    // applied above and remains in force while the migration completes.
+    let mut integration = plan_guard_integration(
         plan.host_kind,
         plan.init_mode.integration_profile(),
         &plan.runtime_home,
@@ -323,7 +342,9 @@ fn apply_init_provisioning(
         &host_plan.entry,
         plan.intent,
     )?;
+    integration.migration_protection_applied = true;
     let integration = apply_guard_integration(integration)?;
+    retire_opposite_connection_inventory(&plan.runtime_home, &opposite_integrations)?;
     let integration_profile = plan.init_mode.integration_profile();
     let installation_status =
         initial_guard_installation_status(integration_profile, &host_plan, &integration);
@@ -387,6 +408,83 @@ fn apply_init_provisioning(
             "created"
         },
     })
+}
+
+fn opposite_integrations_for_project(
+    runtime_home: &Path,
+    host_kind: HostKind,
+    requested_intent: ConnectionIntent,
+    repo_root: &Path,
+    process: &impl ConnectionProcess,
+) -> Result<Vec<OppositeIntegration>, ConnectionCommandError> {
+    let mut integrations = Vec::new();
+    for connection in list_agent_connections(runtime_home)? {
+        if connection.host_kind != host_kind.as_str()
+            || connection.intent == requested_intent.as_str()
+            || !matches!(connection.intent.as_str(), "personal" | "shared")
+        {
+            continue;
+        }
+        let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
+        let Some(selected_project) = projects
+            .iter()
+            .find(|project| project.project.repo_root == repo_root)
+            .cloned()
+        else {
+            continue;
+        };
+        let host_plan = if projects.len() == 1 {
+            Some(existing_host_plan(
+                &connection,
+                runtime_home,
+                process,
+                Some(&selected_project),
+            )?)
+        } else {
+            None
+        };
+        integrations.push(OppositeIntegration {
+            connection,
+            selected_project,
+            host_plan,
+        });
+    }
+    Ok(integrations)
+}
+
+fn retire_opposite_host_configuration(
+    integrations: &[OppositeIntegration],
+    process: &impl ConnectionProcess,
+) -> Result<(), ConnectionCommandError> {
+    for integration in integrations {
+        if let Some(host_plan) = &integration.host_plan {
+            remove_host_configuration(host_plan, &integration.connection, process)?;
+        }
+    }
+    Ok(())
+}
+
+fn retire_opposite_connection_inventory(
+    runtime_home: &Path,
+    integrations: &[OppositeIntegration],
+) -> Result<(), ConnectionCommandError> {
+    for integration in integrations {
+        remove_connection_project(
+            runtime_home,
+            &integration.connection.connection_internal_id,
+            &integration.selected_project.project_id,
+        )?;
+        if list_connection_projects(runtime_home, &integration.connection.connection_internal_id)?
+            .is_empty()
+        {
+            set_connection_enabled(
+                runtime_home,
+                &integration.connection.connection_internal_id,
+                false,
+            )?;
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn provision_connection(
