@@ -15,6 +15,8 @@ impl CoreStorageMutation {
             Self::UpdateTaskScope(input) => mutation.update_task_scope(input),
             Self::UpdateTaskScopeRevision(input) => mutation.update_task_scope_revision(input),
             Self::UpdateTaskCloseBasis(input) => mutation.update_task_close_basis(input),
+            Self::ReplaceAcceptanceCriteria(input) => mutation.replace_acceptance_criteria(input),
+            Self::EnsureEvidenceClaim(input) => mutation.ensure_evidence_claim(input),
             Self::InsertCurrentChangeUnit(input) => {
                 mutation.insert_current_change_unit(input, committed_state_version)
             }
@@ -66,11 +68,6 @@ impl ProjectMutation<'_> {
             &input.autonomy_boundary_json,
         )?;
         validate_json_text("tasks.close_summary_json", &input.close_summary_json)?;
-        validate_json_text(
-            "tasks.completion_policy_json",
-            &input.completion_policy_json,
-        )?;
-
         self.tx.execute(
             "INSERT INTO tasks (
                 project_id,
@@ -85,7 +82,6 @@ impl ProjectMutation<'_> {
                 bounded_context_json,
                 autonomy_boundary_json,
                 close_summary_json,
-                completion_policy_json,
                 current_change_unit_id,
                 created_at,
                 updated_at
@@ -104,7 +100,6 @@ impl ProjectMutation<'_> {
                 ?11,
                 ?12,
                 ?13,
-                ?14,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             )",
@@ -121,7 +116,6 @@ impl ProjectMutation<'_> {
                 input.bounded_context_json,
                 input.autonomy_boundary_json,
                 input.close_summary_json,
-                input.completion_policy_json,
                 input.current_change_unit_id
             ],
         )?;
@@ -216,10 +210,6 @@ impl ProjectMutation<'_> {
             validate_json_text("tasks.close_summary_json", value)?;
             self.update_task_text_column(&input.task_id, "close_summary_json", value)?;
         }
-        if let Some(value) = &input.completion_policy_json {
-            validate_json_text("tasks.completion_policy_json", value)?;
-            self.update_task_text_column(&input.task_id, "completion_policy_json", value)?;
-        }
         if let Some(value) = &input.lifecycle_phase {
             validate_identifier("lifecycle_phase", value)?;
             self.update_task_text_column(&input.task_id, "lifecycle_phase", value)?;
@@ -234,6 +224,123 @@ impl ProjectMutation<'_> {
         if let Some(value) = &input.summary {
             self.update_task_nullable_text_column(&input.task_id, "summary", Some(value))?;
         }
+        Ok(())
+    }
+
+    fn replace_acceptance_criteria(
+        &mut self,
+        input: &AcceptanceCriteriaReplace,
+    ) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        let mut ids = Vec::with_capacity(input.criteria.len());
+        for criterion in &input.criteria {
+            validate_identifier(
+                "acceptance_criterion_id",
+                &criterion.acceptance_criterion_id,
+            )?;
+            validate_identifier(
+                "acceptance_criteria.evidence_requirement",
+                &criterion.evidence_requirement,
+            )?;
+            if criterion.statement.trim().is_empty() {
+                return Err(StoreError::schema_invariant(
+                    "project_state",
+                    "acceptance criterion statement must not be empty",
+                ));
+            }
+            ids.push(criterion.acceptance_criterion_id.clone());
+            self.tx.execute(
+                "INSERT INTO acceptance_criteria (
+                    project_id,
+                    acceptance_criterion_id,
+                    task_id,
+                    statement,
+                    evidence_requirement,
+                    position,
+                    status,
+                    created_at,
+                    updated_at,
+                    retired_at
+                )
+                VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, 'active',
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                    NULL
+                )
+                ON CONFLICT(project_id, acceptance_criterion_id) DO UPDATE SET
+                    statement = excluded.statement,
+                    evidence_requirement = excluded.evidence_requirement,
+                    position = excluded.position,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE acceptance_criteria.task_id = excluded.task_id
+                  AND acceptance_criteria.status = 'active'",
+                params![
+                    self.project_id,
+                    criterion.acceptance_criterion_id,
+                    input.task_id,
+                    criterion.statement,
+                    criterion.evidence_requirement,
+                    i64::try_from(criterion.position).map_err(|_| StoreError::schema_invariant(
+                        "project_state",
+                        "acceptance criterion position exceeds SQLite INTEGER range",
+                    ))?,
+                ],
+            )?;
+        }
+
+        if ids.is_empty() {
+            self.tx.execute(
+                "UPDATE acceptance_criteria
+                    SET status = 'retired',
+                        retired_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                  WHERE project_id = ?1
+                    AND task_id = ?2
+                    AND status = 'active'",
+                params![self.project_id, input.task_id],
+            )?;
+        } else {
+            let placeholders = (0..ids.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "UPDATE acceptance_criteria
+                    SET status = 'retired',
+                        retired_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                  WHERE project_id = ?
+                    AND task_id = ?
+                    AND status = 'active'
+                    AND acceptance_criterion_id NOT IN ({placeholders})"
+            );
+            let mut values: Vec<&dyn rusqlite::ToSql> = vec![&self.project_id, &input.task_id];
+            values.extend(ids.iter().map(|id| id as &dyn rusqlite::ToSql));
+            self.tx.execute(&sql, values.as_slice())?;
+        }
+        Ok(())
+    }
+
+    fn ensure_evidence_claim(&mut self, input: &EvidenceClaimInsert) -> StoreResult<()> {
+        validate_identifier("evidence_claim_id", &input.evidence_claim_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        if input.statement.trim().is_empty() {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "supplemental evidence claim statement must not be empty",
+            ));
+        }
+        self.tx.execute(
+            "INSERT OR IGNORE INTO evidence_claims (
+                project_id, evidence_claim_id, task_id, statement, created_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            )",
+            params![
+                self.project_id,
+                input.evidence_claim_id,
+                input.task_id,
+                input.statement,
+            ],
+        )?;
         Ok(())
     }
 
@@ -870,7 +977,12 @@ impl ProjectMutation<'_> {
         if let Some(run_id) = &input.run_id {
             validate_identifier("run_id", run_id)?;
         }
-        validate_identifier("evidence_observations.claim", &input.claim)?;
+        if input.acceptance_criterion_id.is_some() == input.evidence_claim_id.is_some() {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "evidence observation must select exactly one target identity",
+            ));
+        }
         validate_evidence_source_kind("evidence_observations.source_kind", &input.source_kind)?;
         validate_evidence_assurance_level(
             "evidence_observations.assurance_level",
@@ -919,7 +1031,8 @@ impl ProjectMutation<'_> {
                 task_id,
                 change_unit_id,
                 run_id,
-                claim,
+                acceptance_criterion_id,
+                evidence_claim_id,
                 source_kind,
                 assurance_level,
                 observed_by_actor_source,
@@ -953,7 +1066,8 @@ impl ProjectMutation<'_> {
                 ?16,
                 ?17,
                 ?18,
-                ?19
+                ?19,
+                ?20
             )",
             params![
                 self.project_id,
@@ -961,7 +1075,8 @@ impl ProjectMutation<'_> {
                 input.task_id,
                 input.change_unit_id,
                 input.run_id,
-                input.claim,
+                input.acceptance_criterion_id,
+                input.evidence_claim_id,
                 input.source_kind,
                 input.assurance_level,
                 input.observed_by_actor_source,
@@ -1516,9 +1631,6 @@ impl ProjectMutation<'_> {
             }
             "close_summary_json" => {
                 "UPDATE tasks SET close_summary_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
-            }
-            "completion_policy_json" => {
-                "UPDATE tasks SET completion_policy_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
             }
             "lifecycle_phase" => {
                 "UPDATE tasks SET lifecycle_phase = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"

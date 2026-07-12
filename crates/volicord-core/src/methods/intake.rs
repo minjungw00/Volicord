@@ -131,12 +131,40 @@ fn plan_intake(
         }
     }
 
+    let acceptance_criteria = if create_new {
+        let mut criteria = Vec::with_capacity(request.initial_scope.acceptance_criteria.len());
+        let mut reserved_ids = BTreeSet::new();
+        for input in &request.initial_scope.acceptance_criteria {
+            let statement = normalize_display_text(&input.statement);
+            if statement.is_empty() {
+                validation_plan_error(
+                    request.envelope.dry_run,
+                    Some(project_state.state_version),
+                    "initial_scope.acceptance_criteria[].statement",
+                    "acceptance criterion statements must not be empty",
+                )?;
+                unreachable!("validation_plan_error always returns Err");
+            }
+            let acceptance_criterion_id =
+                allocate_acceptance_criterion_id(service, store, &reserved_ids)
+                    .map_err(PlanError::Core)?;
+            reserved_ids.insert(acceptance_criterion_id.as_str().to_owned());
+            criteria.push(AcceptanceCriterion {
+                acceptance_criterion_id,
+                statement,
+                evidence_requirement: input.evidence_requirement,
+            });
+        }
+        criteria
+    } else {
+        active_acceptance_criteria_for_task(store, &task_id)?
+    };
+
     let task_record = if create_new {
         let mut shaping_summary = task_shaping_json(
             Some(request.plain_language_request.clone()),
             Some(request.initial_scope.boundary.clone()),
             request.initial_scope.non_goals.clone(),
-            request.initial_scope.acceptance_criteria.clone(),
             None,
             None,
             Some(serde_json::to_value(&request.initial_context_refs)?),
@@ -164,7 +192,6 @@ fn plan_intake(
             close_summary_json: serde_json::to_string(&json!({
                 "close_reason": "none"
             }))?,
-            completion_policy_json: "{}".to_owned(),
             current_change_unit_id: None,
             closed_at: None,
         };
@@ -180,9 +207,27 @@ fn plan_intake(
             bounded_context_json: task.bounded_context_json.clone(),
             autonomy_boundary_json: task.autonomy_boundary_json.clone(),
             close_summary_json: task.close_summary_json.clone(),
-            completion_policy_json: task.completion_policy_json.clone(),
             current_change_unit_id: None,
         }));
+        storage_mutations.push(CoreStorageMutation::ReplaceAcceptanceCriteria(
+            AcceptanceCriteriaReplace {
+                task_id: task.task_id.clone(),
+                criteria: acceptance_criteria
+                    .iter()
+                    .enumerate()
+                    .map(|(position, criterion)| AcceptanceCriterionUpsert {
+                        acceptance_criterion_id: criterion
+                            .acceptance_criterion_id
+                            .as_str()
+                            .to_owned(),
+                        statement: criterion.statement.clone(),
+                        evidence_requirement: storage_value(criterion.evidence_requirement)
+                            .expect("EvidenceRequirement serialization should be infallible"),
+                        position: position as u64,
+                    })
+                    .collect(),
+            },
+        ));
         storage_mutations.push(CoreStorageMutation::SetActiveTask {
             task_id: task.task_id.clone(),
         });
@@ -230,16 +275,13 @@ fn plan_intake(
         change_unit_ref.as_ref(),
         planned_state_version,
     );
-    let evidence_summary = if create_new {
-        None
-    } else {
-        projected_evidence_summary(
-            store,
-            &request.envelope.project_id,
-            planned_state_version,
-            &task_record,
-        )?
-    };
+    let evidence_summary = projected_evidence_summary_for_criteria(
+        store,
+        &request.envelope.project_id,
+        planned_state_version,
+        &task_record,
+        &acceptance_criteria,
+    )?;
     let projected_project_state = project_state_projection(
         project_state,
         planned_state_version,
@@ -251,17 +293,20 @@ fn plan_intake(
         verified_invocation,
         &request.envelope,
         &task_id,
-        close_context_from_projection(
-            task_record.clone(),
-            current_change_unit.clone(),
-            if create_new {
-                None
-            } else {
-                projected_close_basis(store, &task_id)?
-            },
-            pending_refs.clone(),
-            blocker_refs.clone(),
-            evidence_summary.clone(),
+        close_context_with_projected_acceptance_criteria(
+            close_context_from_projection(
+                task_record.clone(),
+                current_change_unit.clone(),
+                if create_new {
+                    None
+                } else {
+                    projected_close_basis(store, &task_id)?
+                },
+                pending_refs.clone(),
+                blocker_refs.clone(),
+                evidence_summary.clone(),
+            ),
+            &acceptance_criteria,
         ),
         service.now(),
     )?;
@@ -283,6 +328,7 @@ fn plan_intake(
         state_version: planned_state_version,
         task: &task_record,
         current_change_unit: current_change_unit.as_ref(),
+        acceptance_criteria,
         pending_user_judgment_refs: pending_refs,
         blocker_refs,
         write_ticket_summary,

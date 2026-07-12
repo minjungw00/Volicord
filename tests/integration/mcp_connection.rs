@@ -410,7 +410,10 @@ fn mcp_intake_args(project_selector: Option<&str>) -> Value {
         "initial_scope": {
             "boundary": "Initial test scope.",
             "non_goals": ["Changing unrelated flows."],
-            "acceptance_criteria": ["The test export flow is represented."]
+            "acceptance_criteria": [{
+                "statement": "The test export flow is represented.",
+                "evidence_requirement": "required"
+            }]
         },
         "initial_context_refs": []
     });

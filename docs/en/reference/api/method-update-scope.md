@@ -38,6 +38,13 @@ This method is the supported path that turns shaping into a first safe Change Un
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`.
 - Any scope fields to change. For include/exclude updates, `scope_update.include` lists product work to bring into scope and `scope_update.exclude` lists product behavior that remains out of scope. `null` means leave the existing value unchanged; an empty array replaces that list with an empty list.
+- `acceptance_criteria=null` leaves the canonical criterion set unchanged. A
+  non-null array is a complete replacement set: a current same-Task ID preserves
+  that criterion identity and may update its statement or
+  `evidence_requirement`; this is an update to the same criterion, not a new
+  identity. A null ID requests a new Core-generated ID, and an
+  omitted current criterion is retired. Unknown, retired, cross-Task, and
+  duplicate IDs reject before commit.
 - `change_unit.operation` and the fields needed by that operation; supported operation values and their meanings are owned by [API Value Sets](schema-value-sets.md#method-local-values).
 - Optional `change_unit.effect_contract` when creating or replacing the current Change Unit. When present, the object uses `ChangeUnitEffectContract`; when absent, the Change Unit has no extra effect contract.
 - `related_scope_decision_refs` when the update applies a resolved `judgment_kind=scope_decision`.
@@ -58,7 +65,7 @@ UpdateScopeRequest:
   scope_update: object | null
   scope_boundary: string | null
   non_goals: string[] | null
-  acceptance_criteria: string[] | null
+  acceptance_criteria: AcceptanceCriterionReplacement[] | null
   autonomy_boundary: string | null
   baseline_ref: string | null
   change_unit: object
@@ -66,6 +73,8 @@ UpdateScopeRequest:
 ```
 
 Nested owner links:
+- `acceptance_criteria` uses `AcceptanceCriterionReplacement[]`; the nested
+  shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes).
 - `related_scope_decision_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
 - `change_unit.operation` values are owned by [API Value Sets method-local values](schema-value-sets.md#method-local-values).
 - `change_unit.effect_contract`, when present, uses `ChangeUnitEffectContract`; the nested shape is owned by [API State Schemas](schema-state.md#changeuniteffectcontract).
@@ -81,6 +90,11 @@ A committed non-dry-run request requires:
 ## State version behavior
 
 A committed non-dry-run result increments `project_state.state_version` exactly once.
+
+A material criterion statement or `evidence_requirement` update increments the
+Task scope revision. Evidence coverage recorded against the earlier scope is
+projected as `stale`, even when the retained `AcceptanceCriterionId` is
+unchanged; current target identity does not make earlier-scope evidence current.
 
 Core marks a `status=active` write ticket `status=stale` when its basis no longer matches:
 
@@ -201,7 +215,9 @@ params:
   non_goals:
     - "Search indexing behavior."
   acceptance_criteria:
-    - "Saved filters reject changes outside owner and label fields."
+    - acceptance_criterion_id: null
+      statement: "Saved filters reject changes outside owner and label fields."
+      evidence_requirement: required
   autonomy_boundary: "Stay within saved-filter edit validation and related tests."
   baseline_ref: baseline_filter_001
   change_unit:
@@ -267,7 +283,9 @@ state:
   non_goals:
     - "Search indexing behavior."
   acceptance_criteria:
-    - "Saved filters reject changes outside owner and label fields."
+    - acceptance_criterion_id: criterion_filter_001
+      statement: "Saved filters reject changes outside owner and label fields."
+      evidence_requirement: required
   autonomy_boundary: "Stay within saved-filter edit validation and related tests."
   active_change_unit_ref:
     record_kind: change_unit

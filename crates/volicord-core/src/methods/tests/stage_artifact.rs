@@ -68,13 +68,8 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
     let harness = MethodHarness::new()?;
     enable_stage_artifact_capability(&harness)?;
     let (task_id, _) = create_task_with_change_unit(&harness, "stage_input_only_evidence")?;
-    let required_claim = "Staged trace supports close.";
-    set_task_owner_json(
-        &harness,
-        &task_id,
-        "completion_policy_json",
-        Some(r#"{"evidence_required":true,"required_claims":["Staged trace supports close."]}"#),
-    )?;
+    let required_criterion_id = active_acceptance_criterion_id(&harness, &task_id)?;
+    set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
     let before = harness.counts()?;
 
     let mut request = stage_artifact_request(
@@ -179,10 +174,16 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
         .expect("coverage_items should be an array");
     let required_item = coverage_items
         .iter()
-        .find(|item| item["claim"].as_str() == Some(required_claim))
-        .expect("required claim should be present");
+        .find(|item| {
+            item["target"]["acceptance_criterion_id"].as_str()
+                == Some(required_criterion_id.as_str())
+        })
+        .expect("required acceptance criterion should be present");
     assert_eq!(required_item["coverage_state"], "unsupported");
-    assert_eq!(required_item["required_for_close"], true);
+    assert_eq!(
+        required_item["target"]["target_kind"],
+        "acceptance_criterion"
+    );
     assert_eq!(required_item["supporting_artifact_refs"], json!([]));
     assert_eq!(required_item["observation_refs"], json!([]));
     assert_eq!(

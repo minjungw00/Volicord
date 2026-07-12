@@ -418,7 +418,9 @@ state:
   non_goals:
     - "대시보드 레이아웃 변경."
   acceptance_criteria:
-    - "배너 문구 길이가 사용자의 제품 결정과 일치합니다."
+    - acceptance_criterion_id: criterion_banner_copy_001
+      statement: "배너 문구 길이가 사용자의 제품 결정과 일치합니다."
+      evidence_requirement: not_required
   autonomy_boundary: "대시보드 배너 문구 안에서만 작업합니다."
   active_change_unit_ref:
     record_kind: change_unit

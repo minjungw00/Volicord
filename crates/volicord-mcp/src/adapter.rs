@@ -1469,12 +1469,12 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
                 "staged_artifact_handle",
                 "existing_artifact_ref",
                 "relation_hint",
-                "claim",
+                "evidence_target",
                 "expected_sha256",
                 "expected_size_bytes",
                 "redaction_state",
             ],
-            r#"{"artifact_input_id":"artifact_input_001","source_kind":"existing_artifact","staged_artifact_handle":null,"existing_artifact_ref":null,"relation_hint":null,"claim":null,"expected_sha256":null,"expected_size_bytes":null,"redaction_state":null}"#,
+            r#"{"artifact_input_id":"artifact_input_001","source_kind":"existing_artifact","staged_artifact_handle":null,"existing_artifact_ref":null,"relation_hint":null,"evidence_target":null,"expected_sha256":null,"expected_size_bytes":null,"redaction_state":null}"#,
         )
     })
     .or_else(|| {
@@ -1482,7 +1482,7 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
             params.get("evidence_observations"),
             "evidence_observations",
             &[
-                "claim",
+                "target",
                 "source_kind",
                 "assurance_level",
                 "observed_by_actor_source",
@@ -1490,11 +1490,12 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
                 "tool_invocation_id",
                 "tool_metadata",
                 "input_refs",
+                "source_refs",
                 "output_artifact_refs",
                 "limitations",
                 "observed_at",
             ],
-            r#"{"claim":"Verified behavior.","source_kind":"external_tool","assurance_level":"external_tool_result","observed_by_actor_source":null,"tool_name":null,"tool_invocation_id":null,"tool_metadata":{},"input_refs":[],"output_artifact_refs":[],"limitations":[],"observed_at":"2026-06-18T00:00:00Z"}"#,
+            r#"{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_001"},"source_kind":"external_tool","assurance_level":"external_tool_result","observed_by_actor_source":null,"tool_name":null,"tool_invocation_id":null,"tool_metadata":{},"input_refs":[],"source_refs":[],"output_artifact_refs":[],"limitations":[],"observed_at":"2026-06-18T00:00:00Z"}"#,
         )
     })
     .or_else(|| {

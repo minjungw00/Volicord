@@ -194,7 +194,7 @@ fn deterministic_generated_id_collision_retries_bounded_candidates() -> Result<(
     insert_superseding_task(&harness, "task_collision")?;
     harness.service = CoreService::with_id_generator(
         &harness.runtime_home_path,
-        SequenceDurableIdGenerator::new(["collision", "fresh", "event"]),
+        SequenceDurableIdGenerator::new(["collision", "fresh", "criterion", "event"]),
     );
 
     let response = harness.service.intake(

@@ -28,10 +28,11 @@ use volicord_store::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    ActorSource, IdempotencyKey, InitialScope, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, OperationCategory, ProjectId, RequestId, RequestedMode, RequiredNullable,
-    ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UserJudgmentContext,
-    UserJudgmentOptionId, UserJudgmentOptionInput, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AcceptanceCriterionInput, ActorSource, EvidenceRequirement, IdempotencyKey, InitialScope,
+    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, OperationCategory, ProjectId,
+    RequestId, RequestedMode, RequiredNullable, ResumePolicy, StateRecordKind, StateRecordRef,
+    TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentOptionId, UserJudgmentOptionInput,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -6397,7 +6398,10 @@ fn intake_request(
         initial_scope: InitialScope {
             boundary: "Exercise the local User Channel.".to_owned(),
             non_goals: vec!["Changing unrelated CLI behavior.".to_owned()],
-            acceptance_criteria: vec!["The pending judgment can be recorded locally.".to_owned()],
+            acceptance_criteria: vec![AcceptanceCriterionInput {
+                statement: "The pending judgment can be recorded locally.".to_owned(),
+                evidence_requirement: EvidenceRequirement::Required,
+            }],
         },
         initial_context_refs: Vec::new(),
         initial_source_refs: Vec::new(),

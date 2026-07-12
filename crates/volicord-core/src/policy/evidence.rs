@@ -15,18 +15,14 @@ pub(crate) enum EvidenceProvenanceClass {
 pub(crate) fn evidence_status_for_items(items: &[EvidenceCoverageItem]) -> EvidenceStatus {
     if items
         .iter()
-        .any(|item| item.coverage_state == EvidenceCoverageState::Blocked)
+        .any(|item| item.coverage_state == EvidenceCoverageState::Contradicted)
     {
         return EvidenceStatus::Blocked;
     }
-    let required = items
-        .iter()
-        .filter(|item| item.required_for_close)
-        .collect::<Vec<_>>();
-    if required.is_empty() {
+    if items.is_empty() {
         return EvidenceStatus::Unknown;
     }
-    if required.iter().all(|item| {
+    if items.iter().all(|item| {
         matches!(
             item.coverage_state,
             EvidenceCoverageState::Supported | EvidenceCoverageState::NotApplicable
@@ -115,7 +111,7 @@ pub(crate) fn evidence_provenance_class(
 }
 
 pub(crate) fn evidence_item_has_no_support(item: &EvidenceCoverageItem) -> bool {
-    item.supporting_refs.is_empty()
+    item.supporting_run_refs.is_empty()
         && item.observation_refs.is_empty()
         && item.supporting_artifact_refs.is_empty()
         && item.gap_refs.is_empty()
@@ -124,7 +120,7 @@ pub(crate) fn evidence_item_has_no_support(item: &EvidenceCoverageItem) -> bool 
 pub(crate) fn evidence_item_related_refs(item: &EvidenceCoverageItem) -> Vec<StateRecordRef> {
     let mut refs = Vec::new();
     refs.extend(item.observation_refs.clone());
-    refs.extend(item.supporting_refs.clone());
+    refs.extend(item.supporting_run_refs.clone());
     refs.extend(item.gap_refs.clone());
     refs.extend(item.supporting_artifact_refs.iter().map(|artifact_ref| {
         StateRecordRef {

@@ -94,7 +94,12 @@ API 경계 블록:
 - 유효한 `Task.mode=advisor` 상태에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 이 모드의 닫기 준비 상태 결과는 쓰기 티켓 갱신 항목을 만들거나 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
 - `detective` 프로필에서는 호스트 훅 경로 안전성, 프롬프트 캡처 가능 여부, 미해결 미기록 변경, 호스트 훅이 감지한 쓰기 티켓 문제, `session-watch` 가용성을 포함한 `GuardHealthSummary` 상태도 확인합니다. 호스트 훅 상태를 선택하면 도출된 `CoverageSummary`도 보고합니다. `record` 프로필에서는 호스트 훅이 필요하지 않습니다. 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다.
 - 호스트 훅과 `session-watch` 관찰은 Product Repository 쓰기를 막거나 파일을 바꾼 행위자를 식별하지 않습니다. 예상 쓰기 또는 쓰기 티켓 기록과의 협력형 탐지 및 상관관계만 지원합니다.
-- 필요한 닫기 증거는 현재 닫기 근거에 맞고 주장과 일치하는 증거 관찰 출처로 뒷받침되어야 합니다. 더 강한 출처가 필요한 닫기 요구사항에는 확인되지 않은 주장, 출처 없는 증거, 오래된 출처, 협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
+- 현재 수락 기준 중 `evidence_requirement=required`인 항목만 증거 닫기
+  요구사항을 만듭니다. 각 항목에는 현재 상태이고 대상이 일치하는 증거 관찰
+  출처가 필요합니다. `optional`, `not_required`, 보충 대상, 폐기된 대상은
+  닫기를 차단하지 않습니다. 더 강한 출처가 필요한 기준에는 확인되지 않은
+  주장, 출처 없는 증거, 오래됨, 반박됨, 부분적임, 뒷받침되지 않음,
+  협력적 에이전트 보고만으로 된 증거가 충분하지 않습니다.
 - `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `Task`, 현재 범위 리비전, 현재 적용 Change Unit에 묶인 근거를 가진 현재 수락된 취소 판단을 요구합니다. 완료 전용 증거, 최종 수락, 잔여 위험 수락은 필요하지 않습니다.
 - `intent=supersede`는 요청한 종료 경로를 평가합니다. 증거 충분성, 최종 수락, 잔여 위험 수락이 아닙니다.
 
@@ -435,7 +440,9 @@ state:
   non_goals:
     - "계정 생성 방식 변경."
   acceptance_criteria:
-    - "온보딩 체크리스트를 사용자가 검토할 수 있습니다."
+    - acceptance_criterion_id: criterion_onboarding_review_001
+      statement: "온보딩 체크리스트를 사용자가 검토할 수 있습니다."
+      evidence_requirement: not_required
   autonomy_boundary: "온보딩 체크리스트 완료만 다룹니다."
   active_change_unit_ref: null
   baseline_ref: baseline_close_001

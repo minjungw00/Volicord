@@ -38,7 +38,11 @@ Scope boundary:
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `plain_language_request`, `requested_mode`, and `resume_policy`.
-- Any known initial scope candidate in `initial_scope.boundary`, `initial_scope.non_goals`, and `initial_scope.acceptance_criteria`; use empty arrays when no list items are known.
+- Any known initial scope candidate in `initial_scope.boundary`,
+  `initial_scope.non_goals`, and `initial_scope.acceptance_criteria`; use empty
+  arrays when no list items are known. Each criterion input supplies a statement
+  and evidence requirement and never supplies an ID. Core generates each
+  `AcceptanceCriterionId` on commit.
 
 ## Request schema
 
@@ -58,6 +62,8 @@ IntakeRequest:
 ```
 
 Nested owner links:
+- `initial_scope.acceptance_criteria` uses `AcceptanceCriterionInput[]`; the
+  nested shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes).
 - `initial_context_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
 - `initial_source_refs` uses the non-authoritative `SourceRef[]` shape owned by [API State Schemas](schema-state.md#non-authoritative-source-references). Core structurally validates and stores these refs as Task context; it does not inspect their content or use them to expand scope, select a baseline, establish evidence, or create authority.
 - `requested_mode` and `resume_policy` values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values) and [method-local values](schema-value-sets.md#method-local-values).
@@ -172,7 +178,8 @@ params:
     non_goals:
       - "Changing account creation."
     acceptance_criteria:
-      - "New users see the checklist after opening a workspace."
+      - statement: "New users see the checklist after opening a workspace."
+        evidence_requirement: required
   initial_context_refs: []
   initial_source_refs: []
 ```
@@ -217,7 +224,9 @@ state:
   non_goals:
     - "Changing account creation."
   acceptance_criteria:
-    - "New users see the checklist after opening a workspace."
+    - acceptance_criterion_id: criterion_onboard_001
+      statement: "New users see the checklist after opening a workspace."
+      evidence_requirement: required
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null

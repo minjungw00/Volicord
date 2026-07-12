@@ -229,7 +229,9 @@ active_task:
   non_goals:
     - "대시보드 차트 렌더링 변경."
   acceptance_criteria:
-    - "CSV 내보내기에 선택한 열이 지정된 순서로 포함됩니다."
+    - acceptance_criterion_id: criterion_csv_columns_001
+      statement: "CSV 내보내기에 선택한 열이 지정된 순서로 포함됩니다."
+      evidence_requirement: not_required
   autonomy_boundary: "CSV 요약 내보내기 동작만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit

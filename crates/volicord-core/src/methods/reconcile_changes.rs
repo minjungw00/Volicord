@@ -420,6 +420,7 @@ fn plan_reconcile_changes(
         state_version: planned_state_version,
         task: &task,
         current_change_unit: current_change_unit.as_ref(),
+        acceptance_criteria: active_acceptance_criteria_for_task(store, &request.task_id)?,
         pending_user_judgment_refs: projected_pending_refs.clone(),
         blocker_refs,
         write_ticket_summary,

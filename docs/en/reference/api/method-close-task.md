@@ -94,7 +94,12 @@ Close condition:
 - A valid `Task.mode=advisor` state has no write ticket or product-file write path. Its close-readiness result does not produce a write-ticket refresh finding or recommend `volicord.prepare_write`; missing current result or close-basis work routes to the compatible `volicord.record_run` path instead.
 - In `detective` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. The result reports derived `CoverageSummary` coverage facts when guard health is selected. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
 - Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
-- Required close evidence must be supported by current claim-matching evidence observation provenance. Unverified, provenance-free, stale, or cooperative-agent-only evidence does not satisfy a close requirement when stronger provenance is required.
+- Only current acceptance criteria with `evidence_requirement=required` create
+  evidence close requirements. Each must have current target-matching evidence
+  observation provenance. Optional, `not_required`, supplemental, and retired
+  targets never block close. Unverified, provenance-free, stale,
+  contradicted, partial, unsupported, or cooperative-agent-only evidence does
+  not satisfy a required criterion when stronger provenance is required.
 - `intent=cancel` requires a current accepted cancellation judgment with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the Task, current scope revision, and current Change Unit. It does not require completion-only evidence, final acceptance, or residual-risk acceptance.
 - `intent=supersede` evaluates the requested terminal path. It is not evidence sufficiency, final acceptance, or residual-risk acceptance.
 
@@ -436,7 +441,9 @@ state:
   non_goals:
     - "Changing account creation."
   acceptance_criteria:
-    - "The onboarding checklist is ready for user review."
+    - acceptance_criterion_id: criterion_onboarding_review_001
+      statement: "The onboarding checklist is ready for user review."
+      evidence_requirement: not_required
   autonomy_boundary: "Stay within onboarding checklist completion."
   active_change_unit_ref: null
   baseline_ref: baseline_close_001

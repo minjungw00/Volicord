@@ -66,7 +66,7 @@ User-facing summaries use a small evidence-state vocabulary for presentation whi
 | Public state | Internal basis | User-facing meaning |
 |---|---|---|
 | `prepared` | An unexpired transient `artifact_staging` row and returned `StagedArtifactHandle` from `volicord.stage_artifact`. | Attachment input is prepared for a later owner method. It is not `accepted_for_close`, does not create an `EvidenceSummary`, and cannot support close readiness by itself. |
-| `attached` | A committed owner method, usually `volicord.record_run`, links evidence observations or artifact refs to claim-scoped evidence. | Evidence is attached to a recorded Run or claim. It may still be insufficient, stale, blocked, redacted, or unavailable for close. |
+| `attached` | A committed owner method, usually `volicord.record_run`, links evidence observations or artifact refs to a stable acceptance-criterion or supplemental-claim target. | Evidence is attached to a recorded Run and target. It may still be insufficient, stale, blocked, redacted, or unavailable for close. |
 | `accepted_for_close` | The current close basis references the current `EvidenceSummary` or related close-basis evidence refs. | Evidence is available to the close-readiness calculation for the current close basis. This is not a correctness proof, test-sufficiency proof, QA result, final acceptance, or residual-risk acceptance. |
 
 These are presentation states. Evidence sufficiency remains in `EvidenceSummary.status`, artifact body usability remains with artifact availability and integrity checks, and close readiness remains with the close-readiness owner.
@@ -333,7 +333,7 @@ Evidence eligibility, artifact availability, and evidence sufficiency remain sep
 Allowed:
 
 - An `artifacts.status=available` row with `integrity_status=verified` and a valid owner link can support a coverage item.
-- The coverage item can make `EvidenceSummary.status=sufficient` only when the required coverage item links that artifact to the claim and the item is `supported` or `not_applicable`.
+- An artifact can support close sufficiency only when a coverage item for a current `evidence_requirement=required` acceptance criterion links that artifact to the same target and has `coverage_state=supported`. Required criteria reject `not_applicable`; optional, `not_required`, supplemental, and retired targets are not close-authoritative.
 
 Required validation:
 

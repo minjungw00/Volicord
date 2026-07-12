@@ -535,6 +535,8 @@ fn validate_project_state_required_schema(conn: &Connection) -> Result<(), Inspe
         PROJECT_STATE_DATABASE_KIND,
         &[
             "project_state",
+            "acceptance_criteria",
+            "evidence_claims",
             "evidence_observations",
             "project_continuity_records",
         ],
@@ -560,7 +562,8 @@ fn validate_project_state_required_schema(conn: &Connection) -> Result<(), Inspe
             "task_id",
             "change_unit_id",
             "run_id",
-            "claim",
+            "acceptance_criterion_id",
+            "evidence_claim_id",
             "source_kind",
             "assurance_level",
             "observed_by_actor_source",

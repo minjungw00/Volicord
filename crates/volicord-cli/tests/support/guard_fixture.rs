@@ -50,10 +50,11 @@ use volicord_test_support::{
 
 #[cfg(unix)]
 use volicord_types::{
-    BaselineRef, ChangeUnitId, ChangeUnitUpdate, CheckCloseRequest, CloseAssessmentInput,
-    CloseMutationIntent, CloseReason, CloseTaskRequest, IdempotencyKey, InitialScope,
-    IntakeRequest, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
-    PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
+    AcceptanceCriterionId, AcceptanceCriterionInput, AcceptanceCriterionReplacement, BaselineRef,
+    ChangeUnitId, ChangeUnitUpdate, CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent,
+    CloseReason, CloseTaskRequest, EvidenceRequirement, EvidenceTarget, IdempotencyKey,
+    InitialScope, IntakeRequest, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
+    ObservedChanges, PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
     RecordUserJudgmentRequest, RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy,
     RunKind, ScopeUpdate, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
     UpdateScopeRequest, UserJudgmentContext, UserJudgmentOptionId, WriteTicketId,
@@ -772,9 +773,11 @@ impl GuardedLifecycleFixture {
                     boundary: "Exercise guarded lifecycle behavior in a temp repository."
                         .to_owned(),
                     non_goals: vec!["Changing unrelated files.".to_owned()],
-                    acceptance_criteria: vec![
-                        "The guarded lifecycle reaches the expected close state.".to_owned(),
-                    ],
+                    acceptance_criteria: vec![AcceptanceCriterionInput {
+                        statement: "The guarded lifecycle reaches the expected close state."
+                            .to_owned(),
+                        evidence_requirement: EvidenceRequirement::Required,
+                    }],
                 },
                 initial_context_refs: Vec::new(),
                 initial_source_refs: Vec::new(),
@@ -806,9 +809,11 @@ impl GuardedLifecycleFixture {
                 .into(),
                 scope_boundary: Some("Stay within the temp Product Repository.".to_owned()).into(),
                 non_goals: Some(vec!["Do not touch external user files.".to_owned()]).into(),
-                acceptance_criteria: Some(vec![
-                    "The fixture close check reports the expected state.".to_owned(),
-                ])
+                acceptance_criteria: Some(vec![AcceptanceCriterionReplacement {
+                    acceptance_criterion_id: None.into(),
+                    statement: "The fixture close check reports the expected state.".to_owned(),
+                    evidence_requirement: EvidenceRequirement::Required,
+                }])
                 .into(),
                 autonomy_boundary: Some("Use only fixture inputs.".to_owned()).into(),
                 baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
@@ -890,6 +895,22 @@ impl GuardedLifecycleFixture {
         product_write_observed: bool,
         suffix: &str,
     ) -> Result<u64, Box<dyn Error>> {
+        let store = CoreProjectStore::open(
+            self.runtime_home(),
+            &ProjectId::new(self.project_id.clone()),
+        )?;
+        let criteria = store.active_acceptance_criteria(&TaskId::new(task_id))?;
+        let [criterion] = criteria.as_slice() else {
+            return Err(format!(
+                "guarded lifecycle fixture expected exactly one active acceptance criterion, found {}",
+                criteria.len()
+            )
+            .into());
+        };
+        let mut evidence_update = supported_evidence_update("Lifecycle close claim supported.");
+        evidence_update.target = EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: AcceptanceCriterionId::new(&criterion.acceptance_criterion_id),
+        };
         let request = RecordRunRequest {
             envelope: self.envelope(
                 &format!("req_{suffix}_run"),
@@ -915,9 +936,7 @@ impl GuardedLifecycleFixture {
                 baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
             },
             artifact_inputs: Vec::new(),
-            evidence_updates: vec![supported_evidence_update(
-                "Lifecycle close claim supported.",
-            )],
+            evidence_updates: vec![evidence_update],
             evidence_observations: Vec::new(),
             close_assessment: Some(CloseAssessmentInput {
                 result_summary: "Lifecycle close claim supported.".to_owned(),

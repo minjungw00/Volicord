@@ -7,9 +7,10 @@ use crate::ids::{
     UserJudgmentOptionId, WriteTicketId,
 };
 use crate::schema::{
-    AcceptedRiskInput, ArtifactInput, ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
-    EvidenceCoverageItem, EvidenceObservation, EvidenceObservationInput, EvidenceSummary,
+    AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
+    ArtifactRef, ChangeUnitEffectContract, CloseAssessmentInput, CloseReadinessBlocker,
+    ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EvidenceCoverageUpdate,
+    EvidenceObservation, EvidenceObservationInput, EvidenceSummary, EvidenceTarget,
     EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject, JudgmentInboxItem,
     JudgmentRationale, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
     RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RunSummary,
@@ -21,7 +22,7 @@ use crate::schema::{
 };
 use crate::values::{
     ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
-    EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceDisplayState, EvidenceSourceKind,
+    EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceSourceKind,
     JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, MethodName, OperationCategory,
     PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
     StatusDetailLevel, UnrecordedChangeResolutionBasis, UtcTimestamp, WriteTicketEffect,
@@ -199,7 +200,7 @@ pub struct McpIntakeArguments {
 pub struct InitialScope {
     pub boundary: String,
     pub non_goals: Vec<String>,
-    pub acceptance_criteria: Vec<String>,
+    pub acceptance_criteria: Vec<AcceptanceCriterionInput>,
 }
 
 /// `volicord.intake` method result branch.
@@ -222,7 +223,7 @@ pub struct UpdateScopeRequest {
     pub scope_update: RequiredNullable<ScopeUpdate>,
     pub scope_boundary: RequiredNullable<String>,
     pub non_goals: RequiredNullable<Vec<String>>,
-    pub acceptance_criteria: RequiredNullable<Vec<String>>,
+    pub acceptance_criteria: RequiredNullable<Vec<AcceptanceCriterionReplacement>>,
     pub autonomy_boundary: RequiredNullable<String>,
     pub baseline_ref: RequiredNullable<BaselineRef>,
     pub change_unit: ChangeUnitUpdate,
@@ -255,7 +256,7 @@ pub struct McpUpdateScopeArguments {
     #[serde(default)]
     pub non_goals: RequiredNullable<Vec<String>>,
     #[serde(default)]
-    pub acceptance_criteria: RequiredNullable<Vec<String>>,
+    pub acceptance_criteria: RequiredNullable<Vec<AcceptanceCriterionReplacement>>,
     #[serde(default)]
     pub autonomy_boundary: RequiredNullable<String>,
     #[serde(default)]
@@ -536,7 +537,7 @@ pub struct RecordRunRequest {
     pub summary: String,
     pub observed_changes: ObservedChanges,
     pub artifact_inputs: Vec<ArtifactInput>,
-    pub evidence_updates: Vec<EvidenceCoverageItem>,
+    pub evidence_updates: Vec<EvidenceCoverageUpdate>,
     pub evidence_observations: Vec<EvidenceObservationInput>,
     pub close_assessment: RequiredNullable<CloseAssessmentInput>,
 }
@@ -570,7 +571,7 @@ pub struct McpRecordRunArguments {
     #[serde(default)]
     pub artifact_inputs: Vec<ArtifactInput>,
     #[serde(default)]
-    pub evidence_updates: Vec<McpEvidenceCoverageItem>,
+    pub evidence_updates: Vec<McpEvidenceCoverageUpdate>,
     #[serde(default)]
     pub evidence_observations: Vec<McpEvidenceObservationInput>,
     #[serde(default)]
@@ -580,14 +581,13 @@ pub struct McpRecordRunArguments {
 /// MCP-visible evidence coverage input with omission-equivalent collection defaults.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpEvidenceCoverageItem {
-    pub claim: String,
-    pub required_for_close: bool,
-    pub coverage_state: EvidenceCoverageState,
+pub struct McpEvidenceCoverageUpdate {
+    pub target: EvidenceTarget,
+    pub coverage_state: EvidenceCoverageUpdateState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<EvidenceUpdateProvenance>,
     #[serde(default)]
-    pub supporting_refs: Vec<StateRecordRef>,
+    pub supporting_run_refs: Vec<StateRecordRef>,
     #[serde(default)]
     pub observation_refs: Vec<StateRecordRef>,
     #[serde(default)]
@@ -596,14 +596,13 @@ pub struct McpEvidenceCoverageItem {
     pub gap_refs: Vec<StateRecordRef>,
 }
 
-impl From<McpEvidenceCoverageItem> for EvidenceCoverageItem {
-    fn from(value: McpEvidenceCoverageItem) -> Self {
+impl From<McpEvidenceCoverageUpdate> for EvidenceCoverageUpdate {
+    fn from(value: McpEvidenceCoverageUpdate) -> Self {
         Self {
-            claim: value.claim,
-            required_for_close: value.required_for_close,
+            target: value.target,
             coverage_state: value.coverage_state,
             provenance: value.provenance,
-            supporting_refs: value.supporting_refs,
+            supporting_run_refs: value.supporting_run_refs,
             observation_refs: value.observation_refs,
             supporting_artifact_refs: value.supporting_artifact_refs,
             gap_refs: value.gap_refs,
@@ -615,7 +614,7 @@ impl From<McpEvidenceCoverageItem> for EvidenceCoverageItem {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpEvidenceObservationInput {
-    pub claim: String,
+    pub target: EvidenceTarget,
     pub source_kind: EvidenceSourceKind,
     pub assurance_level: EvidenceAssuranceLevel,
     #[serde(default)]
@@ -640,7 +639,7 @@ pub struct McpEvidenceObservationInput {
 impl From<McpEvidenceObservationInput> for EvidenceObservationInput {
     fn from(value: McpEvidenceObservationInput) -> Self {
         Self {
-            claim: value.claim,
+            target: value.target,
             source_kind: value.source_kind,
             assurance_level: value.assurance_level,
             observed_by_actor_source: value.observed_by_actor_source,

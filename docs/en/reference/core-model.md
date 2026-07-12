@@ -95,7 +95,7 @@ flowchart TD
     ChangeUnit --> EffectContract["Change Unit<br/>effect contract"]
     ChangeUnit --> WriteTicket["write ticket<br/>one proposed write"]
     WriteTicket --> Run["Run<br/>execution or observation"]
-    Run --> Evidence["Evidence<br/>claim-scoped support"]
+    Run --> Evidence["Evidence<br/>target-scoped support"]
     ArtifactRef["ArtifactRef"] -. "eligible only when recorded as support" .-> Evidence
     AgentConnection["Agent Connection"] -. "may request, not record" .-> Judgment["user-owned judgment"]
     UserChannel["User Channel"] --> Judgment
@@ -174,9 +174,18 @@ It can support evidence and close-readiness review. It cannot approve missing pr
 
 ### Evidence
 
-Evidence is recorded support for a specific claim at a specific scope.
+Evidence is recorded support for a stable evidence target at a specific scope.
 
-Evidence can show that a named test ran, a named output was observed, or a recorded artifact supports a recorded claim. It is not broad correctness, final acceptance, residual-risk acceptance, or separate QA or verification unless the relevant owners define that path.
+An evidence target is either a Core-generated `AcceptanceCriterionId` for one
+current or retired Task acceptance criterion, or a caller-assigned
+Task-scoped `EvidenceClaimId` whose supplemental claim statement is immutable.
+Updating a current criterion statement or evidence requirement while retaining
+its ID keeps the criterion identity, but the resulting scope revision makes
+coverage from the earlier scope stale.
+Display text is not target identity. Evidence can show that a named test ran, a
+named output was observed, or a recorded artifact supports the selected target.
+It is not broad correctness, final acceptance, residual-risk acceptance, or
+separate QA or verification unless the relevant owners define that path.
 
 ### `ArtifactRef`
 
@@ -436,7 +445,7 @@ The prepare-write, record-run, API state schema, storage, and security owners de
 <a id="9-evidence-and-run-authority"></a>
 ## 9. Evidence and Run authority
 
-Evidence authority is scoped to recorded claims.
+Evidence authority is scoped to recorded target identity.
 
 Run authority:
 
@@ -445,8 +454,24 @@ Run authority:
 
 Evidence authority:
 
-- Evidence can establish that recorded support exists for a named claim, gap, reference, or coverage item.
-- Close evidence support requires claim-scoped observation provenance that remains current for the close basis when the close owner requires evidence. Coverage without current observation provenance is not sufficient by itself.
+- Each acceptance criterion has a stable Core-generated `AcceptanceCriterionId`,
+  an editable statement, and an `EvidenceRequirement` of `required`, `optional`,
+  or `not_required`. Replacing the current criterion set preserves explicitly
+  selected same-Task IDs, generates IDs for new entries, and retires omitted
+  entries. A retired criterion is history, not current close authority.
+- Supplemental evidence uses a caller-assigned Task-scoped `EvidenceClaimId`
+  and immutable statement. It can preserve useful support but never becomes a
+  required close criterion by caller assertion.
+- Evidence can establish that recorded support exists for the selected target,
+  gap, Run, observation, or artifact.
+- Only current acceptance criteria whose `EvidenceRequirement=required` can
+  block close for missing, stale, contradicted, partial, unsupported, or
+  provenance-insufficient evidence. `optional`, `not_required`, supplemental,
+  and retired targets remain non-authoritative for close.
+- A required criterion cannot be recorded as `not_applicable`. Close evidence
+  support requires target-matching observation provenance that remains current
+  for the close basis when the close owner requires evidence. Coverage without
+  current observation provenance is not sufficient by itself.
 - `unverified_claim` and cooperative agent reports can be retained as evidence records, but they do not satisfy required close evidence when stronger provenance is required.
 - A user observation is evidence provenance, not final acceptance or another user-owned judgment.
 - A `SourceRef` can preserve reported file, Git, command, external-resource, or user-context provenance inside a Task or evidence observation. It is not a Core state ref and does not establish scope, approval, evidence sufficiency, final acceptance, residual-risk acceptance, close readiness, or a guarantee. Core does not resolve or execute the referenced source when recording it.
@@ -470,7 +495,7 @@ Close readiness is the Core authority concept for whether the current `Task` can
 Close readiness considers:
 
 - `Task` lifecycle eligibility for the requested terminal path
-- current scope, current Change Unit, acceptance criteria, and completion policy
+- current scope, current Change Unit, and active acceptance-criterion requirements
 - required user-owned judgments
 - required sensitive-action approval
 - write and Run compatibility
@@ -489,7 +514,11 @@ Close-basis authority:
 - Baseline allowed caller-supplied result/evidence kinds are Run, Artifact, EvidenceSummary, and ChangeUnit unless an owner explicitly adds another kind.
 - ProjectState, write ticket, UserJudgment, Blocker, TaskEvent, AgentConnection, and Task are not caller-supplied result refs unless an owner explicitly adds them.
 - Artifact refs used for close evidence must be linked to the `Task` and have current-byte verified integrity at use time. Evidence refs must identify the current `Task` evidence summary. Run refs must identify a recorded current Run compatible with the current `Task`, current Change Unit, current scope revision, and compatible baseline. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
-- Evidence observation refs used for close evidence must match the required claim and remain current for the `Task`, Change Unit, source Run, and close-basis evidence summary. Stale, provenance-free, or weak-provenance coverage does not satisfy close readiness by coverage label alone.
+- Evidence observation refs used for close evidence must match the required
+  `AcceptanceCriterionId` and remain current for the `Task`, Change Unit, source
+  Run, and close-basis evidence summary. Stale, provenance-free, or
+  weak-provenance coverage does not satisfy close readiness by coverage label
+  alone.
 - Core stores canonical refs and never treats caller-supplied state-version metadata as authority. Core may add the current Run, current Change Unit, and current EvidenceSummary refs.
 - Sensitive action requirements in the current close basis are derived by Core from committed Runs and consumed write-ticket compatibility records. Category-only caller input cannot establish or erase a requirement.
 

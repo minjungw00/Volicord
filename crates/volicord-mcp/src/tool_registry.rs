@@ -60,15 +60,15 @@ pub(crate) struct McpToolExample {
     pub arguments_json: &'static str,
 }
 
-const INTAKE_CREATE_NEW_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Create an onboarding checklist.","requested_mode":"work","resume_policy":"create_new","initial_scope":{"boundary":"Onboarding checklist setup.","non_goals":[],"acceptance_criteria":["The checklist is available to new workspace users."]}}"#;
+const INTAKE_CREATE_NEW_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Create an onboarding checklist.","requested_mode":"work","resume_policy":"create_new","initial_scope":{"boundary":"Onboarding checklist setup.","non_goals":[],"acceptance_criteria":[{"statement":"The checklist is available to new workspace users.","evidence_requirement":"required"}]}}"#;
 const INTAKE_RESUME_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Continue the active onboarding checklist work.","requested_mode":"auto","resume_policy":"resume_active","initial_scope":{"boundary":"Continue the current onboarding checklist scope.","non_goals":[],"acceptance_criteria":[]}}"#;
-const INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Replace the active onboarding work with the revised checklist.","requested_mode":"work","resume_policy":"supersede_active","initial_scope":{"boundary":"Revised onboarding checklist setup.","non_goals":["Changing account creation."],"acceptance_criteria":["The revised checklist replaces the active work."]}}"#;
-const INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Start an onboarding checklist only when no Task is active.","requested_mode":"advisor","resume_policy":"reject_if_active","initial_scope":{"boundary":"Onboarding checklist guidance.","non_goals":[],"acceptance_criteria":[]}}"#;
+const INTAKE_SUPERSEDE_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Replace the active onboarding work with the revised checklist.","requested_mode":"work","resume_policy":"supersede_active","initial_scope":{"boundary":"Revised onboarding checklist setup.","non_goals":["Changing account creation."],"acceptance_criteria":[{"statement":"The revised checklist replaces the active work.","evidence_requirement":"required"}]}}"#;
+const INTAKE_REJECT_IF_ACTIVE_ARGUMENTS_JSON: &str = r#"{"plain_language_request":"Start an onboarding checklist only when no Task is active.","requested_mode":"advisor","resume_policy":"reject_if_active","initial_scope":{"boundary":"Onboarding checklist guidance.","non_goals":[],"acceptance_criteria":[{"statement":"Provide onboarding checklist guidance.","evidence_requirement":"not_required"}]}}"#;
 
 pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID: &str = "keep_current_change_unit";
 pub(crate) const UPDATE_SCOPE_KEEP_CURRENT_ARGUMENTS_JSON: &str =
     r#"{"task_id":"task_filter_001","change_unit":{"operation":"keep_current"}}"#;
-const UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_002","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","acceptance_criteria":["Saved filters reject out-of-scope edits."],"baseline_ref":"baseline_filter_002","change_unit":{"operation":"create_current","scope_summary":"Saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
+const UPDATE_SCOPE_CREATE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_002","goal_summary":"Limit saved search filters.","scope_update":{"include":["Saved-filter owner and label edits."],"exclude":[]},"scope_boundary":"Saved-filter owner and label edits.","acceptance_criteria":[{"acceptance_criterion_id":null,"statement":"Saved filters reject out-of-scope edits.","evidence_requirement":"required"}],"baseline_ref":"baseline_filter_002","change_unit":{"operation":"create_current","scope_summary":"Saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
 const UPDATE_SCOPE_REPLACE_CURRENT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_filter_003","scope_boundary":"Saved-filter owner, label, and visibility edits.","baseline_ref":"baseline_filter_003","change_unit":{"operation":"replace_current","scope_summary":"Expanded saved-filter validation.","affected_paths":["src/search/saved-filters.ts"]}}"#;
 
 pub(crate) const STATUS_READ_ONLY_EXAMPLE_ID: &str = "read_only_status";
@@ -84,7 +84,7 @@ const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"task_id":"task_trace_
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
     "advisor_no_product_write_record_run";
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advisor_analysis_001","change_unit_id":"cu_advisor_analysis_001","kind":"shaping_update","baseline_ref":"baseline_advisor_analysis_001","summary":"Advisor analysis completed without Product Repository file writes.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_advisor_analysis_001"}}"#;
-const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation passed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"claim":"Saved-filter validation passed.","required_for_close":true,"coverage_state":"supported"}],"evidence_observations":[{"claim":"Saved-filter validation passed.","source_kind":"external_tool","assurance_level":"external_tool_result","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation passed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
+const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation passed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"external_tool","assurance_level":"external_tool_result","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation passed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
 
 pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
     "final_acceptance_request";
@@ -182,7 +182,7 @@ const RECORD_RUN_EXAMPLES: [McpToolExample; 2] = [
     },
     McpToolExample {
         id: "evidence_bearing_record_run",
-        description: "Record claim-scoped evidence and a close assessment.",
+        description: "Record target-scoped evidence and a close assessment.",
         arguments_json: RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON,
     },
 ];

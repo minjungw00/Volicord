@@ -418,7 +418,9 @@ state:
   non_goals:
     - "Changing dashboard layout."
   acceptance_criteria:
-    - "The banner copy length matches the user's product decision."
+    - acceptance_criterion_id: criterion_banner_copy_001
+      statement: "The banner copy length matches the user's product decision."
+      evidence_requirement: not_required
   autonomy_boundary: "Stay within dashboard banner copy."
   active_change_unit_ref:
     record_kind: change_unit

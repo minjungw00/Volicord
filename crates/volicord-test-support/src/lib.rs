@@ -117,18 +117,19 @@ pub mod core_fixtures {
 
     use volicord_store::StoreError;
     use volicord_types::{
-        AcceptedRiskInput, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, BaselineRef,
-        ChangeUnitId, ChangeUnitOperation, ChangeUnitUpdate, CheckCloseRequest, CloseIntent,
-        CloseMutationIntent, CloseReason, CloseTaskRequest, EvidenceAssuranceLevel,
-        EvidenceCoverageItem, EvidenceCoverageState, EvidenceSourceKind, EvidenceUpdateProvenance,
-        IdempotencyKey, InitialScope, IntakeRequest, JsonObject, JudgmentKind,
-        JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
-        PrepareWriteRequest, ProjectId, RecordId, RecordRunRequest, RecordUserJudgmentPayload,
-        RecordUserJudgmentRequest, RedactionState, RequestId, RequestUserJudgmentRequest,
-        RequestedMode, ResumePolicy, RunKind, ScopeUpdate, SensitiveActionScope,
-        StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusInclude,
-        StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest, UserJudgmentId,
-        UserJudgmentOptionId, UserJudgmentOptionInput, WriteTicketId,
+        AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
+        ArtifactInputId, ArtifactInputSourceKind, BaselineRef, ChangeUnitId, ChangeUnitOperation,
+        ChangeUnitUpdate, CheckCloseRequest, CloseIntent, CloseMutationIntent, CloseReason,
+        CloseTaskRequest, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceCoverageUpdate,
+        EvidenceCoverageUpdateState, EvidenceRequirement, EvidenceSourceKind, EvidenceTarget,
+        EvidenceUpdateProvenance, IdempotencyKey, InitialScope, IntakeRequest, JsonObject,
+        JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
+        ObservedChanges, PrepareWriteRequest, ProjectId, RecordId, RecordRunRequest,
+        RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestId,
+        RequestUserJudgmentRequest, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
+        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
+        StateRecordRef, StatusInclude, StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest,
+        UserJudgmentId, UserJudgmentOptionId, UserJudgmentOptionInput, WriteTicketId,
     };
 
     use super::*;
@@ -360,7 +361,10 @@ pub mod core_fixtures {
                 initial_scope: InitialScope {
                     boundary: "Initial test scope.".to_owned(),
                     non_goals: vec!["Changing unrelated flows.".to_owned()],
-                    acceptance_criteria: vec!["The test export flow is represented.".to_owned()],
+                    acceptance_criteria: vec![AcceptanceCriterionInput {
+                        statement: "The test export flow is represented.".to_owned(),
+                        evidence_requirement: EvidenceRequirement::NotRequired,
+                    }],
                 },
                 initial_context_refs: Vec::new(),
                 initial_source_refs: Vec::new(),
@@ -395,8 +399,12 @@ pub mod core_fixtures {
                 .into(),
                 scope_boundary: Some(input.scope_summary.to_owned()).into(),
                 non_goals: Some(vec!["Unrelated behavior.".to_owned()]).into(),
-                acceptance_criteria: Some(vec!["The scoped behavior is represented.".to_owned()])
-                    .into(),
+                acceptance_criteria: Some(vec![AcceptanceCriterionReplacement {
+                    acceptance_criterion_id: None.into(),
+                    statement: "The scoped behavior is represented.".to_owned(),
+                    evidence_requirement: EvidenceRequirement::NotRequired,
+                }])
+                .into(),
                 autonomy_boundary: Some("Stay inside the scoped test behavior.".to_owned()).into(),
                 baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
                 change_unit: ChangeUnitUpdate {
@@ -830,7 +838,6 @@ pub mod core_fixtures {
                     bounded_context_json,
                     autonomy_boundary_json,
                     close_summary_json,
-                    completion_policy_json,
                     created_at,
                     updated_at
                 )
@@ -847,7 +854,6 @@ pub mod core_fixtures {
                     '{}',
                     '{}',
                     '{\"close_reason\":\"none\"}',
-                    '{}',
                     't0',
                     't0'
                 )",
@@ -1275,7 +1281,6 @@ pub mod core_fixtures {
         AutonomyBoundary,
         CurrentCloseBasis,
         CloseSummary,
-        CompletionPolicy,
     }
 
     impl TaskOwnerJsonColumn {
@@ -1286,7 +1291,6 @@ pub mod core_fixtures {
                 Self::AutonomyBoundary => "autonomy_boundary_json",
                 Self::CurrentCloseBasis => "close_basis_json",
                 Self::CloseSummary => "close_summary_json",
-                Self::CompletionPolicy => "completion_policy_json",
             }
         }
     }
@@ -1454,7 +1458,7 @@ pub mod core_fixtures {
             staged_artifact_handle: Some(handle.clone()).into(),
             existing_artifact_ref: None.into(),
             relation_hint: relation_hint.map(str::to_owned).into(),
-            claim: claim.map(str::to_owned).into(),
+            evidence_target: claim.map(supplemental_evidence_target).into(),
             expected_sha256: Some(handle.sha256).into(),
             expected_size_bytes: Some(handle.size_bytes).into(),
             redaction_state: Some(handle.redaction_state).into(),
@@ -1462,11 +1466,10 @@ pub mod core_fixtures {
     }
 
     /// Builds a supported evidence coverage item.
-    pub fn supported_evidence_update(claim: &str) -> EvidenceCoverageItem {
-        EvidenceCoverageItem {
-            claim: claim.to_owned(),
-            required_for_close: true,
-            coverage_state: EvidenceCoverageState::Supported,
+    pub fn supported_evidence_update(claim: &str) -> EvidenceCoverageUpdate {
+        EvidenceCoverageUpdate {
+            target: supplemental_evidence_target(claim),
+            coverage_state: EvidenceCoverageUpdateState::Supported,
             provenance: Some(EvidenceUpdateProvenance {
                 source_kind: EvidenceSourceKind::ExternalTool,
                 assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
@@ -1477,7 +1480,7 @@ pub mod core_fixtures {
                 source_refs: Vec::new(),
                 limitations: Vec::new(),
             }),
-            supporting_refs: Vec::new(),
+            supporting_run_refs: Vec::new(),
             observation_refs: Vec::new(),
             supporting_artifact_refs: Vec::new(),
             gap_refs: Vec::new(),
@@ -1485,16 +1488,27 @@ pub mod core_fixtures {
     }
 
     /// Builds an unsupported evidence coverage item.
-    pub fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageItem {
-        EvidenceCoverageItem {
-            claim: claim.to_owned(),
-            required_for_close: true,
-            coverage_state: EvidenceCoverageState::Unsupported,
+    pub fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageUpdate {
+        EvidenceCoverageUpdate {
+            target: supplemental_evidence_target(claim),
+            coverage_state: EvidenceCoverageUpdateState::Unsupported,
             provenance: None,
-            supporting_refs: Vec::new(),
+            supporting_run_refs: Vec::new(),
             observation_refs: Vec::new(),
             supporting_artifact_refs: Vec::new(),
             gap_refs: Vec::new(),
+        }
+    }
+
+    fn supplemental_evidence_target(statement: &str) -> EvidenceTarget {
+        let statement_hex = statement
+            .as_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: EvidenceClaimId::new(format!("claim_{statement_hex}")),
+            statement: statement.to_owned(),
         }
     }
 

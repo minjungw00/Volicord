@@ -5,26 +5,27 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::ids::{
-    AgentConnectionId, AgentSessionId, ArtifactId, ArtifactInputId, BaselineRef, ChangeUnitId,
-    EventId, EvidenceObservationId, GuardEventId, GuardInstallationId, IdempotencyKey,
-    ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId, RequestId, RiskId, RunId,
-    StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId, UserJudgmentId,
-    UserJudgmentOptionId, WriteTicketId,
+    AcceptanceCriterionId, AgentConnectionId, AgentSessionId, ArtifactId, ArtifactInputId,
+    BaselineRef, ChangeUnitId, EventId, EvidenceClaimId, EvidenceObservationId, GuardEventId,
+    GuardInstallationId, IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId,
+    RecordId, RequestId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
+    UnrecordedChangeId, UserJudgmentId, UserJudgmentOptionId, WriteTicketId,
 };
 use crate::values::{
     ActorSource, ArtifactAvailability, ArtifactInputSourceKind, ArtifactIntegrityStatus,
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
     CoverageHostHookState, CoverageSessionWatcherState, EffectKind, EnabledEnforcementMechanism,
-    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceDisplayState,
-    EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus,
-    GuardDecision, GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
-    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
-    NextActionPresentationRole, NonGuarantee, OperationCategory, PlannedBlockerSourceKind,
-    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
-    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
-    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode,
-    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
+    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceCoverageUpdateState,
+    EvidenceDisplayState, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus, GuaranteeClass,
+    GuaranteeLevel, GuardConfigurationStatus, GuardDecision, GuardEffectiveStatus,
+    GuardInstallationStatus, GuardObservationStatus, HostKind, IntegrationProfile,
+    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation, JudgmentRequiredFor,
+    JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionPresentationRole,
+    NonGuarantee, OperationCategory, PlannedBlockerSourceKind, ProjectContinuityKind,
+    ProjectContinuityStatus, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
+    PromptCaptureStatus, RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis,
+    SessionWatchStatus, StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
     UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteDecisionCategory,
     WriteTicketState, WriteTicketStatus,
 };
@@ -730,7 +731,7 @@ pub struct StateSummary {
     pub goal_summary: Option<String>,
     pub scope_summary: Option<String>,
     pub non_goals: Vec<String>,
-    pub acceptance_criteria: Vec<String>,
+    pub acceptance_criteria: Vec<AcceptanceCriterion>,
     pub autonomy_boundary: Option<String>,
     pub active_change_unit_ref: Option<StateRecordRef>,
     pub effect_contract: Option<ChangeUnitEffectContract>,
@@ -899,36 +900,80 @@ pub struct WriteDecisionReason {
     pub related_refs: Vec<StateRecordRef>,
 }
 
+/// Intake-side acceptance criterion without caller-selected identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptanceCriterionInput {
+    pub statement: String,
+    pub evidence_requirement: EvidenceRequirement,
+}
+
+/// Update-scope replacement entry for one acceptance criterion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptanceCriterionReplacement {
+    pub acceptance_criterion_id: RequiredNullable<AcceptanceCriterionId>,
+    pub statement: String,
+    pub evidence_requirement: EvidenceRequirement,
+}
+
+/// Current canonical acceptance criterion projected for a Task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptanceCriterion {
+    pub acceptance_criterion_id: AcceptanceCriterionId,
+    pub statement: String,
+    pub evidence_requirement: EvidenceRequirement,
+}
+
+/// Stable evidence target selected by coverage, observations, and artifacts.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(tag = "target_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EvidenceTarget {
+    AcceptanceCriterion {
+        acceptance_criterion_id: AcceptanceCriterionId,
+    },
+    SupplementalClaim {
+        evidence_claim_id: EvidenceClaimId,
+        statement: String,
+    },
+}
+
 /// Evidence coverage summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct EvidenceSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_state: Option<EvidenceDisplayState>,
     pub status: EvidenceStatus,
-    pub completion_policy: CompletionPolicy,
     pub coverage_items: Vec<EvidenceCoverageItem>,
     pub artifact_refs: Vec<ArtifactRef>,
     pub observation_refs: Vec<StateRecordRef>,
     pub updated_by_run_ref: Option<StateRecordRef>,
 }
 
-/// Evidence completion policy display shape.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct CompletionPolicy {
-    pub evidence_required: bool,
-    pub required_claims: Vec<String>,
-}
-
 /// Evidence claim coverage item.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceCoverageItem {
-    pub claim: String,
-    pub required_for_close: bool,
+    pub target: EvidenceTarget,
     pub coverage_state: EvidenceCoverageState,
+    pub supporting_run_refs: Vec<StateRecordRef>,
+    pub observation_refs: Vec<StateRecordRef>,
+    pub supporting_artifact_refs: Vec<ArtifactRef>,
+    pub gap_refs: Vec<StateRecordRef>,
+}
+
+/// Request-side update for one stable evidence target.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceCoverageUpdate {
+    pub target: EvidenceTarget,
+    pub coverage_state: EvidenceCoverageUpdateState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<EvidenceUpdateProvenance>,
-    pub supporting_refs: Vec<StateRecordRef>,
+    pub supporting_run_refs: Vec<StateRecordRef>,
     pub observation_refs: Vec<StateRecordRef>,
     pub supporting_artifact_refs: Vec<ArtifactRef>,
     pub gap_refs: Vec<StateRecordRef>,
@@ -957,7 +1002,7 @@ pub struct EvidenceObservation {
     pub task_id: TaskId,
     pub change_unit_id: RequiredNullable<ChangeUnitId>,
     pub run_ref: RequiredNullable<StateRecordRef>,
-    pub claim: String,
+    pub target: EvidenceTarget,
     pub source_kind: EvidenceSourceKind,
     pub assurance_level: EvidenceAssuranceLevel,
     pub observed_by_actor_source: RequiredNullable<ActorSource>,
@@ -976,7 +1021,7 @@ pub struct EvidenceObservation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceObservationInput {
-    pub claim: String,
+    pub target: EvidenceTarget,
     pub source_kind: EvidenceSourceKind,
     pub assurance_level: EvidenceAssuranceLevel,
     pub observed_by_actor_source: RequiredNullable<ActorSource>,
@@ -1158,7 +1203,7 @@ pub struct PersistedArtifactProducer {
     #[serde(default)]
     pub relation_hint: RequiredNullable<String>,
     #[serde(default)]
-    pub claim: RequiredNullable<String>,
+    pub evidence_target: RequiredNullable<EvidenceTarget>,
 }
 
 /// Persisted provenance facts for a durable artifact row.
@@ -1202,7 +1247,7 @@ pub struct ArtifactInput {
     pub staged_artifact_handle: RequiredNullable<StagedArtifactHandle>,
     pub existing_artifact_ref: RequiredNullable<ArtifactRef>,
     pub relation_hint: RequiredNullable<String>,
-    pub claim: RequiredNullable<String>,
+    pub evidence_target: RequiredNullable<EvidenceTarget>,
     pub expected_sha256: RequiredNullable<String>,
     pub expected_size_bytes: RequiredNullable<u64>,
     pub redaction_state: RequiredNullable<RedactionState>,

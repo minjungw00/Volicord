@@ -75,6 +75,14 @@ opaque_string_type!(ChangeUnitId, "Opaque Change Unit identifier.");
 opaque_string_type!(WriteTicketId, "Opaque write ticket identifier.");
 opaque_string_type!(RunId, "Opaque Run identifier.");
 opaque_string_type!(
+    AcceptanceCriterionId,
+    "Opaque Core-generated acceptance-criterion identifier."
+);
+opaque_string_type!(
+    EvidenceClaimId,
+    "Opaque caller-assigned Task-scoped supplemental evidence-claim identifier."
+);
+opaque_string_type!(
     EvidenceObservationId,
     "Opaque evidence-observation identifier."
 );
@@ -134,6 +142,8 @@ pub enum DurableIdKind {
     Artifact,
     /// Core-generated evidence summary ids.
     Evidence,
+    /// Core-generated acceptance-criterion ids.
+    AcceptanceCriterion,
     /// Core-generated evidence observation ids.
     EvidenceObservation,
     /// Core-generated residual-risk ids for current close bases.
@@ -160,6 +170,7 @@ impl DurableIdKind {
             Self::StagedArtifact => "staged_",
             Self::Artifact => "artifact_",
             Self::Evidence => "evidence_",
+            Self::AcceptanceCriterion => "criterion_",
             Self::EvidenceObservation => "evidence_observation_",
             Self::Risk => "risk_",
             Self::ProjectContinuityRecord => "continuity_",
@@ -184,6 +195,7 @@ impl fmt::Display for DurableIdKind {
             Self::StagedArtifact => "staged_artifact",
             Self::Artifact => "artifact",
             Self::Evidence => "evidence",
+            Self::AcceptanceCriterion => "acceptance_criterion",
             Self::EvidenceObservation => "evidence_observation",
             Self::Risk => "risk",
             Self::ProjectContinuityRecord => "project_continuity_record",

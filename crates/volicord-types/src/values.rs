@@ -1139,9 +1139,41 @@ pub enum EvidenceCoverageState {
     Unsupported,
     Partial,
     Supported,
+    Contradicted,
     NotApplicable,
     Stale,
-    Blocked,
+}
+
+/// Request-side evidence coverage update states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceCoverageUpdateState {
+    Unsupported,
+    Partial,
+    Supported,
+    Contradicted,
+    NotApplicable,
+}
+
+impl From<EvidenceCoverageUpdateState> for EvidenceCoverageState {
+    fn from(value: EvidenceCoverageUpdateState) -> Self {
+        match value {
+            EvidenceCoverageUpdateState::Unsupported => Self::Unsupported,
+            EvidenceCoverageUpdateState::Partial => Self::Partial,
+            EvidenceCoverageUpdateState::Supported => Self::Supported,
+            EvidenceCoverageUpdateState::Contradicted => Self::Contradicted,
+            EvidenceCoverageUpdateState::NotApplicable => Self::NotApplicable,
+        }
+    }
+}
+
+/// Evidence requirement attached to one current acceptance criterion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceRequirement {
+    Required,
+    Optional,
+    NotRequired,
 }
 
 /// Evidence observation source-kind values.

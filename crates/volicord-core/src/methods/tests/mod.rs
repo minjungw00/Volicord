@@ -866,7 +866,10 @@ fn intake_request(
         initial_scope: InitialScope {
             boundary: "Initial test scope.".to_owned(),
             non_goals: vec!["Changing unrelated flows.".to_owned()],
-            acceptance_criteria: vec!["The test export flow is represented.".to_owned()],
+            acceptance_criteria: vec![volicord_types::AcceptanceCriterionInput {
+                statement: "The test export flow is represented.".to_owned(),
+                evidence_requirement: EvidenceRequirement::NotRequired,
+            }],
         },
         initial_context_refs: Vec::new(),
         initial_source_refs: Vec::new(),
@@ -908,7 +911,12 @@ fn update_scope_request(
         .into(),
         scope_boundary: Some(scope_summary.to_owned()).into(),
         non_goals: Some(vec!["Unrelated behavior.".to_owned()]).into(),
-        acceptance_criteria: Some(vec!["The scoped behavior is represented.".to_owned()]).into(),
+        acceptance_criteria: Some(vec![volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: None.into(),
+            statement: "The scoped behavior is represented.".to_owned(),
+            evidence_requirement: EvidenceRequirement::NotRequired,
+        }])
+        .into(),
         autonomy_boundary: Some("Stay inside the scoped test behavior.".to_owned()).into(),
         baseline_ref: Some(BaselineRef::new("baseline_test")).into(),
         change_unit: ChangeUnitUpdate {
@@ -1539,10 +1547,28 @@ fn record_close_evidence_with_updates(
     change_unit_id: &str,
     expected_state_version: u64,
     suffix: &str,
-    evidence_updates: Vec<EvidenceCoverageItem>,
+    mut evidence_updates: Vec<EvidenceCoverageUpdate>,
     result_summary: &str,
 ) -> Result<u64, Box<dyn Error>> {
     enable_record_run_capabilities(harness)?;
+    if evidence_updates.len() == 1
+        && matches!(
+            evidence_updates[0].target,
+            EvidenceTarget::SupplementalClaim { .. }
+        )
+    {
+        let acceptance_criterion_id = active_acceptance_criterion_id(harness, task_id)?;
+        set_active_acceptance_criterion_requirement(
+            harness,
+            task_id,
+            EvidenceRequirement::Required,
+        )?;
+        evidence_updates[0].target = EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(
+                acceptance_criterion_id,
+            ),
+        };
+    }
     let request_id = format!("req_close_evidence_{suffix}");
     let idempotency_key = format!("idem_close_evidence_{suffix}");
     let mut request = record_run_request(
@@ -2039,40 +2065,60 @@ fn artifact_input_for_handle(
         staged_artifact_handle: Some(handle.clone()).into(),
         existing_artifact_ref: None.into(),
         relation_hint: relation_hint.map(str::to_owned).into(),
-        claim: claim.map(str::to_owned).into(),
+        evidence_target: claim.map(supplemental_evidence_target).into(),
         expected_sha256: Some(handle.sha256).into(),
         expected_size_bytes: Some(handle.size_bytes).into(),
         redaction_state: Some(handle.redaction_state).into(),
     }
 }
 
-fn supported_evidence_update(claim: &str) -> EvidenceCoverageItem {
-    EvidenceCoverageItem {
-        claim: claim.to_owned(),
-        required_for_close: true,
-        coverage_state: EvidenceCoverageState::Supported,
+fn supplemental_evidence_target(statement: &str) -> EvidenceTarget {
+    let mut hasher = Sha256::new();
+    hasher.update(statement.as_bytes());
+    EvidenceTarget::SupplementalClaim {
+        evidence_claim_id: volicord_types::EvidenceClaimId::new(format!(
+            "claim_{}",
+            hex_bytes(&hasher.finalize())
+        )),
+        statement: statement.to_owned(),
+    }
+}
+
+fn supported_evidence_update(claim: &str) -> EvidenceCoverageUpdate {
+    EvidenceCoverageUpdate {
+        target: supplemental_evidence_target(claim),
+        coverage_state: EvidenceCoverageUpdateState::Supported,
         provenance: Some(evidence_update_provenance(
             EvidenceSourceKind::ExternalTool,
             EvidenceAssuranceLevel::ExternalToolResult,
         )),
-        supporting_refs: Vec::new(),
+        supporting_run_refs: Vec::new(),
         observation_refs: Vec::new(),
         supporting_artifact_refs: Vec::new(),
         gap_refs: Vec::new(),
     }
 }
 
-fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageItem {
-    EvidenceCoverageItem {
-        claim: claim.to_owned(),
-        required_for_close: true,
-        coverage_state: EvidenceCoverageState::Unsupported,
+fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageUpdate {
+    EvidenceCoverageUpdate {
+        target: supplemental_evidence_target(claim),
+        coverage_state: EvidenceCoverageUpdateState::Unsupported,
         provenance: None,
-        supporting_refs: Vec::new(),
+        supporting_run_refs: Vec::new(),
         observation_refs: Vec::new(),
         supporting_artifact_refs: Vec::new(),
         gap_refs: Vec::new(),
     }
+}
+
+fn evidence_update_for_acceptance_criterion(
+    mut update: EvidenceCoverageUpdate,
+    acceptance_criterion_id: &volicord_types::AcceptanceCriterionId,
+) -> EvidenceCoverageUpdate {
+    update.target = EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id: acceptance_criterion_id.clone(),
+    };
+    update
 }
 
 fn evidence_update_provenance(
@@ -2095,7 +2141,7 @@ fn supported_evidence_update_with_provenance(
     claim: &str,
     source_kind: EvidenceSourceKind,
     assurance_level: EvidenceAssuranceLevel,
-) -> EvidenceCoverageItem {
+) -> EvidenceCoverageUpdate {
     let mut update = supported_evidence_update(claim);
     update.provenance = Some(evidence_update_provenance(source_kind, assurance_level));
     update
@@ -2349,6 +2395,63 @@ fn create_task_with_effect_contract(
     Ok((task_id, change_unit_id))
 }
 
+fn replace_acceptance_criteria_for_test(
+    harness: &MethodHarness,
+    task_id: &str,
+    expected_state_version: u64,
+    suffix: &str,
+    criteria: &[(&str, EvidenceRequirement)],
+) -> Result<(u64, Vec<AcceptanceCriterion>), Box<dyn Error>> {
+    let current_id = active_acceptance_criterion_id(harness, task_id)?;
+    let replacements = criteria
+        .iter()
+        .enumerate()
+        .map(|(index, (statement, evidence_requirement))| {
+            volicord_types::AcceptanceCriterionReplacement {
+                acceptance_criterion_id: if index == 0 {
+                    Some(volicord_types::AcceptanceCriterionId::new(&current_id)).into()
+                } else {
+                    None.into()
+                },
+                statement: (*statement).to_owned(),
+                evidence_requirement: *evidence_requirement,
+            }
+        })
+        .collect();
+    let response = harness.service.update_scope(
+        UpdateScopeRequest {
+            envelope: envelope(
+                &format!("req_replace_criteria_{suffix}"),
+                Some(&format!("idem_replace_criteria_{suffix}")),
+                false,
+                Some(expected_state_version),
+                Some(task_id),
+            ),
+            task_id: TaskId::new(task_id),
+            goal_summary: None.into(),
+            scope_update: None.into(),
+            scope_boundary: None.into(),
+            non_goals: None.into(),
+            acceptance_criteria: Some(replacements).into(),
+            autonomy_boundary: None.into(),
+            baseline_ref: None.into(),
+            change_unit: ChangeUnitUpdate {
+                operation: ChangeUnitOperation::KeepCurrent,
+                effect_contract: None,
+                fields: Map::new(),
+            },
+            related_scope_decision_refs: Vec::new(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let state_version = response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state version should be present");
+    let criteria =
+        serde_json::from_value(response.response_value["state"]["acceptance_criteria"].clone())?;
+    Ok((state_version, criteria))
+}
+
 #[derive(Debug, PartialEq)]
 struct TaskTerminalFields {
     lifecycle_phase: String,
@@ -2399,7 +2502,6 @@ fn insert_superseding_task(harness: &MethodHarness, task_id: &str) -> Result<(),
                 bounded_context_json,
                 autonomy_boundary_json,
                 close_summary_json,
-                completion_policy_json,
                 created_at,
                 updated_at
             )
@@ -2416,11 +2518,47 @@ fn insert_superseding_task(harness: &MethodHarness, task_id: &str) -> Result<(),
                 '{}',
                 '{}',
                 '{\"close_reason\":\"none\"}',
-                '{}',
                 't0',
                 't0'
             )",
         rusqlite::params![PROJECT_ID, task_id, AGENT_ACTOR_SOURCE],
+    )?;
+    Ok(())
+}
+
+fn active_acceptance_criterion_id(
+    harness: &MethodHarness,
+    task_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    Ok(harness.conn()?.query_row(
+        "SELECT acceptance_criterion_id
+           FROM acceptance_criteria
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'active'
+          ORDER BY position ASC
+          LIMIT 1",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?)
+}
+
+fn set_active_acceptance_criterion_requirement(
+    harness: &MethodHarness,
+    task_id: &str,
+    requirement: EvidenceRequirement,
+) -> Result<(), Box<dyn Error>> {
+    let value = serde_json::to_value(requirement)?;
+    let value = value
+        .as_str()
+        .expect("evidence requirement should serialize as a string");
+    harness.conn()?.execute(
+        "UPDATE acceptance_criteria
+            SET evidence_requirement = ?3
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'active'",
+        rusqlite::params![PROJECT_ID, task_id, value],
     )?;
     Ok(())
 }
@@ -3457,12 +3595,6 @@ fn set_task_owner_json(
               WHERE project_id = ?1
                 AND task_id = ?2"
         }
-        "completion_policy_json" => {
-            "UPDATE tasks
-                SET completion_policy_json = ?3
-              WHERE project_id = ?1
-                AND task_id = ?2"
-        }
         _ => panic!("unsupported task owner JSON column {logical_column}"),
     };
     harness
@@ -3976,7 +4108,10 @@ fn existing_artifact_input(artifact_input_id: &str, artifact_ref: ArtifactRef) -
         staged_artifact_handle: None.into(),
         existing_artifact_ref: Some(artifact_ref.clone()).into(),
         relation_hint: Some("reuse_existing_artifact".to_owned()).into(),
-        claim: Some("Reused artifact for corruption coverage.".to_owned()).into(),
+        evidence_target: Some(supplemental_evidence_target(
+            "Reused artifact for corruption coverage.",
+        ))
+        .into(),
         expected_sha256: artifact_ref.sha256.as_ref().cloned().into(),
         expected_size_bytes: artifact_ref.size_bytes.as_ref().copied().into(),
         redaction_state: Some(artifact_ref.redaction_state).into(),
@@ -4001,6 +4136,10 @@ fn current_artifact_evidence_and_close_fixture(
 ) -> Result<ArtifactAuthorityFixture, Box<dyn Error>> {
     enable_record_run_capabilities(harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(harness, suffix)?;
+    let acceptance_criterion_id = volicord_types::AcceptanceCriterionId::new(
+        active_acceptance_criterion_id(harness, &task_id)?,
+    );
+    set_active_acceptance_criterion_requirement(harness, &task_id, EvidenceRequirement::Required)?;
     let (state_version, artifact_ref) =
         promote_artifact_for_record_run(harness, &task_id, &change_unit_id, 2, suffix)?;
     let mut request = record_run_request(
@@ -4011,12 +4150,18 @@ fn current_artifact_evidence_and_close_fixture(
         &task_id,
         &change_unit_id,
     );
-    request.artifact_inputs = vec![existing_artifact_input(
+    let mut artifact_input = existing_artifact_input(
         &format!("artifact_input_authority_{suffix}"),
         artifact_ref.clone(),
-    )];
-    request.evidence_updates = vec![supported_evidence_update(
-        "Reused artifact for corruption coverage.",
+    );
+    artifact_input.evidence_target = Some(EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id: acceptance_criterion_id.clone(),
+    })
+    .into();
+    request.artifact_inputs = vec![artifact_input];
+    request.evidence_updates = vec![evidence_update_for_acceptance_criterion(
+        supported_evidence_update("Reused artifact for corruption coverage."),
+        &acceptance_criterion_id,
     )];
     let mut close_assessment =
         close_assessment_with_risks("Reused artifact for corruption coverage.", Vec::new());

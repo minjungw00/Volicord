@@ -37,7 +37,13 @@
 
 Core는 호환되지 않는 조합을 커밋 전에 거절합니다. `advisor` 실행 기록은 Product Repository 파일 효과에 대해 읽기 전용이며 추가로 `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, `write_ticket_id=null`을 요구합니다. 호환되는 `shaping_update`는 Run과 메서드 소유 증거 상태를 기록하는 Core 상태 변경으로 커밋됩니다.
 
-이 메서드는 현재 닫기 근거와 주장별 간결한 증거 범위를 갱신하고, 보고되었거나 관찰된 주장에 대한 증거 관찰을 기록하고, 제품 쓰기를 기록할 때 호환되는 쓰기 티켓을 소비하며, 기존 증거 첨부를 연결하고, 허용되는 경우 적격 스테이징 첨부 입력을 지속 `ArtifactRef`로 승격할 수도 있습니다. 입력 전용 또는 스테이징 전용 항목은 받아들여진 증거가 아니며, 이 메서드가 아래 증거 규칙에 따라 주장, 출처, 첨부 연결 또는 승격을 기록하기 전에는 닫기 준비 상태를 만들지 않습니다.
+이 메서드는 현재 닫기 근거와 대상별 간결한 증거 범위를 갱신하고, 안정적인
+수락 기준 또는 보충 주장 대상에 대한 증거 관찰을 기록하고, 제품 쓰기를
+기록할 때 호환되는 쓰기 티켓을 소비하며, 기존 증거 첨부를 연결하고,
+허용되는 경우 적격 스테이징 첨부 입력을 지속 `ArtifactRef`로 승격할 수도
+있습니다. 입력 전용 또는 스테이징 전용 항목은 받아들여진 증거가 아니며,
+이 메서드가 아래 증거 규칙에 따라 대상, 출처, 첨부 연결 또는 승격을
+기록하기 전에는 닫기 준비 상태를 만들지 않습니다.
 
 ## 필수 입력
 
@@ -45,7 +51,14 @@ Core는 호환되지 않는 조합을 커밋 전에 거절합니다. `advisor` �
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, `close_assessment`.
 - 제품 쓰기 실행은 `volicord.prepare_write`가 발급한 호환되는 `status=active` 쓰기 티켓이 필요합니다.
 - 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `volicord.record_run`은 새 바이트를 스테이징하지 않습니다. 이 핸들은 커밋된 실행 결과에서 받아들여지기 전까지 증거 첨부 입력으로 남습니다.
-- `supported` 증거 갱신은 같은 주장에 대한 `EvidenceObservationInput`, 사용할 수 있는 같은 주장 증거 관찰 참조, 또는 Core가 명시적인 `source_kind`와 `assurance_level`을 가진 증거 관찰을 만들 수 있는 `EvidenceCoverageItem.provenance`로 뒷받침되어야 합니다.
+- `supported` 증거 갱신은 대상이 일치하는 `EvidenceObservationInput`, 사용할
+  수 있는 대상 일치 증거 관찰 참조, 또는 Core가 명시적인 `source_kind`와
+  `assurance_level`을 가진 증거 관찰을 만들 수 있는
+  `EvidenceCoverageUpdate.provenance`로 뒷받침되어야 합니다.
+- 수락 기준 대상은 이 `Task`의 현재 기준을 식별해야 합니다. 보충 대상은
+  호출자가 부여한 `Task` 범위 `EvidenceClaimId`를 사용하며 처음 커밋된 사용
+  뒤에는 문장이 바뀌지 않습니다. 필요한 기준은
+  `coverage_state=not_applicable`을 거부합니다.
 
 ## 요청 스키마
 
@@ -65,7 +78,7 @@ RecordRunRequest:
   summary: string
   observed_changes: ObservedChanges
   artifact_inputs: ArtifactInput[]
-  evidence_updates: EvidenceCoverageItem[]
+  evidence_updates: EvidenceCoverageUpdate[]
   evidence_observations: EvidenceObservationInput[]
   close_assessment: CloseAssessmentInput | null
 
@@ -84,7 +97,9 @@ ResidualRiskInput:
 ```
 
 중첩 형태 담당 문서:
-- `observed_changes`, `evidence_updates`, `evidence_observations`는 `ObservedChanges`, `EvidenceCoverageItem`, `EvidenceObservationInput`을 사용합니다. 이 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다.
+- `observed_changes`, `evidence_updates`, `evidence_observations`는
+  `ObservedChanges`, `EvidenceCoverageUpdate`, `EvidenceObservationInput`을
+  사용합니다. 이 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다.
 - `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 [API 상태 스키마](schema-state.md#state-references)가 담당하는 `StateRecordRef`를 사용합니다.
 - `CurrentCloseBasis`와 커밋된 `ResidualRisk` 출력 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. `ResidualRiskInput`에는 호출자 권한의 `risk_id`가 없습니다. Core는 새 현재 닫기 근거를 커밋할 때 불투명 `risk_id` 값을 생성합니다.
 - `artifact_inputs`는 `ArtifactInput[]`을 사용합니다. `ArtifactInput`, `StagedArtifactHandle`, `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactinput)가 담당합니다.
@@ -93,7 +108,11 @@ ResidualRiskInput:
 경로와 접근 참고:
 - `observed_changes.changed_paths` 항목은 `Product Repository` API 제품 경로입니다. `Product Repository` 경로 정규화는 [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization)가 담당합니다.
 - `ArtifactInput[]`와 스테이징 핸들은 두 번째 요청 수준 작업 범주나 행위자 출처를 만들지 않습니다. 호출은 확인된 호출 맥락의 값으로 유지됩니다.
-- `ArtifactInput[]` 멤버는 증거 첨부 입력입니다. 이 메서드가 그 입력을 기록된 주장별 증거나 관찰에 연결할 때만 증거를 뒷받침합니다. 요청 안에 있다는 사실만으로 증거가 충분해지지는 않습니다.
+- `ArtifactInput[]` 멤버는 증거 첨부 입력입니다. 선택적
+  `evidence_target`은 범위와 관찰이 쓰는 것과 같은 태그 대상 identity를
+  사용합니다. 이 메서드가 그 입력을 대상별 증거나 관찰에 연결할 때만
+  증거를 뒷받침합니다. 요청 안에 있다는 사실만으로 증거가 충분해지지는
+  않습니다.
 - `EvidenceObservationInput.source_refs`와 `EvidenceUpdateProvenance.source_refs`는 구조가 검증된 권한 효력이 없는 출처를 보존합니다. Core는 이 참조를 위해 파일을 읽거나, Git 객체를 해석하거나, 명령을 실행하거나, URI를 가져오거나, 메시지를 조회하지 않습니다. 선택적인 명령 또는 Git diff 아티팩트 참조는 이 프로젝트와 Task가 소유하는 기존 기준 아티팩트와 일치해야 합니다. 출처 참조는 증거 충분성이나 닫기 권한을 만들지 않습니다.
 
 닫기 평가 참조 규칙:
@@ -106,8 +125,20 @@ ResidualRiskInput:
 
 증거 갱신 출처 규칙:
 - `coverage_state=supported`는 범위에 대한 주장이지 그 자체로 충분한 출처가 아닙니다.
-- `supported` 항목에 `EvidenceCoverageItem.provenance`가 제공되고 같은 주장에 대한 명시적 관찰 입력이 없으면 Core는 현재 실행 기록에 대한 `EvidenceObservation`을 만들고 그 참조를 커밋된 증거 요약에 연결합니다.
-- 커밋된 증거 관찰은 `source_kind`와 `assurance_level`을 통해 `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `unverified_claim` 같은 명시적 출처 분류를 보존합니다.
+- `supported` 항목에 `EvidenceCoverageUpdate.provenance`가 제공되고 대상이
+  일치하는 명시적 관찰 입력이 없으면 Core는 현재 실행 기록에 대한
+  `EvidenceObservation`을 만들고 그 참조를 커밋된 증거 요약에 연결합니다.
+- `supported` 갱신이 강하고 사용할 수 있으며 대상이 일치하는
+  `observation_refs`에만 의존하면 Core는 현재 실행 기록에
+  `source_kind=reused_evidence` 관찰을 기록합니다. 그 `input_refs`는 원래 관찰
+  참조를 보존하므로 이력 관찰을 현재 관찰로 다시 이름 붙이지 않고 출처 입력으로
+  유지합니다. 재사용 관찰은 현재 갱신이 이름 붙인 출력 아티팩트와 재사용 한계를
+  담지만, 원래 관찰의 출력 아티팩트나 한계를 암묵적으로 복사하지 않습니다. 그
+  정보는 보존된 입력 참조를 통해 계속 추적할 수 있습니다.
+- `supported`가 아닌 상태에서는 대상이 일치하는 현재 협력적 또는 확인되지 않은
+  관찰 참조를 설명용 뒷받침으로 보존할 수 있습니다. 강한 재사용 요구는 참조로
+  `supported`를 세울 때만 적용됩니다.
+- 커밋된 증거 관찰은 `source_kind`와 `assurance_level`을 통해 `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` 같은 명시적 출처 분류를 보존합니다.
 - `unverified_claim`, `unverified`, 협력적 `agent_report` 관찰은 증거 관찰로 기록될 수 있지만, 더 강한 출처가 필요할 때 닫기 준비 상태에서는 약한 출처로 평가됩니다.
 - 증거 관찰은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 대신하지 않습니다.
 
@@ -326,20 +357,25 @@ params:
         consumed: false
       existing_artifact_ref: null
       relation_hint: "validation_report"
-      claim: "검색 결과 수 검증을 통과했습니다."
+      evidence_target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       expected_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       expected_size_bytes: 96
       redaction_state: none
   evidence_updates:
-    - claim: "검색 결과 수 검증을 통과했습니다."
-      required_for_close: true
+    - target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       coverage_state: supported
-      supporting_refs: []
+      supporting_run_refs: []
       observation_refs: []
       supporting_artifact_refs: []
       gap_refs: []
   evidence_observations:
-    - claim: "검색 결과 수 검증을 통과했습니다."
+    - target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       source_kind: external_tool
       assurance_level: external_tool_result
       observed_by_actor_source: agent_connection:conn_run_probe
@@ -428,15 +464,12 @@ registered_artifacts:
 evidence_summary:
   evidence_state: accepted_for_close
   status: sufficient
-  completion_policy:
-    evidence_required: true
-    required_claims:
-      - "검색 결과 수 검증을 통과했습니다."
   coverage_items:
-    - claim: "검색 결과 수 검증을 통과했습니다."
-      required_for_close: true
+    - target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       coverage_state: supported
-      supporting_refs:
+      supporting_run_refs:
         - record_kind: run
           record_id: run_runprobe_001
           project_id: proj_runprobe_001
@@ -510,7 +543,9 @@ evidence_observations:
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
       produced_at_state_version: 32
-    claim: "검색 결과 수 검증을 통과했습니다."
+    target:
+      target_kind: acceptance_criterion
+      acceptance_criterion_id: criterion_runprobe_count_001
     source_kind: external_tool
     assurance_level: external_tool_result
     observed_by_actor_source: agent_connection:conn_run_probe
@@ -603,7 +638,9 @@ state:
   non_goals:
     - "검색 순위 변경."
   acceptance_criteria:
-    - "검색 결과에 예상한 개수가 표시됩니다."
+    - acceptance_criterion_id: criterion_runprobe_count_001
+      statement: "검색 결과에 예상한 개수가 표시됩니다."
+      evidence_requirement: required
   autonomy_boundary: "검색 결과 수 검증 기록만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit

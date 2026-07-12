@@ -140,7 +140,7 @@ StateSummary:
   goal_summary: string | null
   scope_summary: string | null
   non_goals: string[]
-  acceptance_criteria: string[]
+  acceptance_criteria: AcceptanceCriterion[]
   autonomy_boundary: string | null
   active_change_unit_ref: StateRecordRef | null
   effect_contract: ChangeUnitEffectContract | null
@@ -160,7 +160,9 @@ StateSummary:
 - `StateSummary`는 상태 참조, 요약, 닫기 준비 상태 필드를 담는 간결한 응답 형태입니다.
 - 메서드의 `include` 플래그는 이 형태의 일부만 선택할 수 있습니다. 메서드 담당 문서가 어떤 상태 보기를 선택하지 않는다고 말하면 `evidence_summary`, `close_state`, `close_blockers`, `guard_health`, `guarantee_display` 같은 `include` 제어 필드는 `null`이나 빈 값으로 반환하지 않고 생략합니다. 반환된 빈 배열은 그 상태 보기를 계산했고 비어 있음을 뜻합니다.
 - `mode`와 `close_state`는 값이 있을 때 제어 값 문자열입니다.
-- `goal_summary`, `scope_summary`, `non_goals`, `acceptance_criteria`, `autonomy_boundary`는 자유 형식 표시 문자열입니다.
+- `goal_summary`, `scope_summary`, `non_goals`, `autonomy_boundary`는 자유 형식
+  표시 문자열입니다. `acceptance_criteria`는 `Task`의 현재 기준 기록을
+  정규 형태로 담으며 폐기된 기준을 현재 기준으로 표시하지 않습니다.
 - `effect_contract`는 현재 적용 Change Unit의 선택적 추가 효과 계약입니다. `null`은 추가 Change Unit 효과 계약이 기록되어 있지 않다는 뜻입니다. 넓은 안전성이나 제한 없는 실행처럼 설명하면 안 됩니다.
 - `baseline_ref`는 불투명 기준선 식별자입니다.
 - `pending_user_judgment_refs`는 응답 보기에 관련된 현재 대기 판단을 나열합니다. 대기 판단은 `required_for` 대상, 판단 종류, `Task`, Change Unit, 영향받는 참조, 근거가 해당 작업과 호환될 때만 작업을 차단합니다.
@@ -657,25 +659,47 @@ WriteDecisionReason:
 ## 증거와 실행 기록 스냅샷 형태
 
 ```yaml
+AcceptanceCriterionInput:
+  statement: string
+  evidence_requirement: string
+
+AcceptanceCriterionReplacement:
+  acceptance_criterion_id: string | null
+  statement: string
+  evidence_requirement: string
+
+AcceptanceCriterion:
+  acceptance_criterion_id: string
+  statement: string
+  evidence_requirement: string
+
+EvidenceTarget:
+  target_kind: acceptance_criterion | supplemental_claim
+  acceptance_criterion_id: string  # acceptance_criterion에서만 사용
+  evidence_claim_id: string        # supplemental_claim에서만 사용
+  statement: string                # supplemental_claim에서만 사용
+
 EvidenceSummary:
   evidence_state: string
   status: string
-  completion_policy: CompletionPolicy
   coverage_items: EvidenceCoverageItem[]
   artifact_refs: ArtifactRef[]
   observation_refs: StateRecordRef[]
   updated_by_run_ref: StateRecordRef | null
 
-CompletionPolicy:
-  evidence_required: boolean
-  required_claims: string[]
-
 EvidenceCoverageItem:
-  claim: string
-  required_for_close: boolean
+  target: EvidenceTarget
+  coverage_state: string
+  supporting_run_refs: StateRecordRef[]
+  observation_refs: StateRecordRef[]
+  supporting_artifact_refs: ArtifactRef[]
+  gap_refs: StateRecordRef[]
+
+EvidenceCoverageUpdate:
+  target: EvidenceTarget
   coverage_state: string
   provenance: EvidenceUpdateProvenance | null
-  supporting_refs: StateRecordRef[]
+  supporting_run_refs: StateRecordRef[]
   observation_refs: StateRecordRef[]
   supporting_artifact_refs: ArtifactRef[]
   gap_refs: StateRecordRef[]
@@ -696,7 +720,7 @@ EvidenceObservation:
   task_id: string
   change_unit_id: string | null
   run_ref: StateRecordRef | null
-  claim: string
+  target: EvidenceTarget
   source_kind: string
   assurance_level: string
   observed_by_actor_source: string | null
@@ -711,7 +735,7 @@ EvidenceObservation:
   recorded_at: string
 
 EvidenceObservationInput:
-  claim: string
+  target: EvidenceTarget
   source_kind: string
   assurance_level: string
   observed_by_actor_source: string | null
@@ -739,14 +763,43 @@ ObservedChanges:
 ```
 
 의미:
+- `AcceptanceCriterionInput`은 intake에서 사용하며 ID를 받지 않습니다.
+  `AcceptanceCriterionReplacement`는 null이 아닌 update-scope 교체 집합에서만
+  사용합니다. 현재 같은 `Task` ID는 identity를 유지하고, `null`은 Core가 새
+  ID를 만들도록 요청하며, 교체 집합에서 빠진 이전 현재 기준은 폐기됩니다.
+  알 수 없거나, 폐기되었거나, 다른 `Task`에 속하거나, 중복된 ID는 유효하지
+  않습니다.
+- `AcceptanceCriterion.acceptance_criterion_id`는 Core가 생성한 불투명
+  식별자입니다. `statement`는 표시 문구이고 `evidence_requirement`는
+  `required`, `optional`, `not_required` 중 하나를 선택합니다.
+- `EvidenceTarget`은 엄격한 태그 합집합입니다. `acceptance_criterion` 변형에는
+  `acceptance_criterion_id`만 있고, `supplemental_claim` 변형에는 호출자가
+  부여한 `Task` 범위 `evidence_claim_id`와 비어 있지 않은 불변 `statement`가
+  있습니다. 변형별 필드를 섞을 수 없습니다.
 - `EvidenceSummary.evidence_state`는 값이 있으면 증거 표시 상태입니다. 아직 첨부된 증거나 현재 닫기 근거 증거 참조가 없는 범위 공백 요약에서는 생략됩니다.
-- `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`, `EvidenceUpdateProvenance.source_kind`, `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`, `EvidenceObservation.assurance_level`, `EvidenceObservationInput.source_kind`, `EvidenceObservationInput.assurance_level`, `RunSummary.kind`는 제어 값 문자열입니다.
-- `CompletionPolicy.required_claims`, `EvidenceCoverageItem.claim`, `EvidenceObservation.claim`, `EvidenceObservationInput.claim`, `RunSummary.summary`는 자유 형식 주장 또는 표시 문자열입니다.
-- `EvidenceCoverageItem.provenance`는 요청 입력에서 선택적으로 사용할 수 있으며, Core가 해당 `EvidenceObservation`을 만들거나 연결한 뒤 커밋된 증거 요약에서는 생략됩니다. 닫기와 관련된 주장을 `supported`로 갱신하려면 같은 주장에 대한 관찰 입력, 사용할 수 있는 관찰 참조, 또는 Core가 관찰을 만들 수 있게 하는 이 출처 객체가 필요합니다.
-- `EvidenceSummary.observation_refs`와 `EvidenceCoverageItem.observation_refs`는 Core가 요약이나 주장과 관련지은 커밋된 증거 관찰에 대한 `StateRecordRef` 값을 나열합니다.
-- `EvidenceObservation`은 하나의 보고되었거나 관찰된 증거 주장에 대한 영속 출처 기록입니다. 출처, 보장 수준, 관찰자 행위자 출처, 선택적 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 관찰 타임스탬프를 기록합니다.
+- `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`,
+  `EvidenceCoverageUpdate.coverage_state`, `EvidenceUpdateProvenance.source_kind`,
+  `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`,
+  `EvidenceObservation.assurance_level`, `EvidenceObservationInput.source_kind`,
+  `EvidenceObservationInput.assurance_level`, `RunSummary.kind`는 제어 값
+  문자열입니다.
+- `RunSummary.summary`, 수락 기준 문장, 보충 주장 문장은 자유 형식 표시
+  문자열이며 증거 identity가 아닙니다.
+- `EvidenceCoverageUpdate.provenance`는 요청 입력에서 선택적으로 사용할 수
+  있으며, Core가 대상이 일치하는 `EvidenceObservation`을 만들거나 연결한 뒤
+  커밋된 `EvidenceCoverageItem`에서는 생략됩니다. `supported` 갱신에는 대상이
+  일치하는 관찰 입력, 사용할 수 있는 대상 일치 관찰 참조, 또는 Core가
+  관찰을 만들 수 있게 하는 이 출처 객체가 필요합니다.
+- `supporting_run_refs`는 같은 `Task`의 Run 참조를 받습니다.
+  `observation_refs`, `supporting_artifact_refs`, `gap_refs`는 대상별 관찰,
+  아티팩트, 공백 관계를 보존합니다.
+- `EvidenceSummary.observation_refs`와 `EvidenceCoverageItem.observation_refs`는 Core가 요약이나 대상과 관련지은 커밋된 증거 관찰에 대한 `StateRecordRef` 값을 나열합니다.
+- `EvidenceObservation`은 하나의 증거 대상에 대한 영속 출처 기록입니다. 출처, 보장 수준, 관찰자 행위자 출처, 선택적 도구 메타데이터, Core 기록 입력 참조, 권한 효력이 없는 출처 참조, 출력 아티팩트 참조, 한계, 관찰 타임스탬프를 기록합니다.
 - `source_refs`는 `SourceRef`를 사용합니다. `input_refs`는 별도 `StateRecordRef[]`로 유지되며 출처 참조는 Core 상태 참조나 닫기 근거 결과 참조가 되지 않습니다.
 - `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`을 채웁니다.
+- `evidence_requirement=required`인 현재 기준의 범위만 닫기 권한에 참여합니다.
+  필요한 기준은 `coverage_state=not_applicable`을 거부하며, `optional`,
+  `not_required`, 보충 대상, 폐기된 대상은 닫기에 권한 효력이 없습니다.
 - `observed_by_actor_source`는 값이 있으면 `ActorSource` 값이어야 합니다. 관찰 입력에서 null이면 Core가 확인된 호출 맥락에서 값을 채울 수 있습니다.
 - `source_kind`와 `assurance_level`은 출처와 관찰 보장 수준을 설명합니다. 그 자체로 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락을 만족하거나, 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.
 - `user_observation`은 사용자 귀속 관찰을 기록하지만 최종 수락이나 그 밖의 권한 효력이 있는 사용자 판단이 아닙니다.

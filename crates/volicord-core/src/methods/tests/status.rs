@@ -124,8 +124,8 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
         "attached"
     );
     assert_eq!(
-        response.response_value["evidence_summary"]["coverage_items"][0]["claim"],
-        "Close claim supported."
+        response.response_value["evidence_summary"]["coverage_items"][0]["target"]["target_kind"],
+        "acceptance_criterion"
     );
     assert_eq!(
         response.response_value["active_task"]["evidence_summary"],

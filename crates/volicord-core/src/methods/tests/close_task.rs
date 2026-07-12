@@ -154,81 +154,6 @@ fn close_task_does_not_use_terminal_summary_as_current_basis() -> Result<(), Box
 }
 
 #[test]
-fn malformed_completion_policy_rejects_close_check_without_effect() -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    let (task_id, _) = create_task_with_change_unit(&harness, "bad_policy_check")?;
-    set_task_owner_json(
-        &harness,
-        &task_id,
-        "completion_policy_json",
-        Some(corrupt_owner_json()),
-    )?;
-    let before = harness.counts()?;
-
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
-            request_id: "req_bad_policy_check",
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }),
-        invocation(OperationCategory::Read),
-    )?;
-
-    assert_owner_state_rejection(
-        &response,
-        "tasks",
-        &task_id,
-        "completion_policy_json",
-        &harness.runtime_home_path,
-    );
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
-fn malformed_completion_policy_rejects_close_complete_without_effect() -> Result<(), Box<dyn Error>>
-{
-    let harness = MethodHarness::new()?;
-    let (task_id, _) = create_task_with_change_unit(&harness, "bad_policy_complete")?;
-    set_task_owner_json(
-        &harness,
-        &task_id,
-        "completion_policy_json",
-        Some(corrupt_owner_json()),
-    )?;
-    let before = harness.counts()?;
-
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
-            request_id: "req_bad_policy_complete",
-            idempotency_key: Some("idem_bad_policy_complete"),
-            dry_run: false,
-            expected_state_version: Some(2),
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(CloseReason::CompletedSelfChecked),
-            superseding_task_id: None,
-        }),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_owner_state_rejection(
-        &response,
-        "tasks",
-        &task_id,
-        "completion_policy_json",
-        &harness.runtime_home_path,
-    );
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
 fn schema_invalid_close_summary_rejects_instead_of_hiding_residual_risk(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
@@ -1722,19 +1647,21 @@ fn missing_evidence_and_insufficient_provenance_are_distinct_blockers() -> Resul
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "close_missing_and_weak_evidence")?;
-    set_task_owner_json(
+    let (after_criteria, _) = replace_acceptance_criteria_for_test(
         &harness,
         &task_id,
-        "completion_policy_json",
-        Some(
-            r#"{"evidence_required":true,"required_claims":["Close claim supported.","Missing close claim."]}"#,
-        ),
+        2,
+        "missing_and_weak_evidence",
+        &[
+            ("Close claim supported.", EvidenceRequirement::Required),
+            ("Missing close claim.", EvidenceRequirement::Required),
+        ],
     )?;
     let after_evidence = record_close_evidence_with_updates(
         &harness,
         &task_id,
         &change_unit_id,
-        2,
+        after_criteria,
         "missing_and_weak_evidence",
         vec![supported_evidence_update_with_provenance(
             "Close claim supported.",
@@ -1958,21 +1885,26 @@ fn external_tool_evidence_does_not_support_unattached_close_claim() -> Result<()
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "close_external_tool_scope")?;
-    set_task_owner_json(
+    let (after_criteria, criteria) = replace_acceptance_criteria_for_test(
         &harness,
         &task_id,
-        "completion_policy_json",
-        Some(
-            r#"{"evidence_required":true,"required_claims":["Close claim supported.","Other claim supported."]}"#,
-        ),
+        2,
+        "external_tool_scope",
+        &[
+            ("Close claim supported.", EvidenceRequirement::Required),
+            ("Other claim supported.", EvidenceRequirement::Required),
+        ],
     )?;
     let after_evidence = record_close_evidence_with_updates(
         &harness,
         &task_id,
         &change_unit_id,
-        2,
+        after_criteria,
         "external_tool_scope",
-        vec![supported_evidence_update("Other claim supported.")],
+        vec![evidence_update_for_acceptance_criterion(
+            supported_evidence_update("Other claim supported."),
+            &criteria[1].acceptance_criterion_id,
+        )],
         "Close claim supported.",
     )?;
     let after_final = record_final_acceptance(
@@ -2007,6 +1939,66 @@ fn external_tool_evidence_does_not_support_unattached_close_claim() -> Result<()
     );
     assert_no_close_blocker(&response.response_value, "evidence_provenance_insufficient");
     assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn optional_not_required_and_supplemental_evidence_do_not_block_close() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "close_non_authoritative_evidence")?;
+    let (after_criteria, criteria) = replace_acceptance_criteria_for_test(
+        &harness,
+        &task_id,
+        2,
+        "non_authoritative_evidence",
+        &[
+            ("Optional criterion.", EvidenceRequirement::Optional),
+            (
+                "Criterion that requires no evidence.",
+                EvidenceRequirement::NotRequired,
+            ),
+        ],
+    )?;
+    let after_evidence = record_close_evidence_with_updates(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_criteria,
+        "non_authoritative_evidence",
+        vec![
+            evidence_update_for_acceptance_criterion(
+                unsupported_evidence_update("Optional criterion."),
+                &criteria[0].acceptance_criterion_id,
+            ),
+            evidence_update_for_acceptance_criterion(
+                unsupported_evidence_update("Criterion that requires no evidence."),
+                &criteria[1].acceptance_criterion_id,
+            ),
+            unsupported_evidence_update("Supplemental diagnostic claim."),
+        ],
+        "Only non-authoritative evidence targets are unsupported.",
+    )?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_non_authoritative_evidence",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: Some(after_evidence),
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_no_close_blocker(&response.response_value, "evidence_claim_missing");
+    assert_no_close_blocker(&response.response_value, "evidence_claim_unsupported");
+    assert_no_close_blocker(&response.response_value, "evidence_provenance_insufficient");
     Ok(())
 }
 
@@ -4461,7 +4453,7 @@ fn close_blocks_while_watcher_findings_remain_unresolved_and_unblocks_after_reco
 }
 
 #[test]
-fn close_task_cancel_success_despite_missing_completion_evidence() -> Result<(), Box<dyn Error>> {
+fn close_task_cancel_succeeds_without_close_evidence() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "close_cancel")?;
     let (after_authority, _) = record_cancellation_authority(

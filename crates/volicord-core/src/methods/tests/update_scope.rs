@@ -241,18 +241,27 @@ fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<d
     let (task_id, _) = create_task_with_change_unit(&harness, "scope_noop")?;
     let before = task_revision(&harness, &task_id)?;
 
-    let response = harness.service.update_scope(
-        update_scope_request(
-            "req_scope_noop",
-            "idem_scope_noop",
-            false,
-            Some(2),
-            &task_id,
-            ChangeUnitOperation::KeepCurrent,
-            "  Initial current scope.  ",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
+    let mut request = update_scope_request(
+        "req_scope_noop",
+        "idem_scope_noop",
+        false,
+        Some(2),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "  Initial current scope.  ",
+    );
+    request.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
+        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
+            active_acceptance_criterion_id(&harness, &task_id)?,
+        ))
+        .into(),
+        statement: "The scoped behavior is represented.".to_owned(),
+        evidence_requirement: EvidenceRequirement::NotRequired,
+    }])
+    .into();
+    let response = harness
+        .service
+        .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
     let after = task_revision(&harness, &task_id)?;
     let (_, event_payload, _) = latest_task_event(&harness)?;
 
@@ -261,6 +270,351 @@ fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<d
     assert_eq!(after.close_basis_revision, before.close_basis_revision);
     assert_eq!(after.current_close_basis, before.current_close_basis);
     assert_eq!(event_payload["scope_changed"], false);
+    Ok(())
+}
+
+#[test]
+fn criterion_replacement_preserves_identity_order_and_retires_omissions(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "criterion_replacement")?;
+    let retained_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
+        &harness, &task_id,
+    )?);
+
+    let mut seed_request = update_scope_request(
+        "req_criterion_replacement_seed",
+        "idem_criterion_replacement_seed",
+        false,
+        Some(2),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    seed_request.acceptance_criteria = Some(vec![
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(retained_id.clone()).into(),
+            statement: "Retained criterion before revision.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Optional,
+        },
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: None.into(),
+            statement: "Criterion omitted by the next replacement.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
+        },
+    ])
+    .into();
+    let seed_response = harness
+        .service
+        .update_scope(seed_request, invocation(OperationCategory::AgentWorkflow))?;
+    let seeded: Vec<AcceptanceCriterion> = serde_json::from_value(
+        seed_response.response_value["state"]["acceptance_criteria"].clone(),
+    )?;
+    assert_eq!(seeded[0].acceptance_criterion_id, retained_id);
+    let omitted_id = seeded[1].acceptance_criterion_id.clone();
+    assert!(omitted_id.as_str().starts_with("criterion_"));
+
+    let mut evidence = record_run_request(
+        "req_criterion_replacement_evidence",
+        "idem_criterion_replacement_evidence",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    evidence.evidence_updates = vec![evidence_update_for_acceptance_criterion(
+        supported_evidence_update("Retained criterion before revision."),
+        &retained_id,
+    )];
+    let evidence_response = harness
+        .service
+        .record_run(evidence, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(evidence_response.response_value["base"]["state_version"], 4);
+
+    let mut replacement_request = update_scope_request(
+        "req_criterion_replacement_final",
+        "idem_criterion_replacement_final",
+        false,
+        Some(4),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    replacement_request.acceptance_criteria = Some(vec![
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: None.into(),
+            statement: "New first criterion.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Optional,
+        },
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(retained_id.clone()).into(),
+            statement: "Retained criterion after revision.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
+        },
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: None.into(),
+            statement: "New final criterion.".to_owned(),
+            evidence_requirement: EvidenceRequirement::NotRequired,
+        },
+    ])
+    .into();
+    let replacement_response = harness.service.update_scope(
+        replacement_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let projected: Vec<AcceptanceCriterion> = serde_json::from_value(
+        replacement_response.response_value["state"]["acceptance_criteria"].clone(),
+    )?;
+
+    assert_eq!(
+        replacement_response.response_value["base"]["state_version"],
+        5
+    );
+    assert_eq!(projected.len(), 3);
+    assert_eq!(projected[0].statement, "New first criterion.");
+    assert_eq!(projected[1].acceptance_criterion_id, retained_id);
+    assert_eq!(projected[1].statement, "Retained criterion after revision.");
+    assert_eq!(
+        projected[1].evidence_requirement,
+        EvidenceRequirement::Required
+    );
+    assert_eq!(projected[2].statement, "New final criterion.");
+    assert!(projected[0]
+        .acceptance_criterion_id
+        .as_str()
+        .starts_with("criterion_"));
+    assert!(projected[2]
+        .acceptance_criterion_id
+        .as_str()
+        .starts_with("criterion_"));
+    assert_ne!(
+        projected[0].acceptance_criterion_id,
+        projected[2].acceptance_criterion_id
+    );
+
+    let conn = harness.conn()?;
+    let active_rows = {
+        let mut statement = conn.prepare(
+            "SELECT acceptance_criterion_id, position
+               FROM acceptance_criteria
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND status = 'active'
+              ORDER BY position ASC",
+        )?;
+        let rows = statement
+            .query_map(rusqlite::params![PROJECT_ID, &task_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    assert_eq!(
+        active_rows,
+        vec![
+            (projected[0].acceptance_criterion_id.as_str().to_owned(), 0),
+            (retained_id.as_str().to_owned(), 1),
+            (projected[2].acceptance_criterion_id.as_str().to_owned(), 2),
+        ]
+    );
+    let omitted_status: String = conn.query_row(
+        "SELECT status
+           FROM acceptance_criteria
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND acceptance_criterion_id = ?3",
+        rusqlite::params![PROJECT_ID, &task_id, omitted_id.as_str()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(omitted_status, "retired");
+
+    let retained_coverage = replacement_response.response_value["state"]["evidence_summary"]
+        ["coverage_items"]
+        .as_array()
+        .expect("coverage items should be present")
+        .iter()
+        .find(|item| {
+            item["target"]["acceptance_criterion_id"].as_str() == Some(retained_id.as_str())
+        })
+        .expect("retained criterion coverage should be projected");
+    assert_eq!(retained_coverage["coverage_state"], "stale");
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_criterion_replacement_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        replacement_response.response_value["state"]["evidence_summary"],
+        status.response_value["evidence_summary"]
+    );
+    assert_eq!(
+        replacement_response.response_value["state"]["close_state"],
+        status.response_value["close_state"]
+    );
+    assert_eq!(
+        replacement_response.response_value["state"]["close_blockers"],
+        status.response_value["close_blockers"]
+    );
+
+    let before_reuse = harness.counts()?;
+    let mut retired_reuse = update_scope_request(
+        "req_criterion_replacement_retired_reuse",
+        "idem_criterion_replacement_retired_reuse",
+        false,
+        Some(5),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    retired_reuse.acceptance_criteria =
+        Some(vec![volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(omitted_id).into(),
+            statement: "Retired identity must stay retired.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
+        }])
+        .into();
+    let rejected = harness
+        .service
+        .update_scope(retired_reuse, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before_reuse);
+    Ok(())
+}
+
+#[test]
+fn criterion_replacement_rejects_unknown_duplicate_and_cross_task_ids() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (first_task_id, _) = create_task_with_change_unit(&harness, "criterion_id_rejections")?;
+    let first_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
+        &harness,
+        &first_task_id,
+    )?);
+
+    let before_unknown = harness.counts()?;
+    let mut unknown = update_scope_request(
+        "req_criterion_unknown",
+        "idem_criterion_unknown",
+        false,
+        Some(2),
+        &first_task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    unknown.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
+        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
+            "criterion_unknown",
+        ))
+        .into(),
+        statement: "Unknown criterion identity.".to_owned(),
+        evidence_requirement: EvidenceRequirement::Required,
+    }])
+    .into();
+    let unknown_response = harness
+        .service
+        .update_scope(unknown, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        unknown_response.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_unknown);
+
+    let before_duplicate = harness.counts()?;
+    let mut duplicate = update_scope_request(
+        "req_criterion_duplicate",
+        "idem_criterion_duplicate",
+        false,
+        Some(2),
+        &first_task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    duplicate.acceptance_criteria = Some(vec![
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(first_id.clone()).into(),
+            statement: "First duplicate occurrence.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Optional,
+        },
+        volicord_types::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(first_id.clone()).into(),
+            statement: "Second duplicate occurrence.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
+        },
+    ])
+    .into();
+    let duplicate_response = harness
+        .service
+        .update_scope(duplicate, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        duplicate_response.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_duplicate);
+
+    let second_intake = harness.service.intake(
+        intake_request(
+            "req_cross_task_criterion_task",
+            "idem_cross_task_criterion_task",
+            false,
+            Some(2),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let second_task_id = response_record_id(&second_intake.response_value, "task_ref");
+    let second_scope = harness.service.update_scope(
+        update_scope_request(
+            "req_cross_task_criterion_scope",
+            "idem_cross_task_criterion_scope",
+            false,
+            Some(3),
+            &second_task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Second Task current scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(second_scope.response_value["base"]["state_version"], 4);
+
+    let before_cross_task = harness.counts()?;
+    let mut cross_task = update_scope_request(
+        "req_criterion_cross_task",
+        "idem_criterion_cross_task",
+        false,
+        Some(4),
+        &second_task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Second Task current scope.",
+    );
+    cross_task.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
+        acceptance_criterion_id: Some(first_id).into(),
+        statement: "Cross-Task identity reuse.".to_owned(),
+        evidence_requirement: EvidenceRequirement::Required,
+    }])
+    .into();
+    let cross_task_response = harness
+        .service
+        .update_scope(cross_task, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        cross_task_response.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(harness.counts()?, before_cross_task);
     Ok(())
 }
 

@@ -588,6 +588,7 @@ pub(super) fn plan_close_task_with_context(
         state_version: response_state_version,
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
+        acceptance_criteria: active_acceptance_criteria_for_task(store, &request.task_id)?,
         pending_user_judgment_refs: context.pending_user_judgment_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
         write_ticket_summary: projected_write_ticket_summary(
@@ -967,6 +968,7 @@ fn load_close_task_context(
         projected_run_refs: Vec::new(),
         projected_evidence_observations: Vec::new(),
         projected_artifacts: Vec::new(),
+        projected_required_criterion_ids: None,
         pending_judgment_authorities: None,
         resolved_judgment_authorities: None,
     })
@@ -3352,12 +3354,67 @@ pub(super) fn close_evidence_summary(
     task_id: &TaskId,
     state_version: u64,
 ) -> CoreResult<Option<EvidenceSummary>> {
-    let policy = task_completion_policy(task)?;
-    let mut required_claims = sorted_unique(policy.required_claims);
-    if policy.evidence_required && required_claims.is_empty() {
-        required_claims.push("completion_evidence".to_owned());
-    }
-    let required_set = required_claims.iter().cloned().collect::<BTreeSet<_>>();
+    let required_criteria = store
+        .active_acceptance_criteria(task_id)
+        .map_err(CorePipelineError::from)?
+        .into_iter()
+        .map(|criterion| {
+            let requirement: EvidenceRequirement = parse_owner_storage_value(
+                "acceptance_criteria",
+                criterion.acceptance_criterion_id.clone(),
+                "evidence_requirement",
+                &criterion.evidence_requirement,
+            )?;
+            Ok::<_, CorePipelineError>((criterion.acceptance_criterion_id, requirement))
+        })
+        .collect::<CoreResult<Vec<_>>>()?
+        .into_iter()
+        .filter_map(|(id, requirement)| {
+            (requirement == EvidenceRequirement::Required).then_some(id)
+        })
+        .collect::<BTreeSet<_>>();
+    close_evidence_summary_with_required(
+        store,
+        record,
+        task,
+        project_id,
+        task_id,
+        state_version,
+        &required_criteria,
+    )
+}
+
+pub(super) fn close_evidence_summary_with_required(
+    store: &CoreProjectStore,
+    record: Option<&EvidenceSummaryRecord>,
+    task: &TaskRecord,
+    project_id: &ProjectId,
+    task_id: &TaskId,
+    state_version: u64,
+    required_criteria: &BTreeSet<String>,
+) -> CoreResult<Option<EvidenceSummary>> {
+    let updated_by_run_id = record
+        .map(|record| {
+            decode_required_json::<PersistedEvidenceMetadata>(
+                "evidence_summaries",
+                record.evidence_summary_id.clone(),
+                "metadata_json",
+                Some(&record.metadata_json),
+            )
+            .map(|metadata| metadata.updated_by_run_id)
+        })
+        .transpose()?;
+    let evidence_scope_is_stale = match updated_by_run_id.as_ref() {
+        Some(run_id) => store.run_record(run_id.as_str())?.is_none_or(|run| {
+            run.project_id != task.project_id
+                || run.task_id != task.task_id
+                || run.scope_revision != task.scope_revision
+                || run.change_unit_id != task.current_change_unit_id
+                || record.and_then(|record| record.change_unit_id.as_ref())
+                    != task.current_change_unit_id.as_ref()
+        }),
+        None => false,
+    };
     let mut coverage_items = record
         .map(|record| {
             decode_required_json::<Vec<EvidenceCoverageItem>>(
@@ -3384,9 +3441,6 @@ pub(super) fn close_evidence_summary(
         )?;
     }
     for item in &mut coverage_items {
-        if required_set.contains(&item.claim) {
-            item.required_for_close = true;
-        }
         item.supporting_artifact_refs = item
             .supporting_artifact_refs
             .iter()
@@ -3400,31 +3454,40 @@ pub(super) fn close_evidence_summary(
                 )
             })
             .collect::<CoreResult<Vec<_>>>()?;
-        if item.required_for_close
-            && item.coverage_state == EvidenceCoverageState::Supported
-            && item.supporting_artifact_refs.iter().any(|artifact_ref| {
-                artifact_ref.availability != ArtifactAvailability::Available
-                    || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
-            })
+        if item.coverage_state == EvidenceCoverageState::Supported
+            && (evidence_scope_is_stale
+                || item.supporting_artifact_refs.iter().any(|artifact_ref| {
+                    artifact_ref.availability != ArtifactAvailability::Available
+                        || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
+                }))
         {
-            item.coverage_state = EvidenceCoverageState::Blocked;
+            item.coverage_state = EvidenceCoverageState::Stale;
         }
     }
-    for claim in &required_set {
-        if !coverage_items.iter().any(|item| item.claim == *claim) {
+    for acceptance_criterion_id in required_criteria {
+        if !coverage_items.iter().any(|item| {
+            matches!(
+                &item.target,
+                EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id: id
+                } if id.as_str() == acceptance_criterion_id
+            )
+        }) {
             coverage_items.push(EvidenceCoverageItem {
-                claim: claim.clone(),
-                required_for_close: true,
+                target: EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id: AcceptanceCriterionId::new(
+                        acceptance_criterion_id.clone(),
+                    ),
+                },
                 coverage_state: EvidenceCoverageState::Unsupported,
-                provenance: None,
-                supporting_refs: Vec::new(),
+                supporting_run_refs: Vec::new(),
                 observation_refs: Vec::new(),
                 supporting_artifact_refs: Vec::new(),
                 gap_refs: Vec::new(),
             });
         }
     }
-    if coverage_items.is_empty() && !policy.evidence_required {
+    if coverage_items.is_empty() && required_criteria.is_empty() {
         return Ok(None);
     }
     let artifact_refs = unique_artifact_refs(
@@ -3454,36 +3517,65 @@ pub(super) fn close_evidence_summary(
     } else {
         evidence_status_for_items(&coverage_items)
     };
-    let updated_by_run_ref = record
-        .map(|record| {
-            let metadata: PersistedEvidenceMetadata = decode_required_json(
-                "evidence_summaries",
-                record.evidence_summary_id.clone(),
-                "metadata_json",
-                Some(&record.metadata_json),
-            )?;
-            Ok::<_, CorePipelineError>(state_ref(
-                StateRecordKind::Run,
-                metadata.updated_by_run_id.as_str(),
-                project_id,
-                Some(task_id),
-                Some(state_version),
-            ))
-        })
-        .transpose()?;
+    let updated_by_run_ref = updated_by_run_id.as_ref().map(|updated_by_run_id| {
+        state_ref(
+            StateRecordKind::Run,
+            updated_by_run_id.as_str(),
+            project_id,
+            Some(task_id),
+            Some(state_version),
+        )
+    });
 
     Ok(Some(EvidenceSummary {
         evidence_state: None,
         status,
-        completion_policy: CompletionPolicy {
-            evidence_required: policy.evidence_required || !required_claims.is_empty(),
-            required_claims,
-        },
         coverage_items,
         artifact_refs,
         observation_refs,
         updated_by_run_ref,
     }))
+}
+
+fn evidence_target_required_by(target: &EvidenceTarget, required: &BTreeSet<String>) -> bool {
+    matches!(
+        target,
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id
+        } if required.contains(acceptance_criterion_id.as_str())
+    )
+}
+
+fn required_criteria_for_close_context(
+    store: &CoreProjectStore,
+    task_id: &TaskId,
+    context: &CloseTaskContext,
+) -> CoreResult<BTreeSet<String>> {
+    if let Some(required) = context.projected_required_criterion_ids.as_ref() {
+        return Ok(required.clone());
+    }
+    store
+        .active_acceptance_criteria(task_id)
+        .map_err(CorePipelineError::from)?
+        .into_iter()
+        .map(|criterion| {
+            let requirement = parse_owner_storage_value::<EvidenceRequirement>(
+                "acceptance_criteria",
+                criterion.acceptance_criterion_id.clone(),
+                "evidence_requirement",
+                &criterion.evidence_requirement,
+            )?;
+            Ok::<_, CorePipelineError>((criterion.acceptance_criterion_id, requirement))
+        })
+        .collect::<CoreResult<Vec<_>>>()
+        .map(|criteria| {
+            criteria
+                .into_iter()
+                .filter_map(|(id, requirement)| {
+                    (requirement == EvidenceRequirement::Required).then_some(id)
+                })
+                .collect()
+        })
 }
 
 fn sanitize_evidence_artifact_ref(
@@ -3677,19 +3769,6 @@ fn incompatible_close_basis_run_refs_blocker(
     }
 }
 
-fn task_completion_policy(task: &TaskRecord) -> CoreResult<CompletionPolicy> {
-    let persisted: PersistedCompletionPolicy = decode_required_json(
-        "tasks",
-        task.task_id.clone(),
-        "completion_policy_json",
-        Some(&task.completion_policy_json),
-    )?;
-    Ok(CompletionPolicy {
-        evidence_required: persisted.evidence_required || !persisted.required_claims.is_empty(),
-        required_claims: persisted.required_claims,
-    })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum CloseEvidenceIssueKind {
     Missing,
@@ -3797,7 +3876,14 @@ fn close_evidence_issue_for_item(
     context: &CloseTaskContext,
     item: &EvidenceCoverageItem,
 ) -> Result<Option<CloseEvidenceIssue>, PlanError> {
-    if !item.required_for_close || item.coverage_state == EvidenceCoverageState::NotApplicable {
+    let EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id,
+    } = &item.target
+    else {
+        return Ok(None);
+    };
+    let required_criteria = required_criteria_for_close_context(store, &request.task_id, context)?;
+    if !required_criteria.contains(acceptance_criterion_id.as_str()) {
         return Ok(None);
     }
     if item.coverage_state != EvidenceCoverageState::Supported {
@@ -3930,7 +4016,7 @@ fn projected_evidence_observation_is_stale_for_close_basis(
             .run_ref
             .as_ref()
             .is_none_or(|run_ref| run_ref.record_id != basis.source_run_ref.record_id)
-        || observation.claim.trim() != item.claim
+        || observation.target != item.target
 }
 
 fn evidence_observation_is_stale_for_close_basis(
@@ -3943,7 +4029,27 @@ fn evidence_observation_is_stale_for_close_basis(
         || record.task_id != request.task_id.as_str()
         || record.change_unit_id.as_deref() != Some(basis.change_unit_id.as_str())
         || record.run_id.as_deref() != Some(basis.source_run_ref.record_id.as_str())
-        || record.claim.trim() != item.claim
+        || !evidence_observation_record_matches_target(record, &item.target)
+}
+
+fn evidence_observation_record_matches_target(
+    record: &EvidenceObservationRecord,
+    target: &EvidenceTarget,
+) -> bool {
+    match target {
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id,
+        } => {
+            record.acceptance_criterion_id.as_deref() == Some(acceptance_criterion_id.as_str())
+                && record.evidence_claim_id.is_none()
+        }
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id, ..
+        } => {
+            record.evidence_claim_id.as_deref() == Some(evidence_claim_id.as_str())
+                && record.acceptance_criterion_id.is_none()
+        }
+    }
 }
 
 fn evidence_observation_provenance_class(
@@ -3972,11 +4078,12 @@ fn unavailable_close_artifact_refs(
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let mut seen = BTreeSet::new();
     let mut unavailable = Vec::new();
+    let required_criteria = required_criteria_for_close_context(store, &request.task_id, context)?;
     if let Some(evidence_summary) = context.evidence_summary.as_ref() {
         for artifact_ref in evidence_summary
             .coverage_items
             .iter()
-            .filter(|item| item.required_for_close)
+            .filter(|item| evidence_target_required_by(&item.target, &required_criteria))
             .flat_map(|item| item.supporting_artifact_refs.iter())
         {
             let state_ref = state_ref(

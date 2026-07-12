@@ -940,7 +940,7 @@ mod tests {
                 "staged_artifact_handle",
                 "existing_artifact_ref",
                 "relation_hint",
-                "claim",
+                "evidence_target",
                 "expected_sha256",
                 "expected_size_bytes",
                 "redaction_state",
@@ -948,22 +948,21 @@ mod tests {
             "ArtifactInput",
         );
         assert_required(
-            definition(&record, "EvidenceCoverageItem"),
+            definition(&record, "EvidenceCoverageUpdate"),
             &[
-                "claim",
-                "required_for_close",
+                "target",
                 "coverage_state",
-                "supporting_refs",
+                "supporting_run_refs",
                 "observation_refs",
                 "supporting_artifact_refs",
                 "gap_refs",
             ],
-            "EvidenceCoverageItem",
+            "EvidenceCoverageUpdate",
         );
         assert_required(
             definition(&record, "EvidenceObservationInput"),
             &[
-                "claim",
+                "target",
                 "source_kind",
                 "assurance_level",
                 "observed_by_actor_source",
@@ -1000,31 +999,37 @@ mod tests {
     fn mcp_record_run_evidence_defaults_expand_to_the_complete_core_shape() {
         let mcp = mcp_request_schema("volicord.record_run").expect("record_run MCP schema");
         assert_required(
-            definition(&mcp, "McpEvidenceCoverageItem"),
-            &["claim", "required_for_close", "coverage_state"],
-            "McpEvidenceCoverageItem",
+            definition(&mcp, "McpEvidenceCoverageUpdate"),
+            &["target", "coverage_state"],
+            "McpEvidenceCoverageUpdate",
         );
         assert_required(
             definition(&mcp, "McpEvidenceObservationInput"),
-            &["claim", "source_kind", "assurance_level", "observed_at"],
+            &["target", "source_kind", "assurance_level", "observed_at"],
             "McpEvidenceObservationInput",
         );
 
         let coverage_value = json!({
-            "claim": "Saved-filter validation passed.",
-            "required_for_close": true,
+            "target": {
+                "target_kind": "supplemental_claim",
+                "evidence_claim_id": "claim_saved_filter_001",
+                "statement": "Saved-filter validation passed."
+            },
             "coverage_state": "supported"
         });
-        let coverage: McpEvidenceCoverageItem =
+        let coverage: McpEvidenceCoverageUpdate =
             serde_json::from_value(coverage_value.clone()).expect("minimal MCP coverage item");
-        let core_coverage: EvidenceCoverageItem = coverage.into();
+        let core_coverage: EvidenceCoverageUpdate = coverage.into();
         assert_eq!(
             serde_json::to_value(core_coverage).expect("Core coverage item serializes"),
             json!({
-                "claim": "Saved-filter validation passed.",
-                "required_for_close": true,
+                "target": {
+                    "target_kind": "supplemental_claim",
+                    "evidence_claim_id": "claim_saved_filter_001",
+                    "statement": "Saved-filter validation passed."
+                },
                 "coverage_state": "supported",
-                "supporting_refs": [],
+                "supporting_run_refs": [],
                 "observation_refs": [],
                 "supporting_artifact_refs": [],
                 "gap_refs": []
@@ -1032,7 +1037,11 @@ mod tests {
         );
 
         let observation_value = json!({
-            "claim": "Saved-filter validation passed.",
+            "target": {
+                "target_kind": "supplemental_claim",
+                "evidence_claim_id": "claim_saved_filter_001",
+                "statement": "Saved-filter validation passed."
+            },
             "source_kind": "external_tool",
             "assurance_level": "external_tool_result",
             "observed_at": "2026-07-12T00:00:00Z"
@@ -1044,7 +1053,11 @@ mod tests {
         assert_eq!(
             serde_json::to_value(core_observation).expect("Core evidence observation serializes"),
             json!({
-                "claim": "Saved-filter validation passed.",
+                "target": {
+                    "target_kind": "supplemental_claim",
+                    "evidence_claim_id": "claim_saved_filter_001",
+                    "statement": "Saved-filter validation passed."
+                },
                 "source_kind": "external_tool",
                 "assurance_level": "external_tool_result",
                 "observed_by_actor_source": null,
@@ -1061,7 +1074,7 @@ mod tests {
 
         let mut unknown_coverage = coverage_value;
         unknown_coverage["unsupported_ref"] = json!("not accepted");
-        assert_unknown::<McpEvidenceCoverageItem>(unknown_coverage, "unsupported_ref");
+        assert_unknown::<McpEvidenceCoverageUpdate>(unknown_coverage, "unsupported_ref");
 
         let mut unknown_observation = observation_value;
         unknown_observation["unsupported_metadata"] = json!(true);
@@ -1556,7 +1569,10 @@ mod tests {
         );
 
         let encoded = serde_json::to_value(&decoded).expect("observation should encode");
-        assert_eq!(encoded["claim"], "Search result count was verified.");
+        assert_eq!(
+            encoded["target"]["evidence_claim_id"],
+            "claim_search_count_001"
+        );
         assert_eq!(encoded["source_kind"], "external_tool");
         assert_eq!(encoded["assurance_level"], "external_tool_result");
 
@@ -1638,7 +1654,7 @@ mod tests {
             "StateRecordRef",
             "ArtifactRef",
             "StagedArtifactHandle",
-            "EvidenceCoverageItem",
+            "EvidenceCoverageUpdate",
             "EvidenceObservationInput",
             "CloseAssessmentInput",
             "ResidualRiskInput",
@@ -2291,7 +2307,10 @@ mod tests {
             "initial_scope": {
                 "boundary": "First-run checklist.",
                 "non_goals": ["Changing account creation."],
-                "acceptance_criteria": ["Checklist appears for new workspaces."]
+                "acceptance_criteria": [{
+                    "statement": "Checklist appears for new workspaces.",
+                    "evidence_requirement": "required"
+                }]
             },
             "initial_context_refs": [],
             "initial_source_refs": []
@@ -2309,7 +2328,11 @@ mod tests {
             },
             "scope_boundary": "Saved-filter owner and label edits.",
             "non_goals": ["Search indexing behavior."],
-            "acceptance_criteria": ["Saved filters reject out-of-scope edits."],
+            "acceptance_criteria": [{
+                "acceptance_criterion_id": null,
+                "statement": "Saved filters reject out-of-scope edits.",
+                "evidence_requirement": "required"
+            }],
             "autonomy_boundary": "Stay within saved-filter validation.",
             "baseline_ref": "baseline_empty_001",
             "change_unit": {
@@ -2388,7 +2411,11 @@ mod tests {
 
     fn evidence_observation_input_json() -> Value {
         json!({
-            "claim": "Search result count was verified.",
+            "target": {
+                "target_kind": "supplemental_claim",
+                "evidence_claim_id": "claim_search_count_001",
+                "statement": "Search result count was verified."
+            },
             "source_kind": "external_tool",
             "assurance_level": "external_tool_result",
             "observed_by_actor_source": "agent_connection:conn_empty",
@@ -2448,7 +2475,7 @@ mod tests {
             },
             "existing_artifact_ref": null,
             "relation_hint": "diagnostic_log",
-            "claim": null,
+            "evidence_target": null,
             "expected_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             "expected_size_bytes": 18,
             "redaction_state": "none"
@@ -2462,7 +2489,7 @@ mod tests {
             "staged_artifact_handle": null,
             "existing_artifact_ref": artifact_ref,
             "relation_hint": "diagnostic_log",
-            "claim": null,
+            "evidence_target": null,
             "expected_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             "expected_size_bytes": 18,
             "redaction_state": "none"

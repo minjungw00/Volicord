@@ -90,6 +90,8 @@ pub enum CoreStorageMutation {
     UpdateTaskScope(TaskScopeUpdate),
     UpdateTaskScopeRevision(TaskScopeRevisionUpdate),
     UpdateTaskCloseBasis(TaskCloseBasisUpdate),
+    ReplaceAcceptanceCriteria(AcceptanceCriteriaReplace),
+    EnsureEvidenceClaim(EvidenceClaimInsert),
     InsertCurrentChangeUnit(ChangeUnitInsert),
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
     MarkActiveWriteTicketsStale { task_id: String },
@@ -124,7 +126,6 @@ pub struct TaskInsert {
     pub bounded_context_json: String,
     pub autonomy_boundary_json: String,
     pub close_summary_json: String,
-    pub completion_policy_json: String,
     pub current_change_unit_id: Option<String>,
 }
 
@@ -140,7 +141,30 @@ pub struct TaskScopeUpdate {
     pub bounded_context_json: Option<String>,
     pub autonomy_boundary_json: Option<String>,
     pub close_summary_json: Option<String>,
-    pub completion_policy_json: Option<String>,
+}
+
+/// One canonical acceptance criterion in a complete Task replacement set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceptanceCriterionUpsert {
+    pub acceptance_criterion_id: String,
+    pub statement: String,
+    pub evidence_requirement: String,
+    pub position: u64,
+}
+
+/// Storage input for atomically replacing the current Task criterion set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceptanceCriteriaReplace {
+    pub task_id: String,
+    pub criteria: Vec<AcceptanceCriterionUpsert>,
+}
+
+/// Storage input for inserting an immutable Task-scoped supplemental claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceClaimInsert {
+    pub evidence_claim_id: String,
+    pub task_id: String,
+    pub statement: String,
 }
 
 /// Storage input for updating a Task scope revision coordinate.
@@ -405,7 +429,8 @@ pub struct EvidenceObservationInsert {
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub run_id: Option<String>,
-    pub claim: String,
+    pub acceptance_criterion_id: Option<String>,
+    pub evidence_claim_id: Option<String>,
     pub source_kind: String,
     pub assurance_level: String,
     pub observed_by_actor_source: Option<String>,
@@ -429,7 +454,8 @@ pub struct EvidenceObservationRecord {
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub run_id: Option<String>,
-    pub claim: String,
+    pub acceptance_criterion_id: Option<String>,
+    pub evidence_claim_id: Option<String>,
     pub source_kind: String,
     pub assurance_level: String,
     pub observed_by_actor_source: Option<String>,
@@ -507,6 +533,8 @@ pub enum MutationCommitOutcome {
 pub struct StorageEffectCounts {
     pub state_version: u64,
     pub tasks: u64,
+    pub acceptance_criteria: u64,
+    pub evidence_claims: u64,
     pub change_units: u64,
     pub task_events: u64,
     pub tool_invocations: u64,
@@ -539,9 +567,29 @@ pub struct TaskRecord {
     pub close_basis_revision: u64,
     pub close_basis_json: Option<String>,
     pub close_summary_json: String,
-    pub completion_policy_json: String,
     pub current_change_unit_id: Option<String>,
     pub closed_at: Option<String>,
+}
+
+/// Canonical acceptance criterion row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceptanceCriterionRecord {
+    pub project_id: String,
+    pub acceptance_criterion_id: String,
+    pub task_id: String,
+    pub statement: String,
+    pub evidence_requirement: String,
+    pub position: u64,
+    pub status: String,
+}
+
+/// Canonical Task-scoped supplemental evidence claim row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceClaimRecord {
+    pub project_id: String,
+    pub evidence_claim_id: String,
+    pub task_id: String,
+    pub statement: String,
 }
 
 /// Current Task revision coordinates and optional strict-decoded close basis.
@@ -774,6 +822,54 @@ impl CoreProjectStore {
             Some(task_id) => task_record(&self.conn, &self.project.project_id, &task_id),
             None => Ok(None),
         }
+    }
+
+    /// Lists the current canonical acceptance criteria for one Task.
+    pub fn active_acceptance_criteria(
+        &self,
+        task_id: &TaskId,
+    ) -> StoreResult<Vec<AcceptanceCriterionRecord>> {
+        active_acceptance_criteria(&self.conn, &self.project.project_id, task_id.as_str())
+    }
+
+    /// Reads an acceptance criterion by project-local identity, including retired rows.
+    pub fn acceptance_criterion_record(
+        &self,
+        acceptance_criterion_id: &str,
+    ) -> StoreResult<Option<AcceptanceCriterionRecord>> {
+        acceptance_criterion_record(
+            &self.conn,
+            &self.project.project_id,
+            acceptance_criterion_id,
+        )
+    }
+
+    /// Returns whether an acceptance-criterion id exists in this project.
+    pub fn acceptance_criterion_id_exists(
+        &self,
+        acceptance_criterion_id: &str,
+    ) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "acceptance_criteria",
+            "acceptance_criterion_id",
+            acceptance_criterion_id,
+        )
+    }
+
+    /// Reads a Task-scoped supplemental evidence claim by project-local identity.
+    pub fn evidence_claim_record(
+        &self,
+        task_id: &TaskId,
+        evidence_claim_id: &str,
+    ) -> StoreResult<Option<EvidenceClaimRecord>> {
+        evidence_claim_record(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            evidence_claim_id,
+        )
     }
 
     /// Reads the current active Change Unit row for a Task.
@@ -1141,6 +1237,12 @@ impl CoreProjectStore {
         Ok(StorageEffectCounts {
             state_version: state.state_version,
             tasks: table_count(&self.conn, "tasks", &self.project.project_id)?,
+            acceptance_criteria: table_count(
+                &self.conn,
+                "acceptance_criteria",
+                &self.project.project_id,
+            )?,
+            evidence_claims: table_count(&self.conn, "evidence_claims", &self.project.project_id)?,
             change_units: table_count(&self.conn, "change_units", &self.project.project_id)?,
             task_events: table_count(&self.conn, "task_events", &self.project.project_id)?,
             tool_invocations: table_count(
@@ -1250,7 +1352,6 @@ fn task_record(
             close_basis_revision,
             close_basis_json,
             close_summary_json,
-            completion_policy_json,
             current_change_unit_id,
             closed_at
          FROM tasks
@@ -1279,10 +1380,87 @@ fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord>
         close_basis_revision: nonnegative_i64_to_u64("tasks.close_basis_revision", row.get(11)?)?,
         close_basis_json: row.get(12)?,
         close_summary_json: row.get(13)?,
-        completion_policy_json: row.get(14)?,
-        current_change_unit_id: row.get(15)?,
-        closed_at: row.get(16)?,
+        current_change_unit_id: row.get(14)?,
+        closed_at: row.get(15)?,
     })
+}
+
+fn active_acceptance_criteria(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+) -> StoreResult<Vec<AcceptanceCriterionRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT project_id, acceptance_criterion_id, task_id, statement, evidence_requirement, position, status
+           FROM acceptance_criteria
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'active'
+          ORDER BY position, acceptance_criterion_id",
+    )?;
+    let rows = stmt.query_map(
+        params![project_id, task_id],
+        acceptance_criterion_record_from_row,
+    )?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(StoreError::from)
+}
+
+fn acceptance_criterion_record(
+    conn: &Connection,
+    project_id: &str,
+    acceptance_criterion_id: &str,
+) -> StoreResult<Option<AcceptanceCriterionRecord>> {
+    conn.query_row(
+        "SELECT project_id, acceptance_criterion_id, task_id, statement, evidence_requirement, position, status
+           FROM acceptance_criteria
+          WHERE project_id = ?1
+            AND acceptance_criterion_id = ?2",
+        params![project_id, acceptance_criterion_id],
+        acceptance_criterion_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn acceptance_criterion_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<AcceptanceCriterionRecord> {
+    Ok(AcceptanceCriterionRecord {
+        project_id: row.get(0)?,
+        acceptance_criterion_id: row.get(1)?,
+        task_id: row.get(2)?,
+        statement: row.get(3)?,
+        evidence_requirement: row.get(4)?,
+        position: nonnegative_i64_to_u64("acceptance_criteria.position", row.get(5)?)?,
+        status: row.get(6)?,
+    })
+}
+
+fn evidence_claim_record(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+    evidence_claim_id: &str,
+) -> StoreResult<Option<EvidenceClaimRecord>> {
+    conn.query_row(
+        "SELECT project_id, evidence_claim_id, task_id, statement
+          FROM evidence_claims
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND evidence_claim_id = ?3",
+        params![project_id, task_id, evidence_claim_id],
+        |row| {
+            Ok(EvidenceClaimRecord {
+                project_id: row.get(0)?,
+                evidence_claim_id: row.get(1)?,
+                task_id: row.get(2)?,
+                statement: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(StoreError::from)
 }
 
 fn task_revision_record(
@@ -1992,7 +2170,8 @@ fn evidence_observation_record(
             task_id,
             change_unit_id,
             run_id,
-            claim,
+            acceptance_criterion_id,
+            evidence_claim_id,
             source_kind,
             assurance_level,
             observed_by_actor_source,
@@ -2025,20 +2204,21 @@ fn evidence_observation_record_from_row(
         task_id: row.get(2)?,
         change_unit_id: row.get(3)?,
         run_id: row.get(4)?,
-        claim: row.get(5)?,
-        source_kind: row.get(6)?,
-        assurance_level: row.get(7)?,
-        observed_by_actor_source: row.get(8)?,
-        tool_name: row.get(9)?,
-        tool_invocation_id: row.get(10)?,
-        tool_metadata_json: row.get(11)?,
-        input_refs_json: row.get(12)?,
-        source_refs_json: row.get(13)?,
-        output_artifact_refs_json: row.get(14)?,
-        limitations_json: row.get(15)?,
-        observed_at: row.get(16)?,
-        recorded_at: row.get(17)?,
-        metadata_json: row.get(18)?,
+        acceptance_criterion_id: row.get(5)?,
+        evidence_claim_id: row.get(6)?,
+        source_kind: row.get(7)?,
+        assurance_level: row.get(8)?,
+        observed_by_actor_source: row.get(9)?,
+        tool_name: row.get(10)?,
+        tool_invocation_id: row.get(11)?,
+        tool_metadata_json: row.get(12)?,
+        input_refs_json: row.get(13)?,
+        source_refs_json: row.get(14)?,
+        output_artifact_refs_json: row.get(15)?,
+        limitations_json: row.get(16)?,
+        observed_at: row.get(17)?,
+        recorded_at: row.get(18)?,
+        metadata_json: row.get(19)?,
     })
 }
 
@@ -2831,7 +3011,6 @@ mod tests {
                     bounded_context_json: None,
                     autonomy_boundary_json: None,
                     close_summary_json: None,
-                    completion_policy_json: None,
                 })
                 .apply(mutation, facts.committed_state_version)
             },
@@ -3056,12 +3235,18 @@ mod tests {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
                     CoreStorageMutation::InsertRun(run_insert(run_id, task_id)),
+                    CoreStorageMutation::EnsureEvidenceClaim(EvidenceClaimInsert {
+                        task_id: task_id.to_owned(),
+                        evidence_claim_id: "claim_search_result_count".to_owned(),
+                        statement: "Search result count was verified.".to_owned(),
+                    }),
                     CoreStorageMutation::InsertEvidenceObservation(EvidenceObservationInsert {
                         evidence_observation_id: observation_id.to_owned(),
                         task_id: task_id.to_owned(),
                         change_unit_id: None,
                         run_id: Some(run_id.to_owned()),
-                        claim: "Search result count was verified.".to_owned(),
+                        acceptance_criterion_id: None,
+                        evidence_claim_id: Some("claim_search_result_count".to_owned()),
                         source_kind: "external_tool".to_owned(),
                         assurance_level: "external_tool_result".to_owned(),
                         observed_by_actor_source: Some(ACTOR_SOURCE.to_owned()),
@@ -3873,7 +4058,6 @@ mod tests {
             bounded_context_json: "[]".to_owned(),
             autonomy_boundary_json: "{}".to_owned(),
             close_summary_json: "{}".to_owned(),
-            completion_policy_json: "{}".to_owned(),
             current_change_unit_id: None,
         }
     }

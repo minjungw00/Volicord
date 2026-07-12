@@ -676,6 +676,126 @@ fn record_run_post_commit_close_projection_matches_immediate_status() -> Result<
 }
 
 #[test]
+fn record_run_without_evidence_updates_separates_result_state_and_close_evidence(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_no_update_evidence_views")?;
+    let (after_criteria, criteria) = replace_acceptance_criteria_for_test(
+        &harness,
+        &task_id,
+        2,
+        "run_no_update_evidence_views",
+        &[("Required retained evidence.", EvidenceRequirement::Required)],
+    )?;
+    let criterion_id = criteria[0].acceptance_criterion_id.clone();
+
+    let mut evidence_run = record_run_request(
+        "req_run_prior_evidence",
+        "idem_run_prior_evidence",
+        false,
+        Some(after_criteria),
+        &task_id,
+        &change_unit_id,
+    );
+    evidence_run.evidence_updates = vec![evidence_update_for_acceptance_criterion(
+        supported_evidence_update("Required retained evidence."),
+        &criterion_id,
+    )];
+    evidence_run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "First Run records current required evidence.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let first = harness
+        .service
+        .record_run(evidence_run, invocation(OperationCategory::AgentWorkflow))?;
+    let after_first = first.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("first Run should commit");
+    assert_eq!(
+        first.response_value["evidence_summary"]["coverage_items"][0]["coverage_state"],
+        "supported"
+    );
+
+    let mut no_update_run = record_run_request(
+        "req_run_without_evidence_update",
+        "idem_run_without_evidence_update",
+        false,
+        Some(after_first),
+        &task_id,
+        &change_unit_id,
+    );
+    no_update_run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "Second Run records a basis without an evidence update.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let second = harness
+        .service
+        .record_run(no_update_run, invocation(OperationCategory::AgentWorkflow))?;
+    assert!(second.response_value["evidence_summary"].is_null());
+    assert!(second.response_value["current_close_basis"]["evidence_summary_ref"].is_null());
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_run_without_evidence_update_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_run_without_evidence_update_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(
+        second.response_value["state"]["evidence_summary"],
+        status.response_value["evidence_summary"]
+    );
+    assert_eq!(
+        second.response_value["state"]["evidence_summary"]["coverage_items"][0]["coverage_state"],
+        "supported"
+    );
+    assert_eq!(
+        second.response_value["state"]["close_state"],
+        status.response_value["close_state"]
+    );
+    assert_eq!(
+        second.response_value["state"]["close_blockers"],
+        status.response_value["close_blockers"]
+    );
+    assert_eq!(
+        status.response_value["close_blockers"],
+        check.response_value["blockers"]
+    );
+    assert_close_blocker(&second.response_value["state"], "evidence_claim_missing");
+    Ok(())
+}
+
+#[test]
 fn record_run_promoted_artifact_close_projection_matches_immediate_status(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
@@ -1718,7 +1838,7 @@ fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<()
         response.response_value["errors"][0]["code"],
         "STATE_VERSION_CONFLICT"
     );
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "stale");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -2021,7 +2141,7 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
         "Search-result count validation passed.",
     )];
     request.evidence_observations = vec![EvidenceObservationInput {
-        claim: "Search-result count validation passed.".to_owned(),
+        target: supplemental_evidence_target("Search-result count validation passed."),
         source_kind: EvidenceSourceKind::ExternalTool,
         assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
         observed_by_actor_source: None.into(),
@@ -2105,7 +2225,7 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
         "sufficient"
     );
     assert_eq!(
-        response.response_value["evidence_summary"]["coverage_items"][0]["supporting_refs"][0]
+        response.response_value["evidence_summary"]["coverage_items"][0]["supporting_run_refs"][0]
             ["record_kind"],
         "run"
     );
@@ -2229,7 +2349,7 @@ fn record_run_observations_preserve_provenance_classification() -> Result<(), Bo
         .iter()
         .map(
             |(claim, source_kind, assurance_level, _, _)| EvidenceObservationInput {
-                claim: (*claim).to_owned(),
+                target: supplemental_evidence_target(claim),
                 source_kind: *source_kind,
                 assurance_level: *assurance_level,
                 observed_by_actor_source: None.into(),
@@ -2260,6 +2380,365 @@ fn record_run_observations_preserve_provenance_classification() -> Result<(), Bo
         assert_eq!(observation["assurance_level"], assurance_value);
         assert!(observation.get("guarantee_display").is_none());
     }
+    Ok(())
+}
+
+#[test]
+fn not_applicable_rejects_required_criterion_but_commits_for_optional_criterion(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_not_applicable_requirement")?;
+    let (after_required, required_criteria) = replace_acceptance_criteria_for_test(
+        &harness,
+        &task_id,
+        2,
+        "run_not_applicable_required",
+        &[(
+            "Criterion requiring evidence.",
+            EvidenceRequirement::Required,
+        )],
+    )?;
+    let required_id = required_criteria[0].acceptance_criterion_id.clone();
+    let required_update = EvidenceCoverageUpdate {
+        target: EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: required_id.clone(),
+        },
+        coverage_state: EvidenceCoverageUpdateState::NotApplicable,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: Vec::new(),
+        supporting_artifact_refs: Vec::new(),
+        gap_refs: Vec::new(),
+    };
+    let mut required_request = record_run_request(
+        "req_run_not_applicable_required",
+        "idem_run_not_applicable_required",
+        false,
+        Some(after_required),
+        &task_id,
+        &change_unit_id,
+    );
+    required_request.evidence_updates = vec![required_update];
+    let before_rejection = harness.counts()?;
+    let rejected = harness.service.record_run(
+        required_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        rejected.response_value["errors"][0]["details"]["field"],
+        "evidence_updates[].coverage_state"
+    );
+    assert_eq!(harness.counts()?, before_rejection);
+
+    let (after_optional, optional_criteria) = replace_acceptance_criteria_for_test(
+        &harness,
+        &task_id,
+        after_required,
+        "run_not_applicable_optional",
+        &[(
+            "Criterion where evidence is optional.",
+            EvidenceRequirement::Optional,
+        )],
+    )?;
+    assert_eq!(optional_criteria[0].acceptance_criterion_id, required_id);
+    let mut optional_request = record_run_request(
+        "req_run_not_applicable_optional",
+        "idem_run_not_applicable_optional",
+        false,
+        Some(after_optional),
+        &task_id,
+        &change_unit_id,
+    );
+    optional_request.evidence_updates = vec![EvidenceCoverageUpdate {
+        target: EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: required_id,
+        },
+        coverage_state: EvidenceCoverageUpdateState::NotApplicable,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: Vec::new(),
+        supporting_artifact_refs: Vec::new(),
+        gap_refs: Vec::new(),
+    }];
+    let committed = harness.service.record_run(
+        optional_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(committed.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        committed.response_value["evidence_summary"]["coverage_items"][0]["coverage_state"],
+        "not_applicable"
+    );
+    Ok(())
+}
+
+#[test]
+fn supplemental_evidence_claim_identity_is_task_scoped_and_statement_is_immutable(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (first_task_id, first_change_unit_id) =
+        create_task_with_change_unit(&harness, "task_scoped_evidence_claim")?;
+    let shared_claim_id = volicord_types::EvidenceClaimId::new("claim_shared_between_tasks");
+
+    let mut first_run = record_run_request(
+        "req_task_scoped_claim_first",
+        "idem_task_scoped_claim_first",
+        false,
+        Some(2),
+        &first_task_id,
+        &first_change_unit_id,
+    );
+    first_run.evidence_updates = vec![EvidenceCoverageUpdate {
+        target: EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: shared_claim_id.clone(),
+            statement: "Statement owned by the first Task.".to_owned(),
+        },
+        coverage_state: EvidenceCoverageUpdateState::Unsupported,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: Vec::new(),
+        supporting_artifact_refs: Vec::new(),
+        gap_refs: Vec::new(),
+    }];
+    let first_response = harness
+        .service
+        .record_run(first_run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(first_response.response_value["base"]["state_version"], 3);
+
+    let second_intake = harness.service.intake(
+        intake_request(
+            "req_task_scoped_claim_second_task",
+            "idem_task_scoped_claim_second_task",
+            false,
+            Some(3),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let second_task_id = response_record_id(&second_intake.response_value, "task_ref");
+    let second_scope = harness.service.update_scope(
+        update_scope_request(
+            "req_task_scoped_claim_second_scope",
+            "idem_task_scoped_claim_second_scope",
+            false,
+            Some(4),
+            &second_task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Second Task claim scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let second_change_unit_id = response_record_id(&second_scope.response_value, "change_unit_ref");
+
+    let mut second_run = record_run_request(
+        "req_task_scoped_claim_second",
+        "idem_task_scoped_claim_second",
+        false,
+        Some(5),
+        &second_task_id,
+        &second_change_unit_id,
+    );
+    second_run.evidence_updates = vec![EvidenceCoverageUpdate {
+        target: EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: shared_claim_id.clone(),
+            statement: "Independent statement owned by the second Task.".to_owned(),
+        },
+        coverage_state: EvidenceCoverageUpdateState::Unsupported,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: Vec::new(),
+        supporting_artifact_refs: Vec::new(),
+        gap_refs: Vec::new(),
+    }];
+    let second_response = harness
+        .service
+        .record_run(second_run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(second_response.response_value["base"]["state_version"], 6);
+
+    let claims = {
+        let conn = harness.conn()?;
+        let mut statement = conn.prepare(
+            "SELECT task_id, statement
+               FROM evidence_claims
+              WHERE project_id = ?1
+                AND evidence_claim_id = ?2
+              ORDER BY task_id ASC",
+        )?;
+        let rows = statement
+            .query_map(
+                rusqlite::params![PROJECT_ID, shared_claim_id.as_str()],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    assert_eq!(claims.len(), 2);
+    assert!(claims.iter().any(|(task_id, statement)| {
+        task_id == &first_task_id && statement == "Statement owned by the first Task."
+    }));
+    assert!(claims.iter().any(|(task_id, statement)| {
+        task_id == &second_task_id && statement == "Independent statement owned by the second Task."
+    }));
+
+    let before_mutation = harness.counts()?;
+    let mut mutated = record_run_request(
+        "req_task_scoped_claim_mutation",
+        "idem_task_scoped_claim_mutation",
+        false,
+        Some(6),
+        &second_task_id,
+        &second_change_unit_id,
+    );
+    mutated.evidence_updates = vec![EvidenceCoverageUpdate {
+        target: EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: shared_claim_id,
+            statement: "Attempted mutation within the second Task.".to_owned(),
+        },
+        coverage_state: EvidenceCoverageUpdateState::Unsupported,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: Vec::new(),
+        supporting_artifact_refs: Vec::new(),
+        gap_refs: Vec::new(),
+    }];
+    let rejected = harness
+        .service
+        .record_run(mutated, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before_mutation);
+    Ok(())
+}
+
+#[test]
+fn reused_strong_observation_creates_current_observation_and_canonicalizes_artifact_ref(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "reused_observation")?;
+    let (after_artifact, artifact_ref) = promote_artifact_for_record_run(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "reused_observation",
+    )?;
+    let target = EvidenceTarget::SupplementalClaim {
+        evidence_claim_id: volicord_types::EvidenceClaimId::new("claim_reused_observation"),
+        statement: "Strong observation can be reused in the current scope.".to_owned(),
+    };
+
+    let mut first = record_run_request(
+        "req_reused_observation_source",
+        "idem_reused_observation_source",
+        false,
+        Some(after_artifact),
+        &task_id,
+        &change_unit_id,
+    );
+    let mut first_artifact_input = existing_artifact_input(
+        "artifact_input_reused_observation_source",
+        artifact_ref.clone(),
+    );
+    first_artifact_input.evidence_target = Some(target.clone()).into();
+    first.artifact_inputs = vec![first_artifact_input];
+    let mut first_update =
+        supported_evidence_update("Strong observation can be reused in the current scope.");
+    first_update.target = target.clone();
+    first.evidence_updates = vec![first_update];
+    let source_response = harness
+        .service
+        .record_run(first, invocation(OperationCategory::AgentWorkflow))?;
+    let source_state_version = source_response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("source state version should be present");
+    let source_observation_id = source_response.response_value["evidence_observations"][0]
+        ["observation_id"]
+        .as_str()
+        .expect("source observation ID should be present")
+        .to_owned();
+    assert_eq!(
+        source_response.response_value["evidence_observations"][0]["source_kind"],
+        "external_tool"
+    );
+
+    let source_observation_ref = state_ref(
+        StateRecordKind::EvidenceObservation,
+        &source_observation_id,
+        &ProjectId::new(PROJECT_ID),
+        Some(&TaskId::new(&task_id)),
+        Some(source_state_version),
+    );
+    let mut caller_artifact_ref = artifact_ref.clone();
+    caller_artifact_ref.display_name = "caller-supplied-stale-name.bin".to_owned();
+    caller_artifact_ref.content_type = None.into();
+    caller_artifact_ref.sha256 = None.into();
+    caller_artifact_ref.size_bytes = None.into();
+    caller_artifact_ref.integrity_status = ArtifactIntegrityStatus::Corrupt;
+    caller_artifact_ref.availability = ArtifactAvailability::Missing;
+    caller_artifact_ref.created_by_run_ref = None.into();
+    caller_artifact_ref.created_by_actor_source = None.into();
+    caller_artifact_ref.storage_ref = None.into();
+
+    let mut reuse = record_run_request(
+        "req_reused_observation_current",
+        "idem_reused_observation_current",
+        false,
+        Some(source_state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    reuse.evidence_updates = vec![EvidenceCoverageUpdate {
+        target,
+        coverage_state: EvidenceCoverageUpdateState::Supported,
+        provenance: None,
+        supporting_run_refs: Vec::new(),
+        observation_refs: vec![source_observation_ref],
+        supporting_artifact_refs: vec![caller_artifact_ref],
+        gap_refs: Vec::new(),
+    }];
+    let reused_response = harness
+        .service
+        .record_run(reuse, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        reused_response.response_value["base"]["response_kind"],
+        "result"
+    );
+    let reused_observation = &reused_response.response_value["evidence_observations"][0];
+    assert_eq!(reused_observation["source_kind"], "reused_evidence");
+    assert_eq!(
+        reused_observation["input_refs"][0]["record_id"],
+        source_observation_id
+    );
+    assert_eq!(
+        reused_observation["output_artifact_refs"][0]["display_name"],
+        artifact_ref.display_name
+    );
+    assert_eq!(
+        reused_observation["output_artifact_refs"][0]["availability"],
+        "available"
+    );
+    assert_eq!(
+        reused_response.response_value["evidence_summary"]["coverage_items"][0]
+            ["supporting_artifact_refs"][0]["display_name"],
+        artifact_ref.display_name
+    );
+    assert_eq!(
+        reused_response.response_value["evidence_summary"]["coverage_items"][0]
+            ["supporting_artifact_refs"][0]["integrity_status"],
+        "verified"
+    );
     Ok(())
 }
 
@@ -2368,6 +2847,8 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "corrupt_evidence_artifact")?;
+    let acceptance_criterion_id = active_acceptance_criterion_id(&harness, &task_id)?;
+    set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
     let handle = stage_artifact_for_record_run(&harness, &task_id, "corrupt_evidence_artifact", 2)?;
 
     let mut request = record_run_request(
@@ -2378,13 +2859,23 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
         &task_id,
         &change_unit_id,
     );
-    request.artifact_inputs = vec![artifact_input_for_handle(
+    let mut artifact_input = artifact_input_for_handle(
         "artifact_input_corrupt",
         handle,
         Some("validation_report"),
         Some("Corrupt integrity evidence."),
+    );
+    artifact_input.evidence_target = Some(EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(
+            &acceptance_criterion_id,
+        ),
+    })
+    .into();
+    request.artifact_inputs = vec![artifact_input];
+    request.evidence_updates = vec![evidence_update_for_acceptance_criterion(
+        supported_evidence_update("Corrupt integrity evidence."),
+        &volicord_types::AcceptanceCriterionId::new(acceptance_criterion_id),
     )];
-    request.evidence_updates = vec![supported_evidence_update("Corrupt integrity evidence.")];
     request.close_assessment = Some(close_assessment_with_risks(
         "Corrupt integrity evidence.",
         Vec::new(),
@@ -2426,7 +2917,11 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
 
     assert_eq!(
         status.response_value["evidence_summary"]["status"],
-        "blocked"
+        "insufficient"
+    );
+    assert_eq!(
+        status.response_value["evidence_summary"]["coverage_items"][0]["coverage_state"],
+        "stale"
     );
     assert_eq!(artifact_ref["availability"], "integrity_failed");
     assert_eq!(artifact_ref["integrity_status"], "corrupt");
@@ -2546,7 +3041,11 @@ fn missing_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
 
     assert_eq!(
         status.response_value["evidence_summary"]["status"],
-        "blocked"
+        "insufficient"
+    );
+    assert_eq!(
+        status.response_value["evidence_summary"]["coverage_items"][0]["coverage_state"],
+        "stale"
     );
     assert_eq!(artifact_ref["availability"], "missing");
     assert_close_blocker(&status.response_value, "artifact_unavailable");
@@ -2633,7 +3132,11 @@ fn changed_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
 
     assert_eq!(
         status.response_value["evidence_summary"]["status"],
-        "blocked"
+        "insufficient"
+    );
+    assert_eq!(
+        status.response_value["evidence_summary"]["coverage_items"][0]["coverage_state"],
+        "stale"
     );
     assert_eq!(artifact_ref["availability"], "integrity_failed");
     assert_eq!(artifact_ref["integrity_status"], "corrupt");

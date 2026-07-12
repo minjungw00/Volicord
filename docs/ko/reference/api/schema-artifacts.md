@@ -94,7 +94,7 @@ ArtifactInput:
   staged_artifact_handle: StagedArtifactHandle | null
   existing_artifact_ref: ArtifactRef | null
   relation_hint: string | null
-  claim: string | null
+  evidence_target: EvidenceTarget | null
   expected_sha256: string | null
   expected_size_bytes: integer | null
   redaction_state: string | null
@@ -102,7 +102,7 @@ ArtifactInput:
 
 각 입력에서는 출처 필드 하나만 채우고 다른 출처 필드는 `null`이어야 합니다. `ArtifactInput.source_kind`는 어느 출처 필드가 적용되는지 고르며, 지원되는 출처 종류 값과 값 의미는 [아티팩트 값](schema-value-sets.md#artifact-values)이 담당합니다.
 
-`artifact_input_id`는 요청 안에서 유효한 불투명 입력 식별자입니다. `relation_hint`와 `claim`은 자유 형식 표시 또는 주장 문자열입니다. `expected_sha256`은 체크섬 문자열입니다. `redaction_state`는 값이 있을 때 제어 값 문자열입니다.
+`artifact_input_id`는 요청 안에서 유효한 불투명 입력 식별자입니다. `relation_hint`는 자유 형식 표시 문자열입니다. `evidence_target`은 값이 있으면 [증거와 실행 기록 스냅샷 형태](schema-state.md#evidence-and-run-snapshot-shapes)가 정의하는 안정적인 태그형 기준 또는 보충 주장 identity입니다. 아티팩트 설명이나 주장 문장은 증거 identity가 아닙니다. `expected_sha256`은 체크섬 문자열입니다. `redaction_state`는 값이 있을 때 제어 값 문자열입니다.
 
 형태 규칙:
 - `staged_artifact_handle`이 채워지면 `existing_artifact_ref`는 `null`입니다.

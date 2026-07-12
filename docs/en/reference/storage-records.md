@@ -92,7 +92,9 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record for detected Product Repository changes that are not yet matched to a Core run or other owner-defined record. |
 | `state.sqlite` | `session_watch_baselines` | Session watch baseline | Project-scoped session watch status and baseline snapshot for a registered Product Repository or watched path set, including effective exclusions, snapshot digest metadata, and compact snapshot entries. |
 | `state.sqlite` | `session_watch_observations` | Session watch observation | Project-scoped detective observation derived from comparing a later safe snapshot to a baseline, with observed changed paths, optional expected-write or write-ticket correlation, and optional link to an existing unrecorded-change row. |
-| `state.sqlite` | `tasks` | Work-unit state | User-value work unit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal close summary, current `CompletionPolicy`, current Change Unit pointer, and creator actor source. |
+| `state.sqlite` | `tasks` | Work-unit state | User-value work unit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal close summary, current Change Unit pointer, and creator actor source. |
+| `state.sqlite` | `acceptance_criteria` | Acceptance criterion | Core-generated criterion identity, owning `Task`, statement, evidence requirement, replacement order, active/retired state, and timestamps. |
+| `state.sqlite` | `evidence_claims` | Supplemental evidence claim | Caller-assigned `Task`-scoped claim identity with one immutable non-empty statement. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
 | `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, and expired user-owned judgments, including basis snapshot, request context, options, sensitive-action scope, resolution machine action and outcome, rationale metadata, User Channel actor source, verification basis, and assurance level. |
 | `state.sqlite` | Local web consent token | User Channel fallback token | Hash-only one-time token metadata for a pending user judgment, scoped by project, connection, judgment, capture basis, status, expiration, and creation/completion metadata. |
@@ -103,7 +105,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
 | `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
-| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one reported or observed evidence claim, including source kind, assurance level, observer actor source, tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and timestamps. |
+| `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for exactly one acceptance-criterion or supplemental-claim target, including source kind, assurance level, observer actor source, tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and timestamps. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
 | `state.sqlite` | `tool_invocations` | Replay row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including actor source and operation category. |
@@ -123,6 +125,9 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - Project-scoped rows belong to a registered project.
 - Agent Sessions, host-hook events, prompt captures, expected writes, unrecorded changes, session watch baselines, and session watch observations belong to one project-local `state.sqlite` and name the Agent Connection that observed or produced the record.
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.
+- An `AcceptanceCriterionId` is Core-generated and project-unique. Its composite same-Task key supports target foreign keys; once a criterion is retired, the row remains retired and is not reused as an active identity.
+- An `EvidenceClaimId` is caller-assigned and unique only within its owning `Task`. The same spelling may exist independently in another `Task`, while the statement for an existing same-Task ID is immutable.
+- Each evidence observation names exactly one same-Task acceptance criterion or supplemental evidence claim. The two target columns cannot both be null or both be populated.
 - Current pointers and owner references must point to same-project records.
 - A `Task` has at most one current Change Unit.
 - Single-use relations such as consumed write-ticket rows, consumed staging handles, promoted staged artifacts, artifact owner links, and replay keys must not fork into multiple committed meanings.
@@ -283,7 +288,7 @@ Rules:
 | `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-judgment reference; it must not store full sensitive command or prompt content. |
 | `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
 | `session_watch_observations` | Observed changed path arrays, compact change-summary JSON, snapshot entry arrays, and metadata for a session watch observation. Snapshot and change summaries do not prove actor identity, intent, product correctness, or close readiness. |
-| `tasks` | Shaping summary, bounded lists, autonomy boundary, current close basis, terminal close summary, lifecycle summary, and `CompletionPolicy`. |
+| `tasks` | Shaping summary, bounded lists, autonomy boundary, current close basis, terminal close summary, and lifecycle summary. Acceptance criteria and supplemental evidence claims use their canonical relational tables instead of Task JSON. |
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |
 | `user_judgments` | Judgment request, context, options, affected refs, artifact refs, basis snapshot, sensitive-action scope, machine-readable resolution, and descriptive rationale metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |

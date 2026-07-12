@@ -589,7 +589,7 @@ fn record_run_artifact_input_source_uses_public_value_set() -> Result<(), Box<dy
             "staged_artifact_handle": null,
             "existing_artifact_ref": null,
             "relation_hint": null,
-            "claim": null,
+            "evidence_target": null,
             "expected_sha256": null,
             "expected_size_bytes": null,
             "redaction_state": null
@@ -627,7 +627,10 @@ fn record_run_invalid_evidence_observation_reports_expected_shape() -> Result<()
     )?;
     arguments["evidence_observations"] = json!([
         {
-            "claim": "Verified behavior."
+            "target": {
+                "target_kind": "acceptance_criterion",
+                "acceptance_criterion_id": "criterion_missing_fields_001"
+            }
         }
     ]);
 
@@ -652,7 +655,7 @@ fn record_run_evidence_example_expands_nested_omission_defaults() -> Result<(), 
     let decoded = decode_mcp_arguments_to_value(RECORD_RUN_TOOL_NAME, arguments)?;
 
     let coverage = &decoded["evidence_updates"][0];
-    assert_eq!(coverage["supporting_refs"], json!([]));
+    assert_eq!(coverage["supporting_run_refs"], json!([]));
     assert_eq!(coverage["observation_refs"], json!([]));
     assert_eq!(coverage["supporting_artifact_refs"], json!([]));
     assert_eq!(coverage["gap_refs"], json!([]));
@@ -1803,7 +1806,10 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
                 "initial_scope": {
                     "boundary": "Read-only rejection.",
                     "non_goals": [],
-                    "acceptance_criteria": ["No Core mutation occurs."]
+                    "acceptance_criteria": [{
+                        "statement": "No Core mutation occurs.",
+                        "evidence_requirement": "required"
+                    }]
                 },
                 "initial_context_refs": []
             }),
@@ -3316,7 +3322,10 @@ fn create_task(adapter: &McpAdapter) -> Result<(String, u64), Box<dyn Error>> {
             "initial_scope": {
                 "boundary": "User Channel test task.",
                 "non_goals": ["Changing unrelated behavior."],
-                "acceptance_criteria": ["A pending judgment can be requested."]
+                "acceptance_criteria": [{
+                    "statement": "A pending judgment can be requested.",
+                    "evidence_requirement": "required"
+                }]
             },
             "initial_context_refs": []
         }),
@@ -3454,7 +3463,10 @@ fn intake_args(project_selector: Option<&str>) -> Value {
         "initial_scope": {
             "boundary": "MCP lifecycle gating test.",
             "non_goals": ["Changing Core method behavior."],
-            "acceptance_criteria": ["tools/call is gated until notifications/initialized."]
+            "acceptance_criteria": [{
+                "statement": "tools/call is gated until notifications/initialized.",
+                "evidence_requirement": "required"
+            }]
         },
         "initial_context_refs": []
     });

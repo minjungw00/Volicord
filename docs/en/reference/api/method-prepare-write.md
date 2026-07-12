@@ -293,7 +293,9 @@ state:
   non_goals:
     - "Changing account deletion."
   acceptance_criteria:
-    - "Profile preferences save successfully with related tests."
+    - acceptance_criterion_id: criterion_profile_save_001
+      statement: "Profile preferences save successfully with related tests."
+      evidence_requirement: not_required
   autonomy_boundary: "Stay within the profile preference save flow."
   active_change_unit_ref:
     record_kind: change_unit

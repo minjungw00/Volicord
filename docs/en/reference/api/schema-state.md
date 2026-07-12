@@ -138,7 +138,7 @@ StateSummary:
   goal_summary: string | null
   scope_summary: string | null
   non_goals: string[]
-  acceptance_criteria: string[]
+  acceptance_criteria: AcceptanceCriterion[]
   autonomy_boundary: string | null
   active_change_unit_ref: StateRecordRef | null
   effect_contract: ChangeUnitEffectContract | null
@@ -158,7 +158,10 @@ Meaning:
 - `StateSummary` is a compact response shape for state references, summaries, and close-readiness fields.
 - Method include flags may select only part of this shape. When a method owner says a projection is not selected, include-controlled fields such as `evidence_summary`, `close_state`, `close_blockers`, `guard_health`, or `guarantee_display` are omitted instead of being returned as null or empty. A returned empty array means the projection was computed and found empty.
 - `mode` and `close_state` are controlled value strings when present.
-- `goal_summary`, `scope_summary`, `non_goals`, `acceptance_criteria`, and `autonomy_boundary` are free-form display strings.
+- `goal_summary`, `scope_summary`, `non_goals`, and `autonomy_boundary` are
+  free-form display strings. `acceptance_criteria` contains the current
+  canonical criterion records for the Task; retired criteria are not projected
+  as current criteria.
 - `effect_contract` is the current Change Unit's optional extra effect contract. `null` means no extra Change Unit effect contract is recorded; it must not be described as broad safety or unrestricted execution.
 - `baseline_ref` is an opaque baseline identifier.
 - `pending_user_judgment_refs` lists current pending judgments relevant to the response view. A pending judgment is operation-blocking only when its `required_for` target, judgment kind, Task, Change Unit, affected refs, and basis are compatible with that operation.
@@ -648,25 +651,47 @@ Owner links:
 ## Evidence and run snapshot shapes
 
 ```yaml
+AcceptanceCriterionInput:
+  statement: string
+  evidence_requirement: string
+
+AcceptanceCriterionReplacement:
+  acceptance_criterion_id: string | null
+  statement: string
+  evidence_requirement: string
+
+AcceptanceCriterion:
+  acceptance_criterion_id: string
+  statement: string
+  evidence_requirement: string
+
+EvidenceTarget:
+  target_kind: acceptance_criterion | supplemental_claim
+  acceptance_criterion_id: string  # acceptance_criterion only
+  evidence_claim_id: string        # supplemental_claim only
+  statement: string                # supplemental_claim only
+
 EvidenceSummary:
   evidence_state: string
   status: string
-  completion_policy: CompletionPolicy
   coverage_items: EvidenceCoverageItem[]
   artifact_refs: ArtifactRef[]
   observation_refs: StateRecordRef[]
   updated_by_run_ref: StateRecordRef | null
 
-CompletionPolicy:
-  evidence_required: boolean
-  required_claims: string[]
-
 EvidenceCoverageItem:
-  claim: string
-  required_for_close: boolean
+  target: EvidenceTarget
+  coverage_state: string
+  supporting_run_refs: StateRecordRef[]
+  observation_refs: StateRecordRef[]
+  supporting_artifact_refs: ArtifactRef[]
+  gap_refs: StateRecordRef[]
+
+EvidenceCoverageUpdate:
+  target: EvidenceTarget
   coverage_state: string
   provenance: EvidenceUpdateProvenance | null
-  supporting_refs: StateRecordRef[]
+  supporting_run_refs: StateRecordRef[]
   observation_refs: StateRecordRef[]
   supporting_artifact_refs: ArtifactRef[]
   gap_refs: StateRecordRef[]
@@ -687,7 +712,7 @@ EvidenceObservation:
   task_id: string
   change_unit_id: string | null
   run_ref: StateRecordRef | null
-  claim: string
+  target: EvidenceTarget
   source_kind: string
   assurance_level: string
   observed_by_actor_source: string | null
@@ -702,7 +727,7 @@ EvidenceObservation:
   recorded_at: string
 
 EvidenceObservationInput:
-  claim: string
+  target: EvidenceTarget
   source_kind: string
   assurance_level: string
   observed_by_actor_source: string | null
@@ -730,14 +755,44 @@ ObservedChanges:
 ```
 
 Meaning:
+- `AcceptanceCriterionInput` is used by intake and never accepts an ID.
+  `AcceptanceCriterionReplacement` is used only in a non-null update-scope
+  replacement set. A same-Task current ID preserves identity, `null` requests a
+  new Core-generated ID, and omission from the replacement set retires the
+  previous current criterion. Unknown, retired, cross-Task, and duplicate IDs
+  are invalid.
+- `AcceptanceCriterion.acceptance_criterion_id` is an opaque Core-generated
+  identifier. Its `statement` is display text, while `evidence_requirement`
+  selects `required`, `optional`, or `not_required`.
+- `EvidenceTarget` is a strict tagged union. The `acceptance_criterion` variant
+  contains only `acceptance_criterion_id`. The `supplemental_claim` variant
+  contains caller-assigned Task-scoped `evidence_claim_id` and a non-empty
+  immutable `statement`. Variant fields must not be mixed.
 - `EvidenceSummary.evidence_state`, when present, is an evidence display state. It is omitted for coverage-gap summaries that do not yet have attached evidence or a current close-basis evidence ref.
-- `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`, `EvidenceUpdateProvenance.source_kind`, `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`, `EvidenceObservation.assurance_level`, `EvidenceObservationInput.source_kind`, `EvidenceObservationInput.assurance_level`, and `RunSummary.kind` are controlled value strings.
-- `CompletionPolicy.required_claims`, `EvidenceCoverageItem.claim`, `EvidenceObservation.claim`, `EvidenceObservationInput.claim`, and `RunSummary.summary` are free-form claim or display strings.
-- `EvidenceCoverageItem.provenance` is optional on request input and is omitted from committed evidence summaries after Core creates or links the corresponding `EvidenceObservation`. A supported evidence update for a close-relevant claim must have a matching observation input, a usable observation ref, or this provenance object so Core can create an observation.
-- `EvidenceSummary.observation_refs` and `EvidenceCoverageItem.observation_refs` list `StateRecordRef` values for committed evidence observations that Core relates to the summary or claim.
-- `EvidenceObservation` is a durable provenance record for one reported or observed evidence claim. It records source, assurance, observer actor source, optional tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and observation timestamps.
+- `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`,
+  `EvidenceCoverageUpdate.coverage_state`, `EvidenceUpdateProvenance.source_kind`,
+  `EvidenceUpdateProvenance.assurance_level`, `EvidenceObservation.source_kind`,
+  `EvidenceObservation.assurance_level`, `EvidenceObservationInput.source_kind`,
+  `EvidenceObservationInput.assurance_level`, and `RunSummary.kind` are
+  controlled value strings.
+- `RunSummary.summary`, acceptance-criterion statements, and supplemental claim
+  statements are free-form display strings. They are never evidence identity.
+- `EvidenceCoverageUpdate.provenance` is optional on request input and is
+  omitted from committed `EvidenceCoverageItem` values after Core creates or
+  links the corresponding target-matching `EvidenceObservation`. A supported
+  update must have a target-matching observation input, a usable
+  target-matching observation ref, or this provenance object.
+- `supporting_run_refs` accepts same-Task Run refs. `observation_refs`,
+  `supporting_artifact_refs`, and `gap_refs` preserve target-specific
+  observation, artifact, and gap relations.
+- `EvidenceSummary.observation_refs` and `EvidenceCoverageItem.observation_refs` list `StateRecordRef` values for committed evidence observations that Core relates to the summary or target.
+- `EvidenceObservation` is a durable provenance record for one evidence target. It records source, assurance, observer actor source, optional tool metadata, Core-record input refs, non-authoritative source refs, output artifact refs, limitations, and observation timestamps.
 - `source_refs` uses `SourceRef`. `input_refs` remains a separate `StateRecordRef[]`; a source ref never becomes a Core state ref or close-basis result ref.
 - `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, and `recorded_at` when it commits.
+- Only coverage for a current criterion with
+  `evidence_requirement=required` participates in close authority. Required
+  criteria reject `coverage_state=not_applicable`; optional, `not_required`,
+  supplemental, and retired targets remain non-authoritative for close.
 - `observed_by_actor_source`, when present, must be an `ActorSource` value. When it is null in an observation input, Core may fill it from the verified invocation context.
 - `source_kind` and `assurance_level` describe provenance and observation assurance. They do not by themselves prove product correctness, grant user authority, satisfy final acceptance, satisfy residual-risk acceptance, or raise `GuaranteeDisplay.level`.
 - `user_observation` records a user-attributed observation, not final acceptance or any other authority-bearing user judgment.

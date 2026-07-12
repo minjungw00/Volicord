@@ -66,11 +66,13 @@
     },
     "volicord.intake": {
       "definitions": [
+        "AcceptanceCriterionInput",
         "ActorSource",
         "ArtifactAvailability",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
         "CommandSource",
+        "EvidenceRequirement",
         "ExternalUriSource",
         "GitCommitSource",
         "GitDiffSource",
@@ -105,7 +107,7 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:ac37d593b7149479bd791592ea117df7dab62e02dd96f0e6041de0a429c3609e"
+      "sha256": "sha256:5382ee38ac687327232a1654bc3e59288d04e06a6eed4b209f48572bfd54da31"
     },
     "volicord.prepare_write": {
       "definitions": [
@@ -161,10 +163,11 @@
         "CloseAssessmentInput",
         "CommandSource",
         "EvidenceAssuranceLevel",
-        "EvidenceCoverageItem",
-        "EvidenceCoverageState",
+        "EvidenceCoverageUpdate",
+        "EvidenceCoverageUpdateState",
         "EvidenceObservationInput",
         "EvidenceSourceKind",
+        "EvidenceTarget",
         "EvidenceUpdateProvenance",
         "ExternalUriSource",
         "GitCommitSource",
@@ -213,7 +216,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:aca29228be1aebe5fb9151a8aad77fb983a20114833c003a6effb3f6e708bcad"
+      "sha256": "sha256:b976809a8e54b29212772bb1ade7b1392f7934e184d3bf0c2b5a22157195a236"
     },
     "volicord.record_user_judgment": {
       "definitions": [
@@ -347,10 +350,12 @@
     },
     "volicord.update_scope": {
       "definitions": [
+        "AcceptanceCriterionReplacement",
         "ChangeUnitEffectContract",
         "ChangeUnitEffectKind",
         "ChangeUnitOperation",
         "ChangeUnitUpdate",
+        "EvidenceRequirement",
         "ScopeUpdate",
         "StateRecordKind",
         "StateRecordRef",
@@ -382,7 +387,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:07bb1a9272f1504f5c5c88ee8667d26bb202f5825a5dfe29388e374d2392fd64"
+      "sha256": "sha256:44216356456d8d7d37801cf8c063d97dafe2e9c2e09dd3a83f8b3a4b3aa2b69d"
     }
   }
 }

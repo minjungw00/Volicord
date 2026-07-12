@@ -17,11 +17,11 @@ use volicord_test_support::core_fixtures::{
     TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
 };
 use volicord_types::{
-    ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, ArtifactRef,
-    ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind, ErrorCode,
-    JudgmentKind, OperationCategory, ProjectId, ResidualRiskInput, ResponseKind, RunId,
-    StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, UtcTimestamp,
-    WriteTicketId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AcceptanceCriterionId, ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind,
+    ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind,
+    ErrorCode, EvidenceClaimId, EvidenceTarget, JudgmentKind, OperationCategory, ProjectId,
+    ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef,
+    StatusRequest, UtcTimestamp, WriteTicketId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 #[test]
@@ -855,13 +855,21 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
         &task_id,
         &change_unit_id,
     );
-    run.artifact_inputs = vec![artifact_input_for_handle(
+    let acceptance_criterion_id = require_active_acceptance_criterion(&artifact_fixture, &task_id)?;
+    let evidence_target = EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id,
+    };
+    let mut artifact_input = artifact_input_for_handle(
         "artifact_input_close",
         staged,
         Some("validation_report"),
         Some("Close claim supported."),
-    )];
-    run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
+    );
+    artifact_input.evidence_target = Some(evidence_target.clone()).into();
+    run.artifact_inputs = vec![artifact_input];
+    let mut evidence_update = supported_evidence_update("Close claim supported.");
+    evidence_update.target = evidence_target;
+    run.evidence_updates = vec![evidence_update];
     run.close_assessment = Some(CloseAssessmentInput {
         result_summary: "Close claim supported by an artifact.".to_owned(),
         result_refs: Vec::new(),
@@ -1123,48 +1131,6 @@ fn public_error_precedence_keeps_validation_primary() {
 
 #[test]
 fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("corrupt_completion")?;
-    let service = core(&fixture);
-    let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_completion")?;
-    fixture.set_task_owner_json_raw(
-        &task_id,
-        TaskOwnerJsonColumn::CompletionPolicy,
-        "{not valid json",
-    )?;
-    let before = fixture.counts()?;
-
-    let check = service.check_close(
-        fixture.check_close_request(CloseTaskFixture {
-            request_id: "req_corrupt_completion_check",
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }),
-        invocation(&fixture, OperationCategory::Read),
-    )?;
-    assert_owner_state_unavailable(&check.response_value, "tasks", "completion_policy_json");
-    assert_eq!(fixture.counts()?, before);
-
-    let complete = service.close_task(
-        fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_corrupt_completion_complete",
-            idempotency_key: Some("idem_corrupt_completion_complete"),
-            dry_run: false,
-            expected_state_version: Some(before.state_version),
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(CloseReason::CompletedSelfChecked),
-            superseding_task_id: None,
-        }),
-        invocation(&fixture, OperationCategory::AgentWorkflow),
-    )?;
-    assert_owner_state_unavailable(&complete.response_value, "tasks", "completion_policy_json");
-    assert_eq!(fixture.counts()?, before);
-
     let fixture = CoreFixture::new("corrupt_close_summary")?;
     let service = core(&fixture);
     let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_close_summary")?;
@@ -3168,13 +3134,21 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         &task_id,
         &change_unit_id,
     );
-    run.artifact_inputs = vec![artifact_input_for_handle(
+    let acceptance_criterion_id = require_active_acceptance_criterion(&corrupt_fixture, &task_id)?;
+    let evidence_target = EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id,
+    };
+    let mut artifact_input = artifact_input_for_handle(
         "artifact_input_corrupt",
         staged,
         Some("validation_report"),
         Some("Corrupt integrity evidence."),
-    )];
-    run.evidence_updates = vec![supported_evidence_update("Corrupt integrity evidence.")];
+    );
+    artifact_input.evidence_target = Some(evidence_target.clone()).into();
+    run.artifact_inputs = vec![artifact_input];
+    let mut evidence_update = supported_evidence_update("Corrupt integrity evidence.");
+    evidence_update.target = evidence_target;
+    run.evidence_updates = vec![evidence_update];
     run.close_assessment = Some(CloseAssessmentInput {
         result_summary: "Corrupt integrity evidence.".to_owned(),
         result_refs: Vec::new(),
@@ -3970,11 +3944,16 @@ fn record_close_evidence(
         task_id,
         change_unit_id,
     );
-    request.evidence_updates = vec![if supported {
+    let acceptance_criterion_id = require_active_acceptance_criterion(fixture, task_id)?;
+    let mut evidence_update = if supported {
         supported_evidence_update("Close claim supported.")
     } else {
         unsupported_evidence_update("Close claim supported.")
-    }];
+    };
+    evidence_update.target = EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id,
+    };
+    request.evidence_updates = vec![evidence_update];
     request.close_assessment = Some(CloseAssessmentInput {
         result_summary: "Close claim supported.".to_owned(),
         result_refs: Vec::new(),
@@ -3990,6 +3969,38 @@ fn record_close_evidence(
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state version should be present"))
+}
+
+fn require_active_acceptance_criterion(
+    fixture: &CoreFixture,
+    task_id: &str,
+) -> Result<AcceptanceCriterionId, Box<dyn Error>> {
+    let conn = fixture.conn()?;
+    let acceptance_criterion_id: String = conn.query_row(
+        "SELECT acceptance_criterion_id
+           FROM acceptance_criteria
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'active'
+          ORDER BY position
+          LIMIT 1",
+        [fixture.project_id(), task_id],
+        |row| row.get(0),
+    )?;
+    conn.execute(
+        "UPDATE acceptance_criteria
+            SET evidence_requirement = 'required'
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND acceptance_criterion_id = ?3
+            AND status = 'active'",
+        [
+            fixture.project_id(),
+            task_id,
+            acceptance_criterion_id.as_str(),
+        ],
+    )?;
+    Ok(AcceptanceCriterionId::new(acceptance_criterion_id))
 }
 
 fn record_final_acceptance(
@@ -4453,7 +4464,11 @@ fn existing_artifact_input(artifact_input_id: &str, artifact_ref: ArtifactRef) -
         staged_artifact_handle: None.into(),
         existing_artifact_ref: Some(artifact_ref).into(),
         relation_hint: Some("validation_report".to_owned()).into(),
-        claim: Some("Reused artifact for corruption coverage.".to_owned()).into(),
+        evidence_target: Some(EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: EvidenceClaimId::new("claim_reused_corruption_coverage"),
+            statement: "Reused artifact for corruption coverage.".to_owned(),
+        })
+        .into(),
         expected_sha256: expected_sha256.into(),
         expected_size_bytes: expected_size_bytes.into(),
         redaction_state: Some(redaction_state).into(),

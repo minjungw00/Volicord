@@ -219,6 +219,7 @@ fn status_result_fields(
                 state_version,
                 task,
                 current_change_unit: current_change_unit.as_ref(),
+                acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
                 pending_user_judgment_refs: all_pending_user_judgments,
                 blocker_refs: blocker_refs.clone(),
                 write_ticket_summary: projected_write_ticket,

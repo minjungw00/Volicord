@@ -293,7 +293,9 @@ state:
   non_goals:
     - "계정 삭제 방식 변경."
   acceptance_criteria:
-    - "관련 테스트와 함께 프로필 환경설정이 정상적으로 저장됩니다."
+    - acceptance_criterion_id: criterion_profile_save_001
+      statement: "관련 테스트와 함께 프로필 환경설정이 정상적으로 저장됩니다."
+      evidence_requirement: not_required
   autonomy_boundary: "프로필 환경설정 저장 흐름만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit

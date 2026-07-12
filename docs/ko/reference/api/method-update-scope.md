@@ -38,6 +38,12 @@
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `task_id`.
 - 바꿀 범위 필드. 포함/제외 방식으로 범위를 갱신할 때는 `scope_update.include`에 범위에 포함할 제품 작업을, `scope_update.exclude`에 범위에서 제외할 제품 동작을 둡니다. `null`은 기존 값을 유지한다는 뜻이고, 빈 배열은 그 목록을 빈 목록으로 교체합니다.
+- `acceptance_criteria=null`은 정규 기준 집합을 그대로 둡니다. null이 아닌
+  배열은 전체 교체 집합입니다. 현재 같은 `Task` ID는 기준 identity를
+  유지하면서 문장이나 `evidence_requirement`를 갱신할 수 있습니다. 이는 새
+  identity 생성이 아니라 같은 기준의 갱신입니다. null ID는 Core가 새 ID를 만들도록 요청하며, 빠진 현재 기준은
+  폐기됩니다. 알 수 없거나, 폐기되었거나, 다른 `Task`에 속하거나, 중복된
+  ID는 커밋 전에 거절합니다.
 - `change_unit.operation`과 그 작업에 필요한 필드. 지원되는 작업 값과 그 의미는 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다.
 - 현재 적용 Change Unit을 만들거나 교체할 때 선택적으로 쓰는 `change_unit.effect_contract`. 값이 있으면 `ChangeUnitEffectContract`를 사용합니다. 생략하면 그 Change Unit에는 추가 효과 계약이 없습니다.
 - 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
@@ -58,7 +64,7 @@ UpdateScopeRequest:
   scope_update: object | null
   scope_boundary: string | null
   non_goals: string[] | null
-  acceptance_criteria: string[] | null
+  acceptance_criteria: AcceptanceCriterionReplacement[] | null
   autonomy_boundary: string | null
   baseline_ref: string | null
   change_unit: object
@@ -66,6 +72,8 @@ UpdateScopeRequest:
 ```
 
 중첩 형태 담당 문서:
+- `acceptance_criteria`는 `AcceptanceCriterionReplacement[]`을 사용합니다.
+  중첩 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다.
 - `related_scope_decision_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#state-references)가 담당합니다.
 - `change_unit.operation` 값은 [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.
 - `change_unit.effect_contract`가 있으면 `ChangeUnitEffectContract`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#changeuniteffectcontract)가 담당합니다.
@@ -81,6 +89,11 @@ UpdateScopeRequest:
 ## 상태 버전 동작
 
 커밋된 `dry_run`이 아닌 결과는 `project_state.state_version`을 정확히 한 번 올립니다.
+
+기준 문장이나 `evidence_requirement`의 실질적 변경은 `Task` 범위 리비전을
+증가시킵니다. 유지된 `AcceptanceCriterionId`가 같더라도 이전 범위에서 기록한
+증거 범위는 `stale`로 표시됩니다. 대상 identity가 현재라는 사실만으로 이전
+범위 증거가 현재 상태가 되지는 않습니다.
 
 기준이 아래 항목과 더 이상 맞지 않으면 Core는 `status=active`인 쓰기 티켓을 `status=stale`로 표시합니다.
 
@@ -201,7 +214,9 @@ params:
   non_goals:
     - "검색 색인 동작."
   acceptance_criteria:
-    - "저장 필터는 담당자와 라벨 이외의 필드 변경을 거부합니다."
+    - acceptance_criterion_id: null
+      statement: "저장 필터는 담당자와 라벨 이외의 필드 변경을 거부합니다."
+      evidence_requirement: required
   autonomy_boundary: "저장 필터 편집 검증과 관련 테스트만 다룹니다."
   baseline_ref: baseline_filter_001
   change_unit:
@@ -267,7 +282,9 @@ state:
   non_goals:
     - "검색 색인 동작."
   acceptance_criteria:
-    - "저장 필터는 담당자와 라벨 이외의 필드 변경을 거부합니다."
+    - acceptance_criterion_id: criterion_filter_001
+      statement: "저장 필터는 담당자와 라벨 이외의 필드 변경을 거부합니다."
+      evidence_requirement: required
   autonomy_boundary: "저장 필터 편집 검증과 관련 테스트만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit

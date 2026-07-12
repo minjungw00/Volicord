@@ -37,7 +37,14 @@ The current persisted `Task.mode` and requested `kind` must match this exhaustiv
 
 Core rejects an incompatible pair before commit. An `advisor` Run is read-only with respect to Product Repository file effects and additionally requires `observed_changes.product_file_write_observed=false`, `observed_changes.changed_paths=[]`, and `write_ticket_id=null`. A compatible `shaping_update` remains a committed Core mutation that records the Run and any method-owned evidence state.
 
-The method may also update the current close basis, update compact claim-scoped evidence coverage, record evidence observations for reported or observed claims, consume a compatible write ticket when recording a product write, link existing Evidence attachments, and promote eligible staged attachment inputs to persistent `ArtifactRef` records where allowed. Input-only or staged-only items are not accepted Evidence and do not establish close readiness until this method records the claim, provenance, and any attachment link or promotion according to the evidence rules below.
+The method may also update the current close basis, update compact
+target-scoped evidence coverage, record evidence observations for stable
+criterion or supplemental-claim targets, consume a compatible write ticket
+when recording a product write, link existing Evidence attachments, and promote
+eligible staged attachment inputs to persistent `ArtifactRef` records where
+allowed. Input-only or staged-only items are not accepted Evidence and do not
+establish close readiness until this method records the target, provenance, and
+any attachment link or promotion according to the evidence rules below.
 
 ## Required inputs
 
@@ -45,7 +52,14 @@ The method may also update the current close basis, update compact claim-scoped 
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
 - Product-write runs require a compatible `status=active` write ticket from `volicord.prepare_write`.
 - New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes. The handle remains an Evidence attachment input until accepted in a committed run result.
-- A supported evidence update must be backed by a same-claim `EvidenceObservationInput`, a usable same-claim evidence observation ref, or `EvidenceCoverageItem.provenance` from which Core can create an evidence observation with explicit `source_kind` and `assurance_level`.
+- A supported evidence update must be backed by a target-matching
+  `EvidenceObservationInput`, a usable target-matching evidence observation ref,
+  or `EvidenceCoverageUpdate.provenance` from which Core can create an evidence
+  observation with explicit `source_kind` and `assurance_level`.
+- Acceptance-criterion targets must identify a current criterion for this Task.
+  Supplemental targets use a caller-assigned Task-scoped `EvidenceClaimId`; its
+  statement becomes immutable on first committed use. A required criterion
+  rejects `coverage_state=not_applicable`.
 
 ## Request schema
 
@@ -65,7 +79,7 @@ RecordRunRequest:
   summary: string
   observed_changes: ObservedChanges
   artifact_inputs: ArtifactInput[]
-  evidence_updates: EvidenceCoverageItem[]
+  evidence_updates: EvidenceCoverageUpdate[]
   evidence_observations: EvidenceObservationInput[]
   close_assessment: CloseAssessmentInput | null
 
@@ -84,7 +98,9 @@ ResidualRiskInput:
 ```
 
 Nested owner links:
-- `observed_changes`, `evidence_updates`, and `evidence_observations` use `ObservedChanges`, `EvidenceCoverageItem`, and `EvidenceObservationInput`; those shapes are owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes).
+- `observed_changes`, `evidence_updates`, and `evidence_observations` use
+  `ObservedChanges`, `EvidenceCoverageUpdate`, and `EvidenceObservationInput`;
+  those shapes are owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes).
 - `close_assessment.result_refs` and `ResidualRiskInput.source_refs` use `StateRecordRef`, owned by [API State Schemas](schema-state.md#state-references).
 - `CurrentCloseBasis` and committed `ResidualRisk` output shapes are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). `ResidualRiskInput` has no caller-authoritative `risk_id`; Core generates opaque `risk_id` values when committing a new current close basis.
 - `artifact_inputs` uses `ArtifactInput[]`; `ArtifactInput`, `StagedArtifactHandle`, and `ArtifactRef` shapes are owned by [API Artifact Schemas](schema-artifacts.md#artifactinput).
@@ -93,7 +109,11 @@ Nested owner links:
 Path and access notes:
 - `observed_changes.changed_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - `ArtifactInput[]` and staged handles do not create a second request-level operation category or actor source; the invocation remains the one in the verified invocation context.
-- `ArtifactInput[]` members are Evidence attachment inputs. They support Evidence only when this method links them to recorded claim-scoped evidence or observations; their presence in the request is not evidence sufficiency.
+- `ArtifactInput[]` members are Evidence attachment inputs. Their optional
+  `evidence_target` uses the same tagged target identity as coverage and
+  observations. They support Evidence only when this method links them to
+  target-scoped evidence or observations; their presence in the request is not
+  evidence sufficiency.
 - `EvidenceObservationInput.source_refs` and `EvidenceUpdateProvenance.source_refs` preserve structurally validated, non-authoritative provenance. Core performs no file read, Git resolution, command execution, URI fetch, or message lookup for these refs. Optional command or Git-diff artifact refs must canonicalize to an existing artifact owned by this project and Task. Source refs never establish evidence sufficiency or close authority.
 
 Close-assessment ref rules:
@@ -106,8 +126,22 @@ Close-assessment ref rules:
 
 Evidence update provenance rules:
 - `coverage_state=supported` is a claim about coverage, not sufficient provenance by itself.
-- When `EvidenceCoverageItem.provenance` is supplied for a supported item and no explicit same-claim observation input is supplied, Core creates an `EvidenceObservation` for the current Run and links its ref into the committed evidence summary.
-- Committed evidence observations keep the explicit provenance class through `source_kind` and `assurance_level`, including `agent_report`, `connection_observation`, `external_tool`, `user_observation`, and `unverified_claim`.
+- When `EvidenceCoverageUpdate.provenance` is supplied for a supported item and
+  no explicit target-matching observation input is supplied, Core creates an
+  `EvidenceObservation` for the current Run and links its ref into the committed
+  evidence summary.
+- When a supported update relies only on strong, usable target-matching
+  `observation_refs`, Core records a current-Run `source_kind=reused_evidence`
+  observation. Its `input_refs` retain each original observation ref, so the
+  historical observation is a provenance input rather than being relabeled as
+  current. The reuse observation carries artifact outputs named by the current
+  update and a reuse limitation; it does not silently copy the original
+  observation's artifact outputs or limitations, which remain reachable through
+  the retained input ref.
+- For non-supported states, current target-matching cooperative or unverified
+  observation refs may be retained as descriptive support; the strong-reuse
+  requirement applies only when refs are used to establish `supported`.
+- Committed evidence observations keep the explicit provenance class through `source_kind` and `assurance_level`, including `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, and `unverified_claim`.
 - `unverified_claim`, `unverified`, and cooperative `agent_report` observations may be recorded as evidence observations, but close readiness evaluates them as weak provenance when stronger provenance is required.
 - Evidence observations do not replace user-owned judgment, final acceptance, residual-risk acceptance, or close readiness.
 
@@ -327,20 +361,25 @@ params:
         consumed: false
       existing_artifact_ref: null
       relation_hint: "validation_report"
-      claim: "Search-result count validation passed."
+      evidence_target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       expected_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       expected_size_bytes: 96
       redaction_state: none
   evidence_updates:
-    - claim: "Search-result count validation passed."
-      required_for_close: true
+    - target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       coverage_state: supported
-      supporting_refs: []
+      supporting_run_refs: []
       observation_refs: []
       supporting_artifact_refs: []
       gap_refs: []
   evidence_observations:
-    - claim: "Search-result count validation passed."
+    - target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       source_kind: external_tool
       assurance_level: external_tool_result
       observed_by_actor_source: agent_connection:conn_run_probe
@@ -429,15 +468,12 @@ registered_artifacts:
 evidence_summary:
   evidence_state: accepted_for_close
   status: sufficient
-  completion_policy:
-    evidence_required: true
-    required_claims:
-      - "Search-result count validation passed."
   coverage_items:
-    - claim: "Search-result count validation passed."
-      required_for_close: true
+    - target:
+        target_kind: acceptance_criterion
+        acceptance_criterion_id: criterion_runprobe_count_001
       coverage_state: supported
-      supporting_refs:
+      supporting_run_refs:
         - record_kind: run
           record_id: run_runprobe_001
           project_id: proj_runprobe_001
@@ -511,7 +547,9 @@ evidence_observations:
       project_id: proj_runprobe_001
       task_id: task_runprobe_001
       produced_at_state_version: 32
-    claim: "Search-result count validation passed."
+    target:
+      target_kind: acceptance_criterion
+      acceptance_criterion_id: criterion_runprobe_count_001
     source_kind: external_tool
     assurance_level: external_tool_result
     observed_by_actor_source: agent_connection:conn_run_probe
@@ -604,7 +642,9 @@ state:
   non_goals:
     - "Changing search ranking."
   acceptance_criteria:
-    - "Search results show the expected count."
+    - acceptance_criterion_id: criterion_runprobe_count_001
+      statement: "Search results show the expected count."
+      evidence_requirement: required
   autonomy_boundary: "Stay within validation recording for search-result counts."
   active_change_unit_ref:
     record_kind: change_unit

@@ -80,7 +80,7 @@ impl CoreService {
 
 struct RecordRunArtifactPlan {
     artifact_ref: ArtifactRef,
-    claim: Option<String>,
+    evidence_target: Option<EvidenceTarget>,
     source_mutation: Option<CoreStorageMutation>,
     run_link: CoreStorageMutation,
 }
@@ -109,11 +109,165 @@ fn task_mode_allows_run_kind(task_mode: TaskMode, run_kind: RunKind) -> bool {
     }
 }
 
+fn normalize_record_run_evidence_targets(request: &mut RecordRunRequest) {
+    for update in &mut request.evidence_updates {
+        normalize_evidence_target(&mut update.target);
+    }
+    for observation in &mut request.evidence_observations {
+        normalize_evidence_target(&mut observation.target);
+    }
+    for artifact in &mut request.artifact_inputs {
+        if let Some(target) = artifact.evidence_target.as_mut() {
+            normalize_evidence_target(target);
+        }
+    }
+}
+
+fn normalize_evidence_target(target: &mut EvidenceTarget) {
+    if let EvidenceTarget::SupplementalClaim { statement, .. } = target {
+        *statement = normalize_display_text(statement);
+    }
+}
+
+fn validate_record_run_evidence_targets(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    request: &RecordRunRequest,
+) -> Result<Vec<CoreStorageMutation>, PlanError> {
+    let mut supplemental = BTreeMap::<String, String>::new();
+    let mut validate_target = |target: &EvidenceTarget, field: &'static str| {
+        match target {
+            EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id,
+            } => {
+                if acceptance_criterion_id.as_str().trim().is_empty() {
+                    return validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        field,
+                        "acceptance criterion evidence target ID must not be empty",
+                    );
+                }
+                let record = store
+                    .acceptance_criterion_record(acceptance_criterion_id.as_str())
+                    .map_err(CorePipelineError::from)?;
+                let Some(record) = record else {
+                    return validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        field,
+                        "acceptance criterion evidence target is unknown",
+                    );
+                };
+                if record.task_id != request.task_id.as_str() || record.status != "active" {
+                    return validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        field,
+                        "acceptance criterion evidence target must be current for this Task",
+                    );
+                }
+            }
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id,
+                statement,
+            } => {
+                if evidence_claim_id.as_str().trim().is_empty() || statement.is_empty() {
+                    return validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        field,
+                        "supplemental evidence targets require a non-empty ID and statement",
+                    );
+                }
+                if let Some(existing) =
+                    supplemental.insert(evidence_claim_id.as_str().to_owned(), statement.clone())
+                {
+                    if existing != *statement {
+                        return validation_plan_error(
+                            request.envelope.dry_run,
+                            Some(project_state.state_version),
+                            field,
+                            "one supplemental evidence claim ID cannot use multiple statements",
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    };
+
+    for update in &request.evidence_updates {
+        validate_target(&update.target, "evidence_updates[].target")?;
+        if update.coverage_state == EvidenceCoverageUpdateState::NotApplicable {
+            if let EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id,
+            } = &update.target
+            {
+                let record = store
+                    .acceptance_criterion_record(acceptance_criterion_id.as_str())
+                    .map_err(CorePipelineError::from)?
+                    .expect("target validation ensures the criterion exists");
+                let requirement: EvidenceRequirement = parse_owner_storage_value(
+                    "acceptance_criteria",
+                    record.acceptance_criterion_id,
+                    "evidence_requirement",
+                    &record.evidence_requirement,
+                )?;
+                if requirement == EvidenceRequirement::Required {
+                    validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        "evidence_updates[].coverage_state",
+                        "required acceptance criteria cannot be marked not_applicable",
+                    )?;
+                    unreachable!("validation_plan_error always returns Err");
+                }
+            }
+        }
+    }
+    for observation in &request.evidence_observations {
+        validate_target(&observation.target, "evidence_observations[].target")?;
+    }
+    for artifact in &request.artifact_inputs {
+        if let Some(target) = artifact.evidence_target.as_ref() {
+            validate_target(target, "artifact_inputs[].evidence_target")?;
+        }
+    }
+
+    let mut mutations = Vec::new();
+    for (evidence_claim_id, statement) in supplemental {
+        match store
+            .evidence_claim_record(&request.task_id, &evidence_claim_id)
+            .map_err(CorePipelineError::from)?
+        {
+            Some(record) if record.statement == statement => {}
+            Some(_) => {
+                validation_plan_error(
+                    request.envelope.dry_run,
+                    Some(project_state.state_version),
+                    "evidence_target.statement",
+                    "supplemental evidence claim statements are immutable within a Task",
+                )?;
+                unreachable!("validation_plan_error always returns Err");
+            }
+            None => mutations.push(CoreStorageMutation::EnsureEvidenceClaim(
+                EvidenceClaimInsert {
+                    evidence_claim_id,
+                    task_id: request.task_id.as_str().to_owned(),
+                    statement,
+                },
+            )),
+        }
+    }
+    Ok(mutations)
+}
+
 fn plan_record_run(
     service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: RecordRunRequest,
+    mut request: RecordRunRequest,
     verified_invocation: &VerifiedInvocationContext,
 ) -> Result<MethodPlan, PlanError> {
     if request.summary.trim().is_empty() {
@@ -281,6 +435,10 @@ fn plan_record_run(
         ))));
     }
 
+    normalize_record_run_evidence_targets(&mut request);
+    let evidence_claim_mutations =
+        validate_record_run_evidence_targets(store, project_state, &request)?;
+
     let planned_state_version = project_state.state_version + 1;
     let plan_now = utc_timestamp(service.now());
     let run_id = match request.run_id.clone().into_option() {
@@ -333,7 +491,7 @@ fn plan_record_run(
         .iter()
         .map(|plan| plan.artifact_ref.clone())
         .collect::<Vec<_>>();
-    let observation_plans = plan_record_run_observations(RecordRunObservationContext {
+    let observation_context = RecordRunObservationContext {
         service,
         store,
         project_state,
@@ -343,14 +501,16 @@ fn plan_record_run(
         run_ref: &run_ref,
         registered_artifacts: &registered_artifacts,
         artifact_plans: &artifact_plans,
+        current_scope_revision: task.scope_revision,
         planned_state_version,
         now: &plan_now,
-    })?;
+    };
+    let observation_plans = plan_record_run_observations(&observation_context)?;
     let evidence_observations = observation_plans
         .iter()
         .map(|plan| plan.observation.clone())
         .collect::<Vec<_>>();
-    let observation_refs_by_claim = observation_refs_by_claim(&observation_plans);
+    let observation_refs_by_target = observation_refs_by_target(&observation_plans);
 
     let write_ticket_scope = if request.observed_changes.product_file_write_observed {
         let Some(write_ticket_id) = request.write_ticket_id.as_ref() else {
@@ -401,14 +561,16 @@ fn plan_record_run(
         None
     };
 
-    let mut evidence_summary = build_record_run_evidence_summary(
+    let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
+    let mut recorded_evidence_summary = build_record_run_evidence_summary(
+        &observation_context,
         &request,
         &run_ref,
         &registered_artifacts,
         &artifact_plans,
-        &observation_refs_by_claim,
-    );
-    let evidence_summary_id = if evidence_summary.is_some() {
+        &observation_refs_by_target,
+    )?;
+    let evidence_summary_id = if recorded_evidence_summary.is_some() {
         Some(allocate_evidence_summary_id(service, store).map_err(PlanError::Core)?)
     } else {
         None
@@ -438,8 +600,23 @@ fn plan_record_run(
         now: &plan_now,
     };
     let current_close_basis = build_record_run_close_basis(close_basis_context)?;
-    evidence_summary = evidence_summary
+    recorded_evidence_summary = recorded_evidence_summary
         .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
+    let projected_close_evidence_summary = evidence_summary_with_required_criteria(
+        recorded_evidence_summary.clone(),
+        &acceptance_criteria,
+    );
+    let projected_state_evidence_summary = match recorded_evidence_summary.as_ref() {
+        Some(_) => projected_close_evidence_summary.clone(),
+        None => projected_evidence_summary_for_criteria(
+            store,
+            &request.envelope.project_id,
+            planned_state_version,
+            &task,
+            &acceptance_criteria,
+        )?
+        .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref())),
+    };
     let close_basis_json = current_close_basis
         .as_ref()
         .map(serde_json::to_string)
@@ -530,18 +707,21 @@ fn plan_record_run(
         &request.envelope,
         &request.task_id,
         close_context_with_pending_authorities(
-            close_context_with_record_run_projection(
-                close_context_from_projection(
-                    projected_task.clone(),
-                    Some(change_unit.clone()),
-                    current_close_basis.clone(),
-                    pending_user_judgment_refs.clone(),
-                    blocker_refs.clone(),
-                    evidence_summary.clone(),
+            close_context_with_projected_acceptance_criteria(
+                close_context_with_record_run_projection(
+                    close_context_from_projection(
+                        projected_task.clone(),
+                        Some(change_unit.clone()),
+                        current_close_basis.clone(),
+                        pending_user_judgment_refs.clone(),
+                        blocker_refs.clone(),
+                        projected_close_evidence_summary,
+                    ),
+                    run_ref.clone(),
+                    evidence_observations.clone(),
+                    registered_artifacts.clone(),
                 ),
-                run_ref.clone(),
-                evidence_observations.clone(),
-                registered_artifacts.clone(),
+                &acceptance_criteria,
             ),
             pending_authorities,
         ),
@@ -552,10 +732,11 @@ fn plan_record_run(
         state_version: planned_state_version,
         task: &projected_task,
         current_change_unit: Some(&change_unit),
+        acceptance_criteria,
         pending_user_judgment_refs,
         blocker_refs: blocker_refs.clone(),
         write_ticket_summary,
-        evidence_summary: evidence_summary.clone(),
+        evidence_summary: projected_state_evidence_summary,
         close_state: Some(close_plan.close_state),
         close_blockers: close_plan.blockers,
         guard_health: close_plan.guard_health,
@@ -573,7 +754,7 @@ fn plan_record_run(
         base: placeholder_base(),
         run_summary,
         registered_artifacts: registered_artifacts.clone(),
-        evidence_summary: evidence_summary.clone(),
+        evidence_summary: recorded_evidence_summary.clone(),
         evidence_observations: evidence_observations.clone(),
         current_close_basis: current_close_basis.clone(),
         blocker_refs,
@@ -633,6 +814,7 @@ fn plan_record_run(
             },
         ));
     }
+    storage_mutations.extend(evidence_claim_mutations);
     for plan in &artifact_plans {
         if let Some(mutation) = &plan.source_mutation {
             storage_mutations.push(mutation.clone());
@@ -655,7 +837,7 @@ fn plan_record_run(
         }
     }
     if let (Some(evidence_summary), Some(evidence_summary_id)) =
-        (&evidence_summary, evidence_summary_id.as_ref())
+        (&recorded_evidence_summary, evidence_summary_id.as_ref())
     {
         storage_mutations.push(CoreStorageMutation::UpsertEvidenceSummary(
             EvidenceSummaryUpsert {
@@ -668,7 +850,7 @@ fn plan_record_run(
                     &evidence_summary
                         .coverage_items
                         .iter()
-                        .flat_map(|item| item.supporting_refs.clone())
+                        .flat_map(|item| item.supporting_run_refs.clone())
                         .collect::<Vec<_>>(),
                 )?,
                 gap_refs_json: serde_json::to_string(
@@ -792,31 +974,36 @@ struct RecordRunObservationContext<'a> {
     run_ref: &'a StateRecordRef,
     registered_artifacts: &'a [ArtifactRef],
     artifact_plans: &'a [RecordRunArtifactPlan],
+    current_scope_revision: u64,
     planned_state_version: u64,
     now: &'a UtcTimestamp,
 }
 
 fn plan_record_run_observations(
-    context: RecordRunObservationContext<'_>,
+    context: &RecordRunObservationContext<'_>,
 ) -> Result<Vec<RecordRunObservationPlan>, PlanError> {
     let mut plans = Vec::new();
     for input in &context.request.evidence_observations {
-        plans.push(plan_record_run_observation(&context, input)?);
+        plans.push(plan_record_run_observation(context, input)?);
     }
-    let explicit_observation_claims = plans
+    let explicit_observation_targets = plans
         .iter()
-        .map(|plan| plan.observation.claim.clone())
+        .map(|plan| plan.observation.target.clone())
         .collect::<BTreeSet<_>>();
     for update in &context.request.evidence_updates {
-        validate_record_run_evidence_update(&context, update, &explicit_observation_claims)?;
-        if update.coverage_state == EvidenceCoverageState::Supported
-            && !explicit_observation_claims.contains(&normalize_display_text(&update.claim))
+        validate_record_run_evidence_update(context, update, &explicit_observation_targets)?;
+        if update.coverage_state == EvidenceCoverageUpdateState::Supported
+            && !explicit_observation_targets.contains(&update.target)
         {
             if let Some(provenance) = update.provenance.as_ref() {
                 plans.push(plan_record_run_observation(
-                    &context,
-                    &observation_input_from_evidence_update(&context, update, provenance),
+                    context,
+                    &observation_input_from_evidence_update(context, update, provenance),
                 )?);
+            } else {
+                for input in reused_observation_inputs_for_update(context, update)? {
+                    plans.push(plan_record_run_observation(context, &input)?);
+                }
             }
         }
     }
@@ -827,15 +1014,6 @@ fn plan_record_run_observation(
     context: &RecordRunObservationContext<'_>,
     input: &EvidenceObservationInput,
 ) -> Result<RecordRunObservationPlan, PlanError> {
-    if input.claim.trim().is_empty() {
-        validation_plan_error(
-            context.request.envelope.dry_run,
-            Some(context.project_state.state_version),
-            "evidence_observations[].claim",
-            "evidence observation claim must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
-    }
     validate_evidence_source_assurance(
         context.request.envelope.dry_run,
         Some(context.project_state.state_version),
@@ -856,7 +1034,14 @@ fn plan_record_run_observation(
         "evidence_observations[].source_refs",
         &input.source_refs,
     )?;
-    validate_evidence_observation_artifact_refs(context, &input.output_artifact_refs)?;
+    let canonical_output_artifact_refs = canonical_evidence_artifact_refs(
+        context,
+        "evidence_observations[].output_artifact_refs",
+        &input.output_artifact_refs,
+    )?;
+    let mut canonical_input = input.clone();
+    canonical_input.output_artifact_refs = canonical_output_artifact_refs;
+    let input = &canonical_input;
     if input
         .tool_name
         .as_ref()
@@ -898,7 +1083,6 @@ fn plan_record_run_observation(
         .as_ref()
         .cloned()
         .unwrap_or_else(|| context.verified_invocation.actor_source.clone());
-    let claim = normalize_display_text(&input.claim);
     let output_artifact_refs =
         unique_artifact_refs(output_artifact_refs_for_observation(context, input));
     let limitations = normalize_string_list(&input.limitations);
@@ -908,7 +1092,7 @@ fn plan_record_run_observation(
         task_id: context.request.task_id.clone(),
         change_unit_id: Some(context.request.change_unit_id.clone()).into(),
         run_ref: Some(context.run_ref.clone()).into(),
-        claim,
+        target: input.target.clone(),
         source_kind: input.source_kind,
         assurance_level: input.assurance_level,
         observed_by_actor_source: Some(observed_by_actor_source).into(),
@@ -930,7 +1114,18 @@ fn plan_record_run_observation(
             .as_ref()
             .map(|id| id.as_str().to_owned()),
         run_id: Some(context.run_id.as_str().to_owned()),
-        claim: observation.claim.clone(),
+        acceptance_criterion_id: match &observation.target {
+            EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id,
+            } => Some(acceptance_criterion_id.as_str().to_owned()),
+            EvidenceTarget::SupplementalClaim { .. } => None,
+        },
+        evidence_claim_id: match &observation.target {
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id, ..
+            } => Some(evidence_claim_id.as_str().to_owned()),
+            EvidenceTarget::AcceptanceCriterion { .. } => None,
+        },
         source_kind: storage_value(observation.source_kind)?,
         assurance_level: storage_value(observation.assurance_level)?,
         observed_by_actor_source: observation
@@ -960,25 +1155,24 @@ fn plan_record_run_observation(
 
 fn validate_record_run_evidence_update(
     context: &RecordRunObservationContext<'_>,
-    update: &EvidenceCoverageItem,
-    explicit_observation_claims: &BTreeSet<String>,
+    update: &EvidenceCoverageUpdate,
+    explicit_observation_targets: &BTreeSet<EvidenceTarget>,
 ) -> Result<(), PlanError> {
-    let claim = normalize_display_text(&update.claim);
-    if claim.is_empty() {
-        validation_plan_error(
-            context.request.envelope.dry_run,
-            Some(context.project_state.state_version),
-            "evidence_updates[].claim",
-            "evidence update claim must not be empty",
-        )?;
-        unreachable!("validation_plan_error always returns Err");
-    }
-    validate_evidence_observation_state_refs(
+    validate_evidence_update_observation_refs(
         context,
-        "evidence_updates[].observation_refs",
+        &update.target,
         &update.observation_refs,
+        update.coverage_state == EvidenceCoverageUpdateState::Supported
+            && !explicit_observation_targets.contains(&update.target)
+            && update.provenance.is_none(),
     )?;
-    validate_evidence_observation_artifact_refs(context, &update.supporting_artifact_refs)?;
+    validate_supporting_run_refs(context, &update.supporting_run_refs)?;
+    canonical_evidence_artifact_refs(
+        context,
+        "evidence_updates[].supporting_artifact_refs",
+        &update.supporting_artifact_refs,
+    )?;
+    validate_evidence_gap_refs(context, &update.gap_refs)?;
     if let Some(provenance) = update.provenance.as_ref() {
         validate_evidence_source_assurance(
             context.request.envelope.dry_run,
@@ -1022,8 +1216,8 @@ fn validate_record_run_evidence_update(
             unreachable!("validation_plan_error always returns Err");
         }
     }
-    if update.coverage_state == EvidenceCoverageState::Supported
-        && !explicit_observation_claims.contains(&claim)
+    if update.coverage_state == EvidenceCoverageUpdateState::Supported
+        && !explicit_observation_targets.contains(&update.target)
         && update.provenance.is_none()
         && update.observation_refs.is_empty()
     {
@@ -1031,7 +1225,7 @@ fn validate_record_run_evidence_update(
             context.request.envelope.dry_run,
             Some(context.project_state.state_version),
             "evidence_updates[].provenance",
-            "supported evidence updates require provenance or an evidence observation for the same claim",
+            "supported evidence updates require provenance or a target-matching evidence observation",
         )?;
         unreachable!("validation_plan_error always returns Err");
     }
@@ -1040,18 +1234,18 @@ fn validate_record_run_evidence_update(
 
 fn observation_input_from_evidence_update(
     context: &RecordRunObservationContext<'_>,
-    update: &EvidenceCoverageItem,
+    update: &EvidenceCoverageUpdate,
     provenance: &EvidenceUpdateProvenance,
 ) -> EvidenceObservationInput {
     EvidenceObservationInput {
-        claim: normalize_display_text(&update.claim),
+        target: update.target.clone(),
         source_kind: provenance.source_kind,
         assurance_level: provenance.assurance_level,
         observed_by_actor_source: None.into(),
         tool_name: provenance.tool_name.clone(),
         tool_invocation_id: provenance.tool_invocation_id.clone(),
         tool_metadata: provenance.tool_metadata.clone(),
-        input_refs: update.supporting_refs.clone(),
+        input_refs: update.supporting_run_refs.clone(),
         source_refs: provenance.source_refs.clone(),
         output_artifact_refs: update.supporting_artifact_refs.clone(),
         limitations: provenance.limitations.clone(),
@@ -1133,24 +1327,305 @@ fn validate_evidence_observation_state_refs(
     Ok(())
 }
 
-fn validate_evidence_observation_artifact_refs(
+fn validate_evidence_update_observation_refs(
     context: &RecordRunObservationContext<'_>,
-    refs: &[ArtifactRef],
+    target: &EvidenceTarget,
+    refs: &[StateRecordRef],
+    require_strong_reuse: bool,
 ) -> Result<(), PlanError> {
+    for record_ref in refs {
+        if record_ref.record_kind != StateRecordKind::EvidenceObservation
+            || record_ref.project_id != context.request.envelope.project_id
+            || record_ref.task_id.as_ref() != Some(&context.request.task_id)
+            || record_ref.record_id.as_str().trim().is_empty()
+        {
+            validation_plan_error(
+                context.request.envelope.dry_run,
+                Some(context.project_state.state_version),
+                "evidence_updates[].observation_refs",
+                "evidence update observation refs must identify same-Task evidence observations",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        }
+        let record = context
+            .store
+            .evidence_observation_record(record_ref.record_id.as_str())
+            .map_err(CorePipelineError::from)?;
+        let Some(record) = record else {
+            validation_plan_error(
+                context.request.envelope.dry_run,
+                Some(context.project_state.state_version),
+                "evidence_updates[].observation_refs",
+                "evidence update observation refs must identify existing observations",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        };
+        if record.task_id != context.request.task_id.as_str()
+            || record.change_unit_id.as_deref() != Some(context.request.change_unit_id.as_str())
+            || !evidence_observation_record_matches_target(&record, target)
+        {
+            validation_plan_error(
+                context.request.envelope.dry_run,
+                Some(context.project_state.state_version),
+                "evidence_updates[].observation_refs",
+                "evidence update observation refs must match the current Task, Change Unit, and evidence target",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        }
+        let source_run = record
+            .run_id
+            .as_deref()
+            .map(|run_id| context.store.run_record(run_id))
+            .transpose()
+            .map_err(CorePipelineError::from)?
+            .flatten();
+        if source_run.as_ref().is_none_or(|run| {
+            !run_record_matches_close_basis_context(
+                run,
+                &context.request.envelope.project_id,
+                &context.request.task_id,
+                context.request.change_unit_id.as_str(),
+                context.current_scope_revision,
+                Some(context.request.baseline_ref.as_str()),
+            )
+        }) {
+            validation_plan_error(
+                context.request.envelope.dry_run,
+                Some(context.project_state.state_version),
+                "evidence_updates[].observation_refs",
+                "evidence update observation refs must have current same-scope Run provenance",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        }
+        if require_strong_reuse {
+            let source_kind: EvidenceSourceKind = parse_owner_storage_value(
+                "evidence_observations",
+                record.evidence_observation_id.clone(),
+                "source_kind",
+                &record.source_kind,
+            )?;
+            let assurance_level: EvidenceAssuranceLevel = parse_owner_storage_value(
+                "evidence_observations",
+                record.evidence_observation_id.clone(),
+                "assurance_level",
+                &record.assurance_level,
+            )?;
+            if evidence_provenance_class(source_kind, assurance_level)
+                != EvidenceProvenanceClass::Strong
+            {
+                validation_plan_error(
+                    context.request.envelope.dry_run,
+                    Some(context.project_state.state_version),
+                    "evidence_updates[].observation_refs",
+                    "supported evidence may only reuse target-matching observations with sufficient provenance",
+                )?;
+                unreachable!("validation_plan_error always returns Err");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reused_observation_inputs_for_update(
+    context: &RecordRunObservationContext<'_>,
+    update: &EvidenceCoverageUpdate,
+) -> Result<Vec<EvidenceObservationInput>, PlanError> {
+    let mut inputs = Vec::with_capacity(update.observation_refs.len());
+    for observation_ref in &update.observation_refs {
+        let record = context
+            .store
+            .evidence_observation_record(observation_ref.record_id.as_str())
+            .map_err(CorePipelineError::from)?
+            .expect("validated reused observation exists");
+        let assurance_level = parse_owner_storage_value(
+            "evidence_observations",
+            record.evidence_observation_id.clone(),
+            "assurance_level",
+            &record.assurance_level,
+        )?;
+        inputs.push(EvidenceObservationInput {
+            target: update.target.clone(),
+            source_kind: EvidenceSourceKind::ReusedEvidence,
+            assurance_level,
+            observed_by_actor_source: None.into(),
+            tool_name: None.into(),
+            tool_invocation_id: None.into(),
+            tool_metadata: JsonObject::new(),
+            input_refs: vec![state_ref(
+                StateRecordKind::EvidenceObservation,
+                &record.evidence_observation_id,
+                &context.request.envelope.project_id,
+                Some(&context.request.task_id),
+                Some(context.project_state.state_version),
+            )],
+            source_refs: Vec::new(),
+            output_artifact_refs: update.supporting_artifact_refs.clone(),
+            limitations: vec![
+                "Reuses target-matching observation provenance from the current scope.".to_owned(),
+            ],
+            observed_at: context.now.clone(),
+        });
+    }
+    Ok(inputs)
+}
+
+fn evidence_observation_record_matches_target(
+    record: &EvidenceObservationRecord,
+    target: &EvidenceTarget,
+) -> bool {
+    match target {
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id,
+        } => {
+            record.acceptance_criterion_id.as_deref() == Some(acceptance_criterion_id.as_str())
+                && record.evidence_claim_id.is_none()
+        }
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id, ..
+        } => {
+            record.evidence_claim_id.as_deref() == Some(evidence_claim_id.as_str())
+                && record.acceptance_criterion_id.is_none()
+        }
+    }
+}
+
+fn validate_supporting_run_refs(
+    context: &RecordRunObservationContext<'_>,
+    refs: &[StateRecordRef],
+) -> Result<(), PlanError> {
+    for record_ref in refs {
+        let is_current_run = record_ref.record_id == context.run_ref.record_id;
+        let stored_run = if is_current_run {
+            None
+        } else {
+            context
+                .store
+                .run_record(record_ref.record_id.as_str())
+                .map_err(CorePipelineError::from)?
+        };
+        if record_ref.record_kind != StateRecordKind::Run
+            || record_ref.project_id != context.request.envelope.project_id
+            || record_ref.task_id.as_ref() != Some(&context.request.task_id)
+            || record_ref.record_id.as_str().trim().is_empty()
+            || (!is_current_run
+                && stored_run.as_ref().is_none_or(|run| {
+                    run.task_id != context.request.task_id.as_str()
+                        || run.project_id != context.request.envelope.project_id.as_str()
+                        || run.status != "recorded"
+                }))
+        {
+            validation_plan_error(
+                context.request.envelope.dry_run,
+                Some(context.project_state.state_version),
+                "evidence_updates[].supporting_run_refs",
+                "supporting_run_refs must identify existing Runs for the request Task",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        }
+    }
+    Ok(())
+}
+
+fn validate_evidence_gap_refs(
+    context: &RecordRunObservationContext<'_>,
+    refs: &[StateRecordRef],
+) -> Result<(), PlanError> {
+    let active = context
+        .store
+        .active_blocker_refs(
+            &context.request.task_id,
+            context.project_state.state_version,
+        )
+        .map_err(CorePipelineError::from)?;
+    for record_ref in refs {
+        if record_ref.record_kind != StateRecordKind::Blocker
+            || record_ref.project_id != context.request.envelope.project_id
+            || record_ref.task_id.as_ref() != Some(&context.request.task_id)
+            || !active
+                .iter()
+                .any(|stored| stored.record_id == record_ref.record_id.as_str())
+        {
+            validation_plan_error(
+                context.request.envelope.dry_run,
+                Some(context.project_state.state_version),
+                "evidence_updates[].gap_refs",
+                "gap_refs must identify active blockers for the request Task",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        }
+    }
+    Ok(())
+}
+
+fn canonical_evidence_artifact_refs(
+    context: &RecordRunObservationContext<'_>,
+    field: &'static str,
+    refs: &[ArtifactRef],
+) -> Result<Vec<ArtifactRef>, PlanError> {
+    let mut canonical = BTreeMap::new();
     for artifact_ref in refs {
+        let newly_registered = context
+            .registered_artifacts
+            .iter()
+            .find(|registered| registered.artifact_id == artifact_ref.artifact_id);
         if artifact_ref.project_id != context.request.envelope.project_id
             || artifact_ref.task_id != context.request.task_id
         {
             validation_plan_error(
                 context.request.envelope.dry_run,
                 Some(context.project_state.state_version),
-                "evidence_observations[].output_artifact_refs",
-                "evidence observation artifact refs must belong to the request project and Task",
+                field,
+                "evidence artifact refs must identify existing artifacts owned by the request project and Task",
             )?;
             unreachable!("validation_plan_error always returns Err");
         }
+        let canonical_ref = if let Some(registered) = newly_registered {
+            registered.clone()
+        } else {
+            let stored = context
+                .store
+                .artifact_record(artifact_ref.artifact_id.as_str())
+                .map_err(CorePipelineError::from)?;
+            let owner_link = context
+                .store
+                .artifact_has_task_owner_link(
+                    artifact_ref.artifact_id.as_str(),
+                    context.request.task_id.as_str(),
+                )
+                .map_err(CorePipelineError::from)?;
+            let Some(stored) = stored else {
+                validation_plan_error(
+                    context.request.envelope.dry_run,
+                    Some(context.project_state.state_version),
+                    field,
+                    "evidence artifact refs must identify existing artifacts owned by the request project and Task",
+                )?;
+                unreachable!("validation_plan_error always returns Err");
+            };
+            if stored.project_id != context.request.envelope.project_id.as_str()
+                || stored.task_id != context.request.task_id.as_str()
+                || !owner_link
+            {
+                validation_plan_error(
+                    context.request.envelope.dry_run,
+                    Some(context.project_state.state_version),
+                    field,
+                    "evidence artifact refs must identify existing artifacts owned by the request project and Task",
+                )?;
+                unreachable!("validation_plan_error always returns Err");
+            }
+            artifact_ref_from_verified_record(
+                context.store,
+                &stored,
+                None,
+                Some(context.planned_state_version),
+            )?
+        };
+        canonical
+            .entry(canonical_ref.artifact_id.as_str().to_owned())
+            .or_insert(canonical_ref);
     }
-    Ok(())
+    Ok(canonical.into_values().collect())
 }
 
 fn output_artifact_refs_for_observation(
@@ -1165,10 +1640,7 @@ fn output_artifact_refs_for_observation(
             context
                 .artifact_plans
                 .iter()
-                .filter(|plan| {
-                    plan.claim.as_deref().map(normalize_display_text)
-                        == Some(normalize_display_text(&input.claim))
-                })
+                .filter(|plan| plan.evidence_target.as_ref() == Some(&input.target))
                 .map(|plan| plan.artifact_ref.clone()),
         )
         .chain(
@@ -1186,17 +1658,17 @@ fn output_artifact_refs_for_observation(
         .collect()
 }
 
-fn observation_refs_by_claim(
+fn observation_refs_by_target(
     plans: &[RecordRunObservationPlan],
-) -> BTreeMap<String, Vec<StateRecordRef>> {
-    let mut refs_by_claim: BTreeMap<String, Vec<StateRecordRef>> = BTreeMap::new();
+) -> BTreeMap<EvidenceTarget, Vec<StateRecordRef>> {
+    let mut refs_by_target: BTreeMap<EvidenceTarget, Vec<StateRecordRef>> = BTreeMap::new();
     for plan in plans {
-        refs_by_claim
-            .entry(plan.observation.claim.clone())
+        refs_by_target
+            .entry(plan.observation.target.clone())
             .or_default()
             .push(plan.observation_ref.clone());
     }
-    refs_by_claim
+    refs_by_target
 }
 
 struct RecordRunCloseBasisContext<'a> {
@@ -2102,7 +2574,7 @@ fn plan_staged_artifact_input(
                 "created_by_actor_source": verified_invocation.actor_source,
                 "artifact_input_id": input.artifact_input_id.as_str(),
                 "relation_hint": input.relation_hint,
-                "claim": input.claim
+                "evidence_target": input.evidence_target
             }))?,
             metadata_json: serde_json::to_string(&json!({
                 "source_kind": "staged_artifact"
@@ -2120,7 +2592,7 @@ fn plan_staged_artifact_input(
 
     Ok(RecordRunArtifactPlan {
         artifact_ref,
-        claim: input.claim.as_ref().cloned(),
+        evidence_target: input.evidence_target.as_ref().cloned(),
         source_mutation,
         run_link,
     })
@@ -2425,7 +2897,7 @@ fn plan_existing_artifact_input(
     });
     Ok(RecordRunArtifactPlan {
         artifact_ref,
-        claim: input.claim.as_ref().cloned(),
+        evidence_target: input.evidence_target.as_ref().cloned(),
         source_mutation: None,
         run_link,
     })
@@ -2540,27 +3012,37 @@ fn write_ticket_mismatch(
 }
 
 fn build_record_run_evidence_summary(
+    context: &RecordRunObservationContext<'_>,
     request: &RecordRunRequest,
     run_ref: &StateRecordRef,
     registered_artifacts: &[ArtifactRef],
     artifact_plans: &[RecordRunArtifactPlan],
-    observation_refs_by_claim: &BTreeMap<String, Vec<StateRecordRef>>,
-) -> Option<volicord_types::EvidenceSummary> {
+    observation_refs_by_target: &BTreeMap<EvidenceTarget, Vec<StateRecordRef>>,
+) -> Result<Option<volicord_types::EvidenceSummary>, PlanError> {
     if request.evidence_updates.is_empty() {
-        return None;
+        return Ok(None);
     }
     let mut coverage_items = Vec::new();
     for update in &request.evidence_updates {
-        let mut item = update.clone();
-        item.claim = normalize_display_text(&item.claim);
-        item.provenance = None;
-        if !item.supporting_refs.iter().any(|record_ref| {
+        let mut item = EvidenceCoverageItem {
+            target: update.target.clone(),
+            coverage_state: update.coverage_state.into(),
+            supporting_run_refs: update.supporting_run_refs.clone(),
+            observation_refs: update.observation_refs.clone(),
+            supporting_artifact_refs: canonical_evidence_artifact_refs(
+                context,
+                "evidence_updates[].supporting_artifact_refs",
+                &update.supporting_artifact_refs,
+            )?,
+            gap_refs: update.gap_refs.clone(),
+        };
+        if !item.supporting_run_refs.iter().any(|record_ref| {
             state_record_ref_identity_key(record_ref) == state_record_ref_identity_key(run_ref)
         }) {
-            item.supporting_refs.push(run_ref.clone());
+            item.supporting_run_refs.push(run_ref.clone());
         }
         for plan in artifact_plans {
-            if plan.claim.as_deref().map(normalize_display_text) == Some(item.claim.clone())
+            if plan.evidence_target.as_ref() == Some(&item.target)
                 && !item
                     .supporting_artifact_refs
                     .iter()
@@ -2570,7 +3052,7 @@ fn build_record_run_evidence_summary(
                     .push(plan.artifact_ref.clone());
             }
         }
-        if let Some(observation_refs) = observation_refs_by_claim.get(item.claim.as_str()) {
+        if let Some(observation_refs) = observation_refs_by_target.get(&item.target) {
             for observation_ref in observation_refs {
                 if !item.observation_refs.iter().any(|existing| {
                     state_record_ref_identity_key(existing)
@@ -2579,6 +3061,14 @@ fn build_record_run_evidence_summary(
                     item.observation_refs.push(observation_ref.clone());
                 }
             }
+        }
+        if item.coverage_state == EvidenceCoverageState::Supported
+            && item.supporting_artifact_refs.iter().any(|artifact_ref| {
+                artifact_ref.availability != ArtifactAvailability::Available
+                    || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
+            })
+        {
+            item.coverage_state = EvidenceCoverageState::Stale;
         }
         coverage_items.push(item);
     }
@@ -2599,24 +3089,15 @@ fn build_record_run_evidence_summary(
             .flat_map(|item| item.observation_refs.clone())
             .collect(),
     );
-    let required_claims = coverage_items
-        .iter()
-        .filter(|item| item.required_for_close)
-        .map(|item| item.claim.clone())
-        .collect::<Vec<_>>();
     let status = evidence_status_for_items(&coverage_items);
-    Some(volicord_types::EvidenceSummary {
+    Ok(Some(volicord_types::EvidenceSummary {
         evidence_state: Some(EvidenceDisplayState::Attached),
         status,
-        completion_policy: CompletionPolicy {
-            evidence_required: !required_claims.is_empty(),
-            required_claims,
-        },
         coverage_items,
         artifact_refs,
         observation_refs,
         updated_by_run_ref: Some(run_ref.clone()),
-    })
+    }))
 }
 
 fn staged_artifact_display_name(record: &StoredArtifactStagingRecord) -> String {
@@ -2632,6 +3113,6 @@ fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<String> {
         "artifact_input_id": input.artifact_input_id.as_str(),
         "source_kind": input.source_kind,
         "relation_hint": input.relation_hint,
-        "claim": input.claim
+        "evidence_target": input.evidence_target
     }))?)
 }

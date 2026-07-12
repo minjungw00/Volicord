@@ -1010,6 +1010,7 @@ fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<()
     assert_project_continuity_value_sets_are_closed(label, conn);
     assert_write_ticket_status_is_closed(label, conn);
     assert_evidence_observation_value_sets_are_closed(label, conn);
+    assert_acceptance_evidence_target_constraints(label, conn);
     assert_tool_invocation_requires_identity(label, conn);
     assert_one_active_current_change_unit(label, conn);
     assert_artifacts_integrity_status_is_closed(label, conn);
@@ -1318,13 +1319,32 @@ fn assert_write_ticket_status_is_closed(label: &str, conn: &Connection) {
 }
 
 fn assert_evidence_observation_value_sets_are_closed(label: &str, conn: &Connection) {
+    conn.execute(
+        "INSERT INTO evidence_claims (
+            project_id,
+            task_id,
+            evidence_claim_id,
+            statement,
+            created_at
+        )
+        VALUES (
+            'project_a',
+            'task_a',
+            'claim_close_support',
+            'Close claim supported.',
+            't1'
+        )",
+        [],
+    )
+    .expect("supplemental evidence claim should insert");
+
     let bad_source = conn
         .execute(
             "INSERT INTO evidence_observations (
                 project_id,
                 evidence_observation_id,
                 task_id,
-                claim,
+                evidence_claim_id,
                 source_kind,
                 assurance_level,
                 observed_at,
@@ -1334,7 +1354,7 @@ fn assert_evidence_observation_value_sets_are_closed(label: &str, conn: &Connect
                 'project_a',
                 'evidence_observation_bad_source',
                 'task_a',
-                'Close claim supported.',
+                'claim_close_support',
                 'final_acceptance',
                 'external_tool_result',
                 't1',
@@ -1351,7 +1371,7 @@ fn assert_evidence_observation_value_sets_are_closed(label: &str, conn: &Connect
                 project_id,
                 evidence_observation_id,
                 task_id,
-                claim,
+                evidence_claim_id,
                 source_kind,
                 assurance_level,
                 observed_at,
@@ -1361,7 +1381,7 @@ fn assert_evidence_observation_value_sets_are_closed(label: &str, conn: &Connect
                 'project_a',
                 'evidence_observation_bad_assurance',
                 'task_a',
-                'Close claim supported.',
+                'claim_close_support',
                 'external_tool',
                 'accepted',
                 't1',
@@ -1371,6 +1391,240 @@ fn assert_evidence_observation_value_sets_are_closed(label: &str, conn: &Connect
         )
         .unwrap_err();
     assert_constraint_error(label, bad_assurance);
+}
+
+fn assert_acceptance_evidence_target_constraints(label: &str, conn: &Connection) {
+    let negative_position = conn
+        .execute(
+            "INSERT INTO acceptance_criteria (
+                project_id,
+                acceptance_criterion_id,
+                task_id,
+                statement,
+                evidence_requirement,
+                position,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                'project_a',
+                'criterion_negative_position',
+                'task_a',
+                'Position must be nonnegative.',
+                'optional',
+                -1,
+                'active',
+                't1',
+                't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, negative_position);
+
+    conn.execute(
+        "INSERT INTO acceptance_criteria (
+            project_id,
+            acceptance_criterion_id,
+            task_id,
+            statement,
+            evidence_requirement,
+            position,
+            status,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            'project_a',
+            'criterion_target_task_a',
+            'task_a',
+            'Criterion target for Task A.',
+            'required',
+            0,
+            'active',
+            't1',
+            't1'
+        )",
+        [],
+    )
+    .expect("valid acceptance criterion should insert");
+    conn.execute(
+        "INSERT INTO evidence_claims (
+            project_id,
+            evidence_claim_id,
+            task_id,
+            statement,
+            created_at
+        )
+        VALUES
+            ('project_a', 'claim_target_task_a', 'task_a', 'Task A only claim.', 't1'),
+            ('project_a', 'claim_shared', 'task_a', 'Task A shared-ID statement.', 't1')",
+        [],
+    )
+    .expect("valid Task A claims should insert");
+    conn.execute(
+        "INSERT INTO tasks (
+            project_id,
+            task_id,
+            created_by_actor_source,
+            mode,
+            lifecycle_phase,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            'project_a',
+            'task_b',
+            'agent_connection:conn_main',
+            'work',
+            'shaping',
+            't1',
+            't1'
+        )",
+        [],
+    )
+    .expect("second Task should insert");
+    conn.execute(
+        "INSERT INTO evidence_claims (
+            project_id,
+            evidence_claim_id,
+            task_id,
+            statement,
+            created_at
+        )
+        VALUES (
+            'project_a',
+            'claim_shared',
+            'task_b',
+            'Task B may use the same claim ID independently.',
+            't1'
+        )",
+        [],
+    )
+    .expect("the same EvidenceClaimId should be allowed in another Task");
+    let shared_claim_count: i64 = conn
+        .query_row(
+            "SELECT count(*)
+               FROM evidence_claims
+              WHERE project_id = 'project_a'
+                AND evidence_claim_id = 'claim_shared'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("shared claim count should be readable");
+    assert_eq!(
+        shared_claim_count, 2,
+        "{label}: claim identity is Task-scoped"
+    );
+
+    let neither_target = conn
+        .execute(
+            "INSERT INTO evidence_observations (
+                project_id,
+                evidence_observation_id,
+                task_id,
+                source_kind,
+                assurance_level,
+                observed_at,
+                recorded_at
+            )
+            VALUES (
+                'project_a',
+                'observation_neither_target',
+                'task_a',
+                'external_tool',
+                'external_tool_result',
+                't1',
+                't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, neither_target);
+
+    let both_targets = conn
+        .execute(
+            "INSERT INTO evidence_observations (
+                project_id,
+                evidence_observation_id,
+                task_id,
+                acceptance_criterion_id,
+                evidence_claim_id,
+                source_kind,
+                assurance_level,
+                observed_at,
+                recorded_at
+            )
+            VALUES (
+                'project_a',
+                'observation_both_targets',
+                'task_a',
+                'criterion_target_task_a',
+                'claim_target_task_a',
+                'external_tool',
+                'external_tool_result',
+                't1',
+                't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, both_targets);
+
+    let cross_task_criterion = conn
+        .execute(
+            "INSERT INTO evidence_observations (
+                project_id,
+                evidence_observation_id,
+                task_id,
+                acceptance_criterion_id,
+                source_kind,
+                assurance_level,
+                observed_at,
+                recorded_at
+            )
+            VALUES (
+                'project_a',
+                'observation_cross_task_criterion',
+                'task_b',
+                'criterion_target_task_a',
+                'external_tool',
+                'external_tool_result',
+                't1',
+                't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, cross_task_criterion);
+
+    let cross_task_claim = conn
+        .execute(
+            "INSERT INTO evidence_observations (
+                project_id,
+                evidence_observation_id,
+                task_id,
+                evidence_claim_id,
+                source_kind,
+                assurance_level,
+                observed_at,
+                recorded_at
+            )
+            VALUES (
+                'project_a',
+                'observation_cross_task_claim',
+                'task_b',
+                'claim_target_task_a',
+                'external_tool',
+                'external_tool_result',
+                't1',
+                't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, cross_task_claim);
 }
 
 fn assert_tool_invocation_requires_identity(label: &str, conn: &Connection) {

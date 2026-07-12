@@ -514,6 +514,7 @@ fn plan_prepare_write(
         state_version: planned_state_version,
         task: &task,
         current_change_unit: change_unit,
+        acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
         pending_user_judgment_refs,
         blocker_refs,
         write_ticket_summary: synthetic_write_ticket

@@ -671,7 +671,7 @@ MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로
 
 - 바이트나 안전한 알림이 필요할 때만 `volicord.stage_artifact`로 증거 첨부 입력을
   준비합니다.
-- `volicord.record_run`으로 Run 또는 관찰, 주장별 증거 갱신, 관찰 출처, 필요한 첨부
+- `volicord.record_run`으로 Run 또는 관찰, 대상별 증거 갱신, 관찰 출처, 필요한 첨부
   연결 또는 승격을 기록합니다.
 
 스테이징 핸들만으로는 받아들여진 증거가 아니며 닫기 상태를 만족하지 않습니다.
@@ -716,7 +716,7 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
 - `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
   `artifact_inputs=[]`, `evidence_updates=[]`, `evidence_observations=[]`,
   `close_assessment=null`; 각 `evidence_updates` 항목 안에서는
-  `supporting_refs=[]`, `observation_refs=[]`,
+  `supporting_run_refs=[]`, `observation_refs=[]`,
   `supporting_artifact_refs=[]`, `gap_refs=[]`; 각 `evidence_observations`
   항목 안에서는 `observed_by_actor_source=null`, `tool_name=null`,
   `tool_invocation_id=null`, `tool_metadata={}`, `input_refs=[]`,
@@ -729,10 +729,10 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
 요청 형태를 구성합니다. 따라서 각 메서드 참조가 담당하는 공개 Core API의 멤버 존재
 계약은 바뀌지 않습니다. `volicord.request_user_judgment`의 `task_id`,
 `judgment_kind`, `presentation`, `question`, `context`, `required_for`는 계속 필수 MCP
-인자입니다. `volicord.record_run`에서는 각 `evidence_updates` 항목 안의 `claim`,
-`required_for_close`, `coverage_state`가 계속 필수이고, 각
-`evidence_observations` 항목 안의 `claim`, `source_kind`, `assurance_level`,
-`observed_at`도 계속 필수입니다. 이 규칙은 그 밖의 필드에 암묵적 값을 만들지
+인자입니다. `volicord.record_run`에서는 각 `evidence_updates` 항목 안의 `target`,
+`coverage_state`가 계속 필수이고, 각 `evidence_observations` 항목 안의 `target`,
+`source_kind`, `assurance_level`, `observed_at`도 계속 필수입니다. 각 `target`은 API
+상태 스키마가 담당하는 엄격한 태그형 수락 기준 또는 보충 주장 합집합입니다. 이 규칙은 그 밖의 필드에 암묵적 값을 만들지
 않으며, 정확히 광고한 `required` 배열이 기준입니다.
 
 도구 description에는 짧은 목적과 핵심 경계만 둡니다. `volicord.record_run.kind`의

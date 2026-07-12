@@ -318,6 +318,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 Committed `dry_run=false` may:
 
 - create the Task
+- create ordered active `acceptance_criteria` rows with Core-generated identities
 - preserve validated `initial_source_refs` as non-authoritative Task context in the Task owner JSON
 - create an optional Change Unit
 - create shaping records
@@ -344,6 +345,7 @@ Owner links:
 Committed `dry_run=false` may:
 
 - update current-scope Task fields
+- for a non-null criterion replacement, update retained active same-Task criterion rows in replacement order, create rows for null IDs, and retire omitted active rows without reactivating retired identities
 - create or replace current `change_units`, including effect-contract JSON when supplied by the method owner
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
@@ -481,6 +483,7 @@ Committed `dry_run=false` may:
 - consume a compatible `write_tickets` row
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
+- create `evidence_claims` rows for new Task-scoped supplemental targets while preserving the immutable statement of an existing same-Task ID
 - update `evidence_summaries`, create `evidence_observations` with separately stored Core-record input refs and non-authoritative source refs, or update allowed blockers
 - update `tasks.close_basis_revision` and `tasks.close_basis_json` according to `close_assessment`
 - append events
@@ -512,6 +515,7 @@ Rejected attempts do not change:
 
 - staging rows
 - artifacts
+- acceptance criteria, supplemental evidence claims, or evidence observations
 
 Product file write persistence boundary:
 

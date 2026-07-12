@@ -752,7 +752,7 @@ In `workflow` mode, the Evidence path is:
 
 - Use `volicord.stage_artifact` only to prepare an Evidence attachment input
   when bytes or a safe notice are needed.
-- Use `volicord.record_run` to record the Run or observation, claim-scoped
+- Use `volicord.record_run` to record the Run or observation, target-scoped
   evidence update, observation provenance, and any attachment link or promotion.
 
 A staged handle alone is not accepted Evidence and does not satisfy Close
@@ -802,7 +802,7 @@ array:
 - `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
   `artifact_inputs=[]`, `evidence_updates=[]`, `evidence_observations=[]`, and
   `close_assessment=null`; inside each `evidence_updates` item,
-  `supporting_refs=[]`, `observation_refs=[]`,
+  `supporting_run_refs=[]`, `observation_refs=[]`,
   `supporting_artifact_refs=[]`, and `gap_refs=[]`; inside each
   `evidence_observations` item, `observed_by_actor_source=null`,
   `tool_name=null`, `tool_invocation_id=null`, `tool_metadata={}`,
@@ -817,10 +817,12 @@ adapter constructs the complete Core request shape. They do not change the
 public Core API present-member contract owned by the focused method references.
 For `volicord.request_user_judgment`, `task_id`, `judgment_kind`,
 `presentation`, `question`, `context`, and `required_for` remain required MCP
-arguments. For `volicord.record_run`, `claim`, `required_for_close`, and
-`coverage_state` remain required inside each `evidence_updates` item, while
-`claim`, `source_kind`, `assurance_level`, and `observed_at` remain required
-inside each `evidence_observations` item. This rule supplies no implicit value
+arguments. For `volicord.record_run`, `target` and `coverage_state` remain
+required inside each `evidence_updates` item, while `target`, `source_kind`,
+`assurance_level`, and `observed_at` remain required inside each
+`evidence_observations` item. Each `target` is the strict tagged
+acceptance-criterion or supplemental-claim union owned by the API state schema.
+This rule supplies no implicit value
 for any other field; the exact advertised `required` array remains
 authoritative.
 

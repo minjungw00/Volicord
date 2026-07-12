@@ -124,7 +124,10 @@ fn plan_update_scope(
 
     let current_scope = StoredScope::from_task(&task)?;
     let next_scope = current_scope.apply_request(&request);
+    let (acceptance_criteria, acceptance_criteria_mutation, acceptance_criteria_changed) =
+        plan_acceptance_criteria_replacement(service, store, project_state, &request)?;
     let scope_changed = current_scope != next_scope
+        || acceptance_criteria_changed
         || request.change_unit.operation == ChangeUnitOperation::CreateCurrent
         || request.change_unit.operation == ChangeUnitOperation::ReplaceCurrent;
     let next_scope_revision = if scope_changed {
@@ -170,8 +173,10 @@ fn plan_update_scope(
             "autonomy_boundary": next_scope.autonomy_boundary
         }))?),
         close_summary_json: None,
-        completion_policy_json: None,
     })];
+    if let Some(mutation) = acceptance_criteria_mutation {
+        storage_mutations.push(CoreStorageMutation::ReplaceAcceptanceCriteria(mutation));
+    }
     if scope_changed {
         storage_mutations.push(CoreStorageMutation::UpdateTaskScopeRevision(
             TaskScopeRevisionUpdate {
@@ -189,6 +194,11 @@ fn plan_update_scope(
     }
 
     let mut synthetic_task = task.clone();
+    synthetic_task.scope_revision = next_scope_revision;
+    synthetic_task.close_basis_revision = next_close_basis_revision;
+    if scope_changed {
+        synthetic_task.close_basis_json = None;
+    }
     synthetic_task.title = next_scope.goal_summary.clone();
     synthetic_task.summary = next_scope.goal_summary.clone();
     synthetic_task.shaping_summary_json = serde_json::to_string(&next_scope.to_json())?;
@@ -362,12 +372,24 @@ fn plan_update_scope(
         service.now(),
         Some(guarantee_display.clone()),
     )?;
-    let evidence_summary = projected_evidence_summary(
+    let projected_current_close_basis = if scope_changed {
+        None
+    } else {
+        projected_close_basis(store, &request.task_id)?
+    };
+    let evidence_summary = projected_evidence_summary_for_criteria(
         store,
         &request.envelope.project_id,
         planned_state_version,
         &synthetic_task,
-    )?;
+        &acceptance_criteria,
+    )?
+    .map(|summary| evidence_summary_for_display(summary, projected_current_close_basis.as_ref()));
+    let close_evidence_summary = if scope_changed {
+        evidence_summary_with_required_criteria(None, &acceptance_criteria)
+    } else {
+        evidence_summary.clone()
+    };
     let projected_project_state = project_state_projection(
         project_state,
         planned_state_version,
@@ -376,17 +398,16 @@ fn plan_update_scope(
             .clone()
             .or_else(|| Some(request.task_id.as_str().to_owned())),
     );
-    let close_context = close_context_from_projection(
-        synthetic_task.clone(),
-        synthetic_change_unit.clone(),
-        if scope_changed {
-            None
-        } else {
-            projected_close_basis(store, &request.task_id)?
-        },
-        pending_refs.clone(),
-        blocker_refs.clone(),
-        evidence_summary.clone(),
+    let close_context = close_context_with_projected_acceptance_criteria(
+        close_context_from_projection(
+            synthetic_task.clone(),
+            synthetic_change_unit.clone(),
+            projected_current_close_basis,
+            pending_refs.clone(),
+            blocker_refs.clone(),
+            close_evidence_summary,
+        ),
+        &acceptance_criteria,
     );
     let close_context = if scope_changed {
         close_context_with_pending_authorities(close_context, Vec::new())
@@ -407,6 +428,7 @@ fn plan_update_scope(
         state_version: planned_state_version,
         task: &synthetic_task,
         current_change_unit: synthetic_change_unit.as_ref(),
+        acceptance_criteria,
         pending_user_judgment_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
         write_ticket_summary,
@@ -442,6 +464,112 @@ fn plan_update_scope(
         result_fields: strip_base(serde_json::to_value(result)?)?,
         next_actions,
     })
+}
+
+fn plan_acceptance_criteria_replacement(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    request: &UpdateScopeRequest,
+) -> Result<
+    (
+        Vec<AcceptanceCriterion>,
+        Option<AcceptanceCriteriaReplace>,
+        bool,
+    ),
+    PlanError,
+> {
+    let current = active_acceptance_criteria_for_task(store, &request.task_id)?;
+    let Some(replacements) = request.acceptance_criteria.as_ref() else {
+        return Ok((current, None, false));
+    };
+
+    let mut seen_ids = BTreeSet::new();
+    let mut projected = Vec::with_capacity(replacements.len());
+    let mut upserts = Vec::with_capacity(replacements.len());
+    for (position, replacement) in replacements.iter().enumerate() {
+        let statement = normalize_display_text(&replacement.statement);
+        if statement.is_empty() {
+            validation_plan_error(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "acceptance_criteria[].statement",
+                "acceptance criterion statements must not be empty",
+            )?;
+            unreachable!("validation_plan_error always returns Err");
+        }
+        let acceptance_criterion_id = match replacement.acceptance_criterion_id.as_ref() {
+            Some(id) => {
+                if !seen_ids.insert(id.as_str().to_owned()) {
+                    validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        "acceptance_criteria[].acceptance_criterion_id",
+                        "acceptance criterion replacement IDs must not be duplicated",
+                    )?;
+                    unreachable!("validation_plan_error always returns Err");
+                }
+                let record = store
+                    .acceptance_criterion_record(id.as_str())
+                    .map_err(CorePipelineError::from)?;
+                let Some(record) = record else {
+                    validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        "acceptance_criteria[].acceptance_criterion_id",
+                        "acceptance criterion replacement ID is unknown",
+                    )?;
+                    unreachable!("validation_plan_error always returns Err");
+                };
+                if record.task_id != request.task_id.as_str() {
+                    validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        "acceptance_criteria[].acceptance_criterion_id",
+                        "acceptance criterion replacement ID belongs to another Task",
+                    )?;
+                    unreachable!("validation_plan_error always returns Err");
+                }
+                if record.status != "active" {
+                    validation_plan_error(
+                        request.envelope.dry_run,
+                        Some(project_state.state_version),
+                        "acceptance_criteria[].acceptance_criterion_id",
+                        "retired acceptance criterion IDs cannot be reused",
+                    )?;
+                    unreachable!("validation_plan_error always returns Err");
+                }
+                id.clone()
+            }
+            None => {
+                let id = allocate_acceptance_criterion_id(service, store, &seen_ids)
+                    .map_err(PlanError::Core)?;
+                seen_ids.insert(id.as_str().to_owned());
+                id
+            }
+        };
+        projected.push(AcceptanceCriterion {
+            acceptance_criterion_id: acceptance_criterion_id.clone(),
+            statement: statement.clone(),
+            evidence_requirement: replacement.evidence_requirement,
+        });
+        upserts.push(AcceptanceCriterionUpsert {
+            acceptance_criterion_id: acceptance_criterion_id.as_str().to_owned(),
+            statement,
+            evidence_requirement: storage_value(replacement.evidence_requirement)?,
+            position: position as u64,
+        });
+    }
+
+    let changed = current != projected;
+    Ok((
+        projected,
+        Some(AcceptanceCriteriaReplace {
+            task_id: request.task_id.as_str().to_owned(),
+            criteria: upserts,
+        }),
+        changed,
+    ))
 }
 
 fn validate_requested_effect_contract(

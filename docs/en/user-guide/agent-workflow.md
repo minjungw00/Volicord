@@ -174,11 +174,11 @@ generated summary. Exact method behavior belongs to
 After a meaningful edit, command, review, or observation, report:
 
 - what ran or changed
-- which claim the Evidence supports
+- which acceptance-criterion or supplemental-claim target the Evidence supports
 - what passed or failed
 - what is missing, stale, redacted, blocked, or insufficient
 
-Record claim-scoped Evidence through the supported run or observation path.
+Record target-scoped Evidence through the supported run or observation path.
 Evidence attachments are inputs to that record; their availability alone does
 not prove a claim. Keep Evidence, Close Status, final acceptance, and
 residual-risk acceptance separate.

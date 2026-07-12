@@ -10,8 +10,9 @@ use sha2::{Digest, Sha256};
 use volicord_store::{
     artifacts::{ArtifactStagingInsert, PersistentArtifactVerificationStatus, StagedPayloadKind},
     core_pipeline::{
+        AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionUpsert,
         ArtifactLinkInsert, ArtifactPromotion, ChangeUnitInsert, ChangeUnitRecord,
-        CoreProjectStore, CoreStorageMutation, EvidenceObservationInsert,
+        CoreProjectStore, CoreStorageMutation, EvidenceClaimInsert, EvidenceObservationInsert,
         EvidenceObservationRecord, EvidenceSummaryRecord, EvidenceSummaryUpsert,
         LocalWebConsentTokenConsumption, ProjectContinuityRecordInsert,
         ProjectContinuityRecordRecord, ProjectStateHeader, RunInsert, RunObservedChangesRecord,
@@ -29,18 +30,19 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    ActorSource, ArtifactAvailability, ArtifactId, ArtifactInput, ArtifactInputSourceKind,
-    ArtifactIntegrityStatus, ArtifactRef, BaselineRef, ChangeUnitEffectContract, ChangeUnitId,
-    ChangeUnitOperation, CheckCloseRequest, CloseIntent, CloseReadinessBlocker,
-    CloseReadinessBlockerCategory, CloseReason, CloseState, CloseTaskRequest, CloseTaskResult,
-    CompletionPolicy, ControlSurfaceSummary, CoverageHostHookState, CoverageSessionWatcherState,
-    CoverageSummary, CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode,
-    EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState, EvidenceDisplayState,
-    EvidenceObservation, EvidenceObservationId, EvidenceObservationInput, EvidenceSourceKind,
-    EvidenceStatus, EvidenceSummary, EvidenceUpdateProvenance, GuaranteeDisplay, GuaranteeLevel,
-    GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary, GuardInstallationId,
-    GuardInstallationStatus, GuardObservationStatus, IntegrationProfile, JsonObject,
-    JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
+    AcceptanceCriterion, AcceptanceCriterionId, ActorSource, ArtifactAvailability, ArtifactId,
+    ArtifactInput, ArtifactInputSourceKind, ArtifactIntegrityStatus, ArtifactRef, BaselineRef,
+    ChangeUnitEffectContract, ChangeUnitId, ChangeUnitOperation, CheckCloseRequest, CloseIntent,
+    CloseReadinessBlocker, CloseReadinessBlockerCategory, CloseReason, CloseState,
+    CloseTaskRequest, CloseTaskResult, ControlSurfaceSummary, CoverageHostHookState,
+    CoverageSessionWatcherState, CoverageSummary, CurrentCloseBasis, DryRunSummary, DurableIdKind,
+    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
+    EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceObservation,
+    EvidenceObservationId, EvidenceObservationInput, EvidenceRequirement, EvidenceSourceKind,
+    EvidenceStatus, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
+    GuaranteeLevel, GuardConfigurationStatus, GuardEffectiveStatus, GuardHealthSummary,
+    GuardInstallationId, GuardInstallationStatus, GuardObservationStatus, IntegrationProfile,
+    JsonObject, JudgmentAnswerConstraints, JudgmentBasis, JudgmentBasisCompatibilityStatus,
     JudgmentCapturePath, JudgmentInboxChoice, JudgmentInboxItem, JudgmentKind,
     JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, JudgmentResolutionOutcome,
     MethodName, MethodOperationCategory, NextActionKind, NextActionPresentationRole,
@@ -177,6 +179,7 @@ struct CloseTaskContext {
     projected_run_refs: Vec<StateRecordRef>,
     projected_evidence_observations: Vec<EvidenceObservation>,
     projected_artifacts: Vec<ArtifactRef>,
+    projected_required_criterion_ids: Option<BTreeSet<String>>,
     pending_judgment_authorities: Option<Vec<JudgmentAuthority>>,
     resolved_judgment_authorities: Option<Vec<JudgmentAuthority>>,
 }
@@ -333,6 +336,23 @@ fn allocate_evidence_summary_id(
             .evidence_summary_exists(candidate)
             .map_err(CorePipelineError::from)
     })
+}
+
+fn allocate_acceptance_criterion_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    reserved_ids: &BTreeSet<String>,
+) -> CoreResult<AcceptanceCriterionId> {
+    service
+        .allocate_generated_id(DurableIdKind::AcceptanceCriterion, |candidate| {
+            if reserved_ids.contains(candidate) {
+                return Ok(true);
+            }
+            store
+                .acceptance_criterion_id_exists(candidate)
+                .map_err(CorePipelineError::from)
+        })
+        .map(AcceptanceCriterionId::new)
 }
 
 fn allocate_evidence_observation_id(
@@ -2282,7 +2302,6 @@ struct StoredScope {
     goal_summary: Option<String>,
     scope_summary: Option<String>,
     non_goals: Vec<String>,
-    acceptance_criteria: Vec<String>,
     autonomy_boundary: Option<String>,
     baseline_ref: Option<String>,
 }
@@ -2297,8 +2316,6 @@ struct PersistedTaskShaping {
     scope_summary: Option<String>,
     #[serde(default)]
     non_goals: Vec<String>,
-    #[serde(default)]
-    acceptance_criteria: Vec<String>,
     #[serde(default)]
     baseline_ref: Option<String>,
     #[serde(default)]
@@ -2378,15 +2395,6 @@ struct PersistedCloseSummary {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PersistedCompletionPolicy {
-    #[serde(default)]
-    evidence_required: bool,
-    #[serde(default)]
-    required_claims: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct PersistedWriteTicketAttemptScope {
     task_id: TaskId,
     change_unit_id: ChangeUnitId,
@@ -2429,7 +2437,6 @@ impl StoredScope {
             goal_summary: shaping.goal_summary.or_else(|| task.summary.clone()),
             scope_summary: shaping.scope_summary,
             non_goals: shaping.non_goals,
-            acceptance_criteria: shaping.acceptance_criteria,
             autonomy_boundary: autonomy.autonomy_boundary.or(shaping.autonomy_boundary),
             baseline_ref: shaping.baseline_ref,
         }))
@@ -2449,10 +2456,6 @@ impl StoredScope {
                 .non_goals
                 .clone()
                 .unwrap_or_else(|| self.non_goals.clone()),
-            acceptance_criteria: request
-                .acceptance_criteria
-                .clone()
-                .unwrap_or_else(|| self.acceptance_criteria.clone()),
             autonomy_boundary: request
                 .autonomy_boundary
                 .clone()
@@ -2470,7 +2473,6 @@ impl StoredScope {
         self.goal_summary = normalize_scope_text_option(self.goal_summary);
         self.scope_summary = normalize_scope_text_option(self.scope_summary);
         self.non_goals = normalize_scope_string_list(self.non_goals);
-        self.acceptance_criteria = normalize_scope_string_list(self.acceptance_criteria);
         self.autonomy_boundary = normalize_scope_text_option(self.autonomy_boundary);
         self.baseline_ref = normalize_scope_text_option(self.baseline_ref);
         self
@@ -2481,7 +2483,6 @@ impl StoredScope {
             self.goal_summary.clone(),
             self.scope_summary.clone(),
             self.non_goals.clone(),
-            self.acceptance_criteria.clone(),
             self.baseline_ref.clone(),
             self.autonomy_boundary.clone(),
             None,
@@ -2495,6 +2496,10 @@ fn normalize_scope_text_option(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn normalize_display_text(value: &str) -> String {
+    value.trim().to_owned()
+}
+
 fn normalize_scope_string_list(values: Vec<String>) -> Vec<String> {
     values
         .into_iter()
@@ -2504,11 +2509,39 @@ fn normalize_scope_string_list(values: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+fn acceptance_criterion_from_record(
+    record: &AcceptanceCriterionRecord,
+) -> CoreResult<AcceptanceCriterion> {
+    Ok(AcceptanceCriterion {
+        acceptance_criterion_id: AcceptanceCriterionId::new(record.acceptance_criterion_id.clone()),
+        statement: record.statement.clone(),
+        evidence_requirement: parse_owner_storage_value(
+            "acceptance_criteria",
+            record.acceptance_criterion_id.clone(),
+            "evidence_requirement",
+            &record.evidence_requirement,
+        )?,
+    })
+}
+
+fn active_acceptance_criteria_for_task(
+    store: &CoreProjectStore,
+    task_id: &TaskId,
+) -> CoreResult<Vec<AcceptanceCriterion>> {
+    store
+        .active_acceptance_criteria(task_id)
+        .map_err(CorePipelineError::from)?
+        .iter()
+        .map(acceptance_criterion_from_record)
+        .collect()
+}
+
 struct SummaryBuild<'a> {
     project_id: &'a ProjectId,
     state_version: u64,
     task: &'a TaskRecord,
     current_change_unit: Option<&'a ChangeUnitRecord>,
+    acceptance_criteria: Vec<AcceptanceCriterion>,
     pending_user_judgment_refs: Vec<StateRecordRef>,
     blocker_refs: Vec<StateRecordRef>,
     write_ticket_summary: Option<WriteTicketStateSummary>,
@@ -2525,6 +2558,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         state_version,
         task,
         current_change_unit,
+        acceptance_criteria,
         pending_user_judgment_refs,
         blocker_refs,
         write_ticket_summary,
@@ -2588,7 +2622,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         goal_summary: scope.goal_summary,
         scope_summary: change_unit_scope.or(scope.scope_summary),
         non_goals: scope.non_goals,
-        acceptance_criteria: scope.acceptance_criteria,
+        acceptance_criteria,
         autonomy_boundary: scope.autonomy_boundary,
         active_change_unit_ref,
         effect_contract,
@@ -2807,6 +2841,29 @@ fn projected_evidence_summary(
     )?)
 }
 
+fn projected_evidence_summary_for_criteria(
+    store: &CoreProjectStore,
+    project_id: &ProjectId,
+    state_version: u64,
+    task: &TaskRecord,
+    acceptance_criteria: &[AcceptanceCriterion],
+) -> Result<Option<EvidenceSummary>, PlanError> {
+    let task_id = TaskId::new(task.task_id.clone());
+    let record = store
+        .latest_evidence_summary(&task_id)
+        .map_err(CorePipelineError::from)?;
+    let required = required_acceptance_criterion_ids(acceptance_criteria);
+    Ok(close_task::close_evidence_summary_with_required(
+        store,
+        record.as_ref(),
+        task,
+        project_id,
+        &task_id,
+        state_version,
+        &required,
+    )?)
+}
+
 fn projected_pending_user_judgment_refs(
     store: &CoreProjectStore,
     task_id: &TaskId,
@@ -2877,9 +2934,70 @@ fn close_context_from_projection(
         projected_run_refs: Vec::new(),
         projected_evidence_observations: Vec::new(),
         projected_artifacts: Vec::new(),
+        projected_required_criterion_ids: None,
         pending_judgment_authorities: None,
         resolved_judgment_authorities: None,
     }
+}
+
+fn close_context_with_projected_acceptance_criteria(
+    mut context: CloseTaskContext,
+    acceptance_criteria: &[AcceptanceCriterion],
+) -> CloseTaskContext {
+    context.projected_required_criterion_ids =
+        Some(required_acceptance_criterion_ids(acceptance_criteria));
+    context
+}
+
+fn required_acceptance_criterion_ids(
+    acceptance_criteria: &[AcceptanceCriterion],
+) -> BTreeSet<String> {
+    acceptance_criteria
+        .iter()
+        .filter(|criterion| criterion.evidence_requirement == EvidenceRequirement::Required)
+        .map(|criterion| criterion.acceptance_criterion_id.as_str().to_owned())
+        .collect()
+}
+
+fn evidence_summary_with_required_criteria(
+    summary: Option<EvidenceSummary>,
+    acceptance_criteria: &[AcceptanceCriterion],
+) -> Option<EvidenceSummary> {
+    let required = required_acceptance_criterion_ids(acceptance_criteria);
+    if summary.is_none() && required.is_empty() {
+        return None;
+    }
+    let mut summary = summary.unwrap_or(EvidenceSummary {
+        evidence_state: None,
+        status: EvidenceStatus::Unknown,
+        coverage_items: Vec::new(),
+        artifact_refs: Vec::new(),
+        observation_refs: Vec::new(),
+        updated_by_run_ref: None,
+    });
+    for acceptance_criterion_id in required {
+        if !summary.coverage_items.iter().any(|item| {
+            matches!(
+                &item.target,
+                EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id: existing
+                } if existing.as_str() == acceptance_criterion_id
+            )
+        }) {
+            summary.coverage_items.push(EvidenceCoverageItem {
+                target: EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id: AcceptanceCriterionId::new(acceptance_criterion_id),
+                },
+                coverage_state: EvidenceCoverageState::Unsupported,
+                supporting_run_refs: Vec::new(),
+                observation_refs: Vec::new(),
+                supporting_artifact_refs: Vec::new(),
+                gap_refs: Vec::new(),
+            });
+        }
+    }
+    summary.status = evidence_status_for_items(&summary.coverage_items);
+    Some(summary)
 }
 
 fn close_context_with_record_run_projection(
@@ -2989,7 +3107,6 @@ fn task_shaping_json(
     goal_summary: Option<String>,
     scope_summary: Option<String>,
     non_goals: Vec<String>,
-    acceptance_criteria: Vec<String>,
     baseline_ref: Option<String>,
     autonomy_boundary: Option<String>,
     initial_context_refs: Option<Value>,
@@ -2998,7 +3115,6 @@ fn task_shaping_json(
         "goal_summary": goal_summary,
         "scope_summary": scope_summary,
         "non_goals": non_goals,
-        "acceptance_criteria": acceptance_criteria,
         "baseline_ref": baseline_ref,
         "autonomy_boundary": autonomy_boundary,
         "initial_context_refs": initial_context_refs.unwrap_or(Value::Array(Vec::new()))
@@ -3108,7 +3224,6 @@ fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStora
         bounded_context_json: None,
         autonomy_boundary_json: None,
         close_summary_json: None,
-        completion_policy_json: None,
     })
 }
 
@@ -3206,7 +3321,7 @@ fn evidence_summary_has_attached_evidence(summary: &EvidenceSummary) -> bool {
         || !summary.artifact_refs.is_empty()
         || !summary.observation_refs.is_empty()
         || summary.coverage_items.iter().any(|item| {
-            !item.supporting_refs.is_empty()
+            !item.supporting_run_refs.is_empty()
                 || !item.observation_refs.is_empty()
                 || !item.supporting_artifact_refs.is_empty()
         })

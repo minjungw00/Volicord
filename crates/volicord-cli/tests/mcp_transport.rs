@@ -679,7 +679,10 @@ fn intake_arguments(project_selector: Option<&str>) -> Value {
         "initial_scope": {
             "boundary": "Compiled MCP stdio process behavior.",
             "non_goals": ["Changing Core method semantics."],
-            "acceptance_criteria": ["The stdio process records one task."]
+            "acceptance_criteria": [{
+                "statement": "The stdio process records one task.",
+                "evidence_requirement": "required"
+            }]
         },
         "initial_context_refs": []
     });

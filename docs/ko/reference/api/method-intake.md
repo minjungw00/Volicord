@@ -38,7 +38,11 @@
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `plain_language_request`, `requested_mode`, `resume_policy`.
-- 알고 있는 첫 범위 후보는 `initial_scope.boundary`, `initial_scope.non_goals`, `initial_scope.acceptance_criteria`에 둡니다. 알려진 목록 항목이 없으면 빈 배열을 사용합니다.
+- 알고 있는 첫 범위 후보는 `initial_scope.boundary`,
+  `initial_scope.non_goals`, `initial_scope.acceptance_criteria`에 둡니다.
+  알려진 목록 항목이 없으면 빈 배열을 사용합니다. 각 기준 입력은 문장과
+  증거 요구 수준을 제공하고 ID는 제공하지 않습니다. Core는 커밋할 때 각
+  `AcceptanceCriterionId`를 생성합니다.
 
 ## 요청 스키마
 
@@ -58,6 +62,8 @@ IntakeRequest:
 ```
 
 중첩 형태 담당 문서:
+- `initial_scope.acceptance_criteria`는 `AcceptanceCriterionInput[]`을
+  사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다.
 - `initial_context_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#state-references)가 담당합니다.
 - `initial_source_refs`는 [API 상태 스키마](schema-state.md#non-authoritative-source-references)가 담당하는 권한 효력이 없는 `SourceRef[]` 형태를 사용합니다. Core는 이 참조의 구조를 검증해 Task 맥락으로 저장하지만 그 내용을 검사하거나 범위를 넓히거나 기준선을 선택하거나 증거 또는 권한을 만들 때 사용하지 않습니다.
 - `requested_mode`와 `resume_policy` 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)과 [메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.
@@ -172,7 +178,8 @@ params:
     non_goals:
       - "계정 생성 방식 변경."
     acceptance_criteria:
-      - "새 사용자가 작업 공간을 열면 체크리스트를 볼 수 있습니다."
+      - statement: "새 사용자가 작업 공간을 열면 체크리스트를 볼 수 있습니다."
+        evidence_requirement: required
   initial_context_refs: []
   initial_source_refs: []
 ```
@@ -217,7 +224,9 @@ state:
   non_goals:
     - "계정 생성 방식 변경."
   acceptance_criteria:
-    - "새 사용자가 작업 공간을 열면 체크리스트를 볼 수 있습니다."
+    - acceptance_criterion_id: criterion_onboard_001
+      statement: "새 사용자가 작업 공간을 열면 체크리스트를 볼 수 있습니다."
+      evidence_requirement: required
   autonomy_boundary: null
   active_change_unit_ref: null
   baseline_ref: null

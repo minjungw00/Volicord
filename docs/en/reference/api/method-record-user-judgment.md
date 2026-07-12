@@ -370,7 +370,9 @@ state:
   non_goals:
     - "Changing empty-state copy."
   acceptance_criteria:
-    - "The empty-state illustration follows the user's product decision."
+    - acceptance_criterion_id: criterion_empty_state_001
+      statement: "The empty-state illustration follows the user's product decision."
+      evidence_requirement: not_required
   autonomy_boundary: "Stay within empty-state illustration choice."
   active_change_unit_ref:
     record_kind: change_unit

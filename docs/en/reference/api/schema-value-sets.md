@@ -653,15 +653,39 @@ accepted_for_close
 
 These values are user-facing presentation states. `accepted_for_close` means evidence is available to the current close-readiness calculation; it is not a correctness proof, test-sufficiency proof, QA result, final acceptance, or residual-risk acceptance.
 
-`EvidenceCoverageItem.coverage_state` uses:
+`AcceptanceCriterion.evidence_requirement`, intake criterion input, and
+update-scope criterion replacement input use:
+
+```text
+required
+optional
+not_required
+```
+
+Only `required` current criteria can create evidence close blockers.
+
+`EvidenceTarget.target_kind` uses:
+
+```text
+acceptance_criterion
+supplemental_claim
+```
+
+`EvidenceCoverageUpdate.coverage_state` uses:
 
 ```text
 unsupported
 partial
 supported
+contradicted
 not_applicable
+```
+
+Committed `EvidenceCoverageItem.coverage_state` uses the same values and may
+also use:
+
+```text
 stale
-blocked
 ```
 
 <a id="evidence-observation-values"></a>

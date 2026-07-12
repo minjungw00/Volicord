@@ -28,7 +28,6 @@ CREATE TABLE tasks (
   close_basis_revision INTEGER NOT NULL DEFAULT 0 CHECK (close_basis_revision >= 0),
   close_basis_json TEXT,
   close_summary_json TEXT NOT NULL DEFAULT '{}',
-  completion_policy_json TEXT NOT NULL DEFAULT '{}',
   current_change_unit_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -39,6 +38,38 @@ CREATE TABLE tasks (
   FOREIGN KEY (project_id, task_id, current_change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
     DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE acceptance_criteria (
+  project_id TEXT NOT NULL,
+  acceptance_criterion_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  statement TEXT NOT NULL CHECK (length(trim(statement)) > 0),
+  evidence_requirement TEXT NOT NULL CHECK (
+    evidence_requirement IN ('required', 'optional', 'not_required')
+  ),
+  position INTEGER NOT NULL CHECK (position >= 0),
+  status TEXT NOT NULL CHECK (status IN ('active', 'retired')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  retired_at TEXT,
+  PRIMARY KEY (project_id, acceptance_criterion_id),
+  UNIQUE (project_id, task_id, acceptance_criterion_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
+  CHECK (
+    (status = 'active' AND retired_at IS NULL)
+    OR (status = 'retired' AND retired_at IS NOT NULL)
+  )
+);
+
+CREATE TABLE evidence_claims (
+  project_id TEXT NOT NULL,
+  evidence_claim_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  statement TEXT NOT NULL CHECK (length(trim(statement)) > 0),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, task_id, evidence_claim_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 
 CREATE TABLE change_units (
@@ -379,7 +410,8 @@ CREATE TABLE evidence_observations (
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
   run_id TEXT,
-  claim TEXT NOT NULL,
+  acceptance_criterion_id TEXT,
+  evidence_claim_id TEXT,
   source_kind TEXT NOT NULL CHECK (
     source_kind IN ('agent_report', 'connection_observation', 'external_tool', 'user_observation', 'reused_evidence', 'unverified_claim')
   ),
@@ -403,7 +435,15 @@ CREATE TABLE evidence_observations (
     REFERENCES change_units (project_id, task_id, change_unit_id),
   FOREIGN KEY (project_id, run_id)
     REFERENCES runs (project_id, run_id)
-    DEFERRABLE INITIALLY DEFERRED
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
+    REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
+  FOREIGN KEY (project_id, task_id, evidence_claim_id)
+    REFERENCES evidence_claims (project_id, task_id, evidence_claim_id),
+  CHECK (
+    (acceptance_criterion_id IS NOT NULL AND evidence_claim_id IS NULL)
+    OR (acceptance_criterion_id IS NULL AND evidence_claim_id IS NOT NULL)
+  )
 );
 
 CREATE TABLE blockers (
@@ -494,6 +534,12 @@ CREATE INDEX idx_tasks_lifecycle
 CREATE INDEX idx_tasks_current_change_unit
   ON tasks (project_id, current_change_unit_id);
 
+CREATE INDEX idx_acceptance_criteria_task_status
+  ON acceptance_criteria (project_id, task_id, status, position);
+
+CREATE INDEX idx_evidence_claims_task
+  ON evidence_claims (project_id, task_id);
+
 CREATE INDEX idx_change_units_task_status
   ON change_units (project_id, task_id, status);
 
@@ -527,8 +573,13 @@ CREATE INDEX idx_artifact_links_owner
 CREATE INDEX idx_evidence_summaries_task_status
   ON evidence_summaries (project_id, task_id, status);
 
-CREATE INDEX idx_evidence_observations_task_claim
-  ON evidence_observations (project_id, task_id, claim);
+CREATE INDEX idx_evidence_observations_task_target
+  ON evidence_observations (
+    project_id,
+    task_id,
+    acceptance_criterion_id,
+    evidence_claim_id
+  );
 
 CREATE INDEX idx_evidence_observations_run
   ON evidence_observations (project_id, run_id);

@@ -369,7 +369,9 @@ state:
   non_goals:
     - "빈 상태 문구 변경."
   acceptance_criteria:
-    - "빈 상태 일러스트가 사용자의 제품 결정을 따릅니다."
+    - acceptance_criterion_id: criterion_empty_state_001
+      statement: "빈 상태 일러스트가 사용자의 제품 결정을 따릅니다."
+      evidence_requirement: not_required
   autonomy_boundary: "빈 상태 일러스트 선택만 다룹니다."
   active_change_unit_ref:
     record_kind: change_unit
