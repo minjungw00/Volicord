@@ -71,7 +71,11 @@ MCP 항목을 승인하고, 호스트 고유 MCP elicitation UI에서 직접 답
 
 판단 변형이 통과하면 표식 `Task`와 판단 생성, `mcp_elicitation_user_channel` 근거의
 호스트 고유 프롬프트/응답 기록, 그에 따른 Task 상태 전환, 권한 이벤트, 내용 없는 해당
-세션 진단을 검증한 것입니다. 고유 elicitation을 사용할 수 없으면 테스트 하네스는 대기 판단이
+세션 진단을 검증한 것입니다. Judgment에는 고정된 route option 두 개가 있습니다. 사람이
+하나를 선택하면 에이전트는 기본 간결한 Judgment 결과를 소비하고, 해당 option에 매핑된
+정확한 요약 표식을 가진 Product Repository 비쓰기 `shaping_update` Run을 기록해야 합니다.
+테스트 하네스는 저장된 `selected_option_id`와 최신 Run을 모두 읽고 매핑, kind, 빈 변경 경로,
+비쓰기 관찰이 일치하는지 확인합니다. 고유 elicitation을 사용할 수 없으면 테스트 하네스는 대기 판단이
 `volicord inbox`에 보이는지 확인하고 정확한 `volicord inbox answer` 명령을 출력한 뒤,
 대체 경로를 고유 프롬프트 성공으로 취급하지 않고 점검을 실패시킵니다. 운영자는 복구에
 그 명령을 사용할 수 있지만, 그렇게 해도 실패한 실제 고유 프롬프트 점검이 통과 결과로

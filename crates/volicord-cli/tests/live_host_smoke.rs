@@ -27,6 +27,11 @@ mod unix {
     const CLAUDE_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_SMOKE";
     const CODEX_JUDGMENT_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_JUDGMENT_SMOKE";
     const CLAUDE_JUDGMENT_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE";
+    const JUDGMENT_ROUTE_ALPHA_OPTION_ID: &str = "route_alpha";
+    const JUDGMENT_ROUTE_BETA_OPTION_ID: &str = "route_beta";
+    const JUDGMENT_ROUTE_ALPHA_RUN_MARKER: &str =
+        "VOLICORD_LIVE_HOST_JUDGMENT_CONSUMED_ROUTE_ALPHA";
+    const JUDGMENT_ROUTE_BETA_RUN_MARKER: &str = "VOLICORD_LIVE_HOST_JUDGMENT_CONSUMED_ROUTE_BETA";
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
 
     #[test]
@@ -308,9 +313,54 @@ mod unix {
             Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL),
             "the live round trip must use the host-native MCP User Channel"
         );
+        assert_eq!(
+            observation.option_ids.len(),
+            2,
+            "the live Judgment must preserve exactly the two requested route options"
+        );
         assert!(
-            observation.state_version >= 3,
-            "intake, Judgment creation, and User Channel recording must advance Task state"
+            observation
+                .option_ids
+                .iter()
+                .any(|option_id| option_id == JUDGMENT_ROUTE_ALPHA_OPTION_ID),
+            "the live Judgment is missing the alpha route option"
+        );
+        assert!(
+            observation
+                .option_ids
+                .iter()
+                .any(|option_id| option_id == JUDGMENT_ROUTE_BETA_OPTION_ID),
+            "the live Judgment is missing the beta route option"
+        );
+        let selected_option_id = observation
+            .selected_option_id
+            .as_deref()
+            .expect("a resolved live Judgment must store selected_option_id");
+        let expected_run_marker = run_marker_for_selected_option(selected_option_id)
+            .unwrap_or_else(|| panic!("unexpected live Judgment option {selected_option_id:?}"));
+        let latest_run = observation
+            .latest_run
+            .as_ref()
+            .expect("the agent must record a choice-dependent Run after resolving the Judgment");
+        assert_eq!(
+            latest_run.kind, "shaping_update",
+            "the choice-consumption marker must use the no-write shaping Run branch"
+        );
+        assert_eq!(
+            latest_run.summary, expected_run_marker,
+            "the recorded Run marker must match the user's selected option"
+        );
+        assert!(
+            !latest_run.product_file_write_observed,
+            "the choice-consumption Run must not report a Product Repository write"
+        );
+        assert!(
+            latest_run.changed_paths.is_empty(),
+            "the choice-consumption Run must not report changed Product Repository paths"
+        );
+        assert!(
+            observation.state_version >= 4,
+            "intake, Judgment creation, User Channel recording, and the choice-consumption Run must advance Task state"
         );
         assert_ne!(
             observation.lifecycle_phase, "waiting_user",
@@ -324,6 +374,10 @@ mod unix {
             .authority_event_kinds
             .iter()
             .any(|kind| kind == "user_judgment_recorded"));
+        assert!(observation
+            .authority_event_kinds
+            .iter()
+            .any(|kind| kind == "run_recorded"));
         assert_native_channel_diagnostic(&fixture)?;
 
         let status_output = fixture.run_volicord([
@@ -343,8 +397,10 @@ mod unix {
         smoke_note(
             host,
             format!(
-                "verified Judgment {}, User Channel basis {}, Task phase {}, state_version {}",
+                "verified Judgment {}, selected option {}, consumed marker {}, User Channel basis {}, Task phase {}, state_version {}",
                 observation.judgment_id.as_deref().unwrap_or("unknown"),
+                selected_option_id,
+                expected_run_marker,
                 VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
                 observation.lifecycle_phase,
                 observation.state_version
@@ -358,14 +414,37 @@ mod unix {
             concat!(
                 "Run a human-in-the-loop Volicord connection smoke using the MCP server named `volicord`. ",
                 "Do not edit files, run shell commands, prepare a write, or answer on the user's behalf.\n\n",
-                "1. Call `volicord.intake` in work mode with create-new resume behavior. The plain-language request must be exactly `{}`. Use a narrow no-write initial scope and one `not_required` acceptance criterion.\n",
-                "2. For the returned Task, call `volicord.request_user_judgment` for a `product_decision`. Ask whether to keep the smoke Task, provide one accept option and one reject option, and make it required for close completion.\n",
+                "1. Call `volicord.intake` with `detail=full`, in work mode, with create-new resume behavior. The plain-language request must be exactly `{task_marker}`. Use a narrow no-write initial scope and one `not_required` acceptance criterion. Retain the returned Task ID, current Change Unit ID, and `state.baseline_ref` for step 4.\n",
+                "2. For the returned Task, call `volicord.request_user_judgment` for a `product_decision` and omit `detail` so the default compact projection is exercised. Ask which live-smoke route the agent must consume, make it required for `close_complete`, and provide exactly these two caller-authored options in this order:\n",
+                "   - `option_id={alpha_option_id}`, label `Route alpha`, description `Select the alpha live-smoke route.`, consequence `The agent records the alpha choice-consumption Run marker.`, `is_default=false`.\n",
+                "   - `option_id={beta_option_id}`, label `Route beta`, description `Select the beta live-smoke route.`, consequence `The agent records the beta choice-consumption Run marker.`, `is_default=false`.\n",
                 "3. Wait for the host's native MCP elicitation/User Channel UI. The human running this smoke will choose the answer. Never infer, fabricate, or submit that answer yourself.\n",
-                "4. After Volicord reports the Judgment resolved, call `volicord.status` for the Task and report its lifecycle phase and state version. Then stop.\n\n",
+                "4. After Volicord reports the Judgment resolved, consume `structuredContent.method_result.selected_option_id` from that default result. If it is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, call `volicord.record_run` with summary exactly `{beta_run_marker}`. Use the retained Task ID, Change Unit ID, and baseline ref; set `kind=shaping_update`; report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`; do not use a write ticket, artifacts, evidence updates, or a close assessment. Do not record a Run if the selected option is absent or unrecognized.\n",
+                "5. After that Run is recorded, call `volicord.status` for the Task and report the selected option ID, exact Run marker, lifecycle phase, and state version. Then stop.\n\n",
                 "If a native prompt does not appear and Volicord returns a pending inbox item, do not simulate an answer. Report the exact fallback and stop so the harness can verify `volicord inbox` and `volicord inbox answer`."
             ),
-            marker
+            task_marker = marker,
+            alpha_option_id = JUDGMENT_ROUTE_ALPHA_OPTION_ID,
+            beta_option_id = JUDGMENT_ROUTE_BETA_OPTION_ID,
+            alpha_run_marker = JUDGMENT_ROUTE_ALPHA_RUN_MARKER,
+            beta_run_marker = JUDGMENT_ROUTE_BETA_RUN_MARKER,
         )
+    }
+
+    fn run_marker_for_selected_option(selected_option_id: &str) -> Option<&'static str> {
+        match selected_option_id {
+            JUDGMENT_ROUTE_ALPHA_OPTION_ID => Some(JUDGMENT_ROUTE_ALPHA_RUN_MARKER),
+            JUDGMENT_ROUTE_BETA_OPTION_ID => Some(JUDGMENT_ROUTE_BETA_RUN_MARKER),
+            _ => None,
+        }
+    }
+
+    #[derive(Debug)]
+    struct LiveRunObservation {
+        kind: String,
+        summary: String,
+        product_file_write_observed: bool,
+        changed_paths: Vec<String>,
     }
 
     #[derive(Debug)]
@@ -377,7 +456,9 @@ mod unix {
         judgment_status: Option<String>,
         resolved_by_actor_source: Option<String>,
         resolved_verification_basis: Option<String>,
+        selected_option_id: Option<String>,
         option_ids: Vec<String>,
+        latest_run: Option<LiveRunObservation>,
         authority_event_kinds: Vec<String>,
     }
 
@@ -395,7 +476,8 @@ mod unix {
             .query_row(
                 "SELECT t.task_id, t.lifecycle_phase, ps.state_version,
                         j.judgment_id, j.status, j.resolved_by_actor_source,
-                        j.resolved_verification_basis, j.options_json
+                        j.resolved_verification_basis, j.options_json,
+                        j.resolution_json
                    FROM tasks t
                    JOIN project_state ps ON ps.project_id = t.project_id
               LEFT JOIN user_judgments j
@@ -416,6 +498,7 @@ mod unix {
                         row.get::<_, Option<String>>(5)?,
                         row.get::<_, Option<String>>(6)?,
                         row.get::<_, Option<String>>(7)?,
+                        row.get::<_, Option<String>>(8)?,
                     ))
                 },
             )
@@ -429,10 +512,13 @@ mod unix {
             resolved_by_actor_source,
             resolved_verification_basis,
             options_json,
+            resolution_json,
         )) = row
         else {
             return Ok(None);
         };
+        let selected_option_id =
+            selected_option_id_from_resolution_json(resolution_json.as_deref())?;
         let option_ids = options_json
             .as_deref()
             .and_then(|text| serde_json::from_str::<Value>(text).ok())
@@ -442,6 +528,29 @@ mod unix {
             .filter_map(|option| option.get("option_id").and_then(Value::as_str))
             .map(str::to_owned)
             .collect::<Vec<_>>();
+        let latest_run = conn
+            .query_row(
+                "SELECT kind, summary_json, observed_changes_json
+                   FROM runs
+                  WHERE project_id = ?1
+                    AND task_id = ?2
+                    AND status = 'recorded'
+                  ORDER BY created_at DESC, run_id DESC
+                  LIMIT 1",
+                rusqlite::params![project.project_id, task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+            .map(|(kind, summary_json, observed_changes_json)| {
+                live_run_observation(&kind, &summary_json, &observed_changes_json)
+            })
+            .transpose()?;
         let mut statement = conn.prepare(
             "SELECT event_type
                FROM authority_events
@@ -461,9 +570,62 @@ mod unix {
             judgment_status,
             resolved_by_actor_source,
             resolved_verification_basis,
+            selected_option_id,
             option_ids,
+            latest_run,
             authority_event_kinds,
         }))
+    }
+
+    fn selected_option_id_from_resolution_json(
+        resolution_json: Option<&str>,
+    ) -> Result<Option<String>, Box<dyn Error>> {
+        let Some(resolution_json) = resolution_json else {
+            return Ok(None);
+        };
+        let value: Value = serde_json::from_str(resolution_json)?;
+        let selected_option_id = value
+            .get("selected_option_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| io::Error::other("resolved live Judgment has no selected_option_id"))?;
+        Ok(Some(selected_option_id.to_owned()))
+    }
+
+    fn live_run_observation(
+        kind: &str,
+        summary_json: &str,
+        observed_changes_json: &str,
+    ) -> Result<LiveRunObservation, Box<dyn Error>> {
+        let summary: Value = serde_json::from_str(summary_json)?;
+        let observed_changes: Value = serde_json::from_str(observed_changes_json)?;
+        let summary = summary
+            .get("summary")
+            .and_then(Value::as_str)
+            .ok_or_else(|| io::Error::other("live smoke Run has no summary"))?
+            .to_owned();
+        let product_file_write_observed = observed_changes
+            .get("product_file_write_observed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                io::Error::other("live smoke Run has no product-file write observation")
+            })?;
+        let changed_paths = observed_changes
+            .get("changed_paths")
+            .and_then(Value::as_array)
+            .ok_or_else(|| io::Error::other("live smoke Run has no changed_paths array"))?
+            .iter()
+            .map(|path| {
+                path.as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| io::Error::other("live smoke Run has a non-string changed path"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(LiveRunObservation {
+            kind: kind.to_owned(),
+            summary,
+            product_file_write_observed,
+            changed_paths,
+        })
     }
 
     fn assert_actionable_inbox_fallback(

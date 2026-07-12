@@ -76,7 +76,12 @@ host-native MCP elicitation UI, and exit the host after status is reported.
 A passing Judgment variant verifies marker Task and Judgment creation,
 host-native prompt/response recording with
 `mcp_elicitation_user_channel`, the resulting Task-state transition, authority
-events, and the matching content-free session diagnostic. If native
+events, and the matching content-free session diagnostic. The Judgment has two
+fixed route options. After the human selects one, the agent must consume the
+default compact Judgment outcome and record a no-product-write
+`shaping_update` Run whose exact summary marker is mapped to that option. The
+harness reads both stored `selected_option_id` and the latest Run and requires
+the mapping, kind, empty changed paths, and no-write observation to match. If native
 elicitation is unavailable, the harness verifies that the pending Judgment is
 visible through `volicord inbox`, prints an exact `volicord inbox answer`
 command, and fails the native-round-trip check rather than treating fallback as
