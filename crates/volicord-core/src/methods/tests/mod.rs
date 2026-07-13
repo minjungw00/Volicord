@@ -27,8 +27,10 @@ use volicord_store::{
         UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
     session_watch::{
-        create_watch_baseline, snapshot_product_repository, SessionWatchStatus,
-        WatchBaselineCreate, WatchSnapshotOptions,
+        compare_watch_snapshots, create_watch_baseline, record_watch_observation,
+        snapshot_product_repository, validate_current_complete_watch_observation,
+        SessionWatchStatus, ValidatedCaptureWatchObservation, WatchBaselineCreate,
+        WatchObservationInsert, WatchSnapshot, WatchSnapshotOptions,
     },
     sqlite::open_project_state_database,
     user_action_channel::{create_user_action_channel_token, UserActionChannelTokenCreate},
@@ -464,7 +466,7 @@ fn initialize_watch_baseline(
     _task_id: &str,
     session_id: &str,
     suffix: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<WatchSnapshot, Box<dyn Error>> {
     let health = guard_health_record(&harness.runtime_home_path, PROJECT_ID, CONNECTION_ID)?;
     let guard_installation_id = health
         .guard_installation
@@ -506,7 +508,7 @@ fn initialize_watch_baseline(
             connection_internal_id: CONNECTION_ID.to_owned(),
             guard_installation_id,
             status: SessionWatchStatus::Active,
-            snapshot,
+            snapshot: snapshot.clone(),
             created_at: "2026-06-30T00:03:00Z".to_owned(),
             metadata_json: serde_json::to_string(&json!({
                 "source": "volicord_session_watch",
@@ -520,7 +522,7 @@ fn initialize_watch_baseline(
             }))?,
         },
     )?;
-    Ok(())
+    Ok(snapshot)
 }
 
 fn initialize_full_watch_baseline(

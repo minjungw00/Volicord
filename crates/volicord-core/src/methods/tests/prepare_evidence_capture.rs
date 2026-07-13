@@ -218,6 +218,54 @@ fn fulfill_registered_source_receipt(
     Ok(())
 }
 
+fn record_current_complete_watch_observation(
+    harness: &MethodHarness,
+    intent_id: &str,
+    session_id: &str,
+    suffix: &str,
+    baseline_snapshot: &WatchSnapshot,
+) -> Result<ValidatedCaptureWatchObservation, Box<dyn Error>> {
+    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let intent = store
+        .evidence_capture_intent_record(intent_id)?
+        .expect("capture intent should exist");
+    let observed_at = UtcTimestamp::from_datetime(
+        *UtcTimestamp::parse(&intent.created_at)?.as_datetime() + Duration::minutes(1),
+    )
+    .to_canonical_string();
+    let repo_root = product_repo_root(harness)?;
+    let snapshot = snapshot_product_repository(
+        &harness.runtime_home_path,
+        &repo_root,
+        WatchSnapshotOptions::default(),
+    )?;
+    let diff = compare_watch_snapshots(baseline_snapshot, &snapshot);
+    let metadata_json = volicord_types::canonical_json_string(&json!({
+        "scan_summary": &snapshot.scan_summary
+    }))?;
+    let watch_observation_id = format!("watch_observation_{suffix}");
+    record_watch_observation(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        WatchObservationInsert {
+            watch_observation_id: watch_observation_id.clone(),
+            watch_baseline_id: format!("watch_base_{suffix}"),
+            expected_write_id: None,
+            snapshot,
+            diff,
+            observed_at,
+            metadata_json,
+        },
+    )?;
+    Ok(validate_current_complete_watch_observation(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        CONNECTION_ID,
+        session_id,
+        &watch_observation_id,
+    )?)
+}
+
 fn record_run_with_capture(
     task_id: &str,
     change_unit_id: &str,
@@ -1430,6 +1478,9 @@ fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
             create_workspace_bound_task(&harness, case.suffix)?;
         let clock = ManualClock::at("2026-07-13T01:00:00Z");
         harness.use_clock(clock.clone());
+        let baseline_snapshot = (case.suffix == "connection")
+            .then(|| initialize_watch_baseline(&harness, &task_id, case.session_id, case.suffix))
+            .transpose()?;
         let prepared = harness.service.prepare_evidence_capture(
             capture_request(
                 &format!("req_capture_{}", case.suffix),
@@ -1444,11 +1495,40 @@ fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
         )?;
         let intent_ref: StateRecordRef =
             serde_json::from_value(prepared.response_value["capture_intent_ref"].clone())?;
+        let (observed_outcome, source) = if case.suffix == "connection" {
+            let selected = record_current_complete_watch_observation(
+                &harness,
+                intent_ref.record_id.as_str(),
+                case.session_id,
+                case.suffix,
+                baseline_snapshot
+                    .as_ref()
+                    .expect("connection capture should initialize a watcher baseline"),
+            )?;
+            (
+                json!({
+                    "complete": true,
+                    "snapshot_algorithm": selected.observation.snapshot_algorithm,
+                    "snapshot_digest": selected.observation.snapshot_digest,
+                    "observation_sha256": selected.selection_sha256,
+                }),
+                json!({
+                    "connection_id": CONNECTION_ID,
+                    "session_id": selected.observation.session_id,
+                    "guard_installation_id": null,
+                    "guard_event_ids": [],
+                    "watch_observation_refs": [selected.observation.watch_observation_id],
+                    "host_invocation_id": null
+                }),
+            )
+        } else {
+            (case.observed_outcome, case.source)
+        };
         fulfill_registered_source_receipt(
             &harness,
             intent_ref.record_id.as_str(),
-            case.observed_outcome,
-            case.source,
+            observed_outcome,
+            source,
             case.suffix,
         )?;
         clock.advance(Duration::minutes(2));
