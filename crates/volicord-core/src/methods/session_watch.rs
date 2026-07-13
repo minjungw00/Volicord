@@ -202,7 +202,8 @@ pub(super) fn run_session_watch_check(
                 "write_ticket_ids": correlation.write_ticket_ids.clone(),
                 "detector_role": "detective",
                 "does_not_prevent_writes": true,
-                "does_not_identify_actor": true
+                "does_not_identify_actor": true,
+                "scan_summary": &current.scan_summary
             }))?,
         },
     )

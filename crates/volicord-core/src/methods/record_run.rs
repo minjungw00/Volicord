@@ -1421,6 +1421,11 @@ fn decode_capture_intent_record(
         .map_err(|_| corrupt("target_json"))?;
     let capture = serde_json::from_str::<EvidenceCaptureSpec>(&record.capture_spec_json)
         .map_err(|_| corrupt("capture_spec_json"))?;
+    if evidence_capture_input_sha256(&capture).map_err(|_| corrupt("capture_spec_json"))?
+        != record.input_sha256
+    {
+        return Err(corrupt("input_sha256"));
+    }
     let expected_outcome = serde_json::from_str::<JsonObject>(&record.expected_outcome_json)
         .map_err(|_| corrupt("expected_outcome_json"))?;
     validate_evidence_capture_expected_outcome(&capture, &expected_outcome)

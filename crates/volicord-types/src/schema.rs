@@ -21,7 +21,7 @@ use crate::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
     ArtifactIntegrityStatus, AuthorityNextActor, CarryForwardDispositionStatus, CarryForwardKind,
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
-    ConnectionObservationSourceKind, CoverageHostHookState, CoverageSessionWatcherState,
+    ConnectionObservationGuardEventKind, CoverageHostHookState, CoverageSessionWatcherState,
     EffectKind, EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel,
     EvidenceCoverageState, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState,
     EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind,
@@ -1049,6 +1049,16 @@ pub enum EvidenceTarget {
     },
 }
 
+/// Pre-intent source selector for one registered connection observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "source_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConnectionObservationSourceSelector {
+    GuardEvent {
+        event_kind: ConnectionObservationGuardEventKind,
+    },
+    SessionWatcher {},
+}
+
 /// Exact source selection and expected outcome for one evidence-capture intent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "capture_kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -1064,10 +1074,26 @@ pub enum EvidenceCaptureSpec {
         expected_success: RequiredNullable<bool>,
     },
     RegisteredConnectionObservation {
-        source_kind: ConnectionObservationSourceKind,
-        observation_input_sha256: String,
+        source_selector: ConnectionObservationSourceSelector,
         expected_complete: RequiredNullable<bool>,
     },
+}
+
+/// Derives the canonical immutable input digest bound by a capture intent.
+pub fn evidence_capture_input_sha256(
+    capture: &EvidenceCaptureSpec,
+) -> Result<String, serde_json::Error> {
+    match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { command_sha256, .. } => {
+            Ok(command_sha256.clone())
+        }
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_input_sha256, ..
+        } => Ok(tool_input_sha256.clone()),
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_selector, ..
+        } => crate::canonical_json_bare_sha256(source_selector),
+    }
 }
 
 /// Immutable current-basis request for a registered source to capture evidence.
@@ -1183,7 +1209,7 @@ struct ToolCaptureObservedOutcome {
 #[serde(deny_unknown_fields)]
 struct GuardConnectionCaptureObservedOutcome {
     complete: bool,
-    guard_event_kind: String,
+    guard_event_kind: ConnectionObservationGuardEventKind,
     guard_decision: String,
     observation_sha256: String,
 }
@@ -1260,19 +1286,21 @@ pub fn validate_evidence_capture_observed_outcome(
             validate_capture_sha256("tool_result_sha256", &decoded.tool_result_sha256)?;
         }
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::GuardEvent,
+            source_selector: ConnectionObservationSourceSelector::GuardEvent { event_kind },
             ..
         } => {
             let decoded = decode_capture_outcome::<GuardConnectionCaptureObservedOutcome>(outcome)?;
             if !decoded.complete {
                 return Err("registered guard observation must be complete".to_owned());
             }
-            validate_capture_nonempty("guard_event_kind", &decoded.guard_event_kind)?;
+            if decoded.guard_event_kind != *event_kind {
+                return Err("guard_event_kind does not match the intent source selector".to_owned());
+            }
             validate_capture_nonempty("guard_decision", &decoded.guard_decision)?;
             validate_capture_sha256("observation_sha256", &decoded.observation_sha256)?;
         }
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::SessionWatcher,
+            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
             ..
         } => {
             let decoded =
@@ -1328,11 +1356,11 @@ pub fn validate_evidence_capture_limitations(
         EvidenceCaptureSpec::VerifiedCommandExecution { .. } => EVIDENCE_CAPTURE_COMMAND_LIMITATION,
         EvidenceCaptureSpec::VerifiedToolInvocation { .. }
         | EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::GuardEvent,
+            source_selector: ConnectionObservationSourceSelector::GuardEvent { .. },
             ..
         } => EVIDENCE_CAPTURE_GUARD_LIMITATION,
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::SessionWatcher,
+            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
             ..
         } => EVIDENCE_CAPTURE_WATCHER_LIMITATION,
     };

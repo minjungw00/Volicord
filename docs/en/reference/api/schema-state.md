@@ -751,6 +751,10 @@ EvidenceTarget:
   evidence_claim_id: string        # supplemental_claim only
   statement: string                # supplemental_claim only
 
+ConnectionObservationSourceSelector:
+  source_kind: guard_event | session_watcher
+  event_kind: pre_tool | post_tool | prompt_capture | stop  # guard_event only
+
 EvidenceCaptureSpec:
   capture_kind: verified_command_execution | verified_tool_invocation | registered_connection_observation
   command_sha256: string                       # verified_command_execution only
@@ -759,8 +763,7 @@ EvidenceCaptureSpec:
   tool_name: string                            # verified_tool_invocation only; trimmed, 1..256 UTF-8 bytes
   tool_input_sha256: string                    # verified_tool_invocation only
   expected_success: boolean | null             # verified_tool_invocation only
-  source_kind: guard_event | session_watcher   # registered_connection_observation only
-  observation_input_sha256: string             # registered_connection_observation only
+  source_selector: ConnectionObservationSourceSelector  # registered_connection_observation only
   expected_complete: boolean | null            # registered_connection_observation only
 
 EvidenceCaptureIntent:
@@ -953,17 +956,27 @@ Meaning:
   contains only `acceptance_criterion_id`. The `supplemental_claim` variant
   contains caller-assigned Task-scoped `evidence_claim_id` and a non-empty
   immutable `statement`. Variant fields must not be mixed.
-- `EvidenceCaptureSpec` is a strict tagged union. Its lowercase 64-character
-  digest fields bind the exact canonical source input selected by
-  `volicord.prepare_evidence_capture`; expected-outcome members are nullable in
-  the typed shape and use method-owned omission defaults on MCP.
+- `ConnectionObservationSourceSelector` is a strict tagged union. The guard
+  branch requires one closed `event_kind`; the session-watcher branch rejects
+  that field and has no additional caller-owned coordinate. Unknown, extra,
+  and mixed branch fields are invalid. `session_start` is excluded because the
+  exact intent-bound session necessarily started before the intent and cannot
+  supply a post-intent observation.
+- `EvidenceCaptureSpec` is a strict tagged union. Its caller-supplied lowercase
+  64-character digest fields bind exact command or tool input. For a registered
+  connection observation, Core derives `input_sha256` from canonical
+  `source_selector` JSON; future event/observation identity, time, raw-event
+  digest, and snapshot digest are not intent fields. Expected-outcome members
+  are nullable in the typed shape and use method-owned omission defaults on
+  MCP.
 - `EvidenceCaptureIntent` is the immutable, expiring current-basis request. Its
   `requested_by_actor_source` and `workspace_context` are Core-derived basis
   fields, not caller-selected attribution. Its public ref uses
   `record_kind=evidence_capture_intent`.
 - `EvidenceCaptureReceipt` is an immutable durable source-fulfillment fact record.
   Its associated staging handle and staged receipt bytes are transient.
-  Its registered connection/session/guard/watch coordinates, exact digests,
+  Its registered connection/session/guard/watch coordinates, exact source
+  identity, observation time and raw-event or snapshot/selection digests,
   outcome, completeness, limitations, redaction state, observer, and times are
   source facts. The receipt is not a `StateRecordRef` and does not advance Core
   state.

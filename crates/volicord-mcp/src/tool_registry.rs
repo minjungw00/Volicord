@@ -89,7 +89,7 @@ pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID: &str = "veri
 const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_tool_invocation","tool_name":"example.validate","tool_input_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}"#;
 pub(crate) const PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID: &str =
     "registered_connection_capture";
-const PREPARE_EVIDENCE_CAPTURE_CONNECTION_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"registered_connection_observation","source_kind":"guard_event","observation_input_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}"#;
+const PREPARE_EVIDENCE_CAPTURE_CONNECTION_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"registered_connection_observation","source_selector":{"source_kind":"guard_event","event_kind":"stop"}}}"#;
 
 const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"detail":"full","task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
 

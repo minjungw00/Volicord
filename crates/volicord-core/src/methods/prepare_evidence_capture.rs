@@ -377,29 +377,20 @@ fn normalize_capture_spec(
             })
         }
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind,
-            observation_input_sha256,
+            source_selector,
             expected_complete,
         } => {
-            if !artifact_sha256_is_lowercase_hex(observation_input_sha256) {
-                return invalid_capture_spec(
-                    request,
-                    project_state,
-                    "capture.observation_input_sha256",
-                    "observation_input_sha256 must be a lowercase 64-character SHA-256",
-                );
-            }
             let expected_complete = expected_complete.clone().into_option().unwrap_or(true);
             let capture = EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_kind: *source_kind,
-                observation_input_sha256: observation_input_sha256.clone(),
+                source_selector: *source_selector,
                 expected_complete: Some(expected_complete).into(),
             };
+            let input_sha256 = evidence_capture_input_sha256(&capture)?;
             Ok(NormalizedCaptureSpec {
                 expected_outcome: evidence_capture_expected_outcome(&capture),
                 capture,
                 producer_kind: EvidenceProducerKind::RegisteredConnectionObservation,
-                input_sha256: observation_input_sha256.clone(),
+                input_sha256,
             })
         }
     }

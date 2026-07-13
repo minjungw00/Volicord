@@ -1402,7 +1402,10 @@ Project-state constraints:
 - `write_tickets` records single-use write-ticket compatibility. The unique `(project_id, task_id, basis_state_version)` constraint makes the state-version ordering key unique within a Task. The unique indexes on `write_tickets.consumed_by_run_id` and `runs.write_ticket_id` prevent one write-ticket consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_capture_intents` binds one expiring request to exact current-basis,
-  source-input, connection/actor, and workspace facts.
+  command/tool source input or the Core-derived connection-source selector,
+  connection/actor, and workspace facts. A connection intent does not bind a
+  future source identifier, timestamp, raw-event digest, snapshot digest, or
+  selection digest; those facts are fixed by the source-owned receipt.
   `evidence_capture_receipts` permits exactly one complete, content-bound safe
   receipt and staging handle per intent. `evidence_capture_source_claims`
   atomically claims every normalized underlying host invocation, guard event,
@@ -1419,9 +1422,13 @@ Project-state constraints:
   capture class. Command receipts require and claim one host invocation. Tool
   receipts require an exact session and installation, two distinct guard events,
   and one host invocation, and claim all three source facts. Guard connection
-  receipts claim exactly one guard event; watcher receipts claim exactly one
-  session-watch observation. Receipt staging, receipt insertion, and all claims
-  commit or roll back together.
+  receipts claim exactly one guard event whose kind matches the intent selector;
+  watcher receipts claim exactly one session-watch observation from the unique
+  current active baseline for the intent-bound connection and session. The
+  selected source must be post-intent, complete, and nondegraded, and all
+  receipt-fixed identifiers, timestamps, and digests must match that source.
+  Receipt staging, receipt insertion, and all claims commit or roll back
+  together.
 - Store application validation enforces
   `intent.created_at <= receipt.observed_at < intent.expires_at`, receipt
   creation after observation and before intent expiry, and receipt staging

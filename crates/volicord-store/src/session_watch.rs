@@ -9,8 +9,8 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_types::UtcTimestamp;
 pub use volicord_types::WATCH_SNAPSHOT_ALGORITHM;
+use volicord_types::{canonical_json_bare_sha256, UtcTimestamp};
 
 use crate::{
     agent_connections::is_agent_connection_project_allowed,
@@ -332,6 +332,14 @@ pub struct ValidatedWatchObservation {
     pub diff: WatchSnapshotDiff,
 }
 
+/// Capture-eligible current watcher source resolved from one consistent Store view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedCaptureWatchObservation {
+    pub baseline: WatchBaselineRecord,
+    pub observation: WatchObservationRecord,
+    pub selection_sha256: String,
+}
+
 /// Creates a deterministic Product Repository snapshot without executing repository code.
 pub fn snapshot_product_repository(
     runtime_home: impl AsRef<Path>,
@@ -596,6 +604,144 @@ pub fn validate_persisted_watch_observation(
     })
 }
 
+/// Reconstructs one persisted watcher pair and requires capture-eligible completeness.
+pub(crate) fn validate_complete_persisted_watch_observation(
+    baseline: &WatchBaselineRecord,
+    observation: &WatchObservationRecord,
+) -> StoreResult<ValidatedWatchObservation> {
+    if baseline.status != SessionWatchStatus::Active.as_str()
+        || baseline.snapshot_algorithm != observation.snapshot_algorithm
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "session-watch observation does not match an active registered baseline"
+                .to_owned(),
+        });
+    }
+    let validated = validate_persisted_watch_observation(baseline, observation)?;
+    validate_observation_scan_metadata(observation, &validated.observation_snapshot.scan_summary)?;
+    if !watch_scan_is_complete(&validated.baseline_snapshot.scan_summary) {
+        return Err(StoreError::InvalidInput {
+            detail: "session-watch baseline is incomplete or degraded".to_owned(),
+        });
+    }
+    if !watch_scan_is_complete(&validated.observation_snapshot.scan_summary) {
+        return Err(StoreError::InvalidInput {
+            detail: "session-watch observation is incomplete or degraded".to_owned(),
+        });
+    }
+    Ok(validated)
+}
+
+/// Reconstructs the canonical source-selection object committed by a watcher receipt.
+pub(crate) fn canonical_watch_observation_selection(
+    observation: &WatchObservationRecord,
+) -> StoreResult<Value> {
+    let snapshot_entries = persisted_json_value(
+        observation,
+        "snapshot_entries_json",
+        &observation.snapshot_entries_json,
+    )?;
+    let observed_paths = persisted_json_value(
+        observation,
+        "observed_paths_json",
+        &observation.observed_paths_json,
+    )?;
+    let change_summary = persisted_json_value(
+        observation,
+        "change_summary_json",
+        &observation.change_summary_json,
+    )?;
+    Ok(json!({
+        "watch_observation_id": observation.watch_observation_id,
+        "watch_baseline_id": observation.watch_baseline_id,
+        "session_id": observation.session_id,
+        "connection_id": observation.connection_internal_id,
+        "snapshot_algorithm": observation.snapshot_algorithm,
+        "snapshot_digest": observation.snapshot_digest,
+        "snapshot_entries": snapshot_entries,
+        "observed_paths": observed_paths,
+        "change_summary": change_summary,
+        "observed_at": observation.observed_at,
+    }))
+}
+
+fn persisted_json_value(
+    observation: &WatchObservationRecord,
+    logical_column: &'static str,
+    raw: &str,
+) -> StoreResult<Value> {
+    serde_json::from_str(raw).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "session_watch_observations",
+            observation.watch_observation_id.clone(),
+            logical_column,
+        )
+    })
+}
+
+fn validate_observation_scan_metadata(
+    observation: &WatchObservationRecord,
+    derived: &WatchScanSummary,
+) -> StoreResult<()> {
+    let metadata = persisted_json_value(observation, "metadata_json", &observation.metadata_json)?;
+    let explicit = metadata
+        .as_object()
+        .and_then(|metadata| metadata.get("scan_summary"))
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "session_watch_observations",
+                observation.watch_observation_id.clone(),
+                "metadata_json",
+            )
+        })?;
+    const SUMMARY_FIELDS: [&str; 7] = [
+        "files_scanned",
+        "files_skipped",
+        "unreadable_paths_count",
+        "degraded_reasons",
+        "degraded_reason_counts",
+        "skipped_paths_sample",
+        "skipped_paths_truncated",
+    ];
+    if explicit.len() != SUMMARY_FIELDS.len()
+        || SUMMARY_FIELDS
+            .iter()
+            .any(|field| !explicit.contains_key(*field))
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "session_watch_observations",
+            observation.watch_observation_id.clone(),
+            "metadata_json",
+        ));
+    }
+    let explicit = serde_json::from_value::<WatchScanSummary>(Value::Object(explicit.clone()))
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "session_watch_observations",
+                observation.watch_observation_id.clone(),
+                "metadata_json",
+            )
+        })?;
+    if &explicit != derived {
+        return Err(StoreError::corrupt_owner_state_value(
+            "session_watch_observations",
+            observation.watch_observation_id.clone(),
+            "metadata_json",
+        ));
+    }
+    Ok(())
+}
+
+fn watch_scan_is_complete(summary: &WatchScanSummary) -> bool {
+    summary.files_skipped == 0
+        && summary.unreadable_paths_count == 0
+        && summary.degraded_reasons.is_empty()
+        && summary.degraded_reason_counts.is_empty()
+        && summary.skipped_paths_sample.is_empty()
+        && !summary.skipped_paths_truncated
+}
+
 fn persisted_baseline_snapshot(baseline: &WatchBaselineRecord) -> StoreResult<WatchSnapshot> {
     let scope_kind = match baseline.scope_kind.as_str() {
         "repository" => WatchScopeKind::Repository,
@@ -849,7 +995,20 @@ pub fn latest_watch_baseline_for_session(
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
         return Ok(None);
     };
-    let mut stmt = project.conn.prepare(
+    latest_watch_baseline_for_session_from_conn(
+        &project.conn,
+        &project.project.project_id,
+        session_id,
+    )
+}
+
+/// Reads the canonical unique latest session baseline through an existing connection.
+pub(crate) fn latest_watch_baseline_for_session_from_conn(
+    conn: &Connection,
+    project_id: &str,
+    session_id: &str,
+) -> StoreResult<Option<WatchBaselineRecord>> {
+    let mut stmt = conn.prepare(
         "SELECT
                 project_id,
                 watch_baseline_id,
@@ -875,10 +1034,7 @@ pub fn latest_watch_baseline_for_session(
                      watch_baseline_id DESC
             LIMIT 2",
     )?;
-    let rows = stmt.query_map(
-        params![project.project.project_id, session_id],
-        watch_baseline_from_row,
-    )?;
+    let rows = stmt.query_map(params![project_id, session_id], watch_baseline_from_row)?;
     let records = collect_rows(rows)?;
     reject_ambiguous_co_latest_baselines(&records, &format!("session {session_id}"))?;
     Ok(records.into_iter().next())
@@ -1126,6 +1282,87 @@ pub fn watch_observation(
         &project.project.project_id,
         watch_observation_id,
     )
+}
+
+/// Resolves one explicitly selected capture-eligible watcher observation.
+pub fn validate_current_complete_watch_observation(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    connection_internal_id: &str,
+    session_id: &str,
+    watch_observation_id: &str,
+) -> StoreResult<ValidatedCaptureWatchObservation> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_identifier("session_id", session_id)?;
+    validate_identifier("watch_observation_id", watch_observation_id)?;
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Err(StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        });
+    };
+    validate_current_complete_watch_observation_from_conn(
+        &project.conn,
+        &project.project.project_id,
+        connection_internal_id,
+        session_id,
+        watch_observation_id,
+    )
+}
+
+/// Resolves a current complete watcher observation through an existing connection.
+pub(crate) fn validate_current_complete_watch_observation_from_conn(
+    conn: &Connection,
+    project_id: &str,
+    connection_internal_id: &str,
+    session_id: &str,
+    watch_observation_id: &str,
+) -> StoreResult<ValidatedCaptureWatchObservation> {
+    validate_session_scope(conn, project_id, session_id, connection_internal_id)?;
+    let observation = watch_observation_from_conn(conn, project_id, watch_observation_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "session_watch_observation",
+            id: watch_observation_id.to_owned(),
+        })?;
+    if observation.project_id != project_id
+        || observation.session_id != session_id
+        || observation.connection_internal_id != connection_internal_id
+    {
+        return Err(StoreError::Conflict {
+            entity: "session_watch_observation",
+            id: watch_observation_id.to_owned(),
+            detail: "session-watch observation does not match the exact project, session, and Agent Connection"
+                .to_owned(),
+        });
+    }
+    let baseline = latest_watch_baseline_for_session_from_conn(conn, project_id, session_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "session_watch_baseline",
+            id: session_id.to_owned(),
+        })?;
+    if baseline.project_id != project_id
+        || baseline.session_id != session_id
+        || baseline.connection_internal_id != connection_internal_id
+        || baseline.watch_baseline_id != observation.watch_baseline_id
+    {
+        return Err(StoreError::Conflict {
+            entity: "session_watch_observation",
+            id: watch_observation_id.to_owned(),
+            detail: "session-watch observation does not belong to the current baseline".to_owned(),
+        });
+    }
+    validate_complete_persisted_watch_observation(&baseline, &observation)?;
+    let selection = canonical_watch_observation_selection(&observation)?;
+    let selection_sha256 =
+        canonical_json_bare_sha256(&selection).map_err(|error| StoreError::InvalidInput {
+            detail: format!("session-watch observation selection could not be hashed: {error}"),
+        })?;
+    Ok(ValidatedCaptureWatchObservation {
+        baseline,
+        observation,
+        selection_sha256,
+    })
 }
 
 /// Reads one watch observation for a baseline and resulting snapshot digest.
@@ -2149,7 +2386,8 @@ fn watch_baseline_from_row(row: &Row<'_>) -> rusqlite::Result<WatchBaselineRecor
     })
 }
 
-fn watch_observation_from_conn(
+/// Reads one project-scoped watch observation through an existing connection.
+pub(crate) fn watch_observation_from_conn(
     conn: &Connection,
     project_id: &str,
     watch_observation_id: &str,

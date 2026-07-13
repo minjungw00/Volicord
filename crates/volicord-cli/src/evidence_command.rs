@@ -30,19 +30,17 @@ use volicord_store::{
     core_pipeline::{CoreProjectStore, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptInsert},
     guards::{agent_session, guard_event, guard_installation, GuardEventRecord},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    session_watch::{
-        validate_persisted_watch_observation, watch_baseline, watch_observation,
-        WatchBaselineRecord, WatchObservationRecord, WatchScanSummary,
-    },
+    session_watch::validate_current_complete_watch_observation,
     StoreError,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_string, ActorSource, AgentConnectionId,
-    AgentSessionId, ConnectionObservationSourceKind, DurableIdGenerator, DurableIdKind,
-    EvidenceCaptureIntentId, EvidenceCaptureSpec, EvidenceProducerKind, EvidenceTarget,
-    GuardEventId, GuardInstallationId, JsonObject, PersistedEvidenceCaptureReceiptBody,
-    PersistedEvidenceCaptureReceiptSource, ProjectId, RandomDurableIdGenerator, RedactionState,
-    TaskId, UtcTimestamp, EVIDENCE_CAPTURE_COMMAND_LIMITATION as COMMAND_LIMITATION,
+    canonical_json_bare_sha256, canonical_json_string, evidence_capture_input_sha256, ActorSource,
+    AgentConnectionId, AgentSessionId, ConnectionObservationSourceSelector, DurableIdGenerator,
+    DurableIdKind, EvidenceCaptureIntentId, EvidenceCaptureSpec, EvidenceProducerKind,
+    EvidenceTarget, GuardEventId, GuardInstallationId, JsonObject,
+    PersistedEvidenceCaptureReceiptBody, PersistedEvidenceCaptureReceiptSource, ProjectId,
+    RandomDurableIdGenerator, RedactionState, TaskId, UtcTimestamp,
+    EVIDENCE_CAPTURE_COMMAND_LIMITATION as COMMAND_LIMITATION,
     EVIDENCE_CAPTURE_GUARD_LIMITATION as HOOK_LIMITATION,
     EVIDENCE_CAPTURE_WATCHER_LIMITATION as WATCH_LIMITATION,
 };
@@ -459,6 +457,11 @@ fn load_and_validate_intent(
         "evidence capture intent capture_spec_json",
         &record.capture_spec_json,
     )?;
+    if evidence_capture_input_sha256(&capture).map_err(json_runtime)? != record.input_sha256 {
+        return Err(EvidenceCommandError::runtime(
+            "evidence capture intent input digest is corrupt",
+        ));
+    }
     let target: EvidenceTarget =
         strict_json("evidence capture intent target_json", &record.target_json)?;
     validate_target(&context.store, &record, &target)?;
@@ -1055,12 +1058,10 @@ fn fulfill_connection(
     intent: &ValidatedIntent,
     source: &ConnectionSource,
 ) -> Result<FulfillmentFacts, EvidenceCommandError> {
-    let (expected_kind, expected_input_sha256) = match &intent.capture {
+    let source_selector = match &intent.capture {
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind,
-            observation_input_sha256,
-            ..
-        } => (*source_kind, observation_input_sha256.as_str()),
+            source_selector, ..
+        } => *source_selector,
         _ => {
             return Err(EvidenceCommandError::runtime(
                 "capture-connection requires a registered_connection_observation intent",
@@ -1069,22 +1070,24 @@ fn fulfill_connection(
     };
     match source {
         ConnectionSource::GuardEvent(event_id) => {
-            if expected_kind != ConnectionObservationSourceKind::GuardEvent {
+            let ConnectionObservationSourceSelector::GuardEvent { event_kind } = source_selector
+            else {
                 return Err(EvidenceCommandError::runtime(
                     "capture-connection source kind does not match the intent",
                 ));
-            }
+            };
             let event = required_guard_event(context, event_id)?;
             validate_guard_source_scope(context, intent, &event)?;
             validate_source_time_window(intent, &event.occurred_at, "guard event")?;
-            let subject = guard_subject_value(&event)?;
-            let raw_event = required_raw_event(&subject)?;
-            let input_sha256 = canonical_json_bare_sha256(raw_event).map_err(json_runtime)?;
-            if input_sha256 != expected_input_sha256 {
+            if event.event_kind != event_kind.as_str() {
                 return Err(EvidenceCommandError::runtime(
-                    "selected redacted guard-event digest does not match the intent",
+                    "guard-event kind does not match the intent source selector",
                 ));
             }
+            let subject = guard_subject_value(&event)?;
+            let raw_event = required_raw_event(&subject)?;
+            reject_incomplete_value(raw_event)?;
+            let input_sha256 = canonical_json_bare_sha256(raw_event).map_err(json_runtime)?;
             let observed_outcome = object_from_value(json!({
                 "complete": true,
                 "guard_event_kind": event.event_kind,
@@ -1106,50 +1109,42 @@ fn fulfill_connection(
             })
         }
         ConnectionSource::WatchObservation(observation_id) => {
-            if expected_kind != ConnectionObservationSourceKind::SessionWatcher {
+            if !matches!(
+                source_selector,
+                ConnectionObservationSourceSelector::SessionWatcher {}
+            ) {
                 return Err(EvidenceCommandError::runtime(
                     "capture-connection source kind does not match the intent",
                 ));
             }
-            let observation = watch_observation(
+            let intent_session_id = intent.session_id.as_deref().ok_or_else(|| {
+                EvidenceCommandError::runtime(
+                    "registered connection intent has no exact verified session",
+                )
+            })?;
+            let validated = validate_current_complete_watch_observation(
                 &context.runtime_home,
                 &context.project.project_id,
+                &intent.record.requesting_connection_internal_id,
+                intent_session_id,
                 observation_id,
-            )?
-            .ok_or_else(|| {
+            )
+            .map_err(|error| {
                 EvidenceCommandError::runtime(format!(
-                    "session-watch observation was not found: {observation_id}"
+                    "session-watch observation integrity validation failed: {error}"
                 ))
             })?;
-            validate_watch_source_scope(context, intent, &observation)?;
+            let observation = validated.observation;
             validate_source_time_window(
                 intent,
                 &observation.observed_at,
                 "session-watch observation",
             )?;
-            let baseline = watch_baseline(
-                &context.runtime_home,
-                &context.project.project_id,
-                &observation.watch_baseline_id,
-            )?
-            .ok_or_else(|| {
-                EvidenceCommandError::runtime(
-                    "session-watch observation baseline is not registered",
-                )
-            })?;
-            validate_complete_watch_observation(&baseline, &observation)?;
-            let selection = watch_observation_selection(&observation)?;
-            let input_sha256 = canonical_json_bare_sha256(&selection).map_err(json_runtime)?;
-            if input_sha256 != expected_input_sha256 {
-                return Err(EvidenceCommandError::runtime(
-                    "selected session-watch observation digest does not match the intent",
-                ));
-            }
             let observed_outcome = object_from_value(json!({
                 "complete": true,
                 "snapshot_algorithm": observation.snapshot_algorithm,
                 "snapshot_digest": observation.snapshot_digest,
-                "observation_sha256": input_sha256,
+                "observation_sha256": validated.selection_sha256,
             }))?;
             Ok(FulfillmentFacts {
                 observed_outcome,
@@ -1382,39 +1377,6 @@ fn validate_active_guard_installation(
     Ok(())
 }
 
-fn validate_watch_source_scope(
-    context: &EvidenceContext,
-    intent: &ValidatedIntent,
-    observation: &WatchObservationRecord,
-) -> Result<(), EvidenceCommandError> {
-    if observation.connection_internal_id != intent.record.requesting_connection_internal_id {
-        return Err(EvidenceCommandError::runtime(
-            "session-watch observation belongs to another Agent Connection",
-        ));
-    }
-    if intent
-        .session_id
-        .as_deref()
-        .is_some_and(|expected| expected != observation.session_id)
-    {
-        return Err(EvidenceCommandError::runtime(
-            "session-watch observation belongs to another session",
-        ));
-    }
-    let session = agent_session(
-        &context.runtime_home,
-        &context.project.project_id,
-        &observation.session_id,
-    )?
-    .ok_or_else(|| EvidenceCommandError::runtime("watch source session is not registered"))?;
-    if session.connection_internal_id != observation.connection_internal_id {
-        return Err(EvidenceCommandError::runtime(
-            "watch source session does not match its Agent Connection",
-        ));
-    }
-    Ok(())
-}
-
 fn validate_event_order(
     pre: &GuardEventRecord,
     post: &GuardEventRecord,
@@ -1583,124 +1545,6 @@ fn reject_incomplete_value(value: &Value) -> Result<(), EvidenceCommandError> {
         _ => {}
     }
     Ok(())
-}
-
-fn validate_complete_watch_observation(
-    baseline: &WatchBaselineRecord,
-    observation: &WatchObservationRecord,
-) -> Result<(), EvidenceCommandError> {
-    if baseline.status != "active"
-        || baseline.project_id != observation.project_id
-        || baseline.watch_baseline_id != observation.watch_baseline_id
-        || baseline.session_id != observation.session_id
-        || baseline.connection_internal_id != observation.connection_internal_id
-        || baseline.snapshot_algorithm != observation.snapshot_algorithm
-    {
-        return Err(EvidenceCommandError::runtime(
-            "session-watch observation does not match an active registered baseline",
-        ));
-    }
-    let validated =
-        validate_persisted_watch_observation(baseline, observation).map_err(|error| {
-            EvidenceCommandError::runtime(format!(
-                "session-watch observation integrity validation failed: {error}"
-            ))
-        })?;
-    require_complete_watch_scan(&validated.baseline_snapshot.scan_summary, "baseline")?;
-    let derived = validated.observation_snapshot.scan_summary;
-    validate_observation_scan_metadata(observation, &derived)?;
-    require_complete_watch_scan(&derived, "observation")
-}
-
-fn validate_observation_scan_metadata(
-    observation: &WatchObservationRecord,
-    derived: &WatchScanSummary,
-) -> Result<(), EvidenceCommandError> {
-    let metadata = json_object(
-        "session_watch_observations.metadata_json",
-        &observation.metadata_json,
-    )?;
-    let explicit_value = metadata
-        .get("scan_summary")
-        .filter(|value| value.is_object())
-        .ok_or_else(|| {
-            EvidenceCommandError::runtime(
-                "session-watch observation metadata has no canonical scan_summary",
-            )
-        })?;
-    let explicit_object = explicit_value.as_object().expect("checked object");
-    const SUMMARY_FIELDS: [&str; 7] = [
-        "files_scanned",
-        "files_skipped",
-        "unreadable_paths_count",
-        "degraded_reasons",
-        "degraded_reason_counts",
-        "skipped_paths_sample",
-        "skipped_paths_truncated",
-    ];
-    if explicit_object.len() != SUMMARY_FIELDS.len()
-        || SUMMARY_FIELDS
-            .iter()
-            .any(|field| !explicit_object.contains_key(*field))
-    {
-        return Err(EvidenceCommandError::runtime(
-            "session-watch observation scan_summary has invalid fields",
-        ));
-    }
-    let explicit: WatchScanSummary =
-        serde_json::from_value(explicit_value.clone()).map_err(|_| {
-            EvidenceCommandError::runtime("session-watch observation scan_summary is corrupt")
-        })?;
-    if &explicit != derived {
-        return Err(EvidenceCommandError::runtime(
-            "session-watch observation scan_summary is inconsistent with its snapshot entries",
-        ));
-    }
-    Ok(())
-}
-
-fn require_complete_watch_scan(
-    summary: &WatchScanSummary,
-    label: &str,
-) -> Result<(), EvidenceCommandError> {
-    if summary.files_skipped != 0
-        || summary.unreadable_paths_count != 0
-        || !summary.degraded_reasons.is_empty()
-        || !summary.degraded_reason_counts.is_empty()
-        || !summary.skipped_paths_sample.is_empty()
-        || summary.skipped_paths_truncated
-    {
-        return Err(EvidenceCommandError::runtime(format!(
-            "session-watch {label} is incomplete or degraded"
-        )));
-    }
-    Ok(())
-}
-
-fn watch_observation_selection(
-    observation: &WatchObservationRecord,
-) -> Result<Value, EvidenceCommandError> {
-    Ok(json!({
-        "watch_observation_id": observation.watch_observation_id,
-        "watch_baseline_id": observation.watch_baseline_id,
-        "session_id": observation.session_id,
-        "connection_id": observation.connection_internal_id,
-        "snapshot_algorithm": observation.snapshot_algorithm,
-        "snapshot_digest": observation.snapshot_digest,
-        "snapshot_entries": strict_json::<Value>(
-            "session_watch_observations.snapshot_entries_json",
-            &observation.snapshot_entries_json,
-        )?,
-        "observed_paths": strict_json::<Value>(
-            "session_watch_observations.observed_paths_json",
-            &observation.observed_paths_json,
-        )?,
-        "change_summary": strict_json::<Value>(
-            "session_watch_observations.change_summary_json",
-            &observation.change_summary_json,
-        )?,
-        "observed_at": observation.observed_at,
-    }))
 }
 
 fn source_object(
@@ -1949,58 +1793,5 @@ mod tests {
                 .expect_err("deadline should terminate the isolated command process group");
         assert!(error.to_string().contains("did not finish before"));
         assert!(started.elapsed() < Duration::from_secs(2));
-    }
-
-    #[test]
-    fn watch_completeness_fails_closed_without_canonical_scan_metadata() {
-        let observation = WatchObservationRecord {
-            project_id: "project_test".to_owned(),
-            watch_observation_id: "watch_observation_test".to_owned(),
-            watch_baseline_id: "watch_baseline_test".to_owned(),
-            session_id: "session_test".to_owned(),
-            connection_internal_id: "connection_test".to_owned(),
-            expected_write_id: None,
-            unrecorded_change_id: None,
-            observation_status: "observed".to_owned(),
-            observed_paths_json: "[]".to_owned(),
-            change_summary_json: "{}".to_owned(),
-            snapshot_algorithm: "sha256-v1".to_owned(),
-            snapshot_digest: "0".repeat(64),
-            snapshot_entries_json: "[]".to_owned(),
-            observed_at: "2026-07-13T00:00:00Z".to_owned(),
-            linked_at: None,
-            metadata_json: "{}".to_owned(),
-        };
-
-        let error = validate_observation_scan_metadata(
-            &observation,
-            &WatchScanSummary {
-                files_scanned: 0,
-                files_skipped: 0,
-                unreadable_paths_count: 0,
-                degraded_reasons: Vec::new(),
-                degraded_reason_counts: Default::default(),
-                skipped_paths_sample: Vec::new(),
-                skipped_paths_truncated: false,
-            },
-        )
-        .expect_err("missing explicit scan metadata must fail closed");
-        assert!(error.to_string().contains("no canonical scan_summary"));
-    }
-
-    #[test]
-    fn watch_completeness_rejects_baseline_only_degradation() {
-        let summary = WatchScanSummary {
-            files_scanned: 0,
-            files_skipped: 1,
-            unreadable_paths_count: 0,
-            degraded_reasons: vec!["file_size_limit".to_owned()],
-            degraded_reason_counts: [("file_size_limit".to_owned(), 1)].into(),
-            skipped_paths_sample: vec!["large.bin".to_owned()],
-            skipped_paths_truncated: false,
-        };
-        let error = require_complete_watch_scan(&summary, "baseline")
-            .expect_err("baseline-only degradation must fail closed");
-        assert!(error.to_string().contains("baseline is incomplete"));
     }
 }

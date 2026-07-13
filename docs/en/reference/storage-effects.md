@@ -507,8 +507,8 @@ rejected request create no intent, receipt, staging row or bytes, producer,
 source claim, event, replay row, or state-version change.
 
 Registered source fulfillment is a separate Store transaction outside the Core
-state commit. After
-revalidating the intent and registered source, it atomically creates one
+state commit. After revalidating the intent's source selector and the explicitly
+selected registered source, it atomically creates one
 `evidence_capture_receipts` row and one redacted `artifact_staging` row plus its
 bounded safe JSON bytes, together with every required
 `evidence_capture_source_claims` row. Command, guard-connection, and watcher
@@ -519,6 +519,13 @@ classes. It creates no event or replay row and does not change
 `project_state.state_version`. In the same transaction, it advances
 `project_state.updated_at` to at least `receipt.created_at`; another concurrent
 writer may already have established a later floor, so equality is not required.
+For a registered connection observation, the intent binds only the pre-intent
+selector. The source-owned receipt fixes the selected source identifier,
+observation time, and raw-event or snapshot/selection digests. A guard event
+must have the selected event kind. A watcher observation must belong to the
+unique current active baseline for the exact connection and session. Zero or
+multiple explicit source coordinates, a pre-intent source, an incomplete or
+degraded source, and any receipt/source mismatch fail without effects.
 The source observation must satisfy
 `intent.created_at <= observed_at < intent.expires_at`; receipt creation must satisfy
 `observed_at <= receipt.created_at < intent.expires_at`, and the staging handle expires exactly

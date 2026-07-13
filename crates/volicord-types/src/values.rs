@@ -1362,12 +1362,26 @@ pub enum EvidenceProducerKind {
     ReusedEvidence,
 }
 
-/// Registered source families that can fulfill a connection-observation capture intent.
+/// Guard-event kinds that can fulfill a post-intent connection observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionObservationSourceKind {
-    GuardEvent,
-    SessionWatcher,
+pub enum ConnectionObservationGuardEventKind {
+    PreTool,
+    PostTool,
+    PromptCapture,
+    Stop,
+}
+
+impl ConnectionObservationGuardEventKind {
+    /// Returns the canonical stored guard-event kind.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PreTool => "pre_tool",
+            Self::PostTool => "post_tool",
+            Self::PromptCapture => "prompt_capture",
+            Self::Stop => "stop",
+        }
+    }
 }
 
 /// Core-derived claim-relevance assessment states for evidence observations.

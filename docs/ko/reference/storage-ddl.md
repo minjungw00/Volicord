@@ -1394,8 +1394,11 @@ CREATE INDEX idx_user_action_channel_tokens_expiry
 - `user_action_channel_tokens`는 대기 사용자 행동의 해시된 일회성 로컬 웹 User Channel token을 저장합니다. raw token은 저장하지 않습니다. 발급 창을 도출하고 검증하는 네 저장 timestamp인 `user_action_requests.requested_at`, 선택적 `user_action_requests.expires_at`, token `created_at`, token `expires_at`은 각 instant의 canonical RFC 3339 UTC 문자열이어야 합니다. Store application validation은 token `created_at >= user_action_requests.requested_at`을 요구합니다. 요청에 expiry가 있으면 token `expires_at`은 정확히 `min(user_action_requests.expires_at, created_at + 600 seconds)`여야 하고, 요청 expiry가 없으면 정확히 `created_at + 600 seconds`여야 합니다. Token은 반열린 구간 `created_at <= now < expires_at`에서만 유효합니다. Noncanonical 발급 창 timestamp, 더 이르거나 늦은 token expiry, 그 밖의 창 불일치는 손상된 저장 상태입니다. 이때 token 검증, 로컬 웹 GET·POST, expiry 정리, token 소비는 닫힌 상태로 실패하며 token status, 프로젝트 상태나 UTC 하한, 사용자 행동 resolution 상태를 변경하지 않습니다. 발급은 token 삽입과 원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다. token 소비와 변경 불가능한 resolution 삽입은 함께 커밋합니다. 이 행은 일시적인 캡처 metadata이며 그 자체로 Core 사용자 권한이 아닙니다.
 - `write_tickets`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `(project_id, task_id, basis_state_version)` 고유 제약은 Task 안에서 상태 버전 정렬 키를 고유하게 만듭니다. `write_tickets.consumed_by_run_id`와 `runs.write_ticket_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
-- `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거, source input,
-  connection/actor, workspace fact에 결합합니다. `evidence_capture_receipts`는 intent당
+- `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거, command/tool
+  source input 또는 Core가 도출한 connection-source selector, connection/actor,
+  workspace fact에 결합합니다. Connection intent는 미래 source identifier,
+  timestamp, raw-event digest, snapshot digest, selection digest를 결합하지 않으며, 이
+  사실은 source 소유 receipt가 확정합니다. `evidence_capture_receipts`는 intent당
   완전하고 content-bound된 안전한 receipt 및 staging handle을 정확히 하나만
   허용합니다. `evidence_capture_source_claims`는 해당 receipt의 정규화된 host
   invocation, guard event, session-watch observation 원천 사실을 모두 같은
@@ -1410,9 +1413,12 @@ CREATE INDEX idx_user_action_channel_tokens_expiry
   거부합니다. Command receipt는 host invocation 하나를 요구하고 claim합니다. Tool
   receipt는 정확한 session과 installation, 서로 다른 guard event 두 개, host
   invocation 하나를 요구하며 세 원천 사실을 모두 claim합니다. Guard connection
-  receipt는 guard event 하나만 claim하고 watcher receipt는 session-watch observation
-  하나만 claim합니다. Receipt staging, receipt 삽입, 모든 claim은 함께 commit되거나
-  rollback됩니다.
+  receipt는 intent selector와 kind가 일치하는 guard event 하나만 claim하고 watcher
+  receipt는 intent에 결합된 connection과 session의 유일한 현재 active baseline에 속한
+  session-watch observation 하나만 claim합니다. 선택 source는 intent 뒤에 생성되고
+  complete이며 nondegraded여야 하고, receipt가 확정한 identifier, timestamp, digest는
+  모두 해당 source와 일치해야 합니다. Receipt staging, receipt 삽입, 모든 claim은 함께
+  commit되거나 rollback됩니다.
 - Store application validation은
   `intent.created_at <= receipt.observed_at < intent.expires_at`, observation
   뒤이면서 intent expiry 전인 receipt 생성, intent expiry와 정확히 같은 receipt

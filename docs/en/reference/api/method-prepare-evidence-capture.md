@@ -34,8 +34,9 @@ Only a registered source fulfills an intent:
   fallback is not eligible.
 - `registered_connection_observation`: an active registered guard observation
   or a session-watcher observation whose baseline and current scans are both
-  complete and non-degraded matches the
-  digest-bound source selection.
+  complete and non-degraded matches the intent-bound source selector. The
+  concrete event or watcher-observation identity and its observation digest
+  remain source-owned facts created only at fulfillment.
 
 Fulfillment creates an immutable durable `EvidenceCaptureReceipt` source-fact
 record and a bounded redacted transient receipt artifact staging handle. It does not advance Core
@@ -68,20 +69,27 @@ EvidenceCaptureSpec:
   expected_success: boolean | null
 
   capture_kind: registered_connection_observation
-  source_kind: guard_event | session_watcher
-  observation_input_sha256: lowercase 64-character SHA-256
+  source_selector:
+    source_kind: guard_event
+    event_kind: pre_tool | post_tool | prompt_capture | stop
+  # or
+  source_selector:
+    source_kind: session_watcher
   expected_complete: boolean | null
 ```
 
 `command_sha256` is the bare lowercase SHA-256 of canonical JSON for the
 complete UTF-8 argument vector, including the executable as element zero.
 `tool_input_sha256` is the same form of digest over the selected canonical tool
-input object. For `source_kind=guard_event`, `observation_input_sha256` hashes
-the selected redacted `raw_event` object. For `source_kind=session_watcher`, it
-hashes this canonical safe selection object: `watch_observation_id`,
-`watch_baseline_id`, `session_id`, `connection_id`, `snapshot_algorithm`,
-`snapshot_digest`, `snapshot_entries`, `observed_paths`, `change_summary`, and
-`observed_at`. These digests use the canonical JSON rules owned by
+input object. A connection-observation caller supplies no observation digest,
+event ID, watcher-observation ID, source timestamp, snapshot digest, or
+raw-event digest. Core instead computes `input_sha256` as the bare lowercase
+SHA-256 of the canonical `source_selector` JSON. A guard selector requires one
+closed `event_kind`; a session-watcher selector has no additional caller field
+because the verified current connection and exact session are already bound
+separately in the intent. `session_start` is not selectable: the exact session
+already exists before intent creation, so its start event cannot satisfy the
+required post-intent observation window. These digests use the canonical JSON rules owned by
 [API Schema Core](schema-core.md). Raw arguments, environment values, command
 output, and tool input or output are not public request fields and are not
 stored in the intent.
@@ -93,7 +101,7 @@ and the resulting value is stored in the immutable intent.
 
 MCP omission defaults are `expected_exit_code=0`, `expected_success=true`, and
 `expected_complete=true`. Explicit `null` has the same meaning. The method
-rejects an empty safe label, malformed digest, unsupported source kind, target
+rejects an empty safe label, malformed digest, unsupported or malformed source selector, target
 outside the current Task, non-current Change Unit, incompatible baseline, or
 missing verified Agent Connection context before commit. Tool and registered
 connection capture also require an exact verified Agent Session in the
@@ -102,7 +110,7 @@ invocation context; command capture does not.
 The intent is bound to the selected project, Task, current Change Unit, current
 scope revision, compatible baseline, exact target, current Git workspace
 identity, requesting connection and actor, capture kind, canonical input
-digest, expected outcome, creation time, and a fixed 15-minute expiry. An
+digest or source-selector digest, expected outcome, creation time, and a fixed 15-minute expiry. An
 unrelated later state-version increment does not alone expire the intent;
 changes to a bound basis do.
 
@@ -126,11 +134,14 @@ intent, event, replay row, receipt, artifact, producer, or state-version change.
 ## Fulfillment and receipt rules
 
 The fulfilling source rechecks project and Task identity, current Change Unit,
-scope revision, baseline, target source selection, workspace identity,
-requesting connection, expiry, and the exact input digest. A disabled
+scope revision, baseline, target source selector, workspace identity,
+requesting connection, expiry, and the exact Core-derived input digest. A disabled
 connection, post without exact pre, mismatched invocation ID or digest,
 truncated/incomplete output, degraded watcher scan, or reused intent cannot
-produce an eligible receipt.
+produce an eligible receipt. A guard event must have the selector's exact
+`event_kind`. A watcher observation must belong to the unique current active
+baseline for the intent-bound connection and session; a missing or ambiguous
+current baseline rejects.
 
 The selected source observation must satisfy the half-open window
 `intent.created_at <= observed_at < intent.expires_at`. Receipt creation must
@@ -149,6 +160,15 @@ watcher observation claims its exact observation. Each underlying source fact
 can fulfill only one intent and producer class in a project. Any missing,
 extra, ambiguous, or already claimed source coordinate rejects the entire
 fulfillment, including receipt and staging creation.
+
+Connection fulfillment never auto-selects among candidate source facts. The
+registered-source command must name exactly one guard event or exactly one
+watcher observation. Zero source coordinates, both source families, extra
+receipt coordinates, or multiple coordinates in the selected family reject
+with no receipt. The selected source's exact ID, observation timestamp,
+raw-event or snapshot/selection digest, and source-specific safe summary are
+fixed in the source-owned receipt. They are not retroactively added to or
+treated as caller-known fields of the immutable intent.
 
 The safe receipt JSON is bounded to 24 KiB and contains schema version, capture kind, intent ID,
 input and result digests, expected and observed outcome, success/status or exit
@@ -206,10 +226,14 @@ existing `reused_evidence` chain rather than consuming the intent again.
 
 ## Compatibility and external validation
 
-This stable public method and its intent/receipt/producer records are retained
-in the current `baseline_sqlite_v5` profile. There is no conversion from an
-incompatible v3 or v4 Runtime Home; incompatible state fails clearly and must
-be recreated. The current recommended release version is `0.8.0`.
+This clean pre-major selector correction removes the old caller-supplied future
+observation digest shape. It adds no table, column, index, or constraint and is
+part of the current `baseline_sqlite_v5` / `0.8.0` contract batch, so it does
+not create another storage-profile or package-version transition. There is no
+legacy alias or fallback decoder for the removed request/capture-spec shape.
+There is no conversion from an incompatible v3 or v4 Runtime Home;
+incompatible state fails clearly and must be recreated. The current
+recommended release version remains `0.8.0`.
 
 Checked-in host fixtures validate adapters only. A supported claim about real
 Codex or Claude Code invocation identity, output completeness, retry, resume,

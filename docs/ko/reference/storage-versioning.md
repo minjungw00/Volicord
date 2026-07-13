@@ -29,6 +29,15 @@
 `project_state.state_version`은 계속 Core 상태 clock이며 storage-profile version이
 아닙니다.
 
+현재 pre-major v5 계약은 등록 connection capture의 폐쇄형 source selector와 Core가
+파생한 canonical selector digest를 intent에 저장합니다. 구체적인 event/watcher-observation
+identity, observation time, raw-event 또는 snapshot/selection digest는 receipt 소유
+사실입니다. 이 보정은 기준 SQL table, column, index, foreign key, constraint를 바꾸지
+않고 현재 `baseline_sqlite_v5` / `0.8.0` batch 안에서 완료됩니다. 따라서 별도
+storage-profile 또는 package-version 전이를 만들지 않습니다. Store는 제거된 호출자 제공
+미래-observation-digest capture 형태를 legacy alias나 fallback으로 decode하지 않으며,
+필수 record 형태가 잘못되면 닫힌 상태로 실패합니다.
+
 <a id="canonical-core-utc-clock"></a>
 ## 정규 Core UTC 시계
 

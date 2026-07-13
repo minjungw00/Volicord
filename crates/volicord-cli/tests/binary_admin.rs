@@ -40,13 +40,13 @@ use volicord_test_support::{
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, AcceptanceCriterionInput, ActorSource,
-    BaselineRef, ChangeUnitOperation, ConnectionObservationSourceKind, EvidenceCaptureSpec,
-    EvidenceRequirement, EvidenceTarget, IdempotencyKey, InitialScope, JudgmentKind,
-    JudgmentPresentation, OperationCategory, PrepareEvidenceCaptureRequest, ProjectId, RequestId,
-    RequestedMode, RequiredNullable, ResumePolicy, StateRecordKind, StateRecordRef, TaskId,
-    ToolEnvelope, UserActionChoiceDraft, UserActionContext, UserActionDraft, UserActionOptionId,
-    UserActionOptionInput, UserActionRequiredFor, UtcTimestamp,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    BaselineRef, ChangeUnitOperation, ConnectionObservationGuardEventKind,
+    ConnectionObservationSourceSelector, EvidenceCaptureSpec, EvidenceRequirement, EvidenceTarget,
+    IdempotencyKey, InitialScope, JudgmentKind, JudgmentPresentation, OperationCategory,
+    PrepareEvidenceCaptureRequest, ProjectId, RequestId, RequestedMode, RequiredNullable,
+    ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UserActionChoiceDraft,
+    UserActionContext, UserActionDraft, UserActionOptionId, UserActionOptionInput,
+    UserActionRequiredFor, UtcTimestamp, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -74,8 +74,8 @@ use volicord_store::{
     },
     session_watch::{
         compare_watch_snapshots, create_watch_baseline, record_watch_observation,
-        snapshot_product_repository, SessionWatchStatus, WatchBaselineCreate,
-        WatchObservationInsert, WatchSnapshotOptions,
+        snapshot_product_repository, watch_baseline, watch_observation, SessionWatchStatus,
+        WatchBaselineCreate, WatchObservationInsert, WatchSnapshotOptions,
     },
 };
 
@@ -1013,12 +1013,13 @@ fn evidence_capture_connection_accepts_exact_registered_guard_event() -> Result<
         "status": "complete",
         "content": {"omitted": true, "sha256": "sha256:redacted"}
     });
-    let input_sha256 = bare_canonical_sha256(&redacted_event)?;
+    let expected_observation_sha256 = bare_canonical_sha256(&redacted_event)?;
     let (fixture, intent_id) = prepared_capture(
         "cli-evidence-connection-guard",
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::GuardEvent,
-            observation_input_sha256: input_sha256,
+            source_selector: ConnectionObservationSourceSelector::GuardEvent {
+                event_kind: ConnectionObservationGuardEventKind::Stop,
+            },
             expected_complete: RequiredNullable::null(),
         },
         Some("session_evidence_connection"),
@@ -1031,11 +1032,40 @@ fn evidence_capture_connection_accepts_exact_registered_guard_event() -> Result<
         "stop",
         "session_evidence_connection",
         "guard_evidence_connection",
+        redacted_event.clone(),
+        &"0".repeat(64),
+        None,
+        &source_timestamp,
+    )?;
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_connection_wrong_kind",
+        "pre_tool",
+        "session_evidence_connection",
+        "guard_evidence_connection",
         redacted_event,
         &"0".repeat(64),
         None,
         &source_timestamp,
     )?;
+
+    let before_wrong_kind = fixture.counts()?;
+    let wrong_kind = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &intent_id,
+            "--guard-event",
+            "guard_event_connection_wrong_kind",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!wrong_kind.status.success());
+    assert!(stderr(&wrong_kind).contains("does not match the intent source selector"));
+    assert_eq!(fixture.counts()?, before_wrong_kind);
 
     let output = run_with_home_env_in_dir(
         fixture.runtime_home_path(),
@@ -1053,8 +1083,37 @@ fn evidence_capture_connection_accepts_exact_registered_guard_event() -> Result<
     )?;
     assert_success(&output);
     let rendered = json_stdout(&output)?;
-    assert_eq!(rendered["observed_outcome"]["complete"], true);
-    assert_eq!(rendered["observed_outcome"]["guard_event_kind"], "stop");
+    let receipt = fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .ok_or("guard capture receipt should exist")?;
+    let stored_outcome = serde_json::from_str::<Value>(&receipt.observed_outcome_json)?;
+    let stored_body = serde_json::from_str::<Value>(&receipt.safe_receipt_json)?;
+    assert_eq!(rendered["observed_outcome"], stored_outcome);
+    assert_eq!(
+        stored_outcome,
+        json!({
+            "complete": true,
+            "guard_event_kind": "stop",
+            "guard_decision": "allow",
+            "observation_sha256": expected_observation_sha256,
+        })
+    );
+    assert_eq!(
+        receipt.result_sha256,
+        bare_canonical_sha256(&stored_outcome)?
+    );
+    assert_eq!(
+        stored_body["source"],
+        json!({
+            "connection_id": fixture.connection_id(),
+            "session_id": "session_evidence_connection",
+            "guard_installation_id": "guard_evidence_connection",
+            "guard_event_ids": ["guard_event_connection_source"],
+            "watch_observation_refs": [],
+            "host_invocation_id": null,
+        })
+    );
     assert_eq!(rendered["observed_at"], source_timestamp);
     Ok(())
 }
@@ -1065,6 +1124,31 @@ fn evidence_capture_connection_accepts_complete_watcher_and_rejects_degraded_sca
 ) -> Result<(), Box<dyn Error>> {
     let (complete_fixture, complete_intent, complete_observation) =
         prepared_watch_capture("cli-evidence-watch-complete", false)?;
+    let selected_observation = watch_observation(
+        complete_fixture.runtime_home_path(),
+        complete_fixture.project_id(),
+        &complete_observation,
+    )?
+    .ok_or("watch fixture observation should exist")?;
+    let selection = json!({
+        "watch_observation_id": &selected_observation.watch_observation_id,
+        "watch_baseline_id": &selected_observation.watch_baseline_id,
+        "session_id": &selected_observation.session_id,
+        "connection_id": &selected_observation.connection_internal_id,
+        "snapshot_algorithm": &selected_observation.snapshot_algorithm,
+        "snapshot_digest": &selected_observation.snapshot_digest,
+        "snapshot_entries": serde_json::from_str::<Value>(
+            &selected_observation.snapshot_entries_json,
+        )?,
+        "observed_paths": serde_json::from_str::<Value>(
+            &selected_observation.observed_paths_json,
+        )?,
+        "change_summary": serde_json::from_str::<Value>(
+            &selected_observation.change_summary_json,
+        )?,
+        "observed_at": &selected_observation.observed_at,
+    });
+    let expected_observation_sha256 = bare_canonical_sha256(&selection)?;
     let complete = run_with_home_env_in_dir(
         complete_fixture.runtime_home_path(),
         [
@@ -1080,10 +1164,94 @@ fn evidence_capture_connection_accepts_complete_watcher_and_rejects_degraded_sca
         &complete_fixture.product_repo_path(),
     )?;
     assert_success(&complete);
+    let rendered = json_stdout(&complete)?;
+    let receipt = complete_fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&complete_intent)?
+        .ok_or("watcher capture receipt should exist")?;
+    let stored_outcome = serde_json::from_str::<Value>(&receipt.observed_outcome_json)?;
+    let stored_body = serde_json::from_str::<Value>(&receipt.safe_receipt_json)?;
     assert_eq!(
-        json_stdout(&complete)?["observed_outcome"]["complete"],
-        true
+        rendered["observed_outcome"], stored_outcome,
+        "rendered watcher outcome must be the stored receipt outcome"
     );
+    assert_eq!(
+        stored_outcome,
+        json!({
+            "complete": true,
+            "snapshot_algorithm": selected_observation.snapshot_algorithm,
+            "snapshot_digest": selected_observation.snapshot_digest,
+            "observation_sha256": expected_observation_sha256,
+        })
+    );
+    assert_eq!(
+        receipt.result_sha256,
+        bare_canonical_sha256(&stored_outcome)?
+    );
+    assert_eq!(
+        stored_body["source"],
+        json!({
+            "connection_id": complete_fixture.connection_id(),
+            "session_id": "session_evidence_watch",
+            "guard_installation_id": null,
+            "guard_event_ids": [],
+            "watch_observation_refs": [&complete_observation],
+            "host_invocation_id": null,
+        })
+    );
+
+    let (superseded_fixture, superseded_intent, superseded_observation) =
+        prepared_watch_capture("cli-evidence-watch-superseded-baseline", false)?;
+    let original_baseline = watch_baseline(
+        superseded_fixture.runtime_home_path(),
+        superseded_fixture.project_id(),
+        "watch_baseline_evidence",
+    )?
+    .ok_or("watch fixture baseline should exist")?;
+    let later_baseline_at = UtcTimestamp::from_datetime(
+        *UtcTimestamp::parse(&original_baseline.updated_at)?.as_datetime()
+            + chrono::Duration::nanoseconds(1),
+    )
+    .to_canonical_string();
+    let current_snapshot = snapshot_product_repository(
+        superseded_fixture.runtime_home_path(),
+        superseded_fixture.product_repo_path(),
+        WatchSnapshotOptions {
+            watch_paths: vec!["watch.txt".into()],
+            ..WatchSnapshotOptions::default()
+        },
+    )?;
+    create_watch_baseline(
+        superseded_fixture.runtime_home_path(),
+        superseded_fixture.project_id(),
+        WatchBaselineCreate {
+            watch_baseline_id: "watch_baseline_new_current".to_owned(),
+            session_id: "session_evidence_watch".to_owned(),
+            connection_internal_id: superseded_fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            status: SessionWatchStatus::Active,
+            snapshot: current_snapshot,
+            created_at: later_baseline_at,
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let superseded_before = superseded_fixture.counts()?;
+    let superseded = run_with_home_env_in_dir(
+        superseded_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &superseded_intent,
+            "--watch-observation",
+            &superseded_observation,
+        ],
+        &[],
+        &superseded_fixture.product_repo_path(),
+    )?;
+    assert!(!superseded.status.success());
+    assert!(stderr(&superseded).contains("does not belong to the current baseline"));
+    assert_eq!(superseded_fixture.counts()?, superseded_before);
 
     let (degraded_fixture, degraded_intent, degraded_observation) =
         prepared_watch_capture("cli-evidence-watch-degraded", true)?;
@@ -8324,9 +8492,6 @@ fn prepared_watch_capture_with_degradation(
     let session_id = "session_evidence_watch";
     let baseline_id = "watch_baseline_evidence";
     let observation_id = "watch_observation_evidence";
-    let observation_time = SystemTime::now() + Duration::from_secs(2);
-    let observed_at =
-        DateTime::<Utc>::from(observation_time).to_rfc3339_opts(SecondsFormat::Millis, true);
     let registered_at =
         DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::AutoSi, true);
     insert_agent_session(
@@ -8378,37 +8543,13 @@ fn prepared_watch_capture_with_degradation(
     if current_degraded {
         current_options.max_file_size_bytes = 1;
     }
-    let predicted_snapshot = snapshot_product_repository(
-        fixture.runtime_home_path(),
-        fixture.product_repo_path(),
-        current_options.clone(),
-    )?;
-    let predicted_diff = compare_watch_snapshots(&baseline_snapshot, &predicted_snapshot);
-    let selection = json!({
-        "watch_observation_id": observation_id,
-        "watch_baseline_id": baseline_id,
-        "session_id": session_id,
-        "connection_id": fixture.connection_id(),
-        "snapshot_algorithm": predicted_snapshot.algorithm.clone(),
-        "snapshot_digest": predicted_snapshot.digest.clone(),
-        "snapshot_entries": serde_json::from_str::<Value>(&predicted_snapshot.entries_json())?,
-        "observed_paths": serde_json::from_str::<Value>(&predicted_diff.observed_paths_json())?,
-        "change_summary": serde_json::from_str::<Value>(&predicted_diff.change_summary_json())?,
-        "observed_at": observed_at.clone(),
-    });
-    let expected_input_sha256 = bare_canonical_sha256(&selection)?;
     let capture = EvidenceCaptureSpec::RegisteredConnectionObservation {
-        source_kind: ConnectionObservationSourceKind::SessionWatcher,
-        observation_input_sha256: expected_input_sha256.clone(),
+        source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
         expected_complete: RequiredNullable::null(),
     };
     let (fixture, intent_id) = prepare_capture_on_fixture(fixture, capture, Some(session_id))?;
-    if let Ok(wait) = observation_time.duration_since(SystemTime::now()) {
-        // `observed_at` is part of the predeclared digest, so wait past that
-        // wall-clock instant with enough margin for timestamp conversion and
-        // scheduler granularity before asking the CLI to create its receipt.
-        std::thread::sleep(wait + Duration::from_millis(50));
-    }
+    let observed_at =
+        DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::AutoSi, true);
     let current_snapshot = snapshot_product_repository(
         fixture.runtime_home_path(),
         fixture.product_repo_path(),
@@ -8416,7 +8557,7 @@ fn prepared_watch_capture_with_degradation(
     )?;
     let diff = compare_watch_snapshots(&baseline_snapshot, &current_snapshot);
     let scan_metadata = json!({ "scan_summary": &current_snapshot.scan_summary });
-    let observation = record_watch_observation(
+    record_watch_observation(
         fixture.runtime_home_path(),
         fixture.project_id(),
         WatchObservationInsert {
@@ -8429,23 +8570,6 @@ fn prepared_watch_capture_with_degradation(
             metadata_json: scan_metadata.to_string(),
         },
     )?;
-    let recorded_selection = json!({
-        "watch_observation_id": observation.watch_observation_id,
-        "watch_baseline_id": observation.watch_baseline_id,
-        "session_id": observation.session_id,
-        "connection_id": observation.connection_internal_id,
-        "snapshot_algorithm": observation.snapshot_algorithm,
-        "snapshot_digest": observation.snapshot_digest,
-        "snapshot_entries": serde_json::from_str::<Value>(&observation.snapshot_entries_json)?,
-        "observed_paths": serde_json::from_str::<Value>(&observation.observed_paths_json)?,
-        "change_summary": serde_json::from_str::<Value>(&observation.change_summary_json)?,
-        "observed_at": observation.observed_at,
-    });
-    assert_eq!(
-        bare_canonical_sha256(&recorded_selection)?,
-        expected_input_sha256,
-        "post-intent watcher scan should match its predeclared deterministic input"
-    );
     Ok((fixture, intent_id, observation_id.to_owned()))
 }
 

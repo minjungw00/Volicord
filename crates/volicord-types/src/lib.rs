@@ -177,8 +177,7 @@ mod tests {
             }),
             json!({
                 "capture_kind": "registered_connection_observation",
-                "source_kind": "session_watcher",
-                "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "source_selector": {"source_kind": "session_watcher"},
                 "expected_complete": true
             }),
         ];
@@ -219,10 +218,25 @@ mod tests {
         .is_err());
         assert!(serde_json::from_value::<EvidenceCaptureSpec>(json!({
             "capture_kind": "registered_connection_observation",
-            "source_kind": "session_watcher",
+            "source_selector": {"source_kind": "session_watcher"},
             "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         }))
         .is_err());
+
+        for invalid_selector in [
+            json!({"source_kind": "guard_event", "event_kind": "session_start"}),
+            json!({"source_kind": "guard_event"}),
+            json!({"source_kind": "guard_event", "event_kind": "stop", "extra": true}),
+            json!({"source_kind": "session_watcher", "event_kind": "stop"}),
+            json!({"source_kind": "unknown"}),
+        ] {
+            assert!(serde_json::from_value::<EvidenceCaptureSpec>(json!({
+                "capture_kind": "registered_connection_observation",
+                "source_selector": invalid_selector,
+                "expected_complete": true
+            }))
+            .is_err());
+        }
     }
 
     #[test]
@@ -267,8 +281,9 @@ mod tests {
         .expect("strict tool outcome"));
 
         let connection = EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::GuardEvent,
-            observation_input_sha256: "f".repeat(64),
+            source_selector: ConnectionObservationSourceSelector::GuardEvent {
+                event_kind: ConnectionObservationGuardEventKind::Stop,
+            },
             expected_complete: Some(false).into(),
         };
         let incomplete = serde_json::from_value::<JsonObject>(json!({
@@ -311,8 +326,7 @@ mod tests {
             (
                 json!({
                     "capture_kind": "registered_connection_observation",
-                    "source_kind": "guard_event",
-                    "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    "source_selector": {"source_kind": "guard_event", "event_kind": "stop"}
                 }),
                 "expected_complete",
             ),
@@ -340,13 +354,13 @@ mod tests {
             expected_success: RequiredNullable::some(true),
         };
         let guard = EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::GuardEvent,
-            observation_input_sha256: "c".repeat(64),
+            source_selector: ConnectionObservationSourceSelector::GuardEvent {
+                event_kind: ConnectionObservationGuardEventKind::Stop,
+            },
             expected_complete: RequiredNullable::some(true),
         };
         let watcher = EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::SessionWatcher,
-            observation_input_sha256: "d".repeat(64),
+            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
             expected_complete: RequiredNullable::some(true),
         };
         let object = |value: Value| {

@@ -1,15 +1,16 @@
 use std::fs;
 
 use chrono::Duration;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_string, validate_evidence_capture_expected_outcome,
-    validate_evidence_capture_limitations, validate_evidence_capture_observed_outcome,
-    AgentSessionId, ConnectionObservationSourceKind, EvidenceCaptureSpec, EvidenceProducerKind,
-    JsonObject, PersistedEvidenceCaptureReceiptBody, RedactionState, RequiredNullable,
-    UtcTimestamp, EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
+    canonical_json_bare_sha256, canonical_json_string, evidence_capture_input_sha256,
+    validate_evidence_capture_expected_outcome, validate_evidence_capture_limitations,
+    validate_evidence_capture_observed_outcome, AgentSessionId,
+    ConnectionObservationSourceSelector, EvidenceCaptureSpec, EvidenceProducerKind, JsonObject,
+    PersistedEvidenceCaptureReceiptBody, RedactionState, RequiredNullable, UtcTimestamp,
+    EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
 };
 
 use crate::{
@@ -18,6 +19,7 @@ use crate::{
         ArtifactStagingInsert, StagedPayloadKind,
     },
     core_pipeline::{advance_project_utc_floor_tx, CoreProjectStore},
+    session_watch::validate_current_complete_watch_observation_from_conn,
     sqlite::{begin_immediate_transaction, ARTIFACTS_DIR, ARTIFACTS_TMP_DIR},
     StoreError, StoreResult,
 };
@@ -180,6 +182,23 @@ pub struct EvidenceCaptureSourceClaimRecord {
 pub struct EvidenceCaptureSourceClaimIdentity {
     pub source_claim_kind: EvidenceCaptureSourceClaimKind,
     pub source_claim_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ValidatedEvidenceCaptureSource {
+    claims: Vec<EvidenceCaptureSourceClaimIdentity>,
+    watcher: Option<ValidatedWatcherSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ValidatedWatcherSource {
+    observation_id: String,
+    session_id: String,
+    connection_internal_id: String,
+    observed_at: UtcTimestamp,
+    snapshot_algorithm: String,
+    snapshot_digest: String,
+    observation_sha256: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -362,7 +381,7 @@ impl CoreProjectStore {
                 entity: "evidence_capture_intent",
                 id: input.evidence_capture_intent_id.clone(),
             })?;
-        let source_claims = validate_receipt_against_intent(&input, &intent)?;
+        let validated_source = validate_receipt_against_intent(&input, &intent)?;
         let created_at =
             UtcTimestamp::parse(&input.created_at).map_err(|_| StoreError::InvalidInput {
                 detail: "created_at must be a valid RFC 3339 timestamp".to_owned(),
@@ -398,6 +417,12 @@ impl CoreProjectStore {
             .join(ARTIFACTS_TMP_DIR);
         fs::create_dir_all(&tmp_dir)?;
         let tx = begin_immediate_transaction(&mut self.conn)?;
+        validate_transactional_source_freshness(
+            &tx,
+            &self.project.project_id,
+            &intent.evidence_capture_intent_id,
+            validated_source.watcher.as_ref(),
+        )?;
         let clock_floor = advance_project_utc_floor_tx(&tx, &self.project.project_id, &created_at)?;
         let (_, write_path) =
             insert_artifact_staging_tx(&tx, &self.project.project_id, &tmp_dir, staging)?;
@@ -456,7 +481,7 @@ impl CoreProjectStore {
             return Err(StoreError::from(error));
         }
 
-        for claim in source_claims {
+        for claim in validated_source.claims {
             if let Err(error) = tx.execute(
                 "INSERT INTO evidence_capture_source_claims (
                     project_id,
@@ -822,7 +847,7 @@ fn validate_receipt_input(input: &EvidenceCaptureReceiptInsert) -> StoreResult<(
 fn validate_receipt_against_intent(
     input: &EvidenceCaptureReceiptInsert,
     intent: &EvidenceCaptureIntentRecord,
-) -> StoreResult<Vec<EvidenceCaptureSourceClaimIdentity>> {
+) -> StoreResult<ValidatedEvidenceCaptureSource> {
     if input.task_id != intent.task_id
         || input.capture_kind != intent.capture_kind
         || input.input_sha256 != intent.input_sha256
@@ -867,6 +892,20 @@ fn validate_receipt_against_intent(
                 "capture_spec_json",
             )
         })?;
+    if evidence_capture_input_sha256(&capture_spec).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "evidence_capture_intents",
+            intent.evidence_capture_intent_id.clone(),
+            "capture_spec_json",
+        )
+    })? != intent.input_sha256
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_intents",
+            intent.evidence_capture_intent_id.clone(),
+            "input_sha256",
+        ));
+    }
     validate_evidence_capture_expected_outcome(&capture_spec, &expected_outcome).map_err(
         |detail| StoreError::InvalidInput {
             detail: format!("expected_outcome_json does not match its capture class: {detail}"),
@@ -1019,7 +1058,106 @@ fn validate_receipt_against_intent(
                 .to_owned(),
         });
     }
-    Ok(source_claims)
+    let watcher = match &capture_spec {
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
+            ..
+        } => {
+            let observation_id = body
+                .source
+                .watch_observation_refs
+                .first()
+                .cloned()
+                .ok_or_else(|| StoreError::InvalidInput {
+                    detail: "validated watcher receipt has no selected observation".to_owned(),
+                })?;
+            let session_id = body
+                .source
+                .session_id
+                .as_ref()
+                .ok_or_else(|| StoreError::InvalidInput {
+                    detail: "validated watcher receipt has no exact session".to_owned(),
+                })?
+                .as_str()
+                .to_owned();
+            let outcome_string = |field: &'static str| {
+                body.observed_outcome
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .ok_or_else(|| StoreError::Conflict {
+                        entity: "evidence_capture_intent",
+                        id: intent.evidence_capture_intent_id.clone(),
+                        detail: format!(
+                            "watcher receipt observed outcome has no canonical {field}"
+                        ),
+                    })
+            };
+            Some(ValidatedWatcherSource {
+                observation_id,
+                session_id,
+                connection_internal_id: body.source.connection_id.as_str().to_owned(),
+                observed_at: body.observed_at.clone(),
+                snapshot_algorithm: outcome_string("snapshot_algorithm")?,
+                snapshot_digest: outcome_string("snapshot_digest")?,
+                observation_sha256: outcome_string("observation_sha256")?,
+            })
+        }
+        _ => None,
+    };
+    Ok(ValidatedEvidenceCaptureSource {
+        claims: source_claims,
+        watcher,
+    })
+}
+
+fn validate_transactional_source_freshness(
+    conn: &Connection,
+    project_id: &str,
+    intent_id: &str,
+    watcher: Option<&ValidatedWatcherSource>,
+) -> StoreResult<()> {
+    let Some(watcher) = watcher else {
+        return Ok(());
+    };
+    let conflict = |detail: &'static str| StoreError::Conflict {
+        entity: "evidence_capture_intent",
+        id: intent_id.to_owned(),
+        detail: detail.to_owned(),
+    };
+    let validated = validate_current_complete_watch_observation_from_conn(
+        conn,
+        project_id,
+        &watcher.connection_internal_id,
+        &watcher.session_id,
+        &watcher.observation_id,
+    )
+    .map_err(|error| match error {
+        StoreError::NotFound { .. }
+        | StoreError::Conflict { .. }
+        | StoreError::InvalidInput { .. } => conflict(
+            "selected session-watch observation is not eligible for the immutable capture intent",
+        ),
+        other => other,
+    })?;
+    let actual_observed_at =
+        UtcTimestamp::parse(&validated.observation.observed_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "session_watch_observations",
+                validated.observation.watch_observation_id.clone(),
+                "observed_at",
+            )
+        })?;
+    if actual_observed_at != watcher.observed_at
+        || validated.observation.snapshot_algorithm != watcher.snapshot_algorithm
+        || validated.observation.snapshot_digest != watcher.snapshot_digest
+        || validated.selection_sha256 != watcher.observation_sha256
+    {
+        return Err(conflict(
+            "watcher receipt facts do not match the selected current complete observation",
+        ));
+    }
+    Ok(())
 }
 
 /// Derives the exact normalized source-fact claims required by a strict receipt class.
@@ -1093,7 +1231,7 @@ pub fn derive_evidence_capture_source_claims(
             Ok(claims)
         }
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::GuardEvent,
+            source_selector: ConnectionObservationSourceSelector::GuardEvent { .. },
             ..
         } if body.capture_kind == EvidenceProducerKind::RegisteredConnectionObservation
             && source_session_matches_intent
@@ -1109,7 +1247,7 @@ pub fn derive_evidence_capture_source_claims(
             )?])
         }
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: ConnectionObservationSourceKind::SessionWatcher,
+            source_selector: ConnectionObservationSourceSelector::SessionWatcher {},
             ..
         } if body.capture_kind == EvidenceProducerKind::RegisteredConnectionObservation
             && source_session_matches_intent
@@ -1217,13 +1355,24 @@ mod tests {
 
     use volicord_test_support::TempRuntimeHome;
     use volicord_types::{
-        ProjectId, EVIDENCE_CAPTURE_COMMAND_LIMITATION, EVIDENCE_CAPTURE_GUARD_LIMITATION,
-        EVIDENCE_CAPTURE_WATCHER_LIMITATION, WATCH_SNAPSHOT_ALGORITHM,
+        ConnectionObservationGuardEventKind, ProjectId, EVIDENCE_CAPTURE_COMMAND_LIMITATION,
+        EVIDENCE_CAPTURE_GUARD_LIMITATION, EVIDENCE_CAPTURE_WATCHER_LIMITATION,
+        WATCH_SNAPSHOT_ALGORITHM,
     };
 
     use super::*;
+    use crate::agent_connections::{
+        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+        ConnectionProjectRegistration, CONNECTION_INTENT_PERSONAL, CONNECTION_MODE_WORKFLOW,
+        HOST_KIND_CODEX, HOST_SCOPE_USER, VERIFIED_STATUS_COMPLETE,
+    };
     use crate::bootstrap::{
         initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+    };
+    use crate::session_watch::{
+        canonical_watch_observation_selection, compare_watch_snapshots, create_watch_baseline,
+        record_watch_observation, snapshot_product_repository, SessionWatchStatus,
+        WatchBaselineCreate, WatchBaselineRecord, WatchObservationInsert, WatchObservationRecord,
     };
 
     struct CaptureHarness {
@@ -1243,6 +1392,31 @@ mod tests {
                     project_home: None,
                     status: ACTIVE_PROJECT_STATUS.to_owned(),
                     metadata_json: "{}".to_owned(),
+                },
+            )?;
+            ensure_agent_connection(
+                runtime_home.path(),
+                AgentConnectionRegistration {
+                    connection_internal_id: "conn_capture".to_owned(),
+                    host_kind: HOST_KIND_CODEX.to_owned(),
+                    intent: CONNECTION_INTENT_PERSONAL.to_owned(),
+                    host_scope: HOST_SCOPE_USER.to_owned(),
+                    server_name: "volicord".to_owned(),
+                    config_target: "/tmp/volicord-evidence-capture-test.toml".to_owned(),
+                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    enabled: true,
+                    managed_fingerprint: "evidence-capture-test".to_owned(),
+                    last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+                    last_verification_report_json: "{}".to_owned(),
+                    last_user_actions_json: "[]".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_connection_project(
+                runtime_home.path(),
+                ConnectionProjectRegistration {
+                    connection_internal_id: "conn_capture".to_owned(),
+                    project_id: "project_capture".to_owned(),
                 },
             )?;
             Ok(Self {
@@ -1296,7 +1470,7 @@ mod tests {
                     AND evidence_capture_intent_id = ?2",
                 rusqlite::params!["project_capture", "intent_capture", created_at, expires_at],
             )?;
-            let before = store.effect_counts()?;
+            let before = (store.effect_counts()?, store.project_state()?);
             let error = store
                 .evidence_capture_intent_record("intent_capture")
                 .expect_err("corrupt intent window should fail closed");
@@ -1311,8 +1485,209 @@ mod tests {
                 ),
                 "variant {variant} returned {error}"
             );
-            assert_eq!(store.effect_counts()?, before, "variant {variant}");
+            assert_eq!(
+                (store.effect_counts()?, store.project_state()?),
+                before,
+                "variant {variant}"
+            );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn selector_input_digest_corruption_fails_closed_without_source_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = CaptureHarness::new()?;
+        let mut store = harness.store()?;
+        seed_graph(&store)?;
+        seed_capture_intent(
+            &store,
+            "intent_selector_digest_corrupt",
+            "registered_connection_observation",
+            connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
+            "a",
+            Some("session_capture"),
+        )?;
+
+        let corrupt_digest = "f".repeat(64);
+        store.conn.execute(
+            "UPDATE evidence_capture_intents
+                SET input_sha256 = ?3
+              WHERE project_id = ?1
+                AND evidence_capture_intent_id = ?2",
+            rusqlite::params![
+                "project_capture",
+                "intent_selector_digest_corrupt",
+                &corrupt_digest
+            ],
+        )?;
+        let before = store.effect_counts()?;
+        let mut receipt = receipt_for(
+            "intent_selector_digest_corrupt",
+            "receipt_selector_digest_corrupt",
+            "handle_selector_digest_corrupt",
+            "registered_connection_observation",
+            "a",
+            watcher_source("watch_selector_digest_corrupt"),
+        );
+        receipt.input_sha256 = corrupt_digest;
+
+        let error = store
+            .fulfill_evidence_capture_source(receipt)
+            .expect_err("a stored selector digest mismatch should fail closed");
+        assert!(
+            matches!(
+                &error,
+                StoreError::CorruptOwnerStateValue {
+                    table: "evidence_capture_intents",
+                    logical_column: "input_sha256",
+                    ..
+                }
+            ),
+            "unexpected selector digest corruption error: {error}"
+        );
+        assert_eq!(store.effect_counts()?, before);
+        assert!(!staging_path(&store, "handle_selector_digest_corrupt").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn watcher_source_is_revalidated_against_current_active_baseline_without_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        for variant in ["stale_latest", "co_latest", "inactive_latest"] {
+            let harness = CaptureHarness::new()?;
+            let mut store = harness.store()?;
+            seed_graph(&store)?;
+            seed_capture_intent(
+                &store,
+                "intent_watcher_freshness",
+                "registered_connection_observation",
+                connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
+                "a",
+                Some("session_capture"),
+            )?;
+            let selected_observation = seed_watch_observation(
+                &store,
+                "watch_baseline_selected",
+                "watch_observation_selected",
+                SessionWatchStatus::Active,
+                "2026-07-13T00:00:01Z",
+            )?;
+            let receipt = watcher_receipt_for(
+                "intent_watcher_freshness",
+                "receipt_watcher_freshness",
+                "handle_watcher_freshness",
+                "a",
+                &selected_observation,
+            )?;
+
+            match variant {
+                "stale_latest" => {
+                    seed_watch_baseline(
+                        &store,
+                        "watch_baseline_newer",
+                        SessionWatchStatus::Active,
+                        "2026-07-13T00:00:02Z",
+                    )?;
+                }
+                "co_latest" => {
+                    seed_watch_baseline(
+                        &store,
+                        "watch_baseline_co_latest",
+                        SessionWatchStatus::Active,
+                        "2026-07-13T00:00:01Z",
+                    )?;
+                }
+                "inactive_latest" => {
+                    store.conn.execute(
+                        "UPDATE session_watch_baselines
+                            SET status = 'degraded'
+                          WHERE project_id = 'project_capture'
+                            AND watch_baseline_id = 'watch_baseline_selected'",
+                        [],
+                    )?;
+                }
+                _ => unreachable!(),
+            }
+
+            let before = (store.effect_counts()?, store.project_state()?);
+            let error = store
+                .fulfill_evidence_capture_source(receipt)
+                .expect_err("non-current watcher source must fail before receipt effects");
+            match variant {
+                "co_latest" => assert!(
+                    matches!(&error, StoreError::SchemaInvariant { .. }),
+                    "variant {variant} returned {error}"
+                ),
+                _ => assert!(
+                    matches!(&error, StoreError::Conflict { .. }),
+                    "variant {variant} returned {error}"
+                ),
+            }
+            assert_eq!(
+                (store.effect_counts()?, store.project_state()?),
+                before,
+                "variant {variant}"
+            );
+            assert!(
+                store
+                    .evidence_capture_receipt_for_intent("intent_watcher_freshness")?
+                    .is_none(),
+                "variant {variant} created a receipt"
+            );
+            assert!(
+                !staging_path(&store, "handle_watcher_freshness").exists(),
+                "variant {variant} created staging bytes"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn watcher_receipt_actual_digest_mismatch_fails_transactionally_without_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = CaptureHarness::new()?;
+        let mut store = harness.store()?;
+        seed_graph(&store)?;
+        seed_capture_intent(
+            &store,
+            "intent_watcher_actual_mismatch",
+            "registered_connection_observation",
+            connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
+            "a",
+            Some("session_capture"),
+        )?;
+        let observation = seed_watch_observation(
+            &store,
+            "watch_baseline_actual_mismatch",
+            "watch_observation_actual_mismatch",
+            SessionWatchStatus::Active,
+            "2026-07-13T00:00:01Z",
+        )?;
+        let mut receipt = watcher_receipt_for(
+            "intent_watcher_actual_mismatch",
+            "receipt_watcher_actual_mismatch",
+            "handle_watcher_actual_mismatch",
+            "a",
+            &observation,
+        )?;
+        let mut tampered_outcome = serde_json::from_str::<Value>(&receipt.observed_outcome_json)?;
+        tampered_outcome["observation_sha256"] = Value::String("f".repeat(64));
+        set_receipt_observed_outcome(&mut receipt, tampered_outcome)?;
+
+        let before = (store.effect_counts()?, store.project_state()?);
+        let error = store
+            .fulfill_evidence_capture_source(receipt)
+            .expect_err("self-consistent receipt digest drift must fail inside the transaction");
+        assert!(
+            matches!(&error, StoreError::Conflict { .. }),
+            "unexpected actual watcher digest mismatch error: {error}"
+        );
+        assert_eq!((store.effect_counts()?, store.project_state()?), before);
+        assert!(store
+            .evidence_capture_receipt_for_intent("intent_watcher_actual_mismatch")?
+            .is_none());
+        assert!(!staging_path(&store, "handle_watcher_actual_mismatch").exists());
         Ok(())
     }
 
@@ -1485,7 +1860,9 @@ mod tests {
             &store,
             "intent_guard_reuse",
             "registered_connection_observation",
-            connection_spec(ConnectionObservationSourceKind::GuardEvent, "d"),
+            connection_spec(ConnectionObservationSourceSelector::GuardEvent {
+                event_kind: ConnectionObservationGuardEventKind::Stop,
+            }),
             "d",
             Some("session_capture"),
         )?;
@@ -1493,7 +1870,7 @@ mod tests {
             &store,
             "intent_watch_first",
             "registered_connection_observation",
-            connection_spec(ConnectionObservationSourceKind::SessionWatcher, "e"),
+            connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
             "e",
             Some("session_capture"),
         )?;
@@ -1501,9 +1878,16 @@ mod tests {
             &store,
             "intent_watch_reuse",
             "registered_connection_observation",
-            connection_spec(ConnectionObservationSourceKind::SessionWatcher, "f"),
+            connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
             "f",
             Some("session_capture"),
+        )?;
+        let shared_watch_observation = seed_watch_observation(
+            &store,
+            "watch_baseline_shared",
+            "watch_shared",
+            SessionWatchStatus::Active,
+            "2026-07-13T00:00:01Z",
         )?;
 
         store.fulfill_evidence_capture_source(receipt_for(
@@ -1568,23 +1952,21 @@ mod tests {
         assert_eq!(store.effect_counts()?, after_other_session);
         assert!(!staging_path(&store, "handle_guard_reuse").exists());
 
-        store.fulfill_evidence_capture_source(receipt_for(
+        store.fulfill_evidence_capture_source(watcher_receipt_for(
             "intent_watch_first",
             "receipt_watch_first",
             "handle_watch_first",
-            "registered_connection_observation",
             "e",
-            watcher_source("watch_shared"),
-        ))?;
+            &shared_watch_observation,
+        )?)?;
         let after_watch = store.effect_counts()?;
-        let watcher_reuse = store.fulfill_evidence_capture_source(receipt_for(
+        let watcher_reuse = store.fulfill_evidence_capture_source(watcher_receipt_for(
             "intent_watch_reuse",
             "receipt_watch_reuse",
             "handle_watch_reuse",
-            "registered_connection_observation",
             "f",
-            watcher_source("watch_shared"),
-        ));
+            &shared_watch_observation,
+        )?);
         assert!(watcher_reuse.is_err());
         assert_eq!(store.effect_counts()?, after_watch);
         assert!(!staging_path(&store, "handle_watch_reuse").exists());
@@ -1622,7 +2004,9 @@ mod tests {
             &store,
             "intent_guard_shape",
             "registered_connection_observation",
-            connection_spec(ConnectionObservationSourceKind::GuardEvent, "c"),
+            connection_spec(ConnectionObservationSourceSelector::GuardEvent {
+                event_kind: ConnectionObservationGuardEventKind::Stop,
+            }),
             "c",
             Some("session_capture"),
         )?;
@@ -1630,7 +2014,7 @@ mod tests {
             &store,
             "intent_watcher_shape",
             "registered_connection_observation",
-            connection_spec(ConnectionObservationSourceKind::SessionWatcher, "d"),
+            connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
             "d",
             Some("session_capture"),
         )?;
@@ -1746,7 +2130,7 @@ mod tests {
             &store,
             "intent_strict_watcher",
             "registered_connection_observation",
-            connection_spec(ConnectionObservationSourceKind::SessionWatcher, "c"),
+            connection_spec(ConnectionObservationSourceSelector::SessionWatcher {}),
             "c",
             Some("session_capture"),
         )?;
@@ -1944,14 +2328,97 @@ mod tests {
         Ok(())
     }
 
+    fn seed_watch_baseline(
+        store: &CoreProjectStore,
+        baseline_id: &str,
+        status: SessionWatchStatus,
+        updated_at: &str,
+    ) -> StoreResult<WatchBaselineRecord> {
+        store.conn.execute(
+            "INSERT OR IGNORE INTO agent_sessions (
+                project_id, session_id, connection_internal_id,
+                guard_installation_id, host_kind, guard_mode, started_at,
+                ended_at, metadata_json
+            ) VALUES (
+                'project_capture', 'session_capture', 'conn_capture', NULL,
+                'codex', 'detective', '2026-07-13T00:00:00Z', NULL, '{}'
+            )",
+            [],
+        )?;
+        let snapshot = snapshot_product_repository(
+            &store.runtime_home,
+            &store.project.repo_root,
+            Default::default(),
+        )?;
+        create_watch_baseline(
+            &store.runtime_home,
+            &store.project.project_id,
+            WatchBaselineCreate {
+                watch_baseline_id: baseline_id.to_owned(),
+                session_id: "session_capture".to_owned(),
+                connection_internal_id: "conn_capture".to_owned(),
+                guard_installation_id: None,
+                status,
+                snapshot,
+                created_at: updated_at.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+    }
+
+    fn seed_watch_observation(
+        store: &CoreProjectStore,
+        baseline_id: &str,
+        observation_id: &str,
+        baseline_status: SessionWatchStatus,
+        baseline_updated_at: &str,
+    ) -> StoreResult<WatchObservationRecord> {
+        seed_watch_baseline(store, baseline_id, baseline_status, baseline_updated_at)?;
+        let baseline_snapshot = snapshot_product_repository(
+            &store.runtime_home,
+            &store.project.repo_root,
+            Default::default(),
+        )?;
+        let snapshot = baseline_snapshot.clone();
+        let diff = compare_watch_snapshots(&baseline_snapshot, &snapshot);
+        let metadata_json = canonical_json_string(&serde_json::json!({
+            "scan_summary": &snapshot.scan_summary
+        }))
+        .map_err(|error| StoreError::InvalidInput {
+            detail: error.to_string(),
+        })?;
+        record_watch_observation(
+            &store.runtime_home,
+            &store.project.project_id,
+            WatchObservationInsert {
+                watch_observation_id: observation_id.to_owned(),
+                watch_baseline_id: baseline_id.to_owned(),
+                expected_write_id: None,
+                snapshot,
+                diff,
+                observed_at: "2026-07-13T00:01:00Z".to_owned(),
+                metadata_json,
+            },
+        )
+    }
+
     fn seed_capture_intent(
         store: &CoreProjectStore,
         intent_id: &str,
         capture_kind: &str,
         capture_spec: Value,
-        input_sha_char: &str,
+        _input_sha_char: &str,
         session_id: Option<&str>,
     ) -> StoreResult<()> {
+        let decoded_capture = serde_json::from_value::<EvidenceCaptureSpec>(capture_spec.clone())
+            .map_err(|error| StoreError::InvalidInput {
+            detail: error.to_string(),
+        })?;
+        let input_sha256 = evidence_capture_input_sha256(&decoded_capture).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: error.to_string(),
+            }
+        })?;
         let capture_spec_json =
             canonical_json_string(&capture_spec).map_err(|error| StoreError::InvalidInput {
                 detail: error.to_string(),
@@ -1984,7 +2451,7 @@ mod tests {
                 intent_id,
                 capture_kind,
                 capture_spec_json,
-                input_sha_char.repeat(64),
+                input_sha256,
                 session_context_json,
                 expected_outcome_json
             ],
@@ -2011,6 +2478,21 @@ mod tests {
         input_sha_char: &str,
         source: Value,
     ) -> EvidenceCaptureReceiptInsert {
+        let input_sha256 = if capture_kind == "registered_connection_observation" {
+            let source_selector = if source["guard_event_ids"]
+                .as_array()
+                .is_some_and(|events| !events.is_empty())
+            {
+                ConnectionObservationSourceSelector::GuardEvent {
+                    event_kind: ConnectionObservationGuardEventKind::Stop,
+                }
+            } else {
+                ConnectionObservationSourceSelector::SessionWatcher {}
+            };
+            canonical_json_bare_sha256(&source_selector).expect("fixed source selector should hash")
+        } else {
+            input_sha_char.repeat(64)
+        };
         let observed_outcome = match capture_kind {
             "verified_command_execution" => serde_json::json!({
                 "exit_code": 0,
@@ -2071,7 +2553,7 @@ mod tests {
             "schema_version": "volicord.evidence_capture_receipt.v1",
             "capture_kind": capture_kind,
             "capture_intent_id": intent_id,
-            "input_sha256": input_sha_char.repeat(64),
+            "input_sha256": input_sha256.clone(),
             "result_sha256": result_sha256,
             "expected_outcome": expected_outcome,
             "observed_outcome": observed_outcome,
@@ -2088,7 +2570,7 @@ mod tests {
             staging_handle_id: handle_id.to_owned(),
             task_id: "task_capture".to_owned(),
             capture_kind: capture_kind.to_owned(),
-            input_sha256: input_sha_char.repeat(64),
+            input_sha256: input_sha256.clone(),
             result_sha256: result_sha256.clone(),
             expected_outcome_json: canonical_json_string(&safe_receipt["expected_outcome"])
                 .expect("fixed expected outcome should serialize"),
@@ -2108,6 +2590,39 @@ mod tests {
             }))
             .expect("fixed metadata should serialize"),
         }
+    }
+
+    fn watcher_receipt_for(
+        intent_id: &str,
+        receipt_id: &str,
+        handle_id: &str,
+        input_sha_char: &str,
+        observation: &WatchObservationRecord,
+    ) -> Result<EvidenceCaptureReceiptInsert, Box<dyn Error>> {
+        let mut receipt = receipt_for(
+            intent_id,
+            receipt_id,
+            handle_id,
+            "registered_connection_observation",
+            input_sha_char,
+            watcher_source(&observation.watch_observation_id),
+        );
+        let selection = canonical_watch_observation_selection(observation)?;
+        set_receipt_observed_outcome(
+            &mut receipt,
+            serde_json::json!({
+                "complete": true,
+                "snapshot_algorithm": observation.snapshot_algorithm,
+                "snapshot_digest": observation.snapshot_digest,
+                "observation_sha256": canonical_json_bare_sha256(&selection)?,
+            }),
+        )?;
+        set_receipt_times(
+            &mut receipt,
+            &observation.observed_at,
+            &observation.observed_at,
+        )?;
+        Ok(receipt)
     }
 
     fn expected_outcome(capture_kind: &str) -> Value {
@@ -2130,11 +2645,10 @@ mod tests {
         })
     }
 
-    fn connection_spec(source_kind: ConnectionObservationSourceKind, sha_char: &str) -> Value {
+    fn connection_spec(source_selector: ConnectionObservationSourceSelector) -> Value {
         serde_json::json!({
             "capture_kind": "registered_connection_observation",
-            "source_kind": source_kind,
-            "observation_input_sha256": sha_char.repeat(64),
+            "source_selector": source_selector,
             "expected_complete": true
         })
     }

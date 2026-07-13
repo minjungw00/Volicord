@@ -29,6 +29,16 @@ shape and must be recreated; Store must not relabel or guess-convert it.
 `project_state.state_version` remains a Core state clock and is not the
 storage-profile version.
 
+The current pre-major v5 contract stores a registered-connection capture's
+closed source selector and Core-derived canonical selector digest in the intent.
+Concrete event/watcher-observation identity, observation time, and raw-event or
+snapshot/selection digest are receipt-owned facts. This correction changes no
+canonical SQL table, column, index, foreign key, or constraint and is completed
+inside the current `baseline_sqlite_v5` / `0.8.0` batch. It therefore does not
+create another storage-profile or package-version transition. Store does not
+decode the removed caller-supplied future-observation-digest capture shape as a
+legacy alias or fallback; a malformed required record fails closed.
+
 <a id="canonical-core-utc-clock"></a>
 ## Canonical Core UTC Clock
 

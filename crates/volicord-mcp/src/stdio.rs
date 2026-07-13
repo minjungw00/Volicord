@@ -3289,10 +3289,16 @@ pub(crate) fn write_json_line(
 #[cfg(test)]
 mod mutation_output_tests {
     use super::*;
+    use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
-    use volicord_types::{ChangeUnitOperation, JudgmentKind, MAX_OPERATION_RESULT_PAGE_BYTES};
+    use volicord_types::{
+        AcceptanceCriterionId, BaselineRef, ChangeUnitId, ChangeUnitOperation,
+        EvidenceAssuranceLevel, EvidenceCaptureSpec, EvidenceObservationInput, EvidenceProducer,
+        EvidenceSourceKind, EvidenceTarget, JudgmentKind, RecordId, StateRecordKind, UtcTimestamp,
+        EVIDENCE_CAPTURE_COMMAND_LIMITATION, MAX_OPERATION_RESULT_PAGE_BYTES,
+    };
 
     fn committed_intake_with_receipt(
         prefix: &str,
@@ -3331,6 +3337,215 @@ mod mutation_output_tests {
         )?;
         let receipt = serde_json::from_value(status.response_value["authority_receipt"].clone())?;
         Ok((fixture, committed, receipt))
+    }
+
+    fn committed_record_run_with_capture_producer(
+        prefix: &str,
+    ) -> Result<
+        (
+            CoreFixture,
+            PipelineResponse,
+            PipelineResponse,
+            StateRecordRef,
+        ),
+        Box<dyn Error>,
+    > {
+        let fixture = CoreFixture::new(prefix)?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let workspace = GitWorkspaceContext {
+            git_common_dir: fixture
+                .product_repo_path()
+                .join(".git")
+                .to_string_lossy()
+                .into_owned(),
+            worktree_id: format!("sha256:{}", "1".repeat(64)),
+            branch_ref: Some("refs/heads/mcp-producer-recovery".to_owned()),
+            head_sha: Some("2".repeat(40)),
+            workspace_fingerprint: format!("sha256:{}", "3".repeat(64)),
+        };
+        let workflow_invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            )
+            .with_git_workspace_context(workspace.clone())
+        };
+        let intake = core.intake(
+            fixture.intake_request(
+                "req_mcp_producer_recovery_intake",
+                "idem_mcp_producer_recovery_intake",
+                false,
+                Some(0),
+            ),
+            workflow_invocation(),
+        )?;
+        let task_id = intake
+            .resolved_task_id
+            .clone()
+            .expect("intake resolves a Task");
+        let scope = core.update_scope(
+            fixture.update_scope_request(UpdateScopeFixture {
+                request_id: "req_mcp_producer_recovery_scope",
+                idempotency_key: "idem_mcp_producer_recovery_scope",
+                dry_run: false,
+                expected_state_version: Some(1),
+                task_id: task_id.as_str(),
+                operation: ChangeUnitOperation::CreateCurrent,
+                scope_summary: "Bind an actual evidence producer to compact recovery.",
+            }),
+            workflow_invocation(),
+        )?;
+        let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or("scope should expose the current Change Unit")?;
+        let criterion_id = scope.response_value["state"]["acceptance_criteria"][0]
+            ["acceptance_criterion_id"]
+            .as_str()
+            .ok_or("scope should expose the current acceptance criterion")?;
+        let target = EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: AcceptanceCriterionId::new(criterion_id),
+        };
+        let prepared = core.prepare_evidence_capture(
+            PrepareEvidenceCaptureRequest {
+                envelope: fixture.envelope(
+                    "req_mcp_producer_recovery_prepare",
+                    Some("idem_mcp_producer_recovery_prepare"),
+                    false,
+                    Some(2),
+                    Some(task_id.as_str()),
+                ),
+                task_id: task_id.clone(),
+                change_unit_id: ChangeUnitId::new(change_unit_id),
+                baseline_ref: BaselineRef::new(
+                    volicord_test_support::core_fixtures::DEFAULT_BASELINE_REF,
+                ),
+                target: target.clone(),
+                capture: EvidenceCaptureSpec::VerifiedCommandExecution {
+                    command_sha256: "4".repeat(64),
+                    command_label: "actual compact producer fixture".to_owned(),
+                    expected_exit_code: RequiredNullable::null(),
+                },
+            },
+            workflow_invocation(),
+        )?;
+        let capture_intent_ref: StateRecordRef =
+            serde_json::from_value(prepared.response_value["capture_intent_ref"].clone())?;
+
+        let mut store = fixture.store()?;
+        let intent = store
+            .evidence_capture_intent_record(capture_intent_ref.record_id.as_str())?
+            .expect("committed capture intent should be readable");
+        let observed_outcome = json!({
+            "exit_code": 0,
+            "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout_size_bytes": 0,
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderr_size_bytes": 0
+        });
+        let result_sha256 = canonical_json_bare_sha256(&observed_outcome)?;
+        let source = json!({
+            "connection_id": fixture.connection_id(),
+            "session_id": null,
+            "guard_installation_id": null,
+            "guard_event_ids": [],
+            "watch_observation_refs": [],
+            "host_invocation_id": "host_invocation_mcp_producer_recovery"
+        });
+        let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
+        let safe_receipt = json!({
+            "schema_version": "volicord.evidence_capture_receipt.v1",
+            "capture_kind": "verified_command_execution",
+            "capture_intent_id": capture_intent_ref.record_id,
+            "input_sha256": intent.input_sha256,
+            "result_sha256": result_sha256,
+            "expected_outcome": expected_outcome,
+            "observed_outcome": observed_outcome,
+            "source": source,
+            "complete": true,
+            "limitations": [EVIDENCE_CAPTURE_COMMAND_LIMITATION],
+            "redaction_state": "redacted",
+            "observed_by_actor_source": fixture.actor_source(),
+            "observed_at": intent.created_at
+        });
+        store.fulfill_evidence_capture_source(EvidenceCaptureReceiptInsert {
+            evidence_capture_receipt_id: "evidence_capture_receipt_mcp_producer_recovery"
+                .to_owned(),
+            evidence_capture_intent_id: capture_intent_ref.record_id.as_str().to_owned(),
+            staging_handle_id: "staged_capture_receipt_mcp_producer_recovery".to_owned(),
+            task_id: intent.task_id.clone(),
+            capture_kind: intent.capture_kind.clone(),
+            input_sha256: intent.input_sha256.clone(),
+            result_sha256: result_sha256.clone(),
+            expected_outcome_json: intent.expected_outcome_json.clone(),
+            observed_outcome_json: serde_json::to_string(&observed_outcome)?,
+            source_refs_json: "[]".to_owned(),
+            observed_by_actor_source: fixture.actor_source(),
+            observed_at: intent.created_at.clone(),
+            limitations_json: serde_json::to_string(&json!([EVIDENCE_CAPTURE_COMMAND_LIMITATION]))?,
+            safe_receipt_json: serde_json::to_string(&safe_receipt)?,
+            created_at: intent.created_at.clone(),
+            staging_expires_at: intent.expires_at.clone(),
+            metadata_json: serde_json::to_string(&json!({ "source": source }))?,
+        })?;
+        drop(store);
+
+        let mut record_request = fixture.record_run_request(
+            "req_mcp_producer_recovery_record",
+            "idem_mcp_producer_recovery_record",
+            false,
+            Some(3),
+            task_id.as_str(),
+            change_unit_id,
+        );
+        record_request.evidence_observations = vec![EvidenceObservationInput {
+            target,
+            source_kind: EvidenceSourceKind::ExternalTool,
+            assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
+            observed_by_actor_source: RequiredNullable::null(),
+            tool_name: RequiredNullable::null(),
+            tool_invocation_id: RequiredNullable::null(),
+            tool_metadata: Map::new(),
+            input_refs: vec![capture_intent_ref.clone()],
+            source_refs: Vec::new(),
+            output_artifact_refs: Vec::new(),
+            limitations: Vec::new(),
+            observed_at: UtcTimestamp::parse("2000-01-01T00:00:00Z")?,
+        }];
+        let recorded = core.record_run(record_request, workflow_invocation())?;
+        let producer: EvidenceProducer =
+            serde_json::from_value(recorded.response_value["evidence_producers"][0].clone())?;
+        let producer_id = producer.evidence_producer_id.as_str().to_owned();
+        let producer_row = fixture
+            .store()?
+            .evidence_producer_record(&producer_id)?
+            .expect("record_run producer should be immediately readable");
+        assert_eq!(
+            producer_row.evidence_capture_intent_id,
+            capture_intent_ref.record_id.as_str()
+        );
+        let state_version = recorded.response_value["base"]["state_version"]
+            .as_u64()
+            .ok_or("record_run should expose its committed state version")?;
+        let producer_ref = StateRecordRef {
+            record_kind: StateRecordKind::EvidenceProducer,
+            record_id: RecordId::new(producer_id),
+            project_id: producer.project_id,
+            task_id: Some(producer.task_id).into(),
+            produced_at_state_version: Some(state_version).into(),
+        };
+
+        let refreshed = core.status(
+            fixture.status_request("req_mcp_producer_recovery_status", Some(task_id.as_str())),
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::Read,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            ),
+        )?;
+        Ok((fixture, recorded, refreshed, producer_ref))
     }
 
     fn receipt_with_message_padding(
@@ -4569,6 +4784,83 @@ mod mutation_output_tests {
             Value::Null
         );
         assert_compact_budget(effect_facts_only)?;
+        Ok(())
+    }
+
+    #[test]
+    fn record_run_actual_producer_ref_survives_default_compact_and_bounded_recovery(
+    ) -> Result<(), Box<dyn Error>> {
+        let (_fixture, recorded, refreshed, producer_ref) =
+            committed_record_run_with_capture_producer("mcp-record-run-producer-recovery")?;
+        let default_detail = MutationDetailLevel::default();
+        assert_eq!(default_detail, MutationDetailLevel::Summary);
+        let decode_producer_refs =
+            |value: Value, label: &str| -> Result<Vec<StateRecordRef>, Box<dyn Error>> {
+                if !value.is_array() {
+                    return Err(format!("{label} did not preserve producer refs: {value}").into());
+                }
+                Ok(serde_json::from_value(value)?)
+            };
+
+        let normal = finalize_mutation_output_with_refresh(
+            RECORD_RUN_TOOL_NAME,
+            Some(default_detail),
+            ToolCallOutput::from_pipeline_response(&recorded)?,
+            |_| Ok(refreshed.clone()),
+        )?;
+        let default_refs = decode_producer_refs(
+            normal.structured_content["method_result"]["evidence_producer_refs"].clone(),
+            "default compact finalizer",
+        )?;
+        assert_eq!(default_refs, vec![producer_ref.clone()]);
+        assert!(
+            serde_json::to_vec(&tool_call_result_from_output(normal))?.len()
+                <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+        );
+
+        let mut oversized_recorded = recorded.clone();
+        oversized_recorded.response_value["run_summary"]["summary"] =
+            Value::String("x".repeat(MAX_MCP_FULL_MUTATION_RESULT_BYTES));
+        oversized_recorded.response_json =
+            serde_json::to_string(&oversized_recorded.response_value)?;
+
+        let mut projection_output = ToolCallOutput::from_pipeline_response(&oversized_recorded)?;
+        projection_output.post_effect_failure =
+            Some(McpPostEffectFailureCode::McpResponseProjectionFailed);
+        let projection_recovery = finalize_mutation_output_with_refresh(
+            RECORD_RUN_TOOL_NAME,
+            Some(default_detail),
+            projection_output,
+            |_| Ok(refreshed.clone()),
+        )?;
+
+        let budget_recovery = finalize_mutation_output_with_refresh(
+            RECORD_RUN_TOOL_NAME,
+            Some(MutationDetailLevel::Full),
+            ToolCallOutput::from_pipeline_response(&oversized_recorded)?,
+            |_| Ok(refreshed.clone()),
+        )?;
+
+        let recoveries = [
+            (projection_recovery, "MCP_RESPONSE_PROJECTION_FAILED"),
+            (budget_recovery, "MCP_RESPONSE_BUDGET_EXCEEDED"),
+        ];
+        for (recovery, expected_code) in recoveries {
+            assert_eq!(recovery.structured_content["code"], expected_code);
+            assert!(recovery.structured_content["authority_receipt"].is_object());
+            let producer_refs = decode_producer_refs(
+                recovery.structured_content["method_result"]["evidence_producer_refs"].clone(),
+                expected_code,
+            )?;
+            assert_eq!(producer_refs, vec![producer_ref.clone()]);
+            assert_eq!(recovery.structured_content["effect_applied"], true);
+            assert_eq!(recovery.structured_content["committed"], true);
+            assert_eq!(recovery.structured_content["retryable"], false);
+            assert!(
+                serde_json::to_vec(&tool_call_result_from_output(recovery))?.len()
+                    <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+            );
+        }
         Ok(())
     }
 

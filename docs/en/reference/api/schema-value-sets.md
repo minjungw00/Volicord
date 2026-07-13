@@ -878,16 +878,33 @@ finalization path. `user_channel_observation` and recursively validated
 `reused_evidence` retain their existing authority-owned paths. Caller input,
 raw guard payloads, and artifact bytes alone cannot create any of these anchors.
 
-`ConnectionObservationSourceKind` uses:
+`ConnectionObservationSourceSelector.source_kind` uses:
 
 ```text
 guard_event
 session_watcher
 ```
 
-These values select the registered source family for
-`registered_connection_observation`; they do not by themselves prove source
-completeness, host identity, or evidence relevance.
+These discriminator values select the registered source-selector branch for
+`registered_connection_observation`; they do not form a standalone public
+value-set type and do not by themselves prove source completeness, host
+identity, or evidence relevance.
+
+`ConnectionObservationGuardEventKind` uses:
+
+```text
+pre_tool
+post_tool
+prompt_capture
+stop
+```
+
+The `guard_event` source-selector branch requires exactly one of these values.
+The `session_watcher` branch accepts none of them. The selector binds the
+planned registered source class; the concrete guard-event or watcher-observation
+identity, observation time, and source digest remain receipt-owned facts.
+`session_start` is not in this set because the exact intent-bound session starts
+before intent creation and cannot yield a post-intent source observation.
 
 `EvidenceRelevanceAssessment.status` and
 the evidence-observation resolution body use `unassessed`, `supported`, and

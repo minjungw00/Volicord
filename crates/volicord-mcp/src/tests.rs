@@ -538,17 +538,15 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
                 },
                 "capture": {
                     "capture_kind": "registered_connection_observation",
-                    "source_kind": "session_watcher",
-                    "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    "source_selector": {"source_kind": "session_watcher"}
                 }
             }),
             json!({
                 "capture_kind": "registered_connection_observation",
-                "source_kind": "session_watcher",
-                "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "source_selector": {"source_kind": "session_watcher"},
                 "expected_complete": null
             }),
-            "tool_input_sha256",
+            "observation_input_sha256",
         ),
     ];
 
@@ -573,6 +571,35 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
         assert!(serde_json::from_value::<McpPrepareEvidenceCaptureArguments>(invalid).is_err());
     }
 
+    Ok(())
+}
+
+#[test]
+fn prepare_evidence_capture_rejects_session_start_selector_before_core_without_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-capture-session-start-selector")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let mut arguments = canonical_example_value(
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+        PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
+    )?;
+    arguments["capture"]["source_selector"]["event_kind"] = json!("session_start");
+
+    let error = adapter
+        .call_tool(PREPARE_EVIDENCE_CAPTURE_TOOL_NAME, arguments)
+        .expect_err("session_start must fail before Core intent preparation");
+    let response = structured_tool_error(PREPARE_EVIDENCE_CAPTURE_TOOL_NAME, &error);
+    tool_error_issue(
+        &response,
+        "/capture/source_selector/event_kind",
+        "MCP_ARGUMENT_ENUM_VALUE",
+    );
+    assert_eq!(
+        fixture.counts()?,
+        before,
+        "invalid future-ineligible source selection must create no Core effects"
+    );
     Ok(())
 }
 

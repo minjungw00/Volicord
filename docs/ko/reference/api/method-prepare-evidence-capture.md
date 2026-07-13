@@ -32,8 +32,10 @@ Strong Evidence를 부여하지 않습니다.
   host invocation ID, tool 이름, canonical input digest, 완전한 result digest를 가진
   정확한 pre/post 쌍을 결합합니다. session/시간 fallback은 적격하지 않습니다.
 - `registered_connection_observation`: 활성 등록 guard 관찰 또는 baseline과 현재
-  scan이 모두 완전하고 degraded되지 않은 session-watcher 관찰이 digest에 결합된 source 선택과
-  일치해야 합니다.
+  scan이 모두 완전하고 degraded되지 않은 session-watcher 관찰이 intent에
+  결합된 source selector와 일치해야 합니다. 구체적인 event 또는 watcher
+  observation identity와 observation digest는 fulfillment에서만 생성되는
+  source 소유 사실로 남습니다.
 
 Fulfillment는 불변 영속 `EvidenceCaptureReceipt` source-fact record와 크기가 제한되고
 가려진 transient receipt artifact staging handle을 만듭니다. Core 상태는 진행시키지 않습니다.
@@ -65,22 +67,29 @@ EvidenceCaptureSpec:
   expected_success: boolean | null
 
   capture_kind: registered_connection_observation
-  source_kind: guard_event | session_watcher
-  observation_input_sha256: 소문자 64자 SHA-256
+  source_selector:
+    source_kind: guard_event
+    event_kind: pre_tool | post_tool | prompt_capture | stop
+  # 또는
+  source_selector:
+    source_kind: session_watcher
   expected_complete: boolean | null
 ```
 
 `command_sha256`는 실행 파일을 0번째 요소로 포함하는 전체 UTF-8 인자 벡터의
 canonical JSON에 대한 접두사 없는 소문자 SHA-256입니다. `tool_input_sha256`는
-선택한 canonical tool input 객체에 대한 같은 형태의 digest입니다.
-`source_kind=guard_event`에서는 `observation_input_sha256`가 선택한 redacted
-`raw_event` 객체를 hash합니다. `source_kind=session_watcher`에서는
-`watch_observation_id`, `watch_baseline_id`, `session_id`, `connection_id`,
-`snapshot_algorithm`, `snapshot_digest`, `snapshot_entries`, `observed_paths`,
-`change_summary`, `observed_at`으로 이루어진 canonical safe selection 객체를
-hash합니다. 이 digest에는 [API Core 스키마](schema-core.md)의 canonical JSON hash
-규칙을 사용합니다. 원시 인자, 환경값, 명령 출력, tool input/output은 공개 요청
-필드가 아니며 intent에 저장하지 않습니다.
+선택한 canonical tool input 객체에 대한 같은 형태의 digest입니다. Connection
+observation 호출자는 observation digest, event ID, watcher-observation ID, source
+timestamp, snapshot digest, raw-event digest를 제공하지 않습니다. Core는 대신
+canonical `source_selector` JSON의 접두사 없는 소문자 SHA-256을
+`input_sha256`로 파생합니다. Guard selector는 폐쇄형 `event_kind` 하나를
+요구합니다. Session-watcher selector는 검증된 현재 connection과 정확한 session이
+intent의 별도 좌표로 이미 결합되므로 추가 호출자 필드가 없습니다.
+`session_start`는 선택할 수 없습니다. 정확한 session이 intent 생성 전에 이미
+존재하므로 그 start event는 intent 이후 observation window를 만족할 수 없습니다. 이 digest에는
+[API Core 스키마](schema-core.md)의 canonical JSON hash 규칙을 사용합니다. 원시
+인자, 환경값, 명령 출력, tool input/output은 공개 요청 필드가 아니며 intent에
+저장하지 않습니다.
 
 `command_label`에는 공통 display-text 정규화를 적용하고, `tool_name`은 내부 identifier
 텍스트를 바꾸지 않은 채 앞뒤 공백만 제거합니다. 그 뒤 비어 있지 않은지와 256
@@ -88,7 +97,8 @@ UTF-8-byte 상한을 검사하고 결과 값을 불변 intent에 저장합니다
 
 MCP 생략 기본값은 `expected_exit_code=0`, `expected_success=true`,
 `expected_complete=true`입니다. 명시적 `null`도 같은 뜻입니다. 안전한 label이
-비어 있거나 digest가 잘못됐거나 source kind를 지원하지 않거나 대상이 현재 Task에
+비어 있거나 digest가 잘못됐거나 source selector가 지원되지 않거나 형태가
+잘못됐거나 대상이 현재 Task에
 속하지 않거나 Change Unit이 현재 상태가 아니거나 baseline이 호환되지 않거나
 검증된 Agent Connection 맥락이 없으면 커밋 전에 거부합니다. Tool 및 registered
 connection capture는 호출 맥락의 정확한 verified Agent Session도 요구하지만 command
@@ -96,7 +106,8 @@ capture는 요구하지 않습니다.
 
 Intent는 선택한 project, Task, 현재 Change Unit, 현재 scope revision, 호환되는
 baseline, 정확한 target, 현재 Git workspace identity, 요청 connection과 actor,
-capture kind, canonical input digest, 예상 결과, 생성 시각, 고정 15분 만료에
+capture kind, canonical input digest 또는 source-selector digest, 예상 결과, 생성 시각,
+고정 15분 만료에
 결합됩니다. 이후 관련 없는 state-version 증가만으로 intent가 만료되지는 않지만,
 결합된 근거가 바뀌면 오래된 상태가 됩니다.
 
@@ -120,10 +131,13 @@ PrepareEvidenceCaptureResult:
 ## Fulfillment와 receipt 규칙
 
 충족 source는 project와 Task identity, 현재 Change Unit, scope revision, baseline,
-target source 선택, workspace identity, 요청 connection, 만료, 정확한 input digest를
+target source selector, workspace identity, 요청 connection, 만료, Core가 파생한 정확한 input digest를
 다시 확인합니다. 비활성 connection, 정확한 pre가 없는 post, invocation ID나
 digest 불일치, 잘리거나 불완전한 output, degraded watcher scan, 이미 사용한
-intent는 적격 receipt를 만들 수 없습니다.
+intent는 적격 receipt를 만들 수 없습니다. Guard event는 selector의 정확한
+`event_kind`를 가져야 합니다. Watcher observation은 intent에 결합된 connection과
+session의 유일한 현재 `active` baseline에 속해야 하며, 현재 baseline이 없거나
+모호하면 거부합니다.
 
 선택한 source observation은 반개구간
 `intent.created_at <= observed_at < intent.expires_at`을 만족해야 합니다. Receipt는
@@ -141,6 +155,14 @@ tool은 정규화한 host invocation과 서로 다른 guard event 두 개를, gu
 source 사실은 한 project에서 intent와 producer class 하나만 충족할 수 있습니다.
 Source 좌표가 누락되거나 불필요하게 추가되거나 모호하거나 이미 claim되어 있으면
 receipt 및 staging 생성을 포함한 fulfillment 전체를 거부합니다.
+
+Connection fulfillment은 후보 source 사실 중 하나를 자동 선택하지 않습니다.
+등록 source 명령은 guard event 하나 또는 watcher observation 하나를 정확히 지정해야
+합니다. Source 좌표가 없거나, 두 source family를 모두 주거나, receipt에 불필요한
+좌표가 있거나, 선택한 family에 좌표가 둘 이상이면 receipt 없이 거부합니다.
+선택한 source의 정확한 ID, observation timestamp, raw-event 또는 snapshot/selection
+digest, source별 안전 요약은 source 소유 receipt에 확정됩니다. 이 값을 나중에
+불변 intent에 추가하거나 호출자가 미리 아는 필드로 취급하지 않습니다.
 
 안전한 receipt JSON은 24 KiB로 제한되며 schema version, capture kind, intent ID,
 input/result digest, 예상/관찰 결과, success/status 또는 exit code, 등록된
@@ -190,10 +212,13 @@ Receipt 하나는 producer를 최대 하나만 만들고 producer 하나는 obse
 
 ## 호환성과 외부 검증
 
-이 안정적인 공개 메서드와 intent/receipt/producer record는 현재
-`baseline_sqlite_v5` profile에도 유지됩니다. 호환되지 않는 v3 또는 v4 Runtime
-Home을 변환하는 경로는 없으며, 호환되지 않는 상태는 명확히 실패하고 다시 만들어야
-합니다. 현재 권장 release version은 `0.8.0`입니다.
+이 clean pre-major selector 보정은 호출자에게 미래 observation digest를 요구하던
+이전 형태를 제거합니다. Table, column, index, constraint를 추가하지 않고 현재
+`baseline_sqlite_v5` / `0.8.0` 계약 batch에 포함되므로 별도 storage-profile 또는
+package-version 전이를 만들지 않습니다. 제거된 request/capture-spec 형태를 위한
+legacy alias나 fallback decoder는 없습니다. 호환되지 않는 v3 또는 v4 Runtime Home을
+변환하는 경로는 없으며, 호환되지 않는 상태는 명확히 실패하고 다시 만들어야
+합니다. 현재 권장 release version은 계속 `0.8.0`입니다.
 
 체크인된 host fixture는 adapter만 검증합니다. 실제 Codex 또는 Claude Code의
 invocation identity, output completeness, retry, resume, 병렬 호출 동작에 대한

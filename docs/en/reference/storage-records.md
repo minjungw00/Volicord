@@ -102,7 +102,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `acceptance_criteria` | Acceptance criterion | Core-generated criterion identity, owning `Task`, statement, evidence requirement, replacement order, active/retired state, and timestamps. |
 | `state.sqlite` | `evidence_claims` | Supplemental evidence claim | Caller-assigned `Task`-scoped claim identity with one immutable non-empty statement. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
-| `state.sqlite` | `evidence_capture_intents` | Evidence-capture intent | Immutable expiring request bound to current Task/Change Unit/scope/baseline/target/workspace, exact capture spec and digest, requesting connection and actor, expected outcome, and timestamps. |
+| `state.sqlite` | `evidence_capture_intents` | Evidence-capture intent | Immutable expiring request bound to current Task/Change Unit/scope/baseline/target/workspace, exact capture spec and command/tool input digest or Core-derived connection source-selector digest, requesting connection and actor, expected outcome, and timestamps. |
 | `state.sqlite` | `user_action_requests` | User-action request | Closed action request JSON, Core-derived basis and compatibility, required-for targets, request actor, originating method/idempotency relation, and expiry. The capture form and effective lifecycle status are derived rather than stored as composite columns. |
 | `state.sqlite` | `user_action_resolutions` | Immutable User Channel resolution | At most one resolution per request, with a closed kind-matching body, channel kind and bounded visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, and Core capture time. Choice facts or full observation detail stay in the body. |
 | `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | Hash-only one-time local-web token bound to one request, connection, expiry, capture basis, and closed creation metadata containing the fallback kind, endpoint, and exact canonical-form digest. |
@@ -485,7 +485,7 @@ Rules:
 | `write_tickets` | Write-ticket attempt scope and non-authority metadata. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
 | `artifact_staging` | Staged artifact data, safe metadata, and non-authority metadata. |
-| `evidence_capture_intents` | Exact target/capture JSON, expected outcome, registered session and Git workspace basis, actor/connection provenance, expiry, and non-authority metadata. |
+| `evidence_capture_intents` | Exact target/capture JSON, command/tool input digest or Core-derived connection source-selector digest, expected outcome, registered session and Git workspace basis, actor/connection provenance, expiry, and non-authority metadata. Connection capture JSON contains no future source ID, observation timestamp, snapshot digest, or raw-event digest. |
 | `evidence_capture_receipts` | Exact expected/observed outcomes, source refs, limitations, bounded safe receipt JSON and its digest/size, registered source coordinates in metadata, and non-authority metadata. The safe receipt is redacted and contains no raw command, environment, stdout, stderr, tool input, tool response, secret, or unbounded host payload. |
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |

@@ -533,7 +533,8 @@
       "description": "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence.",
       "input_schema": {
         "definitions": [
-          "ConnectionObservationSourceKind",
+          "ConnectionObservationGuardEventKind",
+          "ConnectionObservationSourceSelector",
           "EvidenceTarget",
           "McpEvidenceCaptureSpec",
           "MutationDetailLevel"
@@ -554,7 +555,7 @@
           "target",
           "task_id"
         ],
-        "sha256": "sha256:56aa8796bdf52de1953dc19ea8fb413d2e48d3deadec17f56ab5c07d53b73de4"
+        "sha256": "sha256:7b7a29810adcbead1259deab59b1121dac4bdb94741928b5870edd77cbea6296"
       },
       "name": "volicord.prepare_evidence_capture",
       "output_schema": {
@@ -564,7 +565,8 @@
           "AuthorityReceipt",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
-          "ConnectionObservationSourceKind",
+          "ConnectionObservationGuardEventKind",
+          "ConnectionObservationSourceSelector",
           "ControlSurfaceSummary",
           "DryRunSummary",
           "EffectKind",
@@ -617,7 +619,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:04a313d0414bf583a3f6dbac663cc16c083c5b071df05d5a28891500009e2421"
+        "sha256": "sha256:8ba2ec332deef85c917cb37e9ca73c1343b534add41c1bb01dedae26793cec8b"
       }
     },
     {

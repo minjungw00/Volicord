@@ -4569,20 +4569,33 @@ fn guarded_watcher_links_deterministic_active_write_ticket() -> Result<(), Box<d
     assert_close_blocker(&response.response_value, "open_write_ticket");
     assert_no_close_blocker(&response.response_value, "unresolved_unrecorded_changes");
     assert!(unresolved_changes_for_connection(&harness)?.is_empty());
-    let metadata: String = harness.conn()?.query_row(
-        "SELECT metadata_json
+    let (metadata, snapshot_entries): (String, String) = harness.conn()?.query_row(
+        "SELECT metadata_json, snapshot_entries_json
            FROM session_watch_observations
           WHERE project_id = ?1
           ORDER BY julianday(observed_at) DESC, watch_observation_id DESC
           LIMIT 1",
         [PROJECT_ID],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let metadata: Value = serde_json::from_str(&metadata)?;
     assert_eq!(metadata["correlation_status"], "write_ticket");
     assert_eq!(metadata["write_ticket_ids"], json!([write_ticket_id]));
     assert_eq!(metadata["does_not_prevent_writes"], true);
     assert_eq!(metadata["does_not_identify_actor"], true);
+    let derived_scan_summary =
+        volicord_store::session_watch::watch_scan_summary_from_entries_json(&snapshot_entries)?;
+    assert_eq!(
+        metadata["scan_summary"],
+        serde_json::to_value(derived_scan_summary)?
+    );
+    assert_eq!(
+        metadata["scan_summary"]
+            .as_object()
+            .expect("watch scan_summary should be an object")
+            .len(),
+        7
+    );
     Ok(())
 }
 

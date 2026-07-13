@@ -321,7 +321,7 @@ volicord evidence capture-connection --intent ID (--guard-event ID | --watch-obs
 
 세 명령은 모두 활성 등록 프로젝트를 선택하고 불변 capture intent를 읽은 뒤 현재
 Task/Change Unit/scope/baseline, target, Git workspace, 요청한 활성 Agent
-Connection과 project access, expiry, source kind, 정확한 canonical input digest를
+Connection과 project access, expiry, source selector, 정확한 canonical input 또는 selector digest를
 다시 검증합니다. 이미 fulfillment되었거나 소비된 intent는 거부합니다. Source
 observation은 `intent.created_at <= observed_at < intent.expires_at` 범위에 있어야
 하고 receipt는 `observed_at <= receipt.created_at < intent.expires_at`을 만족해야
@@ -344,14 +344,19 @@ event ID를 요구합니다. Pre event가 deny 상태이면 안 되고, post는 
 완전한 tool response를 가져야 합니다. Tool name과 input digest는 intent와
 일치해야 합니다.
 
-`capture-connection`은 선택한 source를 정확히 하나 받습니다. `--guard-event`는
-선택한 redacted `raw_event`를 hash합니다. `--watch-observation`은 observation,
-baseline, session, connection ID, snapshot algorithm, digest와 entries, observed
-paths, change summary, observation time으로 이루어진 safe selection을 hash합니다.
-Watch baseline과 현재 observation scan은 모두 skipped 또는 unreadable path 없이
-완전하고 non-degraded여야 합니다. 이 명령은 영속화된 baseline 및 현재 snapshot entry를 엄격하게 decode하고
-두 snapshot digest와 diff를 다시 계산한 뒤, 저장된 observed paths와 change summary가
-그 canonical 결과와 일치해야 한다고 요구합니다.
+`capture-connection`은 선택한 source를 정확히 하나 받고 후보 사실 중 하나를
+자동 선택하지 않습니다. `--guard-event`는 선택한 event의 폐쇄형 event kind가
+intent selector와 일치해야 하며, receipt용으로 redacted `raw_event`를 hash합니다.
+`--watch-observation`은 선택한 observation이 intent에 결합된 connection과 session의
+유일한 현재 `active` baseline에 속해야 합니다. 그런 뒤 receipt용으로
+observation/baseline/session/connection ID, snapshot algorithm, digest와 entries, observed
+paths, change summary, observation time으로 이루어진 safe selection을 hash합니다. 현재
+baseline이 없거나 모호하면 거부합니다. Watch baseline과 현재 observation scan은
+모두 skipped 또는 unreadable path 없이 완전하고 non-degraded여야 합니다. 이 명령은
+영속화된 baseline 및 현재 snapshot entry를 엄격하게 decode하고 두 snapshot digest와
+diff를 다시 계산한 뒤, 저장된 observed paths와 change summary가 그 canonical 결과와
+일치해야 한다고 요구합니다. 정확한 선택 source ID, observation time, raw-event 또는
+watcher digest는 receipt 사실이며 호출자가 제공하는 intent 필드가 아닙니다.
 
 Fulfillment는 receipt 및 staging bytes와 함께 모든 기반 source 사실을 원자적으로
 예약합니다. 동일한 정규화 host invocation, guard event, watcher observation은 해당

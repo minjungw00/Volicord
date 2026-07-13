@@ -23,8 +23,8 @@ transaction과 이후 Run commit 사이로 권한이 분리되고 Run에 속하�
 
 1. 새 안정적 workflow 메서드 `volicord.prepare_evidence_capture`는 불변 15분
    intent만 만듭니다. 현재 Task, Change Unit, scope revision, baseline, target,
-   workspace, 요청 connection과 actor, 정확한 canonical input digest, 예상 결과를
-   결합합니다.
+   workspace, 요청 connection과 actor, 정확한 canonical command/tool input digest 또는
+   Core가 파생한 connection source-selector digest, 예상 결과를 결합합니다.
 2. 등록된 source가 intent를 충족하고 불변 영속 source-fact receipt와 크기가 제한되고
    가려진 receipt-artifact staging, 각 원천 사실에 대한 배타적 정규화 claim을
    원자적으로 만듭니다. Agent API에는 receipt나 producer 생성 메서드가 없습니다.
@@ -42,8 +42,11 @@ transaction과 이후 Run commit 사이로 권한이 분리되고 Run에 속하�
   canonical input을 가진 정확한 pre/post 쌍을 요구합니다. session/시간 fallback을
   사용하지 않습니다. 등록 hook은 협력적 host consistency를 제공할 뿐 암호학적
   host attestation이나 같은 로컬 주체로부터의 보호를 제공하지 않습니다.
-- 등록 connection 관찰은 intent의 source 선택과 일치하는 정확한 등록 guard 사실
-  또는 완전하고 degraded되지 않은 session-watcher snapshot을 요구합니다.
+- 등록 connection 관찰은 폐쇄형 event kind가 intent 이전 selector와 일치하는
+  정확한 등록 guard 사실 또는 intent에 결합된 connection과 session의 유일한 현재
+  `active` baseline에서 나온 완전하고 degraded되지 않은 session-watcher snapshot을
+  요구합니다. Event/observation identity, observation time, raw-event 또는 snapshot
+  digest는 source 소유 receipt에서만 확정됩니다.
 
 Store는 호출자가 고른 claim을 받지 않고 엄격한 receipt와 불변 capture spec에서 claim
 집합을 파생합니다. Command capture는 정규화한 host invocation을 claim합니다. Tool
@@ -84,16 +87,22 @@ observation이 둘 이상의 intent나 producer class를 충족하지 못하게 
 외래 키는 producer의 intent/receipt 교차 결합을 막습니다. Producer의 intent와
 observation identity는 unique이므로 완료한 intent를 두 번 소비할 수 없습니다.
 
-이는 canonical SQLite 형태의 비호환 변경입니다. 저장 profile은
-`baseline_sqlite_v4`이며 프로젝트는 제자리 migration chain을 추가하지 않습니다.
-기존 v3 Runtime Home은 compatibility 검사에 실패하며 다시 만들어야 합니다. 안정적
-공개 메서드 추가와 storage-profile 변경으로 권장 release version은 0.6.0에서
-0.7.0이 됩니다.
+초기 producer-finalization 모델은 `baseline_sqlite_v4` / `0.7.0`의 비호환 canonical
+SQLite 형태 변경이었습니다. 현재 baseline은 이 record family를 `baseline_sqlite_v5`에
+유지합니다. 후속 connection-selector 보정은 호출자가 제공하던 미래 observation digest를
+공개 및 영속 capture-spec 형태에서 제거하지만 table, column, index, constraint를 추가하지
+않습니다. 따라서 별도 storage-profile 또는 package-version 전이를 만들지 않고 현재
+pre-major `baseline_sqlite_v5` / `0.8.0` 계약 batch 안에서 완료합니다. 제거된 형태에는
+legacy alias나 fallback decoder가 없습니다. 호환되지 않는 v3과 v4 Runtime Home은
+계속 compatibility 검사에 실패하며 다시 만들어야 합니다.
 
 ## 결과
 
 - Agent는 의도한 capture와 target을 선언할 수 있지만 이후 인용할 실행 receipt,
   producer 권한, supported relevance를 만들 수 없습니다.
+- Connection 호출자는 intent 이전 source selector만 결합할 수 있습니다. Host가 생성할
+  event/observation ID, source timestamp, snapshot digest, redacted raw-event digest를 미리
+  예측하도록 요구받지 않습니다.
 - Source output, target identity, Run 권한을 내용과 맥락에 결합하면서 transient
   fulfillment를 별도 Core commit으로 만들지 않으며 target relevance는 독립적으로
   평가합니다.
@@ -120,6 +129,9 @@ observation identity는 unique이므로 완료한 intent를 두 번 소비할 �
   거부했습니다.
 - Session과 시각으로 tool event를 결합하는 방법은 동시 실행, retry, resume에서
   충돌할 수 있으므로 Strong Evidence에는 사용하지 않습니다.
+- 미래 host-generated event 또는 watcher observation의 digest에 connection intent를
+  결합하는 방법은 intent 이후 source identity, timestamp, snapshot/raw-event digest가
+  호출자가 알 수 있는 intent 사실이 아니므로 거부했습니다.
 - 원시 command 또는 tool output 저장은 권한을 개선하지 않으면서 secret, privacy,
   retention, response-budget 위험을 넓히므로 거부했습니다.
 - 새 canonical 형태에 v3 profile을 재사용하면 compatibility 진단이 부정확해지므로

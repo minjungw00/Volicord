@@ -351,8 +351,8 @@ volicord evidence capture-connection --intent ID (--guard-event ID | --watch-obs
 All three commands select an active registered project, load the immutable
 capture intent, and revalidate its current Task/Change Unit/scope/baseline,
 target, Git workspace, requesting enabled Agent Connection and project access,
-expiry, source kind, and exact canonical input digest before fulfillment. They
-reject an already fulfilled or consumed intent. The source observation must be
+expiry, source selector, and exact canonical input or selector digest before
+fulfillment. They reject an already fulfilled or consumed intent. The source observation must be
 in `intent.created_at <= observed_at < intent.expires_at`, and receipt creation
 must satisfy `observed_at <= receipt.created_at < intent.expires_at`.
 
@@ -374,14 +374,21 @@ tool name, and canonical tool input. The pre event must not be denied, the post
 must not precede it and must contain a complete tool response, and the tool name and input
 digest must match the intent.
 
-`capture-connection` accepts exactly one selected source. `--guard-event`
-hashes the selected redacted `raw_event`; `--watch-observation` hashes the safe
-selection of observation/baseline/session/connection IDs, snapshot algorithm,
-digest and entries, observed paths, change summary, and observation time. A
-watch baseline and current observation scans must both be complete and
-non-degraded with no skipped or unreadable paths. The command strict-decodes the persisted baseline and current
+`capture-connection` accepts exactly one selected source and never auto-selects
+among candidate facts. `--guard-event` requires the selected event's closed
+event kind to match the intent selector, then hashes its redacted `raw_event`
+for the receipt. `--watch-observation` requires the selected observation to
+belong to the unique current active baseline for the intent-bound connection
+and session, then hashes the safe selection of
+observation/baseline/session/connection IDs, snapshot algorithm, digest and
+entries, observed paths, change summary, and observation time for the receipt.
+A missing or ambiguous current baseline rejects. The watch baseline and current
+observation scans must both be complete and non-degraded with no skipped or
+unreadable paths. The command strict-decodes the persisted baseline and current
 snapshot entries, recomputes both snapshot digests and their diff, and requires
 the stored observed paths and change summary to match that canonical result.
+The exact selected source ID, observation time, and raw-event or watcher digest
+are receipt facts; none is a caller-supplied intent field.
 
 Fulfillment atomically reserves every underlying source fact with its receipt
 and staging bytes. The same normalized host invocation, guard event, or watcher

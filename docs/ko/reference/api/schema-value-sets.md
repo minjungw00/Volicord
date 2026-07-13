@@ -888,15 +888,32 @@ reused_evidence
 경로를 유지합니다. 호출자 입력, raw guard payload, 아티팩트 바이트만으로는 이
 앵커를 만들 수 없습니다.
 
-`ConnectionObservationSourceKind`는 아래 값을 사용합니다.
+`ConnectionObservationSourceSelector.source_kind`는 아래 값을 사용합니다.
 
 ```text
 guard_event
 session_watcher
 ```
 
-이 값들은 `registered_connection_observation`의 등록 source family를 선택합니다.
-값 자체가 source 완전성, host identity, 증거 relevance를 증명하지는 않습니다.
+이 discriminator 값은 `registered_connection_observation`의 등록 source-selector
+branch를 선택합니다. 별도의 공개 value-set type을 구성하지 않으며, 값 자체가 source
+완전성, host identity, 증거 relevance를 증명하지는 않습니다.
+
+`ConnectionObservationGuardEventKind`는 다음 값을 사용합니다.
+
+```text
+pre_tool
+post_tool
+prompt_capture
+stop
+```
+
+`guard_event` source-selector branch는 이 값 중 하나를 정확히 요구합니다.
+`session_watcher` branch는 이 값을 받지 않습니다. Selector는 계획한 등록
+source class를 결합하며, 구체적인 guard-event 또는 watcher-observation identity,
+observation 시각, source digest는 receipt 소유 사실로 남습니다.
+`session_start`는 정확한 intent-bound session이 intent 생성 전에 시작하므로 intent
+이후 source observation을 만들 수 없어 이 집합에 포함하지 않습니다.
 
 `EvidenceRelevanceAssessment.status`와
 evidence-observation 해결 본문은 `unassessed`, `supported`, `contradicted`를

@@ -500,8 +500,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 intent, receipt, source claim, staging 행이나 바이트, producer, event, replay 행,
 state-version 변경을 만들지 않습니다.
 
-등록 source fulfillment는 Core state 커밋 밖의 별도 Store 트랜잭션입니다. Intent와 등록
-source를 다시 검증한 뒤 `evidence_capture_receipts` 행 하나, redacted
+등록 source fulfillment는 Core state 커밋 밖의 별도 Store 트랜잭션입니다. Intent의
+source selector와 명시적으로 선택한 등록 source를 다시 검증한 뒤
+`evidence_capture_receipts` 행 하나, redacted
 `artifact_staging` 행 하나, 크기가 제한된 safe JSON bytes, 필요한 모든
 `evidence_capture_source_claims` 행을 원자적으로 만듭니다. Command, guard
 connection, watcher receipt는 claim 하나를 만들고, tool receipt는 정규화한 host
@@ -512,6 +513,12 @@ Event나 replay 행을 만들지 않고 `project_state.state_version`도 바꾸�
 같은 transaction에서 `project_state.updated_at`을 `receipt.created_at` 이상으로
 전진시킵니다. 다른 동시 writer가 이미 더 늦은 하한을 만들었을 수 있으므로 두 값이
 정확히 같을 필요는 없습니다.
+등록 connection observation에서 intent는 intent 전 selector만 결합합니다. Source 소유
+receipt가 선택 source identifier, observation 시각, raw-event 또는 snapshot/selection
+digest를 확정합니다. Guard event는 선택한 event kind와 일치해야 합니다. Watcher
+observation은 정확한 connection과 session의 유일한 현재 active baseline에 속해야
+합니다. 명시적 source 좌표가 없거나 여러 개인 경우, intent 전 source, incomplete 또는
+degraded source, receipt/source 불일치는 모두 효과 없이 실패합니다.
 Source observation은 `intent.created_at <= observed_at < intent.expires_at`을 만족해야
 하고, receipt 생성은 `observed_at <= receipt.created_at < intent.expires_at`을
 만족해야 하며, staging handle은

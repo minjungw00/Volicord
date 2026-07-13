@@ -26,7 +26,8 @@ Volicord uses one three-stage invariant for all three producer kinds:
 1. The additive stable workflow method `volicord.prepare_evidence_capture`
    creates only an immutable 15-minute intent. It binds the current Task,
    Change Unit, scope revision, baseline, target, workspace, requesting
-   connection and actor, exact canonical input digest, and expected outcome.
+   connection and actor, exact canonical command/tool input digest or
+   Core-derived connection source-selector digest, and expected outcome.
 2. A registered source fulfills the intent and atomically creates an immutable
    durable source-fact receipt plus bounded redacted transient receipt-artifact staging and an
    exclusive normalized claim for every underlying source fact. The agent API
@@ -48,8 +49,11 @@ is shared:
   consistency, not cryptographic host attestation or protection from the same
   local principal.
 - A registered connection observation requires an exact registered guard fact
-  or a complete non-degraded session-watcher snapshot matching the intent's
-  source selection.
+  whose closed event kind matches the pre-intent selector, or a complete
+  non-degraded session-watcher snapshot from the unique current active baseline
+  for the intent-bound connection and session. Event/observation identity,
+  observation time, and raw-event or snapshot digest are fixed only by the
+  source-owned receipt.
 
 The Store derives the claim set from the strict receipt and immutable capture
 spec rather than accepting caller-selected claims. Command capture claims its
@@ -95,17 +99,25 @@ key prevents producer intent/receipt cross-pairing. Producer intent and
 observation identities are unique so a completed intent cannot be consumed
 twice.
 
-This is an incompatible canonical SQLite shape change. The storage profile is
-`baseline_sqlite_v4`; the project does not add an in-place migration chain.
-Existing v3 Runtime Homes fail compatibility checks and require recreation.
-The additive stable public method plus storage-profile change moves the
-recommended release version from 0.6.0 to 0.7.0.
+The initial producer-finalization model was the incompatible
+`baseline_sqlite_v4` / `0.7.0` canonical SQLite shape change. The current
+baseline carries the record families in `baseline_sqlite_v5`. The follow-up
+connection-selector correction removes the caller-supplied future observation
+digest from the public and persisted capture-spec shape but adds no table,
+column, index, or constraint. It is therefore completed inside the current
+pre-major `baseline_sqlite_v5` / `0.8.0` contract batch rather than creating a
+second storage-profile or package-version transition. The removed shape has no
+legacy alias or fallback decoder. Incompatible v3 and v4 Runtime Homes still
+fail compatibility checks and require recreation.
 
 ## Consequences
 
 - Agents can declare intended capture and its target, but cannot create the
   execution receipt, producer authority, or supported relevance they later
   cite.
+- A connection caller can bind only a pre-intent source selector. It cannot be
+  required to predict a host-generated event/observation ID, source timestamp,
+  snapshot digest, or redacted raw-event digest.
 - Source output, target identity, and Run authority are content- and
   context-bound without making source fulfillment a separate Core commit;
   target relevance remains independently assessed.
@@ -134,6 +146,9 @@ recommended release version from 0.6.0 to 0.7.0.
   persistent artifact transaction.
 - Correlating tool events by session and time was rejected for Strong Evidence
   because concurrent, retried, and resumed invocations can collide.
+- Binding a connection intent to a digest over a future host-generated event or
+  watcher observation was rejected because a post-intent source identity,
+  timestamp, and snapshot/raw-event digest are not caller-known intent facts.
 - Persisting raw command or tool output was rejected because it expands secret,
   privacy, retention, and response-budget risk without improving authority.
 - Reusing the v3 storage profile for a new canonical shape was rejected because

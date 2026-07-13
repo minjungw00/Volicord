@@ -139,7 +139,8 @@
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
-        "ConnectionObservationSourceKind",
+        "ConnectionObservationGuardEventKind",
+        "ConnectionObservationSourceSelector",
         "EvidenceCaptureSpec",
         "EvidenceTarget",
         "ToolEnvelope"
@@ -160,7 +161,7 @@
         "target",
         "task_id"
       ],
-      "sha256": "sha256:c92c75e3931533c882808d5f6517876573939bc3c91759de26cf20b350f6e848"
+      "sha256": "sha256:573587959a52d0235289f5fb6332cc8b8819465fd84d11b8fab02d79421ba63d"
     },
     "volicord.prepare_write": {
       "definitions": [

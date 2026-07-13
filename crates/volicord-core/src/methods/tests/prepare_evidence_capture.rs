@@ -170,11 +170,11 @@ fn fulfill_registered_source_receipt(
     let limitation = match capture {
         EvidenceCaptureSpec::VerifiedToolInvocation { .. }
         | EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: volicord_types::ConnectionObservationSourceKind::GuardEvent,
+            source_selector: volicord_types::ConnectionObservationSourceSelector::GuardEvent { .. },
             ..
         } => EVIDENCE_CAPTURE_GUARD_LIMITATION,
         EvidenceCaptureSpec::RegisteredConnectionObservation {
-            source_kind: volicord_types::ConnectionObservationSourceKind::SessionWatcher,
+            source_selector: volicord_types::ConnectionObservationSourceSelector::SessionWatcher {},
             ..
         } => EVIDENCE_CAPTURE_WATCHER_LIMITATION,
         EvidenceCaptureSpec::VerifiedCommandExecution { .. } => EVIDENCE_CAPTURE_COMMAND_LIMITATION,
@@ -418,8 +418,8 @@ fn capture_variants_apply_omission_defaults_from_one_owner() -> Result<(), Box<d
         ),
         (
             EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_kind: volicord_types::ConnectionObservationSourceKind::SessionWatcher,
-                observation_input_sha256: "c".repeat(64),
+                source_selector:
+                    volicord_types::ConnectionObservationSourceSelector::SessionWatcher {},
                 expected_complete: RequiredNullable::null(),
             },
             "registered_connection_observation",
@@ -453,6 +453,13 @@ fn capture_variants_apply_omission_defaults_from_one_owner() -> Result<(), Box<d
             response.response_value["capture_intent"]["expected_outcome"][expected_field],
             expected_value
         );
+        if kind == "registered_connection_observation" {
+            let selector = json!({"source_kind": "session_watcher"});
+            assert_eq!(
+                response.response_value["capture_intent"]["input_sha256"],
+                volicord_types::canonical_json_bare_sha256(&selector)?
+            );
+        }
     }
     Ok(())
 }
@@ -514,8 +521,9 @@ fn invalid_or_unbound_capture_and_dry_run_have_no_effects() -> Result<(), Box<dy
             2,
             (&task_id, &change_unit_id, &criterion_id),
             EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_kind: volicord_types::ConnectionObservationSourceKind::GuardEvent,
-                observation_input_sha256: "f".repeat(64),
+                source_selector: volicord_types::ConnectionObservationSourceSelector::GuardEvent {
+                    event_kind: volicord_types::ConnectionObservationGuardEventKind::Stop,
+                },
                 expected_complete: RequiredNullable::null(),
             },
         ),
@@ -539,8 +547,9 @@ fn invalid_or_unbound_capture_and_dry_run_have_no_effects() -> Result<(), Box<dy
             2,
             (&task_id, &change_unit_id, &criterion_id),
             EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_kind: volicord_types::ConnectionObservationSourceKind::GuardEvent,
-                observation_input_sha256: "e".repeat(64),
+                source_selector: volicord_types::ConnectionObservationSourceSelector::GuardEvent {
+                    event_kind: volicord_types::ConnectionObservationGuardEventKind::Stop,
+                },
                 expected_complete: RequiredNullable::null(),
             },
         ),
@@ -1388,8 +1397,8 @@ fn tool_and_connection_receipts_finalize_to_their_exact_producer_classes(
         Case {
             suffix: "connection",
             capture: EvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_kind: volicord_types::ConnectionObservationSourceKind::SessionWatcher,
-                observation_input_sha256: "5".repeat(64),
+                source_selector:
+                    volicord_types::ConnectionObservationSourceSelector::SessionWatcher {},
                 expected_complete: RequiredNullable::null(),
             },
             observed_outcome: json!({

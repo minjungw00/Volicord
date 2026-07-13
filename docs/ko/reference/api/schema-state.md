@@ -755,6 +755,10 @@ EvidenceTarget:
   evidence_claim_id: string        # supplemental_claim에서만 사용
   statement: string                # supplemental_claim에서만 사용
 
+ConnectionObservationSourceSelector:
+  source_kind: guard_event | session_watcher
+  event_kind: pre_tool | post_tool | prompt_capture | stop  # guard_event에서만 사용
+
 EvidenceCaptureSpec:
   capture_kind: verified_command_execution | verified_tool_invocation | registered_connection_observation
   command_sha256: string                       # verified_command_execution에서만 사용
@@ -763,8 +767,7 @@ EvidenceCaptureSpec:
   tool_name: string                            # verified_tool_invocation에서만 사용; 앞뒤 공백 제거, 1..256 UTF-8 bytes
   tool_input_sha256: string                    # verified_tool_invocation에서만 사용
   expected_success: boolean | null             # verified_tool_invocation에서만 사용
-  source_kind: guard_event | session_watcher   # registered_connection_observation에서만 사용
-  observation_input_sha256: string             # registered_connection_observation에서만 사용
+  source_selector: ConnectionObservationSourceSelector  # registered_connection_observation에서만 사용
   expected_complete: boolean | null            # registered_connection_observation에서만 사용
 
 EvidenceCaptureIntent:
@@ -957,17 +960,26 @@ ObservedChanges:
   `acceptance_criterion_id`만 있고, `supplemental_claim` 변형에는 호출자가
   부여한 `Task` 범위 `evidence_claim_id`와 비어 있지 않은 불변 `statement`가
   있습니다. 변형별 필드를 섞을 수 없습니다.
-- `EvidenceCaptureSpec`은 엄격한 태그 합집합입니다. 소문자 64자 digest 필드는
-  `volicord.prepare_evidence_capture`가 선택한 정확한 정규 source input을
-  결합합니다. typed shape의 expected-outcome 필드는 nullable이며 MCP에서
-  생략하면 메서드 담당 기본값을 사용합니다.
+- `ConnectionObservationSourceSelector`는 엄격한 태그 합집합입니다. Guard
+  branch는 폐쇄형 `event_kind` 하나를 요구하고, session-watcher branch는 그
+  필드를 거부하며 추가 호출자 소유 좌표가 없습니다. 알 수 없는 필드,
+  불필요한 필드, branch를 섞은 형태는 유효하지 않습니다. `session_start`는 정확한
+  intent-bound session이 intent 전에 반드시 시작했으므로 intent 이후 observation을
+  제공할 수 없어 제외합니다.
+- `EvidenceCaptureSpec`은 엄격한 태그 합집합입니다. 호출자가 제공하는 소문자
+  64자 digest 필드는 정확한 command 또는 tool input을 결합합니다. 등록
+  connection 관찰에서는 Core가 canonical `source_selector` JSON에서
+  `input_sha256`를 파생합니다. 미래 event/observation identity와 시각, raw-event
+  digest, snapshot digest는 intent 필드가 아닙니다. Typed shape의 expected-outcome
+  필드는 nullable이며 MCP에서 생략하면 메서드 담당 기본값을 사용합니다.
 - `EvidenceCaptureIntent`는 만료되는 불변 current-basis 요청입니다.
   `requested_by_actor_source`와 `workspace_context`는 Core가 파생한 근거 필드이며
   호출자가 선택하는 attribution이 아닙니다. 공개 ref는
   `record_kind=evidence_capture_intent`를 사용합니다.
 - `EvidenceCaptureReceipt`는 불변 영속 source-fulfillment fact 레코드입니다. 연결된
   staging handle과 staged receipt bytes만 transient입니다. 등록된
-  connection/session/guard/watch 좌표, 정확한 digest, outcome, 완전성, 한계,
+  connection/session/guard/watch 좌표, 정확한 source identity, observation 시각,
+  raw-event 또는 snapshot/selection digest, outcome, 완전성, 한계,
   redaction 상태, observer, 시각은 source fact입니다. receipt는
   `StateRecordRef`가 아니며 Core 상태를 진행시키지 않습니다.
 - `EvidenceProducer`는 소비 Run 관찰과 일대일로 생성되는 불변 Core-finalized 권한

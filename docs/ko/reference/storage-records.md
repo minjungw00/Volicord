@@ -101,7 +101,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `acceptance_criteria` | 수락 기준 | Core가 생성한 기준 identity, 소유 `Task`, 문장, 증거 요구 수준, 교체 순서, 활성/폐기 상태, 타임스탬프. |
 | `state.sqlite` | `evidence_claims` | 보충 증거 주장 | 호출자가 부여한 `Task` 범위 주장 identity와 비어 있지 않은 불변 문장 하나. |
 | `state.sqlite` | `change_units` | 범위 있는 작업 경계 | 범위 요약, 쓰기 근거, Change Unit 생명주기, 소유 `Task` 관계. |
-| `state.sqlite` | `evidence_capture_intents` | 증거 캡처 intent | 현재 Task/Change Unit/scope/baseline/target/workspace, 정확한 capture spec과 digest, 요청 connection과 actor, 예상 outcome, timestamp에 결합된 만료되는 불변 요청. |
+| `state.sqlite` | `evidence_capture_intents` | 증거 캡처 intent | 현재 Task/Change Unit/scope/baseline/target/workspace, 정확한 capture spec과 command/tool input digest 또는 Core가 파생한 connection source-selector digest, 요청 connection과 actor, 예상 outcome, timestamp에 결합된 만료되는 불변 요청. |
 | `state.sqlite` | `user_action_requests` | 사용자 행동 요청 | 폐쇄형 행동 요청 JSON, Core 파생 근거와 호환성, required-for 대상, 요청 actor, 원천 메서드/idempotency 관계, expiry를 담습니다. 캡처 폼과 유효 lifecycle 상태는 합성 열로 저장하지 않고 파생합니다. |
 | `state.sqlite` | `user_action_resolutions` | 변경 불가능한 User Channel resolution | 요청당 최대 하나이며 폐쇄형 종류 일치 본문, channel kind와 크기가 제한된 visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, Core 캡처 시각을 담습니다. Choice 사실 또는 전체 관찰 detail은 본문에 남습니다. |
 | `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | 요청, connection, expiry, capture basis, fallback 종류·endpoint·정확한 canonical-form digest를 담은 폐쇄형 생성 metadata에 결속된 hash-only 일회성 local-web token. |
@@ -459,7 +459,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `write_tickets` | 쓰기 티켓 시도 범위와 비권한 메타데이터. |
 | `runs` | 요약, 관찰된 변경, 증거 갱신, 쓰기 티켓 효과 데이터, 비권한 메타데이터. |
 | `artifact_staging` | 스테이징된 아티팩트 데이터, 안전 메타데이터, 비권한 메타데이터. |
-| `evidence_capture_intents` | 정확한 target/capture JSON, 예상 outcome, 등록 session 및 Git workspace 근거, actor/connection provenance, 만료, 비권한 메타데이터. |
+| `evidence_capture_intents` | 정확한 target/capture JSON, command/tool input digest 또는 Core가 파생한 connection source-selector digest, 예상 outcome, 등록 session 및 Git workspace 근거, actor/connection provenance, 만료, 비권한 메타데이터. Connection capture JSON에는 미래 source ID, observation timestamp, snapshot digest, raw-event digest가 없습니다. |
 | `evidence_capture_receipts` | 정확한 예상/관찰 outcome, source ref, 한계, 크기가 제한된 safe receipt JSON과 digest/size, 메타데이터의 등록 source 좌표, 비권한 메타데이터. Safe receipt는 redacted이며 raw command, environment, stdout, stderr, tool input, tool response, secret, 크기 제한 없는 host payload를 포함하지 않습니다. |
 | `artifacts` | 보존, 생산자, 비권한 메타데이터. |
 | `artifact_links` | 비권한 메타데이터. |

@@ -9,27 +9,26 @@ use crate::ids::{
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, ArtifactInput, ArtifactRef,
     AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput, CloseReadinessBlocker,
-    ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EventRef, EvidenceCaptureIntent,
-    EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation,
-    EvidenceObservationInput, EvidenceProducer, EvidenceSummary, EvidenceTarget,
-    EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject, NextActionSummary,
-    ObservedChanges, ProjectContinuitySummary, RequiredNullable, RiskAcceptanceCoverage,
-    RunSummary, SourceRef, StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard,
-    TaskFlowItem, TaskLineageInput, ToolDryRunResponse, ToolEnvelope, ToolRejectedResponse,
-    ToolResponse, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
-    UserActionDraft, UserActionInboxItem, UserActionRequest, UserActionResolution,
-    UserActionResolutionInput, UserChannelAvailability, WriteDecisionReason, WriteTicket,
-    WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
+    ConnectionObservationSourceSelector, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
+    EventRef, EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate,
+    EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput, EvidenceProducer,
+    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
+    GuardHealthSummary, JsonObject, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
+    RequiredNullable, RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle,
+    StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse,
+    ToolEnvelope, ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    UnrecordedChangeResolutionSummary, UserActionDraft, UserActionInboxItem, UserActionRequest,
+    UserActionResolution, UserActionResolutionInput, UserChannelAvailability, WriteDecisionReason,
+    WriteTicket, WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
-    CloseState, ConnectionObservationSourceKind, EffectKind, ErrorCode, EvidenceAssuranceLevel,
-    EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind,
-    JudgmentResolutionOutcome, MethodName, MutationDetailLevel, OperationCategory,
-    PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
-    StatusDetailLevel, UnrecordedChangeResolutionBasis, UserActionChannelKind, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    WriteTicketEffect,
+    CloseState, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
+    EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome,
+    MethodName, MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState,
+    RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
+    UnrecordedChangeResolutionBasis, UserActionChannelKind, UserActionKind, UserActionOptionAction,
+    UserActionRequiredFor, UserActionStatus, UtcTimestamp, WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -790,8 +789,7 @@ pub enum McpEvidenceCaptureSpec {
         expected_success: RequiredNullable<bool>,
     },
     RegisteredConnectionObservation {
-        source_kind: ConnectionObservationSourceKind,
-        observation_input_sha256: String,
+        source_selector: ConnectionObservationSourceSelector,
         #[serde(default)]
         expected_complete: RequiredNullable<bool>,
     },
@@ -819,12 +817,10 @@ impl From<McpEvidenceCaptureSpec> for EvidenceCaptureSpec {
                 expected_success,
             },
             McpEvidenceCaptureSpec::RegisteredConnectionObservation {
-                source_kind,
-                observation_input_sha256,
+                source_selector,
                 expected_complete,
             } => Self::RegisteredConnectionObservation {
-                source_kind,
-                observation_input_sha256,
+                source_selector,
                 expected_complete,
             },
         }
