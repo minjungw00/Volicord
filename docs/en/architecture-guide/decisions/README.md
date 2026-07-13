@@ -15,6 +15,7 @@ close readiness, or conformance results.
 | [Agent Connection and host routing](agent-connection-routing.md) | Why coding-agent MCP setup is bound to an Agent Connection and explicit Connection Project membership rather than one fixed Product Repository. |
 | [Core and adapter dependency boundary](core-adapter-boundary.md) | Why Core does not depend on MCP or CLI adapters, and what adapter code may do before calling Core. |
 | [Durable operation-result retrieval](operation-result-retrieval.md) | Why exact historical mutation responses reuse immutable replay rows and bounded, access-checked paging. |
+| [Evidence-capture intent and producer finalization](evidence-capture-producer-finalization.md) | Why source-owned receipts are bound by an expiring intent and become producer authority only inside `record_run`. |
 | [Planning before atomic mutation commit](plan-and-atomic-commit.md) | Why methods plan effects before Store commit and why Store owns the atomic transaction boundary. |
 | [Runtime Home and Product Repository separation](runtime-home-and-product-repository.md) | Why runtime state and product files stay in separate locations and how implementation code reflects that split. |
 

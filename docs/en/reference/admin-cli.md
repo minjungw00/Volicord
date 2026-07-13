@@ -334,6 +334,66 @@ not delete the `Product Repository`, unrelated Runtime Home data, host
 configuration, artifact storage owned by another remaining registration, or
 Core authority rows that must be preserved.
 
+<a id="evidence-capture-commands"></a>
+## Evidence capture commands
+
+The local registered-source fulfillment commands are:
+
+```text
+volicord evidence capture-command --intent ID [--repo PATH] [--json] -- PROGRAM [ARG...]
+volicord evidence capture-tool --intent ID --pre-event ID --post-event ID [--repo PATH] [--json]
+volicord evidence capture-connection --intent ID (--guard-event ID | --watch-observation ID) [--repo PATH] [--json]
+```
+
+All three commands select an active registered project, load the immutable
+capture intent, and revalidate its current Task/Change Unit/scope/baseline,
+target, Git workspace, requesting enabled Agent Connection and project access,
+expiry, source kind, and exact canonical input digest before fulfillment. They
+reject an already fulfilled or consumed intent. The source observation must be
+in `intent.created_at <= observed_at < intent.expires_at`, and receipt creation
+must satisfy `observed_at <= receipt.created_at < intent.expires_at`.
+
+`capture-command` is available on Linux and macOS. Other platforms reject it
+before execution because Volicord does not have a bounded process-tree
+termination primitive there. On supported platforms it hashes the complete
+UTF-8 argument vector after `--`, checks it before execution, runs it with the registered repository root as cwd, and
+records exit code plus stdout/stderr digest and byte counts without storing raw
+arguments, environment, stdout, or stderr in the receipt. A process without a
+numeric exit status creates no receipt. The runner streams both output channels
+through hashing rather than accumulating them, applies one combined 16-MiB
+output ceiling, and uses the intent expiry as its execution deadline. It kills
+the isolated command process group and creates no receipt when the output
+ceiling is exceeded or the expiry boundary is reached.
+
+`capture-tool` requires exact registered `pre_tool` and `post_tool` guard-event
+IDs for the same connection, session, guard installation, host invocation,
+tool name, and canonical tool input. The pre event must not be denied, the post
+must not precede it and must contain a complete tool response, and the tool name and input
+digest must match the intent.
+
+`capture-connection` accepts exactly one selected source. `--guard-event`
+hashes the selected redacted `raw_event`; `--watch-observation` hashes the safe
+selection of observation/baseline/session/connection IDs, snapshot algorithm,
+digest and entries, observed paths, change summary, and observation time. A
+watch baseline and current observation scans must both be complete and
+non-degraded with no skipped or unreadable paths. The command strict-decodes the persisted baseline and current
+snapshot entries, recomputes both snapshot digests and their diff, and requires
+the stored observed paths and change summary to match that canonical result.
+
+Fulfillment atomically reserves every underlying source fact with its receipt
+and staging bytes. The same normalized host invocation, guard event, or watcher
+observation cannot fulfill another capture intent or a different capture class
+in the project.
+
+Success creates one complete redacted receipt and one 24-KiB-bounded staging
+handle that expires with the intent. Text and `--json` output expose the intent,
+receipt, staging handle, completeness, kind, and safe observed outcome; they do
+not expose raw source payloads. These commands record cooperative registered
+local-source observations. They do not approve a command, grant permission,
+provide OS isolation, attest the host or local principal, prove actor identity,
+test sufficiency, correctness, final acceptance, or close readiness. They do
+not advance Core state; `volicord.record_run` performs producer finalization.
+
 <a id="connection-intents-and-hosts"></a>
 ## Connection intents and hosts
 

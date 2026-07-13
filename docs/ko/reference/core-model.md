@@ -538,10 +538,27 @@ flowchart LR
   제공합니다. 그 `UserEvidenceObservation`은 로컬 사용자 provenance와
   supported 또는 contradicted relevance를 정확한 현재 아티팩트 및 근거에
   결합합니다. 이는 Evidence이지 `UserJudgment`나 최종 수락이 아닙니다.
-- 기준 구현에는 authority-owned verified command/tool producer나 등록된
-  connection observation producer가 없습니다. 따라서 직접 외부 도구 및 연결
-  주장은 아티팩트 바이트가 검증돼도 협력적 상태입니다. raw guard payload와
-  설명용 tool 필드는 앵커가 아닙니다.
+- Verified command, tool, 등록 connection Evidence는 하나의 권한 체인을
+  사용합니다. `volicord.prepare_evidence_capture`가 현재 근거에 결합되고 만료되는
+  `EvidenceCaptureIntent`를 만들고, 등록된 source만 불변 영속 source-fact receipt와 transient staged bytes를
+  만들 수 있으며, `volicord.record_run`만 receipt를 승격하고 불변 producer와 그
+  1:1 observation을 원자적으로 만들 수 있습니다. Agent 입력은 receipt나
+  producer를 만들거나 대체할 수 없습니다. Raw guard payload, 설명용 tool 필드,
+  artifact integrity, `SourceRef`만으로는 여전히 충분한 anchor가 아닙니다.
+- Producer provenance와 claim relevance는 서로 다른 권한 축입니다. Producer는
+  intent와 receipt가 project, Task, 현재 Change Unit, scope revision,
+  baseline, target, workspace, 요청 connection, input digest, 완전한 output digest,
+  예상 결과에서 일치할 때만 현재 상태입니다. 저장된 expectation과 일치하는 완전한 outcome은 강한
+  producer provenance를 만들지만 claim relevance는 `unassessed`로 남으며, 그
+  자체로 필요한 기준을 만족하지 않습니다. 저장된 expectation과 완전히 불일치하면
+  `contradicted`입니다. 별도의 담당 문서가 정의한 relevance 권한만 `supported`를
+  세울 수 있습니다. 명시적 intent 권한이 없거나 오래됐거나 손상됐거나 맥락이
+  다르거나 재사용됐다면 강등하지 않고 거부합니다. Anchor가 없는 외부 tool과
+  connection 주장은 계속 협력적 보고로 강등합니다.
+- Verified command runner는 Volicord가 digest에 결합된 호출을 실행하고 캡처했다는
+  사실만 세웁니다. 등록 hook은 협력적 host consistency를 세울 뿐 암호학적
+  attestation, actor 증명, OS 격리, 명령 승인, sandboxing, test sufficiency, 넓은
+  correctness를 세우지 않습니다.
 - 재사용하는 강한 증거는 원래 관찰 identity 하나를 보존하고 대상, `Task`, Change
   Unit, 출처 실행 기록, 범위 리비전, 기준선, 승계한 보장 수준, 정확한 출력,
   producer 앵커, 분리된 relevance 평가와 계속 호환되어야 합니다. 닫기와 재사용

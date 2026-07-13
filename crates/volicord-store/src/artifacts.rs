@@ -414,7 +414,7 @@ fn lowercase_sha256_digest(bytes: &[u8]) -> String {
     output
 }
 
-fn insert_artifact_staging_tx(
+pub(crate) fn insert_artifact_staging_tx(
     tx: &Transaction<'_>,
     project_id: &str,
     tmp_dir: &std::path::Path,
@@ -519,7 +519,7 @@ fn insert_artifact_staging_tx(
     ))
 }
 
-fn validate_insert(input: &ArtifactStagingInsert) -> StoreResult<()> {
+pub(crate) fn validate_insert(input: &ArtifactStagingInsert) -> StoreResult<()> {
     validate_identifier("handle_id", &input.handle_id)?;
     validate_identifier("task_id", &input.task_id)?;
     validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;

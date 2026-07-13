@@ -86,6 +86,15 @@ opaque_string_type!(
     EvidenceObservationId,
     "Opaque evidence-observation identifier."
 );
+opaque_string_type!(
+    EvidenceCaptureIntentId,
+    "Opaque evidence-capture intent identifier."
+);
+opaque_string_type!(
+    EvidenceCaptureReceiptId,
+    "Opaque evidence-capture receipt identifier."
+);
+opaque_string_type!(EvidenceProducerId, "Opaque evidence-producer identifier.");
 opaque_string_type!(ArtifactId, "Opaque artifact identifier.");
 opaque_string_type!(
     ArtifactInputId,
@@ -146,6 +155,12 @@ pub enum DurableIdKind {
     AcceptanceCriterion,
     /// Core-generated evidence observation ids.
     EvidenceObservation,
+    /// Core-generated evidence-capture intent ids.
+    EvidenceCaptureIntent,
+    /// Authority-source-generated evidence-capture receipt ids.
+    EvidenceCaptureReceipt,
+    /// Core-generated evidence-producer ids.
+    EvidenceProducer,
     /// Core-generated residual-risk ids for current close bases.
     Risk,
     /// Core-generated project-continuity record ids.
@@ -172,6 +187,9 @@ impl DurableIdKind {
             Self::Evidence => "evidence_",
             Self::AcceptanceCriterion => "criterion_",
             Self::EvidenceObservation => "evidence_observation_",
+            Self::EvidenceCaptureIntent => "evidence_capture_intent_",
+            Self::EvidenceCaptureReceipt => "evidence_capture_receipt_",
+            Self::EvidenceProducer => "evidence_producer_",
             Self::Risk => "risk_",
             Self::ProjectContinuityRecord => "continuity_",
         }
@@ -197,6 +215,9 @@ impl fmt::Display for DurableIdKind {
             Self::Evidence => "evidence",
             Self::AcceptanceCriterion => "acceptance_criterion",
             Self::EvidenceObservation => "evidence_observation",
+            Self::EvidenceCaptureIntent => "evidence_capture_intent",
+            Self::EvidenceCaptureReceipt => "evidence_capture_receipt",
+            Self::EvidenceProducer => "evidence_producer",
             Self::Risk => "risk",
             Self::ProjectContinuityRecord => "project_continuity_record",
         })
@@ -330,9 +351,25 @@ mod tests {
 
     #[test]
     fn sequence_generator_preserves_kind_prefixes() {
-        let generator = SequenceDurableIdGenerator::new(["one", "two"]);
+        let generator = SequenceDurableIdGenerator::new(["one", "two", "three", "four", "five"]);
         assert_eq!(generator.generate(DurableIdKind::Task).unwrap(), "task_one");
         assert_eq!(generator.generate(DurableIdKind::Event).unwrap(), "evt_two");
+        assert_eq!(
+            generator
+                .generate(DurableIdKind::EvidenceCaptureIntent)
+                .unwrap(),
+            "evidence_capture_intent_three"
+        );
+        assert_eq!(
+            generator
+                .generate(DurableIdKind::EvidenceCaptureReceipt)
+                .unwrap(),
+            "evidence_capture_receipt_four"
+        );
+        assert_eq!(
+            generator.generate(DurableIdKind::EvidenceProducer).unwrap(),
+            "evidence_producer_five"
+        );
         assert_eq!(
             generator.generate(DurableIdKind::Run),
             Err(DurableIdError::DeterministicSequenceExhausted)

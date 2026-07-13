@@ -64,6 +64,7 @@ volicord.status
 volicord.get_operation_result
 volicord.check_close
 volicord.prepare_write
+volicord.prepare_evidence_capture
 volicord.stage_artifact
 volicord.record_run
 volicord.request_user_judgment
@@ -177,6 +178,8 @@ user_judgment
 run
 evidence_summary
 evidence_observation
+evidence_capture_intent
+evidence_producer
 user_evidence_observation
 artifact
 blocker
@@ -807,11 +810,14 @@ assurance.
 
 Source-kind meanings:
 - `agent_report` records a report made by an agent actor context. It is not an external tool result by itself.
-- `connection_observation` names an observation backed by a target-scoped verified connection-observation record. The baseline direct `record_run` path has no such record and downgrades this requested value to `agent_report`.
+- `connection_observation` names an observation backed by a target-scoped
+  registered-connection producer finalized from a current capture intent and
+  complete receipt. An unanchored direct `record_run` input downgrades this
+  requested value to `agent_report`.
 - `external_tool` requires an authority-owned verified tool or command producer
-  record bound to the exact outputs. The baseline currently has no such
-  producer transition, so direct requests downgrade; verified artifact bytes
-  alone are insufficient.
+  finalized from a current capture intent and complete receipt and bound to the
+  exact output artifact. Direct unanchored requests still downgrade; verified
+  artifact bytes alone are insufficient.
 - `user_observation` names an observation backed by a current target-bound
   `UserEvidenceObservation` from `volicord.record_user_observation`. Direct
   unanchored selection downgrades, and the observation is never final acceptance
@@ -831,10 +837,12 @@ unverified
 
 Assurance-level meanings:
 - `cooperative_report` is a cooperative report from the submitting actor context.
-- `registered_connection_observed` requires a target-scoped verified connection-observation anchor; it is not derived from the current Agent Connection invocation alone.
+- `registered_connection_observed` requires a target-scoped verified
+  connection-observation anchor; it is not derived from the current Agent
+  Connection invocation alone and does not imply supported relevance.
 - `external_tool_result` requires the authority-owned producer record, exact
-  canonical output binding, current bytes, and separate supported relevance
-  assessment defined above.
+  canonical output binding, and current bytes. It classifies producer
+  provenance only and does not imply supported relevance.
 - `user_observed` requires a current target-scoped User Channel observation,
   exact outputs, and `relevance_status=supported`.
 - `unverified` records absence of verified observation assurance.
@@ -858,16 +866,34 @@ verified_command_execution
 reused_evidence
 ```
 
-Only `user_channel_observation` and recursively validated `reused_evidence`
-have authority-owned producer paths in the baseline. The connection, tool, and
-command values reserve canonical classifications for future owner-defined
-producer transitions; caller input and raw guard payloads cannot create them.
+`registered_connection_observation`, `verified_tool_invocation`, and
+`verified_command_execution` are available only through the current
+`EvidenceCaptureIntent` / complete `EvidenceCaptureReceipt` / `record_run`
+finalization path. `user_channel_observation` and recursively validated
+`reused_evidence` retain their existing authority-owned paths. Caller input,
+raw guard payloads, and artifact bytes alone cannot create any of these anchors.
+
+`ConnectionObservationSourceKind` uses:
+
+```text
+guard_event
+session_watcher
+```
+
+These values select the registered source family for
+`registered_connection_observation`; they do not by themselves prove source
+completeness, host identity, or evidence relevance.
 
 `EvidenceRelevanceAssessment.status` and
 `UserEvidenceObservation.relevance_status` use `unassessed`, `supported`, and
 `contradicted`; the User Channel method accepts only `supported` or
-`contradicted`. Strong evidence requires a separate current `supported`
-assessment.
+`contradicted`. `unassessed` means no independent authority has established
+whether the observation supports its target; a complete matching registered
+capture uses this status. `supported` requires a separate owner-defined
+relevance authority, and validated reuse can only retain it from an already
+supported authority chain. `contradicted` preserves a complete capture failure
+or mismatch and an owner-defined negative relevance assessment. Strong evidence
+requires a separate current `supported` assessment.
 
 <a id="source-ref-values"></a>
 ### Source reference values

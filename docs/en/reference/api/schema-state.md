@@ -747,6 +747,95 @@ EvidenceTarget:
   evidence_claim_id: string        # supplemental_claim only
   statement: string                # supplemental_claim only
 
+EvidenceCaptureSpec:
+  capture_kind: verified_command_execution | verified_tool_invocation | registered_connection_observation
+  command_sha256: string                       # verified_command_execution only
+  command_label: string                        # verified_command_execution only; normalized, 1..256 UTF-8 bytes
+  expected_exit_code: integer | null           # verified_command_execution only
+  tool_name: string                            # verified_tool_invocation only; trimmed, 1..256 UTF-8 bytes
+  tool_input_sha256: string                    # verified_tool_invocation only
+  expected_success: boolean | null             # verified_tool_invocation only
+  source_kind: guard_event | session_watcher   # registered_connection_observation only
+  observation_input_sha256: string             # registered_connection_observation only
+  expected_complete: boolean | null            # registered_connection_observation only
+
+EvidenceCaptureIntent:
+  capture_intent_id: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  capture: EvidenceCaptureSpec
+  input_sha256: string
+  expected_outcome: object
+  requested_by_actor_source: string
+  workspace_context: object
+  created_at: string
+  expires_at: string
+
+EvidenceCaptureReceipt:
+  capture_receipt_id: string
+  capture_intent_id: string
+  capture_intent_ref: StateRecordRef
+  producer_kind: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  input_sha256: string
+  result_sha256: string
+  expected_outcome: object
+  observed_outcome: object
+  source_refs: StateRecordRef[]
+  connection_id: string
+  session_id: string | null
+  guard_installation_id: string | null
+  guard_event_ids: string[]
+  watch_observation_refs: string[]
+  staged_receipt_handle: StagedArtifactHandle
+  complete: boolean
+  limitations: string[]
+  redaction_state: string
+  observed_by_actor_source: string
+  observed_at: string
+  recorded_at: string
+
+EvidenceProducer:
+  evidence_producer_id: string
+  capture_receipt_id: string
+  capture_intent_id: string
+  capture_intent_ref: StateRecordRef
+  producer_kind: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  input_sha256: string
+  result_sha256: string
+  expected_outcome: object
+  observed_outcome: object
+  source_refs: StateRecordRef[]
+  connection_id: string
+  session_id: string | null
+  guard_installation_id: string | null
+  guard_event_ids: string[]
+  watch_observation_refs: string[]
+  receipt_artifact_refs: ArtifactRef[]
+  complete: boolean
+  limitations: string[]
+  redaction_state: string
+  observed_by_actor_source: string
+  observed_at: string
+  finalized_at: string
+  run_ref: StateRecordRef
+  observation_ref: StateRecordRef
+
 EvidenceSummary:
   evidence_state: string
   status: string
@@ -876,6 +965,24 @@ Meaning:
   contains only `acceptance_criterion_id`. The `supplemental_claim` variant
   contains caller-assigned Task-scoped `evidence_claim_id` and a non-empty
   immutable `statement`. Variant fields must not be mixed.
+- `EvidenceCaptureSpec` is a strict tagged union. Its lowercase 64-character
+  digest fields bind the exact canonical source input selected by
+  `volicord.prepare_evidence_capture`; expected-outcome members are nullable in
+  the typed shape and use method-owned omission defaults on MCP.
+- `EvidenceCaptureIntent` is the immutable, expiring current-basis request. Its
+  `requested_by_actor_source` and `workspace_context` are Core-derived basis
+  fields, not caller-selected attribution. Its public ref uses
+  `record_kind=evidence_capture_intent`.
+- `EvidenceCaptureReceipt` is an immutable durable source-fulfillment fact record.
+  Its associated staging handle and staged receipt bytes are transient.
+  Its registered connection/session/guard/watch coordinates, exact digests,
+  outcome, completeness, limitations, redaction state, observer, and times are
+  source facts. The receipt is not a `StateRecordRef` and does not advance Core
+  state.
+- `EvidenceProducer` is the immutable Core-finalized authority record created
+  one-to-one with the consuming Run observation. Its receipt artifacts, Run
+  ref, and observation ref bind source bytes, producer, and relevance. Its
+  public ref uses `record_kind=evidence_producer`.
 - `EvidenceSummary.evidence_state`, when present, is an evidence display state. It is omitted for coverage-gap summaries that do not yet have attached evidence or a current close-basis evidence ref.
 - `EvidenceGateSummary` is the canonical derived evidence-gate projection for the current active criteria and close-evaluation basis. Core computes it once from criterion requirements and coverage plus current evidence provenance, freshness, artifact availability, and evidence-related close blockers. `StateSummary`, status and close results, and `SummaryCard.evidence` copy that result; they do not recalculate it independently. It is not a stored authority record or an `AuthorityReceipt`.
 - `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`,
@@ -916,10 +1023,11 @@ Meaning:
   the verified invocation; a submitted value cannot raise trust or impersonate
   another actor source.
 - Core derives committed `source_kind` and `assurance_level` from verified anchors. An unanchored direct `connection_observation`, `user_observation`, `external_tool`, or caller-declared `reused_evidence` input is committed as `agent_report` / `cooperative_report`. These fields never by themselves prove product correctness, grant user authority, satisfy final acceptance, satisfy residual-risk acceptance, or raise `GuaranteeDisplay.level`.
-- The baseline has no authority-owned verified command/tool producer or
-  registered connection-observation producer. Therefore direct
-  `external_tool` and `connection_observation` inputs remain cooperative even
-  when their artifacts have verified bytes.
+- A current complete capture receipt consumed through exactly one
+  `evidence_capture_intent` input ref can establish an authority-owned verified
+  command, verified tool, or registered connection-observation producer. A
+  direct `external_tool` or `connection_observation` input without that anchor
+  remains cooperative even when its artifacts have verified bytes.
 - `user_observation` requires a current `UserEvidenceObservation`, exact output
   equality, `relevance_status=supported`, verified local-user provenance, and a
   matching Task, Change Unit, scope, baseline, and target.

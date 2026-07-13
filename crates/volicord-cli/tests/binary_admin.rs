@@ -8,11 +8,16 @@ use std::{collections::BTreeSet, error::Error, fs, io::Read, path::Path};
 use std::{
     os::unix::fs::PermissionsExt,
     process::{Command, Output},
+    time::{Duration, SystemTime},
 };
+
+#[cfg(unix)]
+use chrono::{DateTime, SecondsFormat, Utc};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_core::{CoreService, InvocationContext};
+use volicord_core::{CoreService, GitWorkspaceContext, InvocationContext};
+use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::agent_connections::{
     add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
     ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
@@ -26,13 +31,18 @@ use volicord_store::{
     },
     core_pipeline::CoreProjectStore,
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{
+    core_fixtures::{CoreFixture, UpdateScopeFixture, DEFAULT_BASELINE_REF},
+    TempRuntimeHome,
+};
 use volicord_types::{
-    AcceptanceCriterionInput, ActorSource, EvidenceRequirement, IdempotencyKey, InitialScope,
-    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, OperationCategory, ProjectId,
-    RequestId, RequestedMode, RequiredNullable, ResumePolicy, StateRecordKind, StateRecordRef,
-    TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentOptionId, UserJudgmentOptionInput,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    canonical_json_bare_sha256, canonical_json_bytes, AcceptanceCriterionInput, ActorSource,
+    BaselineRef, ChangeUnitOperation, ConnectionObservationSourceKind, EvidenceCaptureSpec,
+    EvidenceRequirement, EvidenceTarget, IdempotencyKey, InitialScope, JudgmentKind,
+    JudgmentPresentation, JudgmentRequiredFor, OperationCategory, PrepareEvidenceCaptureRequest,
+    ProjectId, RequestId, RequestedMode, RequiredNullable, ResumePolicy, StateRecordKind,
+    StateRecordRef, TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentOptionId,
+    UserJudgmentOptionInput, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -54,10 +64,14 @@ use volicord_store::{
         set_connection_enabled, update_agent_connection_verification_report,
         CONNECTION_MODE_READ_ONLY, VERIFIED_STATUS_ACTION_REQUIRED,
     },
-    guards::{guard_event, insert_agent_session, list_guard_installations, AgentSessionInsert},
+    guards::{
+        guard_event, insert_agent_session, insert_guard_event, list_guard_installations,
+        upsert_guard_installation, AgentSessionInsert, GuardEventInsert, GuardInstallationUpsert,
+    },
     session_watch::{
-        create_watch_baseline, snapshot_product_repository, SessionWatchStatus,
-        WatchBaselineCreate, WatchSnapshotOptions,
+        compare_watch_snapshots, create_watch_baseline, record_watch_observation,
+        snapshot_product_repository, SessionWatchStatus, WatchBaselineCreate,
+        WatchObservationInsert, WatchSnapshotOptions,
     },
 };
 
@@ -91,6 +105,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord connection add [HOST]"));
     assert!(text.contains("volicord export authority-bundle"));
     assert!(text.contains("volicord connection list [--repo PATH]"));
+    assert!(text.contains("volicord evidence capture-command --intent ID"));
     assert!(text.contains("volicord connection status [HOST]"));
     assert!(text.contains("volicord changes reconcile"));
     assert!(text.contains("volicord serve --transport local-http"));
@@ -162,6 +177,11 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--artifact",
             "--summary",
             "--contradicted",
+            "--intent",
+            "--pre-event",
+            "--post-event",
+            "--guard-event",
+            "--watch-observation",
         ],
     )?;
     assert_help_options(
@@ -256,6 +276,18 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
     )?;
     assert_help_options(["project", "--help"], &["--repo", "--json"])?;
     assert_help_options(
+        ["evidence", "--help"],
+        &[
+            "--intent",
+            "--repo",
+            "--json",
+            "--pre-event",
+            "--post-event",
+            "--guard-event",
+            "--watch-observation",
+        ],
+    )?;
+    assert_help_options(
         ["inbox", "--help"],
         &[
             "--repo",
@@ -270,6 +302,650 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--json",
         ],
     )?;
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_records_complete_nonzero_receipt_without_raw_data_and_is_one_time(
+) -> Result<(), Box<dyn Error>> {
+    let marker_name = "command-executions.txt";
+    let script = format!(
+        "printf 'executed\\n' >> {marker_name}; printf \"$CAPTURE_SECRET\"; printf 'stderr-secret' >&2; exit 7"
+    );
+    let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.clone()];
+    let (fixture, intent_id) = prepared_command_capture("cli-evidence-command", &argv)?;
+    let before = fixture.counts()?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--json",
+            "--",
+            "/bin/sh",
+            "-c",
+            &script,
+        ],
+        &[("CAPTURE_SECRET", "environment-secret".to_owned())],
+        &fixture.product_repo_path(),
+    )?;
+    assert_success(&output);
+    let rendered = json_stdout(&output)?;
+    assert_eq!(rendered["complete"], true);
+    assert_eq!(rendered["observed_outcome"]["exit_code"], 7);
+    let after = fixture.counts()?;
+    assert_eq!(after.state_version, before.state_version);
+    assert_eq!(
+        after.evidence_capture_receipts,
+        before.evidence_capture_receipts + 1
+    );
+    assert_eq!(after.artifact_staging, before.artifact_staging + 1);
+
+    let receipt = fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .expect("receipt should exist");
+    for forbidden in [
+        script.as_str(),
+        "environment-secret",
+        "stderr-secret",
+        marker_name,
+    ] {
+        assert!(!receipt.safe_receipt_json.contains(forbidden));
+    }
+    assert!(receipt.safe_receipt_json.contains("environment_not_bound"));
+    assert_eq!(
+        fs::read_to_string(fixture.product_repo_path().join(marker_name))?,
+        "executed\n"
+    );
+
+    let duplicate = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--json",
+            "--",
+            "/bin/sh",
+            "-c",
+            &script,
+        ],
+        &[("CAPTURE_SECRET", "environment-secret".to_owned())],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!duplicate.status.success());
+    assert!(stderr(&duplicate).contains("already fulfilled"));
+    assert_eq!(
+        fs::read_to_string(fixture.product_repo_path().join(marker_name))?,
+        "executed\n"
+    );
+    assert_eq!(fixture.counts()?, after);
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_digest_mismatch_has_no_source_effects_or_execution(
+) -> Result<(), Box<dyn Error>> {
+    let intended_script = "printf 'should-not-run' > intended-marker.txt".to_owned();
+    let intended_argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), intended_script];
+    let (fixture, intent_id) = prepared_command_capture("cli-evidence-digest", &intended_argv)?;
+    let before = fixture.counts()?;
+    let mismatched_script = "printf 'mismatch-ran' > mismatch-marker.txt";
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--",
+            "/bin/sh",
+            "-c",
+            mismatched_script,
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("digest does not match"));
+    assert!(!fixture
+        .product_repo_path()
+        .join("mismatch-marker.txt")
+        .exists());
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_output_budget_rejects_without_receipt() -> Result<(), Box<dyn Error>> {
+    let argv = vec![
+        "/usr/bin/head".to_owned(),
+        "-c".to_owned(),
+        (16 * 1024 * 1024 + 1_u64).to_string(),
+        "/dev/zero".to_owned(),
+    ];
+    let (fixture, intent_id) = prepared_command_capture("cli-evidence-output-budget", &argv)?;
+    let before = fixture.counts()?;
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--",
+            &argv[0],
+            &argv[1],
+            &argv[2],
+            &argv[3],
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("output exceeded"));
+    assert_eq!(fixture.counts()?, before);
+    assert!(fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .is_none());
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_rejects_disabled_connection_and_stale_workspace_before_execution(
+) -> Result<(), Box<dyn Error>> {
+    let script = "printf 'ran' > should-not-run.txt".to_owned();
+    let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.clone()];
+
+    let (disabled_fixture, disabled_intent) =
+        prepared_command_capture("cli-evidence-disabled", &argv)?;
+    set_connection_enabled(
+        disabled_fixture.runtime_home_path(),
+        disabled_fixture.connection_id(),
+        false,
+    )?;
+    let disabled_before = disabled_fixture.counts()?;
+    let disabled = run_with_home_env_in_dir(
+        disabled_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &disabled_intent,
+            "--",
+            "/bin/sh",
+            "-c",
+            &script,
+        ],
+        &[],
+        &disabled_fixture.product_repo_path(),
+    )?;
+    assert!(!disabled.status.success());
+    assert!(stderr(&disabled).contains("disabled"));
+    assert!(!disabled_fixture
+        .product_repo_path()
+        .join("should-not-run.txt")
+        .exists());
+    assert_eq!(disabled_fixture.counts()?, disabled_before);
+
+    let (stale_fixture, stale_intent) =
+        prepared_command_capture("cli-evidence-stale-workspace", &argv)?;
+    fs::write(
+        stale_fixture.product_repo_path().join(".git/HEAD"),
+        "ref: refs/heads/other\n",
+    )?;
+    let stale_before = stale_fixture.counts()?;
+    let stale = run_with_home_env_in_dir(
+        stale_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &stale_intent,
+            "--",
+            "/bin/sh",
+            "-c",
+            &script,
+        ],
+        &[],
+        &stale_fixture.product_repo_path(),
+    )?;
+    assert!(!stale.status.success());
+    assert!(stderr(&stale).contains("workspace context changed"));
+    assert!(!stale_fixture
+        .product_repo_path()
+        .join("should-not-run.txt")
+        .exists());
+    assert_eq!(stale_fixture.counts()?, stale_before);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn evidence_capture_tool_requires_exact_complete_pre_post_pair_and_keeps_raw_result_out(
+) -> Result<(), Box<dyn Error>> {
+    let tool_input = json!({"command": "raw-tool-input-secret"});
+    let input_sha256 = bare_canonical_sha256(&tool_input)?;
+    let (fixture, intent_id) = prepared_capture(
+        "cli-evidence-tool",
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_name: "Bash".to_owned(),
+            tool_input_sha256: input_sha256.clone(),
+            expected_success: RequiredNullable::null(),
+        },
+        Some("session_evidence_tool"),
+        Some("guard_evidence_tool"),
+    )?;
+    let source_timestamp = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_tool_pre",
+        "pre_tool",
+        "session_evidence_tool",
+        "guard_evidence_tool",
+        json!({
+            "tool_name": "Bash",
+            "tool_use_id": "tool-use-exact",
+            "tool_input": tool_input,
+        }),
+        &input_sha256,
+        None,
+        &source_timestamp,
+    )?;
+    let tool_response = json!({
+        "success": false,
+        "exit_code": 3,
+        "stdout": "raw-tool-output-secret"
+    });
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_tool_post",
+        "post_tool",
+        "session_evidence_tool",
+        "guard_evidence_tool",
+        json!({
+            "tool_name": "Bash",
+            "tool_use_id": "tool-use-exact",
+            "tool_input": {"command": "raw-tool-input-secret"},
+            "tool_response": tool_response,
+        }),
+        &input_sha256,
+        Some(&bare_canonical_sha256(&tool_response)?),
+        &source_timestamp,
+    )?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-tool",
+            "--intent",
+            &intent_id,
+            "--pre-event",
+            "guard_event_tool_pre",
+            "--post-event",
+            "guard_event_tool_post",
+            "--json",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert_success(&output);
+    let rendered = json_stdout(&output)?;
+    assert_eq!(rendered["observed_outcome"]["success"], false);
+    assert_eq!(rendered["observed_outcome"]["exit_code"], 3);
+    assert_eq!(
+        rendered["observed_outcome"]["tool_result_size_bytes"],
+        canonical_json_bytes(&tool_response)?.len() as u64
+    );
+    let receipt = fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .expect("tool receipt");
+    assert!(!receipt.safe_receipt_json.contains("raw-tool-input-secret"));
+    assert!(!receipt.safe_receipt_json.contains("raw-tool-output-secret"));
+    assert!(receipt.safe_receipt_json.contains("tool-use-exact"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn evidence_capture_tool_rejects_post_only_and_mismatched_invocation_without_receipt(
+) -> Result<(), Box<dyn Error>> {
+    let tool_input = json!({"path": "src/lib.rs"});
+    let input_sha256 = bare_canonical_sha256(&tool_input)?;
+    let (fixture, intent_id) = prepared_capture(
+        "cli-evidence-tool-mismatch",
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_name: "Read".to_owned(),
+            tool_input_sha256: input_sha256.clone(),
+            expected_success: RequiredNullable::null(),
+        },
+        Some("session_evidence_tool_mismatch"),
+        Some("guard_evidence_tool_mismatch"),
+    )?;
+    let source_timestamp = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_only_post",
+        "post_tool",
+        "session_evidence_tool_mismatch",
+        "guard_evidence_tool_mismatch",
+        json!({
+            "tool_name": "Read",
+            "tool_use_id": "tool-use-post",
+            "tool_input": tool_input,
+            "tool_response": {"success": true}
+        }),
+        &input_sha256,
+        None,
+        &source_timestamp,
+    )?;
+    let before = fixture.counts()?;
+    let post_only = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-tool",
+            "--intent",
+            &intent_id,
+            "--pre-event",
+            "missing-pre-event",
+            "--post-event",
+            "guard_event_only_post",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!post_only.status.success());
+    assert_eq!(fixture.counts()?, before);
+
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_mismatch_pre",
+        "pre_tool",
+        "session_evidence_tool_mismatch",
+        "guard_evidence_tool_mismatch",
+        json!({
+            "tool_name": "Read",
+            "tool_use_id": "tool-use-pre",
+            "tool_input": {"path": "src/lib.rs"}
+        }),
+        &input_sha256,
+        None,
+        &source_timestamp,
+    )?;
+    let mismatched = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-tool",
+            "--intent",
+            &intent_id,
+            "--pre-event",
+            "guard_event_mismatch_pre",
+            "--post-event",
+            "guard_event_only_post",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!mismatched.status.success());
+    assert!(stderr(&mismatched).contains("invocation IDs do not match"));
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn evidence_capture_tool_rejects_sources_outside_intent_window() -> Result<(), Box<dyn Error>> {
+    let tool_input = json!({"path": "src/lib.rs"});
+    let input_sha256 = bare_canonical_sha256(&tool_input)?;
+    let (fixture, intent_id) = prepared_capture(
+        "cli-evidence-tool-source-window",
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_name: "Read".to_owned(),
+            tool_input_sha256: input_sha256.clone(),
+            expected_success: RequiredNullable::null(),
+        },
+        Some("session_evidence_tool_window"),
+        Some("guard_evidence_tool_window"),
+    )?;
+
+    for (suffix, occurred_at) in [
+        ("old", "2000-01-01T00:00:00Z".to_owned()),
+        (
+            "expiry",
+            capture_intent_timestamp(&fixture, &intent_id, "expires_at")?,
+        ),
+    ] {
+        let invocation_id = format!("tool-use-{suffix}");
+        let pre_id = format!("guard_event_window_{suffix}_pre");
+        let post_id = format!("guard_event_window_{suffix}_post");
+        insert_tool_guard_event(
+            &fixture,
+            &pre_id,
+            "pre_tool",
+            "session_evidence_tool_window",
+            "guard_evidence_tool_window",
+            json!({
+                "tool_name": "Read",
+                "tool_use_id": invocation_id,
+                "tool_input": tool_input.clone(),
+            }),
+            &input_sha256,
+            None,
+            &occurred_at,
+        )?;
+        let tool_response = json!({"success": true, "exit_code": 0});
+        insert_tool_guard_event(
+            &fixture,
+            &post_id,
+            "post_tool",
+            "session_evidence_tool_window",
+            "guard_evidence_tool_window",
+            json!({
+                "tool_name": "Read",
+                "tool_use_id": format!("tool-use-{suffix}"),
+                "tool_input": {"path": "src/lib.rs"},
+                "tool_response": tool_response,
+            }),
+            &input_sha256,
+            Some(&bare_canonical_sha256(&tool_response)?),
+            &occurred_at,
+        )?;
+        let before = fixture.counts()?;
+        let output = run_with_home_env_in_dir(
+            fixture.runtime_home_path(),
+            [
+                "evidence",
+                "capture-tool",
+                "--intent",
+                &intent_id,
+                "--pre-event",
+                &pre_id,
+                "--post-event",
+                &post_id,
+            ],
+            &[],
+            &fixture.product_repo_path(),
+        )?;
+        assert!(!output.status.success());
+        assert!(stderr(&output).contains("outside the capture-intent source window"));
+        assert_eq!(fixture.counts()?, before);
+        assert!(fixture
+            .store()?
+            .evidence_capture_receipt_for_intent(&intent_id)?
+            .is_none());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn evidence_capture_connection_accepts_exact_registered_guard_event() -> Result<(), Box<dyn Error>>
+{
+    let redacted_event = json!({
+        "hook_event_name": "Stop",
+        "status": "complete",
+        "content": {"omitted": true, "sha256": "sha256:redacted"}
+    });
+    let input_sha256 = bare_canonical_sha256(&redacted_event)?;
+    let (fixture, intent_id) = prepared_capture(
+        "cli-evidence-connection-guard",
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_kind: ConnectionObservationSourceKind::GuardEvent,
+            observation_input_sha256: input_sha256,
+            expected_complete: RequiredNullable::null(),
+        },
+        Some("session_evidence_connection"),
+        Some("guard_evidence_connection"),
+    )?;
+    let source_timestamp = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_connection_source",
+        "stop",
+        "session_evidence_connection",
+        "guard_evidence_connection",
+        redacted_event,
+        &"0".repeat(64),
+        None,
+        &source_timestamp,
+    )?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &intent_id,
+            "--guard-event",
+            "guard_event_connection_source",
+            "--json",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert_success(&output);
+    let rendered = json_stdout(&output)?;
+    assert_eq!(rendered["observed_outcome"]["complete"], true);
+    assert_eq!(rendered["observed_outcome"]["guard_event_kind"], "stop");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn evidence_capture_connection_accepts_complete_watcher_and_rejects_degraded_scan(
+) -> Result<(), Box<dyn Error>> {
+    let (complete_fixture, complete_intent, complete_observation) =
+        prepared_watch_capture("cli-evidence-watch-complete", false)?;
+    let complete = run_with_home_env_in_dir(
+        complete_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &complete_intent,
+            "--watch-observation",
+            &complete_observation,
+            "--json",
+        ],
+        &[],
+        &complete_fixture.product_repo_path(),
+    )?;
+    assert_success(&complete);
+    assert_eq!(
+        json_stdout(&complete)?["observed_outcome"]["complete"],
+        true
+    );
+
+    let (degraded_fixture, degraded_intent, degraded_observation) =
+        prepared_watch_capture("cli-evidence-watch-degraded", true)?;
+    let before = degraded_fixture.counts()?;
+    let degraded = run_with_home_env_in_dir(
+        degraded_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &degraded_intent,
+            "--watch-observation",
+            &degraded_observation,
+        ],
+        &[],
+        &degraded_fixture.product_repo_path(),
+    )?;
+    assert!(!degraded.status.success());
+    assert!(stderr(&degraded).contains("incomplete or degraded"));
+    assert_eq!(degraded_fixture.counts()?, before);
+
+    let (baseline_fixture, baseline_intent, baseline_observation) =
+        prepared_watch_capture_with_degradation(
+            "cli-evidence-watch-baseline-degraded",
+            true,
+            false,
+        )?;
+    let baseline_before = baseline_fixture.counts()?;
+    let baseline_degraded = run_with_home_env_in_dir(
+        baseline_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &baseline_intent,
+            "--watch-observation",
+            &baseline_observation,
+        ],
+        &[],
+        &baseline_fixture.product_repo_path(),
+    )?;
+    assert!(!baseline_degraded.status.success());
+    assert!(stderr(&baseline_degraded).contains("baseline is incomplete"));
+    assert_eq!(baseline_fixture.counts()?, baseline_before);
+
+    let (tampered_fixture, tampered_intent, tampered_observation) =
+        prepared_watch_capture("cli-evidence-watch-integrity", false)?;
+    tampered_fixture.conn()?.execute(
+        "UPDATE session_watch_observations
+            SET snapshot_digest = ?3,
+                observed_paths_json = '[\"not-the-derived-path\"]'
+          WHERE project_id = ?1 AND watch_observation_id = ?2",
+        rusqlite::params![
+            tampered_fixture.project_id(),
+            tampered_observation,
+            "f".repeat(64)
+        ],
+    )?;
+    let tampered_before = tampered_fixture.counts()?;
+    let tampered = run_with_home_env_in_dir(
+        tampered_fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &tampered_intent,
+            "--watch-observation",
+            &tampered_observation,
+        ],
+        &[],
+        &tampered_fixture.product_repo_path(),
+    )?;
+    assert!(!tampered.status.success());
+    assert!(stderr(&tampered).contains("integrity validation failed"));
+    assert_eq!(tampered_fixture.counts()?, tampered_before);
     Ok(())
 }
 
@@ -6789,6 +7465,401 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
     assert_eq!(actor_source, "local_user");
     assert_eq!(operation_category, "local_recovery");
     Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn prepared_command_capture(
+    prefix: &str,
+    argv: &[String],
+) -> Result<(CoreFixture, String), Box<dyn Error>> {
+    let input_sha256 = canonical_json_bare_sha256(&argv)?;
+    prepared_capture(
+        prefix,
+        EvidenceCaptureSpec::VerifiedCommandExecution {
+            command_sha256: input_sha256,
+            command_label: "CLI command capture fixture".to_owned(),
+            expected_exit_code: RequiredNullable::null(),
+        },
+        None,
+        None,
+    )
+}
+
+#[cfg(unix)]
+fn bare_canonical_sha256(value: &Value) -> Result<String, Box<dyn Error>> {
+    Ok(canonical_json_bare_sha256(value)?)
+}
+
+#[cfg(unix)]
+fn install_active_guard(
+    fixture: &CoreFixture,
+    session_id: &str,
+    installation_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let observed_at = "2026-07-13T00:00:00Z";
+    upsert_guard_installation(
+        fixture.runtime_home_path(),
+        GuardInstallationUpsert {
+            guard_installation_id: installation_id.to_owned(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            project_id: Some(fixture.project_id().to_owned()),
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "detective".to_owned(),
+            host_capability_json: "{}".to_owned(),
+            installation_status: "active".to_owned(),
+            installed_at: Some(observed_at.to_owned()),
+            last_checked_at: observed_at.to_owned(),
+            first_seen_at: Some(observed_at.to_owned()),
+            last_seen_at: Some(observed_at.to_owned()),
+            last_seen_phase: Some("post_tool".to_owned()),
+            observed_host_kind: Some(HOST_KIND_CODEX.to_owned()),
+            observed_policy_hash: None,
+            observed_binary_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    insert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.to_owned(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: Some(installation_id.to_owned()),
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "detective".to_owned(),
+            started_at: observed_at.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[allow(clippy::too_many_arguments)]
+fn insert_tool_guard_event(
+    fixture: &CoreFixture,
+    event_id: &str,
+    event_kind: &str,
+    session_id: &str,
+    installation_id: &str,
+    raw_event: Value,
+    tool_input_sha256: &str,
+    tool_result_sha256: Option<&str>,
+    occurred_at: &str,
+) -> Result<(), Box<dyn Error>> {
+    let tool_result_size_bytes = ["tool_response", "tool_result", "result", "output"]
+        .iter()
+        .find_map(|field| raw_event.get(*field))
+        .map(canonical_json_bytes)
+        .transpose()?
+        .map(|bytes| bytes.len() as u64);
+    insert_guard_event(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        GuardEventInsert {
+            guard_event_id: event_id.to_owned(),
+            session_id: Some(session_id.to_owned()),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: Some(installation_id.to_owned()),
+            event_kind: event_kind.to_owned(),
+            decision: "allow".to_owned(),
+            subject_json: json!({
+                "raw_event_sha256": format!("sha256:{}", bare_canonical_sha256(&raw_event)?),
+                "tool_input_sha256": tool_input_sha256,
+                "tool_result_sha256": tool_result_sha256,
+                "tool_result_size_bytes": tool_result_size_bytes,
+                "raw_event": raw_event,
+            })
+            .to_string(),
+            result_json: "{}".to_owned(),
+            occurred_at: occurred_at.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn capture_intent_timestamp(
+    fixture: &CoreFixture,
+    intent_id: &str,
+    field: &str,
+) -> Result<String, Box<dyn Error>> {
+    let intent = fixture
+        .store()?
+        .evidence_capture_intent_record(intent_id)?
+        .ok_or("capture intent should exist")?;
+    match field {
+        "created_at" => Ok(intent.created_at),
+        "expires_at" => Ok(intent.expires_at),
+        _ => Err(format!("unsupported capture-intent timestamp field: {field}").into()),
+    }
+}
+
+#[cfg(unix)]
+fn prepared_watch_capture(
+    prefix: &str,
+    degraded: bool,
+) -> Result<(CoreFixture, String, String), Box<dyn Error>> {
+    prepared_watch_capture_with_degradation(prefix, degraded, degraded)
+}
+
+#[cfg(unix)]
+fn prepared_watch_capture_with_degradation(
+    prefix: &str,
+    baseline_degraded: bool,
+    current_degraded: bool,
+) -> Result<(CoreFixture, String, String), Box<dyn Error>> {
+    let fixture = CoreFixture::new(prefix)?;
+    initialize_fixture_git(&fixture)?;
+    let session_id = "session_evidence_watch";
+    let baseline_id = "watch_baseline_evidence";
+    let observation_id = "watch_observation_evidence";
+    let observation_time = SystemTime::now() + Duration::from_secs(2);
+    let observed_at =
+        DateTime::<Utc>::from(observation_time).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let registered_at =
+        DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::AutoSi, true);
+    insert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.to_owned(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "detective".to_owned(),
+            started_at: registered_at.clone(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let watched_path = fixture.product_repo_path().join("watch.txt");
+    fs::write(&watched_path, "before")?;
+    let mut baseline_options = WatchSnapshotOptions {
+        watch_paths: vec!["watch.txt".into()],
+        ..WatchSnapshotOptions::default()
+    };
+    if baseline_degraded {
+        baseline_options.max_file_size_bytes = 1;
+    }
+    let baseline_snapshot = snapshot_product_repository(
+        fixture.runtime_home_path(),
+        fixture.product_repo_path(),
+        baseline_options,
+    )?;
+    create_watch_baseline(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        WatchBaselineCreate {
+            watch_baseline_id: baseline_id.to_owned(),
+            session_id: session_id.to_owned(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            status: SessionWatchStatus::Active,
+            snapshot: baseline_snapshot.clone(),
+            created_at: registered_at,
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    fs::write(&watched_path, "after")?;
+    let mut current_options = WatchSnapshotOptions {
+        watch_paths: vec!["watch.txt".into()],
+        ..WatchSnapshotOptions::default()
+    };
+    if current_degraded {
+        current_options.max_file_size_bytes = 1;
+    }
+    let predicted_snapshot = snapshot_product_repository(
+        fixture.runtime_home_path(),
+        fixture.product_repo_path(),
+        current_options.clone(),
+    )?;
+    let predicted_diff = compare_watch_snapshots(&baseline_snapshot, &predicted_snapshot);
+    let selection = json!({
+        "watch_observation_id": observation_id,
+        "watch_baseline_id": baseline_id,
+        "session_id": session_id,
+        "connection_id": fixture.connection_id(),
+        "snapshot_algorithm": predicted_snapshot.algorithm.clone(),
+        "snapshot_digest": predicted_snapshot.digest.clone(),
+        "snapshot_entries": serde_json::from_str::<Value>(&predicted_snapshot.entries_json())?,
+        "observed_paths": serde_json::from_str::<Value>(&predicted_diff.observed_paths_json())?,
+        "change_summary": serde_json::from_str::<Value>(&predicted_diff.change_summary_json())?,
+        "observed_at": observed_at.clone(),
+    });
+    let expected_input_sha256 = bare_canonical_sha256(&selection)?;
+    let capture = EvidenceCaptureSpec::RegisteredConnectionObservation {
+        source_kind: ConnectionObservationSourceKind::SessionWatcher,
+        observation_input_sha256: expected_input_sha256.clone(),
+        expected_complete: RequiredNullable::null(),
+    };
+    let (fixture, intent_id) = prepare_capture_on_fixture(fixture, capture, Some(session_id))?;
+    if let Ok(wait) = observation_time.duration_since(SystemTime::now()) {
+        // `observed_at` is part of the predeclared digest, so wait past that
+        // wall-clock instant with enough margin for timestamp conversion and
+        // scheduler granularity before asking the CLI to create its receipt.
+        std::thread::sleep(wait + Duration::from_millis(50));
+    }
+    let current_snapshot = snapshot_product_repository(
+        fixture.runtime_home_path(),
+        fixture.product_repo_path(),
+        current_options,
+    )?;
+    let diff = compare_watch_snapshots(&baseline_snapshot, &current_snapshot);
+    let scan_metadata = json!({ "scan_summary": &current_snapshot.scan_summary });
+    let observation = record_watch_observation(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        WatchObservationInsert {
+            watch_observation_id: observation_id.to_owned(),
+            watch_baseline_id: baseline_id.to_owned(),
+            expected_write_id: None,
+            snapshot: current_snapshot,
+            diff,
+            observed_at,
+            metadata_json: scan_metadata.to_string(),
+        },
+    )?;
+    let recorded_selection = json!({
+        "watch_observation_id": observation.watch_observation_id,
+        "watch_baseline_id": observation.watch_baseline_id,
+        "session_id": observation.session_id,
+        "connection_id": observation.connection_internal_id,
+        "snapshot_algorithm": observation.snapshot_algorithm,
+        "snapshot_digest": observation.snapshot_digest,
+        "snapshot_entries": serde_json::from_str::<Value>(&observation.snapshot_entries_json)?,
+        "observed_paths": serde_json::from_str::<Value>(&observation.observed_paths_json)?,
+        "change_summary": serde_json::from_str::<Value>(&observation.change_summary_json)?,
+        "observed_at": observation.observed_at,
+    });
+    assert_eq!(
+        bare_canonical_sha256(&recorded_selection)?,
+        expected_input_sha256,
+        "post-intent watcher scan should match its predeclared deterministic input"
+    );
+    Ok((fixture, intent_id, observation_id.to_owned()))
+}
+
+#[cfg(unix)]
+fn prepared_capture(
+    prefix: &str,
+    capture: EvidenceCaptureSpec,
+    session_id: Option<&str>,
+    guard_installation_id: Option<&str>,
+) -> Result<(CoreFixture, String), Box<dyn Error>> {
+    let fixture = CoreFixture::new(prefix)?;
+    initialize_fixture_git(&fixture)?;
+    match (session_id, guard_installation_id) {
+        (Some(session_id), Some(installation_id)) => {
+            install_active_guard(&fixture, session_id, installation_id)?;
+        }
+        (None, None) | (Some(_), None) => {}
+        (None, Some(_)) => return Err("guard installation requires a fixture session".into()),
+    }
+    prepare_capture_on_fixture(fixture, capture, session_id)
+}
+
+#[cfg(unix)]
+fn initialize_fixture_git(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
+    let git_dir = fixture.product_repo_path().join(".git");
+    fs::create_dir_all(git_dir.join("refs/heads"))?;
+    fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n")?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn prepare_capture_on_fixture(
+    fixture: CoreFixture,
+    capture: EvidenceCaptureSpec,
+    session_id: Option<&str>,
+) -> Result<(CoreFixture, String), Box<dyn Error>> {
+    let snapshot = capture_git_workspace_snapshot(&fixture.product_repo_path())?
+        .ok_or("fixture should expose Git workspace context")?;
+    let workspace = GitWorkspaceContext {
+        git_common_dir: snapshot.layout.common_dir.display().to_string(),
+        worktree_id: snapshot.worktree_id,
+        branch_ref: snapshot.branch_ref,
+        head_sha: snapshot.head_sha,
+        workspace_fingerprint: snapshot.workspace_fingerprint,
+    };
+    let invocation = || {
+        let invocation = InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            OperationCategory::AgentWorkflow,
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        )
+        .with_git_workspace_context(workspace.clone());
+        match session_id {
+            Some(session_id) => invocation.with_session_id(session_id),
+            None => invocation,
+        }
+    };
+    let service = CoreService::new(fixture.runtime_home_path());
+    let intake = service.intake(
+        fixture.intake_request(
+            "req_cli_evidence_intake",
+            "idem_cli_evidence_intake",
+            false,
+            Some(0),
+        ),
+        invocation(),
+    )?;
+    let task_id = intake
+        .resolved_task_id
+        .as_ref()
+        .ok_or("intake should resolve a Task")?
+        .as_str()
+        .to_owned();
+    let intake_version = intake.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("intake should expose state version")?;
+    let scope = service.update_scope(
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_cli_evidence_scope",
+            idempotency_key: "idem_cli_evidence_scope",
+            dry_run: false,
+            expected_state_version: Some(intake_version),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Prepare command evidence capture.",
+        }),
+        invocation(),
+    )?;
+    let scope_version = scope.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("scope should expose state version")?;
+    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope should expose Change Unit")?;
+    let criterion_id = scope.response_value["state"]["acceptance_criteria"][0]
+        ["acceptance_criterion_id"]
+        .as_str()
+        .ok_or("scope should expose criterion")?;
+    let prepared = service.prepare_evidence_capture(
+        PrepareEvidenceCaptureRequest {
+            envelope: fixture.envelope(
+                "req_cli_evidence_prepare",
+                Some("idem_cli_evidence_prepare"),
+                false,
+                Some(scope_version),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            change_unit_id: volicord_types::ChangeUnitId::new(change_unit_id),
+            baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+            target: EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(criterion_id),
+            },
+            capture,
+        },
+        invocation(),
+    )?;
+    let intent_id = prepared.response_value["capture_intent_ref"]["record_id"]
+        .as_str()
+        .ok_or("prepare should expose intent")?
+        .to_owned();
+    Ok((fixture, intent_id))
 }
 
 fn assert_help_options<const N: usize>(

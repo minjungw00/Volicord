@@ -15,7 +15,7 @@
 이 문서는 담당하지 않습니다.
 
 - API 아티팩트 스키마; [API 아티팩트 스키마](api/schema-artifacts.md)를 봅니다.
-- API 메서드 동작; [API 메서드](api/methods.md), [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md)를 봅니다.
+- API 메서드 동작; [API 메서드](api/methods.md), [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [증거 캡처 준비 메서드](api/method-prepare-evidence-capture.md), [실행 기록 메서드](api/method-record-run.md)를 봅니다.
 - 기록 계열 개요: [저장소 기록](storage-records.md)을 봅니다.
 - 기준 SQLite DDL, 제약, 인덱스, 외래 키, 기준 SQL 원본: [저장소 DDL](storage-ddl.md)을 봅니다.
 - 일반 메서드 저장 효과; [저장 효과](storage-effects.md)를 봅니다.
@@ -37,6 +37,7 @@
 ```mermaid
 flowchart LR
   Stage["volicord.stage_artifact<br/>임시 스테이징 표현 또는 핸들"]
+  CaptureStage["등록 evidence source fulfillment<br/>영속 receipt와 transient redacted staging handle"]
   NoEvidence["그 자체로 영속 증거가 아님"]
   Promote["호환되는 담당 메서드가 스테이징 입력 수락<br/>영속 artifacts 행"]
   Link["artifact_links<br/>영속 담당 관계"]
@@ -44,7 +45,9 @@ flowchart LR
   Reuse["existing_artifact_ref<br/>이미 영속하는 ArtifactRef"]
 
   Stage --> Promote --> Link --> Evidence
+  CaptureStage --> Promote
   Stage -.-> NoEvidence
+  CaptureStage -.-> NoEvidence
   Reuse --> Link
 ```
 
@@ -76,6 +79,7 @@ flowchart LR
 의미:
 
 - `volicord.stage_artifact`가 임시 아티팩트 바이트나 안전한 알림을 저장하고 스테이징 핸들을 반환하는 단계입니다.
+- 등록 evidence source fulfillment는 크기가 제한된 영속 redacted capture receipt와 capture가 소유한 transient staging handle 및 bytes를 원자적으로 저장합니다. 호출자가 이 staging 경로를 직접 만들 수 없습니다.
 
 증거와의 관계:
 
@@ -86,7 +90,7 @@ flowchart LR
 
 의미:
 
-- 담당 메서드가 호환되는 스테이징 핸들을 받아 영속 `ArtifactRef`와 필요한 `artifact_links`로 등록하는 단계입니다.
+- 담당 메서드가 호환되는 스테이징 핸들을 받아 영속 `ArtifactRef`와 필요한 `artifact_links`로 등록하는 단계입니다. Capture-owned staging에서는 `volicord.record_run`이 승격 전에 intent, receipt bytes, 배타적 source claim을 다시 검증하고 결과를 해당 `evidence_producer`에 연결해야 합니다.
 
 증거와의 관계:
 
@@ -124,7 +128,7 @@ flowchart LR
 
 허용되는 것:
 
-- `StagedArtifactHandle`은 성공한 `volicord.stage_artifact`가 반환한 임시 핸들입니다.
+- `StagedArtifactHandle`은 성공한 `volicord.stage_artifact`가 반환한 임시 핸들이며, 등록 evidence source fulfillment는 별도의 storage-owned capture-receipt staging handle을 만듭니다.
 - `existing_artifact`는 기존 영속 아티팩트를 연결합니다.
 
 조건:
@@ -324,7 +328,7 @@ expires_at: "<future-expiration-timestamp>"
 - `redaction_state`.
 - 생산자와 보존 사실.
 - 가용성 `status`.
-- `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `blocker` 같은 기존 담당 기록에 대한 담당 연결.
+- `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` 같은 기존 담당 기록에 대한 담당 연결.
 
 증거 자격, 아티팩트 가용성, 증거 충분성은 서로 분리됩니다. `artifact_links`가 다형 담당 테이블이어도 아티팩트 담당 관계 무결성은 필요합니다.
 
@@ -342,7 +346,7 @@ authority-owned producer 앵커, 정확한 출력 결합, 현재 Task/scope/base
 
 필수 검증:
 
-- `owner_record_kind`가 `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `blocker` 중 하나인지 확인합니다.
+- `owner_record_kind`가 `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` 중 하나인지 확인합니다.
 - `owner_record_id`가 해당 담당 테이블에 존재하는지 확인합니다.
 - 담당 기록이 같은 `project_id`와 `task_id`에 속하는지 확인합니다.
 - 관계가 아티팩트 사용 방식과 호환되는지 확인합니다.

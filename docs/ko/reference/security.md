@@ -187,6 +187,10 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - `connection_internal_id`, 연결 의도, `connection.mode`, Connection Projects, `operation_category`, `actor_source`는 현재 호출이 문서화된 연결 맥락에 맞은 뒤 런타임, Core, 메서드, 보안 담당 문서에 따라 사용할 수 있습니다.
 - `actor_source`는 Core와 메서드 담당 문서가 현재 권한 해결 동작에 대해 그 값을 받아들일 때만 지속되는 출처 정보를 제공할 수 있습니다.
 - 권한 효력이 있는 사용자 판단에는 `User Channel`을 통한 `actor_source=local_user`가 필요합니다.
+- Workflow Agent Connection은 현재 evidence-capture intent를 만들 수 있습니다. 등록된
+  local source만 이를 fulfillment할 수 있고, receipt를 producer와 observation으로
+  finalization할 수 있는 메서드는 `record_run`뿐입니다. MCP receipt-fulfillment
+  도구는 없습니다.
 
 주장하면 안 되는 것:
 - `connection_id` 자체가 권한 토큰이라는 주장.
@@ -196,6 +200,10 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - `operation_category`가 OS 권한, 호스트 신뢰, 포괄적 권한이라는 주장.
 - 텍스트에서 복사한 `actor_source`가 호출자 권한 토큰이라는 주장.
 - 환경으로 제어되는 라벨, 공개 요청 필드, 임의 호출자 텍스트가 신뢰된 권한, 감사 사실, 검증 근거 입력이라는 주장.
+- 등록된 guard event, session-watcher observation, Volicord command runner가
+  cryptographic host signature, local-principal attestation, 위조 방지 경계,
+  actor-identity 증명이라는 주장. 정확한 digest와 완전성을 검사해도 이 source는
+  협력적 local integration입니다.
 
 <a id="historical-operation-result-access"></a>
 ### 과거 동작 결과 접근
@@ -290,7 +298,8 @@ Volicord는 아래를 보장하지 않습니다.
 - 변조 방지 저장소.
 - 권한 번들, `manifest.json`, SHA-256 체크섬이 `Volicord Runtime Home`이 내보내기 전에
   한 번도 수정되지 않았음을 증명한다는 것.
-- 기준 보장으로서 Agent Connection이 직접 수행하는 아티팩트 캡처.
+- MCP나 임의 Agent Connection payload를 통한 native evidence-receipt fulfillment.
+  지원 source 경로는 local registered fulfillment 뒤의 Core finalization입니다.
 - 표시된 식별자만으로 생기는 아티팩트 권한.
 - 복사된 아티팩트, 실행 기록, 증거, 판단 텍스트에서 생기는 검증이나 수락.
 - 권한 번들이 정확성, 테스트 충분성, 검토 완료, 배포 성공, 최종 수락, 잔여 위험

@@ -754,6 +754,95 @@ EvidenceTarget:
   evidence_claim_id: string        # supplemental_claim에서만 사용
   statement: string                # supplemental_claim에서만 사용
 
+EvidenceCaptureSpec:
+  capture_kind: verified_command_execution | verified_tool_invocation | registered_connection_observation
+  command_sha256: string                       # verified_command_execution에서만 사용
+  command_label: string                        # verified_command_execution에서만 사용; 정규화된 1..256 UTF-8 bytes
+  expected_exit_code: integer | null           # verified_command_execution에서만 사용
+  tool_name: string                            # verified_tool_invocation에서만 사용; 앞뒤 공백 제거, 1..256 UTF-8 bytes
+  tool_input_sha256: string                    # verified_tool_invocation에서만 사용
+  expected_success: boolean | null             # verified_tool_invocation에서만 사용
+  source_kind: guard_event | session_watcher   # registered_connection_observation에서만 사용
+  observation_input_sha256: string             # registered_connection_observation에서만 사용
+  expected_complete: boolean | null            # registered_connection_observation에서만 사용
+
+EvidenceCaptureIntent:
+  capture_intent_id: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  capture: EvidenceCaptureSpec
+  input_sha256: string
+  expected_outcome: object
+  requested_by_actor_source: string
+  workspace_context: object
+  created_at: string
+  expires_at: string
+
+EvidenceCaptureReceipt:
+  capture_receipt_id: string
+  capture_intent_id: string
+  capture_intent_ref: StateRecordRef
+  producer_kind: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  input_sha256: string
+  result_sha256: string
+  expected_outcome: object
+  observed_outcome: object
+  source_refs: StateRecordRef[]
+  connection_id: string
+  session_id: string | null
+  guard_installation_id: string | null
+  guard_event_ids: string[]
+  watch_observation_refs: string[]
+  staged_receipt_handle: StagedArtifactHandle
+  complete: boolean
+  limitations: string[]
+  redaction_state: string
+  observed_by_actor_source: string
+  observed_at: string
+  recorded_at: string
+
+EvidenceProducer:
+  evidence_producer_id: string
+  capture_receipt_id: string
+  capture_intent_id: string
+  capture_intent_ref: StateRecordRef
+  producer_kind: string
+  project_id: string
+  task_id: string
+  change_unit_id: string
+  scope_revision: integer
+  baseline_ref: string
+  target: EvidenceTarget
+  input_sha256: string
+  result_sha256: string
+  expected_outcome: object
+  observed_outcome: object
+  source_refs: StateRecordRef[]
+  connection_id: string
+  session_id: string | null
+  guard_installation_id: string | null
+  guard_event_ids: string[]
+  watch_observation_refs: string[]
+  receipt_artifact_refs: ArtifactRef[]
+  complete: boolean
+  limitations: string[]
+  redaction_state: string
+  observed_by_actor_source: string
+  observed_at: string
+  finalized_at: string
+  run_ref: StateRecordRef
+  observation_ref: StateRecordRef
+
 EvidenceSummary:
   evidence_state: string
   status: string
@@ -883,6 +972,23 @@ ObservedChanges:
   `acceptance_criterion_id`만 있고, `supplemental_claim` 변형에는 호출자가
   부여한 `Task` 범위 `evidence_claim_id`와 비어 있지 않은 불변 `statement`가
   있습니다. 변형별 필드를 섞을 수 없습니다.
+- `EvidenceCaptureSpec`은 엄격한 태그 합집합입니다. 소문자 64자 digest 필드는
+  `volicord.prepare_evidence_capture`가 선택한 정확한 정규 source input을
+  결합합니다. typed shape의 expected-outcome 필드는 nullable이며 MCP에서
+  생략하면 메서드 담당 기본값을 사용합니다.
+- `EvidenceCaptureIntent`는 만료되는 불변 current-basis 요청입니다.
+  `requested_by_actor_source`와 `workspace_context`는 Core가 파생한 근거 필드이며
+  호출자가 선택하는 attribution이 아닙니다. 공개 ref는
+  `record_kind=evidence_capture_intent`를 사용합니다.
+- `EvidenceCaptureReceipt`는 불변 영속 source-fulfillment fact 레코드입니다. 연결된
+  staging handle과 staged receipt bytes만 transient입니다. 등록된
+  connection/session/guard/watch 좌표, 정확한 digest, outcome, 완전성, 한계,
+  redaction 상태, observer, 시각은 source fact입니다. receipt는
+  `StateRecordRef`가 아니며 Core 상태를 진행시키지 않습니다.
+- `EvidenceProducer`는 소비 Run 관찰과 일대일로 생성되는 불변 Core-finalized 권한
+  레코드입니다. receipt artifact, Run ref, observation ref는 source 바이트,
+  producer, relevance를 결합합니다. 공개 ref는
+  `record_kind=evidence_producer`를 사용합니다.
 - `EvidenceSummary.evidence_state`는 값이 있으면 증거 표시 상태입니다. 아직 첨부된 증거나 현재 닫기 근거 증거 참조가 없는 범위 공백 요약에서는 생략됩니다.
 - `EvidenceGateSummary`는 현재 활성 기준과 닫기 평가 근거에 대한 기준 파생 증거 gate 상태 보기입니다. Core는 기준 요구 수준과 범위, 현재 증거 출처, 최신성, 아티팩트 가용성, 증거 관련 닫기 차단 사유를 사용해 한 번 계산합니다. `StateSummary`, status와 close 결과, `SummaryCard.evidence`는 그 결과를 복사하며 독립적으로 다시 계산하지 않습니다. 저장되는 권한 기록이나 `AuthorityReceipt`가 아닙니다.
 - `EvidenceSummary.status`, `EvidenceCoverageItem.coverage_state`,
@@ -920,9 +1026,11 @@ ObservedChanges:
   검증된 producer 레코드가 있으면 그 레코드에서, 그렇지 않으면 확인된 호출에서
   값을 파생합니다. 제출 값으로 신뢰를 높이거나 다른 actor를 가장할 수 없습니다.
 - Core는 확인된 앵커에서 커밋할 `source_kind`와 `assurance_level`을 파생합니다. 앵커가 없는 직접 `connection_observation`, `user_observation`, `external_tool`, 호출자 선언 `reused_evidence` 입력은 `agent_report` / `cooperative_report`로 커밋됩니다. 이 필드 자체는 제품 정확성을 증명하거나, 사용자 권한을 부여하거나, 최종 수락이나 잔여 위험 수락을 만족하거나, `GuaranteeDisplay.level`을 높이지 않습니다.
-- 기준 구현에는 authority-owned verified command/tool producer나 등록된
-  connection-observation producer가 없습니다. 따라서 직접 `external_tool`과
-  `connection_observation` 입력은 아티팩트 바이트가 검증되어도 협력적 상태입니다.
+- 현재의 완전한 capture receipt를 정확히 하나의 `evidence_capture_intent` input
+  ref로 소비하면 authority-owned verified command, verified tool, registered
+  connection-observation producer를 설정할 수 있습니다. 해당 앵커가 없는 직접
+  `external_tool` 또는 `connection_observation` 입력은 아티팩트 바이트가
+  검증되어도 협력적으로 남습니다.
 - `user_observation`은 현재 `UserEvidenceObservation`, 정확한 출력 일치,
   `relevance_status=supported`, 검증된 로컬 사용자 provenance, 일치하는 Task,
   Change Unit, scope, baseline, 대상을 요구합니다.

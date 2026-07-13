@@ -376,6 +376,43 @@ CREATE UNIQUE INDEX idx_change_units_one_current_active
   ON change_units (project_id, task_id)
   WHERE status = 'active' AND is_current = 1;
 
+CREATE TABLE evidence_capture_intents (
+  project_id TEXT NOT NULL,
+  evidence_capture_intent_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  change_unit_id TEXT NOT NULL,
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
+  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
+  target_json TEXT NOT NULL,
+  capture_kind TEXT NOT NULL CHECK (
+    capture_kind IN (
+      'verified_command_execution',
+      'verified_tool_invocation',
+      'registered_connection_observation'
+    )
+  ),
+  capture_spec_json TEXT NOT NULL,
+  input_sha256 TEXT NOT NULL CHECK (
+    length(input_sha256) = 64 AND input_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  expected_outcome_json TEXT NOT NULL,
+  requested_by_actor_source TEXT NOT NULL CHECK (
+    length(trim(requested_by_actor_source)) > 0
+  ),
+  requesting_connection_internal_id TEXT NOT NULL CHECK (
+    length(trim(requesting_connection_internal_id)) > 0
+  ),
+  session_context_json TEXT NOT NULL DEFAULT '{}',
+  workspace_context_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, evidence_capture_intent_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
+  FOREIGN KEY (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id)
+);
+
 CREATE TABLE user_judgments (
   project_id TEXT NOT NULL,
   judgment_id TEXT NOT NULL,
@@ -589,6 +626,93 @@ CREATE UNIQUE INDEX idx_artifact_staging_promoted_artifact
   ON artifact_staging (project_id, promoted_artifact_id)
   WHERE promoted_artifact_id IS NOT NULL;
 
+CREATE TABLE evidence_capture_receipts (
+  project_id TEXT NOT NULL,
+  evidence_capture_receipt_id TEXT NOT NULL,
+  evidence_capture_intent_id TEXT NOT NULL,
+  staging_handle_id TEXT NOT NULL,
+  capture_kind TEXT NOT NULL CHECK (
+    capture_kind IN (
+      'verified_command_execution',
+      'verified_tool_invocation',
+      'registered_connection_observation'
+    )
+  ),
+  input_sha256 TEXT NOT NULL CHECK (
+    length(input_sha256) = 64 AND input_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  result_sha256 TEXT NOT NULL CHECK (
+    length(result_sha256) = 64 AND result_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  expected_outcome_json TEXT NOT NULL,
+  observed_outcome_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  observed_by_actor_source TEXT NOT NULL CHECK (
+    length(trim(observed_by_actor_source)) > 0
+  ),
+  observed_at TEXT NOT NULL,
+  completeness TEXT NOT NULL CHECK (completeness = 'complete'),
+  limitations_json TEXT NOT NULL DEFAULT '[]',
+  safe_receipt_json TEXT NOT NULL,
+  safe_receipt_sha256 TEXT NOT NULL CHECK (
+    length(safe_receipt_sha256) = 64 AND safe_receipt_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  safe_receipt_size_bytes INTEGER NOT NULL CHECK (safe_receipt_size_bytes >= 0),
+  created_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, evidence_capture_receipt_id),
+  UNIQUE (project_id, evidence_capture_intent_id),
+  UNIQUE (
+    project_id,
+    evidence_capture_intent_id,
+    evidence_capture_receipt_id
+  ),
+  UNIQUE (project_id, staging_handle_id),
+  FOREIGN KEY (project_id, evidence_capture_intent_id)
+    REFERENCES evidence_capture_intents (project_id, evidence_capture_intent_id),
+  FOREIGN KEY (project_id, staging_handle_id)
+    REFERENCES artifact_staging (project_id, handle_id)
+);
+
+CREATE TABLE evidence_capture_source_claims (
+  project_id TEXT NOT NULL,
+  source_claim_kind TEXT NOT NULL CHECK (
+    source_claim_kind IN (
+      'host_invocation',
+      'guard_event',
+      'session_watch_observation'
+    )
+  ),
+  source_claim_id TEXT NOT NULL CHECK (length(trim(source_claim_id)) > 0),
+  evidence_capture_intent_id TEXT NOT NULL,
+  evidence_capture_receipt_id TEXT NOT NULL,
+  capture_kind TEXT NOT NULL CHECK (
+    capture_kind IN (
+      'verified_command_execution',
+      'verified_tool_invocation',
+      'registered_connection_observation'
+    )
+  ),
+  claimed_at TEXT NOT NULL,
+  CHECK (
+    source_claim_kind != 'host_invocation'
+    OR (
+      length(source_claim_id) = 64
+      AND source_claim_id NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  PRIMARY KEY (project_id, source_claim_kind, source_claim_id),
+  FOREIGN KEY (
+    project_id,
+    evidence_capture_intent_id,
+    evidence_capture_receipt_id
+  ) REFERENCES evidence_capture_receipts (
+    project_id,
+    evidence_capture_intent_id,
+    evidence_capture_receipt_id
+  )
+);
+
 CREATE TABLE artifacts (
   project_id TEXT NOT NULL,
   artifact_id TEXT NOT NULL,
@@ -653,7 +777,7 @@ CREATE TABLE artifact_links (
   artifact_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   owner_record_kind TEXT NOT NULL CHECK (
-    owner_record_kind IN ('task', 'change_unit', 'run', 'user_judgment', 'evidence_summary', 'evidence_observation', 'blocker')
+    owner_record_kind IN ('task', 'change_unit', 'run', 'user_judgment', 'evidence_summary', 'evidence_observation', 'evidence_producer', 'blocker')
   ),
   owner_record_id TEXT NOT NULL,
   created_by_run_id TEXT,
@@ -755,6 +879,55 @@ CREATE TABLE user_evidence_observations (
   )
 );
 
+CREATE TABLE evidence_producers (
+  project_id TEXT NOT NULL,
+  evidence_producer_id TEXT NOT NULL,
+  evidence_capture_intent_id TEXT NOT NULL,
+  evidence_capture_receipt_id TEXT NOT NULL,
+  evidence_observation_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  change_unit_id TEXT NOT NULL,
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
+  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
+  producer_kind TEXT NOT NULL CHECK (
+    producer_kind IN (
+      'verified_command_execution',
+      'verified_tool_invocation',
+      'registered_connection_observation'
+    )
+  ),
+  canonical_producer_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY (project_id, evidence_producer_id),
+  UNIQUE (project_id, evidence_capture_intent_id),
+  UNIQUE (project_id, evidence_capture_receipt_id),
+  UNIQUE (project_id, evidence_observation_id),
+  UNIQUE (project_id, artifact_id),
+  FOREIGN KEY (project_id, evidence_capture_intent_id)
+    REFERENCES evidence_capture_intents (project_id, evidence_capture_intent_id),
+  FOREIGN KEY (project_id, evidence_capture_receipt_id)
+    REFERENCES evidence_capture_receipts (project_id, evidence_capture_receipt_id),
+  FOREIGN KEY (
+    project_id,
+    evidence_capture_intent_id,
+    evidence_capture_receipt_id
+  ) REFERENCES evidence_capture_receipts (
+    project_id,
+    evidence_capture_intent_id,
+    evidence_capture_receipt_id
+  ),
+  FOREIGN KEY (project_id, evidence_observation_id)
+    REFERENCES evidence_observations (project_id, evidence_observation_id),
+  FOREIGN KEY (project_id, artifact_id) REFERENCES artifacts (project_id, artifact_id),
+  FOREIGN KEY (project_id, run_id) REFERENCES runs (project_id, run_id),
+  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
+  FOREIGN KEY (project_id, task_id, change_unit_id)
+    REFERENCES change_units (project_id, task_id, change_unit_id)
+);
+
 CREATE TABLE blockers (
   project_id TEXT NOT NULL,
   blocker_id TEXT NOT NULL,
@@ -853,6 +1026,16 @@ CREATE INDEX idx_evidence_claims_task
 CREATE INDEX idx_change_units_task_status
   ON change_units (project_id, task_id, status);
 
+CREATE INDEX idx_evidence_capture_intents_task_expiry
+  ON evidence_capture_intents (project_id, task_id, expires_at);
+
+CREATE INDEX idx_evidence_capture_intents_connection_expiry
+  ON evidence_capture_intents (
+    project_id,
+    requesting_connection_internal_id,
+    expires_at
+  );
+
 CREATE INDEX idx_user_judgments_task_status
   ON user_judgments (project_id, task_id, status);
 
@@ -873,6 +1056,17 @@ CREATE INDEX idx_artifact_staging_task_status
 
 CREATE INDEX idx_artifact_staging_actor_source
   ON artifact_staging (project_id, created_by_actor_source);
+
+CREATE INDEX idx_evidence_capture_receipts_created
+  ON evidence_capture_receipts (project_id, created_at);
+
+CREATE INDEX idx_evidence_capture_source_claims_receipt
+  ON evidence_capture_source_claims (
+    project_id,
+    evidence_capture_receipt_id,
+    source_claim_kind,
+    source_claim_id
+  );
 
 CREATE INDEX idx_artifacts_task_status
   ON artifacts (project_id, task_id, status);
@@ -901,6 +1095,9 @@ CREATE INDEX idx_user_evidence_observations_task_target
     evidence_claim_id,
     recorded_at
   );
+
+CREATE INDEX idx_evidence_producers_task_run
+  ON evidence_producers (project_id, task_id, run_id);
 
 CREATE INDEX idx_blockers_task_status
   ON blockers (project_id, task_id, status);
@@ -1198,13 +1395,39 @@ Project-state constraints:
   not make a predecessor row, judgment, evidence set, baseline, or write ticket
   current by storage presence alone.
 - `authority_events` stores one durable event row per committed authority event. Multiple event rows with the same `state_version` are one event batch for one committed state transition.
-- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `user_evidence_observations.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
+- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `evidence_capture_intents.requested_by_actor_source`, `evidence_capture_receipts.observed_by_actor_source`, `user_evidence_observations.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
 - `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
 - User judgment rows store User Channel provenance for authority-bearing resolution. `status='resolved'` records that an answer exists; approval meaning comes from the stored machine action, outcome, basis, provenance, and method owner.
 - `local_web_consent_tokens` stores hashed one-time local web consent tokens for pending user judgments. The raw token is not stored. Token consumption must commit in the same project-state transaction as the corresponding user judgment resolution. These rows are transient User Channel capture metadata and are not Core judgment authority by themselves.
 - `write_tickets` records single-use write-ticket compatibility. The unique indexes on `write_tickets.consumed_by_run_id` and `runs.write_ticket_id` prevent one write-ticket consumption from forking across multiple runs.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
+- `evidence_capture_intents` binds one expiring request to exact current-basis,
+  source-input, connection/actor, and workspace facts.
+  `evidence_capture_receipts` permits exactly one complete, content-bound safe
+  receipt and staging handle per intent. `evidence_capture_source_claims`
+  atomically claims every normalized underlying host invocation, guard event,
+  or session-watch observation for that receipt. Its project-scoped primary key
+  prevents the same source fact from fulfilling another intent or producer
+  class. Host invocation claim ids are canonical digests over connection,
+  session, installation, and invocation coordinates, so host-local ids from
+  different exact contexts do not collide. `evidence_producers` enforces
+  one-to-one intent, receipt, observation, and artifact finalization, uses a
+  composite foreign key to prevent cross-pairing an intent with another
+  receipt, and links each producer to one Run. Those constraints do not replace
+  Core freshness, relevance, or byte-integrity validation.
+- Store application validation rejects missing or extra source coordinates by
+  capture class. Command receipts require and claim one host invocation. Tool
+  receipts require an exact session and installation, two distinct guard events,
+  and one host invocation, and claim all three source facts. Guard connection
+  receipts claim exactly one guard event; watcher receipts claim exactly one
+  session-watch observation. Receipt staging, receipt insertion, and all claims
+  commit or roll back together.
+- Store application validation enforces
+  `intent.created_at <= receipt.observed_at < intent.expires_at`, receipt
+  creation after observation and before intent expiry, and receipt staging
+  expiry exactly equal to intent expiry; these cross-row time relations are not
+  expressible by the table-local checks alone.
 - `evidence_observations.source_kind` and `assurance_level` distinguish cooperative agent reports, registered connection observations, external tool results, user observations, reused evidence, and unverified claims.
 - `evidence_observations.metadata_json` is strict Core-derived producer-anchor
   and relevance-assessment JSON. `user_evidence_observations` stores the

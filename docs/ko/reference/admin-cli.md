@@ -306,6 +306,64 @@ Doctor는 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연
 관련 없는 Runtime Home 데이터, 호스트 설정, 남아 있는 다른 등록이 소유하는
 아티팩트 저장소, 보존되어야 하는 Core 권한 행을 삭제하면 안 됩니다.
 
+<a id="evidence-capture-commands"></a>
+## 증거 캡처 명령
+
+로컬 등록 source fulfillment 명령은 다음과 같습니다.
+
+```text
+volicord evidence capture-command --intent ID [--repo PATH] [--json] -- PROGRAM [ARG...]
+volicord evidence capture-tool --intent ID --pre-event ID --post-event ID [--repo PATH] [--json]
+volicord evidence capture-connection --intent ID (--guard-event ID | --watch-observation ID) [--repo PATH] [--json]
+```
+
+세 명령은 모두 활성 등록 프로젝트를 선택하고 불변 capture intent를 읽은 뒤 현재
+Task/Change Unit/scope/baseline, target, Git workspace, 요청한 활성 Agent
+Connection과 project access, expiry, source kind, 정확한 canonical input digest를
+다시 검증합니다. 이미 fulfillment되었거나 소비된 intent는 거부합니다. Source
+observation은 `intent.created_at <= observed_at < intent.expires_at` 범위에 있어야
+하고 receipt는 `observed_at <= receipt.created_at < intent.expires_at`을 만족해야
+합니다.
+
+`capture-command`는 Linux와 macOS에서 사용할 수 있습니다. 다른 platform에서는
+크기가 제한된 process-tree 종료 primitive가 없으므로 실행 전에 거부합니다. 지원하는
+platform에서는 `--` 뒤의 전체 UTF-8 인자 벡터를 hash하고 실행 전에 digest를
+확인하며, 등록 repository root를 cwd로 사용해 실행합니다. Raw argument,
+environment, stdout, stderr를 receipt에 저장하지 않고 exit code와 stdout/stderr
+digest 및 byte count를 기록합니다. 숫자 exit status 없이 끝난 process는 receipt를
+만들지 않습니다. Runner는 두 output channel을 메모리에 누적하지 않고 streaming
+hash하며 합산 16 MiB output 상한을 적용하고 intent expiry를 실행 deadline으로
+사용합니다. Output 상한을 초과하거나 expiry 경계에 도달하면 격리된 command process
+group 전체를 종료하고 receipt를 만들지 않습니다.
+
+`capture-tool`은 같은 connection, session, guard installation, host invocation,
+tool name, canonical tool input에 대한 정확한 등록 `pre_tool` 및 `post_tool` guard
+event ID를 요구합니다. Pre event가 deny 상태이면 안 되고, post는 pre보다 앞설 수 없으며
+완전한 tool response를 가져야 합니다. Tool name과 input digest는 intent와
+일치해야 합니다.
+
+`capture-connection`은 선택한 source를 정확히 하나 받습니다. `--guard-event`는
+선택한 redacted `raw_event`를 hash합니다. `--watch-observation`은 observation,
+baseline, session, connection ID, snapshot algorithm, digest와 entries, observed
+paths, change summary, observation time으로 이루어진 safe selection을 hash합니다.
+Watch baseline과 현재 observation scan은 모두 skipped 또는 unreadable path 없이
+완전하고 non-degraded여야 합니다. 이 명령은 영속화된 baseline 및 현재 snapshot entry를 엄격하게 decode하고
+두 snapshot digest와 diff를 다시 계산한 뒤, 저장된 observed paths와 change summary가
+그 canonical 결과와 일치해야 한다고 요구합니다.
+
+Fulfillment는 receipt 및 staging bytes와 함께 모든 기반 source 사실을 원자적으로
+예약합니다. 동일한 정규화 host invocation, guard event, watcher observation은 해당
+project의 다른 capture intent나 다른 capture class를 충족할 수 없습니다.
+
+성공하면 intent와 함께 만료되는 24 KiB 제한의 staging handle 및 완전한 redacted
+receipt를 정확히 하나 만듭니다. Text와 `--json` 출력은 intent, receipt, staging
+handle, completeness, kind, 안전한 observed outcome만 노출하고 raw source
+payload는 노출하지 않습니다. 이 명령은 협력적인 등록 local-source observation을
+기록합니다. 명령 승인, 권한 부여, OS 격리, host나 local principal attestation,
+actor identity, 테스트 충분성, 정확성, 최종 수락, close readiness를 증명하지
+않습니다. Core 상태를 진행시키지 않으며 producer finalization은
+`volicord.record_run`이 수행합니다.
+
 <a id="connection-intents-and-hosts"></a>
 ## 연결 의도와 호스트
 

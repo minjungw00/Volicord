@@ -22,6 +22,13 @@ use crate::{
     StoreError, StoreResult,
 };
 
+pub use crate::evidence_capture::{
+    derive_evidence_capture_source_claims, EvidenceCaptureIntentInsert,
+    EvidenceCaptureIntentRecord, EvidenceCaptureReceiptInsert, EvidenceCaptureReceiptRecord,
+    EvidenceCaptureSourceClaimIdentity, EvidenceCaptureSourceClaimKind,
+    EvidenceCaptureSourceClaimRecord, EvidenceProducerInsert, EvidenceProducerRecord,
+};
+
 pub use self::commit::commit_input;
 use self::validation::*;
 
@@ -117,10 +124,12 @@ pub enum CoreStorageMutation {
     InsertWriteTicket(WriteTicketInsert),
     ConsumeWriteTicket(WriteTicketConsumption),
     InsertRun(RunInsert),
+    InsertEvidenceCaptureIntent(EvidenceCaptureIntentInsert),
     PromoteStagedArtifact(ArtifactPromotion),
     LinkArtifact(ArtifactLinkInsert),
     UpsertEvidenceSummary(EvidenceSummaryUpsert),
     InsertEvidenceObservation(EvidenceObservationInsert),
+    InsertEvidenceProducer(EvidenceProducerInsert),
     InsertUserEvidenceObservation(UserEvidenceObservationInsert),
     InsertUserJudgment(UserJudgmentInsert),
     ResolveUserJudgment(UserJudgmentResolutionUpdate),
@@ -608,11 +617,15 @@ pub struct StorageEffectCounts {
     pub user_judgments: u64,
     pub write_tickets: u64,
     pub runs: u64,
+    pub evidence_capture_intents: u64,
+    pub evidence_capture_receipts: u64,
+    pub evidence_capture_source_claims: u64,
     pub artifact_staging: u64,
     pub artifacts: u64,
     pub artifact_links: u64,
     pub evidence_summaries: u64,
     pub evidence_observations: u64,
+    pub evidence_producers: u64,
     pub blockers: u64,
     pub project_continuity_records: u64,
 }
@@ -1376,6 +1389,21 @@ impl CoreProjectStore {
             user_judgments: table_count(&self.conn, "user_judgments", &self.project.project_id)?,
             write_tickets: table_count(&self.conn, "write_tickets", &self.project.project_id)?,
             runs: table_count(&self.conn, "runs", &self.project.project_id)?,
+            evidence_capture_intents: table_count(
+                &self.conn,
+                "evidence_capture_intents",
+                &self.project.project_id,
+            )?,
+            evidence_capture_receipts: table_count(
+                &self.conn,
+                "evidence_capture_receipts",
+                &self.project.project_id,
+            )?,
+            evidence_capture_source_claims: table_count(
+                &self.conn,
+                "evidence_capture_source_claims",
+                &self.project.project_id,
+            )?,
             artifact_staging: table_count(
                 &self.conn,
                 "artifact_staging",
@@ -1391,6 +1419,11 @@ impl CoreProjectStore {
             evidence_observations: table_count(
                 &self.conn,
                 "evidence_observations",
+                &self.project.project_id,
+            )?,
+            evidence_producers: table_count(
+                &self.conn,
+                "evidence_producers",
                 &self.project.project_id,
             )?,
             blockers: table_count(&self.conn, "blockers", &self.project.project_id)?,

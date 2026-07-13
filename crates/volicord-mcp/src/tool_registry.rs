@@ -82,6 +82,15 @@ const GET_OPERATION_RESULT_FIRST_PAGE_ARGUMENTS_JSON: &str = r#"{"operation_resu
 pub(crate) const PREPARE_WRITE_SIMPLE_EXAMPLE_ID: &str = "simple_prepare_write";
 pub(crate) const PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON: &str = r#"{"detail":"full","intended_operation":"Update the profile preference save flow.","intended_paths":["src/preferences/profile-save.ts"],"product_file_write_intended":true,"baseline_ref":"baseline_pref_001"}"#;
 
+pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID: &str =
+    "verified_command_capture";
+pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_command_execution","command_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","command_label":"Focused validation"}}"#;
+pub(crate) const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID: &str = "verified_tool_capture";
+const PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"verified_tool_invocation","tool_name":"example.validate","tool_input_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}"#;
+pub(crate) const PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID: &str =
+    "registered_connection_capture";
+const PREPARE_EVIDENCE_CAPTURE_CONNECTION_ARGUMENTS_JSON: &str = r#"{"task_id":"task_capture_001","change_unit_id":"cu_capture_001","baseline_ref":"baseline_capture_001","target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_capture_001"},"capture":{"capture_kind":"registered_connection_observation","source_kind":"guard_event","observation_input_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}"#;
+
 const STAGE_ARTIFACT_SAFE_TEXT_ARGUMENTS_JSON: &str = r#"{"detail":"full","task_id":"task_trace_001","display_name":"diagnostic_trace.log","content_type":"text/plain","redaction_state":"none","safe_bytes_or_notice":"Local trace sample captured for debugging."}"#;
 
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
@@ -178,6 +187,24 @@ const PREPARE_WRITE_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     arguments_json: PREPARE_WRITE_SIMPLE_ARGUMENTS_JSON,
 }];
 
+const PREPARE_EVIDENCE_CAPTURE_EXAMPLES: [McpToolExample; 3] = [
+    McpToolExample {
+        id: PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
+        description: "Create an intent for a registered command evidence source.",
+        arguments_json: PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
+        description: "Create an intent for an exact registered tool invocation.",
+        arguments_json: PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
+        description: "Create an intent for a registered connection observation.",
+        arguments_json: PREPARE_EVIDENCE_CAPTURE_CONNECTION_ARGUMENTS_JSON,
+    },
+];
+
 const STAGE_ARTIFACT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: "stage_safe_text",
     description: "Stage a text attachment input.",
@@ -239,6 +266,7 @@ pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExamp
         UPDATE_SCOPE_TOOL_NAME => &UPDATE_SCOPE_EXAMPLES,
         STATUS_TOOL_NAME => &STATUS_EXAMPLES,
         GET_OPERATION_RESULT_TOOL_NAME => &GET_OPERATION_RESULT_EXAMPLES,
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => &PREPARE_EVIDENCE_CAPTURE_EXAMPLES,
         PREPARE_WRITE_TOOL_NAME => &PREPARE_WRITE_EXAMPLES,
         STAGE_ARTIFACT_TOOL_NAME => &STAGE_ARTIFACT_EXAMPLES,
         RECORD_RUN_TOOL_NAME => &RECORD_RUN_EXAMPLES,
@@ -428,7 +456,7 @@ fn tool_annotations(name: &str) -> McpToolAnnotations {
         STATUS_TOOL_NAME | GET_OPERATION_RESULT_TOOL_NAME | CHECK_CLOSE_TOOL_NAME => {
             McpToolAnnotations::read_only()
         }
-        PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => {
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME | PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => {
             McpToolAnnotations::non_destructive_mutation()
         }
         INTAKE_TOOL_NAME
@@ -450,6 +478,9 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         STATUS_TOOL_NAME => "Read the current Core status view without creating Core authority state.",
         GET_OPERATION_RESULT_TOOL_NAME => {
             "Read one bounded page of an immutable historical mutation response; read current status separately."
+        }
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
+            "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence."
         }
         PREPARE_WRITE_TOOL_NAME => {
             "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket."

@@ -692,6 +692,12 @@ impl McpAdapter {
                 session_id,
                 host_elicitation_available,
             ),
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => self.call_prepare_evidence_capture(
+                tool_name,
+                params,
+                session_id,
+                host_elicitation_available,
+            ),
             PREPARE_WRITE_TOOL_NAME => {
                 self.call_prepare_write(tool_name, params, session_id, host_elicitation_available)
             }
@@ -874,6 +880,39 @@ impl McpAdapter {
                 include: StatusDetailLevel::Workflow.include(),
             },
             CoreService::status,
+            session_id,
+            host_elicitation_available,
+        )
+    }
+
+    fn call_prepare_evidence_capture(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+        host_elicitation_available: bool,
+    ) -> Result<PipelineResponse, McpAdapterError> {
+        let prepared: PreparedMcpArguments<McpPrepareEvidenceCaptureArguments> =
+            self.prepare_mcp_arguments(tool_name, params, session_id)?;
+        let task_id = prepared.arguments.task_id.clone();
+        let envelope = self.generated_envelope(
+            tool_name,
+            &prepared.project_id,
+            Some(&task_id),
+            OperationCategory::AgentWorkflow,
+        )?;
+        let args = prepared.arguments;
+        self.call_core_request(
+            tool_name,
+            PrepareEvidenceCaptureRequest {
+                envelope,
+                task_id,
+                change_unit_id: args.change_unit_id,
+                baseline_ref: args.baseline_ref,
+                target: args.target,
+                capture: args.capture.into(),
+            },
+            CoreService::prepare_evidence_capture,
             session_id,
             host_elicitation_available,
         )
@@ -2065,6 +2104,7 @@ impl_has_envelope!(
     UpdateScopeRequest,
     StatusRequest,
     GetOperationResultRequest,
+    PrepareEvidenceCaptureRequest,
     PrepareWriteRequest,
     StageArtifactRequest,
     RecordRunRequest,
@@ -2085,6 +2125,7 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
         }
         INTAKE_TOOL_NAME
         | UPDATE_SCOPE_TOOL_NAME
+        | PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
         | PREPARE_WRITE_TOOL_NAME
         | STAGE_ARTIFACT_TOOL_NAME
         | RECORD_RUN_TOOL_NAME

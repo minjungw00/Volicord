@@ -60,7 +60,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 `Product Repository`는 `repo_root`로 등록되는 사용자 제품 파일 경계입니다. Volicord Runtime Home이 아니며, Core 권한 저장소가 아니고, 런타임 기록, 재실행 행, 판단, 쓰기 티켓, 호스트 훅 기록, Agent Connection 레지스트리 상태를 저장하는 위치도 아닙니다.
 
-기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v3`이며, 저장소 프로필과 호환되지 않는 저장소 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v4`이며, 저장소 프로필과 호환되지 않는 저장소 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 복사되거나 이동된 Runtime Home은 같은 저장된 `runtime_home_id`를 가질 수 있고, 새 Runtime Home은 새 식별자를 가져야 합니다. 이 식별자는 의심스러운 복사본, 중복 등록, 경로 변경을 감지하는 데 도움이 될 수 있지만 보안 보장은 아닙니다.
 
@@ -100,17 +100,21 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `acceptance_criteria` | 수락 기준 | Core가 생성한 기준 identity, 소유 `Task`, 문장, 증거 요구 수준, 교체 순서, 활성/폐기 상태, 타임스탬프. |
 | `state.sqlite` | `evidence_claims` | 보충 증거 주장 | 호출자가 부여한 `Task` 범위 주장 identity와 비어 있지 않은 불변 문장 하나. |
 | `state.sqlite` | `change_units` | 범위 있는 작업 경계 | 범위 요약, 쓰기 근거, Change Unit 생명주기, 소유 `Task` 관계. |
+| `state.sqlite` | `evidence_capture_intents` | 증거 캡처 intent | 현재 Task/Change Unit/scope/baseline/target/workspace, 정확한 capture spec과 digest, 요청 connection과 actor, 예상 outcome, timestamp에 결합된 만료되는 불변 요청. |
 | `state.sqlite` | `user_judgments` | 사용자 소유 판단 상태 | 근거 스냅샷, 요청 맥락, 선택지, 민감 동작 범위, 해결 기계 동작과 결과, 판단 이유 메타데이터, User Channel 행위자 출처, 검증 근거, 보장 수준을 포함하는 대기, 해결됨, 오래됨, 대체됨, 만료됨 사용자 소유 판단. |
 | `state.sqlite` | 로컬 웹 동의 토큰 | User Channel 대체 입력 토큰 | 대기 사용자 판단을 위해 해시만 저장하는 일회성 토큰 메타데이터입니다. 프로젝트, 연결, 판단, `capture_basis`, 상태, 만료, 생성/완료 메타데이터로 범위가 정해집니다. |
 | `state.sqlite` | `project_continuity_records` | 프로젝트 연속성 맥락 | 원천 `Task`가 닫힌 뒤에도 주소 지정할 수 있게 남는 프로젝트 수준 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약. |
 | `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 단일 사용 쓰기 티켓 권한 기록, 기준 버전, 시도 범위, 만료, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장하는 물리 테이블입니다. |
 | `state.sqlite` | `runs` | 실행 또는 관찰 기록 | 커밋된 실행 또는 관찰 기록, 선택적 호환 쓰기 티켓 소비, 행위자 출처, 간결한 증거 갱신. |
 | `state.sqlite`와 `artifacts/tmp/` | `artifact_staging` | 임시 아티팩트 스테이징 | 스테이징된 핸들 메타데이터, 생성자 행위자 출처, 안전한 스테이징 사실, 임시 바이트 또는 알림. |
+| `state.sqlite`와 `artifacts/tmp/` | `evidence_capture_receipts` | transient staging을 가진 영속 evidence-source fact receipt | Capture intent마다 정확한 source/result digest, 관찰 outcome, 등록 source 좌표, 한계, timestamp를 가진 불변의 완전하고 content-bound된 redacted safe receipt와 transient staging handle 하나. Staged bytes를 승격한 뒤에도 receipt 행은 계속 주소 지정할 수 있습니다. |
+| `state.sqlite` | `evidence_capture_source_claims` | 배타적 증거 source claim | Receipt 하나가 소비한 각 host invocation, guard event, session-watch observation을 프로젝트 범위에서 정규화한 identity와 정확한 intent/receipt 쌍, capture kind, claim timestamp. |
 | `state.sqlite`와 아티팩트 저장소 | `artifacts` | 영속 아티팩트 기록 | 영속 아티팩트 메타데이터 또는 본문 위치, 콘텐츠 타입, SHA-256, 크기, 무결성 상태, 가림 처리, 보존, 생산자, 가용성 사실. |
 | `state.sqlite` | `artifact_links` | 아티팩트 소유 관계 | 아티팩트와 기준 범위 Core/API 기록 계열 사이의 소유 관계. |
 | `state.sqlite` | `evidence_summaries` | 증거 요약 | 간결한 증거 범위, 뒷받침 참조, 공백 참조. |
 | `state.sqlite` | `evidence_observations` | 증거 관찰 | 대상 하나에 대한 영속 provenance 레코드입니다. Core 파생 source/assurance, producer 앵커, 분리된 relevance 평가, 정확한 출력, 관찰자, ref, 한계, 타임스탬프를 포함합니다. |
 | `state.sqlite` | `user_evidence_observations` | User Channel 증거 관찰 | 현재 Task/Change Unit/scope/baseline 하나와 정확한 정규 아티팩트 출력에 결합된 로컬 사용자 소유 대상 relevance 레코드입니다. |
+| `state.sqlite` | `evidence_producers` | finalization된 증거 producer | Run 하나와 현재 근거에 결합되고 canonical producer JSON을 가진 불변 일대일 intent/receipt/observation/artifact 권한 레코드. |
 | `state.sqlite` | `blockers` | 차단 사유 상태 | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태. |
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
 | `state.sqlite` | `tool_invocations` | 재실행 및 정확한 동작 결과 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행입니다. 변경 불가능한 `response_json`, 행위자 출처, 작업 범주, 검증된 호출에서 포착한 선택적 정규 Git 작업 공간 맥락을 포함합니다. 조회할 수 있는 `operation_category=agent_workflow` 행은 `OperationResultRef`가 가리키는 저장 원본이기도 합니다. |
@@ -194,15 +198,26 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 - 호환되는 쓰기 티켓 소비
 - 아티팩트 스테이징 소비와 승격 대상
 - 아티팩트 소유 관계
+- evidence-capture intent/receipt의 일회성 fulfillment와 producer의 일대일 intent,
+  receipt, observation, artifact, Run 관계
+- capture class별 정확한 source 형태와 각 원천 invocation, guard event, watcher
+  observation에 대한 배타적 정규화 claim. Staging, receipt, claim은 함께 commit되거나
+  rollback됩니다.
+- `intent.created_at <= observed_at < intent.expires_at`, observation 뒤이면서 expiry
+  전인 receipt 생성, intent expiry와 정확히 같은 staging expiry로 이루어진
+  evidence-capture source 시간 관계
 - Agent Connection 처리 경로를 위한 Connection Projects 멤버십과 활성 상태 일관성
 - 호스트 훅 설치, 에이전트 세션, 호스트 훅 이벤트, 프롬프트 캡처, 예상 쓰기, 미기록 변경, 세션 감시 기준선, 세션 감시 관찰의 프로젝트 및 연결 범위
+- 엄격하게 저장된 entry, scope, path, algorithm, digest로 정규 재구성할 수 있는
+  session-watch baseline 및 observation snapshot. 저장된 `observed_paths_json`과
+  `change_summary_json`은 다시 계산한 diff와 같아야 합니다.
 - SQLite가 직접 외래 키로 표현할 수 없는 JSON 참조 배열
 
 ### 권한 행 보존
 
 일반적인 기준 범위 Core 동작은 생명주기 또는 상태 전환을 통해 권한 행을 보존합니다. `Task`를 완료, 취소, 대체하면 관련 생명주기/상태 의미가 바뀝니다. 그래도 커밋된 권한 행은 감사와 복구를 위해 계속 주소 지정 가능해야 합니다.
 
-이 보존 규칙은 `tasks`, `change_units`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
+이 보존 규칙은 `tasks`, `change_units`, `evidence_capture_intents`, `evidence_capture_receipts`, `evidence_capture_source_claims`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `evidence_producers`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`에 적용됩니다. Receipt의 staging handle과 staged bytes만 transient artifact lifecycle을 따릅니다. 아티팩트별 임시/영속 보존 규칙은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
 ### 호스트 관찰 기록
 
@@ -320,7 +335,10 @@ User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키
 | `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` |
 | `artifacts.integrity_status` | `verified`, `corrupt` |
-| `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `blocker` |
+| `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` |
+| `evidence_capture_intents.capture_kind`, `evidence_capture_receipts.capture_kind`, `evidence_producers.producer_kind` | `verified_command_execution`, `verified_tool_invocation`, `registered_connection_observation` |
+| `evidence_capture_receipts.completeness` | `complete` |
+| `evidence_capture_source_claims.source_claim_kind` | `host_invocation`, `guard_event`, `session_watch_observation` |
 | `evidence_observations.source_kind` | `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` |
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
 | `user_evidence_observations.relevance_status` | `supported`, `contradicted` |
@@ -335,9 +353,10 @@ User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키
 요청 멤버를 신뢰하지 않고 확인된 호출에서 `observed_by_actor_source`를 가져옵니다. 현재
 닫기 평가와 재사용 평가는 대상, `Task`와 Change Unit, 출처 실행 기록, 현재 범위 리비전과
 기준선, 정확한 현재 출력 바이트, 타입이 지정된 producer 앵커, 별도의 relevance 평가를
-다시 검증하고 입증되지 않으면 차단합니다. 기준 구현에는 authority-owned 외부 도구 또는
-등록 연결 producer 경로가 없으므로 해당 직접 주장은 아티팩트 바이트를 사용할 수 있고
-검증된 상태여도 협력적 상태로 남습니다. `user_observation` 행은 정확한 출력과
+다시 검증하고 입증되지 않으면 차단합니다. Capture intent와 완전한 receipt 경로는
+authority-owned 외부 도구 또는 등록 연결 producer를 finalization할 수 있습니다. 그
+정확한 앵커가 없는 직접 주장은 아티팩트 바이트를 사용할 수 있고 검증된 상태여도
+협력적으로 남습니다. `user_observation` 행은 정확한 출력과
 `relevance_status=supported`를 가진 현재 `user_evidence_observations` 레코드를 가리켜야
 합니다. `reused_evidence` 행은 원래 증거 관찰 하나만 가리켜야 하며 Core는 그 identity,
 승계한 보장 수준, 출력, producer, relevance를 재귀적으로 다시 검증합니다. 설명용 도구
@@ -374,11 +393,14 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `write_tickets` | 쓰기 티켓 시도 범위와 비권한 메타데이터. |
 | `runs` | 요약, 관찰된 변경, 증거 갱신, 쓰기 티켓 효과 데이터, 비권한 메타데이터. |
 | `artifact_staging` | 스테이징된 아티팩트 데이터, 안전 메타데이터, 비권한 메타데이터. |
+| `evidence_capture_intents` | 정확한 target/capture JSON, 예상 outcome, 등록 session 및 Git workspace 근거, actor/connection provenance, 만료, 비권한 메타데이터. |
+| `evidence_capture_receipts` | 정확한 예상/관찰 outcome, source ref, 한계, 크기가 제한된 safe receipt JSON과 digest/size, 메타데이터의 등록 source 좌표, 비권한 메타데이터. Safe receipt는 redacted이며 raw command, environment, stdout, stderr, tool input, tool response, secret, 크기 제한 없는 host payload를 포함하지 않습니다. |
 | `artifacts` | 보존, 생산자, 비권한 메타데이터. |
 | `artifact_links` | 비권한 메타데이터. |
 | `evidence_summaries` | 증거 범위, 뒷받침 참조, 공백 참조, 비권한 메타데이터. |
 | `evidence_observations` | 증거 관찰 하나의 도구 메타데이터, Core 기록 입력 ref, 권한 효력이 없는 `SourceRef` JSON, 출력 아티팩트 ref, 한계, 타입이 지정된 Core 파생 producer/relevance 권한 메타데이터입니다. `source_refs_json`은 권한을 만들지 않습니다. |
 | `user_evidence_observations` | 현재 근거 좌표, 대상 identity, relevance, 정확한 아티팩트 ref, 로컬 사용자 actor, 검증 근거, 요약, 타임스탬프입니다. |
+| `evidence_producers` | 엄격한 canonical `EvidenceProducer` JSON과 relational one-to-one 권한 key 및 verification-basis 메타데이터. |
 | `blockers` | 차단 사유 소유 참조, 관련 참조, 세부 정보, 비권한 메타데이터. |
 | `authority_events` | 커밋된 Core 권한 변경의 이벤트 페이로드. |
 | `tool_invocations` | 재실행과 조회할 수 있는 정확한 동작 결과 페이지에 쓰는 변경 불가능한 커밋 응답, 그리고 재실행 호환성에 사용하는 선택적 정규 Git 작업 공간 맥락 JSON. |

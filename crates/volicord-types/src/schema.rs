@@ -1,39 +1,53 @@
 use std::{borrow::Cow, collections::BTreeMap, fmt, ops::Deref};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::ids::{
     AcceptanceCriterionId, AgentConnectionId, AgentSessionId, ArtifactId, ArtifactInputId,
-    BaselineRef, ChangeUnitId, EventId, EvidenceClaimId, EvidenceObservationId, GuardEventId,
-    GuardInstallationId, IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId,
-    RecordId, RequestId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
-    UnrecordedChangeId, UserJudgmentId, UserJudgmentOptionId, WriteTicketId,
+    BaselineRef, ChangeUnitId, EventId, EvidenceCaptureIntentId, EvidenceCaptureReceiptId,
+    EvidenceClaimId, EvidenceObservationId, EvidenceProducerId, GuardEventId, GuardInstallationId,
+    IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId, RequestId,
+    RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId, UserJudgmentId,
+    UserJudgmentOptionId, WriteTicketId,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
     ArtifactIntegrityStatus, AuthorityNextActor, CarryForwardDispositionStatus, CarryForwardKind,
     ChangeUnitEffectKind, CloseReadinessBlockerCategory, CloseReason, CloseState,
-    CoverageHostHookState, CoverageSessionWatcherState, EffectKind, EnabledEnforcementMechanism,
-    ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState, EvidenceCoverageUpdateState,
-    EvidenceDisplayState, EvidenceGateState, EvidenceProducerKind, EvidenceRelevanceStatus,
-    EvidenceRequirement, EvidenceSourceKind, EvidenceStatus, GuaranteeClass, GuaranteeLevel,
-    GuardConfigurationStatus, GuardDecision, GuardEffectiveStatus, GuardInstallationStatus,
-    GuardObservationStatus, HostKind, IntegrationProfile, JudgmentBasisCompatibilityStatus,
-    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
-    NextActionKind, NextActionPresentationRole, NonGuarantee, OperationCategory,
-    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
-    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
-    StateRecordKind, StatusCloseState, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
-    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserJudgmentOptionAction,
-    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
-    WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
+    ConnectionObservationSourceKind, CoverageHostHookState, CoverageSessionWatcherState,
+    EffectKind, EnabledEnforcementMechanism, ErrorCode, EvidenceAssuranceLevel,
+    EvidenceCoverageState, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState,
+    EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind,
+    EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
+    GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
+    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    NextActionPresentationRole, NonGuarantee, OperationCategory, PlannedBlockerSourceKind,
+    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
+    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
+    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, StatusCloseState,
+    TaskLifecyclePhase, TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
+    ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs, WriteDecisionCategory,
+    WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
 pub type JsonObject = Map<String, Value>;
+
+/// Stable snapshot digest algorithm used by session-watch capture outcomes.
+pub const WATCH_SNAPSHOT_ALGORITHM: &str = "volicord_session_watch_snapshot_v1_sha256";
+
+/// Controlled limitation recorded for Volicord-owned command capture.
+pub const EVIDENCE_CAPTURE_COMMAND_LIMITATION: &str = "environment_not_bound";
+
+/// Controlled limitation recorded for registered cooperative guard capture.
+pub const EVIDENCE_CAPTURE_GUARD_LIMITATION: &str = "registered_hook_cooperative_not_attested";
+
+/// Controlled limitation recorded for registered session-watcher capture.
+pub const EVIDENCE_CAPTURE_WATCHER_LIMITATION: &str = "registered_session_watcher_not_attested";
 
 /// Required public field that may contain JSON `null`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1019,6 +1033,365 @@ pub enum EvidenceTarget {
         evidence_claim_id: EvidenceClaimId,
         statement: String,
     },
+}
+
+/// Exact source selection and expected outcome for one evidence-capture intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "capture_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EvidenceCaptureSpec {
+    VerifiedCommandExecution {
+        command_sha256: String,
+        command_label: String,
+        expected_exit_code: RequiredNullable<i32>,
+    },
+    VerifiedToolInvocation {
+        tool_name: String,
+        tool_input_sha256: String,
+        expected_success: RequiredNullable<bool>,
+    },
+    RegisteredConnectionObservation {
+        source_kind: ConnectionObservationSourceKind,
+        observation_input_sha256: String,
+        expected_complete: RequiredNullable<bool>,
+    },
+}
+
+/// Immutable current-basis request for a registered source to capture evidence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceCaptureIntent {
+    pub capture_intent_id: EvidenceCaptureIntentId,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub capture: EvidenceCaptureSpec,
+    pub input_sha256: String,
+    pub expected_outcome: JsonObject,
+    pub requested_by_actor_source: ActorSource,
+    pub workspace_context: JsonObject,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
+}
+
+/// Immutable durable source-fact receipt created by one registered evidence source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceCaptureReceipt {
+    pub capture_receipt_id: EvidenceCaptureReceiptId,
+    pub capture_intent_id: EvidenceCaptureIntentId,
+    pub capture_intent_ref: StateRecordRef,
+    pub producer_kind: EvidenceProducerKind,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub input_sha256: String,
+    pub result_sha256: String,
+    pub expected_outcome: JsonObject,
+    pub observed_outcome: JsonObject,
+    pub source_refs: Vec<StateRecordRef>,
+    pub connection_id: AgentConnectionId,
+    pub session_id: RequiredNullable<AgentSessionId>,
+    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
+    pub guard_event_ids: Vec<GuardEventId>,
+    pub watch_observation_refs: Vec<String>,
+    pub staged_receipt_handle: StagedArtifactHandle,
+    pub complete: bool,
+    pub limitations: Vec<String>,
+    pub redaction_state: RedactionState,
+    pub observed_by_actor_source: ActorSource,
+    pub observed_at: UtcTimestamp,
+    pub recorded_at: UtcTimestamp,
+}
+
+/// Persisted registered-source coordinates inside one safe capture receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedEvidenceCaptureReceiptSource {
+    pub connection_id: AgentConnectionId,
+    pub session_id: RequiredNullable<AgentSessionId>,
+    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
+    pub guard_event_ids: Vec<GuardEventId>,
+    pub watch_observation_refs: Vec<String>,
+    pub host_invocation_id: RequiredNullable<String>,
+}
+
+/// Canonical bounded safe receipt body shared by source adapters and Core.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedEvidenceCaptureReceiptBody {
+    pub schema_version: String,
+    pub capture_kind: EvidenceProducerKind,
+    pub capture_intent_id: EvidenceCaptureIntentId,
+    pub input_sha256: String,
+    pub result_sha256: String,
+    pub expected_outcome: JsonObject,
+    pub observed_outcome: JsonObject,
+    pub source: PersistedEvidenceCaptureReceiptSource,
+    pub complete: bool,
+    pub limitations: Vec<String>,
+    pub redaction_state: RedactionState,
+    pub observed_by_actor_source: ActorSource,
+    pub observed_at: UtcTimestamp,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommandCaptureObservedOutcome {
+    #[allow(dead_code)]
+    exit_code: i32,
+    stdout_sha256: String,
+    #[allow(dead_code)]
+    stdout_size_bytes: u64,
+    stderr_sha256: String,
+    #[allow(dead_code)]
+    stderr_size_bytes: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolCaptureObservedOutcome {
+    #[allow(dead_code)]
+    success: bool,
+    #[allow(dead_code)]
+    exit_code: RequiredNullable<i32>,
+    tool_result_sha256: String,
+    #[allow(dead_code)]
+    tool_result_size_bytes: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GuardConnectionCaptureObservedOutcome {
+    complete: bool,
+    guard_event_kind: String,
+    guard_decision: String,
+    observation_sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WatcherConnectionCaptureObservedOutcome {
+    complete: bool,
+    snapshot_algorithm: String,
+    snapshot_digest: String,
+    observation_sha256: String,
+}
+
+/// Strictly validates the class-specific expected-outcome object derived for an
+/// evidence-capture intent.
+pub fn validate_evidence_capture_expected_outcome(
+    capture: &EvidenceCaptureSpec,
+    outcome: &JsonObject,
+) -> Result<(), String> {
+    if *outcome == evidence_capture_expected_outcome(capture) {
+        Ok(())
+    } else {
+        Err("expected outcome does not match the canonical capture expectation".to_owned())
+    }
+}
+
+/// Derives the one canonical expected-outcome object for a normalized capture
+/// specification.
+pub fn evidence_capture_expected_outcome(capture: &EvidenceCaptureSpec) -> JsonObject {
+    let mut outcome = JsonObject::new();
+    match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution {
+            expected_exit_code, ..
+        } => {
+            outcome.insert(
+                "expected_exit_code".to_owned(),
+                Value::from(expected_exit_code.as_ref().copied().unwrap_or(0)),
+            );
+        }
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            expected_success, ..
+        } => {
+            outcome.insert(
+                "expected_success".to_owned(),
+                Value::from(expected_success.as_ref().copied().unwrap_or(true)),
+            );
+        }
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            expected_complete, ..
+        } => {
+            outcome.insert(
+                "expected_complete".to_owned(),
+                Value::from(expected_complete.as_ref().copied().unwrap_or(true)),
+            );
+        }
+    }
+    outcome
+}
+
+/// Strictly validates the complete safe observed-outcome object for its exact
+/// evidence-capture source class.
+pub fn validate_evidence_capture_observed_outcome(
+    capture: &EvidenceCaptureSpec,
+    outcome: &JsonObject,
+) -> Result<(), String> {
+    match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => {
+            let decoded = decode_capture_outcome::<CommandCaptureObservedOutcome>(outcome)?;
+            validate_capture_sha256("stdout_sha256", &decoded.stdout_sha256)?;
+            validate_capture_sha256("stderr_sha256", &decoded.stderr_sha256)?;
+        }
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
+            let decoded = decode_capture_outcome::<ToolCaptureObservedOutcome>(outcome)?;
+            validate_capture_sha256("tool_result_sha256", &decoded.tool_result_sha256)?;
+        }
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_kind: ConnectionObservationSourceKind::GuardEvent,
+            ..
+        } => {
+            let decoded = decode_capture_outcome::<GuardConnectionCaptureObservedOutcome>(outcome)?;
+            if !decoded.complete {
+                return Err("registered guard observation must be complete".to_owned());
+            }
+            validate_capture_nonempty("guard_event_kind", &decoded.guard_event_kind)?;
+            validate_capture_nonempty("guard_decision", &decoded.guard_decision)?;
+            validate_capture_sha256("observation_sha256", &decoded.observation_sha256)?;
+        }
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_kind: ConnectionObservationSourceKind::SessionWatcher,
+            ..
+        } => {
+            let decoded =
+                decode_capture_outcome::<WatcherConnectionCaptureObservedOutcome>(outcome)?;
+            if !decoded.complete {
+                return Err("registered session-watcher observation must be complete".to_owned());
+            }
+            if decoded.snapshot_algorithm != WATCH_SNAPSHOT_ALGORITHM {
+                return Err(
+                    "snapshot_algorithm must identify the canonical session-watch snapshot"
+                        .to_owned(),
+                );
+            }
+            validate_capture_sha256("snapshot_digest", &decoded.snapshot_digest)?;
+            validate_capture_sha256("observation_sha256", &decoded.observation_sha256)?;
+        }
+    }
+    Ok(())
+}
+
+/// Validates a complete observed outcome and evaluates it against the canonical
+/// stored expectation for its capture class.
+pub fn evidence_capture_observed_outcome_matches_expected(
+    capture: &EvidenceCaptureSpec,
+    expected: &JsonObject,
+    observed: &JsonObject,
+) -> Result<bool, String> {
+    validate_evidence_capture_expected_outcome(capture, expected)?;
+    validate_evidence_capture_observed_outcome(capture, observed)?;
+    Ok(match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => {
+            observed.get("exit_code").and_then(Value::as_i64)
+                == expected.get("expected_exit_code").and_then(Value::as_i64)
+        }
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
+            observed.get("success").and_then(Value::as_bool)
+                == expected.get("expected_success").and_then(Value::as_bool)
+        }
+        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => {
+            observed.get("complete").and_then(Value::as_bool)
+                == expected.get("expected_complete").and_then(Value::as_bool)
+        }
+    })
+}
+
+/// Validates the bounded controlled limitation disclosure for a persisted
+/// evidence-capture receipt class.
+pub fn validate_evidence_capture_limitations(
+    capture: &EvidenceCaptureSpec,
+    limitations: &[String],
+) -> Result<(), String> {
+    let expected = match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => EVIDENCE_CAPTURE_COMMAND_LIMITATION,
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. }
+        | EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_kind: ConnectionObservationSourceKind::GuardEvent,
+            ..
+        } => EVIDENCE_CAPTURE_GUARD_LIMITATION,
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_kind: ConnectionObservationSourceKind::SessionWatcher,
+            ..
+        } => EVIDENCE_CAPTURE_WATCHER_LIMITATION,
+    };
+    if limitations.len() == 1 && limitations[0] == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "capture-class limitations must contain exactly {expected}"
+        ))
+    }
+}
+
+fn decode_capture_outcome<T: DeserializeOwned>(outcome: &JsonObject) -> Result<T, String> {
+    serde_json::from_value(Value::Object(outcome.clone()))
+        .map_err(|error| format!("invalid evidence-capture outcome: {error}"))
+}
+
+fn validate_capture_sha256(field: &str, value: &str) -> Result<(), String> {
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "{field} must be lowercase 64-character SHA-256 hex"
+        ))
+    }
+}
+
+fn validate_capture_nonempty(field: &str, value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        Err(format!("{field} must not be empty"))
+    } else {
+        Ok(())
+    }
+}
+
+/// Immutable Core-finalized producer bound one-to-one to a Run observation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceProducer {
+    pub evidence_producer_id: EvidenceProducerId,
+    pub capture_receipt_id: EvidenceCaptureReceiptId,
+    pub capture_intent_id: EvidenceCaptureIntentId,
+    pub capture_intent_ref: StateRecordRef,
+    pub producer_kind: EvidenceProducerKind,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub input_sha256: String,
+    pub result_sha256: String,
+    pub expected_outcome: JsonObject,
+    pub observed_outcome: JsonObject,
+    pub source_refs: Vec<StateRecordRef>,
+    pub connection_id: AgentConnectionId,
+    pub session_id: RequiredNullable<AgentSessionId>,
+    pub guard_installation_id: RequiredNullable<GuardInstallationId>,
+    pub guard_event_ids: Vec<GuardEventId>,
+    pub watch_observation_refs: Vec<String>,
+    pub receipt_artifact_refs: Vec<ArtifactRef>,
+    pub complete: bool,
+    pub limitations: Vec<String>,
+    pub redaction_state: RedactionState,
+    pub observed_by_actor_source: ActorSource,
+    pub observed_at: UtcTimestamp,
+    pub finalized_at: UtcTimestamp,
+    pub run_ref: StateRecordRef,
+    pub observation_ref: StateRecordRef,
 }
 
 /// Evidence coverage summary.

@@ -122,6 +122,8 @@ pub enum MethodName {
     GetOperationResult,
     #[serde(rename = "volicord.check_close")]
     CheckClose,
+    #[serde(rename = "volicord.prepare_evidence_capture")]
+    PrepareEvidenceCapture,
     #[serde(rename = "volicord.prepare_write")]
     PrepareWrite,
     #[serde(rename = "volicord.stage_artifact")]
@@ -149,6 +151,7 @@ impl MethodName {
             Self::Status => "volicord.status",
             Self::GetOperationResult => "volicord.get_operation_result",
             Self::CheckClose => "volicord.check_close",
+            Self::PrepareEvidenceCapture => "volicord.prepare_evidence_capture",
             Self::PrepareWrite => "volicord.prepare_write",
             Self::StageArtifact => "volicord.stage_artifact",
             Self::RecordRun => "volicord.record_run",
@@ -856,6 +859,8 @@ pub enum StateRecordKind {
     Run,
     EvidenceSummary,
     EvidenceObservation,
+    EvidenceCaptureIntent,
+    EvidenceProducer,
     UserEvidenceObservation,
     Artifact,
     Blocker,
@@ -1309,6 +1314,14 @@ pub enum EvidenceProducerKind {
     VerifiedToolInvocation,
     VerifiedCommandExecution,
     ReusedEvidence,
+}
+
+/// Registered source families that can fulfill a connection-observation capture intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionObservationSourceKind {
+    GuardEvent,
+    SessionWatcher,
 }
 
 /// Core-derived claim-relevance assessment states for evidence observations.

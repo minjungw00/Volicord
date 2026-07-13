@@ -357,6 +357,7 @@ mod evidence_gate;
 mod intake;
 mod operation_result;
 mod preflight;
+mod prepare_evidence_capture;
 mod prepare_write;
 mod reconcile_changes;
 mod record_run;

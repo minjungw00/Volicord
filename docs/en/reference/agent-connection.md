@@ -437,7 +437,7 @@ Connection modes and operation categories:
 
 | Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
 | `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
 
 The adapter-owned `volicord.list_projects` utility is visible in both
@@ -445,6 +445,15 @@ The adapter-owned `volicord.list_projects` utility is visible in both
 close-readiness tool mapped to the first-class Core read method.
 `volicord.close_task` is the workflow-only MCP mutation tool and must not
 appear in `read_only` tool discovery.
+
+`volicord.prepare_evidence_capture` is likewise workflow-only and creates only
+an intent. Receipt fulfillment is deliberately absent from MCP: the registered
+local command runner, guard-event correlator, or session-watcher source must
+fulfill the intent through the administrative source path, after which
+`volicord.record_run` can finalize the producer. Connection registration and
+source correlation remain cooperative local integration; they are not host or
+local-principal attestation, actor-identity proof, or anti-forgery protection
+against the same local principal.
 
 The table above is the mode-based allowlist. Actual MCP `tools/list` output is
 also constrained by the selected projects' readable and writable storage

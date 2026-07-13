@@ -64,6 +64,7 @@ volicord.status
 volicord.get_operation_result
 volicord.check_close
 volicord.prepare_write
+volicord.prepare_evidence_capture
 volicord.stage_artifact
 volicord.record_run
 volicord.request_user_judgment
@@ -186,6 +187,8 @@ user_judgment
 run
 evidence_summary
 evidence_observation
+evidence_capture_intent
+evidence_producer
 user_evidence_observation
 artifact
 blocker
@@ -822,10 +825,12 @@ unverified_claim
 
 출처 종류 의미:
 - `agent_report`는 에이전트 행위자 맥락이 만든 보고를 기록합니다. 그 자체로 외부 도구 결과가 아닙니다.
-- `connection_observation`은 대상별 확인된 연결 관찰 기록으로 뒷받침되는 관찰을 이름 붙입니다. 기준 범위의 직접 `record_run` 경로에는 이런 기록이 없으므로 요청된 값을 `agent_report`로 강등합니다.
-- `external_tool`은 정확한 출력과 결합된 authority-owned verified tool 또는
-  command producer 레코드를 요구합니다. 기준 구현에는 아직 해당 producer
-  전이가 없으므로 직접 요청은 강등됩니다. 검증된 아티팩트 바이트만으로는
+- `connection_observation`은 현재 capture intent와 완전한 receipt에서 finalization된
+  대상별 registered-connection producer로 뒷받침되는 관찰을 이름 붙입니다. 앵커
+  없는 직접 `record_run` input은 요청 값을 `agent_report`로 강등합니다.
+- `external_tool`은 현재 capture intent와 완전한 receipt에서 finalization되고 정확한
+  output artifact에 결합된 authority-owned verified tool 또는 command producer를
+  요구합니다. 앵커 없는 직접 요청은 계속 강등되며 검증된 아티팩트 바이트만으로는
   충분하지 않습니다.
 - `user_observation`은 `volicord.record_user_observation`이 만든 현재의 대상 결합
   `UserEvidenceObservation`으로 뒷받침되는 관찰입니다. 앵커 없는 직접 선택은
@@ -845,9 +850,12 @@ unverified
 
 보장 수준 의미:
 - `cooperative_report`는 제출 행위자 맥락의 협력형 보고입니다.
-- `registered_connection_observed`에는 대상별 확인된 연결 관찰 앵커가 필요합니다. 현재 Agent Connection 호출만으로 파생되지 않습니다.
+- `registered_connection_observed`에는 대상별 확인된 연결 관찰 앵커가 필요합니다.
+  현재 Agent Connection 호출만으로 파생되지 않으며 supported relevance를 뜻하지
+  않습니다.
 - `external_tool_result`에는 authority-owned producer 레코드, 정확한 정규 출력
-  결합, 현재 바이트, 분리된 supported relevance 평가가 필요합니다.
+  결합, 현재 바이트가 필요합니다. 이 값은 producer provenance만 분류하며 supported
+  relevance를 뜻하지 않습니다.
 - `user_observed`에는 현재의 대상별 User Channel 관찰, 정확한 출력,
   `relevance_status=supported`가 필요합니다.
 - `unverified`는 확인된 관찰 보장 수준이 없음을 기록합니다.
@@ -870,16 +878,32 @@ verified_command_execution
 reused_evidence
 ```
 
-기준 구현에서 authority-owned producer 경로가 있는 값은
-`user_channel_observation`과 재귀 검증된 `reused_evidence`뿐입니다. connection,
-tool, command 값은 이후 담당 문서가 정의할 producer 전이를 위한 정규 분류를
-예약합니다. 호출자 입력이나 raw guard payload로 이 값을 만들 수 없습니다.
+`registered_connection_observation`, `verified_tool_invocation`,
+`verified_command_execution`은 현재 `EvidenceCaptureIntent` / 완전한
+`EvidenceCaptureReceipt` / `record_run` finalization 경로로만 사용할 수 있습니다.
+`user_channel_observation`과 재귀 검증된 `reused_evidence`는 기존 authority-owned
+경로를 유지합니다. 호출자 입력, raw guard payload, 아티팩트 바이트만으로는 이
+앵커를 만들 수 없습니다.
+
+`ConnectionObservationSourceKind`는 아래 값을 사용합니다.
+
+```text
+guard_event
+session_watcher
+```
+
+이 값들은 `registered_connection_observation`의 등록 source family를 선택합니다.
+값 자체가 source 완전성, host identity, 증거 relevance를 증명하지는 않습니다.
 
 `EvidenceRelevanceAssessment.status`와
 `UserEvidenceObservation.relevance_status`는 `unassessed`, `supported`,
 `contradicted`를 사용합니다. User Channel 메서드는 `supported` 또는
-`contradicted`만 받습니다. Strong evidence에는 분리된 현재 `supported` 평가가
-필요합니다.
+`contradicted`만 받습니다. `unassessed`는 관찰이 대상을 뒷받침하는지 독립된 권한이
+세우지 않았다는 뜻이며, 완전하고 일치하는 등록 capture는 이 상태를 사용합니다.
+`supported`에는 별도의 담당 문서가 정의한 relevance 권한이 필요하며, 검증된
+재사용은 이미 supported인 권한 체인에서만 이 상태를 유지할 수 있습니다.
+`contradicted`는 완전한 capture 실패나 불일치, 담당 문서가 정의한 부정적 relevance
+평가를 보존합니다. Strong evidence에는 분리된 현재 `supported` 평가가 필요합니다.
 
 <a id="source-ref-values"></a>
 ### 출처 참조 값

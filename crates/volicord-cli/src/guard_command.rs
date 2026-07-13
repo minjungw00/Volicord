@@ -19,7 +19,9 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
-use volicord_types::{GuardDecision, IntegrationProfile};
+use volicord_types::{
+    canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, IntegrationProfile,
+};
 
 use crate::disclosure::cooperative_host_decision_disclosure_json;
 use crate::project_context::{
@@ -438,29 +440,34 @@ fn persist_guard_event(
     subject: Value,
     result: Value,
 ) -> Result<(), GuardCommandError> {
-    if guard_event(runtime_home, &project.project_id, &envelope.event_id)?.is_some() {
-        return Ok(());
+    let input = GuardEventInsert {
+        guard_event_id: envelope.event_id.clone(),
+        session_id: envelope.session_id.clone(),
+        connection_internal_id: envelope.connection_id.clone(),
+        guard_installation_id: envelope.guard_installation_id.clone(),
+        event_kind: phase.event_kind().to_owned(),
+        decision: decision.as_str().to_owned(),
+        subject_json: object_text(subject)?,
+        result_json: object_text(result)?,
+        occurred_at: envelope.occurred_at.clone(),
+        metadata_json: json!({
+            "source": "volicord_guard_cli",
+            "cooperative_detective": true
+        })
+        .to_string(),
+    };
+    if let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)? {
+        if guard_event_record_payload_sha256(&existing)?
+            == guard_event_insert_payload_sha256(&input)?
+        {
+            return Ok(());
+        }
+        return Err(GuardCommandError::Runtime(format!(
+            "guard event {} conflicts with a different payload hash",
+            envelope.event_id
+        )));
     }
-    insert_guard_event(
-        runtime_home,
-        &project.project_id,
-        GuardEventInsert {
-            guard_event_id: envelope.event_id.clone(),
-            session_id: envelope.session_id.clone(),
-            connection_internal_id: envelope.connection_id.clone(),
-            guard_installation_id: envelope.guard_installation_id.clone(),
-            event_kind: phase.event_kind().to_owned(),
-            decision: decision.as_str().to_owned(),
-            subject_json: object_text(subject)?,
-            result_json: object_text(result)?,
-            occurred_at: envelope.occurred_at.clone(),
-            metadata_json: json!({
-                "source": "volicord_guard_cli",
-                "cooperative_detective": true
-            })
-            .to_string(),
-        },
-    )?;
+    insert_guard_event(runtime_home, &project.project_id, input)?;
     Ok(())
 }
 
@@ -477,8 +484,91 @@ fn guard_subject(
         "project_id": project.project_id,
         "repo_root": project.repo_root.display().to_string(),
         "raw_event_sha256": input.raw_sha256,
+        "tool_input_sha256": guard_event_tool_input(&input.raw_value).map(canonical_value_sha256),
+        "tool_result_sha256": guard_event_tool_result(&input.raw_value).map(canonical_value_sha256),
+        "tool_result_size_bytes": guard_event_tool_result(&input.raw_value)
+            .and_then(|value| canonical_json_bytes(value).ok())
+            .and_then(|bytes| u64::try_from(bytes.len()).ok()),
         "raw_event": input.redacted_value
     })
+}
+
+fn guard_event_tool_input(event: &Value) -> Option<&Value> {
+    event
+        .get("tool_input")
+        .or_else(|| event.get("input"))
+        .or_else(|| event.pointer("/tool/input"))
+        .or_else(|| event.pointer("/tool/arguments"))
+        .or_else(|| event.pointer("/tool_use/input"))
+}
+
+fn guard_event_tool_result(event: &Value) -> Option<&Value> {
+    event
+        .get("tool_response")
+        .or_else(|| event.get("tool_result"))
+        .or_else(|| event.get("result"))
+        .or_else(|| event.get("output"))
+}
+
+fn canonical_value_sha256(value: &Value) -> String {
+    canonical_json_bare_sha256(value).expect("serde_json::Value must serialize")
+}
+
+fn guard_event_insert_payload_sha256(
+    input: &GuardEventInsert,
+) -> Result<String, GuardCommandError> {
+    guard_event_payload_sha256(
+        input.session_id.as_deref(),
+        &input.connection_internal_id,
+        input.guard_installation_id.as_deref(),
+        &input.event_kind,
+        &input.decision,
+        &input.subject_json,
+        &input.occurred_at,
+    )
+}
+
+fn guard_event_record_payload_sha256(
+    record: &volicord_store::guards::GuardEventRecord,
+) -> Result<String, GuardCommandError> {
+    guard_event_payload_sha256(
+        record.session_id.as_deref(),
+        &record.connection_internal_id,
+        record.guard_installation_id.as_deref(),
+        &record.event_kind,
+        &record.decision,
+        &record.subject_json,
+        &record.occurred_at,
+    )
+}
+
+fn guard_event_payload_sha256(
+    session_id: Option<&str>,
+    connection_id: &str,
+    guard_installation_id: Option<&str>,
+    event_kind: &str,
+    decision: &str,
+    subject_json: &str,
+    occurred_at: &str,
+) -> Result<String, GuardCommandError> {
+    let subject: Value = serde_json::from_str(subject_json).map_err(json_error)?;
+    let raw_event_sha256 = subject
+        .get("raw_event_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            GuardCommandError::Runtime(
+                "guard event subject has no raw_event_sha256 replay coordinate".to_owned(),
+            )
+        })?;
+    Ok(canonical_value_sha256(&json!({
+        "session_id": session_id,
+        "connection_id": connection_id,
+        "guard_installation_id": guard_installation_id,
+        "event_kind": event_kind,
+        "decision": decision,
+        "raw_event_sha256": raw_event_sha256,
+        "occurred_at": occurred_at,
+    })))
 }
 
 fn object_text(value: Value) -> Result<String, GuardCommandError> {
@@ -565,4 +655,55 @@ fn hex_bytes(bytes: &[u8]) -> String {
 
 fn json_error(error: serde_json::Error) -> GuardCommandError {
     GuardCommandError::Runtime(format!("failed to serialize host-hook output: {error}"))
+}
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+
+    #[test]
+    fn guard_event_replay_hash_is_idempotent_for_same_source_and_conflicts_for_changed_payload() {
+        let first = GuardEventInsert {
+            guard_event_id: "guard_event_replay".to_owned(),
+            session_id: Some("session_replay".to_owned()),
+            connection_internal_id: "connection_replay".to_owned(),
+            guard_installation_id: Some("guard_replay".to_owned()),
+            event_kind: "post_tool".to_owned(),
+            decision: "allow".to_owned(),
+            subject_json: json!({
+                "raw_event_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "raw_event": {"tool_use_id": "same"}
+            })
+            .to_string(),
+            result_json: json!({"state": "first-render"}).to_string(),
+            occurred_at: "2026-07-13T00:00:00Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        };
+        let mut same_source = first.clone();
+        same_source.result_json = json!({"state": "later-render"}).to_string();
+        assert_eq!(
+            guard_event_insert_payload_sha256(&first).expect("first replay hash"),
+            guard_event_insert_payload_sha256(&same_source).expect("same-source replay hash")
+        );
+
+        let mut changed_payload = first.clone();
+        changed_payload.subject_json = json!({
+            "raw_event_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "raw_event": {"tool_use_id": "changed"}
+        })
+        .to_string();
+        assert_ne!(
+            guard_event_insert_payload_sha256(&first).expect("first replay hash"),
+            guard_event_insert_payload_sha256(&changed_payload)
+                .expect("changed-payload replay hash")
+        );
+
+        let mut changed_decision = first.clone();
+        changed_decision.decision = "deny".to_owned();
+        assert_ne!(
+            guard_event_insert_payload_sha256(&first).expect("first replay hash"),
+            guard_event_insert_payload_sha256(&changed_decision)
+                .expect("changed-decision replay hash")
+        );
+    }
 }

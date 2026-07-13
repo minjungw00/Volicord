@@ -3910,6 +3910,7 @@ fn close_evidence_issue_for_item(
     let mut has_stale = false;
     let mut has_current_cooperative_agent_report = false;
     let mut has_current_weak = false;
+    let mut has_current_unsupported_relevance = false;
     let evidence_state_version = basis
         .evidence_summary_ref
         .as_ref()
@@ -3943,6 +3944,16 @@ fn close_evidence_issue_for_item(
                 item,
             ) {
                 has_stale = true;
+                continue;
+            }
+            if matches!(
+                observation.producer_anchor.producer_kind,
+                EvidenceProducerKind::RegisteredConnectionObservation
+                    | EvidenceProducerKind::VerifiedToolInvocation
+                    | EvidenceProducerKind::VerifiedCommandExecution
+            ) && observation.relevance_assessment.status != EvidenceRelevanceStatus::Supported
+            {
+                has_current_unsupported_relevance = true;
                 continue;
             }
             match projected_evidence_observation_provenance_class(
@@ -3979,6 +3990,12 @@ fn close_evidence_issue_for_item(
             has_stale = true;
             continue;
         }
+        if super::record_run::stored_evidence_observation_capture_relevance(&record)?
+            .is_some_and(|status| status != EvidenceRelevanceStatus::Supported)
+        {
+            has_current_unsupported_relevance = true;
+            continue;
+        }
         match super::record_run::stored_evidence_observation_provenance_class(
             store,
             &record,
@@ -4001,7 +4018,9 @@ fn close_evidence_issue_for_item(
         }
     }
 
-    let kind = if has_current_cooperative_agent_report && !has_current_weak {
+    let kind = if has_current_unsupported_relevance {
+        CloseEvidenceIssueKind::Unsupported
+    } else if has_current_cooperative_agent_report && !has_current_weak {
         CloseEvidenceIssueKind::AgentReportOnly
     } else if has_stale && !has_current_cooperative_agent_report && !has_current_weak {
         CloseEvidenceIssueKind::Stale

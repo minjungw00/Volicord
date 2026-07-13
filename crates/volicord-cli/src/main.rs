@@ -10,6 +10,7 @@ use volicord_cli::{
     },
     diagnostics_command::{diagnostics_usage, run_diagnostics_command, DiagnosticsCommandError},
     doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
+    evidence_command::{evidence_usage, run_evidence_command, EvidenceCommandError},
     export_command::{export_usage, run_export_command, ExportCommandError},
     guard_command::{run_guard_command, GuardCommandError},
     project_context::{project_usage, run_project_command, ProjectCommandError},
@@ -132,6 +133,15 @@ where
             let mut connection_process = ProductionConnectionProcess;
             run_connection_command(&args[2..], current_dir, &mut connection_process)
                 .map_err(CliError::from)
+        }
+        "evidence" => {
+            if !matches!(
+                args.get(2).map(String::as_str),
+                None | Some("-h" | "--help" | "help")
+            ) {
+                require_setup_completed(&env_var, current_dir)?;
+            }
+            run_evidence_command(&args[2..], env_var, current_dir).map_err(CliError::from)
         }
         "changes" => {
             if changes_subcommand_requires_setup(&args[2..]) {
@@ -499,12 +509,13 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments and evidence observations.\nThese are local administrative commands, not public Volicord API methods.\n",
+        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands record local user judgments and evidence observations.\nThese are local administrative commands, not public Volicord API methods.\n",
         indent_usage_block(&init_usage()),
         indent_usage_block(&status_usage()),
         indent_usage_block(&doctor_usage()),
         indent_usage_block(&project_usage()),
         indent_usage_block(&connection_usage()),
+        indent_usage_block(&evidence_usage()),
         indent_usage_block(&inbox_usage()),
         indent_usage_block(&changes_usage()),
         indent_usage_block(&export_usage()),
@@ -679,6 +690,15 @@ impl From<GuardCommandError> for CliError {
     }
 }
 
+impl From<EvidenceCommandError> for CliError {
+    fn from(error: EvidenceCommandError) -> Self {
+        match error {
+            EvidenceCommandError::Usage(message) => Self::Usage(message),
+            EvidenceCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
 impl From<ServeCommandError> for CliError {
     fn from(error: ServeCommandError) -> Self {
         match error {
@@ -753,6 +773,9 @@ mod tests {
         assert!(output.contains("volicord project use"));
         assert!(output.contains("volicord connection add"));
         assert!(output.contains("volicord connection list"));
+        assert!(output.contains("volicord evidence capture-command"));
+        assert!(output.contains("volicord evidence capture-tool"));
+        assert!(output.contains("volicord evidence capture-connection"));
         assert!(output.contains("volicord export authority-bundle"));
         assert!(output.contains("volicord mcp --stdio --connection <connection_id>"));
         assert!(

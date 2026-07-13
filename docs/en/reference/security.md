@@ -191,6 +191,10 @@ May claim:
 - Internal connection identity, connection intent, `connection.mode`, Connection Projects, `operation_category`, and `actor_source` can be used according to the runtime, Core, method, and security owners after the current invocation matches the documented connection context.
 - `actor_source` can supply durable provenance only when the Core and method owners accept the value for the current authority-resolution operation.
 - `actor_source=local_user` through the `User Channel` is required for authority-bearing user judgments.
+- A workflow Agent Connection can create a current evidence-capture intent.
+  Only a registered local source can fulfill it, and only `record_run` can
+  finalize the receipt as a producer and observation. There is no MCP receipt-
+  fulfillment tool.
 
 Must not claim:
 - `connection_id` alone is an authority token.
@@ -200,6 +204,10 @@ Must not claim:
 - `operation_category` is OS permission, host trust, or broad authority.
 - `actor_source` copied from text is a caller authority token.
 - Environment-controlled labels, public request fields, or arbitrary caller text are trusted authority, audit facts, or verification-basis inputs.
+- A registered guard event, session-watcher observation, or Volicord command
+  runner is a cryptographic host signature, local-principal attestation,
+  anti-forgery boundary, or actor-identity proof. These sources are cooperative
+  local integration even when their exact digests and completeness are checked.
 
 <a id="historical-operation-result-access"></a>
 ### Historical operation-result access
@@ -296,7 +304,9 @@ Volicord does not guarantee:
 - Tamper-proof storage.
 - That an authority bundle, manifest, or SHA-256 checksum proves the
   `Volicord Runtime Home` was never modified before export.
-- Native artifact capture from Agent Connections as a baseline guarantee.
+- Native evidence-receipt fulfillment through MCP or arbitrary Agent Connection
+  payloads. The supported source path is local registered fulfillment followed
+  by Core finalization.
 - Artifact authority from displayed identifiers alone.
 - Validation or acceptance from copied artifact, run, evidence, or judgment text.
 - Correctness, test sufficiency, review completion, deployment success, final

@@ -1493,6 +1493,17 @@ fn compact_mutation_method_result(
 ) -> Result<Value, McpAdapterError> {
     let effect = compact_mutation_effect(method_result)?;
     match tool_name {
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
+            let result: PrepareEvidenceCaptureResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            serde_json::to_value(McpPrepareEvidenceCaptureCompactResult {
+                effect,
+                capture_intent_ref: result.capture_intent_ref,
+                capture_intent: result.capture_intent,
+                expires_at: result.expires_at,
+            })
+            .map_err(McpAdapterError::Json)
+        }
         PREPARE_WRITE_TOOL_NAME => {
             let result: PrepareWriteResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
@@ -1535,6 +1546,17 @@ fn compact_mutation_method_result(
                     produced_at_state_version: effect.state_version.into(),
                 })
                 .collect();
+            let evidence_producer_refs = result
+                .evidence_producers
+                .iter()
+                .map(|producer| StateRecordRef {
+                    record_kind: StateRecordKind::EvidenceProducer,
+                    record_id: RecordId::new(producer.evidence_producer_id.as_str()),
+                    project_id: producer.project_id.clone(),
+                    task_id: Some(producer.task_id.clone()).into(),
+                    produced_at_state_version: effect.state_version.into(),
+                })
+                .collect();
             let close_basis_anchor =
                 result
                     .current_close_basis
@@ -1549,6 +1571,7 @@ fn compact_mutation_method_result(
                 run_ref: result.run_summary.run_ref,
                 registered_artifact_refs: result.registered_artifacts,
                 evidence_observation_refs,
+                evidence_producer_refs,
                 close_basis_anchor: close_basis_anchor.into(),
             })
             .map_err(McpAdapterError::Json)
@@ -1992,6 +2015,7 @@ fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
     match tool_name {
         INTAKE_TOOL_NAME => Some(MethodName::Intake),
         UPDATE_SCOPE_TOOL_NAME => Some(MethodName::UpdateScope),
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => Some(MethodName::PrepareEvidenceCapture),
         PREPARE_WRITE_TOOL_NAME => Some(MethodName::PrepareWrite),
         STAGE_ARTIFACT_TOOL_NAME => Some(MethodName::StageArtifact),
         RECORD_RUN_TOOL_NAME => Some(MethodName::RecordRun),

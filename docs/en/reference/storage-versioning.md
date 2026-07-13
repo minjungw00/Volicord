@@ -4,7 +4,7 @@ This document owns baseline storage-versioning rules for current Volicord SQLite
 
 ## Storage Profile
 
-The current baseline storage profile is `baseline_sqlite_v3`.
+The current baseline storage profile is `baseline_sqlite_v4`.
 
 Baseline storage uses the canonical SQL sources [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies those sources to empty SQLite databases. Baseline storage does not create `schema_migrations`, `schema_version`, `migration_version`, `storage_version`, or equivalent storage-version fields.
 
@@ -18,7 +18,14 @@ A database is usable only when its table shape, columns, indexes, foreign keys, 
 
 Store code must not guess record meaning, silently rewrite data, or convert unsupported storage. Existing Runtime Homes with incompatible storage fail clearly and require Runtime Home recreation.
 
-Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, user judgments, `local_web_consent_tokens`, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
+Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, evidence-capture intents, receipts, exclusive source claims, immutable evidence producers, user judgments, `local_web_consent_tokens`, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
+
+`baseline_sqlite_v4` adds the canonical evidence-capture intent, durable
+source-fact receipt, exclusive source-claim, and immutable producer record families. The baseline provides no
+in-place conversion from `baseline_sqlite_v3`. A v3 Runtime Home is an
+incompatible shape and must be recreated; Store must not relabel or
+guess-convert it. `project_state.state_version` remains a Core state clock and
+is not the storage-profile version.
 
 ## Project State Version
 

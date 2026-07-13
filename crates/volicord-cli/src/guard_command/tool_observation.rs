@@ -70,6 +70,7 @@ pub(super) fn tool_observation(event: &Value, repo_root: &Path) -> ToolObservati
             event,
             &[
                 &["exit_code"],
+                &["tool_response", "exit_code"],
                 &["tool_result", "exit_code"],
                 &["result", "exit_code"],
                 &["output", "exit_code"],
@@ -79,6 +80,7 @@ pub(super) fn tool_observation(event: &Value, repo_root: &Path) -> ToolObservati
             event,
             &[
                 &["success"],
+                &["tool_response", "success"],
                 &["tool_result", "success"],
                 &["result", "success"],
                 &["output", "success"],
@@ -88,6 +90,7 @@ pub(super) fn tool_observation(event: &Value, repo_root: &Path) -> ToolObservati
             event,
             &[
                 &["status"],
+                &["tool_response", "status"],
                 &["tool_result", "status"],
                 &["result", "status"],
                 &["output", "status"],
@@ -112,4 +115,26 @@ pub(super) fn host_invocation_id(event: &Value) -> Option<String> {
             &["result", "tool_call_id"],
         ],
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maintained_post_tool_fixtures_read_tool_response_success_and_exit_code() {
+        for fixture in [
+            include_str!(
+                "../../tests/fixtures/host_contracts/codex/events/post_tool_bash_write.json"
+            ),
+            include_str!(
+                "../../tests/fixtures/host_contracts/claude_code/events/post_tool_bash_write.json"
+            ),
+        ] {
+            let event: Value = serde_json::from_str(fixture).expect("fixture JSON");
+            let observation = tool_observation(&event, Path::new("/repo"));
+            assert_eq!(observation.success, Some(true));
+            assert_eq!(observation.exit_code, Some(0));
+        }
+    }
 }

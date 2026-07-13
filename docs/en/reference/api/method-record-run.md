@@ -127,6 +127,16 @@ Path and access notes:
 - `EvidenceObservationInput.observed_by_actor_source` is not authoritative input.
   Core derives the committed observer from the validated producer record when
   one exists and otherwise from the verified invocation context.
+- A capture-backed observation places exactly one current
+  `record_kind=evidence_capture_intent` ref in `input_refs`. It leaves
+  `observed_by_actor_source`, `tool_name`, and `tool_invocation_id` null and
+  leaves `tool_metadata`, `source_refs`, `output_artifact_refs`, and
+  `limitations` empty. It still supplies a syntactically valid `observed_at`,
+  but Core ignores that caller value for capture-backed input and replaces it,
+  along with the other listed members, from stored receipt facts. Command and
+  tool capture request `external_tool` / `external_tool_result`; registered
+  connection capture requests `connection_observation` /
+  `registered_connection_observed`.
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
@@ -153,12 +163,13 @@ Evidence update provenance rules:
     its exact output artifacts match. Core rechecks the local-user actor,
     verification basis, relevance, Task, Change Unit, scope, baseline, target,
     and current bytes.
-  - The baseline has no authority-owned verified command/tool-invocation or
-    registered connection-observation producer record. Direct `external_tool`
-    and `connection_observation` requests therefore downgrade even when an
-    attached artifact is available and integrity-verified. Descriptive tool
-    fields, `SourceRef`, staging metadata, and guard-hook payloads cannot supply
-    a producer or relevance anchor.
+  - A current capture intent with a complete matching receipt allows Core to
+    finalize a verified command, verified tool-invocation, or registered
+    connection-observation producer. Without that exact intent ref, direct
+    `external_tool` and `connection_observation` requests still downgrade even
+    when an attached artifact is available and integrity-verified. Descriptive
+    tool fields, `SourceRef`, staging metadata, and raw guard payloads cannot
+    substitute for the stored receipt.
   - Direct caller-supplied `reused_evidence` is not a validated reuse path.
   - An unproved strong claim is committed as `agent_report` /
     `cooperative_report`; `unverified_claim` / `unverified` remains unverified.
@@ -183,6 +194,32 @@ Evidence update provenance rules:
   provenance class, not a caller assurance grant.
 - `unverified_claim`, `unverified`, and cooperative `agent_report` observations may be recorded as evidence observations, but close readiness evaluates them as weak provenance when stronger provenance is required.
 - Evidence observations do not replace user-owned judgment, final acceptance, residual-risk acceptance, or close readiness.
+
+Capture-backed observation rules:
+
+- Core loads the intent and its one immutable receipt directly, revalidates the
+  current project, Task, Change Unit, scope revision, baseline, target,
+  workspace, connection/actor, expiry, exact digests, receipt bytes,
+  completeness, and redaction state, and rejects a missing, stale, expired,
+  already consumed, cross-scope, or corrupt intent or receipt before commit.
+- Core automatically promotes the bounded safe receipt staging handle, links
+  the resulting artifact to the new `EvidenceProducer`, creates that producer
+  and its one-to-one `EvidenceObservation`, and records the stored source facts
+  atomically with the Run. Caller-supplied output refs or metadata cannot
+  replace those facts.
+- An observed outcome equal to the intent expectation yields strong producer
+  provenance and `relevance_assessment.status=unassessed`. Registered execution
+  or observation does not decide that the result supports the selected target,
+  so the capture-backed observation alone cannot make a required criterion
+  sufficient. A separate owner-defined relevance authority is required for
+  `supported`. A complete outcome that mismatches the stored expectation is preserved as
+  `contradicted`; it is not silently changed to a cooperative success claim.
+  In both capture classifications, `assessment_ref` identifies the immutable
+  capture intent as the classification basis and
+  `assessed_by_actor_source=null`; that ref is not an independent relevance
+  authority and cannot turn `unassessed` into `supported`.
+- Inputs without a capture-intent ref retain the existing unanchored downgrade
+  and validated-reuse rules.
 
 ## Access requirements
 
@@ -246,11 +283,17 @@ Compatibility mismatch rejections use `WRITE_TICKET_INVALID` with `ToolError.det
 | `registered_artifacts` | `ArtifactRef[]` for persistent artifact refs produced or linked for this run result. These refs are Evidence attachments only when the committed evidence summary or observations link them to claims; their existence alone is not evidence sufficiency. `ArtifactRef` shape is owned by [API Artifact Schemas](schema-artifacts.md#artifactref); promotion and linking lifecycle details are owned by [Artifact Storage](../storage-artifacts.md). |
 | `evidence_summary` | `EvidenceSummary | null` for evidence coverage updated by this run result, or `null` when the run records no evidence update. When present, `evidence_summary.evidence_state` is `attached` unless this result establishes a current close basis that accepts the summary for close-readiness display. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); evidence authority meaning is owned by [Core Model](../core-model.md#9-evidence-and-run-authority). |
 | `evidence_observations` | `EvidenceObservation[]` for observation records committed by this run result. Empty when the request records no observations. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes); observation source and assurance values are owned by [API Value Sets](schema-value-sets.md#evidence-observation-values). |
+| `evidence_producers` | Exact `EvidenceProducer[]` bodies finalized by this run result, derived from the same in-memory plans committed to storage. Empty for observations without a capture producer. The producer ref remains the stable anchor; the exact result is also recoverable through the result's durable `OperationResultRef`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
 | `current_close_basis` | `CurrentCloseBasis | null` after this run is recorded. Non-null means this Run established the current close basis; `null` means this Run did not establish one. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `blocker_refs` | `StateRecordRef[]` for run- or evidence-related blockers committed or still relevant because of this result. |
 | `state` | Current `StateSummary` after the run is recorded. Nested state fields, including `write_ticket_summary` after any write-ticket consumption, are owned by [API State Schemas](schema-state.md). When a product-write Run consumes a write ticket, that summary can expose `status=consumed`, `consumed_by_run_ref`, and observation refs created by the consuming Run. |
 
-Nested `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `StateSummary`, and `ArtifactRef` field bodies stay with the schema owners linked above. Exact persistence effects, including staged-handle consumption, artifact promotion, evidence updates, evidence observation records, replay rows, and write-ticket consumption, stay with [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
+The MCP compact result preserves `evidence_producer_refs` alongside
+`evidence_observation_refs`; full detail carries the exact producer bodies.
+If response budgeting omits full detail, the durable operation-result path
+recovers the exact `RecordRunResult`.
+
+Nested `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `EvidenceProducer`, `StateSummary`, and `ArtifactRef` field bodies stay with the schema owners linked above. Exact persistence effects, including staged-handle consumption, artifact promotion, evidence updates, evidence observation records, replay rows, and write-ticket consumption, stay with [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
 
 ## Success result
 
@@ -262,6 +305,7 @@ Returns `RecordRunResult` with:
 - any `registered_artifacts`
 - updated `evidence_summary`
 - committed `evidence_observations`
+- exact `evidence_producers` finalized by this Run, or an empty array
 - `current_close_basis` when established, otherwise `null`
 - `blocker_refs`
 - current `state`
@@ -290,6 +334,10 @@ Returns `ToolRejectedResponse` for:
 - incompatible write-ticket path, baseline, product-write flag, sensitivity category, Task, or Change Unit
 - invalid staged handle
 - incompatible staged-handle provenance
+- missing, expired, already consumed, stale, cross-scope, or corrupt
+  evidence-capture intent or receipt
+- capture-intent/receipt source, digest, bytes, completeness, redaction,
+  outcome, target, or connection mismatch
 - supported evidence update without required observation provenance
 - missing artifact
 - scope violation
@@ -317,7 +365,11 @@ For `dry_run=true`, a valid preview:
 
 ## Storage effect
 
-On commit, the method may persist run, current close-basis, evidence summary, evidence observation, blocker, write-ticket consumption, and artifact-linking results. Exact storage effects and artifact promotion details are owned by the storage documents linked below.
+On commit, the method may persist run, current close-basis, evidence summary,
+evidence observation, blocker, write-ticket consumption, and artifact-linking
+results. A capture-backed observation also promotes the receipt artifact and
+creates its immutable producer in the same transaction. Exact storage effects
+and artifact promotion details are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the committed run, promoted artifact ref, updated evidence summary, evidence observation, blocker refs, state version, and current state snapshot.
 
@@ -363,7 +415,7 @@ params:
 
 ## Minimal valid request
 
-This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The target-linked staged artifact establishes byte integrity, but no authority-owned tool producer exists, so the requested external-tool classification is committed as a cooperative agent report. The request leaves `observed_by_actor_source=null`; the response shows the actor source derived from the verified invocation. The precondition is local to this document and does not reuse any other method example.
+This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The target-linked staged artifact establishes byte integrity, but the request supplies no capture-intent producer anchor, so the requested external-tool classification is committed as a cooperative agent report. The request leaves `observed_by_actor_source=null`; the response shows the actor source derived from the verified invocation. The precondition is local to this document and does not reuse any other method example.
 
 ```yaml
 method: volicord.record_run
@@ -635,6 +687,7 @@ evidence_observations:
     limitations: []
     observed_at: "<example-observed-at>"
     recorded_at: "<example-recorded-at>"
+evidence_producers: []
 current_close_basis:
   close_basis_revision: 4
   scope_revision: 2

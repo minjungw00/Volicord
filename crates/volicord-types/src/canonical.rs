@@ -31,6 +31,15 @@ pub fn canonical_json_sha256<T: Serialize>(value: &T) -> Result<RequestHash, ser
     )))
 }
 
+/// Computes a bare lowercase SHA-256 hex digest over canonical JSON bytes.
+///
+/// Evidence-capture content digests use the bare 64-character representation,
+/// while request idempotency hashes use the `sha256:`-prefixed `RequestHash`.
+pub fn canonical_json_bare_sha256<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    let bytes = canonical_json_bytes(value)?;
+    Ok(lowercase_hex(&Sha256::digest(bytes)))
+}
+
 /// Computes the deterministic request hash used by later idempotency checks.
 pub fn canonical_request_hash<T: Serialize>(request: &T) -> Result<RequestHash, serde_json::Error> {
     canonical_json_sha256(request)

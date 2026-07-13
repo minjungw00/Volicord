@@ -301,6 +301,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 | `volicord.status` | 선택적 세션 감시 초기화를 포함하는 읽기형 응답 | [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | 저장 효과 없이 변경 불가능한 과거 재실행 바이트 조회 | [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | 쓰기 판단 효과 기록 | [`volicord.prepare_write`](#volicordprepare_write) |
+| `volicord.prepare_evidence_capture` | 만료되는 불변 capture intent 하나 생성 | [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
 | `volicord.stage_artifact` | 임시 스테이징만 생성 | [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | 대기 중인 판단 요청 생성 | [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
@@ -469,6 +470,45 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - [저장소 기록](storage-records.md)
 - [저장소 버전 관리](storage-versioning.md)
 
+<a id="volicordprepare_evidence_capture"></a>
+### `volicord.prepare_evidence_capture`
+
+재실행이 아닌 원래 커밋된 `dry_run=false` 호출은 다음을 수행합니다.
+
+- `evidence_capture_intents` 행 하나를 삽입합니다.
+- authority event 하나를 추가하고 replay 행 하나를 만듭니다.
+- `project_state.state_version`을 정확히 한 번 증가시킵니다.
+
+정확한 멱등 replay는 이 효과를 반복하지 않습니다. 유효한 dry run과 거절된 요청은
+intent, receipt, source claim, staging 행이나 바이트, producer, event, replay 행,
+state-version 변경을 만들지 않습니다.
+
+등록 source fulfillment는 Core state 커밋 밖의 별도 Store 트랜잭션입니다. Intent와 등록
+source를 다시 검증한 뒤 `evidence_capture_receipts` 행 하나, redacted
+`artifact_staging` 행 하나, 크기가 제한된 safe JSON bytes, 필요한 모든
+`evidence_capture_source_claims` 행을 원자적으로 만듭니다. Command, guard
+connection, watcher receipt는 claim 하나를 만들고, tool receipt는 정규화한 host
+invocation과 서로 다른 guard event 두 개에 대해 claim 세 개를 만듭니다. 프로젝트
+범위 claim key는 정확한 원천 사실이 intent나 producer class를 넘어 재사용되는 것을
+거부합니다.
+Event나 replay 행을 만들지 않고 `project_state.state_version`도 바꾸지 않습니다.
+Source observation은 `intent.created_at <= observed_at < intent.expires_at`을 만족해야
+하고, receipt 생성은 `observed_at <= receipt.created_at < intent.expires_at`을
+만족해야 하며, staging handle은
+정확히 `intent.expires_at`에 만료됩니다. 트랜잭션 실패나 claim 중복 시 receipt와
+claim을 rollback하고 새 staging file을 제거합니다. Intent 하나는 최대 한 번
+fulfillment할 수 있습니다.
+
+불변 receipt와 source claim은 영속 source-fact 행입니다. Receipt staging handle과
+staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 사용하는 receipt
+행을 삭제하지 않습니다.
+
+담당 문서:
+
+- [`volicord.prepare_evidence_capture` 메서드](api/method-prepare-evidence-capture.md)
+- [저장소 기록](storage-records.md)
+- [아티팩트 저장소](storage-artifacts.md)
+
 <a id="volicordstage_artifact"></a>
 ### `volicord.stage_artifact`
 
@@ -521,6 +561,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - `artifacts`를 승격하거나 연결합니다.
 - 새 `Task` 범위 보충 대상에 `evidence_claims` 행을 만들고, 기존 같은 `Task` ID의 불변 문장을 보존합니다.
 - `evidence_summaries`를 갱신하거나, Core 기록 입력 참조와 권한 효력이 없는 출처 참조를 분리해 저장하는 `evidence_observations`를 생성하거나, 허용된 `blockers`를 갱신합니다.
+- 유효한 capture-intent 관찰마다 safe receipt staging handle을 소비하고 승격하며,
+  승격한 artifact를 새 불변 `evidence_producers` 행에 연결하고, 해당 producer와
+  일대일 `evidence_observation`을 만듭니다.
 - `close_assessment`에 따라 `tasks.close_basis_revision`과 `tasks.close_basis_json`을 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
@@ -552,6 +595,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - 스테이징 행.
 - 아티팩트.
 - 수락 기준, 보충 증거 주장, 증거 관찰.
+- evidence-capture intent, receipt, producer, receipt staging 행.
 
 제품 파일 쓰기 영속 저장 경계:
 
@@ -566,7 +610,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - 그 `CurrentCloseBasis`에 저장되는 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓 호환성 행에서 Core가 파생하며, 동작, 정규화된 경로, 민감 범주, 기준선, Change Unit, 출처 실행 기록 참조, 출처 쓰기 티켓 참조를 닫기까지 보존합니다.
 - 범주만 담은 호출자 입력은 민감 동작 요구사항을 만들거나, 만족하거나, 지울 수 없습니다.
 - `close_assessment=null`은 커밋된 실행 기록이 현재 닫기 근거를 만들지 않음을 기록합니다. 기존 현재 근거는 오래되거나 없어집니다.
-- 실행 기록, 현재 닫기 근거, 증거 요약, 증거 관찰, 아티팩트, 쓰기 티켓 호환성 소비, 재실행, 이벤트, 개정 효과는 원자적으로 커밋됩니다.
+- 실행 기록, 현재 닫기 근거, 증거 요약, 증거 관찰, capture producer, receipt artifact
+  승격/연결, 쓰기 티켓 호환성 소비, replay, event, revision 효과는 원자적으로
+  커밋됩니다.
 
 담당 문서:
 

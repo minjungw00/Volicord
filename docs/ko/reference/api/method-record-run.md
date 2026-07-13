@@ -125,6 +125,15 @@ ResidualRiskInput:
 - `EvidenceObservationInput.observed_by_actor_source`는 권한 효력이 있는 입력이
   아닙니다. Core는 검증된 producer 레코드가 있으면 그 레코드에서 커밋된
   관찰자를 파생하고, 그렇지 않으면 확인된 호출 맥락에서 파생합니다.
+- capture-backed 관찰은 `input_refs`에 현재
+  `record_kind=evidence_capture_intent` ref를 정확히 하나 둡니다.
+  `observed_by_actor_source`, `tool_name`, `tool_invocation_id`는 null로 두고,
+  `tool_metadata`, `source_refs`, `output_artifact_refs`, `limitations`는 비워 둡니다.
+  문법상 유효한 `observed_at`은 계속 제공하지만 capture-backed input에서는 Core가
+  그 호출자 값을 무시하고, 앞에서 열거한 필드와 함께 저장된 receipt fact로
+  대체합니다. Command와 tool capture는 `external_tool` /
+  `external_tool_result`를 요청하고 registered connection capture는
+  `connection_observation` / `registered_connection_observed`를 요청합니다.
 
 닫기 평가 참조 규칙:
 - 호출자가 제공한 `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 `record_kind=run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
@@ -150,12 +159,12 @@ ResidualRiskInput:
     아티팩트가 일치할 때만 유지됩니다. Core는 로컬 사용자 actor, 검증 근거,
     relevance, Task, Change Unit, scope, baseline, 대상, 현재 바이트를 다시
     확인합니다.
-  - 기준 구현에는 authority-owned verified command/tool invocation producer나
-    등록된 connection observation producer 레코드가 없습니다. 따라서 직접
-    요청한 `external_tool`과 `connection_observation`은 연결된 아티팩트가
-    사용 가능하고 무결성 검증되어도 강등됩니다. 설명용 tool 필드,
-    `SourceRef`, staging 메타데이터, guard hook payload는 producer 또는
-    relevance 앵커가 될 수 없습니다.
+  - 현재 capture intent와 일치하는 완전한 receipt가 있으면 Core가 verified
+    command, verified tool invocation, registered connection observation producer를
+    finalization할 수 있습니다. 그 정확한 intent ref가 없으면 직접
+    `external_tool`과 `connection_observation` 요청은 연결된 아티팩트를 사용할 수
+    있고 무결성이 검증되어도 계속 강등됩니다. 설명용 tool 필드, `SourceRef`,
+    staging 메타데이터, raw guard payload는 저장된 receipt를 대신할 수 없습니다.
   - 호출자가 직접 제출한 `reused_evidence`는 검증된 재사용 경로가 아닙니다.
   - 입증되지 않은 강한 주장은 `agent_report` / `cooperative_report`로 커밋됩니다.
     `unverified_claim` / `unverified`는 확인되지 않은 상태로 유지됩니다.
@@ -179,6 +188,29 @@ ResidualRiskInput:
   Core가 파생한 출처 분류를 담습니다.
 - `unverified_claim`, `unverified`, 협력적 `agent_report` 관찰은 증거 관찰로 기록될 수 있지만, 더 강한 출처가 필요할 때 닫기 준비 상태에서는 약한 출처로 평가됩니다.
 - 증거 관찰은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 대신하지 않습니다.
+
+Capture-backed 관찰 규칙:
+
+- Core는 intent와 그 불변 receipt 하나를 직접 읽고 현재 프로젝트, Task, Change
+  Unit, scope revision, baseline, target, workspace, connection/actor, 만료, 정확한
+  digest, receipt 바이트, 완전성, redaction 상태를 다시 검증합니다. 누락, stale,
+  만료, 이미 소비됨, cross-scope, 손상된 intent 또는 receipt는 커밋 전에
+  거부합니다.
+- Core는 크기가 제한된 안전한 receipt staging handle을 자동으로 승격하고, 생성된
+  artifact를 새 `EvidenceProducer`에 연결하며, producer와 일대일
+  `EvidenceObservation`을 저장된 source fact 및 Run과 함께 원자적으로 만듭니다.
+  호출자가 제공한 output ref나 메타데이터로 이 fact를 대체할 수 없습니다.
+- 관찰 outcome이 intent expectation과 같으면 강한 producer provenance를 만들고
+  `relevance_assessment.status=unassessed`로 기록합니다. 등록된 실행이나 관찰은 그
+  결과가 선택한 대상을 뒷받침한다고 판단하지 않으므로 capture-backed 관찰만으로
+  필요한 기준을 충분하게 만들 수 없습니다. `supported`에는 별도의 담당 문서가
+  정의한 relevance 권한이 필요합니다. 완전하지만 저장된 expectation과 일치하지 않는
+  outcome은 `contradicted`로 보존하며 협력적 성공 주장으로 조용히 바꾸지 않습니다.
+  두 capture 분류 모두에서 `assessment_ref`는 분류 근거인 불변 capture intent를
+  가리키고 `assessed_by_actor_source=null`입니다. 이 ref는 독립 relevance 권한이
+  아니며 `unassessed`를 `supported`로 바꿀 수 없습니다.
+- capture-intent ref가 없는 input은 기존 unanchored downgrade와 검증된 재사용
+  규칙을 그대로 사용합니다.
 
 ## 접근 요구사항
 
@@ -241,11 +273,17 @@ ResidualRiskInput:
 | `registered_artifacts` | 이 실행 결과가 만들거나 연결한 영속 아티팩트 참조의 `ArtifactRef[]`입니다. 이 참조는 커밋된 증거 요약이나 관찰이 주장에 연결할 때만 증거 첨부입니다. 참조가 존재한다는 사실만으로 증거가 충분해지지는 않습니다. `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactref)가 담당하고, 승격과 연결 생명주기 세부사항은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다. |
 | `evidence_summary` | 이 실행 결과가 갱신한 증거 범위의 `EvidenceSummary | null`입니다. 실행이 증거 갱신을 기록하지 않으면 `null`입니다. 값이 있으면 이 결과가 닫기 준비 상태 표시를 위해 해당 요약을 받아들이는 현재 닫기 근거를 만들지 않는 한 `evidence_summary.evidence_state`는 `attached`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당하고, 증거 권한 의미는 [Core 모델](../core-model.md#9-evidence-and-run-authority)이 담당합니다. |
 | `evidence_observations` | 이 실행 결과가 커밋한 관찰 기록의 `EvidenceObservation[]`입니다. 요청이 관찰을 기록하지 않으면 비어 있습니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당하고, 관찰 출처와 보장 수준 값은 [API 값 집합](schema-value-sets.md#evidence-observation-values)이 담당합니다. |
+| `evidence_producers` | 이 실행 결과가 finalization한 정확한 `EvidenceProducer[]` 본문입니다. 저장소에 커밋한 것과 같은 in-memory plan에서 파생하며 capture producer가 없는 관찰에서는 비어 있습니다. Producer ref는 안정적인 anchor로 남고 정확한 결과는 영속 `OperationResultRef`로도 복구할 수 있습니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
 | `current_close_basis` | 이 실행이 기록된 뒤의 `CurrentCloseBasis | null`입니다. `null`이 아니면 이 실행이 현재 닫기 근거를 만들었다는 뜻입니다. `null`이면 이 실행이 현재 닫기 근거를 만들지 않았다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `blocker_refs` | 이 결과 때문에 커밋되었거나 계속 관련되는 실행 또는 증거 관련 차단 사유의 `StateRecordRef[]`입니다. |
 | `state` | 실행이 기록된 뒤의 현재 `StateSummary`입니다. 쓰기 티켓 소비 뒤의 `write_ticket_summary`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. 제품 쓰기 Run이 쓰기 티켓을 소비하면 이 요약은 `status=consumed`, `consumed_by_run_ref`, 소비 Run이 만든 관찰 참조를 드러낼 수 있습니다. |
 
-중첩된 `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `StateSummary`, `ArtifactRef` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다. 스테이징 핸들 소비, 아티팩트 승격, 증거 갱신, 증거 관찰 기록, 재실행 행, 쓰기 티켓 소비를 포함한 정확한 지속 효과는 [저장 효과](../storage-effects.md)와 [아티팩트 저장소](../storage-artifacts.md)에 둡니다.
+MCP compact 결과는 `evidence_observation_refs`와 함께
+`evidence_producer_refs`를 보존하며 full detail은 정확한 producer 본문을 담습니다.
+응답 budget 때문에 full detail이 생략되면 영속 operation-result 경로로 정확한
+`RecordRunResult`를 복구합니다.
+
+중첩된 `StateRecordRef`, `RunSummary`, `ObservedChanges`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `EvidenceProducer`, `StateSummary`, `ArtifactRef` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다. 스테이징 핸들 소비, 아티팩트 승격, 증거 갱신, 증거 관찰 기록, 재실행 행, 쓰기 티켓 소비를 포함한 정확한 지속 효과는 [저장 효과](../storage-effects.md)와 [아티팩트 저장소](../storage-artifacts.md)에 둡니다.
 
 ## 성공 결과
 
@@ -257,6 +295,7 @@ ResidualRiskInput:
 - 모든 `registered_artifacts`
 - 갱신된 `evidence_summary`
 - 커밋된 `evidence_observations`
+- 이 Run이 finalization한 정확한 `evidence_producers` 또는 빈 배열
 - 만들어진 경우 `current_close_basis`, 아니면 `null`
 - `blocker_refs`
 - 현재 `state`
@@ -285,6 +324,9 @@ ResidualRiskInput:
 - 쓰기 티켓 경로, 기준선, 제품 쓰기 플래그, 민감 범주, Task, Change Unit 비호환
 - 유효하지 않은 스테이징 핸들
 - 스테이징 핸들 출처 불일치
+- 누락, 만료, 이미 소비됨, stale, cross-scope, 손상된 evidence-capture intent 또는 receipt
+- capture intent/receipt의 source, digest, 바이트, 완전성, redaction, outcome,
+  target, connection 불일치
 - 필요한 관찰 출처가 없는 `supported` 증거 갱신
 - 누락된 아티팩트
 - 범위 위반
@@ -312,7 +354,10 @@ Task 모드 또는 advisor 읽기 전용 검증 거절도 Run, 닫기 근거 리
 
 ## 저장 효과
 
-커밋 시 실행, 현재 닫기 근거, 증거 요약, 증거 관찰, 차단 사유, 쓰기 티켓 소비, 아티팩트 연결 결과를 지속할 수 있습니다. 정확한 저장 효과와 아티팩트 승격 세부사항은 아래 저장 담당 문서가 담당합니다.
+커밋 시 실행, 현재 닫기 근거, 증거 요약, 증거 관찰, 차단 사유, 쓰기 티켓 소비,
+아티팩트 연결 결과를 지속할 수 있습니다. capture-backed 관찰은 같은 트랜잭션에서
+receipt artifact도 승격하고 불변 producer를 만듭니다. 정확한 저장 효과와 아티팩트
+승격 세부사항은 아래 저장 담당 문서가 담당합니다.
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 커밋된 실행, 승격된 아티팩트 참조, 갱신된 증거 요약, 증거 관찰, 차단 사유 참조, 상태 버전, 현재 상태 스냅샷을 보여 주는 데 필요한 필드로 축약했습니다.
 
@@ -357,7 +402,7 @@ params:
 
 ## 최소 유효 요청
 
-이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 대상과 연결된 스테이징 아티팩트는 바이트 무결성을 설정하지만 authority-owned tool producer가 없으므로 요청한 외부 도구 분류는 협력적 agent report로 커밋됩니다. 요청은 `observed_by_actor_source=null`로 두며 응답은 확인된 호출에서 파생된 행위자 출처를 보여 줍니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
+이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 대상과 연결된 스테이징 아티팩트는 바이트 무결성을 설정하지만 요청에 capture-intent producer 앵커가 없으므로 요청한 외부 도구 분류는 협력적 agent report로 커밋됩니다. 요청은 `observed_by_actor_source=null`로 두며 응답은 확인된 호출에서 파생된 행위자 출처를 보여 줍니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
 
 ```yaml
 method: volicord.record_run
@@ -629,6 +674,7 @@ evidence_observations:
     limitations: []
     observed_at: "<example-observed-at>"
     recorded_at: "<example-recorded-at>"
+evidence_producers: []
 current_close_basis:
   close_basis_revision: 4
   scope_revision: 2

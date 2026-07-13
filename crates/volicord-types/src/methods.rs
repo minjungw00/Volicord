@@ -10,22 +10,23 @@ use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
     ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
     CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EventRef,
-    EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput,
-    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
-    GuardHealthSummary, JsonObject, JudgmentInboxItem, JudgmentRationale, NextActionSummary,
-    ObservedChanges, ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable,
-    RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle,
-    StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse,
-    ToolEnvelope, ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary,
+    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceSummary,
+    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject,
+    JudgmentInboxItem, JudgmentRationale, NextActionSummary, ObservedChanges,
+    ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage,
+    RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle, StateRecordRef,
+    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse, ToolEnvelope,
+    ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserChannelAvailability, UserEvidenceObservation,
     UserJudgment, UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput,
     WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
-    CloseState, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
-    EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
-    JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
+    CloseState, ConnectionObservationSourceKind, EffectKind, ErrorCode, EvidenceAssuranceLevel,
+    EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind,
+    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
     MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState, RequestedMode,
     ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel, UnrecordedChangeResolutionBasis,
     UserJudgmentStatus, UtcTimestamp, WriteTicketEffect,
@@ -57,6 +58,9 @@ pub type CheckCloseResponse = ToolResponse<CloseTaskResult>;
 
 /// Response branch type for `volicord.prepare_write`.
 pub type PrepareWriteResponse = ToolResponse<PrepareWriteResult>;
+
+/// Response branch type for `volicord.prepare_evidence_capture`.
+pub type PrepareEvidenceCaptureResponse = ToolResponse<PrepareEvidenceCaptureResult>;
 
 /// Response branch type for `volicord.stage_artifact`.
 pub type StageArtifactResponse = ToolResponse<StageArtifactResult>;
@@ -207,6 +211,16 @@ pub struct McpPrepareWriteCompactResult {
     pub user_judgment_candidate: Option<UserJudgmentCandidate>,
 }
 
+/// Compact `volicord.prepare_evidence_capture` outcome needed by the source and Run steps.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpPrepareEvidenceCaptureCompactResult {
+    pub effect: McpMutationEffectSummary,
+    pub capture_intent_ref: StateRecordRef,
+    pub capture_intent: EvidenceCaptureIntent,
+    pub expires_at: UtcTimestamp,
+}
+
 /// Compact `volicord.stage_artifact` outcome needed to consume the staged input.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -235,6 +249,7 @@ pub struct McpRecordRunCompactResult {
     pub run_ref: StateRecordRef,
     pub registered_artifact_refs: Vec<ArtifactRef>,
     pub evidence_observation_refs: Vec<StateRecordRef>,
+    pub evidence_producer_refs: Vec<StateRecordRef>,
     pub close_basis_anchor: RequiredNullable<McpRecordRunCloseBasisAnchor>,
 }
 
@@ -697,6 +712,111 @@ pub struct GetOperationResultResult {
     pub current_authority_refresh_required: bool,
 }
 
+/// `volicord.prepare_evidence_capture` request params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrepareEvidenceCaptureRequest {
+    pub envelope: ToolEnvelope,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub capture: EvidenceCaptureSpec,
+}
+
+impl MethodOperationCategory for PrepareEvidenceCaptureRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::PrepareEvidenceCapture
+    }
+
+    fn operation_category(&self) -> OperationCategory {
+        OperationCategory::AgentWorkflow
+    }
+}
+
+/// MCP-visible evidence-capture source selection with omission-equivalent expected outcomes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "capture_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum McpEvidenceCaptureSpec {
+    VerifiedCommandExecution {
+        command_sha256: String,
+        command_label: String,
+        #[serde(default)]
+        expected_exit_code: RequiredNullable<i32>,
+    },
+    VerifiedToolInvocation {
+        tool_name: String,
+        tool_input_sha256: String,
+        #[serde(default)]
+        expected_success: RequiredNullable<bool>,
+    },
+    RegisteredConnectionObservation {
+        source_kind: ConnectionObservationSourceKind,
+        observation_input_sha256: String,
+        #[serde(default)]
+        expected_complete: RequiredNullable<bool>,
+    },
+}
+
+impl From<McpEvidenceCaptureSpec> for EvidenceCaptureSpec {
+    fn from(value: McpEvidenceCaptureSpec) -> Self {
+        match value {
+            McpEvidenceCaptureSpec::VerifiedCommandExecution {
+                command_sha256,
+                command_label,
+                expected_exit_code,
+            } => Self::VerifiedCommandExecution {
+                command_sha256,
+                command_label,
+                expected_exit_code,
+            },
+            McpEvidenceCaptureSpec::VerifiedToolInvocation {
+                tool_name,
+                tool_input_sha256,
+                expected_success,
+            } => Self::VerifiedToolInvocation {
+                tool_name,
+                tool_input_sha256,
+                expected_success,
+            },
+            McpEvidenceCaptureSpec::RegisteredConnectionObservation {
+                source_kind,
+                observation_input_sha256,
+                expected_complete,
+            } => Self::RegisteredConnectionObservation {
+                source_kind,
+                observation_input_sha256,
+                expected_complete,
+            },
+        }
+    }
+}
+
+/// MCP-visible `volicord.prepare_evidence_capture` arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpPrepareEvidenceCaptureArguments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_selector: Option<String>,
+    #[serde(default)]
+    pub detail: MutationDetailLevel,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub capture: McpEvidenceCaptureSpec,
+}
+
+/// `volicord.prepare_evidence_capture` method result branch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrepareEvidenceCaptureResult {
+    pub base: ToolResultBase,
+    pub capture_intent_ref: StateRecordRef,
+    pub capture_intent: EvidenceCaptureIntent,
+    pub expires_at: UtcTimestamp,
+}
+
 /// `volicord.prepare_write` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -957,6 +1077,7 @@ pub struct RecordRunResult {
     pub registered_artifacts: Vec<ArtifactRef>,
     pub evidence_summary: Option<EvidenceSummary>,
     pub evidence_observations: Vec<EvidenceObservation>,
+    pub evidence_producers: Vec<EvidenceProducer>,
     pub current_close_basis: Option<CurrentCloseBasis>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub state: StateSummary,
@@ -1259,6 +1380,9 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.status" => Some(request_schema::<StatusRequest>()),
         "volicord.get_operation_result" => Some(request_schema::<GetOperationResultRequest>()),
         "volicord.check_close" => Some(request_schema::<CheckCloseRequest>()),
+        "volicord.prepare_evidence_capture" => {
+            Some(request_schema::<PrepareEvidenceCaptureRequest>())
+        }
         "volicord.prepare_write" => Some(request_schema::<PrepareWriteRequest>()),
         "volicord.stage_artifact" => Some(request_schema::<StageArtifactRequest>()),
         "volicord.record_run" => Some(request_schema::<RecordRunRequest>()),
@@ -1284,6 +1408,9 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
         "volicord.status" => Some(response_schema::<StatusResponse>()),
         "volicord.get_operation_result" => Some(response_schema::<GetOperationResultResponse>()),
         "volicord.check_close" => Some(response_schema::<CheckCloseResponse>()),
+        "volicord.prepare_evidence_capture" => {
+            Some(response_schema::<PrepareEvidenceCaptureResponse>())
+        }
         "volicord.prepare_write" => Some(response_schema::<PrepareWriteResponse>()),
         "volicord.stage_artifact" => Some(response_schema::<StageArtifactResponse>()),
         "volicord.record_run" => Some(response_schema::<RecordRunResponse>()),
@@ -1305,6 +1432,9 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
         "volicord.update_scope" => Some(request_schema::<McpUpdateScopeArguments>()),
         "volicord.status" => Some(request_schema::<McpStatusArguments>()),
         "volicord.get_operation_result" => Some(request_schema::<McpGetOperationResultArguments>()),
+        "volicord.prepare_evidence_capture" => {
+            Some(request_schema::<McpPrepareEvidenceCaptureArguments>())
+        }
         "volicord.prepare_write" => Some(request_schema::<McpPrepareWriteArguments>()),
         "volicord.stage_artifact" => Some(request_schema::<McpStageArtifactArguments>()),
         "volicord.record_run" => Some(request_schema::<McpRecordRunArguments>()),
@@ -1336,6 +1466,12 @@ pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
         "volicord.status" => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
         "volicord.get_operation_result" => Some(response_schema::<
             McpToolStructuredContent<GetOperationResultResponse>,
+        >()),
+        "volicord.prepare_evidence_capture" => Some(response_schema::<
+            McpMutationStructuredContent<
+                PrepareEvidenceCaptureResponse,
+                McpPrepareEvidenceCaptureCompactResult,
+            >,
         >()),
         "volicord.prepare_write" => Some(response_schema::<
             McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,

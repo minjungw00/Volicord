@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.6.0, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.7.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -58,8 +58,11 @@ applicability:
     description: MCP protocol version 2025-11-25 supported by the local `volicord mcp --stdio`
       process.
   storage_baseline_sqlite_v3:
-    description: '`baseline_sqlite_v3` storage profile with the current registry and project-state
-      schemas.'
+    description: Legacy incompatible `baseline_sqlite_v3` storage profile retained only for
+      explicit no-conversion and Runtime Home recreation guidance.
+  storage_baseline_sqlite_v4:
+    description: '`baseline_sqlite_v4` storage profile with evidence-capture intent, receipt,
+      exclusive source-claim, and producer records.'
   doc_index_schema_v3:
     description: Documentation index metadata schema version 3 used by `docs/doc-index.yaml` and
       `docs-check`.
@@ -787,7 +790,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - implementers
   - reviewers
@@ -860,6 +863,7 @@ documents:
   depends_on:
   - architecture-guide.decision.agent-connection-routing
   - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.plan-and-atomic-commit
   - architecture-guide.decision.runtime-home-and-product-repository
@@ -923,6 +927,39 @@ documents:
   - reference.agent-connection
   - reference.security
   - reference.storage-records
+  - reference.storage-effects
+  - reference.storage-versioning
+- doc_id: architecture-guide.decision.evidence-capture-producer-finalization
+  path_en: docs/en/architecture-guide/decisions/evidence-capture-producer-finalization.md
+  path_ko: docs/ko/architecture-guide/decisions/evidence-capture-producer-finalization.md
+  kind: explanation
+  summary: Architecture decision explaining intent-bound source receipts and atomic evidence-producer finalization.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-13'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - storage_baseline_sqlite_v4
+  primary_audience:
+  - implementers
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.plan-and-atomic-commit
+  - reference.api.method-prepare-evidence-capture
+  - reference.api.method-record-run
+  - reference.core-model
+  - reference.agent-connection
+  - reference.security
+  - reference.storage-records
+  - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
 - doc_id: architecture-guide.decision.plan-and-atomic-commit
@@ -1024,8 +1061,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1122,8 +1159,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1187,8 +1224,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1253,7 +1290,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - implementers
   - agent integrators
@@ -1520,6 +1557,47 @@ documents:
   - reference.storage-records
   - reference.storage-effects
   - reference.storage-versioning
+- doc_id: reference.api.method-prepare-evidence-capture
+  path_en: docs/en/reference/api/method-prepare-evidence-capture.md
+  path_ko: docs/ko/reference/api/method-prepare-evidence-capture.md
+  kind: reference
+  summary: Reference contract for `volicord.prepare_evidence_capture` behavior.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: core_api
+  created_on: '2026-07-13'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
+  applies_to:
+  - volicord_workspace_0_2
+  - storage_baseline_sqlite_v4
+  primary_audience:
+  - API implementers
+  - agent integrators
+  - maintainers
+  journeys:
+  - implement
+  - operate
+  canonical_for:
+  - '`volicord.prepare_evidence_capture` behavior'
+  - '`PrepareEvidenceCaptureResult` branch behavior'
+  - evidence-capture intent defaults and expiry
+  - registered-source fulfillment boundary
+  depends_on:
+  - reference.api.methods
+  - reference.api.schema-core
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
+  - reference.api.error-codes
+  - reference.api.error-precedence
+  - reference.api.method-record-run
+  - reference.core-model
+  - reference.agent-connection
+  - reference.security
+  - reference.storage-records
+  - reference.storage-ddl
+  - reference.storage-effects
+  - reference.storage-versioning
 - doc_id: reference.api.method-prepare-write
   path_en: docs/en/reference/api/method-prepare-write.md
   path_ko: docs/ko/reference/api/method-prepare-write.md
@@ -1578,8 +1656,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1765,8 +1843,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2030,7 +2108,7 @@ documents:
   last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - implementers
   - maintainers
@@ -2054,7 +2132,7 @@ documents:
   last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - storage implementers
   - maintainers
@@ -2068,6 +2146,7 @@ documents:
   - storage-owned record values
   - storage-owned JSON placement
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation record families
+  - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
   - local web consent token record family
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
@@ -2078,11 +2157,11 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - storage implementers
   - API implementers
@@ -2095,6 +2174,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
+  - evidence-capture receipt pairing and project-scoped exclusive source-claim constraints
   - baseline SQLite indexes, foreign keys, and constraints
   - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, write-ticket
     basis versions, staged artifact provenance, and host-observation records
@@ -2111,7 +2191,7 @@ documents:
   last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - storage implementers
   - API implementers
@@ -2132,11 +2212,11 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - storage implementers
   - API implementers
@@ -2162,7 +2242,7 @@ documents:
   last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v3
+  - storage_baseline_sqlite_v4
   primary_audience:
   - storage implementers
   - maintainers

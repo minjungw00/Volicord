@@ -73,7 +73,7 @@
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:a6dbe3de1b9df9a2acac62f59e909e5bd549a77e14192e4c0c8759fc05e85a4a"
+        "sha256": "sha256:80f09c42fa4cf593100b6cbe1c4f67d04e07656588b90fccfe34db3a430549f3"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -177,7 +177,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6c721666e648c45f74ca8ef179d95f2fe866be78bb66d66cf3ef92cb23fa1f2a"
+        "sha256": "sha256:a657c2dd9568aa4395b44d278e1b375213100281805ad349aa66955bcee3ae9f"
       }
     },
     {
@@ -219,7 +219,7 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:70bb270e8893bf5d01a790bbeae00bb6dc94f86220e84cf223db73c7bb1c3d4a"
+        "sha256": "sha256:8e978cfc80cb4996aea1193f81deeef1b0bb8c9e28a4b1caa1f902510631448d"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -323,7 +323,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:56db163e219a572a9dc7aff0666ea043642c1532298178e58205d14843bd66ff"
+        "sha256": "sha256:057d1ee3b2cb8c5923a9749946f81cb3aac24be9d8174e3759c3b68c159ad564"
       }
     },
     {
@@ -457,7 +457,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:fa9940a32e848c96f68b4cc09eccb1e472051b77b7e1942e5769b835166283ad"
+        "sha256": "sha256:6314bd578bd49bebe059be03f2da3bc445ab573a1c6e6220b198278847b1646a"
       }
     },
     {
@@ -481,7 +481,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:d3ce1e34e6795d66d5418a455c4f18bc83d0f9fd9ddcdb57c74153ef7b2a49c1"
+        "sha256": "sha256:faf5d18ae626ff2c49af5ddcd6c6f808ad5f32a34048f1d4e292b74e71cf30cb"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -518,7 +518,104 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ecad1d2f02ec1fda04fe414bd7c2d3216ac9167afb383d0b4b8e528b22c33e36"
+        "sha256": "sha256:87e50aaee441c45283af25e136cbe09be64f40f3837628b3891e9841ecbbb461"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence.",
+      "input_schema": {
+        "definitions": [
+          "ConnectionObservationSourceKind",
+          "EvidenceTarget",
+          "McpEvidenceCaptureSpec",
+          "MutationDetailLevel"
+        ],
+        "root_properties": [
+          "baseline_ref",
+          "capture",
+          "change_unit_id",
+          "detail",
+          "project_selector",
+          "target",
+          "task_id"
+        ],
+        "root_required": [
+          "baseline_ref",
+          "capture",
+          "change_unit_id",
+          "target",
+          "task_id"
+        ],
+        "sha256": "sha256:56aa8796bdf52de1953dc19ea8fb413d2e48d3deadec17f56ab5c07d53b73de4"
+      },
+      "name": "volicord.prepare_evidence_capture",
+      "output_schema": {
+        "definitions": [
+          "ActorSource",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
+          "CloseReadinessBlocker",
+          "CloseReadinessBlockerCategory",
+          "ConnectionObservationSourceKind",
+          "ControlSurfaceSummary",
+          "DryRunSummary",
+          "EffectKind",
+          "ErrorCode",
+          "EventRef",
+          "EvidenceCaptureIntent",
+          "EvidenceCaptureSpec",
+          "EvidenceGateState",
+          "EvidenceGateSummary",
+          "EvidenceTarget",
+          "GuaranteeClass",
+          "GuaranteeDisclosure",
+          "IntegrationProfile",
+          "McpAuthoritativeRefreshFailure_for_McpPrepareEvidenceCaptureCompactResult",
+          "McpMutationEffectSummary",
+          "McpMutationFullResponse_for_ToolResponse_for_PrepareEvidenceCaptureResult",
+          "McpMutationPostEffectFailure",
+          "McpMutationProjectionErrorCode",
+          "McpMutationResponseBudgetExceeded_for_McpPrepareEvidenceCaptureCompactResult",
+          "McpMutationSummaryResponse_for_McpPrepareEvidenceCaptureCompactResult",
+          "McpMutationWorkflowResponse_for_McpPrepareEvidenceCaptureCompactResult",
+          "McpPostEffectFailureCode",
+          "McpPrepareEvidenceCaptureCompactResult",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "MethodName",
+          "MutationDetailLevel",
+          "NextActionKind",
+          "NextActionPresentationRole",
+          "NextActionSummary",
+          "NonGuarantee",
+          "OperationCategory",
+          "OperationResultRef",
+          "PlannedBlocker",
+          "PlannedBlockerSourceKind",
+          "PlannedEffect",
+          "PrepareEvidenceCaptureResult",
+          "ResponseKind",
+          "StateRecordKind",
+          "StateRecordRef",
+          "StatusCloseState",
+          "ToolDryRunResponse",
+          "ToolError",
+          "ToolRejectedResponse",
+          "ToolResponse_for_PrepareEvidenceCaptureResult",
+          "ToolResultBase",
+          "UtcTimestamp"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:03a66c7171322998b1c94d4493f68e08b71ca7d052c477529bb933576452a27f"
       }
     },
     {
@@ -672,7 +769,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:acc368494b73c0ae1852c0e022590cd6bf3d0d26f279d0b5b4912c0616b05fa0"
+        "sha256": "sha256:e9f724babca00505e4dbd0170ecf8f9c66b61e186775025a91aac1741523b4ac"
       }
     },
     {
@@ -769,7 +866,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:771bc54ac6333de1d69debff6d1b68cde49d9f1a1dca8859dfcef7cc89e95959"
+        "sha256": "sha256:ece1fb59744c079964824787c16c8c428b7d09239f34dc1bc04225566467d820"
       }
     },
     {
@@ -838,7 +935,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:9951f9f045946f6f46e02e4b67eccbc343a3b93ebd6f86311bb97499726f4120"
+        "sha256": "sha256:5188ff10cccb009774e71060fec4a020d5f8da04cffbbc4b7442921ad55b87bb"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -874,6 +971,7 @@
           "EvidenceGateState",
           "EvidenceGateSummary",
           "EvidenceObservation",
+          "EvidenceProducer",
           "EvidenceProducerAnchor",
           "EvidenceProducerKind",
           "EvidenceRelevanceAssessment",
@@ -965,7 +1063,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:55424c3ab484b49a7b79002ed502ef88e9b66ac6e91115a3066f71ee247bfc0e"
+        "sha256": "sha256:a8ac18100bd0458583468b596ec33d906cb9714b2269e71d21d06b8bd838ca5a"
       }
     },
     {
@@ -1018,7 +1116,7 @@
           "required_for",
           "task_id"
         ],
-        "sha256": "sha256:925149a24db13164fa4b50f9cdb1418aa9211e26f3177952874d89d08c785ff6"
+        "sha256": "sha256:b1a5c54bed8ff2042f32a789c66081f700e64d5a1603ca14fe89f30df5c9183d"
       },
       "name": "volicord.request_user_judgment",
       "output_schema": {
@@ -1148,7 +1246,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7e95ccf3ba45307c81731c54902492a64c2a8deda62696160cab8a34f539062d"
+        "sha256": "sha256:87d1e75f1ef9c8a42ec45c5366badd151355b589fe3e59cf15786c1f41712341"
       }
     },
     {
@@ -1285,7 +1383,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:94cdc9e731b49c77ef3c6eac94a449fc250d518230a165c450c91668b8381374"
+        "sha256": "sha256:e6702b4318e4c7ce9a7c5dca219aca721244e605f864625fa91a8456140f9a14"
       }
     },
     {
@@ -1414,7 +1512,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4218f8d3f395754f6aac7eb6452a201418401712803a803143b9a4879eed4ffc"
+        "sha256": "sha256:41ab5ce85b0165085a3bde68f88d9e0990b29291c48ba3d12da58a467ac23e52"
       }
     },
     {
@@ -1567,7 +1665,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:19f925a46fe38856ee4db1353aa8f938d7e2cd86f9148ec9d9d13ba28f2a04ae"
+        "sha256": "sha256:1223a902716109f0dee35c08f33608140985bb543a91897716d9e151c4778201"
       }
     },
     {

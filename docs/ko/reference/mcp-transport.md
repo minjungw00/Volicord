@@ -690,7 +690,7 @@ printf '%s\n' \
 
 | 모드와 저장소 읽기·쓰기 가능 여부 | MCP에 보이는 도구 |
 |---|---|
-| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
 | 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | 읽을 수 있는 프로젝트 상태의 `read_only` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | 읽을 수 있는 허용 프로젝트 상태가 없음 | `volicord.list_projects` |
@@ -710,6 +710,9 @@ MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로
 
 `workflow` 모드의 증거 경로는 다음과 같습니다.
 
+- 등록 command, tool, guard, watcher source가 observation을 제공할 때
+  `volicord.prepare_evidence_capture`로 정확한 current-basis intent를 만듭니다.
+  Receipt fulfillment는 MCP 도구가 아닙니다.
 - 바이트나 안전한 알림이 필요할 때만 `volicord.stage_artifact`로 증거 첨부 입력을
   준비합니다.
 - `volicord.record_run`으로 Run 또는 관찰, 대상별 증거 갱신, 관찰 출처, 필요한 첨부
@@ -757,6 +760,9 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
 - `volicord.get_operation_result`: `cursor=null`
 - `volicord.prepare_write`: `task_id=null`, `change_unit_id=null`,
   `sensitive_categories=[]`
+- `volicord.prepare_evidence_capture`: command branch의 `expected_exit_code=0`, tool
+  branch의 `expected_success=true`, registered-connection branch의
+  `expected_complete=true`. 명시적 null도 같은 뜻입니다.
 - `volicord.stage_artifact`: `expected_sha256=null`,
   `expected_size_bytes=null`, `relation_hint=null`
 - `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
@@ -791,7 +797,8 @@ description은 완전한 모드와 실행 종류 호환 행렬을 포함합니�
 `direct`는 `direct`, `work`는 `shaping_update` 또는 `implementation`을 사용합니다.
 자주 쓰는 인자 형태 예시는 `inputSchema.examples` 값으로 광고합니다. 여기에는 intake의
 생성·재개·대체·활성 Task 거절, update-scope의 유지·생성·교체, status의 세 detail 수준,
-첫 operation-result page 조회, prepare-write, stage-artifact, Product Repository 파일 쓰기가
+첫 operation-result page 조회, prepare-write, prepare-evidence-capture 세 변형,
+stage-artifact, Product Repository 파일 쓰기가
 없는 `advisor`의 `shaping_update`,
 증거를 포함한 work `implementation`, request-judgment, reconcile, check-close, close의
 완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에 쓰는 동일한 `inputSchema`와
@@ -814,7 +821,7 @@ full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이
 | 도구 종류 | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
-| `volicord.prepare_write`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
+| `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
 | `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
 파괴적이지 않은 변경 도구 행에서 `destructiveHint=false`는 커밋되는 저장 갱신이 기존
@@ -871,6 +878,7 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 
 간결한 `method_result`는 항상 효과 종류, 결과 state version, 커밋된 event ref를
 보존합니다. 또한 `volicord.prepare_write`에서는 발급된 쓰기 티켓과 결정을,
+`volicord.prepare_evidence_capture`에서는 정확한 capture-intent ref, intent, expiry를,
 `volicord.stage_artifact`에서는 스테이징된 handle과 만료 시각을,
 `volicord.record_run`에서는 정확한 Run ref, 등록된 `ArtifactRef` 값, 새로 기록된 증거
 관찰 ref, null일 수 있는 `close_basis_anchor`를, `volicord.reconcile_changes`에서는
@@ -882,6 +890,12 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 resolution outcome을 포함하고 자유 형식 사용자 note는 제외합니다. `detail=full`은 이러한
 다음 단계 필수 handle, ticket, Run·증거 ref, 찾은 항목별 결과, 호스트 고유 선택이 아닌
 추가 필드가 필요한 호출자를 위한 값입니다.
+
+Capture-intent compact result는 다른 mutation result와 같은 bounded
+summary/workflow 및 post-effect recovery 순서를 사용합니다. Authority receipt는 맞지
+않지만 compact result가 맞으면 recovery는 정확한 intent ref, 등록 source에 필요한 전체
+intent, expiry를 보존합니다. 이 MCP 호출은 receipt나 producer를 만들지 않으므로 해당
+값을 projection하지 않습니다.
 
 알려진 도구에서 어댑터는 프로젝트 선택, 세션 감시 설정, 생성 Core 래퍼 작성, Core 메서드
 진입보다 먼저 객체 `arguments`를 정확히 광고한 `inputSchema`로 검증합니다. 경계가 정해진

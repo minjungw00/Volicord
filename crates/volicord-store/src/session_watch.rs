@@ -9,6 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+pub use volicord_types::WATCH_SNAPSHOT_ALGORITHM;
 
 use crate::{
     agent_connections::is_agent_connection_project_allowed,
@@ -22,9 +23,6 @@ use crate::{
     },
     StoreError, StoreResult,
 };
-
-/// Stable snapshot digest algorithm for session-level Product Repository watching.
-pub const WATCH_SNAPSHOT_ALGORITHM: &str = "volicord_session_watch_snapshot_v1_sha256";
 
 /// Default maximum regular-file bytes read for one snapshot entry.
 pub const DEFAULT_MAX_FILE_HASH_BYTES: u64 = 10 * 1024 * 1024;
@@ -130,6 +128,7 @@ impl Default for WatchSnapshotOptions {
 
 /// One file or skipped path entry in a snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchSnapshotEntry {
     pub path: String,
     pub kind: String,
@@ -324,6 +323,14 @@ pub struct WatchObservationRecord {
     pub metadata_json: String,
 }
 
+/// Canonically reconstructed persisted watcher basis, observation, and diff.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedWatchObservation {
+    pub baseline_snapshot: WatchSnapshot,
+    pub observation_snapshot: WatchSnapshot,
+    pub diff: WatchSnapshotDiff,
+}
+
 /// Creates a deterministic Product Repository snapshot without executing repository code.
 pub fn snapshot_product_repository(
     runtime_home: impl AsRef<Path>,
@@ -506,6 +513,239 @@ pub fn compare_watch_snapshots(
         .collect();
 
     WatchSnapshotDiff { changes }
+}
+
+/// Reconstructs and validates one persisted baseline/observation pair.
+///
+/// This rejects malformed typed fields, source-coordinate drift, snapshot digest
+/// mismatch, and stored diff fields that cannot be reproduced from the two snapshots.
+pub fn validate_persisted_watch_observation(
+    baseline: &WatchBaselineRecord,
+    observation: &WatchObservationRecord,
+) -> StoreResult<ValidatedWatchObservation> {
+    if observation.project_id != baseline.project_id
+        || observation.watch_baseline_id != baseline.watch_baseline_id
+        || observation.session_id != baseline.session_id
+        || observation.connection_internal_id != baseline.connection_internal_id
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "session_watch_observations",
+            observation.watch_observation_id.clone(),
+            "watch_baseline_id",
+        ));
+    }
+
+    let baseline_snapshot = persisted_baseline_snapshot(baseline)?;
+    let observation_entries = decode_snapshot_entries(
+        "session_watch_observations",
+        &observation.watch_observation_id,
+        &observation.snapshot_entries_json,
+    )?;
+    let observation_snapshot = persisted_snapshot(
+        "session_watch_observations",
+        &observation.watch_observation_id,
+        PathBuf::from(&baseline.repo_root),
+        baseline_snapshot.scope_kind,
+        baseline_snapshot.watched_paths.clone(),
+        baseline_snapshot.excluded_paths.clone(),
+        observation.snapshot_algorithm.clone(),
+        observation.snapshot_digest.clone(),
+        observation_entries,
+    )?;
+    let diff = compare_watch_snapshots(&baseline_snapshot, &observation_snapshot);
+    let stored_observed_paths = serde_json::from_str::<Value>(&observation.observed_paths_json)
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "session_watch_observations",
+                observation.watch_observation_id.clone(),
+                "observed_paths_json",
+            )
+        })?;
+    let stored_change_summary = serde_json::from_str::<Value>(&observation.change_summary_json)
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "session_watch_observations",
+                observation.watch_observation_id.clone(),
+                "change_summary_json",
+            )
+        })?;
+    let expected_observed_paths = serde_json::from_str::<Value>(&diff.observed_paths_json())
+        .expect("watch diff observed paths are valid JSON");
+    let expected_change_summary = serde_json::from_str::<Value>(&diff.change_summary_json())
+        .expect("watch diff change summary is valid JSON");
+    if stored_observed_paths != expected_observed_paths {
+        return Err(StoreError::corrupt_owner_state_value(
+            "session_watch_observations",
+            observation.watch_observation_id.clone(),
+            "observed_paths_json",
+        ));
+    }
+    if stored_change_summary != expected_change_summary {
+        return Err(StoreError::corrupt_owner_state_value(
+            "session_watch_observations",
+            observation.watch_observation_id.clone(),
+            "change_summary_json",
+        ));
+    }
+
+    Ok(ValidatedWatchObservation {
+        baseline_snapshot,
+        observation_snapshot,
+        diff,
+    })
+}
+
+fn persisted_baseline_snapshot(baseline: &WatchBaselineRecord) -> StoreResult<WatchSnapshot> {
+    let scope_kind = match baseline.scope_kind.as_str() {
+        "repository" => WatchScopeKind::Repository,
+        "path_set" => WatchScopeKind::PathSet,
+        _ => {
+            return Err(StoreError::corrupt_owner_state_value(
+                "session_watch_baselines",
+                baseline.watch_baseline_id.clone(),
+                "scope_kind",
+            ))
+        }
+    };
+    let watched_paths = decode_string_array(
+        "session_watch_baselines",
+        &baseline.watch_baseline_id,
+        "watched_paths_json",
+        &baseline.watched_paths_json,
+    )?;
+    let excluded_paths = decode_string_array(
+        "session_watch_baselines",
+        &baseline.watch_baseline_id,
+        "exclusions_json",
+        &baseline.exclusions_json,
+    )?;
+    let entries = decode_snapshot_entries(
+        "session_watch_baselines",
+        &baseline.watch_baseline_id,
+        &baseline.snapshot_entries_json,
+    )?;
+    persisted_snapshot(
+        "session_watch_baselines",
+        &baseline.watch_baseline_id,
+        PathBuf::from(&baseline.repo_root),
+        scope_kind,
+        watched_paths,
+        excluded_paths,
+        baseline.snapshot_algorithm.clone(),
+        baseline.snapshot_digest.clone(),
+        entries,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persisted_snapshot(
+    table: &'static str,
+    record_ref: &str,
+    repo_root: PathBuf,
+    scope_kind: WatchScopeKind,
+    watched_paths: Vec<String>,
+    excluded_paths: Vec<String>,
+    algorithm: String,
+    digest: String,
+    entries: Vec<WatchSnapshotEntry>,
+) -> StoreResult<WatchSnapshot> {
+    if algorithm != WATCH_SNAPSHOT_ALGORITHM
+        || (scope_kind == WatchScopeKind::Repository && !watched_paths.is_empty())
+        || (scope_kind == WatchScopeKind::PathSet && watched_paths.is_empty())
+        || !normalized_path_texts_match(&watched_paths)
+        || !normalized_path_texts_match(&excluded_paths)
+        || !snapshot_entries_are_canonical(&entries)
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            table,
+            record_ref.to_owned(),
+            "snapshot",
+        ));
+    }
+    let recomputed = snapshot_digest(scope_kind, &watched_paths, &excluded_paths, &entries);
+    if digest != recomputed {
+        return Err(StoreError::corrupt_owner_state_value(
+            table,
+            record_ref.to_owned(),
+            "snapshot_digest",
+        ));
+    }
+    Ok(WatchSnapshot {
+        repo_root,
+        scope_kind,
+        watched_paths,
+        excluded_paths,
+        algorithm,
+        digest,
+        scan_summary: watch_scan_summary_from_entries(&entries),
+        entries,
+    })
+}
+
+fn decode_string_array(
+    table: &'static str,
+    record_ref: &str,
+    logical_column: &'static str,
+    raw: &str,
+) -> StoreResult<Vec<String>> {
+    serde_json::from_str(raw).map_err(|_| {
+        StoreError::corrupt_owner_state_json(table, record_ref.to_owned(), logical_column)
+    })
+}
+
+fn decode_snapshot_entries(
+    table: &'static str,
+    record_ref: &str,
+    raw: &str,
+) -> StoreResult<Vec<WatchSnapshotEntry>> {
+    serde_json::from_str(raw).map_err(|_| {
+        StoreError::corrupt_owner_state_json(table, record_ref.to_owned(), "snapshot_entries_json")
+    })
+}
+
+fn normalized_path_texts_match(paths: &[String]) -> bool {
+    let path_bufs = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+    normalize_relative_path_set("persisted_snapshot_paths", &path_bufs)
+        .and_then(|normalized| path_texts(&normalized))
+        .is_ok_and(|normalized| normalized == paths)
+}
+
+fn snapshot_entries_are_canonical(entries: &[WatchSnapshotEntry]) -> bool {
+    let mut previous_path: Option<&str> = None;
+    for entry in entries {
+        let normalized_path =
+            normalize_relative_path("persisted_snapshot_entry", Path::new(&entry.path))
+                .and_then(|path| relative_path_text(&path));
+        if previous_path.is_some_and(|previous| previous >= entry.path.as_str())
+            || normalized_path
+                .as_ref()
+                .map_or(true, |normalized| normalized != &entry.path)
+        {
+            return false;
+        }
+        let shape_is_valid =
+            match entry.kind.as_str() {
+                "file" => {
+                    entry.sha256.as_deref().is_some_and(|sha256| {
+                        validate_lowercase_sha256("entry.sha256", sha256).is_ok()
+                    }) && entry.size_bytes.is_some()
+                        && entry.skip_reason.is_none()
+                }
+                "skipped" => {
+                    entry.sha256.is_none()
+                        && entry
+                            .skip_reason
+                            .as_deref()
+                            .is_some_and(|reason| !reason.trim().is_empty())
+                }
+                _ => false,
+            };
+        if !shape_is_valid {
+            return false;
+        }
+        previous_path = Some(&entry.path);
+    }
+    true
 }
 
 /// Inserts one watch baseline for an existing project session.
@@ -1580,7 +1820,23 @@ fn validate_snapshot(field: &'static str, snapshot: &WatchSnapshot) -> StoreResu
         &snapshot.watched_paths_json(),
     )?;
     validate_json_array("snapshot.exclusions_json", &snapshot.exclusions_json())?;
-    validate_json_array("snapshot.snapshot_entries_json", &snapshot.entries_json())
+    validate_json_array("snapshot.snapshot_entries_json", &snapshot.entries_json())?;
+    if !normalized_path_texts_match(&snapshot.watched_paths)
+        || !normalized_path_texts_match(&snapshot.excluded_paths)
+        || !snapshot_entries_are_canonical(&snapshot.entries)
+        || snapshot.digest
+            != snapshot_digest(
+                snapshot.scope_kind,
+                &snapshot.watched_paths,
+                &snapshot.excluded_paths,
+                &snapshot.entries,
+            )
+    {
+        return Err(StoreError::InvalidInput {
+            detail: format!("{field} is not canonical or its digest does not match"),
+        });
+    }
+    Ok(())
 }
 
 fn validate_snapshot_repo_root(
@@ -2296,6 +2552,22 @@ mod tests {
             Some("expected_write_watch_a")
         );
         assert_eq!(observation.observed_paths_json, r#"["src/lib.rs"]"#);
+        let validated = validate_persisted_watch_observation(&baseline, &observation)?;
+        assert_eq!(validated.baseline_snapshot, baseline_snapshot);
+        assert_eq!(validated.diff, diff);
+
+        let mut corrupt_digest = observation.clone();
+        corrupt_digest.snapshot_digest = "0".repeat(64);
+        assert!(validate_persisted_watch_observation(&baseline, &corrupt_digest).is_err());
+        let mut corrupt_diff = observation.clone();
+        corrupt_diff.observed_paths_json = "[]".to_owned();
+        assert!(validate_persisted_watch_observation(&baseline, &corrupt_diff).is_err());
+        let mut unknown_entry_field = observation.clone();
+        let mut entries =
+            serde_json::from_str::<Value>(&unknown_entry_field.snapshot_entries_json)?;
+        entries[0]["unexpected"] = Value::Bool(true);
+        unknown_entry_field.snapshot_entries_json = entries.to_string();
+        assert!(validate_persisted_watch_observation(&baseline, &unknown_entry_field).is_err());
         assert_eq!(
             list_unresolved_watch_observations(
                 fixture.runtime_home.path(),

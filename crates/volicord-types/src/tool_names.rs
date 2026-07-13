@@ -15,6 +15,9 @@ pub const GET_OPERATION_RESULT_TOOL_NAME: &str = MethodName::GetOperationResult.
 /// MCP-visible tool name for `volicord.prepare_write`.
 pub const PREPARE_WRITE_TOOL_NAME: &str = MethodName::PrepareWrite.as_str();
 
+/// MCP-visible tool name for `volicord.prepare_evidence_capture`.
+pub const PREPARE_EVIDENCE_CAPTURE_TOOL_NAME: &str = MethodName::PrepareEvidenceCapture.as_str();
+
 /// MCP-visible tool name for `volicord.stage_artifact`.
 pub const STAGE_ARTIFACT_TOOL_NAME: &str = MethodName::StageArtifact.as_str();
 
@@ -40,11 +43,12 @@ pub const CLOSE_TASK_TOOL_NAME: &str = MethodName::CloseTask.as_str();
 pub const LIST_PROJECTS_TOOL_NAME: &str = "volicord.list_projects";
 
 /// MCP-visible method tools exposed through workflow connections.
-pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 11] = [
+pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 12] = [
     INTAKE_TOOL_NAME,
     UPDATE_SCOPE_TOOL_NAME,
     STATUS_TOOL_NAME,
     GET_OPERATION_RESULT_TOOL_NAME,
+    PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
     PREPARE_WRITE_TOOL_NAME,
     STAGE_ARTIFACT_TOOL_NAME,
     RECORD_RUN_TOOL_NAME,

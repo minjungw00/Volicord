@@ -13,6 +13,7 @@ pub mod bootstrap;
 pub mod core_pipeline;
 pub mod diagnostics;
 pub mod error;
+pub mod evidence_capture;
 pub mod export;
 pub mod guards;
 pub mod inspection;

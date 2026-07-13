@@ -213,8 +213,143 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "session_watch_baselines",
             "session_watch_observations",
             "local_web_consent_tokens",
+            "evidence_capture_intents",
+            "evidence_capture_receipts",
+            "evidence_capture_source_claims",
+            "evidence_producers",
         ],
     );
+    assert_columns_include(
+        &initial_project_schema,
+        "evidence_capture_intents",
+        &[
+            "evidence_capture_intent_id",
+            "task_id",
+            "change_unit_id",
+            "scope_revision",
+            "baseline_ref",
+            "target_json",
+            "capture_kind",
+            "capture_spec_json",
+            "input_sha256",
+            "expected_outcome_json",
+            "requested_by_actor_source",
+            "requesting_connection_internal_id",
+            "session_context_json",
+            "workspace_context_json",
+            "created_at",
+            "expires_at",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "evidence_capture_receipts",
+        &[
+            "evidence_capture_receipt_id",
+            "evidence_capture_intent_id",
+            "staging_handle_id",
+            "capture_kind",
+            "input_sha256",
+            "result_sha256",
+            "expected_outcome_json",
+            "observed_outcome_json",
+            "source_refs_json",
+            "observed_by_actor_source",
+            "completeness",
+            "safe_receipt_json",
+            "safe_receipt_sha256",
+            "safe_receipt_size_bytes",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "evidence_capture_source_claims",
+        &[
+            "source_claim_kind",
+            "source_claim_id",
+            "evidence_capture_intent_id",
+            "evidence_capture_receipt_id",
+            "capture_kind",
+            "claimed_at",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "evidence_producers",
+        &[
+            "evidence_producer_id",
+            "evidence_capture_intent_id",
+            "evidence_capture_receipt_id",
+            "evidence_observation_id",
+            "artifact_id",
+            "run_id",
+            "task_id",
+            "change_unit_id",
+            "scope_revision",
+            "baseline_ref",
+            "producer_kind",
+            "canonical_producer_json",
+        ],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "evidence_capture_receipts",
+        "evidence_capture_intents",
+        &[
+            ("project_id", "project_id"),
+            ("evidence_capture_intent_id", "evidence_capture_intent_id"),
+        ],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "evidence_capture_source_claims",
+        "evidence_capture_receipts",
+        &[
+            ("project_id", "project_id"),
+            ("evidence_capture_intent_id", "evidence_capture_intent_id"),
+            ("evidence_capture_receipt_id", "evidence_capture_receipt_id"),
+        ],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "evidence_producers",
+        "evidence_capture_receipts",
+        &[
+            ("project_id", "project_id"),
+            ("evidence_capture_intent_id", "evidence_capture_intent_id"),
+            ("evidence_capture_receipt_id", "evidence_capture_receipt_id"),
+        ],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "evidence_capture_receipts",
+        "artifact_staging",
+        &[
+            ("project_id", "project_id"),
+            ("staging_handle_id", "handle_id"),
+        ],
+    );
+    assert_foreign_key_columns(
+        &initial_project_schema,
+        "evidence_producers",
+        "evidence_observations",
+        &[
+            ("project_id", "project_id"),
+            ("evidence_observation_id", "evidence_observation_id"),
+        ],
+    );
+    for index in [
+        "idx_evidence_capture_intents_task_expiry",
+        "idx_evidence_capture_intents_connection_expiry",
+        "idx_evidence_capture_receipts_created",
+        "idx_evidence_capture_source_claims_receipt",
+        "idx_evidence_producers_task_run",
+    ] {
+        assert!(
+            initial_project_schema.explicit_indexes.contains_key(index),
+            "expected evidence-capture index {index}"
+        );
+    }
     assert_columns_include(
         &initial_project_schema,
         "authority_events",
@@ -1017,7 +1152,57 @@ fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<()
     assert_artifacts_integrity_status_is_closed(label, conn);
     assert_verified_artifacts_require_integrity_facts(label, conn);
     assert_artifacts_body_path_shape(label, conn);
+    assert_evidence_capture_intent_constraints(label, conn);
     Ok(())
+}
+
+fn assert_evidence_capture_intent_constraints(label: &str, conn: &Connection) {
+    conn.execute(
+        "INSERT INTO change_units (
+            project_id, change_unit_id, task_id, status, is_current,
+            created_at, updated_at
+        ) VALUES ('project_a', 'cu_capture', 'task_a', 'proposed', 0, 't0', 't0')",
+        [],
+    )
+    .expect("capture fixture Change Unit should insert");
+
+    let bad_kind = conn
+        .execute(
+            "INSERT INTO evidence_capture_intents (
+                project_id, evidence_capture_intent_id, task_id, change_unit_id,
+                scope_revision, baseline_ref, target_json, capture_kind,
+                capture_spec_json, input_sha256, expected_outcome_json,
+                requested_by_actor_source, requesting_connection_internal_id,
+                created_at, expires_at
+            ) VALUES (
+                'project_a', 'intent_bad_kind', 'task_a', 'cu_capture', 0,
+                'baseline', '{}', 'caller_report', '{}',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                '{}', 'agent_connection:conn_main', 'conn_main', 't0', 't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, bad_kind);
+
+    let uppercase_sha = conn
+        .execute(
+            "INSERT INTO evidence_capture_intents (
+                project_id, evidence_capture_intent_id, task_id, change_unit_id,
+                scope_revision, baseline_ref, target_json, capture_kind,
+                capture_spec_json, input_sha256, expected_outcome_json,
+                requested_by_actor_source, requesting_connection_internal_id,
+                created_at, expires_at
+            ) VALUES (
+                'project_a', 'intent_bad_sha', 'task_a', 'cu_capture', 0,
+                'baseline', '{}', 'verified_command_execution', '{}',
+                'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+                '{}', 'agent_connection:conn_main', 'conn_main', 't0', 't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, uppercase_sha);
 }
 
 fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {

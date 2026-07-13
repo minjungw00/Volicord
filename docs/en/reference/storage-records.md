@@ -60,7 +60,7 @@ For operational project records, `project_home` is the location owner for projec
 
 The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, write tickets, guard records, or Agent Connection registry state are stored.
 
-Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v3`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
+Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v4`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
 
 Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`, while a newly created Runtime Home gets a new id. The id can help detect suspicious copies, duplicate registrations, or path drift; it is not a security guarantee.
 
@@ -100,17 +100,21 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `acceptance_criteria` | Acceptance criterion | Core-generated criterion identity, owning `Task`, statement, evidence requirement, replacement order, active/retired state, and timestamps. |
 | `state.sqlite` | `evidence_claims` | Supplemental evidence claim | Caller-assigned `Task`-scoped claim identity with one immutable non-empty statement. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
+| `state.sqlite` | `evidence_capture_intents` | Evidence-capture intent | Immutable expiring request bound to current Task/Change Unit/scope/baseline/target/workspace, exact capture spec and digest, requesting connection and actor, expected outcome, and timestamps. |
 | `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, and expired user-owned judgments, including basis snapshot, request context, options, sensitive-action scope, resolution machine action and outcome, rationale metadata, User Channel actor source, verification basis, and assurance level. |
 | `state.sqlite` | Local web consent token | User Channel fallback token | Hash-only one-time token metadata for a pending user judgment, scoped by project, connection, judgment, capture basis, status, expiration, and creation/completion metadata. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
 | `state.sqlite` | `write_tickets` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
 | `state.sqlite` plus `artifacts/tmp/` | `artifact_staging` | Transient artifact staging | Staged handle metadata, creator actor source, safe staging facts, and transient bytes or notices. |
+| `state.sqlite` plus `artifacts/tmp/` | `evidence_capture_receipts` | Durable evidence-source fact receipt with transient staging | One immutable, complete, content-bound, redacted safe receipt and transient staging handle per capture intent, with exact source/result digests, observed outcome, registered source coordinates, limitations, and timestamps. The row remains addressable after staged bytes are promoted. |
+| `state.sqlite` | `evidence_capture_source_claims` | Exclusive evidence-source claim | Project-scoped normalized identity for each host invocation, guard event, or session-watch observation consumed by one receipt, with its exact intent/receipt pair, capture kind, and claim timestamp. |
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
 | `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
 | `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one target, including Core-derived source and assurance, producer anchor, separate relevance assessment, exact outputs, observer, refs, limitations, and timestamps. |
 | `state.sqlite` | `user_evidence_observations` | User Channel evidence observation | Local-user-owned target relevance record bound to one current Task/Change Unit/scope/baseline and exact canonical artifact outputs. |
+| `state.sqlite` | `evidence_producers` | Finalized evidence producer | Immutable one-to-one intent/receipt/observation/artifact authority record bound to one Run and current basis, with canonical producer JSON. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
 | `state.sqlite` | `tool_invocations` | Replay and exact operation-result row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including immutable `response_json`, actor source, operation category, and the optional canonical Git workspace context captured from the verified invocation. Eligible `operation_category=agent_workflow` rows are also the storage source addressed by `OperationResultRef`. |
@@ -197,15 +201,27 @@ Storage must validate stored relationships before commit, including:
 - compatible write-ticket consumption
 - artifact staging consumption and promotion targets
 - artifact owner relations
+- evidence-capture intent/receipt one-time fulfillment and producer one-to-one
+  intent, receipt, observation, artifact, and Run relations
+- exact capture-class source shape and an exclusive normalized claim for every
+  underlying invocation, guard event, or watcher observation; staging, receipt,
+  and claims commit or roll back together
+- evidence-capture source timing with
+  `intent.created_at <= observed_at < intent.expires_at`, receipt creation after
+  observation and before expiry, and staging expiry exactly equal to intent
+  expiry
 - Connection Projects membership and enabled-state consistency for Agent Connection routing
 - host-hook installation, Agent Session, host-hook event, prompt capture, expected-write, unrecorded-change, session watch baseline, and session watch observation project and connection scope
+- session-watch baseline and observation snapshots whose strict stored entries,
+  scope, paths, algorithm, and digest reconstruct canonically; the stored
+  `observed_paths_json` and `change_summary_json` must equal a recomputed diff
 - JSON reference arrays that SQLite cannot express as direct foreign keys
 
 ### Authority Row Preservation
 
 Ordinary baseline Core operations preserve authority rows through lifecycle or status transitions. Completing, cancelling, or superseding a `Task` changes the relevant lifecycle/status meaning while keeping committed authority rows addressable for audit and recovery.
 
-This preservation applies to `tasks`, `change_units`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
+This preservation applies to `tasks`, `change_units`, `evidence_capture_intents`, `evidence_capture_receipts`, `evidence_capture_source_claims`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `evidence_producers`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Only the receipt's staging handle and staged bytes follow the transient artifact lifecycle. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
 
 ### Host-Observation Records
 
@@ -329,7 +345,10 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` |
 | `artifacts.integrity_status` | `verified`, `corrupt` |
-| `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `blocker` |
+| `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` |
+| `evidence_capture_intents.capture_kind`, `evidence_capture_receipts.capture_kind`, `evidence_producers.producer_kind` | `verified_command_execution`, `verified_tool_invocation`, `registered_connection_observation` |
+| `evidence_capture_receipts.completeness` | `complete` |
+| `evidence_capture_source_claims.source_claim_kind` | `host_invocation`, `guard_event`, `session_watch_observation` |
 | `evidence_observations.source_kind` | `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` |
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
 | `user_evidence_observations.relevance_status` | `supported`, `contradicted` |
@@ -345,10 +364,11 @@ after method-owned derivation and records `observed_by_actor_source` from the
 verified invocation rather than trusting the request member. Current close and
 reuse evaluation fail closed and revalidate the target, Task and Change Unit,
 source Run, current scope revision and baseline, exact current output bytes,
-the typed producer anchor, and the separate relevance assessment. The baseline
-has no authority-owned external-tool or registered-connection producer path,
-so those direct claims remain cooperative even when their artifact bytes are
-available and verified. A `user_observation` row must point to a current
+the typed producer anchor, and the separate relevance assessment. The capture
+intent and complete receipt path can finalize an authority-owned external-tool
+or registered-connection producer. Direct claims without that exact anchor
+remain cooperative even when their artifact bytes are available and verified.
+A `user_observation` row must point to a current
 `user_evidence_observations` record with exact outputs and
 `relevance_status=supported`. A `reused_evidence` row must point to exactly one
 original evidence observation; Core recursively revalidates that original
@@ -386,11 +406,14 @@ Rules:
 | `write_tickets` | Write-ticket attempt scope and non-authority metadata. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
 | `artifact_staging` | Staged artifact data, safe metadata, and non-authority metadata. |
+| `evidence_capture_intents` | Exact target/capture JSON, expected outcome, registered session and Git workspace basis, actor/connection provenance, expiry, and non-authority metadata. |
+| `evidence_capture_receipts` | Exact expected/observed outcomes, source refs, limitations, bounded safe receipt JSON and its digest/size, registered source coordinates in metadata, and non-authority metadata. The safe receipt is redacted and contains no raw command, environment, stdout, stderr, tool input, tool response, secret, or unbounded host payload. |
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |
 | `evidence_summaries` | Evidence coverage, supporting refs, gap refs, and non-authority metadata. |
 | `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and typed Core-derived producer/relevance authority metadata. `source_refs_json` does not create authority. |
 | `user_evidence_observations` | Current basis coordinates, target identity, relevance, exact artifact refs, local-user actor, verification basis, summary, and timestamps. |
+| `evidence_producers` | Strict canonical `EvidenceProducer` JSON plus the relational one-to-one authority keys and verification-basis metadata. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
 | `authority_events` | Event payloads for committed Core authority mutations. |
 | `tool_invocations` | Immutable committed replay responses used for replay and eligible exact operation-result paging, plus optional canonical Git workspace-context JSON used for replay compatibility. |

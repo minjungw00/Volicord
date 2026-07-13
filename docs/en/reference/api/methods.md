@@ -22,6 +22,7 @@ The labels below use the vocabulary in [Documentation Policy](../../maintain/doc
 <a id="volicordupdate_scope"></a>
 <a id="volicordstatus"></a>
 <a id="volicordget_operation_result"></a>
+<a id="volicordprepare_evidence_capture"></a>
 <a id="volicordprepare_write"></a>
 <a id="volicordstage_artifact"></a>
 <a id="volicordrecord_run"></a>
@@ -38,6 +39,7 @@ The labels below use the vocabulary in [Documentation Policy](../../maintain/doc
 | `volicord.update_scope` | [Update-scope method](method-update-scope.md) |
 | `volicord.status` | [Status method](method-status.md) |
 | `volicord.get_operation_result` | [Get-operation-result method](method-get-operation-result.md#volicordget_operation_result) |
+| `volicord.prepare_evidence_capture` | [Prepare-evidence-capture method](method-prepare-evidence-capture.md#volicordprepare_evidence_capture) |
 | `volicord.prepare_write` | [Prepare-write method](method-prepare-write.md) |
 | `volicord.stage_artifact` | [Stage-artifact method](method-stage-artifact.md) |
 | `volicord.record_run` | [Record-run method](method-record-run.md) |

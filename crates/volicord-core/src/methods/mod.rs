@@ -23,6 +23,10 @@ use volicord_store::{
         UserJudgmentRecord, UserJudgmentResolutionUpdate, WriteTicketConsumption,
         WriteTicketInsert, WriteTicketRecord,
     },
+    evidence_capture::{
+        EvidenceCaptureIntentInsert, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
+        EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
+    },
     guards::{GuardHealthRecord, UnrecordedChangeRecord},
     local_consent::{
         validate_local_web_consent_token, LocalWebConsentTokenCheck, LocalWebConsentTokenRejection,
@@ -31,18 +35,23 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
+    canonical_json_string, evidence_capture_expected_outcome,
+    evidence_capture_observed_outcome_matches_expected, validate_evidence_capture_expected_outcome,
+    validate_evidence_capture_limitations, validate_evidence_capture_observed_outcome,
     AcceptanceCriterion, AcceptanceCriterionId, AcceptanceCriterionInput, AcceptancePolicy,
-    ActorSource, ArtifactAvailability, ArtifactId, ArtifactInput, ArtifactInputSourceKind,
-    ArtifactIntegrityStatus, ArtifactRef, AuthorityNextActor, AuthorityReceipt, BaselineRef,
-    CarryForwardDisposition, CarryForwardDispositionStatus, CarryForwardKind,
-    ChangeUnitEffectContract, ChangeUnitId, ChangeUnitOperation, CheckCloseRequest, CloseIntent,
-    CloseReadinessBlocker, CloseReadinessBlockerCategory, CloseReason, CloseState,
-    CloseTaskRequest, CloseTaskResult, ControlSurfaceSummary, CoverageHostHookState,
-    CoverageSessionWatcherState, CoverageSummary, CurrentCloseBasis, DryRunSummary, DurableIdKind,
-    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
-    EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState,
-    EvidenceGateSummary, EvidenceObservation, EvidenceObservationId, EvidenceObservationInput,
-    EvidenceProducerAnchor, EvidenceProducerKind, EvidenceRelevanceAssessment,
+    ActorSource, AgentConnectionId, AgentSessionId, ArtifactAvailability, ArtifactId,
+    ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, ArtifactIntegrityStatus, ArtifactRef,
+    AuthorityNextActor, AuthorityReceipt, BaselineRef, CarryForwardDisposition,
+    CarryForwardDispositionStatus, CarryForwardKind, ChangeUnitEffectContract, ChangeUnitId,
+    ChangeUnitOperation, CheckCloseRequest, CloseIntent, CloseReadinessBlocker,
+    CloseReadinessBlockerCategory, CloseReason, CloseState, CloseTaskRequest, CloseTaskResult,
+    ControlSurfaceSummary, CoverageHostHookState, CoverageSessionWatcherState, CoverageSummary,
+    CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode, EvidenceAssuranceLevel,
+    EvidenceCaptureIntent, EvidenceCaptureIntentId, EvidenceCaptureReceiptId, EvidenceCaptureSpec,
+    EvidenceCoverageItem, EvidenceCoverageState, EvidenceCoverageUpdate,
+    EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceGateState, EvidenceGateSummary,
+    EvidenceObservation, EvidenceObservationId, EvidenceObservationInput, EvidenceProducer,
+    EvidenceProducerAnchor, EvidenceProducerId, EvidenceProducerKind, EvidenceRelevanceAssessment,
     EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, EvidenceStatus,
     EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GetOperationResultRequest,
     GetOperationResultResult, GuaranteeDisplay, GuaranteeLevel, GuardConfigurationStatus,
@@ -52,33 +61,40 @@ use volicord_types::{
     JudgmentInboxItem, JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
     JudgmentResolutionOutcome, MethodName, MethodOperationCategory, NextActionKind,
     NextActionPresentationRole, NextActionSummary, NonGuarantee, ObservedChanges,
-    OperationCategory, OperationResultRef, PersistedEvidenceMetadata,
-    PersistedEvidenceObservationAuthority, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
-    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, PlannedBlocker,
-    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteRequest, PrepareWriteResult,
-    ProjectContinuityKind, ProjectContinuityRecord, ProjectContinuityRecordId,
-    ProjectContinuityStatus, ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId,
-    ReconcileChangesRequest, ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult,
-    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RecordUserObservationRequest,
-    RecordUserObservationResult, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
-    ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunKind, RunSummary,
-    SensitiveActionRequirement, SessionWatchCoverageBasis, SessionWatchScanSummary,
-    SessionWatchStatus, SourceRef, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
-    StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
-    StatusRequest, StorageRef, SummaryCard, TaskFlowItem, TaskId, TaskLifecyclePhase,
-    TaskLifecycleState, TaskLineageRelation, TaskLineageSummary, TaskMode, TaskResult,
-    ToolEnvelope, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeId,
-    UnrecordedChangeResolutionBasis, UnrecordedChangeResolutionRequest,
-    UnrecordedChangeResolutionSummary, UnrecordedChangeStatus, UpdateScopeRequest,
-    UserChannelAvailability, UserChannelPathAvailability, UserEvidenceObservation, UserJudgment,
-    UserJudgmentCandidate, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
-    UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
-    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WorkPhase, WorkspaceContext,
-    WorkspaceVcs, WriteDecisionCategory, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
-    WriteTicketEffect, WriteTicketId, WriteTicketPathPatterns, WriteTicketScope, WriteTicketState,
-    WriteTicketStateSummary, WriteTicketStatus, MAX_OPERATION_RESULT_PAGE_BYTES,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    OperationCategory, OperationResultRef, PersistedEvidenceCaptureReceiptBody,
+    PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority, PersistedJudgmentBasis,
+    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
+    PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareEvidenceCaptureRequest,
+    PrepareEvidenceCaptureResult, PrepareWriteRequest, PrepareWriteResult, ProjectContinuityKind,
+    ProjectContinuityRecord, ProjectContinuityRecordId, ProjectContinuityStatus,
+    ProjectContinuitySummary, ProjectEnforcementProfile, ProjectId, ReconcileChangesRequest,
+    ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult, RecordUserJudgmentPayload,
+    RecordUserJudgmentRequest, RecordUserObservationRequest, RecordUserObservationResult,
+    RedactionState, RequestedMode, RequiredNullable, ResidualRisk, ResumePolicy,
+    RiskAcceptanceCoverage, RiskId, RunId, RunKind, RunSummary, SensitiveActionRequirement,
+    SessionWatchCoverageBasis, SessionWatchScanSummary, SessionWatchStatus, SourceRef,
+    StageArtifactRequest, StageArtifactResult, StagedArtifactHandle, StagedArtifactHandleId,
+    StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude, StatusRequest, StorageRef,
+    SummaryCard, TaskFlowItem, TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskLineageRelation,
+    TaskLineageSummary, TaskMode, TaskResult, ToolEnvelope, ToolResultBase,
+    UnrecordedChangeFinding, UnrecordedChangeId, UnrecordedChangeResolutionBasis,
+    UnrecordedChangeResolutionRequest, UnrecordedChangeResolutionSummary, UnrecordedChangeStatus,
+    UpdateScopeRequest, UserChannelAvailability, UserChannelPathAvailability,
+    UserEvidenceObservation, UserJudgment, UserJudgmentCandidate, UserJudgmentContext,
+    UserJudgmentId, UserJudgmentOption, UserJudgmentOptionAction, UserJudgmentOptionId,
+    UserJudgmentOptionInput, UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WorkPhase,
+    WorkspaceContext, WorkspaceVcs, WriteDecisionCategory, WriteDecisionReason, WriteTicket,
+    WriteTicketAttemptScope, WriteTicketEffect, WriteTicketId, WriteTicketPathPatterns,
+    WriteTicketScope, WriteTicketState, WriteTicketStateSummary, WriteTicketStatus,
+    MAX_OPERATION_RESULT_PAGE_BYTES, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+};
+
+#[cfg(test)]
+use volicord_types::{
+    EVIDENCE_CAPTURE_COMMAND_LIMITATION, EVIDENCE_CAPTURE_GUARD_LIMITATION,
+    EVIDENCE_CAPTURE_WATCHER_LIMITATION, WATCH_SNAPSHOT_ALGORITHM,
 };
 
 use crate::pipeline::{
@@ -133,6 +149,7 @@ mod close_task;
 mod intake;
 mod judgment;
 mod operation_result;
+mod prepare_evidence_capture;
 mod prepare_write;
 mod reconcile_changes;
 mod record_run;
@@ -381,6 +398,34 @@ fn allocate_evidence_observation_id(
             Ok(evidence_exists || user_observation_exists)
         })
         .map(EvidenceObservationId::new)
+}
+
+fn allocate_evidence_capture_intent_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<EvidenceCaptureIntentId> {
+    service
+        .allocate_generated_id(DurableIdKind::EvidenceCaptureIntent, |candidate| {
+            store
+                .evidence_capture_intent_record(candidate)
+                .map(|record| record.is_some())
+                .map_err(CorePipelineError::from)
+        })
+        .map(EvidenceCaptureIntentId::new)
+}
+
+fn allocate_evidence_producer_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<EvidenceProducerId> {
+    service
+        .allocate_generated_id(DurableIdKind::EvidenceProducer, |candidate| {
+            store
+                .evidence_producer_record(candidate)
+                .map(|record| record.is_some())
+                .map_err(CorePipelineError::from)
+        })
+        .map(EvidenceProducerId::new)
 }
 
 fn allocate_risk_id(
@@ -3753,6 +3798,7 @@ fn allowed_operation_categories(owner_method: Option<MethodName>) -> Vec<Operati
         ],
         Some(
             MethodName::UpdateScope
+            | MethodName::PrepareEvidenceCapture
             | MethodName::PrepareWrite
             | MethodName::StageArtifact
             | MethodName::RecordRun

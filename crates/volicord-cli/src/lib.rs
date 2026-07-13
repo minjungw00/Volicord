@@ -10,6 +10,7 @@ pub mod connection_command;
 pub mod diagnostics_command;
 mod disclosure;
 pub mod doctor_command;
+pub mod evidence_command;
 pub mod export_command;
 pub mod guard_command;
 mod guard_integration;

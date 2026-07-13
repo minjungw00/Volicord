@@ -28,7 +28,9 @@ use crate::{
         canonical_tool_examples, mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
         CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-        GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
+        GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
+        PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
+        PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
         REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
         UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
@@ -73,6 +75,7 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
     );
     assert!(workflow_names.contains(&"volicord.request_user_judgment"));
     assert!(workflow_names.contains(&"volicord.reconcile_changes"));
+    assert!(workflow_names.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
     assert!(workflow_names.contains(&CHECK_CLOSE_TOOL_NAME));
     assert!(workflow_names.contains(&"volicord.close_task"));
     assert!(!workflow_names.contains(&"volicord.record_user_judgment"));
@@ -83,6 +86,7 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
 
     let read_only = mcp_tools_for_mode(AgentConnectionMode::ReadOnly);
     let read_only_names = tool_names(&read_only);
+    assert!(!read_only_names.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
     assert_eq!(
         read_only_names,
         vec![
@@ -239,7 +243,9 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
                 idempotent_hint: true,
                 open_world_hint: false,
             },
-            PREPARE_WRITE_TOOL_NAME | STAGE_ARTIFACT_TOOL_NAME => McpToolAnnotations {
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
+            | PREPARE_WRITE_TOOL_NAME
+            | STAGE_ARTIFACT_TOOL_NAME => McpToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: false,
                 idempotent_hint: false,
@@ -387,6 +393,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
     for tool_name in [
         INTAKE_TOOL_NAME,
         UPDATE_SCOPE_TOOL_NAME,
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
         PREPARE_WRITE_TOOL_NAME,
         STAGE_ARTIFACT_TOOL_NAME,
         RECORD_RUN_TOOL_NAME,
@@ -433,6 +440,106 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             "task_id".to_owned(),
         ])
     );
+    Ok(())
+}
+
+#[test]
+fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
+) -> Result<(), Box<dyn Error>> {
+    let cases = [
+        (
+            json!({
+                "task_id": "task_capture_command",
+                "change_unit_id": "cu_capture_command",
+                "baseline_ref": "baseline_capture_command",
+                "target": {
+                    "target_kind": "acceptance_criterion",
+                    "acceptance_criterion_id": "criterion_capture_command"
+                },
+                "capture": {
+                    "capture_kind": "verified_command_execution",
+                    "command_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "command_label": "Focused validation"
+                }
+            }),
+            json!({
+                "capture_kind": "verified_command_execution",
+                "command_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "command_label": "Focused validation",
+                "expected_exit_code": null
+            }),
+            "tool_name",
+        ),
+        (
+            json!({
+                "task_id": "task_capture_tool",
+                "change_unit_id": "cu_capture_tool",
+                "baseline_ref": "baseline_capture_tool",
+                "target": {
+                    "target_kind": "supplemental_claim",
+                    "evidence_claim_id": "claim_capture_tool",
+                    "statement": "The focused tool validation succeeds."
+                },
+                "capture": {
+                    "capture_kind": "verified_tool_invocation",
+                    "tool_name": "fixture.validator",
+                    "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                }
+            }),
+            json!({
+                "capture_kind": "verified_tool_invocation",
+                "tool_name": "fixture.validator",
+                "tool_input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "expected_success": null
+            }),
+            "command_label",
+        ),
+        (
+            json!({
+                "task_id": "task_capture_connection",
+                "change_unit_id": "cu_capture_connection",
+                "baseline_ref": "baseline_capture_connection",
+                "target": {
+                    "target_kind": "acceptance_criterion",
+                    "acceptance_criterion_id": "criterion_capture_connection"
+                },
+                "capture": {
+                    "capture_kind": "registered_connection_observation",
+                    "source_kind": "session_watcher",
+                    "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                }
+            }),
+            json!({
+                "capture_kind": "registered_connection_observation",
+                "source_kind": "session_watcher",
+                "observation_input_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "expected_complete": null
+            }),
+            "tool_input_sha256",
+        ),
+    ];
+
+    for (arguments, expected_capture, foreign_field) in cases {
+        crate::schema_validation::validate_mcp_tool_arguments(
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            &arguments,
+        )?;
+        let decoded: McpPrepareEvidenceCaptureArguments =
+            serde_json::from_value(arguments.clone())?;
+        assert_eq!(decoded.detail, MutationDetailLevel::Summary);
+        let core_capture: volicord_types::EvidenceCaptureSpec = decoded.capture.into();
+        assert_eq!(serde_json::to_value(core_capture)?, expected_capture);
+
+        let mut invalid = arguments;
+        invalid["capture"][foreign_field] = json!("not allowed for this capture kind");
+        assert!(crate::schema_validation::validate_mcp_tool_arguments(
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            &invalid,
+        )
+        .is_err());
+        assert!(serde_json::from_value::<McpPrepareEvidenceCaptureArguments>(invalid).is_err());
+    }
+
     Ok(())
 }
 
@@ -521,6 +628,14 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
         (
             GET_OPERATION_RESULT_TOOL_NAME,
             &[GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID],
+        ),
+        (
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            &[
+                PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
+                PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID,
+                PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
+            ],
         ),
         (PREPARE_WRITE_TOOL_NAME, &[PREPARE_WRITE_SIMPLE_EXAMPLE_ID]),
         (STAGE_ARTIFACT_TOOL_NAME, &["stage_safe_text"]),
@@ -1949,9 +2064,9 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
 
-    let error = adapter
-        .call_tool(
-            "volicord.intake",
+    let cases = [
+        (
+            INTAKE_TOOL_NAME,
             json!({
                 "plain_language_request": "Exercise read-only rejection.",
                 "requested_mode": "work",
@@ -1968,11 +2083,33 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
                 },
                 "initial_context_refs": []
             }),
-        )
-        .expect_err("read_only should reject agent workflow calls");
+        ),
+        (
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+            json!({
+                "task_id": "task_read_only_capture",
+                "change_unit_id": "cu_read_only_capture",
+                "baseline_ref": "baseline_read_only_capture",
+                "target": {
+                    "target_kind": "acceptance_criterion",
+                    "acceptance_criterion_id": "criterion_read_only_capture"
+                },
+                "capture": {
+                    "capture_kind": "verified_command_execution",
+                    "command_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    "command_label": "Read-only rejection validation"
+                }
+            }),
+        ),
+    ];
 
-    assert!(error.to_string().contains("mode read_only"));
-    assert!(error.to_string().contains("agent_workflow"));
+    for (tool_name, arguments) in cases {
+        let error = adapter
+            .call_tool(tool_name, arguments)
+            .expect_err("read_only should reject agent workflow calls");
+        assert!(error.to_string().contains("mode read_only"));
+        assert!(error.to_string().contains("agent_workflow"));
+    }
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -2308,6 +2445,76 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
     assert!(staged["method_result"]["staged_artifact_handle"]["handle_id"].is_string());
     assert!(staged["method_result"]["expires_at"].is_string());
 
+    let capture_fixture = CoreFixture::new("mcp-default-compact-evidence-capture")?;
+    let capture_git_dir = capture_fixture.product_repo_path().join(".git");
+    fs::create_dir_all(&capture_git_dir)?;
+    fs::write(capture_git_dir.join("HEAD"), "ref: refs/heads/main\n")?;
+    let capture_adapter = adapter(&capture_fixture)?;
+    let (capture_task_id, _) = create_task(&capture_adapter)?;
+    let capture_scope = capture_adapter.call_tool(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "task_id": capture_task_id,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": null,
+            "non_goals": null,
+            "acceptance_criteria": null,
+            "autonomy_boundary": null,
+            "baseline_ref": "baseline_capture_compact",
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Prepare a registered evidence capture.",
+                "affected_paths": []
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    let capture_change_unit_id = capture_scope.response_value["state"]["active_change_unit_ref"]
+        ["record_id"]
+        .as_str()
+        .ok_or("scope response should expose the current Change Unit")?;
+    let capture_criterion_id = capture_scope.response_value["state"]["acceptance_criteria"][0]
+        ["acceptance_criterion_id"]
+        .as_str()
+        .ok_or("scope response should expose the acceptance criterion")?;
+    let capture = call_default(
+        &capture_fixture,
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME,
+        json!({
+            "task_id": capture_task_id,
+            "change_unit_id": capture_change_unit_id,
+            "baseline_ref": "baseline_capture_compact",
+            "target": {
+                "target_kind": "acceptance_criterion",
+                "acceptance_criterion_id": capture_criterion_id
+            },
+            "capture": {
+                "capture_kind": "verified_command_execution",
+                "command_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "command_label": "Focused compact projection validation"
+            }
+        }),
+    )?;
+    assert_eq!(
+        capture["method_result"]["effect"]["effect_kind"], "core_committed",
+        "unexpected compact prepare_evidence_capture result: {capture:#}"
+    );
+    assert_eq!(
+        capture["method_result"]["capture_intent_ref"]["record_kind"],
+        "evidence_capture_intent"
+    );
+    assert_eq!(
+        capture["method_result"]["capture_intent"]["capture"]["expected_exit_code"],
+        0
+    );
+    assert!(capture["method_result"]["expires_at"].is_string());
+    assert!(capture["authority_receipt"].is_object());
+    assert_eq!(
+        capture["operation_result_ref"]["source_method"],
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME
+    );
+
     let record_fixture = CoreFixture::new("mcp-default-compact-record-run")?;
     let record_adapter = adapter(&record_fixture)?;
     let (record_task_id, _) = create_task(&record_adapter)?;
@@ -2424,6 +2631,13 @@ fn default_compact_mutations_preserve_tool_essential_method_results() -> Result<
             .as_array()
             .map(Vec::len),
         Some(1)
+    );
+    assert_eq!(
+        record_result["evidence_producer_refs"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "a cooperative observation must not invent a producer ref"
     );
     assert_eq!(
         record_result["evidence_observation_refs"][0]["record_kind"],
@@ -4533,6 +4747,9 @@ fn decode_mcp_arguments_to_value(
         }
         GET_OPERATION_RESULT_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
             McpGetOperationResultArguments,
+        >(value)?),
+        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+            McpPrepareEvidenceCaptureArguments,
         >(value)?),
         PREPARE_WRITE_TOOL_NAME => {
             serde_json::to_value(serde_json::from_value::<McpPrepareWriteArguments>(value)?)

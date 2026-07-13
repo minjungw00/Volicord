@@ -371,13 +371,20 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 
 | Agent Connection 모드 | MCP를 통해 허용되는 동작 범주 | MCP에 보이는 공개 메서드 도구 |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
 | `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
 
 어댑터 소유 `volicord.list_projects` 유틸리티는 `workflow`와 `read_only` 모드 모두에
 보입니다. `volicord.check_close`는 일급 Core 읽기 메서드에 매핑되는 읽기 전용 MCP
 닫기 준비 상태 도구입니다. `volicord.close_task`는 워크플로 전용 MCP 변경 도구이며
 `read_only` 도구 탐색에 나타나면 안 됩니다.
+
+`volicord.prepare_evidence_capture`도 workflow 전용이며 intent만 만듭니다. Receipt
+fulfillment는 의도적으로 MCP에 없습니다. 등록된 local command runner, guard-event
+correlator, session-watcher source가 관리 source 경로로 intent를 fulfillment한 뒤
+`volicord.record_run`이 producer를 finalization할 수 있습니다. Connection 등록과
+source correlation은 협력적 local integration으로 남으며 host 또는 local-principal
+attestation, actor-identity 증명, 같은 local principal에 대한 위조 방지가 아닙니다.
 
 위 표는 모드 기준 허용 목록입니다. 실제 MCP `tools/list` 출력은 선택된 프로젝트 저장소를
 읽고 쓸 수 있는지에도 제약됩니다. 전송 수준 도구 탐색과 읽기 전용 저장소

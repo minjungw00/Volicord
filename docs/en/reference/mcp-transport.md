@@ -772,7 +772,7 @@ capability of the selected allowed projects:
 
 | Mode and storage capability | MCP-visible tools |
 |---|---|
-| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
 | `workflow` with readable but non-writable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | `read_only` with readable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | No readable allowed project state | `volicord.list_projects` |
@@ -795,6 +795,9 @@ writable, the adapter returns a normal Volicord rejection with
 
 In `workflow` mode, the Evidence path is:
 
+- Use `volicord.prepare_evidence_capture` to create the exact current-basis
+  intent when a registered command, tool, guard, or watcher source will provide
+  the observation. Receipt fulfillment is not an MCP tool.
 - Use `volicord.stage_artifact` only to prepare an Evidence attachment input
   when bytes or a safe notice are needed.
 - Use `volicord.record_run` to record the Run or observation, target-scoped
@@ -847,6 +850,10 @@ array:
 - `volicord.get_operation_result`: `cursor=null`
 - `volicord.prepare_write`: `task_id=null`, `change_unit_id=null`, and
   `sensitive_categories=[]`
+- `volicord.prepare_evidence_capture`: `expected_exit_code=0` for the command
+  branch, `expected_success=true` for the tool branch, and
+  `expected_complete=true` for the registered-connection branch; explicit null
+  has the same meaning
 - `volicord.stage_artifact`: `expected_sha256=null`,
   `expected_size_bytes=null`, and `relation_hint=null`
 - `volicord.record_run`: `run_id=null`, `write_ticket_id=null`,
@@ -889,7 +896,7 @@ exhaustive mode-to-kind matrix: `advisor` uses `shaping_update`, `direct` uses
 argument-shape examples are advertised as values in `inputSchema.examples`,
 including intake create/resume/supersede/reject, update-scope
 keep/create/replace, all three status detail levels, first-page operation-result
-retrieval, prepare-write,
+retrieval, prepare-write, all three prepare-evidence-capture variants,
 stage-artifact, an advisor `shaping_update` with no Product Repository write, an
 evidence-bearing work `implementation`, request-judgment, reconcile,
 check-close, and close complete/cancel/supersede branches. Each advertised
@@ -915,7 +922,7 @@ adapter-utility result schema. A server result that includes
 | Tool class | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
-| `volicord.prepare_write`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
+| `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
 | `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
 For the non-destructive mutation row, `destructiveHint=false` means the tool's
@@ -982,7 +989,8 @@ entry.
 
 The compact `method_result` always preserves effect kind, resulting state
 version, and committed event refs. It additionally preserves the issued write
-ticket and decision for `volicord.prepare_write`, the staged handle and expiry
+ticket and decision for `volicord.prepare_write`, the exact capture-intent ref,
+intent, and expiry for `volicord.prepare_evidence_capture`, the staged handle and expiry
 for `volicord.stage_artifact`, the exact Run ref, registered `ArtifactRef`
 values, newly recorded evidence-observation refs, and nullable
 `close_basis_anchor` for `volicord.record_run`, per-finding results for
@@ -996,6 +1004,12 @@ option ID and label, and resolution outcome; it omits the free-form user note.
 `detail=full` is for callers that need fields beyond those next-step results,
 not for recovering a required handle, ticket, Run or evidence ref, finding
 result, or host-native selection.
+
+The capture-intent compact result is part of the same bounded summary/workflow
+and post-effect recovery order as other mutation results. If the authority
+receipt cannot fit but the compact result can, recovery preserves the exact
+intent ref, full intent needed by the registered source, and expiry. It never
+projects a receipt or producer because this MCP call creates neither.
 
 For a known tool, the adapter validates object `arguments` against the exact
 advertised `inputSchema` before project selection, session-watch setup, generated

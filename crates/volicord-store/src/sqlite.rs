@@ -460,16 +460,20 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "acceptance_criteria",
             "evidence_claims",
             "change_units",
+            "evidence_capture_intents",
             "user_judgments",
             "project_continuity_records",
             "write_tickets",
             "runs",
             "artifact_staging",
+            "evidence_capture_receipts",
+            "evidence_capture_source_claims",
             "artifacts",
             "artifact_links",
             "evidence_summaries",
             "evidence_observations",
             "user_evidence_observations",
+            "evidence_producers",
             "blockers",
             "authority_events",
             "tool_invocations",
@@ -499,6 +503,8 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_acceptance_criteria_task_status",
             "idx_evidence_claims_task",
             "idx_change_units_task_status",
+            "idx_evidence_capture_intents_task_expiry",
+            "idx_evidence_capture_intents_connection_expiry",
             "idx_user_judgments_task_status",
             "idx_project_continuity_records_status",
             "idx_project_continuity_records_source_task",
@@ -506,12 +512,15 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_runs_task_created",
             "idx_artifact_staging_task_status",
             "idx_artifact_staging_actor_source",
+            "idx_evidence_capture_receipts_created",
+            "idx_evidence_capture_source_claims_receipt",
             "idx_artifacts_task_status",
             "idx_artifact_links_owner",
             "idx_evidence_summaries_task_status",
             "idx_evidence_observations_task_target",
             "idx_evidence_observations_run",
             "idx_user_evidence_observations_task_target",
+            "idx_evidence_producers_task_run",
             "idx_blockers_task_status",
             "idx_authority_events_task_seq",
             "idx_authority_events_state_version",
@@ -1936,6 +1945,31 @@ mod tests {
         )?);
         validate_tool_invocations_columns(&conn)?;
         validate_tool_invocations_operation_category_constraint(&conn)?;
+        Ok(())
+    }
+
+    #[test]
+    fn previous_v3_project_profile_requires_recreation() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-state-v3-profile")?;
+        let path = project_state_db_path(runtime_home.path(), "PRJ-v3-profile");
+        let conn = open_project_state_database(&path)?;
+        conn.execute(
+            "INSERT INTO project_state (
+                project_id, storage_profile, created_at, updated_at
+            ) VALUES ('project_v3', 'baseline_sqlite_v3', 't0', 't0')",
+            [],
+        )?;
+
+        let error = validate_project_state_schema(&conn)
+            .expect_err("the previous v3 profile must not open as baseline_sqlite_v4");
+        assert!(matches!(
+            error,
+            StoreError::UnsupportedStorageProfile {
+                actual_storage_profile,
+                expected_storage_profile: "baseline_sqlite_v4",
+                ..
+            } if actual_storage_profile == "baseline_sqlite_v3"
+        ));
         Ok(())
     }
 

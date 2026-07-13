@@ -303,6 +303,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.status` | read-style response with optional session-watch initialization | See [`volicord.status`](#volicordstatus) |
 | `volicord.get_operation_result` | reads immutable historical replay bytes without storage effects | See [`volicord.get_operation_result`](#volicordget_operation_result) |
 | `volicord.prepare_write` | records write decision effects | See [`volicord.prepare_write`](#volicordprepare_write) |
+| `volicord.prepare_evidence_capture` | creates one immutable expiring capture intent | See [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
 | `volicord.stage_artifact` | creates transient staging only | See [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
 | `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
@@ -471,6 +472,46 @@ Owner links:
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
+<a id="volicordprepare_evidence_capture"></a>
+### `volicord.prepare_evidence_capture`
+
+An original committed `dry_run=false` call:
+
+- inserts one `evidence_capture_intents` row
+- appends one authority event and creates one replay row
+- increments `project_state.state_version` exactly once
+
+Exact idempotent replay repeats none of those effects. A valid dry run and any
+rejected request create no intent, receipt, staging row or bytes, producer,
+source claim, event, replay row, or state-version change.
+
+Registered source fulfillment is a separate Store transaction outside the Core
+state commit. After
+revalidating the intent and registered source, it atomically creates one
+`evidence_capture_receipts` row and one redacted `artifact_staging` row plus its
+bounded safe JSON bytes, together with every required
+`evidence_capture_source_claims` row. Command, guard-connection, and watcher
+receipts create one claim; tool receipts create three claims for the normalized
+host invocation and both distinct guard events. The project-scoped claim key
+rejects reuse of any exact underlying source fact across intents or producer
+classes. It creates no event or replay row and does not change
+`project_state.state_version`. The source observation must satisfy
+`intent.created_at <= observed_at < intent.expires_at`; receipt creation must satisfy
+`observed_at <= receipt.created_at < intent.expires_at`, and the staging handle expires exactly
+at `intent.expires_at`. A failed or duplicate-claim transaction rolls back the
+receipt and claims and removes any newly written staging file. One intent can be
+fulfilled at most once.
+
+The immutable receipt and source claims are durable source-fact rows. Only the
+receipt staging handle and staged safe JSON bytes are transient; promotion does
+not delete the receipt row used by the producer audit chain.
+
+Owner links:
+
+- [`volicord.prepare_evidence_capture` method](api/method-prepare-evidence-capture.md)
+- [Storage Records](storage-records.md)
+- [Artifact Storage](storage-artifacts.md)
+
 <a id="volicordstage_artifact"></a>
 ### `volicord.stage_artifact`
 
@@ -523,6 +564,10 @@ Committed `dry_run=false` may:
 - promote or link `artifacts`
 - create `evidence_claims` rows for new Task-scoped supplemental targets while preserving the immutable statement of an existing same-Task ID
 - update `evidence_summaries`, create `evidence_observations` with separately stored Core-record input refs and non-authoritative source refs, or update allowed blockers
+- for each valid capture-intent observation, consume and promote its safe
+  receipt staging handle, link the promoted artifact to a new immutable
+  `evidence_producers` row, and create that producer and its one-to-one
+  `evidence_observation`
 - update `tasks.close_basis_revision` and `tasks.close_basis_json` according to `close_assessment`
 - append events
 - create a replay row
@@ -554,6 +599,7 @@ Rejected attempts do not change:
 - staging rows
 - artifacts
 - acceptance criteria, supplemental evidence claims, or evidence observations
+- evidence-capture intents, receipts, producers, or receipt staging rows
 
 Product file write persistence boundary:
 
@@ -568,7 +614,9 @@ Current close-basis persistence boundary:
 - Sensitive action requirements stored in that `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write-ticket compatibility row, preserving operation, normalized paths, sensitive categories, baseline, Change Unit, source Run ref, and source write-ticket ref through close.
 - Category-only caller input cannot establish, satisfy, or erase a sensitive action requirement.
 - `close_assessment=null` records that the committed Run does not establish a current close basis; any existing current basis becomes stale or absent.
-- Run, current close basis, evidence summary, evidence observation, artifact, write-ticket compatibility consumption, replay, event, and revision effects commit atomically.
+- Run, current close basis, evidence summary, evidence observation, capture
+  producer, receipt artifact promotion/linking, write-ticket compatibility
+  consumption, replay, event, and revision effects commit atomically.
 
 Owner links:
 

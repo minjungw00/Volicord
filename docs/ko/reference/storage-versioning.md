@@ -4,7 +4,7 @@
 
 ## 저장소 프로필
 
-현재 기준 저장소 프로필은 `baseline_sqlite_v3`입니다.
+현재 기준 저장소 프로필은 `baseline_sqlite_v4`입니다.
 
 기준 저장소는 기준 SQL 원본인 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)을 사용합니다. Runtime Home을 초기화할 때 이 원본을 빈 SQLite 데이터베이스에 적용합니다. `schema_migrations`, `schema_version`, `migration_version`, `storage_version` 같은 저장소 버전 필드나 테이블은 만들지 않습니다.
 
@@ -18,7 +18,14 @@
 
 저장소 코드는 기록의 의미를 추측하거나, 데이터를 알리지 않고 다시 쓰거나, 지원하지 않는 저장소를 변환하면 안 됩니다. 기존 Runtime Home의 저장소가 호환되지 않으면 명확한 오류를 반환하고 Runtime Home을 다시 만들도록 요구해야 합니다.
 
-기준 `registry.sqlite`에는 Runtime Home 식별 정보, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, `connection_projects`, `guard_installations`가 들어갑니다. 기준 프로젝트 `state.sqlite`에는 Core 상태 보기 기록, `authority_events`, 재실행 행, 스테이징·영속 아티팩트, 증거, 사용자 판단, `local_web_consent_tokens`, 실행 기록, 차단 사유, `write_tickets`, 호스트 관찰 기록, 세션 감시 기록이 들어갑니다.
+기준 `registry.sqlite`에는 Runtime Home 식별 정보, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, `connection_projects`, `guard_installations`가 들어갑니다. 기준 프로젝트 `state.sqlite`에는 Core 상태 보기 기록, `authority_events`, 재실행 행, 스테이징·영속 아티팩트, 증거, evidence capture intent, receipt, 배타적 source claim, 불변 evidence producer, 사용자 판단, `local_web_consent_tokens`, 실행 기록, 차단 사유, `write_tickets`, 호스트 관찰 기록, 세션 감시 기록이 들어갑니다.
+
+`baseline_sqlite_v4`는 canonical evidence capture intent, 영속 source-fact receipt,
+배타적 source-claim, 불변 producer record family를 추가합니다. 기준 구현은 `baseline_sqlite_v3`에서
+제자리 변환을 제공하지 않습니다. v3 Runtime Home은 호환되지 않는 형태이므로 다시
+만들어야 하며 Store는 profile을 바꾸어 표시하거나 의미를 추측해 변환해서는 안 됩니다.
+`project_state.state_version`은 계속 Core 상태 clock이며 storage-profile version이
+아닙니다.
 
 ## 프로젝트 상태 버전
 

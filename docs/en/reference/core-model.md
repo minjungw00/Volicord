@@ -523,10 +523,29 @@ Evidence authority:
   `UserEvidenceObservation` binds local-user provenance and supported or
   contradicted relevance to the exact current artifacts and basis. It is
   evidence, not a `UserJudgment` or final acceptance.
-- The baseline has no authority-owned verified command/tool producer or
-  registered connection-observation producer. Direct external-tool and
-  connection claims therefore remain cooperative even with verified artifact
-  bytes; raw guard payloads and descriptive tool fields are not anchors.
+- Verified command, tool, and registered-connection evidence uses one
+  authority chain: `volicord.prepare_evidence_capture` creates an expiring
+  current-basis `EvidenceCaptureIntent`; only a registered source can create
+  its immutable durable source-fact receipt and transient staged bytes; and only `volicord.record_run` can promote
+  the receipt and atomically create the immutable producer and its one-to-one
+  observation. Agent input cannot create or replace the receipt or producer.
+  Raw guard payloads, descriptive tool fields, artifact integrity, and
+  `SourceRef` remain insufficient anchors by themselves.
+- Producer provenance and claim relevance are separate authority axes. A
+  producer is current only when its intent and receipt agree on project,
+  Task, current Change Unit, scope revision, baseline, target, workspace,
+  requesting connection, input digest, complete output digest, and expected
+  outcome. A complete outcome matching the stored expectation creates strong producer provenance but
+  leaves claim relevance `unassessed`; it does not by itself satisfy a required
+  criterion. A complete mismatch with the stored expectation is `contradicted`. Only a separate
+  owner-defined relevance authority can establish `supported`. Missing, stale,
+  corrupt, cross-context, or reused explicit intent authority is rejected
+  rather than downgraded. Unanchored external-tool and connection claims
+  continue to downgrade to cooperative reports.
+- The verified command runner establishes only that Volicord executed and
+  captured the digest-bound invocation. Registered hooks establish cooperative
+  host consistency, not cryptographic attestation, actor proof, OS isolation,
+  command approval, sandboxing, test sufficiency, or broad correctness.
 - Reused strong evidence must retain exactly one original observation identity
   and remain compatible with the target, Task, Change Unit, source Run, scope
   revision, baseline, inherited assurance, exact outputs, producer anchor, and

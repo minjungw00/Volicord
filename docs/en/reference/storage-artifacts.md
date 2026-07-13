@@ -15,7 +15,7 @@ This document owns:
 This document does not own:
 
 - API artifact schemas; see [API Artifact Schemas](api/schema-artifacts.md)
-- API method behavior; see the [API Methods](api/methods.md), [Stage-artifact method](api/method-stage-artifact.md), and [Record-run method](api/method-record-run.md)
+- API method behavior; see the [API Methods](api/methods.md), [Stage-artifact method](api/method-stage-artifact.md), [Prepare-evidence-capture method](api/method-prepare-evidence-capture.md), and [Record-run method](api/method-record-run.md)
 - record-family overview; see [Storage Records](storage-records.md)
 - baseline SQLite DDL, constraints, indexes, foreign keys, or canonical SQL sources; see [Storage DDL](storage-ddl.md)
 - generic method storage effects; see [Storage Effects](storage-effects.md)
@@ -38,6 +38,7 @@ shapes and table overviews belong to
 ```mermaid
 flowchart LR
   Stage["volicord.stage_artifact<br/>transient staged representation or handle"]
+  CaptureStage["registered evidence source fulfillment<br/>durable receipt plus transient redacted staging handle"]
   NoEvidence["not durable evidence by itself"]
   Promote["compatible owner method accepts staged input<br/>durable artifacts row"]
   Link["artifact_links<br/>durable owner relation"]
@@ -45,7 +46,9 @@ flowchart LR
   Reuse["existing_artifact_ref<br/>already durable ArtifactRef"]
 
   Stage --> Promote --> Link --> Evidence
+  CaptureStage --> Promote
   Stage -.-> NoEvidence
+  CaptureStage -.-> NoEvidence
   Reuse --> Link
 ```
 
@@ -77,6 +80,7 @@ These are presentation states. Evidence sufficiency remains in `EvidenceSummary.
 Meaning:
 
 - `volicord.stage_artifact` stores transient artifact bytes or a safe notice and returns a staged handle.
+- Registered evidence-source fulfillment atomically stores a durable bounded redacted capture receipt and its capture-owned transient staging handle and bytes. Callers cannot create this staging path directly.
 
 Evidence relationship:
 
@@ -87,7 +91,7 @@ Evidence relationship:
 
 Meaning:
 
-- An owner method accepts a compatible staged handle and registers a persistent `ArtifactRef` plus required `artifact_links`.
+- An owner method accepts a compatible staged handle and registers a persistent `ArtifactRef` plus required `artifact_links`. For capture-owned staging, `volicord.record_run` must revalidate the intent, receipt bytes, and exclusive source claims before promotion and link the result to its `evidence_producer`.
 
 Evidence relationship:
 
@@ -126,7 +130,7 @@ Owner boundary:
 
 Allowed:
 
-- `StagedArtifactHandle` is a transient handle returned by successful `volicord.stage_artifact`.
+- `StagedArtifactHandle` is a transient handle returned by successful `volicord.stage_artifact`; registered evidence-source fulfillment creates its separate storage-owned capture-receipt staging handle.
 - `existing_artifact` links an existing persistent artifact.
 
 Conditions:
@@ -326,7 +330,7 @@ An artifact is evidence-eligible only when storage has:
 - a `redaction_state`
 - producer and retention facts
 - an availability `status`
-- an owner link to an existing owner record such as `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, or `blocker`
+- an owner link to an existing owner record such as `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, or `blocker`
 
 Evidence eligibility, artifact availability, and evidence sufficiency remain separate. Artifact owner relation integrity is required even though `artifact_links` is a polymorphic owner table.
 
@@ -344,7 +348,7 @@ Allowed:
 
 Required validation:
 
-- `owner_record_kind` is one of `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, or `blocker`.
+- `owner_record_kind` is one of `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, or `blocker`.
 - `owner_record_id` exists in the matching owner table.
 - The owner belongs to the same `project_id` and `task_id`.
 - The relation is compatible with the way the artifact is used.

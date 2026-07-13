@@ -31,10 +31,14 @@ impl CoreStorageMutation {
             }
             Self::ConsumeWriteTicket(input) => mutation.consume_write_ticket(input),
             Self::InsertRun(input) => mutation.insert_run(input),
+            Self::InsertEvidenceCaptureIntent(input) => {
+                mutation.insert_evidence_capture_intent(input)
+            }
             Self::PromoteStagedArtifact(input) => mutation.promote_staged_artifact(input),
             Self::LinkArtifact(input) => mutation.link_artifact(input),
             Self::UpsertEvidenceSummary(input) => mutation.upsert_evidence_summary(input),
             Self::InsertEvidenceObservation(input) => mutation.insert_evidence_observation(input),
+            Self::InsertEvidenceProducer(input) => mutation.insert_evidence_producer(input),
             Self::InsertUserEvidenceObservation(input) => {
                 mutation.insert_user_evidence_observation(input)
             }
@@ -740,6 +744,109 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
+    fn insert_evidence_capture_intent(
+        &mut self,
+        input: &EvidenceCaptureIntentInsert,
+    ) -> StoreResult<()> {
+        validate_identifier(
+            "evidence_capture_intent_id",
+            &input.evidence_capture_intent_id,
+        )?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        validate_identifier("baseline_ref", &input.baseline_ref)?;
+        validate_evidence_capture_kind("capture_kind", &input.capture_kind)?;
+        validate_artifact_sha256("input_sha256", &input.input_sha256)?;
+        validate_identifier(
+            "requested_by_actor_source",
+            &input.requested_by_actor_source,
+        )?;
+        validate_identifier(
+            "requesting_connection_internal_id",
+            &input.requesting_connection_internal_id,
+        )?;
+        for (field, value) in [
+            ("target_json", input.target_json.as_str()),
+            ("capture_spec_json", input.capture_spec_json.as_str()),
+            (
+                "expected_outcome_json",
+                input.expected_outcome_json.as_str(),
+            ),
+            ("session_context_json", input.session_context_json.as_str()),
+            (
+                "workspace_context_json",
+                input.workspace_context_json.as_str(),
+            ),
+            ("metadata_json", input.metadata_json.as_str()),
+        ] {
+            validate_json_text(field, value)?;
+        }
+        validate_timestamp("created_at", &input.created_at)?;
+        validate_timestamp("expires_at", &input.expires_at)?;
+        let created_at = UtcTimestamp::parse(&input.created_at).map_err(|_| {
+            StoreError::schema_invariant("project_state", "invalid capture-intent created_at")
+        })?;
+        let expires_at = UtcTimestamp::parse(&input.expires_at).map_err(|_| {
+            StoreError::schema_invariant("project_state", "invalid capture-intent expires_at")
+        })?;
+        if expires_at <= created_at {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "evidence-capture intent expiration must follow creation",
+            ));
+        }
+
+        self.tx.execute(
+            "INSERT INTO evidence_capture_intents (
+                project_id,
+                evidence_capture_intent_id,
+                task_id,
+                change_unit_id,
+                scope_revision,
+                baseline_ref,
+                target_json,
+                capture_kind,
+                capture_spec_json,
+                input_sha256,
+                expected_outcome_json,
+                requested_by_actor_source,
+                requesting_connection_internal_id,
+                session_context_json,
+                workspace_context_json,
+                created_at,
+                expires_at,
+                metadata_json
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+            )",
+            params![
+                self.project_id,
+                input.evidence_capture_intent_id,
+                input.task_id,
+                input.change_unit_id,
+                u64_to_i64(
+                    "evidence_capture_intents.scope_revision",
+                    input.scope_revision
+                )?,
+                input.baseline_ref,
+                input.target_json,
+                input.capture_kind,
+                input.capture_spec_json,
+                input.input_sha256,
+                input.expected_outcome_json,
+                input.requested_by_actor_source,
+                input.requesting_connection_internal_id,
+                input.session_context_json,
+                input.workspace_context_json,
+                input.created_at,
+                input.expires_at,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+
     fn promote_staged_artifact(&mut self, input: &ArtifactPromotion) -> StoreResult<()> {
         validate_identifier("artifact_staging.handle_id", &input.handle_id)?;
         validate_identifier("artifact_id", &input.artifact_id)?;
@@ -1112,6 +1219,79 @@ impl ProjectMutation<'_> {
                 input.limitations_json,
                 input.observed_at,
                 input.recorded_at,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn insert_evidence_producer(&mut self, input: &EvidenceProducerInsert) -> StoreResult<()> {
+        for (field, value) in [
+            ("evidence_producer_id", input.evidence_producer_id.as_str()),
+            (
+                "evidence_capture_intent_id",
+                input.evidence_capture_intent_id.as_str(),
+            ),
+            (
+                "evidence_capture_receipt_id",
+                input.evidence_capture_receipt_id.as_str(),
+            ),
+            (
+                "evidence_observation_id",
+                input.evidence_observation_id.as_str(),
+            ),
+            ("artifact_id", input.artifact_id.as_str()),
+            ("run_id", input.run_id.as_str()),
+            ("task_id", input.task_id.as_str()),
+            ("change_unit_id", input.change_unit_id.as_str()),
+            ("baseline_ref", input.baseline_ref.as_str()),
+        ] {
+            validate_identifier(field, value)?;
+        }
+        validate_evidence_capture_kind("producer_kind", &input.producer_kind)?;
+        validate_json_text(
+            "evidence_producers.canonical_producer_json",
+            &input.canonical_producer_json,
+        )?;
+        validate_timestamp("created_at", &input.created_at)?;
+        validate_json_text("evidence_producers.metadata_json", &input.metadata_json)?;
+
+        self.tx.execute(
+            "INSERT INTO evidence_producers (
+                project_id,
+                evidence_producer_id,
+                evidence_capture_intent_id,
+                evidence_capture_receipt_id,
+                evidence_observation_id,
+                artifact_id,
+                run_id,
+                task_id,
+                change_unit_id,
+                scope_revision,
+                baseline_ref,
+                producer_kind,
+                canonical_producer_json,
+                created_at,
+                metadata_json
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                ?9, ?10, ?11, ?12, ?13, ?14, ?15
+            )",
+            params![
+                self.project_id,
+                input.evidence_producer_id,
+                input.evidence_capture_intent_id,
+                input.evidence_capture_receipt_id,
+                input.evidence_observation_id,
+                input.artifact_id,
+                input.run_id,
+                input.task_id,
+                input.change_unit_id,
+                u64_to_i64("evidence_producers.scope_revision", input.scope_revision)?,
+                input.baseline_ref,
+                input.producer_kind,
+                input.canonical_producer_json,
+                input.created_at,
                 input.metadata_json
             ],
         )?;
@@ -1800,5 +1980,21 @@ impl ProjectMutation<'_> {
                 detail: format!("Task column {column} update changed no rows"),
             })
         }
+    }
+}
+
+fn validate_evidence_capture_kind(field: &'static str, value: &str) -> StoreResult<()> {
+    if matches!(
+        value,
+        "verified_command_execution"
+            | "verified_tool_invocation"
+            | "registered_connection_observation"
+    ) {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            "project_state",
+            format!("{field} is outside the evidence-capture value set"),
+        ))
     }
 }
