@@ -238,7 +238,7 @@ pub(crate) fn parse_http_head(
         ));
     }
 
-    let mut headers = BTreeMap::new();
+    let mut headers: BTreeMap<String, String> = BTreeMap::new();
     for line in lines {
         if line.is_empty() {
             continue;
@@ -260,7 +260,15 @@ pub(crate) fn parse_http_head(
                 "HTTP header name must not be empty",
             ));
         }
-        headers.insert(name, value.trim().to_owned());
+        let value = value.trim();
+        if name == "origin" {
+            if let Some(existing) = headers.get_mut(&name) {
+                existing.push_str(", ");
+                existing.push_str(value);
+                continue;
+            }
+        }
+        headers.insert(name, value.to_owned());
     }
 
     Ok((method.to_ascii_uppercase(), target.to_owned(), headers))

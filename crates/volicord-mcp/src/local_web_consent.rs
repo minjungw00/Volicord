@@ -89,9 +89,8 @@ impl LocalWebConsentServer {
     }
 
     fn handle_request(&mut self, request: HttpRequest) -> HttpResponse {
-        let origin = request.header("origin").map(str::to_owned);
         if http_request_path(&request.target) == LOCAL_WEB_CONSENT_PATH {
-            handle_local_web_consent_http_request(&self.adapter, request, origin.as_deref())
+            handle_local_web_consent_http_request(&self.adapter, request)
         } else {
             local_web_consent_error_page(
                 404,
@@ -107,7 +106,6 @@ impl LocalWebConsentServer {
 pub(crate) fn handle_local_web_consent_http_request(
     adapter: &McpAdapter,
     request: HttpRequest,
-    origin: Option<&str>,
 ) -> HttpResponse {
     let Some(consent_context) = adapter.local_web_consent.as_ref() else {
         return local_web_consent_error_page(
@@ -117,15 +115,16 @@ pub(crate) fn handle_local_web_consent_http_request(
             "Local web consent is not available for this Volicord process.",
         );
     };
-    if let Some(origin) = origin {
-        if origin != consent_context.base_url {
-            return local_web_consent_error_page(
-                403,
-                "Forbidden",
-                "ORIGIN_NOT_ALLOWED",
-                "This consent form only accepts same-origin submissions.",
-            );
-        }
+    let origin = request.header("origin");
+    let origin_matches = origin == Some(consent_context.base_url.as_str());
+    let origin_is_required = request.method == "POST";
+    if (origin_is_required || origin.is_some()) && !origin_matches {
+        return local_web_consent_error_page(
+            403,
+            "Forbidden",
+            "ORIGIN_NOT_ALLOWED",
+            "This consent form only accepts same-origin submissions.",
+        );
     }
 
     match request.method.as_str() {

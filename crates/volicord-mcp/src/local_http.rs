@@ -309,11 +309,7 @@ impl LocalHttpServer {
     pub(crate) fn handle_request(&mut self, request: HttpRequest) -> HttpResponse {
         let origin = request.header("origin").map(str::to_owned);
         if http_request_path(&request.target) == LOCAL_WEB_CONSENT_PATH {
-            return handle_local_web_consent_http_request(
-                &self.adapter,
-                request,
-                origin.as_deref(),
-            );
+            return handle_local_web_consent_http_request(&self.adapter, request);
         }
         if let Err(response) = self.validate_origin(origin.as_deref()) {
             return response;

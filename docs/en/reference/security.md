@@ -378,6 +378,12 @@ Volicord Local HTTP transport does not guarantee:
 Bearer-token and Origin checks are transport-bound checks for the local HTTP
 process. They do not make the endpoint suitable for public exposure; keep it on
 host loopback or the intended Docker host-loopback publishing boundary.
+Every local-web `POST /consent` is protected by the required same-origin
+`Origin` gate, while `GET /consent` does not require `Origin`. Exact header
+cardinality, validation, HTTP rejection, and precedence belong to
+[MCP Transport](mcp-transport.md#local-web-consent-fallback). This is defense in
+depth against browser cross-origin submission, not user authentication or proof
+of user intent.
 
 The one-time local-web consent token remains a transient bearer secret. Durable
 state stores its domain-separated hash and digest-only submission/replay

@@ -251,10 +251,18 @@ HTTP serve request behavior:
   a valid one-time consent token tied to the project, connection, and pending
   user action.
 - There are no unauthenticated arbitrary resource endpoints.
-- Browser-facing requests are identified by the presence of an `Origin` header.
-  MCP endpoint requests with `Origin` must match an exact `--allow-origin`
-  value, and local web consent form submissions with `Origin` must match the
-  consent endpoint's own origin.
+- MCP endpoint browser requests are identified by the presence of an `Origin`
+  header. An MCP endpoint request with `Origin` must match an exact
+  `--allow-origin` value.
+- A top-level `GET /consent` navigation does not require `Origin`. If the
+  request supplies `Origin`, it must contain exactly one header field whose
+  value is a valid serialized origin that exactly matches the consent
+  endpoint's own origin.
+- Every `POST /consent` requires exactly one `Origin` header field whose value
+  is a valid serialized origin that exactly matches the consent endpoint's own
+  origin. A missing, empty, `null`, malformed, comma-combined, repeated, or
+  different value fails with HTTP 403 `ORIGIN_NOT_ALLOWED` before form-body
+  decoding or validation, token lookup or consumption, or resolution effects.
 - CORS preflight is accepted only for the MCP endpoint, only after Origin
   allowlist validation, and only when at least one allowed Origin is configured.
 - Local HTTP responses include `Cache-Control: no-store` and
@@ -1380,11 +1388,16 @@ from the exact pending summary rather than issuing another create.
 
 <a id="local-web-consent-fallback"></a>
 The local web consent listener remains loopback-only and fails closed. `GET
-/consent` validates the one-time token and renders the exact canonical form;
-`POST /consent` accepts only form fields for that form. Origin, project,
-connection, request, form digest, expiry, candidate membership, and token state
-are revalidated. Successful insertion of the closed resolution body and token
-consumption are atomic.
+/consent` does not require `Origin`; it validates the one-time token and renders
+the exact canonical form. If GET supplies `Origin`, it must be one exact
+same-origin header field. `POST /consent` accepts only form fields for that form
+and first requires exactly one valid serialized same-origin `Origin` header
+field. Missing, empty, `null`, malformed, comma-combined, repeated, and
+different `Origin` values fail with HTTP 403 `ORIGIN_NOT_ALLOWED` before
+form-body decoding or validation, token lookup or consumption, or resolution
+effects. Project, connection, request, form digest, expiry, candidate
+membership, and token state are then revalidated. Successful insertion of the
+closed resolution body and token consumption are atomic.
 
 Listener startup alone never selects this path. Token creation occurs only
 after the exact model-invisible client capability is available. Before issuing

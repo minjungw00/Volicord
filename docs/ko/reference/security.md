@@ -359,6 +359,11 @@ Volicord Local HTTP transport는 아래를 보장하지 않습니다.
 베어러 토큰과 Origin 검사는 로컬 HTTP 프로세스에 묶인 전송 검사입니다. 이 검사가
 엔드포인트를 공개 노출에 적합하게 만들지는 않습니다. 엔드포인트는 호스트 루프백 또는
 의도한 Docker 호스트 루프백 노출 경계에 두어야 합니다.
+모든 local-web `POST /consent`에는 필수 동일 출처 `Origin` 점검이 적용되며, `GET
+/consent`에는 `Origin`이 필요하지 않습니다. 정확한 헤더 개수, 검증, HTTP 거절,
+우선순위는 [MCP 전송](mcp-transport.md#local-web-consent-fallback)이 담당합니다. 이는
+브라우저 교차 출처 제출에 대한 심층 방어이며 사용자 인증이나 사용자 의도 증명이
+아닙니다.
 
 일회성 local-web consent token은 일시적인 bearer secret으로 남습니다. 영속 상태는 원문
 token이 아니라 domain-separated hash와 digest-only submission/replay identity를

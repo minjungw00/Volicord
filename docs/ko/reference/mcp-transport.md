@@ -216,9 +216,15 @@ Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, 레지�
   프로젝트, 연결, 대기 중인 사용자 행동에 묶인 유효한 일회성 consent 토큰이 필요한 루프백 User
   Channel 입력 경로입니다.
 - 인증 없이 접근할 수 있는 임의 리소스 엔드포인트는 없습니다.
-- 브라우저 대상 요청은 `Origin` 헤더가 있는지로 식별합니다. `Origin`이 있는 MCP
-  엔드포인트 요청은 정확한 `--allow-origin` 값과 일치해야 합니다. `Origin`이 있는 로컬
-  consent 양식 제출은 consent 엔드포인트 자신의 Origin과 일치해야 합니다.
+- MCP 엔드포인트의 브라우저 요청은 `Origin` 헤더가 있는지로 식별합니다. `Origin`이 있는
+  MCP 엔드포인트 요청은 정확한 `--allow-origin` 값과 일치해야 합니다.
+- 최상위 `GET /consent` 탐색에는 `Origin`이 필요하지 않습니다. 요청이 `Origin`을 보내면
+  헤더 필드가 정확히 하나여야 하며 값은 유효하게 직렬화된 출처로서 consent 엔드포인트
+  자신의 `Origin`과 정확히 일치해야 합니다.
+- 모든 `POST /consent`에는 consent 엔드포인트 자신의 `Origin`과 정확히 일치하는
+  `Origin` 헤더 필드가 정확히 하나 있어야 합니다. 누락, 빈 값, `null`, 잘못된 형식,
+  쉼표로 결합된 값, 반복된 헤더, 다른 값은 양식 본문 디코딩·검증, 토큰 조회·소비,
+  해결 기록 효과보다 먼저 HTTP 403 `ORIGIN_NOT_ALLOWED`로 실패합니다.
 - CORS 사전 요청은 MCP 엔드포인트에 대해서만, Origin 허용 목록 검증 뒤에만, 그리고 허용된
   Origin이 하나 이상 설정되어 있을 때만 받습니다.
 - Local HTTP 응답에는 `Cache-Control: no-store`와 `X-Content-Type-Options: nosniff`가
@@ -1209,11 +1215,15 @@ fallback은 두 번째 요청을 만들거나 닫힌 공개 응답 스키마 밖
 `request.operation=resume` 분기를 사용합니다.
 
 <a id="local-web-consent-fallback"></a>
-로컬 consent listener는 loopback-only이고 fail closed합니다. `GET /consent`는 일회용
-token을 검증하고 정확한 canonical 폼을 렌더링합니다. `POST /consent`는 그 폼의 필드만
-받습니다. Origin, project, connection, request, form digest, expiry, 후보 membership,
-token 상태를 다시 검증합니다. 성공한 폐쇄형 resolution 본문 삽입과 token 소비는
-원자적입니다.
+로컬 consent listener는 loopback-only이고 fail closed합니다. `GET /consent`에는
+`Origin`이 필요하지 않으며 일회용 token을 검증하고 정확한 canonical 폼을 렌더링합니다.
+GET이 `Origin`을 보내면 정확한 동일 출처 헤더 필드가 하나만 있어야 합니다. `POST
+/consent`는 그 폼의 필드만 받으며 먼저 유효하게 직렬화된 동일 출처 `Origin` 헤더 필드가
+하나만 있는지 요구합니다. 누락, 빈 값, `null`, 잘못된 형식, 쉼표로 결합된 값, 반복된
+헤더, 다른 `Origin` 값은 양식 본문 디코딩·검증, 토큰 조회·소비, 해결 기록 효과보다
+먼저 HTTP 403 `ORIGIN_NOT_ALLOWED`로 실패합니다. 그다음 project, connection, request,
+form digest, expiry, 후보 membership, 토큰 상태를 다시 검증합니다. 성공한 폐쇄형
+resolution 본문 삽입과 토큰 소비는 원자적입니다.
 
 Listener 시작만으로는 이 경로를 선택하지 않습니다. 정확한 모델 비가시적 client
 capability를 사용할 수 있을 때만 token을 만듭니다. Token 발급 전에 adapter는 완전한

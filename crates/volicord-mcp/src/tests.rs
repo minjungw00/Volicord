@@ -5781,8 +5781,8 @@ fn local_web_consent_removed_project_membership_fails_before_form_rendering(
 }
 
 #[test]
-fn local_web_consent_rejects_origin_mismatch_without_consuming_token() -> Result<(), Box<dyn Error>>
-{
+fn local_web_consent_post_requires_one_exact_same_origin_before_effects(
+) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-origin")?;
     let (task_id, pending_response) = create_pending_product_action(&fixture)?;
     let token = "9999999999999999999999999999999999999999999999999999999999999999";
@@ -5794,14 +5794,115 @@ fn local_web_consent_rejects_origin_mismatch_without_consuming_token() -> Result
         token
     );
 
-    let rejected = server.handle_request(consent_post_request(
-        Some("http://example.invalid"),
-        &form_body,
-    ));
+    let get_without_origin = server.handle_request(consent_get_request(&consent_target(
+        fixture.project_id(),
+        token,
+    )));
+    assert_eq!(get_without_origin.status, 200);
+    assert_local_web_consent_security_headers(&get_without_origin);
+    let mut get_with_same_origin =
+        consent_get_request(&consent_target(fixture.project_id(), token));
+    get_with_same_origin
+        .headers
+        .insert("origin".to_owned(), consent_base_url().to_owned());
+    let get_with_same_origin = server.handle_request(get_with_same_origin);
+    assert_eq!(get_with_same_origin.status, 200);
+    assert_local_web_consent_security_headers(&get_with_same_origin);
+    let mut get_with_invalid_origin =
+        consent_get_request(&consent_target(fixture.project_id(), token));
+    get_with_invalid_origin
+        .headers
+        .insert("origin".to_owned(), "null".to_owned());
+    let get_with_invalid_origin = server.handle_request(get_with_invalid_origin);
+    assert_eq!(get_with_invalid_origin.status, 403);
+    assert_local_web_consent_security_headers(&get_with_invalid_origin);
+    assert!(http_body_text(&get_with_invalid_origin)?.contains("ORIGIN_NOT_ALLOWED"));
+    let mut get_with_repeated_origin =
+        consent_post_request_with_repeated_origins(&[consent_base_url(), consent_base_url()], "");
+    get_with_repeated_origin.method = "GET".to_owned();
+    get_with_repeated_origin.target = consent_target(fixture.project_id(), token);
+    get_with_repeated_origin.body.clear();
+    let get_with_repeated_origin = server.handle_request(get_with_repeated_origin);
+    assert_eq!(get_with_repeated_origin.status, 403);
+    assert_local_web_consent_security_headers(&get_with_repeated_origin);
+    assert!(http_body_text(&get_with_repeated_origin)?.contains("ORIGIN_NOT_ALLOWED"));
 
-    assert_eq!(rejected.status, 403);
-    assert_local_web_consent_security_headers(&rejected);
-    assert!(http_body_text(&rejected)?.contains("ORIGIN_NOT_ALLOWED"));
+    let mut missing_origin_before_body_validation = consent_post_request(None, "not-form-data");
+    missing_origin_before_body_validation
+        .headers
+        .insert("content-type".to_owned(), "application/json".to_owned());
+    let rejected_requests = vec![
+        ("missing", missing_origin_before_body_validation),
+        ("empty", consent_post_request(Some(""), &form_body)),
+        ("null", consent_post_request(Some("null"), &form_body)),
+        (
+            "malformed",
+            consent_post_request(Some("http://[::1"), &form_body),
+        ),
+        (
+            "wrong",
+            consent_post_request(Some("http://example.invalid"), &form_body),
+        ),
+        (
+            "wrong-before-token-lookup",
+            consent_post_request(
+                Some("http://example.invalid"),
+                &format!(
+                    "project={}&token=invalid&selected_option_id=keep",
+                    percent_encode_query(fixture.project_id())
+                ),
+            ),
+        ),
+        (
+            "comma-combined",
+            consent_post_request(
+                Some(&format!("{},{}", consent_base_url(), consent_base_url())),
+                &form_body,
+            ),
+        ),
+        (
+            "repeated",
+            consent_post_request_with_repeated_origins(
+                &[consent_base_url(), consent_base_url()],
+                &form_body,
+            ),
+        ),
+    ];
+    let before = user_action_side_effect_snapshot(&fixture)?;
+    for (case, request) in rejected_requests {
+        let rejected = server.handle_request(request);
+        assert_eq!(rejected.status, 403, "unexpected status for {case} Origin");
+        assert_local_web_consent_security_headers(&rejected);
+        assert!(
+            http_body_text(&rejected)?.contains("ORIGIN_NOT_ALLOWED"),
+            "unexpected error for {case} Origin"
+        );
+        assert_eq!(
+            user_action_side_effect_snapshot(&fixture)?,
+            before,
+            "{case} Origin must not consume the token or resolve the action"
+        );
+        let pending_value = pending_response.response_value.clone();
+        let record = stored_action_record(&fixture, &task_id, &pending_value)?;
+        assert_eq!(record.status, UserActionStatus::Pending);
+    }
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let token_validation = validate_user_action_channel_token(
+        fixture.runtime_home_path(),
+        UserActionChannelTokenCheck {
+            token: token.to_owned(),
+            expected_project_id: fixture.project_id().to_owned(),
+            expected_connection_internal_id: fixture.connection_id().to_owned(),
+            now,
+        },
+    )?;
+    let UserActionChannelTokenValidation::Valid(token_record) = token_validation else {
+        return Err("rejected Origin variants must leave the token valid".into());
+    };
+    assert_eq!(token_record.status, "pending");
+    assert!(token_record.consumed_at.is_none());
+    assert!(token_record.completed_at.is_none());
 
     let valid = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
     assert_eq!(valid.status, 200);
@@ -6512,6 +6613,25 @@ fn consent_post_request(origin: Option<&str>, body: &str) -> HttpRequest {
     HttpRequest {
         method: "POST".to_owned(),
         target: LOCAL_WEB_CONSENT_PATH.to_owned(),
+        headers,
+        body: body.as_bytes().to_vec(),
+    }
+}
+
+fn consent_post_request_with_repeated_origins(origins: &[&str], body: &str) -> HttpRequest {
+    let origin_headers = origins
+        .iter()
+        .map(|origin| format!("Origin: {origin}"))
+        .collect::<Vec<_>>()
+        .join("\r\n");
+    let head = format!(
+        "POST {LOCAL_WEB_CONSENT_PATH} HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n{origin_headers}"
+    );
+    let (method, target, headers) = crate::http::parse_http_head(&head)
+        .unwrap_or_else(|response| panic!("test HTTP head should parse: {response:?}"));
+    HttpRequest {
+        method,
+        target,
         headers,
         body: body.as_bytes().to_vec(),
     }
