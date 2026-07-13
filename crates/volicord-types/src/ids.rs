@@ -104,10 +104,17 @@ opaque_string_type!(
     StagedArtifactHandleId,
     "Opaque staged-artifact handle identifier."
 );
-opaque_string_type!(UserJudgmentId, "Opaque user-judgment identifier.");
 opaque_string_type!(
-    UserJudgmentOptionId,
-    "Opaque judgment-local option identifier."
+    UserActionRequestId,
+    "Opaque user-action-request identifier."
+);
+opaque_string_type!(
+    UserActionResolutionId,
+    "Opaque user-action-resolution identifier."
+);
+opaque_string_type!(
+    UserActionOptionId,
+    "Opaque choice-action-local option identifier."
 );
 opaque_string_type!(RiskId, "Opaque residual-risk identifier.");
 opaque_string_type!(
@@ -127,8 +134,10 @@ pub enum DurableIdKind {
     Task,
     /// Core-generated Change Unit ids.
     ChangeUnit,
-    /// Core-generated user-owned judgment ids.
-    UserJudgment,
+    /// Core-generated user-action-request ids.
+    UserActionRequest,
+    /// Core-generated user-action-resolution ids.
+    UserActionResolution,
     /// Core-generated write ticket ids.
     WriteTicket,
     /// Core-generated Run ids when the request does not supply one.
@@ -173,7 +182,8 @@ impl DurableIdKind {
         match self {
             Self::Task => "task_",
             Self::ChangeUnit => "cu_",
-            Self::UserJudgment => "uj_",
+            Self::UserActionRequest => "uar_",
+            Self::UserActionResolution => "ures_",
             Self::WriteTicket => "wt_",
             Self::Run => "run_",
             Self::Event => "evt_",
@@ -201,7 +211,8 @@ impl fmt::Display for DurableIdKind {
         formatter.write_str(match self {
             Self::Task => "task",
             Self::ChangeUnit => "change_unit",
-            Self::UserJudgment => "user_judgment",
+            Self::UserActionRequest => "user_action_request",
+            Self::UserActionResolution => "user_action_resolution",
             Self::WriteTicket => "write_ticket",
             Self::Run => "run",
             Self::Event => "event",

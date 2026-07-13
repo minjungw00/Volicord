@@ -216,11 +216,45 @@ pub(super) fn event_i64(value: &Value, paths: &[&[&str]]) -> Option<i64> {
 }
 
 fn current_timestamp() -> String {
-    DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Secs, true)
+    format_current_timestamp(DateTime::<Utc>::from(SystemTime::now()))
 }
 
 pub(super) fn event_time_or_now(raw: &str) -> DateTime<Utc> {
+    event_time_or_fallback(raw, DateTime::<Utc>::from(SystemTime::now()))
+}
+
+fn format_current_timestamp(timestamp: DateTime<Utc>) -> String {
+    timestamp.to_rfc3339_opts(SecondsFormat::AutoSi, true)
+}
+
+fn event_time_or_fallback(raw: &str, fallback: DateTime<Utc>) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(raw)
         .map(|timestamp| timestamp.with_timezone(&Utc))
-        .unwrap_or_else(|_| DateTime::<Utc>::from(SystemTime::now()))
+        .unwrap_or(fallback)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timestamp_fallbacks_preserve_order_after_a_same_millisecond_request() {
+        let request_timestamp = DateTime::parse_from_rfc3339("2026-07-13T12:34:56.123Z")
+            .expect("test timestamp should be RFC3339")
+            .with_timezone(&Utc);
+        let fallback_timestamp = DateTime::parse_from_rfc3339("2026-07-13T12:34:56.123456789Z")
+            .expect("test timestamp should be RFC3339")
+            .with_timezone(&Utc);
+
+        let missing_event_timestamp =
+            DateTime::parse_from_rfc3339(&format_current_timestamp(fallback_timestamp))
+                .expect("formatted fallback should remain RFC3339")
+                .with_timezone(&Utc);
+        let invalid_event_timestamp = event_time_or_fallback("not-a-timestamp", fallback_timestamp);
+
+        assert_eq!(missing_event_timestamp, fallback_timestamp);
+        assert_eq!(invalid_event_timestamp, fallback_timestamp);
+        assert!(missing_event_timestamp > request_timestamp);
+        assert!(invalid_event_timestamp > request_timestamp);
+    }
 }

@@ -82,7 +82,7 @@ Markdown, 지침, 상태 보기는 판단 필요를 보여 줄 수 있지만 기
 
 - 현재 `Task`, 현재 적용 범위, 범위 밖 항목, 관련 경로
 - 현재 에이전트 연결의 역량 한계
-- 대기 중인 사용자 판단이나 승인
+- 대기 중인 사용자 행동이나 승인
 - 다음 주장에 영향을 주는 증거 요약과 공백
 - 현재 차단 사유, 오래된 상태 경고, 보이는 잔여 위험
 - 다음 안전한 행동 하나
@@ -132,7 +132,7 @@ CLI 대체 경로는 다음과 같습니다.
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 정확한 입력 방법과 명령 동작은
@@ -148,7 +148,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 
 - 의도한 변경
 - 현재 적용 범위에 맞는지
-- 대기 중인 사용자 판단이나 민감 동작 승인
+- 대기 중인 사용자 행동이나 민감 동작 승인
 - 오래됐거나 사용할 수 없는 맥락
 - 쓰기 티켓을 발급할 수 없을 때 다음 행동
 
@@ -193,7 +193,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 ## 상태 보고와 닫기
 
 가장 중요한 차단 사유와 이를 푸는 행동부터 말합니다. 간결한 상태 보고에는 현재 작업
-경계, 현재 적용 범위, 최신 관련 사실, 대기 판단이나 승인, 증거 공백, 닫기 차단 사유,
+경계, 현재 적용 범위, 최신 관련 사실, 대기 사용자 행동이나 승인, 증거 공백, 닫기 차단 사유,
 다음 안전한 행동 하나가 들어갑니다.
 
 닫기 전에는 다음 사실을 보여 줍니다.

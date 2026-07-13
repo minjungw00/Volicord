@@ -361,8 +361,48 @@ fn command_capture_defaults_are_persisted_once_and_replay_is_exact() -> Result<(
 }
 
 #[test]
+fn evidence_capture_intent_ttl_overflow_rejects_without_effects() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let (task_id, change_unit_id, criterion_id, workspace) =
+        create_workspace_bound_task(&harness, "capture_ttl_overflow")?;
+    harness.use_clock(ManualClock::at("9999-12-31T23:50:00Z"));
+    let before = harness.counts()?;
+    let request = capture_request(
+        "req_capture_ttl_overflow",
+        Some("idem_capture_ttl_overflow"),
+        false,
+        2,
+        (&task_id, &change_unit_id, &criterion_id),
+        EvidenceCaptureSpec::VerifiedCommandExecution {
+            command_sha256: "a".repeat(64),
+            command_label: "cargo test".to_owned(),
+            expected_exit_code: RequiredNullable::null(),
+        },
+    );
+
+    let response = harness.service.prepare_evidence_capture(
+        request,
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "expires_at"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn capture_variants_apply_omission_defaults_from_one_owner() -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
+    harness.use_clock(clock.clone());
     let (task_id, change_unit_id, criterion_id, workspace) =
         create_workspace_bound_task(&harness, "variants")?;
     let cases = [
@@ -388,6 +428,9 @@ fn capture_variants_apply_omission_defaults_from_one_owner() -> Result<(), Box<d
         ),
     ];
     for (index, (capture, kind, expected_field, expected_value)) in cases.into_iter().enumerate() {
+        if index > 0 {
+            clock.advance(Duration::nanoseconds(1));
+        }
         let expected_state_version = 2 + index as u64;
         let session_id = format!("session_capture_variant_{index}");
         let response = harness.service.prepare_evidence_capture(
@@ -638,6 +681,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
                 task_id: &TaskId::new(&task_id),
                 change_unit_id: &change_unit_id,
                 scope_revision: 1,
+                now: &volicord_types::UtcTimestamp::parse("2026-07-13T00:00:00Z")?,
                 baseline_ref: Some("baseline_test"),
                 target: &EvidenceTarget::AcceptanceCriterion {
                     acceptance_criterion_id: AcceptanceCriterionId::new(&criterion_id),
@@ -674,6 +718,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
                 task_id: &TaskId::new(&task_id),
                 change_unit_id: &change_unit_id,
                 scope_revision: 1,
+                now: &volicord_types::UtcTimestamp::parse("2026-07-13T00:00:00Z")?,
                 baseline_ref: Some("baseline_test"),
                 target: &EvidenceTarget::AcceptanceCriterion {
                     acceptance_criterion_id: AcceptanceCriterionId::new(&criterion_id),
@@ -707,6 +752,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
                 task_id: &TaskId::new(&task_id),
                 change_unit_id: &change_unit_id,
                 scope_revision: 1,
+                now: &volicord_types::UtcTimestamp::parse("2026-07-13T00:00:00Z")?,
                 baseline_ref: Some("baseline_test"),
                 target: &EvidenceTarget::AcceptanceCriterion {
                     acceptance_criterion_id: AcceptanceCriterionId::new(&criterion_id),
@@ -750,6 +796,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
                 task_id: &TaskId::new(&task_id),
                 change_unit_id: &change_unit_id,
                 scope_revision: 1,
+                now: &volicord_types::UtcTimestamp::parse("2026-07-13T00:00:00Z")?,
                 baseline_ref: Some("baseline_test"),
                 target: &EvidenceTarget::AcceptanceCriterion {
                     acceptance_criterion_id: AcceptanceCriterionId::new(&criterion_id),
@@ -1112,6 +1159,30 @@ fn record_run_rejects_future_and_expired_capture_receipts_without_effects(
         let intent_ref: StateRecordRef =
             serde_json::from_value(prepared.response_value["capture_intent_ref"].clone())?;
         fulfill_command_receipt(&harness, intent_ref.record_id.as_str(), 0, suffix)?;
+        if suffix == "future_receipt" {
+            let persisted_floor: String = harness.conn()?.query_row(
+                "SELECT updated_at FROM project_state WHERE project_id = ?1",
+                [PROJECT_ID],
+                |row| row.get(0),
+            )?;
+            let future_created_at = UtcTimestamp::parse(&persisted_floor)?
+                .checked_add(Duration::milliseconds(1))?
+                .to_string();
+            harness.conn()?.execute(
+                "UPDATE evidence_capture_receipts
+                    SET created_at = ?3
+                  WHERE project_id = ?1
+                    AND evidence_capture_intent_id = ?2",
+                rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str(), future_created_at],
+            )?;
+            harness.conn()?.execute(
+                "UPDATE evidence_capture_source_claims
+                    SET claimed_at = ?3
+                  WHERE project_id = ?1
+                    AND evidence_capture_intent_id = ?2",
+                rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str(), future_created_at],
+            )?;
+        }
         clock.advance(advance);
         let before = harness.counts()?;
         let response = harness.service.record_run(
@@ -1124,6 +1195,148 @@ fn record_run_rejects_future_and_expired_capture_receipts_without_effects(
             "EVIDENCE_INSUFFICIENT"
         );
         assert_eq!(harness.counts()?, before);
+    }
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_corrupt_capture_authority_times_without_effects() -> Result<(), Box<dyn Error>>
+{
+    for variant in [
+        "intent_created_at",
+        "intent_expires_at",
+        "intent_extended_expiry",
+        "receipt_created_at",
+        "receipt_observed_at",
+    ] {
+        let mut harness = MethodHarness::new()?;
+        let (task_id, change_unit_id, criterion_id, workspace) =
+            create_workspace_bound_task(&harness, &format!("capture_range_{variant}"))?;
+        harness.use_clock(ManualClock::at("2026-07-13T01:00:00Z"));
+        let prepared = harness.service.prepare_evidence_capture(
+            capture_request(
+                &format!("req_capture_range_{variant}"),
+                Some(&format!("idem_capture_range_{variant}")),
+                false,
+                2,
+                (&task_id, &change_unit_id, &criterion_id),
+                EvidenceCaptureSpec::VerifiedCommandExecution {
+                    command_sha256: "9".repeat(64),
+                    command_label: "canonical range boundary".to_owned(),
+                    expected_exit_code: RequiredNullable::null(),
+                },
+            ),
+            invocation(OperationCategory::AgentWorkflow)
+                .with_git_workspace_context(workspace.clone()),
+        )?;
+        let intent_ref: StateRecordRef =
+            serde_json::from_value(prepared.response_value["capture_intent_ref"].clone())?;
+        fulfill_command_receipt(&harness, intent_ref.record_id.as_str(), 0, variant)?;
+        let out_of_range = "9999-12-31T23:59:59-23:59";
+        match variant {
+            "intent_created_at" | "intent_expires_at" => {
+                let column = if variant == "intent_created_at" {
+                    "created_at"
+                } else {
+                    "expires_at"
+                };
+                harness.conn()?.execute(
+                    &format!(
+                        "UPDATE evidence_capture_intents
+                            SET {column} = ?3
+                          WHERE project_id = ?1
+                            AND evidence_capture_intent_id = ?2"
+                    ),
+                    rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str(), out_of_range],
+                )?;
+            }
+            "intent_extended_expiry" => {
+                let created_at: String = harness.conn()?.query_row(
+                    "SELECT created_at
+                       FROM evidence_capture_intents
+                      WHERE project_id = ?1
+                        AND evidence_capture_intent_id = ?2",
+                    rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                let extended_expiry = UtcTimestamp::parse(&created_at)?
+                    .checked_add(Duration::minutes(16))?
+                    .to_string();
+                harness.conn()?.execute(
+                    "UPDATE evidence_capture_intents
+                        SET expires_at = ?3
+                      WHERE project_id = ?1
+                        AND evidence_capture_intent_id = ?2",
+                    rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str(), extended_expiry],
+                )?;
+            }
+            "receipt_created_at" => {
+                harness.conn()?.execute(
+                    "UPDATE evidence_capture_receipts
+                        SET created_at = ?3
+                      WHERE project_id = ?1
+                        AND evidence_capture_intent_id = ?2",
+                    rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str(), out_of_range],
+                )?;
+            }
+            "receipt_observed_at" => {
+                let receipt_json: String = harness.conn()?.query_row(
+                    "SELECT safe_receipt_json
+                       FROM evidence_capture_receipts
+                      WHERE project_id = ?1
+                        AND evidence_capture_intent_id = ?2",
+                    rusqlite::params![PROJECT_ID, intent_ref.record_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                let mut body: Value = serde_json::from_str(&receipt_json)?;
+                body["observed_at"] = json!(out_of_range);
+                let receipt_json = volicord_types::canonical_json_string(&body)?;
+                let sha256 = format!("{:x}", Sha256::digest(receipt_json.as_bytes()));
+                let receipt_size = i64::try_from(receipt_json.len())?;
+                harness.conn()?.execute(
+                    "UPDATE evidence_capture_receipts
+                        SET safe_receipt_json = ?3,
+                            safe_receipt_sha256 = ?4,
+                            safe_receipt_size_bytes = ?5,
+                            observed_at = ?6
+                      WHERE project_id = ?1
+                        AND evidence_capture_intent_id = ?2",
+                    rusqlite::params![
+                        PROJECT_ID,
+                        intent_ref.record_id.as_str(),
+                        receipt_json,
+                        sha256,
+                        receipt_size,
+                        out_of_range
+                    ],
+                )?;
+            }
+            _ => unreachable!(),
+        }
+        let before = harness.counts()?;
+        let before_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        let response = harness.service.record_run(
+            record_run_with_capture(
+                &task_id,
+                &change_unit_id,
+                &criterion_id,
+                intent_ref,
+                variant,
+            ),
+            invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace),
+        )?;
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(harness.counts()?, before, "variant {variant}");
+        let after_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(after_floor, before_floor, "variant {variant}");
     }
     Ok(())
 }

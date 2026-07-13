@@ -70,6 +70,17 @@ any attachment link or promotion according to the evidence rules below.
   statement becomes immutable on first committed use. A required criterion
   rejects `coverage_state=not_applicable`.
 
+Before creating a Run, changing evidence or close-basis state, promoting an
+artifact, or consuming a write ticket, Core rejects with
+`DECISION_UNRESOLVED` when a current pending user-action request includes
+`record_run` in `required_for` and its action kind, Task, current Change Unit,
+`scope_revision`, basis, and affected refs match this operation. A pending
+`sensitive_approval` matches only when its bounded action scope overlaps the
+validated write-ticket operation, actual normalized changed paths, sensitive
+categories, and baseline for this Run. Informational, resolved, stale,
+superseded, expired, non-matching, and action-kind-incompatible requests do not
+block Run recording.
+
 ## Request schema
 
 This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
@@ -140,7 +151,7 @@ Path and access notes:
 
 Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
-- The method rejects or excludes caller-supplied `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, and `task` refs from the close basis unless an owner explicitly adds them.
+- The method rejects or excludes caller-supplied `project_state`, `write_ticket`, `user_action_request`, `user_action_resolution`, `blocker`, `task_event`, and `task` refs from the close basis unless an owner explicitly adds them.
 - Every accepted ref must exist and belong to the same project and Task. Artifact refs must be linked to the Task and pass current-byte verification with `integrity_status=verified`; evidence refs must identify the current Task evidence summary; Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status.
 - Historical Run refs are audit records for close-basis purposes unless this new current Run explicitly reuses verified artifacts or evidence from history and records that reuse in its committed evidence or close assessment.
 - Core stores canonical refs in `CurrentCloseBasis` and never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
@@ -158,11 +169,16 @@ Evidence update provenance rules:
   - A canonical artifact proves byte identity and current integrity only. It
     does not prove who produced the bytes or whether they support the target.
   - `user_observation` / `user_observed` is retained only when `input_refs`
-    identifies a current target-bound `UserEvidenceObservation` created by
-    [`volicord.record_user_observation`](method-record-user-observation.md), and
+    identifies a current target-bound `evidence_observation UserActionResolution` created by
+    [`volicord.resolve_user_action`](method-resolve-user-action.md), and
     its exact output artifacts match. Core rechecks the local-user actor,
     verification basis, relevance, Task, Change Unit, scope, baseline, target,
-    and current bytes.
+    and current bytes. It preserves the resolution's exact stored `supported`
+    or `contradicted` relevance in the committed `relevance_assessment`, and it
+    replaces caller-supplied `EvidenceObservationInput.observed_at` with the
+    enclosing resolution's `resolved_at`. Both relevance states retain the
+    local-user producer provenance; `contradicted` remains negative relevance
+    and cannot establish supported coverage or evidence sufficiency.
   - A current capture intent with a complete matching receipt allows Core to
     finalize a verified command, verified tool-invocation, or registered
     connection-observation producer. Without that exact intent ref, direct
@@ -187,6 +203,25 @@ Evidence update provenance rules:
   strict-decodes its persisted authority metadata and must lead to the same
   current anchored assurance; a stale, missing, contradicted, corrupt,
   mismatched, output-substituted, or cyclic chain is rejected.
+- The `contradicted` entry in that rejection list is a supported-reuse rule,
+  not a producer-provenance downgrade. A current exact User Channel observation
+  with `contradicted` relevance remains `user_observation` / `user_observed`,
+  but it cannot qualify for validated reuse that establishes `supported`.
+- For every strong `user_observation` and validated-reuse check above, an exact
+  output set is non-empty and contains pairwise-distinct `artifact_id` values;
+  Core rejects duplicate artifact ids instead of deduplicating them. Each
+  historical output must match the current canonical typed `ArtifactRef` in
+  `artifact_id`, `project_id`, `task_id`, `display_name`, `content_type`,
+  `sha256`, `size_bytes`, `integrity_status`, `redaction_state`, `availability`,
+  `created_by_run_ref` presence and identity (`record_kind`, `record_id`,
+  `project_id`, and `task_id`), `created_by_actor_source`, and `storage_ref`.
+  The sole allowed normalization when comparing a historical ref with the
+  current canonical projection is rebasing the nested
+  `created_by_run_ref.produced_at_state_version`; that field is projection
+  freshness only and grants neither authority nor concurrency. No other typed
+  field may be ignored, rebased, or substituted. A duplicate or mismatch
+  rejects the request before commit; dry-run performs the same validation and
+  neither branch records strong provenance or another effect.
 - For non-supported states, current target-matching cooperative or unverified
   observation refs may be retained as descriptive support; the strong-reuse
   requirement applies only when refs are used to establish `supported`.
@@ -761,7 +796,7 @@ state:
     produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

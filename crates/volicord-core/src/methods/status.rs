@@ -46,7 +46,7 @@ impl CoreService {
             &prepared.context.verified_invocation,
             task.as_ref(),
             &request.include,
-            self.now(),
+            *prepared.operation_now.as_datetime(),
         ) {
             Ok(result_fields) => result_fields,
             Err(error) => {
@@ -87,10 +87,11 @@ fn status_result_fields(
     include: &StatusInclude,
     now: DateTime<Utc>,
 ) -> Result<JsonObject, PlanError> {
+    let user_action_now = UtcTimestamp::from_datetime(now);
     let state_version = project_state.state_version;
     let project_id = &envelope.project_id;
     let mut active_task = None;
-    let mut pending_user_judgments = Vec::new();
+    let mut pending_user_actions = Vec::new();
     let mut pending_inbox_items = Vec::new();
     let mut user_channel_availability_summary = None;
     let mut blocker_refs = Vec::new();
@@ -108,7 +109,7 @@ fn status_result_fields(
     let mut authority_receipt = None;
     let mut next_actions = Vec::new();
     let mut receipt_next_actions = Vec::new();
-    let mut card_pending_user_judgment_count = 0usize;
+    let mut card_pending_user_action_count = 0usize;
     let guarantee_profile = if include.guarantees {
         Some(
             store
@@ -154,11 +155,11 @@ fn status_result_fields(
                 state_version,
             )
         };
-        let all_pending_user_judgments =
-            projected_pending_user_judgment_refs(store, &task_id, state_version)?;
-        card_pending_user_judgment_count = all_pending_user_judgments.len();
-        if include.pending_user_judgments {
-            pending_user_judgments = all_pending_user_judgments.clone();
+        let all_pending_user_actions =
+            projected_pending_user_action_refs(store, &task_id, state_version, &user_action_now)?;
+        card_pending_user_action_count = all_pending_user_actions.len();
+        if include.pending_user_actions {
+            pending_user_actions = all_pending_user_actions.clone();
         }
         blocker_refs = projected_blocker_refs(store, &task_id, state_version)?;
         let projected_write_ticket = if include.write_ticket {
@@ -240,20 +241,21 @@ fn status_result_fields(
         if include.evidence {
             evidence_summary = projected_evidence.clone();
         }
-        if include.pending_user_judgments {
+        if include.pending_user_actions {
             let user_channel = UserChannelContext {
                 guard_health: close_plan.guard_health.as_ref(),
                 host_elicitation_available: verified_invocation.host_elicitation_available,
                 local_web_consent_available: verified_invocation.local_web_consent_available,
             };
             user_channel_availability_summary = Some(user_channel_availability(user_channel));
-            pending_inbox_items = pending_judgment_inbox_items(
+            pending_inbox_items = pending_user_action_inbox_items(
                 store,
                 project_state,
                 envelope,
                 &task_id,
                 state_version,
                 user_channel,
+                &user_action_now,
             )?;
         }
         if include.task {
@@ -263,7 +265,7 @@ fn status_result_fields(
                 task,
                 current_change_unit: current_change_unit.as_ref(),
                 acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
-                pending_user_judgment_refs: all_pending_user_judgments,
+                pending_user_action_refs: all_pending_user_actions,
                 blocker_refs: blocker_refs.clone(),
                 write_ticket_summary: projected_write_ticket,
                 evidence_summary: projected_evidence.clone(),
@@ -350,7 +352,7 @@ fn status_result_fields(
             include.evidence || include.close,
             evidence_gate.as_ref(),
         ),
-        pending_user_judgments: card_pending_user_judgment_count,
+        pending_user_actions: card_pending_user_action_count,
         changes: changes_summary_text(
             include.close,
             guard_health
@@ -369,8 +371,8 @@ fn status_result_fields(
         active_task: None,
         status_summary: status_summary_for(task, close_state, close_blockers.as_deref()),
         next_actions,
-        pending_user_judgments,
-        pending_judgment_inbox_items: pending_inbox_items,
+        pending_user_actions,
+        pending_user_action_inbox_items: pending_inbox_items,
         user_channel_availability: user_channel_availability_summary,
         blocker_refs,
         write_ticket_summary,

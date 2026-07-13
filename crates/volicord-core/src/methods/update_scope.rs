@@ -40,6 +40,7 @@ impl CoreService {
             &prepared.context.project_state,
             request.clone(),
             &prepared.context.verified_invocation,
+            &prepared.operation_now,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -85,9 +86,10 @@ fn plan_update_scope(
     project_state: &ProjectStateHeader,
     request: UpdateScopeRequest,
     verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan, PlanError> {
     let planned_state_version = project_state.state_version + 1;
-    let plan_now = utc_timestamp(service.now());
+    let plan_now = operation_now.clone();
     let task = store
         .task_record(&request.task_id)
         .map_err(|error| {
@@ -121,6 +123,49 @@ fn plan_update_scope(
         task.scope_revision,
         &plan_now,
     )?;
+
+    let current_change_unit_id = current_change_unit
+        .as_ref()
+        .map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
+    let mut operation_refs = vec![state_ref(
+        StateRecordKind::Task,
+        request.task_id.as_str(),
+        &request.envelope.project_id,
+        Some(&request.task_id),
+        Some(project_state.state_version),
+    )];
+    if let Some(change_unit) = current_change_unit.as_ref() {
+        operation_refs.push(change_unit_ref(
+            &request.envelope.project_id,
+            &request.task_id,
+            change_unit,
+            project_state.state_version,
+        ));
+    }
+    let operation_context = UserActionOperationContext {
+        operation: UserActionOperation::ScopeUpdate,
+        task_id: &request.task_id,
+        change_unit_id: current_change_unit_id.as_ref(),
+        scope_revision: task.scope_revision,
+        close_basis: None,
+        operation_refs: &operation_refs,
+        sensitive_approval: None,
+    };
+    if !pending_user_action_refs_for_operation(
+        store,
+        project_state,
+        &request.envelope,
+        &plan_now,
+        &operation_context,
+    )?
+    .is_empty()
+    {
+        return Err(PlanError::Response(Box::new(decision_rejected_response(
+            &request.envelope,
+            Some(project_state.state_version),
+            "a current pending user action must be resolved before this scope update",
+        ))));
+    }
 
     let current_scope = StoredScope::from_task(&task)?;
     let next_scope = current_scope.apply_request(&request);
@@ -332,13 +377,13 @@ fn plan_update_scope(
         });
     }
     if scope_changed {
-        storage_mutations.push(CoreStorageMutation::MarkUserJudgmentsSupersededOrStale(
-            UserJudgmentInvalidation {
+        storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
+            UserActionInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
-                judgment_kinds: Vec::new(),
+                action_kinds: Vec::new(),
             },
         ));
-        if let Some(lifecycle_phase) = projected_judgment_lifecycle_phase(
+        if let Some(lifecycle_phase) = projected_user_action_lifecycle_phase(
             project_state,
             &task,
             synthetic_change_unit.as_ref(),
@@ -353,7 +398,7 @@ fn plan_update_scope(
         Vec::new()
     } else {
         store
-            .pending_user_judgment_refs(&request.task_id, planned_state_version)
+            .pending_user_action_refs(&request.task_id, planned_state_version, &plan_now)
             .map_err(|error| {
                 PlanError::Response(Box::new(store_error_response(
                     &request.envelope,
@@ -396,7 +441,7 @@ fn plan_update_scope(
         store,
         &request.task_id,
         planned_state_version,
-        service.now(),
+        *plan_now.as_datetime(),
         Some(guarantee_display.clone()),
     )?;
     let projected_current_close_basis = if scope_changed {
@@ -433,6 +478,7 @@ fn plan_update_scope(
             pending_refs.clone(),
             blocker_refs.clone(),
             close_evidence_summary,
+            plan_now.clone(),
         ),
         &acceptance_criteria,
     );
@@ -456,7 +502,7 @@ fn plan_update_scope(
         task: &synthetic_task,
         current_change_unit: synthetic_change_unit.as_ref(),
         acceptance_criteria,
-        pending_user_judgment_refs: pending_refs,
+        pending_user_action_refs: pending_refs,
         blocker_refs: blocker_refs.clone(),
         write_ticket_summary,
         evidence_summary,
@@ -691,7 +737,7 @@ fn validate_related_scope_decisions(
     };
     let mut linked_scope_decision_refs = Vec::new();
     for related_ref in &request.related_scope_decision_refs {
-        if related_ref.record_kind != StateRecordKind::UserJudgment
+        if related_ref.record_kind != StateRecordKind::UserActionResolution
             || related_ref.project_id != request.envelope.project_id
             || related_ref.task_id.as_ref() != Some(&request.task_id)
         {
@@ -699,12 +745,12 @@ fn validate_related_scope_decisions(
                 request.envelope.dry_run,
                 Some(project_state.state_version),
                 "related_scope_decision_refs",
-                "related scope decision refs must identify user judgments for this Task",
+                "related scope decision refs must identify user-action resolutions for this Task",
             )
             .map(|()| Vec::new());
         }
-        let record = store
-            .user_judgment_record(related_ref.record_id.as_str())
+        let resolution = store
+            .user_action_resolution_record(related_ref.record_id.as_str())
             .map_err(|error| {
                 PlanError::Response(Box::new(store_error_response(
                     &request.envelope,
@@ -716,15 +762,25 @@ fn validate_related_scope_decisions(
                 PlanError::Response(Box::new(decision_rejected_response(
                     &request.envelope,
                     Some(project_state.state_version),
-                    "related scope decision judgment is missing",
+                    "related scope decision resolution is missing",
                 )))
             })?;
-        let authority = user_judgment_authority_from_record(&record)?;
+        let record = store
+            .user_action_record(&resolution.user_action_request_id, now)
+            .map_err(CorePipelineError::from)?
+            .ok_or_else(|| {
+                PlanError::Response(Box::new(decision_rejected_response(
+                    &request.envelope,
+                    Some(project_state.state_version),
+                    "related scope decision request is missing",
+                )))
+            })?;
+        let authority = user_action_authority_from_record(&record)?;
         if !accepted_current_scope_decision_authority(&authority, &requirement) {
             return Err(PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,
                 Some(project_state.state_version),
-                "related scope decision judgment is not current",
+                "related scope decision resolution is not current",
             ))));
         }
         linked_scope_decision_refs.push(related_ref.clone());

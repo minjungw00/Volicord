@@ -242,14 +242,19 @@ volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 
 ## 사용자 채널 경계
 
-에이전트 연결은 초점이 맞춰진 사용자 판단을 요청하거나 보여 줄 수 있습니다.
-사용자 답변을 대신 기록하지는 않습니다. Volicord가 대기 판단을 보여 주면 함께
-제공된 사용자 채널 경로를 사용합니다. 안정적인 CLI 경로는 다음과 같습니다.
+에이전트 연결은 초점이 맞춰진 사용자 행동을 요청하거나 보여 줄 수 있습니다.
+사용자 resolution을 대신 기록하지는 않습니다. Volicord가 대기 행동을 보여 주면 함께
+제공된 사용자 채널 경로를 사용합니다. 안정적인 CLI 경로는 저장된 양식을 먼저 나열한
+뒤 해결합니다. 선택 양식은 다음과 같습니다.
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
+
+Evidence 관찰 양식은 표시된 수락 기준 또는 보충 주장, 아티팩트 ID, summary, 선택적
+contradicted 플래그를 사용합니다. 자세한 내용은
+[사용자 작업 흐름](user-workflow.md#use-evidence-without-replacing-judgment)을 보세요.
 
 ## 제거
 

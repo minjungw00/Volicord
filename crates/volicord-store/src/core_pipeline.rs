@@ -1,14 +1,17 @@
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
-    CurrentCloseBasis, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentResolutionOutcome,
-    ObservedChanges, PersistedArtifactProducer, PersistedArtifactProvenance,
-    PersistedArtifactProvenanceMetadata, ProjectEnforcementProfile, RunId, StagedArtifactHandleId,
-    TaskId, UserJudgmentOptionAction, UtcTimestamp,
+    effective_user_action_status as derive_user_action_status, validate_channel_submission_id,
+    ArtifactRef, CurrentCloseBasis, ObservedChanges, PersistedArtifactProducer,
+    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedUserActionRequest,
+    ProjectEnforcementProfile, RunId, StagedArtifactHandleId, TaskId, UserActionBasis,
+    UserActionBasisStatus, UserActionChannelKind, UserActionKind, UserActionOptionAction,
+    UserActionRequestBody, UserActionResolutionBody, UserActionStatus, UtcTimestamp,
 };
 
 use crate::{
@@ -39,6 +42,7 @@ pub struct CoreProjectStore {
     pub(crate) project: ProjectRecord,
     pub(crate) conn: Connection,
     pub(crate) writable: bool,
+    pub(crate) last_clock_sample: RefCell<Option<UtcTimestamp>>,
 }
 
 /// Current project-state header values needed by request routing.
@@ -47,6 +51,7 @@ pub struct ProjectStateHeader {
     pub project_id: String,
     pub state_version: u64,
     pub active_task_id: Option<String>,
+    pub updated_at: String,
 }
 
 /// Strict-decoded project-owned enforcement profile row.
@@ -130,15 +135,14 @@ pub enum CoreStorageMutation {
     UpsertEvidenceSummary(EvidenceSummaryUpsert),
     InsertEvidenceObservation(EvidenceObservationInsert),
     InsertEvidenceProducer(EvidenceProducerInsert),
-    InsertUserEvidenceObservation(UserEvidenceObservationInsert),
-    InsertUserJudgment(UserJudgmentInsert),
-    ResolveUserJudgment(UserJudgmentResolutionUpdate),
-    ConsumeLocalWebConsentToken(LocalWebConsentTokenConsumption),
+    InsertUserActionRequest(UserActionRequestInsert),
+    InsertUserActionResolution(UserActionResolutionInsert),
+    ConsumeUserActionChannelToken(UserActionChannelTokenConsumption),
     ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate),
     InsertProjectContinuityRecord(ProjectContinuityRecordInsert),
-    UpdateUserJudgmentBasis(UserJudgmentBasisUpdate),
-    MarkUserJudgmentBasesStatus(UserJudgmentBasisStatusMark),
-    MarkUserJudgmentsSupersededOrStale(UserJudgmentInvalidation),
+    UpdateUserActionBasis(UserActionBasisUpdate),
+    MarkUserActionBasesStatus(UserActionBasisStatusMark),
+    MarkUserActionsSupersededOrStale(UserActionInvalidation),
 }
 
 /// Storage input for inserting a Task current row.
@@ -241,48 +245,46 @@ pub struct ChangeUnitInsert {
     pub lifecycle_json: String,
 }
 
-/// Storage input for inserting a pending user-owned judgment request.
+/// Storage input for inserting a pending user-action request.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserJudgmentInsert {
-    pub judgment_id: String,
+pub struct UserActionRequestInsert {
+    pub user_action_request_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
-    pub judgment_kind: String,
+    pub action_kind: UserActionKind,
     pub request_json: String,
-    pub context_json: String,
-    pub options_json: String,
-    pub affected_refs_json: String,
-    pub artifact_refs_json: String,
-    pub sensitive_action_scope_json: String,
     pub basis_json: String,
-    pub basis_status: JudgmentBasisCompatibilityStatus,
+    pub basis_status: UserActionBasisStatus,
+    pub required_for_json: String,
     pub requested_by_actor_source: String,
+    pub source_method: String,
+    pub source_idempotency_key: String,
     pub requested_at: String,
+    pub expires_at: Option<String>,
     pub metadata_json: String,
 }
 
-/// Storage input for resolving one pending user-owned judgment.
+/// Storage input for inserting one immutable user-action resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserJudgmentResolutionUpdate {
-    pub judgment_id: String,
-    pub status: String,
-    pub resolution_outcome: JudgmentResolutionOutcome,
-    pub resolution_machine_action: UserJudgmentOptionAction,
+pub struct UserActionResolutionInsert {
+    pub user_action_resolution_id: String,
+    pub user_action_request_id: String,
+    pub action_kind: UserActionKind,
+    pub channel_kind: UserActionChannelKind,
+    pub channel_submission_id: String,
     pub resolution_json: String,
-    pub resolution_rationale_json: String,
-    pub sensitive_action_scope_json: Option<String>,
     pub resolved_by_actor_source: String,
     pub resolved_verification_basis: String,
     pub resolved_assurance_level: String,
     pub resolved_at: String,
 }
 
-/// Storage input for consuming a local web consent token with its judgment resolution.
+/// Storage input for consuming a channel token with its user-action resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocalWebConsentTokenConsumption {
+pub struct UserActionChannelTokenConsumption {
     pub token_hash: String,
     pub connection_internal_id: String,
-    pub judgment_id: String,
+    pub user_action_request_id: String,
     pub consumed_at: String,
     pub completion_metadata_json: String,
 }
@@ -318,26 +320,26 @@ pub struct ProjectContinuityRecordInsert {
     pub metadata_json: String,
 }
 
-/// Storage input for replacing one judgment basis snapshot and compatibility status.
+/// Storage input for replacing one user-action basis snapshot and compatibility status.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserJudgmentBasisUpdate {
-    pub judgment_id: String,
+pub struct UserActionBasisUpdate {
+    pub user_action_request_id: String,
     pub basis_json: String,
-    pub basis_status: JudgmentBasisCompatibilityStatus,
+    pub basis_status: UserActionBasisStatus,
 }
 
-/// Storage input for marking selected judgment basis rows stale or superseded.
+/// Storage input for marking selected user-action basis rows stale or superseded.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserJudgmentBasisStatusMark {
-    pub judgment_ids: Vec<String>,
-    pub basis_status: JudgmentBasisCompatibilityStatus,
+pub struct UserActionBasisStatusMark {
+    pub user_action_request_ids: Vec<String>,
+    pub basis_status: UserActionBasisStatus,
 }
 
-/// Storage input for invalidating current judgment authority after state changes.
+/// Storage input for invalidating current user-action authority after state changes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserJudgmentInvalidation {
+pub struct UserActionInvalidation {
     pub task_id: String,
-    pub judgment_kinds: Vec<String>,
+    pub action_kinds: Vec<UserActionKind>,
 }
 
 /// Storage input for inserting one open write ticket.
@@ -348,7 +350,7 @@ pub struct WriteTicketInsert {
     pub change_unit_id: String,
     pub attempt_scope_json: String,
     pub created_by_actor_source: String,
-    pub created_by_judgment_id: Option<String>,
+    pub created_by_user_action_resolution_id: Option<String>,
     pub expires_at: String,
     pub created_at: String,
     pub metadata_json: String,
@@ -414,6 +416,7 @@ pub struct ArtifactPromotion {
     pub expected_sha256: String,
     pub expected_size_bytes: u64,
     pub expected_redaction_state: String,
+    pub expected_created_at: String,
     pub expected_expires_at: String,
     pub uri: String,
     pub retention_json: String,
@@ -452,6 +455,7 @@ pub struct EvidenceSummaryRecord {
     pub evidence_summary_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
+    pub produced_at_state_version: u64,
     pub status: String,
     pub coverage_json: String,
     pub supporting_refs_json: String,
@@ -508,45 +512,6 @@ pub struct EvidenceObservationRecord {
     pub metadata_json: String,
 }
 
-/// Storage input for a User Channel-owned evidence observation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserEvidenceObservationInsert {
-    pub user_evidence_observation_id: String,
-    pub task_id: String,
-    pub change_unit_id: String,
-    pub scope_revision: u64,
-    pub baseline_ref: String,
-    pub acceptance_criterion_id: Option<String>,
-    pub evidence_claim_id: Option<String>,
-    pub relevance_status: String,
-    pub output_artifact_refs_json: String,
-    pub summary: String,
-    pub observed_by_actor_source: String,
-    pub verification_basis: String,
-    pub observed_at: String,
-    pub recorded_at: String,
-}
-
-/// Stored User Channel-owned evidence observation facts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserEvidenceObservationRecord {
-    pub project_id: String,
-    pub user_evidence_observation_id: String,
-    pub task_id: String,
-    pub change_unit_id: String,
-    pub scope_revision: u64,
-    pub baseline_ref: String,
-    pub acceptance_criterion_id: Option<String>,
-    pub evidence_claim_id: Option<String>,
-    pub relevance_status: String,
-    pub output_artifact_refs_json: String,
-    pub summary: String,
-    pub observed_by_actor_source: String,
-    pub verification_basis: String,
-    pub observed_at: String,
-    pub recorded_at: String,
-}
-
 /// Event reference facts created by an atomic mutation commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedEventRef {
@@ -571,6 +536,9 @@ pub struct CommitMutationInput {
     pub request_hash: String,
     pub replay_context: Option<VerifiedReplayContext>,
     pub expected_state_version: Option<u64>,
+    pub clock_floor: Option<String>,
+    /// Whether commit time must also sample SQLite's live UTC clock.
+    pub include_live_storage_time: bool,
     pub events: Vec<PendingTaskEvent>,
 }
 
@@ -614,7 +582,8 @@ pub struct StorageEffectCounts {
     pub change_units: u64,
     pub task_events: u64,
     pub tool_invocations: u64,
-    pub user_judgments: u64,
+    pub user_action_requests: u64,
+    pub user_action_resolutions: u64,
     pub write_tickets: u64,
     pub runs: u64,
     pub evidence_capture_intents: u64,
@@ -736,6 +705,7 @@ pub struct StoredArtifactStagingRecord {
     pub content_type: Option<String>,
     pub redaction_state: String,
     pub status: String,
+    pub created_at: String,
     pub expires_at: String,
 }
 
@@ -778,34 +748,82 @@ struct StoredArtifactRecordRaw {
     metadata_json: String,
 }
 
-/// Stored user-owned judgment row data needed by Core method implementations.
+/// Stored user-action request row data needed by Core method implementations.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserJudgmentRecord {
+pub struct UserActionRequestRecord {
     pub project_id: String,
-    pub judgment_id: String,
+    pub user_action_request_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
-    pub judgment_kind: String,
-    pub status: String,
+    pub action_kind: UserActionKind,
     pub request_json: String,
-    pub context_json: String,
-    pub options_json: String,
-    pub affected_refs_json: String,
-    pub artifact_refs_json: String,
-    pub sensitive_action_scope_json: String,
     pub basis_json: String,
-    pub basis_status: String,
-    pub resolution_outcome: Option<String>,
-    pub resolution_machine_action: Option<String>,
-    pub resolution_json: Option<String>,
-    pub resolution_rationale_json: Option<String>,
-    pub resolved_by_actor_source: Option<String>,
-    pub resolved_verification_basis: Option<String>,
-    pub resolved_assurance_level: Option<String>,
+    pub basis_status: UserActionBasisStatus,
+    pub required_for_json: String,
     pub requested_by_actor_source: String,
+    pub source_method: String,
+    pub source_idempotency_key: String,
     pub requested_at: String,
-    pub resolved_at: Option<String>,
+    pub expires_at: Option<String>,
     pub metadata_json: String,
+}
+
+/// Stored immutable user-action resolution row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionResolutionRecord {
+    pub project_id: String,
+    pub user_action_resolution_id: String,
+    pub user_action_request_id: String,
+    pub action_kind: UserActionKind,
+    pub channel_kind: UserActionChannelKind,
+    pub channel_submission_id: String,
+    pub resolution_json: String,
+    pub resolved_by_actor_source: String,
+    pub resolved_verification_basis: String,
+    pub resolved_assurance_level: String,
+    pub resolved_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UserActionRequestRecordRaw {
+    project_id: String,
+    user_action_request_id: String,
+    task_id: String,
+    change_unit_id: Option<String>,
+    action_kind: String,
+    request_json: String,
+    basis_json: String,
+    basis_status: String,
+    required_for_json: String,
+    requested_by_actor_source: String,
+    source_method: String,
+    source_idempotency_key: String,
+    requested_at: String,
+    expires_at: Option<String>,
+    metadata_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UserActionResolutionRecordRaw {
+    project_id: String,
+    user_action_resolution_id: String,
+    user_action_request_id: String,
+    action_kind: String,
+    channel_kind: String,
+    channel_submission_id: String,
+    resolution_json: String,
+    resolved_by_actor_source: String,
+    resolved_verification_basis: String,
+    resolved_assurance_level: String,
+    resolved_at: String,
+}
+
+/// Stored request and optional resolution with its derived current lifecycle status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveUserActionRecord {
+    pub request: UserActionRequestRecord,
+    pub resolution: Option<UserActionResolutionRecord>,
+    pub status: UserActionStatus,
 }
 
 /// Stored project-continuity row data needed by Core method implementations.
@@ -831,16 +849,6 @@ pub struct ProjectContinuityRecordRecord {
     pub metadata_json: String,
 }
 
-/// Stored judgment-basis facts with strict-decoded typed JSON when present.
-#[derive(Debug, Clone, PartialEq)]
-pub struct UserJudgmentBasisRecord {
-    pub project_id: String,
-    pub judgment_id: String,
-    pub basis_json: String,
-    pub basis_status: JudgmentBasisCompatibilityStatus,
-    pub basis: JudgmentBasis,
-}
-
 /// Public record reference facts read from storage rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredRecordRef {
@@ -855,6 +863,7 @@ pub struct StoredRecordRef {
 pub struct ProjectMutation<'tx> {
     project_id: &'tx str,
     project_home: &'tx Path,
+    committed_at: &'tx str,
     tx: &'tx Transaction<'tx>,
 }
 
@@ -865,6 +874,21 @@ mod replay;
 mod validation;
 
 impl CoreProjectStore {
+    /// Runs related read-only lookups against one SQLite snapshot.
+    ///
+    /// The deferred transaction pins its snapshot at the closure's first read,
+    /// so callers can attach one project-state version to a compound projection
+    /// without mixing rows from a concurrent authority commit.
+    pub fn with_read_snapshot<T>(
+        &self,
+        read: impl FnOnce(&Self) -> StoreResult<T>,
+    ) -> StoreResult<T> {
+        let transaction = self.conn.unchecked_transaction()?;
+        let value = read(self)?;
+        transaction.commit()?;
+        Ok(value)
+    }
+
     /// Reads the current project-state header.
     pub fn project_state(&self) -> StoreResult<ProjectStateHeader> {
         read_project_state(&self.conn, &self.project.project_id)
@@ -1062,12 +1086,7 @@ impl CoreProjectStore {
         task_id: &TaskId,
         now: &UtcTimestamp,
     ) -> StoreResult<bool> {
-        has_prepared_artifact_input(
-            &self.conn,
-            &self.project.project_id,
-            task_id.as_str(),
-            &now.to_string(),
-        )
+        has_prepared_artifact_input(&self.conn, &self.project.project_id, task_id.as_str(), now)
     }
 
     /// Returns whether a committed event id already exists in this project.
@@ -1139,32 +1158,6 @@ impl CoreProjectStore {
         )
     }
 
-    /// Returns whether a User Channel evidence observation id exists in this project.
-    pub fn user_evidence_observation_exists(
-        &self,
-        user_evidence_observation_id: &str,
-    ) -> StoreResult<bool> {
-        row_exists(
-            &self.conn,
-            &self.project.project_id,
-            "user_evidence_observations",
-            "user_evidence_observation_id",
-            user_evidence_observation_id,
-        )
-    }
-
-    /// Reads one User Channel evidence observation by exact project-local identity.
-    pub fn user_evidence_observation_record(
-        &self,
-        user_evidence_observation_id: &str,
-    ) -> StoreResult<Option<UserEvidenceObservationRecord>> {
-        user_evidence_observation_record(
-            &self.conn,
-            &self.project.project_id,
-            user_evidence_observation_id,
-        )
-    }
-
     /// Lists evidence observation refs created by a committed Run.
     pub fn evidence_observation_refs_for_run(
         &self,
@@ -1208,65 +1201,120 @@ impl CoreProjectStore {
         )
     }
 
-    /// Lists pending user-judgment refs for a Task.
-    pub fn pending_user_judgment_refs(
+    /// Lists effective pending user-action refs for a Task at the supplied instant.
+    pub fn pending_user_action_refs(
         &self,
         task_id: &TaskId,
         state_version: u64,
+        now: &UtcTimestamp,
     ) -> StoreResult<Vec<StoredRecordRef>> {
-        task_scoped_refs(
-            &self.conn,
-            RefQuery {
-                project_id: &self.project.project_id,
-                table: "user_judgments",
-                id_column: "judgment_id",
-                record_kind: "user_judgment",
-                task_id: task_id.as_str(),
-                status_column: "status",
-                status_value: "pending",
-                state_version,
-            },
-        )
-    }
-
-    /// Lists pending user-owned judgment records for a Task.
-    pub fn pending_user_judgment_records(
-        &self,
-        task_id: &TaskId,
-    ) -> StoreResult<Vec<UserJudgmentRecord>> {
-        pending_user_judgment_records(&self.conn, &self.project.project_id, task_id.as_str())
-    }
-
-    /// Lists all user-owned judgment records for a Task in stable creation order.
-    pub fn user_judgment_records_for_task(
-        &self,
-        task_id: &TaskId,
-    ) -> StoreResult<Vec<UserJudgmentRecord>> {
-        user_judgment_records_for_task(&self.conn, &self.project.project_id, task_id.as_str())
-    }
-
-    /// Lists stale or superseded user-judgment refs for a Task and judgment kind.
-    pub fn non_current_user_judgment_refs(
-        &self,
-        task_id: &TaskId,
-        judgment_kind: &str,
-        state_version: u64,
-    ) -> StoreResult<Vec<StoredRecordRef>> {
-        non_current_user_judgment_refs(
+        effective_user_action_refs(
             &self.conn,
             &self.project.project_id,
             task_id.as_str(),
-            judgment_kind,
+            UserActionStatus::Pending,
             state_version,
+            now,
         )
     }
 
-    /// Reads one user-owned judgment row by project-local judgment identity.
-    pub fn user_judgment_record(
+    /// Lists effective pending user-action records for a Task.
+    pub fn pending_user_action_records(
         &self,
-        judgment_id: &str,
-    ) -> StoreResult<Option<UserJudgmentRecord>> {
-        user_judgment_record(&self.conn, &self.project.project_id, judgment_id)
+        task_id: &TaskId,
+        now: &UtcTimestamp,
+    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+        effective_user_action_records_for_task(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            Some(UserActionStatus::Pending),
+            now,
+        )
+    }
+
+    /// Lists all user-action records for a Task in stable creation order.
+    pub fn user_action_records_for_task(
+        &self,
+        task_id: &TaskId,
+        now: &UtcTimestamp,
+    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+        effective_user_action_records_for_task(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            None,
+            now,
+        )
+    }
+
+    /// Lists stale or superseded user-action refs for a Task and action kind.
+    pub fn non_current_user_action_refs(
+        &self,
+        task_id: &TaskId,
+        action_kind: UserActionKind,
+        state_version: u64,
+        now: &UtcTimestamp,
+    ) -> StoreResult<Vec<StoredRecordRef>> {
+        non_current_user_action_refs(
+            &self.conn,
+            &self.project.project_id,
+            task_id.as_str(),
+            action_kind,
+            state_version,
+            now,
+        )
+    }
+
+    /// Reads one user-action request and optional resolution by request identity.
+    pub fn user_action_record(
+        &self,
+        user_action_request_id: &str,
+        now: &UtcTimestamp,
+    ) -> StoreResult<Option<EffectiveUserActionRecord>> {
+        effective_user_action_record(
+            &self.conn,
+            &self.project.project_id,
+            user_action_request_id,
+            now,
+        )
+    }
+
+    /// Returns whether a user-action request id exists in this project.
+    pub fn user_action_request_id_exists(&self, user_action_request_id: &str) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "user_action_requests",
+            "user_action_request_id",
+            user_action_request_id,
+        )
+    }
+
+    /// Reads one user-action resolution by its exact project-local identity.
+    pub fn user_action_resolution_record(
+        &self,
+        user_action_resolution_id: &str,
+    ) -> StoreResult<Option<UserActionResolutionRecord>> {
+        user_action_resolution_record_by_id(
+            &self.conn,
+            &self.project.project_id,
+            user_action_resolution_id,
+        )
+    }
+
+    /// Reads one user-action resolution by its stable channel submission identity.
+    pub fn user_action_resolution_for_channel_submission(
+        &self,
+        channel_kind: UserActionChannelKind,
+        channel_submission_id: &str,
+    ) -> StoreResult<Option<UserActionResolutionRecord>> {
+        user_action_resolution_record_by_channel_submission(
+            &self.conn,
+            &self.project.project_id,
+            channel_kind,
+            channel_submission_id,
+        )
     }
 
     /// Returns whether a project-continuity record id already exists in this project.
@@ -1299,35 +1347,75 @@ impl CoreProjectStore {
         project_continuity_records_for_task(&self.conn, &self.project.project_id, task_id)
     }
 
-    /// Reads one user-owned judgment basis row with strict typed JSON decoding.
-    pub fn user_judgment_basis_record(
-        &self,
-        judgment_id: &str,
-    ) -> StoreResult<Option<UserJudgmentBasisRecord>> {
-        user_judgment_basis_record(&self.conn, &self.project.project_id, judgment_id)
-    }
-
-    /// Lists resolved user-owned judgment records for a Task and judgment kind.
-    pub fn resolved_user_judgment_records(
+    /// Lists effective resolved user-action records for a Task and action kind.
+    pub fn resolved_user_action_records(
         &self,
         task_id: &TaskId,
-        judgment_kind: &str,
-    ) -> StoreResult<Vec<UserJudgmentRecord>> {
-        resolved_user_judgment_records(
+        action_kind: UserActionKind,
+        now: &UtcTimestamp,
+    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+        effective_user_action_records_for_task_and_kind(
             &self.conn,
             &self.project.project_id,
             task_id.as_str(),
-            judgment_kind,
+            action_kind,
+            UserActionStatus::Resolved,
+            now,
         )
     }
 
-    /// Returns the store clock in the public timestamp shape used by Core rows.
+    /// Returns the monotonic Core current UTC clock for this Store handle.
     pub fn current_timestamp(&self) -> StoreResult<String> {
-        self.conn
-            .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
-                row.get(0)
-            })
-            .map_err(StoreError::from)
+        let local_floor = self.last_clock_sample.borrow().clone();
+        let timestamp = project_current_utc_timestamp_for_conn(
+            &self.conn,
+            &self.project.project_id,
+            local_floor.as_ref(),
+        )?;
+        *self.last_clock_sample.borrow_mut() = Some(timestamp.clone());
+        Ok(timestamp.to_string())
+    }
+
+    /// Returns the persisted project clock floor combined with samples already
+    /// accepted on this Store handle, without sampling SQLite wall-clock time.
+    pub fn current_clock_floor(&self) -> StoreResult<UtcTimestamp> {
+        let persisted = self.project_state()?;
+        let persisted = UtcTimestamp::parse(&persisted.updated_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "project_state",
+                &self.project.project_id,
+                "updated_at",
+            )
+        })?;
+        persisted
+            .ensure_canonical_rfc3339_representable()
+            .map_err(|_| {
+                StoreError::corrupt_owner_state_value(
+                    "project_state",
+                    &self.project.project_id,
+                    "updated_at",
+                )
+            })?;
+        let local = self.last_clock_sample.borrow().as_ref().cloned();
+        if local
+            .as_ref()
+            .is_some_and(|timestamp| timestamp.ensure_canonical_rfc3339_representable().is_err())
+        {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+                detail: "Core Store handle clock sample is outside the canonical RFC 3339 range"
+                    .to_owned(),
+            });
+        }
+        Ok(local.map_or(persisted.clone(), |local| std::cmp::max(persisted, local)))
+    }
+
+    /// Carries an injected Core clock sample through this Store handle's next commit.
+    pub fn remember_clock_sample(&self, sample: &UtcTimestamp) {
+        let current = self.last_clock_sample.borrow().clone();
+        if current.as_ref().is_none_or(|current| sample > current) {
+            *self.last_clock_sample.borrow_mut() = Some(sample.clone());
+        }
     }
 
     /// Lists active blocker refs for a Task.
@@ -1386,7 +1474,16 @@ impl CoreProjectStore {
                 "tool_invocations",
                 &self.project.project_id,
             )?,
-            user_judgments: table_count(&self.conn, "user_judgments", &self.project.project_id)?,
+            user_action_requests: table_count(
+                &self.conn,
+                "user_action_requests",
+                &self.project.project_id,
+            )?,
+            user_action_resolutions: table_count(
+                &self.conn,
+                "user_action_resolutions",
+                &self.project.project_id,
+            )?,
             write_tickets: table_count(&self.conn, "write_tickets", &self.project.project_id)?,
             runs: table_count(&self.conn, "runs", &self.project.project_id)?,
             evidence_capture_intents: table_count(
@@ -1437,21 +1534,25 @@ impl CoreProjectStore {
 }
 
 fn read_project_state(conn: &Connection, project_id: &str) -> StoreResult<ProjectStateHeader> {
-    conn.query_row(
-        "SELECT
+    let state = conn
+        .query_row(
+            "SELECT
             project_id,
             state_version,
-            active_task_id
+            active_task_id,
+            updated_at
          FROM project_state
          WHERE project_id = ?1",
-        params![project_id],
-        project_state_from_row,
-    )
-    .optional()?
-    .ok_or_else(|| StoreError::NotFound {
-        entity: "project_state",
-        id: project_id.to_owned(),
-    })
+            params![project_id],
+            project_state_from_row,
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "project_state",
+            id: project_id.to_owned(),
+        })?;
+    validate_project_state_updated_at(&state)?;
+    Ok(state)
 }
 
 fn project_enforcement_profile(
@@ -1538,7 +1639,9 @@ fn task_records(conn: &Connection, project_id: &str) -> StoreResult<Vec<TaskReco
             close_basis_json, close_summary_json, current_change_unit_id, closed_at
          FROM tasks
          WHERE project_id = ?1
-         ORDER BY created_at, task_id",
+         ORDER BY volicord_utc_seconds(created_at),
+                  volicord_utc_subsec_nanos(created_at),
+                  task_id",
     )?;
     let rows = statement.query_map([project_id], task_record_from_row)?;
     rows.collect::<Result<Vec<_>, _>>()
@@ -1839,7 +1942,7 @@ fn write_tickets_for_task(
          FROM write_tickets
          WHERE project_id = ?1
            AND task_id = ?2
-         ORDER BY created_at DESC, write_ticket_id DESC",
+         ORDER BY basis_state_version DESC",
     )?;
     let rows = stmt.query_map(params![project_id, task_id], write_ticket_record_from_row)?;
     let mut records = Vec::new();
@@ -2094,8 +2197,9 @@ fn artifact_staging_record(
     project_id: &str,
     handle_id: &str,
 ) -> StoreResult<Option<StoredArtifactStagingRecord>> {
-    conn.query_row(
-        "SELECT
+    let record = conn
+        .query_row(
+            "SELECT
             project_id,
             handle_id,
             task_id,
@@ -2107,37 +2211,52 @@ fn artifact_staging_record(
             content_type,
             redaction_state,
             status,
+            created_at,
             expires_at
          FROM artifact_staging
          WHERE project_id = ?1
            AND handle_id = ?2",
-        params![project_id, handle_id],
-        artifact_staging_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, handle_id],
+            artifact_staging_record_from_row,
+        )
+        .optional()?;
+    record
+        .map(validate_stored_artifact_staging_record)
+        .transpose()
 }
 
 fn has_prepared_artifact_input(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-    now: &str,
+    now: &UtcTimestamp,
 ) -> StoreResult<bool> {
-    conn.query_row(
-        "SELECT EXISTS(
-            SELECT 1
-            FROM artifact_staging
-            WHERE project_id = ?1
-              AND task_id = ?2
-              AND status = 'staged'
-              AND expires_at > ?3
-        )",
-        params![project_id, task_id, now],
-        |row| row.get::<_, i64>(0),
-    )
-    .map(|value| value != 0)
-    .map_err(StoreError::from)
+    let mut stmt = conn.prepare(
+        "SELECT handle_id, created_at, expires_at
+           FROM artifact_staging
+          WHERE project_id = ?1
+            AND task_id = ?2
+            AND status = 'staged'",
+    )?;
+    let rows = stmt.query_map(params![project_id, task_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut windows = Vec::new();
+    for row in rows {
+        let (handle_id, created_at, expires_at) = row?;
+        windows.push(stored_artifact_staging_window(
+            &handle_id,
+            &created_at,
+            &expires_at,
+        )?);
+    }
+    Ok(windows
+        .iter()
+        .any(|(created_at, expires_at)| created_at <= now && now < expires_at))
 }
 
 fn artifact_staging_record_tx(
@@ -2145,8 +2264,9 @@ fn artifact_staging_record_tx(
     project_id: &str,
     handle_id: &str,
 ) -> StoreResult<Option<StoredArtifactStagingRecord>> {
-    tx.query_row(
-        "SELECT
+    let record = tx
+        .query_row(
+            "SELECT
             project_id,
             handle_id,
             task_id,
@@ -2158,15 +2278,18 @@ fn artifact_staging_record_tx(
             content_type,
             redaction_state,
             status,
+            created_at,
             expires_at
          FROM artifact_staging
          WHERE project_id = ?1
            AND handle_id = ?2",
-        params![project_id, handle_id],
-        artifact_staging_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, handle_id],
+            artifact_staging_record_from_row,
+        )
+        .optional()?;
+    record
+        .map(validate_stored_artifact_staging_record)
+        .transpose()
 }
 
 fn artifact_staging_record_from_row(
@@ -2188,8 +2311,44 @@ fn artifact_staging_record_from_row(
         content_type: row.get(8)?,
         redaction_state: row.get(9)?,
         status: row.get(10)?,
-        expires_at: row.get(11)?,
+        created_at: row.get(11)?,
+        expires_at: row.get(12)?,
     })
+}
+
+fn validate_stored_artifact_staging_record(
+    record: StoredArtifactStagingRecord,
+) -> StoreResult<StoredArtifactStagingRecord> {
+    stored_artifact_staging_window(&record.handle_id, &record.created_at, &record.expires_at)?;
+    Ok(record)
+}
+
+fn stored_artifact_staging_window(
+    handle_id: &str,
+    created_at: &str,
+    expires_at: &str,
+) -> StoreResult<(UtcTimestamp, UtcTimestamp)> {
+    let parse = |field, value: &str| {
+        let timestamp = UtcTimestamp::parse(value).map_err(|_| {
+            StoreError::corrupt_owner_state_value("artifact_staging", handle_id, field)
+        })?;
+        timestamp
+            .ensure_canonical_rfc3339_representable()
+            .map_err(|_| {
+                StoreError::corrupt_owner_state_value("artifact_staging", handle_id, field)
+            })?;
+        Ok::<_, StoreError>(timestamp)
+    };
+    let created_at = parse("created_at", created_at)?;
+    let expires_at = parse("expires_at", expires_at)?;
+    if expires_at <= created_at {
+        return Err(StoreError::corrupt_owner_state_value(
+            "artifact_staging",
+            handle_id,
+            "expires_at",
+        ));
+    }
+    Ok((created_at, expires_at))
 }
 
 fn artifact_record(
@@ -2355,12 +2514,14 @@ fn latest_evidence_summary(
     project_id: &str,
     task_id: &str,
 ) -> StoreResult<Option<EvidenceSummaryRecord>> {
-    conn.query_row(
-        "SELECT
+    let record = conn
+        .query_row(
+            "SELECT
             project_id,
             evidence_summary_id,
             task_id,
             change_unit_id,
+            produced_at_state_version,
             status,
             coverage_json,
             supporting_refs_json,
@@ -2369,13 +2530,13 @@ fn latest_evidence_summary(
          FROM evidence_summaries
          WHERE project_id = ?1
            AND task_id = ?2
-         ORDER BY updated_at DESC, evidence_summary_id DESC
+         ORDER BY produced_at_state_version DESC
          LIMIT 1",
-        params![project_id, task_id],
-        evidence_summary_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, task_id],
+            evidence_summary_record_from_row,
+        )
+        .optional()?;
+    validate_evidence_summary_state_version(conn, project_id, record)
 }
 
 fn evidence_summary_record(
@@ -2383,12 +2544,14 @@ fn evidence_summary_record(
     project_id: &str,
     evidence_summary_id: &str,
 ) -> StoreResult<Option<EvidenceSummaryRecord>> {
-    conn.query_row(
-        "SELECT
+    let record = conn
+        .query_row(
+            "SELECT
             project_id,
             evidence_summary_id,
             task_id,
             change_unit_id,
+            produced_at_state_version,
             status,
             coverage_json,
             supporting_refs_json,
@@ -2397,11 +2560,40 @@ fn evidence_summary_record(
          FROM evidence_summaries
          WHERE project_id = ?1
            AND evidence_summary_id = ?2",
-        params![project_id, evidence_summary_id],
-        evidence_summary_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, evidence_summary_id],
+            evidence_summary_record_from_row,
+        )
+        .optional()?;
+    validate_evidence_summary_state_version(conn, project_id, record)
+}
+
+fn validate_evidence_summary_state_version(
+    conn: &Connection,
+    project_id: &str,
+    record: Option<EvidenceSummaryRecord>,
+) -> StoreResult<Option<EvidenceSummaryRecord>> {
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let current_state_version = conn
+        .query_row(
+            "SELECT state_version FROM project_state WHERE project_id = ?1",
+            [project_id],
+            |row| nonnegative_i64_to_u64("project_state.state_version", row.get(0)?),
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "project_state",
+            id: project_id.to_owned(),
+        })?;
+    if record.produced_at_state_version > current_state_version {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_summaries",
+            &record.evidence_summary_id,
+            "produced_at_state_version",
+        ));
+    }
+    Ok(Some(record))
 }
 
 fn evidence_summary_record_from_row(
@@ -2412,11 +2604,15 @@ fn evidence_summary_record_from_row(
         evidence_summary_id: row.get(1)?,
         task_id: row.get(2)?,
         change_unit_id: row.get(3)?,
-        status: row.get(4)?,
-        coverage_json: row.get(5)?,
-        supporting_refs_json: row.get(6)?,
-        gap_refs_json: row.get(7)?,
-        metadata_json: row.get(8)?,
+        produced_at_state_version: nonnegative_i64_to_u64(
+            "evidence_summaries.produced_at_state_version",
+            row.get(4)?,
+        )?,
+        status: row.get(5)?,
+        coverage_json: row.get(6)?,
+        supporting_refs_json: row.get(7)?,
+        gap_refs_json: row.get(8)?,
+        metadata_json: row.get(9)?,
     })
 }
 
@@ -2484,103 +2680,304 @@ fn evidence_observation_record_from_row(
     })
 }
 
-fn user_evidence_observation_record(
+pub(crate) fn user_action_request_record(
     conn: &Connection,
     project_id: &str,
-    user_evidence_observation_id: &str,
-) -> StoreResult<Option<UserEvidenceObservationRecord>> {
-    conn.query_row(
-        "SELECT
+    user_action_request_id: &str,
+) -> StoreResult<Option<UserActionRequestRecord>> {
+    let raw = conn
+        .query_row(
+            "SELECT
             project_id,
-            user_evidence_observation_id,
+            user_action_request_id,
             task_id,
             change_unit_id,
-            scope_revision,
-            baseline_ref,
-            acceptance_criterion_id,
-            evidence_claim_id,
-            relevance_status,
-            output_artifact_refs_json,
-            summary,
-            observed_by_actor_source,
-            verification_basis,
-            observed_at,
-            recorded_at
-         FROM user_evidence_observations
+            action_kind,
+            request_json,
+            basis_json,
+            basis_status,
+            required_for_json,
+            requested_by_actor_source,
+            source_method,
+            source_idempotency_key,
+            requested_at,
+            expires_at,
+            metadata_json
+         FROM user_action_requests
          WHERE project_id = ?1
-           AND user_evidence_observation_id = ?2",
-        params![project_id, user_evidence_observation_id],
-        user_evidence_observation_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+           AND user_action_request_id = ?2",
+            params![project_id, user_action_request_id],
+            user_action_request_record_raw_from_row,
+        )
+        .optional()?;
+    raw.map(decode_user_action_request_record).transpose()
 }
 
-fn user_evidence_observation_record_from_row(
+fn user_action_resolution_record_by_request(
+    conn: &Connection,
+    project_id: &str,
+    user_action_request_id: &str,
+) -> StoreResult<Option<UserActionResolutionRecord>> {
+    let raw = conn
+        .query_row(
+            "SELECT
+                project_id,
+                user_action_resolution_id,
+                user_action_request_id,
+                action_kind,
+                channel_kind,
+                channel_submission_id,
+                resolution_json,
+                resolved_by_actor_source,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at
+             FROM user_action_resolutions
+             WHERE project_id = ?1
+               AND user_action_request_id = ?2",
+            params![project_id, user_action_request_id],
+            user_action_resolution_record_raw_from_row,
+        )
+        .optional()?;
+    raw.map(decode_user_action_resolution_record).transpose()
+}
+
+fn user_action_resolution_record_by_id(
+    conn: &Connection,
+    project_id: &str,
+    user_action_resolution_id: &str,
+) -> StoreResult<Option<UserActionResolutionRecord>> {
+    let raw = conn
+        .query_row(
+            "SELECT
+                project_id,
+                user_action_resolution_id,
+                user_action_request_id,
+                action_kind,
+                channel_kind,
+                channel_submission_id,
+                resolution_json,
+                resolved_by_actor_source,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at
+             FROM user_action_resolutions
+             WHERE project_id = ?1
+               AND user_action_resolution_id = ?2",
+            params![project_id, user_action_resolution_id],
+            user_action_resolution_record_raw_from_row,
+        )
+        .optional()?;
+    let resolution = raw.map(decode_user_action_resolution_record).transpose()?;
+    validate_resolution_with_stored_request(conn, project_id, resolution)
+}
+
+fn user_action_resolution_record_by_channel_submission(
+    conn: &Connection,
+    project_id: &str,
+    channel_kind: UserActionChannelKind,
+    channel_submission_id: &str,
+) -> StoreResult<Option<UserActionResolutionRecord>> {
+    let raw = conn
+        .query_row(
+            "SELECT
+                project_id,
+                user_action_resolution_id,
+                user_action_request_id,
+                action_kind,
+                channel_kind,
+                channel_submission_id,
+                resolution_json,
+                resolved_by_actor_source,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at
+             FROM user_action_resolutions
+             WHERE project_id = ?1
+               AND channel_kind = ?2
+               AND channel_submission_id = ?3",
+            params![
+                project_id,
+                user_action_channel_kind_as_str(channel_kind),
+                channel_submission_id
+            ],
+            user_action_resolution_record_raw_from_row,
+        )
+        .optional()?;
+    let resolution = raw.map(decode_user_action_resolution_record).transpose()?;
+    validate_resolution_with_stored_request(conn, project_id, resolution)
+}
+
+fn user_action_request_record_raw_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<UserEvidenceObservationRecord> {
-    Ok(UserEvidenceObservationRecord {
+) -> rusqlite::Result<UserActionRequestRecordRaw> {
+    Ok(UserActionRequestRecordRaw {
         project_id: row.get(0)?,
-        user_evidence_observation_id: row.get(1)?,
+        user_action_request_id: row.get(1)?,
         task_id: row.get(2)?,
         change_unit_id: row.get(3)?,
-        scope_revision: nonnegative_i64_to_u64(
-            "user_evidence_observations.scope_revision",
-            row.get(4)?,
-        )?,
-        baseline_ref: row.get(5)?,
-        acceptance_criterion_id: row.get(6)?,
-        evidence_claim_id: row.get(7)?,
-        relevance_status: row.get(8)?,
-        output_artifact_refs_json: row.get(9)?,
-        summary: row.get(10)?,
-        observed_by_actor_source: row.get(11)?,
-        verification_basis: row.get(12)?,
-        observed_at: row.get(13)?,
-        recorded_at: row.get(14)?,
+        action_kind: row.get(4)?,
+        request_json: row.get(5)?,
+        basis_json: row.get(6)?,
+        basis_status: row.get(7)?,
+        required_for_json: row.get(8)?,
+        requested_by_actor_source: row.get(9)?,
+        source_method: row.get(10)?,
+        source_idempotency_key: row.get(11)?,
+        requested_at: row.get(12)?,
+        expires_at: row.get(13)?,
+        metadata_json: row.get(14)?,
     })
 }
 
-fn user_judgment_record(
-    conn: &Connection,
-    project_id: &str,
-    judgment_id: &str,
-) -> StoreResult<Option<UserJudgmentRecord>> {
-    conn.query_row(
-        "SELECT
-            project_id,
-            judgment_id,
-            task_id,
-            change_unit_id,
-            judgment_kind,
-            status,
-            request_json,
-            context_json,
-            options_json,
-            affected_refs_json,
-            artifact_refs_json,
-            sensitive_action_scope_json,
-            basis_json,
-            basis_status,
-            resolution_outcome,
-            resolution_machine_action,
-            resolution_json,
-            resolution_rationale_json,
-            resolved_by_actor_source,
-            resolved_verification_basis,
-            resolved_assurance_level,
-            requested_by_actor_source,
-            requested_at,
-            resolved_at,
-            metadata_json
-         FROM user_judgments
-         WHERE project_id = ?1
-           AND judgment_id = ?2",
-        params![project_id, judgment_id],
-        user_judgment_record_from_row,
+fn decode_user_action_request_record(
+    raw: UserActionRequestRecordRaw,
+) -> StoreResult<UserActionRequestRecord> {
+    let record_id = raw.user_action_request_id.as_str();
+    let action_kind = parse_user_action_kind(
+        record_id,
+        "user_action_requests.action_kind",
+        &raw.action_kind,
+    )?;
+    let basis_status = parse_user_action_basis_status(
+        record_id,
+        "user_action_requests.basis_status",
+        &raw.basis_status,
+    )?;
+    validate_json_text("user_action_requests.metadata_json", &raw.metadata_json).map_err(|_| {
+        StoreError::corrupt_owner_state_json("user_action_requests", record_id, "metadata_json")
+    })?;
+    if !matches!(
+        raw.source_method.as_str(),
+        "volicord.request_user_action" | "volicord.reconcile_changes"
+    ) {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            record_id,
+            "source_method",
+        ));
+    }
+    validate_identifier(
+        "user_action_requests.source_idempotency_key",
+        &raw.source_idempotency_key,
     )
-    .optional()
-    .map_err(StoreError::from)
+    .map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            record_id,
+            "source_idempotency_key",
+        )
+    })?;
+    validate_stored_timestamp("user_action_requests.requested_at", &raw.requested_at)?;
+    if let Some(expires_at) = &raw.expires_at {
+        validate_stored_timestamp("user_action_requests.expires_at", expires_at)?;
+    }
+    validate_stored_user_action_request_column_agreement(
+        record_id,
+        UserActionRequestColumnFacts {
+            task_id: &raw.task_id,
+            change_unit_id: raw.change_unit_id.as_deref(),
+            request_json: &raw.request_json,
+            basis_json: &raw.basis_json,
+            required_for_json: &raw.required_for_json,
+            requested_at: &raw.requested_at,
+            expires_at: raw.expires_at.as_deref(),
+            action_kind,
+            basis_status,
+        },
+    )?;
+    Ok(UserActionRequestRecord {
+        project_id: raw.project_id,
+        user_action_request_id: raw.user_action_request_id,
+        task_id: raw.task_id,
+        change_unit_id: raw.change_unit_id,
+        action_kind,
+        request_json: raw.request_json,
+        basis_json: raw.basis_json,
+        basis_status,
+        required_for_json: raw.required_for_json,
+        requested_by_actor_source: raw.requested_by_actor_source,
+        source_method: raw.source_method,
+        source_idempotency_key: raw.source_idempotency_key,
+        requested_at: raw.requested_at,
+        expires_at: raw.expires_at,
+        metadata_json: raw.metadata_json,
+    })
+}
+
+fn user_action_resolution_record_raw_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<UserActionResolutionRecordRaw> {
+    Ok(UserActionResolutionRecordRaw {
+        project_id: row.get(0)?,
+        user_action_resolution_id: row.get(1)?,
+        user_action_request_id: row.get(2)?,
+        action_kind: row.get(3)?,
+        channel_kind: row.get(4)?,
+        channel_submission_id: row.get(5)?,
+        resolution_json: row.get(6)?,
+        resolved_by_actor_source: row.get(7)?,
+        resolved_verification_basis: row.get(8)?,
+        resolved_assurance_level: row.get(9)?,
+        resolved_at: row.get(10)?,
+    })
+}
+
+fn decode_user_action_resolution_record(
+    raw: UserActionResolutionRecordRaw,
+) -> StoreResult<UserActionResolutionRecord> {
+    let record_id = raw.user_action_resolution_id.as_str();
+    let action_kind = parse_user_action_kind(
+        record_id,
+        "user_action_resolutions.action_kind",
+        &raw.action_kind,
+    )?;
+    let channel_kind = parse_user_action_channel_kind(
+        record_id,
+        "user_action_resolutions.channel_kind",
+        &raw.channel_kind,
+    )?;
+    validate_user_action_resolution_column_agreement(
+        &raw.resolution_json,
+        action_kind,
+        &raw.user_action_resolution_id,
+    )
+    .map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            record_id,
+            "resolution_json",
+        )
+    })?;
+    if validate_channel_submission_id(&raw.channel_submission_id).is_err()
+        || validate_user_action_resolution_provenance(
+            channel_kind,
+            &raw.resolved_by_actor_source,
+            &raw.resolved_verification_basis,
+            &raw.resolved_assurance_level,
+        )
+        .is_err()
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            record_id,
+            "resolved_verification_basis",
+        ));
+    }
+    validate_stored_timestamp("user_action_resolutions.resolved_at", &raw.resolved_at)?;
+    Ok(UserActionResolutionRecord {
+        project_id: raw.project_id,
+        user_action_resolution_id: raw.user_action_resolution_id,
+        user_action_request_id: raw.user_action_request_id,
+        action_kind,
+        channel_kind,
+        channel_submission_id: raw.channel_submission_id,
+        resolution_json: raw.resolution_json,
+        resolved_by_actor_source: raw.resolved_by_actor_source,
+        resolved_verification_basis: raw.resolved_verification_basis,
+        resolved_assurance_level: raw.resolved_assurance_level,
+        resolved_at: raw.resolved_at,
+    })
 }
 
 fn active_project_continuity_records(
@@ -2617,7 +3014,9 @@ fn active_project_continuity_records(
          FROM project_continuity_records
          WHERE project_id = ?1
            AND status = 'active'
-         ORDER BY updated_at DESC, continuity_record_id DESC
+         ORDER BY volicord_utc_seconds(updated_at) DESC,
+                  volicord_utc_subsec_nanos(updated_at) DESC,
+                  continuity_record_id DESC
          LIMIT ?2",
     )?;
     let rows = stmt.query_map(
@@ -2659,7 +3058,9 @@ fn project_continuity_records_for_task(
          FROM project_continuity_records
          WHERE project_id = ?1
            AND source_task_id = ?2
-         ORDER BY created_at, continuity_record_id",
+         ORDER BY volicord_utc_seconds(created_at),
+                  volicord_utc_subsec_nanos(created_at),
+                  continuity_record_id",
     )?;
     let rows = stmt.query_map(
         params![project_id, task_id],
@@ -2697,219 +3098,322 @@ fn project_continuity_record_from_row(
     })
 }
 
-fn resolved_user_judgment_records(
+pub(crate) fn effective_user_action_record(
+    conn: &Connection,
+    project_id: &str,
+    user_action_request_id: &str,
+    now: &UtcTimestamp,
+) -> StoreResult<Option<EffectiveUserActionRecord>> {
+    let Some(request) = user_action_request_record(conn, project_id, user_action_request_id)?
+    else {
+        return Ok(None);
+    };
+    let resolution =
+        user_action_resolution_record_by_request(conn, project_id, user_action_request_id)?;
+    if let Some(resolution) = &resolution {
+        validate_user_action_request_resolution_pair(&request, resolution)?;
+    }
+    let status = effective_user_action_status(&request, resolution.as_ref(), now)?;
+    Ok(Some(EffectiveUserActionRecord {
+        request,
+        resolution,
+        status,
+    }))
+}
+
+fn effective_user_action_records_for_task(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-    judgment_kind: &str,
-) -> StoreResult<Vec<UserJudgmentRecord>> {
+    status_filter: Option<UserActionStatus>,
+    now: &UtcTimestamp,
+) -> StoreResult<Vec<EffectiveUserActionRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT
-            project_id,
-            judgment_id,
-            task_id,
-            change_unit_id,
-            judgment_kind,
-            status,
-            request_json,
-            context_json,
-            options_json,
-            affected_refs_json,
-            artifact_refs_json,
-            sensitive_action_scope_json,
-            basis_json,
-            basis_status,
-            resolution_outcome,
-            resolution_machine_action,
-            resolution_json,
-            resolution_rationale_json,
-            resolved_by_actor_source,
-            resolved_verification_basis,
-            resolved_assurance_level,
-            requested_by_actor_source,
-            requested_at,
-            resolved_at,
-            metadata_json
-         FROM user_judgments
-         WHERE project_id = ?1
-           AND task_id = ?2
-           AND judgment_kind = ?3
-           AND status = 'resolved'
-         ORDER BY judgment_id",
+        "SELECT user_action_request_id
+           FROM user_action_requests
+          WHERE project_id = ?1
+            AND task_id = ?2
+          ORDER BY volicord_utc_seconds(requested_at),
+                   volicord_utc_subsec_nanos(requested_at),
+                   user_action_request_id",
     )?;
-    let rows = stmt.query_map(
-        params![project_id, task_id, judgment_kind],
-        user_judgment_record_from_row,
-    )?;
+    let rows = stmt.query_map(params![project_id, task_id], |row| row.get::<_, String>(0))?;
     let mut records = Vec::new();
     for row in rows {
-        records.push(row?);
+        let request_id = row?;
+        let record =
+            effective_user_action_record(conn, project_id, &request_id, now)?.ok_or_else(|| {
+                StoreError::SchemaInvariant {
+                    database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+                    detail: format!("user action request {request_id} disappeared during read"),
+                }
+            })?;
+        if status_filter.is_none_or(|expected| record.status == expected) {
+            records.push(record);
+        }
     }
     Ok(records)
 }
 
-fn pending_user_judgment_records(
+fn effective_user_action_records_for_task_and_kind(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<UserJudgmentRecord>> {
-    let mut stmt = conn.prepare(
-        "SELECT
-            project_id,
-            judgment_id,
-            task_id,
-            change_unit_id,
-            judgment_kind,
-            status,
-            request_json,
-            context_json,
-            options_json,
-            affected_refs_json,
-            artifact_refs_json,
-            sensitive_action_scope_json,
-            basis_json,
-            basis_status,
-            resolution_outcome,
-            resolution_machine_action,
-            resolution_json,
-            resolution_rationale_json,
-            resolved_by_actor_source,
-            resolved_verification_basis,
-            resolved_assurance_level,
-            requested_by_actor_source,
-            requested_at,
-            resolved_at,
-            metadata_json
-         FROM user_judgments
-         WHERE project_id = ?1
-           AND task_id = ?2
-           AND status = 'pending'
-         ORDER BY judgment_id",
-    )?;
-    let rows = stmt.query_map(params![project_id, task_id], user_judgment_record_from_row)?;
-    let mut records = Vec::new();
-    for row in rows {
-        records.push(row?);
-    }
-    Ok(records)
+    action_kind: UserActionKind,
+    status_filter: UserActionStatus,
+    now: &UtcTimestamp,
+) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    Ok(
+        effective_user_action_records_for_task(conn, project_id, task_id, None, now)?
+            .into_iter()
+            .filter(|record| {
+                record.request.action_kind == action_kind && record.status == status_filter
+            })
+            .collect(),
+    )
 }
 
-fn user_judgment_records_for_task(
-    conn: &Connection,
-    project_id: &str,
-    task_id: &str,
-) -> StoreResult<Vec<UserJudgmentRecord>> {
-    let mut stmt = conn.prepare(
-        "SELECT
-            project_id,
-            judgment_id,
-            task_id,
-            change_unit_id,
-            judgment_kind,
-            status,
-            request_json,
-            context_json,
-            options_json,
-            affected_refs_json,
-            artifact_refs_json,
-            sensitive_action_scope_json,
-            basis_json,
-            basis_status,
-            resolution_outcome,
-            resolution_machine_action,
-            resolution_json,
-            resolution_rationale_json,
-            resolved_by_actor_source,
-            resolved_verification_basis,
-            resolved_assurance_level,
-            requested_by_actor_source,
-            requested_at,
-            resolved_at,
-            metadata_json
-         FROM user_judgments
-         WHERE project_id = ?1
-           AND task_id = ?2
-         ORDER BY requested_at, judgment_id",
-    )?;
-    let rows = stmt.query_map(params![project_id, task_id], user_judgment_record_from_row)?;
-    let mut records = Vec::new();
-    for row in rows {
-        records.push(row?);
+/// Derives the current lifecycle status from immutable resolution presence, basis status, and time.
+pub fn effective_user_action_status(
+    request: &UserActionRequestRecord,
+    resolution: Option<&UserActionResolutionRecord>,
+    now: &UtcTimestamp,
+) -> StoreResult<UserActionStatus> {
+    let created_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "requested_at",
+        )
+    })?;
+    let expires_at = request
+        .expires_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| StoreError::CorruptStoredValue {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            field: "user_action_requests.expires_at",
+        })?;
+    if let Some(resolution) = resolution {
+        let resolved_at = UtcTimestamp::parse(&resolution.resolved_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "user_action_resolutions",
+                &resolution.user_action_resolution_id,
+                "resolved_at",
+            )
+        })?;
+        if &resolved_at > now {
+            return Err(StoreError::corrupt_owner_state_value(
+                "user_action_resolutions",
+                &resolution.user_action_resolution_id,
+                "resolved_at",
+            ));
+        }
     }
-    Ok(records)
-}
-
-fn user_judgment_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserJudgmentRecord> {
-    Ok(UserJudgmentRecord {
-        project_id: row.get(0)?,
-        judgment_id: row.get(1)?,
-        task_id: row.get(2)?,
-        change_unit_id: row.get(3)?,
-        judgment_kind: row.get(4)?,
-        status: row.get(5)?,
-        request_json: row.get(6)?,
-        context_json: row.get(7)?,
-        options_json: row.get(8)?,
-        affected_refs_json: row.get(9)?,
-        artifact_refs_json: row.get(10)?,
-        sensitive_action_scope_json: row.get(11)?,
-        basis_json: row.get(12)?,
-        basis_status: row.get(13)?,
-        resolution_outcome: row.get(14)?,
-        resolution_machine_action: row.get(15)?,
-        resolution_json: row.get(16)?,
-        resolution_rationale_json: row.get(17)?,
-        resolved_by_actor_source: row.get(18)?,
-        resolved_verification_basis: row.get(19)?,
-        resolved_assurance_level: row.get(20)?,
-        requested_by_actor_source: row.get(21)?,
-        requested_at: row.get(22)?,
-        resolved_at: row.get(23)?,
-        metadata_json: row.get(24)?,
+    derive_user_action_status(
+        request.basis_status,
+        &created_at,
+        expires_at.as_ref(),
+        resolution.is_some(),
+        now,
+    )
+    .ok_or_else(|| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "requested_at",
+        )
     })
 }
 
-fn user_judgment_basis_record(
+fn validate_user_action_request_resolution_pair(
+    request: &UserActionRequestRecord,
+    resolution: &UserActionResolutionRecord,
+) -> StoreResult<()> {
+    if request.project_id != resolution.project_id
+        || request.user_action_request_id != resolution.user_action_request_id
+        || request.action_kind != resolution.action_kind
+    {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            detail: "user-action resolution does not match its request identity and kind"
+                .to_owned(),
+        });
+    }
+    validate_stored_user_action_timestamp_order(request, resolution)?;
+    let persisted_request = serde_json::from_str::<PersistedUserActionRequest>(
+        &request.request_json,
+    )
+    .map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "request_json",
+        )
+    })?;
+    let basis = serde_json::from_str::<UserActionBasis>(&request.basis_json).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "basis_json",
+        )
+    })?;
+    let resolution_body = serde_json::from_str::<UserActionResolutionBody>(
+        &resolution.resolution_json,
+    )
+    .map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "resolution_json",
+        )
+    })?;
+
+    let agrees = match (&persisted_request.body, &basis, &resolution_body) {
+        (
+            UserActionRequestBody::Choice(choice),
+            UserActionBasis::Choice(choice_basis),
+            UserActionResolutionBody::Choice {
+                selected_option_id,
+                machine_action,
+                resolution_outcome,
+                accepted_risk_ids,
+                ..
+            },
+        ) => choice
+            .options
+            .iter()
+            .find(|option| option.option_id == *selected_option_id)
+            .is_some_and(|option| {
+                let expected_risk_ids = if request.action_kind
+                    == UserActionKind::ResidualRiskAcceptance
+                    && option.machine_action == UserActionOptionAction::Accept
+                {
+                    choice_basis.residual_risk_ids.as_slice()
+                } else {
+                    &[]
+                };
+                option.machine_action == *machine_action
+                    && option.resolution_outcome == *resolution_outcome
+                    && accepted_risk_ids == expected_risk_ids
+            }),
+        (
+            UserActionRequestBody::EvidenceObservation(observation_request),
+            UserActionBasis::EvidenceObservation(observation_basis),
+            UserActionResolutionBody::EvidenceObservation { observation },
+        ) => {
+            let unique_artifact_ids = observation
+                .output_artifact_refs
+                .iter()
+                .map(|artifact| &artifact.artifact_id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                == observation.output_artifact_refs.len();
+            observation_request.target_candidates == observation_basis.target_candidates
+                && observation_request.artifact_candidates == observation_basis.artifact_candidates
+                && observation_request
+                    .target_candidates
+                    .contains(&observation.target)
+                && observation.output_artifact_refs.iter().all(|selected| {
+                    observation_request
+                        .artifact_candidates
+                        .iter()
+                        .any(|candidate| user_action_artifact_ref_agrees(candidate, selected))
+                })
+                && unique_artifact_ids
+                && matches!(
+                    observation.relevance_status,
+                    volicord_types::EvidenceRelevanceStatus::Supported
+                        | volicord_types::EvidenceRelevanceStatus::Contradicted
+                )
+                && !observation.summary.trim().is_empty()
+        }
+        _ => false,
+    };
+    if !agrees {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "resolution_json",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_stored_user_action_timestamp_order(
+    request: &UserActionRequestRecord,
+    resolution: &UserActionResolutionRecord,
+) -> StoreResult<()> {
+    let requested_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "requested_at",
+        )
+    })?;
+    let expires_at = request
+        .expires_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                &request.user_action_request_id,
+                "expires_at",
+            )
+        })?;
+    let resolved_at = UtcTimestamp::parse(&resolution.resolved_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "resolved_at",
+        )
+    })?;
+    match validate_user_action_timestamp_order(
+        &requested_at,
+        expires_at.as_ref(),
+        Some(&resolved_at),
+    ) {
+        Ok(()) => Ok(()),
+        Err(UserActionTimestampOrderFailure::ExpiryNotAfterRequest) => {
+            Err(StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                &request.user_action_request_id,
+                "expires_at",
+            ))
+        }
+        Err(
+            UserActionTimestampOrderFailure::ResolutionBeforeRequest
+            | UserActionTimestampOrderFailure::ResolutionAtOrAfterExpiry,
+        ) => Err(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "resolved_at",
+        )),
+    }
+}
+
+fn user_action_artifact_ref_agrees(candidate: &ArtifactRef, selected: &ArtifactRef) -> bool {
+    candidate == selected
+}
+
+fn validate_resolution_with_stored_request(
     conn: &Connection,
     project_id: &str,
-    judgment_id: &str,
-) -> StoreResult<Option<UserJudgmentBasisRecord>> {
-    let row = conn
-        .query_row(
-            "SELECT
-                project_id,
-                judgment_id,
-                basis_json,
-                basis_status
-             FROM user_judgments
-             WHERE project_id = ?1
-               AND judgment_id = ?2",
-            params![project_id, judgment_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            },
-        )
-        .optional()?;
-
-    let Some((project_id, judgment_id, basis_json, basis_status)) = row else {
+    resolution: Option<UserActionResolutionRecord>,
+) -> StoreResult<Option<UserActionResolutionRecord>> {
+    let Some(resolution) = resolution else {
         return Ok(None);
     };
-    let basis_status =
-        parse_judgment_basis_status(&judgment_id, "user_judgments.basis_status", &basis_status)?;
-    let basis = decode_judgment_basis_column(&judgment_id, &basis_json)?;
-
-    Ok(Some(UserJudgmentBasisRecord {
-        project_id,
-        judgment_id,
-        basis_json,
-        basis_status,
-        basis,
-    }))
+    let request = user_action_request_record(conn, project_id, &resolution.user_action_request_id)?
+        .ok_or_else(|| StoreError::SchemaInvariant {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            detail: "user-action resolution has no matching request".to_owned(),
+        })?;
+    validate_user_action_request_resolution_pair(&request, &resolution)?;
+    Ok(Some(resolution))
 }
 
 struct RefQuery<'a> {
@@ -2923,36 +3427,55 @@ struct RefQuery<'a> {
     state_version: u64,
 }
 
-fn non_current_user_judgment_refs(
+fn non_current_user_action_refs(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-    judgment_kind: &str,
+    action_kind: UserActionKind,
     state_version: u64,
+    now: &UtcTimestamp,
 ) -> StoreResult<Vec<StoredRecordRef>> {
-    let mut stmt = conn.prepare(
-        "SELECT judgment_id
-           FROM user_judgments
-          WHERE project_id = ?1
-            AND task_id = ?2
-            AND judgment_kind = ?3
-            AND status IN ('stale', 'superseded')
-          ORDER BY judgment_id",
-    )?;
-    let rows = stmt.query_map(params![project_id, task_id, judgment_kind], |row| {
-        Ok(StoredRecordRef {
-            record_kind: "user_judgment".to_owned(),
-            record_id: row.get(0)?,
-            project_id: project_id.to_owned(),
-            task_id: Some(task_id.to_owned()),
-            state_version: Some(state_version),
-        })
-    })?;
-    let mut refs = Vec::new();
-    for row in rows {
-        refs.push(row?);
-    }
-    Ok(refs)
+    Ok(
+        effective_user_action_records_for_task(conn, project_id, task_id, None, now)?
+            .into_iter()
+            .filter(|record| {
+                record.request.action_kind == action_kind
+                    && matches!(
+                        record.status,
+                        UserActionStatus::Stale | UserActionStatus::Superseded
+                    )
+            })
+            .map(|record| StoredRecordRef {
+                record_kind: "user_action_request".to_owned(),
+                record_id: record.request.user_action_request_id,
+                project_id: project_id.to_owned(),
+                task_id: Some(task_id.to_owned()),
+                state_version: Some(state_version),
+            })
+            .collect(),
+    )
+}
+
+fn effective_user_action_refs(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+    status: UserActionStatus,
+    state_version: u64,
+    now: &UtcTimestamp,
+) -> StoreResult<Vec<StoredRecordRef>> {
+    Ok(
+        effective_user_action_records_for_task(conn, project_id, task_id, Some(status), now)?
+            .into_iter()
+            .map(|record| StoredRecordRef {
+                record_kind: "user_action_request".to_owned(),
+                record_id: record.request.user_action_request_id,
+                project_id: project_id.to_owned(),
+                task_id: Some(task_id.to_owned()),
+                state_version: Some(state_version),
+            })
+            .collect(),
+    )
 }
 
 fn task_scoped_refs(conn: &Connection, query: RefQuery<'_>) -> StoreResult<Vec<StoredRecordRef>> {
@@ -2989,21 +3512,25 @@ fn read_project_state_tx(
     tx: &Transaction<'_>,
     project_id: &str,
 ) -> StoreResult<ProjectStateHeader> {
-    tx.query_row(
-        "SELECT
+    let state = tx
+        .query_row(
+            "SELECT
             project_id,
             state_version,
-            active_task_id
+            active_task_id,
+            updated_at
          FROM project_state
          WHERE project_id = ?1",
-        params![project_id],
-        project_state_from_row,
-    )
-    .optional()?
-    .ok_or_else(|| StoreError::NotFound {
-        entity: "project_state",
-        id: project_id.to_owned(),
-    })
+            params![project_id],
+            project_state_from_row,
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "project_state",
+            id: project_id.to_owned(),
+        })?;
+    validate_project_state_updated_at(&state)?;
+    Ok(state)
 }
 
 fn project_state_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectStateHeader> {
@@ -3012,7 +3539,119 @@ fn project_state_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectSt
         project_id: row.get(0)?,
         state_version: nonnegative_i64_to_u64("project_state.state_version", state_version)?,
         active_task_id: row.get(2)?,
+        updated_at: row.get(3)?,
     })
+}
+
+fn validate_project_state_updated_at(state: &ProjectStateHeader) -> StoreResult<()> {
+    UtcTimestamp::parse(&state.updated_at)
+        .and_then(|timestamp| {
+            timestamp
+                .ensure_canonical_rfc3339_representable()
+                .map_err(|_| volicord_types::UtcTimestampParseError)
+        })
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value("project_state", &state.project_id, "updated_at")
+        })
+}
+
+pub(crate) fn project_current_utc_timestamp_for_conn(
+    conn: &Connection,
+    project_id: &str,
+    local_floor: Option<&UtcTimestamp>,
+) -> StoreResult<UtcTimestamp> {
+    let (sqlite_now, persisted_floor): (String, String) = conn
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at
+               FROM project_state
+              WHERE project_id = ?1",
+            params![project_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "project_state",
+            id: project_id.to_owned(),
+        })?;
+    let sqlite_now = UtcTimestamp::parse(&sqlite_now).map_err(|_| StoreError::SchemaInvariant {
+        database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+        detail: "SQLite returned an invalid Core current UTC timestamp".to_owned(),
+    })?;
+    sqlite_now
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::SchemaInvariant {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            detail: "SQLite returned an out-of-range Core current UTC timestamp".to_owned(),
+        })?;
+    let persisted_floor = UtcTimestamp::parse(&persisted_floor).map_err(|_| {
+        StoreError::corrupt_owner_state_value("project_state", project_id, "updated_at")
+    })?;
+    persisted_floor
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value("project_state", project_id, "updated_at")
+        })?;
+    if let Some(local_floor) = local_floor {
+        local_floor
+            .ensure_canonical_rfc3339_representable()
+            .map_err(|_| StoreError::SchemaInvariant {
+                database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+                detail: "Core local UTC floor is outside the canonical timestamp range".to_owned(),
+            })?;
+    }
+    Ok([
+        Some(sqlite_now),
+        Some(persisted_floor),
+        local_floor.cloned(),
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .expect("Core current UTC clock always has SQLite and persisted samples"))
+}
+
+pub(crate) fn advance_project_utc_floor_tx(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    sample: &UtcTimestamp,
+) -> StoreResult<UtcTimestamp> {
+    sample
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::SchemaInvariant {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            detail: "Core UTC floor sample is outside the canonical timestamp range".to_owned(),
+        })?;
+    let persisted_floor = tx
+        .query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "project_state",
+            id: project_id.to_owned(),
+        })?;
+    let persisted_floor = UtcTimestamp::parse(&persisted_floor).map_err(|_| {
+        StoreError::corrupt_owner_state_value("project_state", project_id, "updated_at")
+    })?;
+    persisted_floor
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value("project_state", project_id, "updated_at")
+        })?;
+    let floor = std::cmp::max(persisted_floor, sample.clone());
+    let changed = tx.execute(
+        "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+        params![project_id, floor.to_string()],
+    )?;
+    if changed != 1 {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+            detail: "Core current UTC floor update changed no rows".to_owned(),
+        });
+    }
+    Ok(floor)
 }
 
 fn table_count(conn: &Connection, table: &str, project_id: &str) -> StoreResult<u64> {
@@ -3078,9 +3717,9 @@ mod tests {
     use sha2::{Digest, Sha256};
     use volicord_test_support::TempRuntimeHome;
     use volicord_types::{
-        BaselineRef, ChangeUnitId, IdempotencyKey, JudgmentBasisCompatibilityStatus, MethodName,
-        ProjectId, RecordId, RequestHash, RequiredNullable, RiskId, StateRecordKind,
-        StateRecordRef, TaskId,
+        IdempotencyKey, JudgmentResolutionOutcome, MethodName, ProjectId, RecordId, RequestHash,
+        RequiredNullable, StateRecordKind, StateRecordRef, TaskId, UserActionBasis,
+        UserActionOptionAction,
     };
 
     use super::*;
@@ -3122,6 +3761,610 @@ mod tests {
         fn store(&self) -> StoreResult<CoreProjectStore> {
             CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))
         }
+    }
+
+    #[test]
+    fn default_commit_clock_includes_transaction_live_storage_time() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let configured_floor = "2000-01-01T00:00:00Z";
+        store.conn.execute(
+            "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+            params![PROJECT_ID, configured_floor],
+        )?;
+        let sqlite_before: String =
+            store
+                .conn
+                .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
+                    row.get(0)
+                })?;
+        let task_id = "task_live_commit_clock";
+        let mut input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::Intake,
+            Some(&IdempotencyKey::new("idem_live_commit_clock")),
+            &RequestHash::new("sha256:live-commit-clock"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task("live_commit_clock", task_id)],
+        );
+        input.clock_floor = Some(configured_floor.to_owned());
+
+        let outcome = store.commit_mutation(
+            input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        assert!(matches!(outcome, MutationCommitOutcome::Committed { .. }));
+        let committed_at = UtcTimestamp::parse(&store.project_state()?.updated_at)?;
+        assert!(committed_at >= UtcTimestamp::parse(&sqlite_before)?);
+        assert!(committed_at > UtcTimestamp::parse(configured_floor)?);
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_clock_helpers_reject_corrupt_floor_and_extreme_sample_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let store = harness.store()?;
+        let before = store.effect_counts()?;
+        let original_floor = store.project_state()?.updated_at;
+        let out_of_range = "9999-12-31T23:59:59-23:59";
+        store.conn.execute(
+            "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+            params![PROJECT_ID, out_of_range],
+        )?;
+
+        assert!(matches!(
+            store.current_timestamp(),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+        assert!(matches!(
+            crate::user_action_channel::user_action_channel_current_timestamp(
+                &harness.runtime_home_path,
+                PROJECT_ID,
+            ),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+        let persisted: String = store.conn.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(persisted, out_of_range);
+
+        store.conn.execute(
+            "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+            params![PROJECT_ID, original_floor],
+        )?;
+        assert_eq!(store.effect_counts()?, before);
+        drop(store);
+        let mut conn = open_project_state_database(
+            harness
+                .runtime_home_path
+                .join("projects")
+                .join(PROJECT_ID)
+                .join("state.sqlite"),
+        )?;
+        let tx = conn.transaction()?;
+        let extreme = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::MAX_UTC);
+        assert!(matches!(
+            advance_project_utc_floor_tx(&tx, PROJECT_ID, &extreme),
+            Err(StoreError::SchemaInvariant { .. })
+        ));
+        drop(tx);
+        let after_floor: String = conn.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(after_floor, original_floor);
+        drop(conn);
+        assert_eq!(harness.store()?.effect_counts()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn latest_evidence_summary_uses_state_version_when_time_and_ids_disagree(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_evidence_summary_authority_order";
+        let fixed_time = "2999-07-13T12:34:56.789123456Z";
+
+        let mut first_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordRun,
+            Some(&IdempotencyKey::new("idem_summary_authority_old")),
+            &RequestHash::new("sha256:summary-authority-old"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task("summary_authority_old", task_id)],
+        );
+        first_input.clock_floor = Some(fixed_time.to_owned());
+        first_input.include_live_storage_time = false;
+        store.commit_mutation(
+            first_input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::UpsertEvidenceSummary(evidence_summary_upsert(
+                    "summary_z_old",
+                    task_id,
+                    "run_summary_old",
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let mut second_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordRun,
+            Some(&IdempotencyKey::new("idem_summary_authority_new")),
+            &RequestHash::new("sha256:summary-authority-new"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(1),
+            vec![pending_event_for_task("summary_authority_new", task_id)],
+        );
+        second_input.clock_floor = Some(fixed_time.to_owned());
+        second_input.include_live_storage_time = false;
+        store.commit_mutation(
+            second_input,
+            |mutation, facts| {
+                CoreStorageMutation::UpsertEvidenceSummary(evidence_summary_upsert(
+                    "summary_a_new",
+                    task_id,
+                    "run_summary_new",
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let latest = store
+            .latest_evidence_summary(&TaskId::new(task_id))?
+            .expect("latest evidence summary should exist");
+        assert_eq!(latest.evidence_summary_id, "summary_a_new");
+        assert_eq!(latest.produced_at_state_version, 2);
+        let timestamps = store
+            .conn
+            .prepare(
+                "SELECT created_at
+                   FROM evidence_summaries
+                  WHERE project_id = ?1 AND task_id = ?2
+                  ORDER BY evidence_summary_id",
+            )?
+            .query_map(params![PROJECT_ID, task_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(
+            timestamps,
+            vec![fixed_time.to_owned(), fixed_time.to_owned()]
+        );
+        assert_eq!(store.project_state()?.updated_at, fixed_time);
+
+        let before_counts = store.effect_counts()?;
+        let before_state = store.project_state()?;
+        let mut duplicate_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordRun,
+            Some(&IdempotencyKey::new("idem_summary_authority_duplicate")),
+            &RequestHash::new("sha256:summary-authority-duplicate"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(2),
+            vec![pending_event_for_task(
+                "summary_authority_duplicate",
+                task_id,
+            )],
+        );
+        duplicate_input.clock_floor = Some(fixed_time.to_owned());
+        duplicate_input.include_live_storage_time = false;
+        let error = store
+            .commit_mutation(
+                duplicate_input,
+                |mutation, facts| {
+                    for summary_id in ["summary_duplicate_first", "summary_duplicate_second"] {
+                        CoreStorageMutation::UpsertEvidenceSummary(evidence_summary_upsert(
+                            summary_id,
+                            task_id,
+                            "run_summary_duplicate",
+                        ))
+                        .apply(mutation, facts.committed_state_version)?;
+                    }
+                    Ok(())
+                },
+                response_json,
+            )
+            .expect_err("one Task cannot have two summaries produced by one commit");
+        assert!(matches!(error, StoreError::Sqlite(_)));
+        assert_eq!(store.effect_counts()?, before_counts);
+        assert_eq!(store.project_state()?, before_state);
+        assert_eq!(
+            store
+                .latest_evidence_summary(&TaskId::new(task_id))?
+                .expect("rolled-back duplicate must preserve current summary")
+                .evidence_summary_id,
+            "summary_a_new"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_artifact_eligibility_uses_exact_submillisecond_expiry() -> Result<(), Box<dyn Error>>
+    {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_staged_exact_expiry";
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_staged_exact_expiry")),
+                &RequestHash::new("sha256:staged-exact-expiry"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("staged_exact_expiry", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.conn.execute(
+            "INSERT INTO artifact_staging (
+                project_id, handle_id, task_id, created_by_actor_source,
+                redaction_state, status, expires_at, created_at
+             ) VALUES (
+                ?1, 'stage_exact_expiry', ?2, ?3,
+                'none', 'staged', '2026-07-13T00:10:00.000000501Z',
+                '2026-07-13T00:00:00Z'
+             )",
+            params![PROJECT_ID, task_id, ACTOR_SOURCE],
+        )?;
+        let now = UtcTimestamp::parse("2026-07-13T00:10:00.000000500Z")?;
+        let before_state = store.project_state()?;
+
+        assert!(store.has_prepared_artifact_input(&TaskId::new(task_id), &now)?);
+        store.conn.execute(
+            "UPDATE artifact_staging
+                SET expires_at = '2026-07-13T00:10:00.000000500Z'
+              WHERE project_id = ?1 AND handle_id = 'stage_exact_expiry'",
+            [PROJECT_ID],
+        )?;
+        assert!(!store.has_prepared_artifact_input(&TaskId::new(task_id), &now)?);
+        store.conn.execute(
+            "UPDATE artifact_staging
+                SET expires_at = '2026-07-13T00:10:00.000000499Z'
+              WHERE project_id = ?1 AND handle_id = 'stage_exact_expiry'",
+            [PROJECT_ID],
+        )?;
+        assert!(!store.has_prepared_artifact_input(&TaskId::new(task_id), &now)?);
+        assert_eq!(store.project_state()?, before_state);
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_future_clock_floor_survives_active_task_commit_and_reopen(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_clock_floor";
+        let first = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_clock_floor_task")),
+                &RequestHash::new("sha256:clock-floor-task"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("clock_floor_task", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
+
+        let future_floor = UtcTimestamp::parse("2999-07-13T12:34:56.789Z")?;
+        let future_task_id = "task_clock_floor_future";
+        let mut clock_floor_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::Intake,
+            Some(&IdempotencyKey::new("idem_clock_floor_activate")),
+            &RequestHash::new("sha256:clock-floor-activate"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(1),
+            vec![
+                pending_event_for_task("clock_floor_activate", future_task_id),
+                pending_event_for_task("clock_floor_activate_second", future_task_id),
+            ],
+        );
+        clock_floor_input.clock_floor = Some(future_floor.to_string());
+        let second = store.commit_mutation(
+            clock_floor_input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(future_task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::EnsureEvidenceClaim(EvidenceClaimInsert {
+                    evidence_claim_id: "claim_clock_floor".to_owned(),
+                    task_id: future_task_id.to_owned(),
+                    statement: "The canonical commit clock is shared.".to_owned(),
+                })
+                .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::CloseTask(TaskCloseUpdate {
+                    task_id: task_id.to_owned(),
+                    lifecycle_phase: "completed".to_owned(),
+                    result: "completed".to_owned(),
+                    close_summary_json: "{\"close_reason\":\"completed\"}".to_owned(),
+                    closed_at: "2999-07-13T12:00:00Z".to_owned(),
+                })
+                .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::SetActiveTask {
+                    task_id: future_task_id.to_owned(),
+                }
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(second, MutationCommitOutcome::Committed { .. }));
+
+        let expected = future_floor.to_string();
+        let state = store.project_state()?;
+        assert_eq!(state.active_task_id.as_deref(), Some(future_task_id));
+        assert_eq!(state.updated_at, expected);
+        let (task_created_at, task_updated_at) = store.conn.query_row(
+            "SELECT created_at, updated_at
+               FROM tasks
+              WHERE project_id = ?1 AND task_id = ?2",
+            params![PROJECT_ID, future_task_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        assert_eq!(task_created_at, expected);
+        assert_eq!(task_updated_at, expected);
+        let (closed_at, closed_task_updated_at) = store.conn.query_row(
+            "SELECT closed_at, updated_at
+               FROM tasks
+              WHERE project_id = ?1 AND task_id = ?2",
+            params![PROJECT_ID, task_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        assert_eq!(closed_at, "2999-07-13T12:00:00Z");
+        assert_eq!(closed_task_updated_at, expected);
+        let claim_created_at = store.conn.query_row(
+            "SELECT created_at
+               FROM evidence_claims
+              WHERE project_id = ?1 AND evidence_claim_id = 'claim_clock_floor'",
+            [PROJECT_ID],
+            |row| row.get::<_, String>(0),
+        )?;
+        assert_eq!(claim_created_at, expected);
+        let event_created_at = store.conn.query_row(
+            "SELECT created_at FROM authority_events
+              WHERE project_id = ?1 AND event_id = 'evt_clock_floor_activate'",
+            [PROJECT_ID],
+            |row| row.get::<_, String>(0),
+        )?;
+        let invocation_created_at = store.conn.query_row(
+            "SELECT created_at FROM tool_invocations
+              WHERE project_id = ?1 AND idempotency_key = 'idem_clock_floor_activate'",
+            [PROJECT_ID],
+            |row| row.get::<_, String>(0),
+        )?;
+        assert_eq!(event_created_at, expected);
+        assert_eq!(invocation_created_at, expected);
+        let (event_count, distinct_event_timestamps) = store.conn.query_row(
+            "SELECT COUNT(*), COUNT(DISTINCT created_at)
+               FROM authority_events
+              WHERE project_id = ?1
+                AND event_id IN ('evt_clock_floor_activate', 'evt_clock_floor_activate_second')",
+            [PROJECT_ID],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )?;
+        assert_eq!(event_count, 2);
+        assert_eq!(distinct_event_timestamps, 1);
+
+        let before_noncommitting = store.effect_counts()?;
+        let future_attempt_floor = "4000-01-01T00:00:00Z";
+        let mut replay_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::Intake,
+            Some(&IdempotencyKey::new("idem_clock_floor_activate")),
+            &RequestHash::new("sha256:clock-floor-activate"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(1),
+            vec![
+                pending_event_for_task("clock_floor_activate", future_task_id),
+                pending_event_for_task("clock_floor_activate_second", future_task_id),
+            ],
+        );
+        replay_input.clock_floor = Some(future_attempt_floor.to_owned());
+        let replay = store.commit_mutation(
+            replay_input,
+            |_, _| panic!("replay must not invoke the mutation closure"),
+            response_json,
+        )?;
+        assert!(matches!(replay, MutationCommitOutcome::Replayed { .. }));
+        assert_eq!(store.project_state()?.updated_at, expected);
+        assert_eq!(store.effect_counts()?, before_noncommitting);
+
+        let mut stale_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::Intake,
+            Some(&IdempotencyKey::new("idem_clock_floor_stale")),
+            &RequestHash::new("sha256:clock-floor-stale"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task("clock_floor_stale", future_task_id)],
+        );
+        stale_input.clock_floor = Some(future_attempt_floor.to_owned());
+        let stale = store.commit_mutation(
+            stale_input,
+            |_, _| panic!("stale expected state must not invoke the mutation closure"),
+            response_json,
+        )?;
+        assert!(matches!(
+            stale,
+            MutationCommitOutcome::StaleExpectedState { .. }
+        ));
+        assert_eq!(store.project_state()?.updated_at, expected);
+        assert_eq!(store.effect_counts()?, before_noncommitting);
+
+        let before_invalid = store.effect_counts()?;
+        let mut invalid_floor = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::Intake,
+            Some(&IdempotencyKey::new("idem_invalid_clock_floor")),
+            &RequestHash::new("sha256:invalid-clock-floor"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(2),
+            vec![pending_event_for_task("invalid_clock_floor", task_id)],
+        );
+        invalid_floor.clock_floor = Some("not-a-timestamp".to_owned());
+        let error = store
+            .commit_mutation(invalid_floor, |_, _| Ok(()), response_json)
+            .expect_err("invalid explicit clock floor must fail before effects");
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
+        assert_eq!(store.effect_counts()?, before_invalid);
+
+        let remembered_floor = UtcTimestamp::parse("3000-01-01T00:00:00Z")?;
+        store.remember_clock_sample(&remembered_floor);
+        assert!(UtcTimestamp::parse(&store.current_timestamp()?)? >= remembered_floor);
+        drop(store);
+        let reopened = harness.store()?;
+        assert_eq!(reopened.current_timestamp()?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn unrepresentable_remembered_clock_sample_rejects_commit_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let before_state = store.project_state()?;
+        let before_effects = store.effect_counts()?;
+        let unrepresentable = UtcTimestamp::parse("9999-12-31T23:59:59-23:59")?;
+        assert!(unrepresentable
+            .ensure_canonical_rfc3339_representable()
+            .is_err());
+        store.remember_clock_sample(&unrepresentable);
+
+        let mut input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::Intake,
+            Some(&IdempotencyKey::new(
+                "idem_unrepresentable_remembered_clock",
+            )),
+            &RequestHash::new("sha256:unrepresentable-remembered-clock"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task(
+                "unrepresentable_remembered_clock",
+                "task_unrepresentable_remembered_clock",
+            )],
+        );
+        input.include_live_storage_time = false;
+
+        let error = store
+            .commit_mutation(
+                input,
+                |_, _| panic!("invalid remembered sample must fail before mutation"),
+                response_json,
+            )
+            .expect_err("unrepresentable remembered sample must fail closed");
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+        assert_eq!(store.project_state()?, before_state);
+        assert_eq!(store.effect_counts()?, before_effects);
+        Ok(())
+    }
+
+    #[test]
+    fn semantic_timestamp_inputs_reject_atomically_before_durable_rows(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_invalid_semantic_timestamp";
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_invalid_timestamp_setup")),
+                &RequestHash::new("sha256:invalid-timestamp-setup"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("invalid_timestamp_setup", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        let before = store.effect_counts()?;
+
+        let close = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::CloseTask,
+                Some(&IdempotencyKey::new("idem_invalid_closed_at")),
+                &RequestHash::new("sha256:invalid-closed-at"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(1),
+                vec![pending_event_for_task("invalid_closed_at", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::CloseTask(TaskCloseUpdate {
+                    task_id: task_id.to_owned(),
+                    lifecycle_phase: "completed".to_owned(),
+                    result: "completed".to_owned(),
+                    close_summary_json: "{}".to_owned(),
+                    closed_at: "tomorrow".to_owned(),
+                })
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        );
+        assert!(matches!(close, Err(StoreError::InvalidInput { .. })));
+        assert_eq!(store.effect_counts()?, before);
+
+        let write_ticket = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::PrepareWrite,
+                Some(&IdempotencyKey::new("idem_invalid_write_ticket_expiry")),
+                &RequestHash::new("sha256:invalid-write-ticket-expiry"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(1),
+                vec![pending_event_for_task(
+                    "invalid_write_ticket_expiry",
+                    task_id,
+                )],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
+                    write_ticket_id: "write_ticket_invalid_expiry".to_owned(),
+                    task_id: task_id.to_owned(),
+                    change_unit_id: "change_unit_missing".to_owned(),
+                    attempt_scope_json: "{}".to_owned(),
+                    created_by_actor_source: ACTOR_SOURCE.to_owned(),
+                    created_by_user_action_resolution_id: None,
+                    expires_at: "tomorrow".to_owned(),
+                    created_at: "2026-07-13T00:00:00Z".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                })
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        );
+        assert!(matches!(write_ticket, Err(StoreError::InvalidInput { .. })));
+        assert_eq!(store.effect_counts()?, before);
+        Ok(())
     }
 
     #[test]
@@ -3201,6 +4444,25 @@ mod tests {
         )?;
         assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
         let before = store.effect_counts()?;
+
+        let mut changed_basis = first_context.clone();
+        changed_basis.verification_basis = Some("different_verified_channel".to_owned());
+        let basis_replay_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::UpdateScope,
+            Some(&IdempotencyKey::new("idem_store_workspace_context")),
+            &RequestHash::new("sha256:same-request"),
+            Some(changed_basis),
+            Some(1),
+            vec![pending_event("basis_second")],
+        );
+        let basis_replay =
+            store.commit_mutation(basis_replay_input, |_, _| Ok(()), response_json)?;
+        assert!(matches!(
+            basis_replay,
+            MutationCommitOutcome::ReplayContextMismatch { .. }
+        ));
+        assert_eq!(store.effect_counts()?, before);
 
         let mut changed_context = first_context;
         changed_context.git_workspace_context_json =
@@ -3492,7 +4754,7 @@ mod tests {
         let second = store.commit_mutation(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
-                MethodName::RecordUserJudgment,
+                MethodName::ResolveUserAction,
                 Some(&IdempotencyKey::new("idem_authority_event_second")),
                 &RequestHash::new("sha256:authority-second"),
                 Some(user_context),
@@ -3586,18 +4848,16 @@ mod tests {
     }
 
     #[test]
-    fn task_and_judgment_basis_store_apis_round_trip() -> Result<(), Box<dyn Error>> {
+    fn user_action_request_and_basis_store_apis_round_trip() -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let task_id = "task_basis_round_trip";
-        let close_basis = current_close_basis(task_id, 2, 3);
-        let close_basis_json = serde_json::to_string(&close_basis)?;
-        let judgment_basis = judgment_basis(task_id, 2, Some(3));
-        let judgment_basis_json = serde_json::to_string(&judgment_basis)?;
+        let request_id = "action_basis_round_trip";
+        let now = UtcTimestamp::parse("2026-01-01T00:10:00Z")?;
 
         let first_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::UpdateScope,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_basis_initial")),
             &RequestHash::new("sha256:basis-initial"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -3609,20 +4869,8 @@ mod tests {
             |mutation, facts| {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::UpdateTaskScopeRevision(TaskScopeRevisionUpdate {
-                        task_id: task_id.to_owned(),
-                        scope_revision: 2,
-                    }),
-                    CoreStorageMutation::UpdateTaskCloseBasis(TaskCloseBasisUpdate {
-                        task_id: task_id.to_owned(),
-                        close_basis_revision: 3,
-                        close_basis_json: Some(close_basis_json.clone()),
-                    }),
-                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                        "judgment_basis_round_trip",
-                        task_id,
-                        Some(judgment_basis_json.clone()),
-                        JudgmentBasisCompatibilityStatus::Current,
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        request_id, task_id, None,
                     )),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
@@ -3633,21 +4881,20 @@ mod tests {
         )?;
         assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
 
-        let task_revisions = store
-            .task_revision_record(&TaskId::new(task_id))?
-            .expect("task revisions should be readable");
-        assert_eq!(task_revisions.scope_revision, 2);
-        assert_eq!(task_revisions.close_basis_revision, 3);
-        assert_eq!(task_revisions.current_close_basis, Some(close_basis));
-
-        let basis_record = store
-            .user_judgment_basis_record("judgment_basis_round_trip")?
-            .expect("judgment basis should be readable");
-        assert_eq!(
-            basis_record.basis_status,
-            JudgmentBasisCompatibilityStatus::Current
-        );
-        assert_eq!(basis_record.basis, judgment_basis);
+        let current = store
+            .user_action_record(request_id, &now)?
+            .expect("user-action request should be readable");
+        assert_eq!(current.status, UserActionStatus::Pending);
+        assert_eq!(current.request.user_action_request_id, request_id);
+        assert_eq!(current.request.task_id, task_id);
+        assert_eq!(current.request.action_kind, UserActionKind::ProductDecision);
+        assert_eq!(current.request.basis_status, UserActionBasisStatus::Current);
+        assert_eq!(current.request.required_for_json, r#"["informational"]"#);
+        assert_eq!(current.request.requested_by_actor_source, ACTOR_SOURCE);
+        assert!(current.resolution.is_none());
+        let basis: UserActionBasis = serde_json::from_str(&current.request.basis_json)?;
+        assert_eq!(basis.compatibility_status(), UserActionBasisStatus::Current);
+        assert_eq!(basis.coordinates().task_id.as_str(), task_id);
 
         let stale_input = commit_input(
             &ProjectId::new(PROJECT_ID),
@@ -3661,21 +4908,24 @@ mod tests {
         let stale = store.commit_mutation(
             stale_input,
             |mutation, facts| {
-                CoreStorageMutation::MarkUserJudgmentBasesStatus(UserJudgmentBasisStatusMark {
-                    judgment_ids: vec!["judgment_basis_round_trip".to_owned()],
-                    basis_status: JudgmentBasisCompatibilityStatus::Stale,
+                CoreStorageMutation::MarkUserActionBasesStatus(UserActionBasisStatusMark {
+                    user_action_request_ids: vec![request_id.to_owned()],
+                    basis_status: UserActionBasisStatus::Stale,
                 })
                 .apply(mutation, facts.committed_state_version)
             },
             response_json,
         )?;
         assert!(matches!(stale, MutationCommitOutcome::Committed { .. }));
+        let stale = store
+            .user_action_record(request_id, &now)?
+            .expect("stale request should remain readable");
+        assert_eq!(stale.status, UserActionStatus::Stale);
+        assert_eq!(stale.request.basis_status, UserActionBasisStatus::Stale);
+        let stale_basis: UserActionBasis = serde_json::from_str(&stale.request.basis_json)?;
         assert_eq!(
-            store
-                .user_judgment_basis_record("judgment_basis_round_trip")?
-                .expect("judgment basis should remain readable")
-                .basis_status,
-            JudgmentBasisCompatibilityStatus::Stale
+            stale_basis.compatibility_status(),
+            UserActionBasisStatus::Stale
         );
 
         let superseded_input = commit_input(
@@ -3690,9 +4940,9 @@ mod tests {
         let superseded = store.commit_mutation(
             superseded_input,
             |mutation, facts| {
-                CoreStorageMutation::MarkUserJudgmentBasesStatus(UserJudgmentBasisStatusMark {
-                    judgment_ids: vec!["judgment_basis_round_trip".to_owned()],
-                    basis_status: JudgmentBasisCompatibilityStatus::Superseded,
+                CoreStorageMutation::MarkUserActionBasesStatus(UserActionBasisStatusMark {
+                    user_action_request_ids: vec![request_id.to_owned()],
+                    basis_status: UserActionBasisStatus::Superseded,
                 })
                 .apply(mutation, facts.committed_state_version)
             },
@@ -3704,11 +4954,288 @@ mod tests {
         ));
         assert_eq!(
             store
-                .user_judgment_basis_record("judgment_basis_round_trip")?
-                .expect("judgment basis should remain readable")
-                .basis_status,
-            JudgmentBasisCompatibilityStatus::Superseded
+                .user_action_record(request_id, &now)?
+                .expect("superseded request should remain readable")
+                .status,
+            UserActionStatus::Superseded
         );
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_request_store_rejects_empty_duplicate_and_mismatched_owner_facts(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_invalid_user_action_owner_facts";
+
+        for (marker, mut action) in [
+            (
+                "empty_required_for",
+                user_action_request_insert("action_empty_required_for", task_id, None),
+            ),
+            (
+                "duplicate_required_for",
+                user_action_request_insert("action_duplicate_required_for", task_id, None),
+            ),
+            (
+                "mismatched_sensitive_scope",
+                user_action_request_insert("action_mismatched_sensitive_scope", task_id, None),
+            ),
+            (
+                "incompatible_required_for",
+                user_action_request_insert("action_incompatible_required_for", task_id, None),
+            ),
+        ] {
+            match marker {
+                "empty_required_for" => {
+                    let mut request = serde_json::from_str::<Value>(&action.request_json)?;
+                    request["required_for"] = json!([]);
+                    action.request_json = request.to_string();
+                    action.required_for_json = "[]".to_owned();
+                }
+                "duplicate_required_for" => {
+                    let mut request = serde_json::from_str::<Value>(&action.request_json)?;
+                    request["required_for"] = json!(["informational", "informational"]);
+                    action.request_json = request.to_string();
+                    action.required_for_json = r#"["informational","informational"]"#.to_owned();
+                }
+                "mismatched_sensitive_scope" => {
+                    let mut basis = serde_json::from_str::<Value>(&action.basis_json)?;
+                    basis["sensitive_action_scope"] = json!({
+                        "action_kind": "write_files",
+                        "description": "Bounded write.",
+                        "intended_paths": ["src/lib.rs"],
+                        "sensitive_categories": ["product_file_write"],
+                        "command_or_tool_summary": null,
+                        "network_or_host_summary": null,
+                        "secret_or_credential_summary": null,
+                        "capability_claim": "Local file write only.",
+                        "expires_at": null
+                    });
+                    action.basis_json = basis.to_string();
+                }
+                "incompatible_required_for" => {
+                    let mut request = serde_json::from_str::<Value>(&action.request_json)?;
+                    request["required_for"] = json!(["close_cancel"]);
+                    action.request_json = request.to_string();
+                    action.required_for_json = r#"["close_cancel"]"#.to_owned();
+                }
+                _ => unreachable!("test table contains only declared invalid cases"),
+            }
+            let error = store
+                .commit_mutation(
+                    commit_input(
+                        &ProjectId::new(PROJECT_ID),
+                        MethodName::RequestUserAction,
+                        Some(&IdempotencyKey::new(format!("idem_store_{marker}"))),
+                        &RequestHash::new(format!("sha256:{marker}")),
+                        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                        Some(0),
+                        vec![pending_event_for_task(marker, task_id)],
+                    ),
+                    |mutation, facts| {
+                        CoreStorageMutation::InsertTask(task_insert(task_id))
+                            .apply(mutation, facts.committed_state_version)?;
+                        CoreStorageMutation::InsertUserActionRequest(action)
+                            .apply(mutation, facts.committed_state_version)
+                    },
+                    response_json,
+                )
+                .expect_err("invalid user-action owner facts must fail closed");
+            assert!(matches!(&error, StoreError::InvalidInput { .. }));
+            if marker == "incompatible_required_for" {
+                assert!(matches!(
+                    error,
+                    StoreError::InvalidInput { detail }
+                        if detail == "user_action_requests.request_json required_for contains an operation incompatible with its action kind"
+                ));
+            }
+            assert_eq!(store.effect_counts()?.tasks, 0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_request_timestamp_order_is_strict_at_insert_boundaries(
+    ) -> Result<(), Box<dyn Error>> {
+        for (suffix, expires_at, should_commit) in [
+            ("before", "2025-12-31T23:59:59.999Z", false),
+            ("equal", "2026-01-01T00:00:00Z", false),
+            ("after", "2026-01-01T00:00:00.001Z", true),
+        ] {
+            let harness = StoreHarness::new()?;
+            let mut store = harness.store()?;
+            let task_id = format!("task_request_timestamp_{suffix}");
+            let request_id = format!("action_request_timestamp_{suffix}");
+            let mut action = user_action_request_insert(&request_id, &task_id, None);
+            set_user_action_request_expiry(&mut action, expires_at);
+            let outcome = store.commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::RequestUserAction,
+                    Some(&IdempotencyKey::new(format!(
+                        "idem_request_timestamp_{suffix}"
+                    ))),
+                    &RequestHash::new(format!("sha256:request-timestamp-{suffix}")),
+                    Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                    Some(0),
+                    vec![pending_event_for_task(
+                        &format!("{suffix}_request"),
+                        &task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertTask(task_insert(&task_id))
+                        .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertUserActionRequest(action)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            );
+
+            if should_commit {
+                assert!(matches!(outcome?, MutationCommitOutcome::Committed { .. }));
+                assert_eq!(
+                    store
+                        .user_action_record(
+                            &request_id,
+                            &UtcTimestamp::parse("2026-01-01T00:00:00Z")?,
+                        )?
+                        .expect("strictly later expiry should remain readable")
+                        .status,
+                    UserActionStatus::Pending
+                );
+            } else {
+                let error = outcome.expect_err("non-later expiry must reject atomically");
+                assert!(matches!(
+                    error,
+                    StoreError::InvalidInput { detail }
+                        if detail == "user_action_requests.expires_at must be later than user_action_requests.requested_at"
+                ));
+                assert_eq!(store.effect_counts()?.tasks, 0);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_observation_request_insert_rejects_extended_ttl_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_evidence_action_extended_ttl";
+        let request_id = "action_evidence_action_extended_ttl";
+        let mut action = evidence_user_action_request_insert(request_id, task_id, 1);
+        set_user_action_request_expiry(&mut action, "2026-01-01T00:16:00Z");
+        let before_state = store.project_state()?;
+        let before_effects = store.effect_counts()?;
+
+        let error = store
+            .commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::RequestUserAction,
+                    Some(&IdempotencyKey::new("idem_evidence_action_extended_ttl")),
+                    &RequestHash::new("sha256:evidence-action-extended-ttl"),
+                    Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                    Some(0),
+                    vec![pending_event_for_task(
+                        "evidence_action_extended_ttl",
+                        task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertTask(task_insert(task_id))
+                        .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertUserActionRequest(action)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("a 16-minute evidence-observation request TTL must reject atomically");
+
+        assert!(matches!(
+            error,
+            StoreError::InvalidInput { detail }
+                if detail == "evidence-observation user_action_requests.expires_at must be exactly 15 minutes after user_action_requests.requested_at"
+        ));
+        assert_eq!(store.project_state()?, before_state);
+        assert_eq!(store.effect_counts()?, before_effects);
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_capture_intent_insert_rejects_extended_ttl_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_capture_intent_extended_ttl";
+        let change_unit_id = "cu_capture_intent_extended_ttl";
+        let before_state = store.project_state()?;
+        let before_effects = store.effect_counts()?;
+        let capture_intent = EvidenceCaptureIntentInsert {
+            evidence_capture_intent_id: "capture_intent_extended_ttl".to_owned(),
+            task_id: task_id.to_owned(),
+            change_unit_id: change_unit_id.to_owned(),
+            scope_revision: 0,
+            baseline_ref: "baseline_capture_intent_extended_ttl".to_owned(),
+            target_json: json!({
+                "target_kind": "supplemental_claim",
+                "evidence_claim_id": "claim_capture_intent_extended_ttl",
+                "statement": "A fixed capture-intent TTL is required."
+            })
+            .to_string(),
+            capture_kind: "verified_command_execution".to_owned(),
+            capture_spec_json: json!({
+                "capture_type": "verified_command_execution",
+                "command_summary": "Run a bounded local verification."
+            })
+            .to_string(),
+            input_sha256: "a".repeat(64),
+            expected_outcome_json: "{}".to_owned(),
+            requested_by_actor_source: ACTOR_SOURCE.to_owned(),
+            requesting_connection_internal_id: CONNECTION_ID.to_owned(),
+            session_context_json: "{}".to_owned(),
+            workspace_context_json: "{}".to_owned(),
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            expires_at: "2026-01-01T00:16:00Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        };
+
+        let error = store
+            .commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::PrepareEvidenceCapture,
+                    Some(&IdempotencyKey::new("idem_capture_intent_extended_ttl")),
+                    &RequestHash::new("sha256:capture-intent-extended-ttl"),
+                    Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                    Some(0),
+                    vec![pending_event_for_task(
+                        "capture_intent_extended_ttl",
+                        task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertTask(task_insert(task_id))
+                        .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
+                        change_unit_id,
+                        task_id,
+                        "null".to_owned(),
+                    ))
+                    .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertEvidenceCaptureIntent(capture_intent)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("a 16-minute evidence-capture intent TTL must reject atomically");
+
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+        assert_eq!(store.project_state()?, before_state);
+        assert_eq!(store.effect_counts()?, before_effects);
         Ok(())
     }
 
@@ -3900,15 +5427,163 @@ mod tests {
     }
 
     #[test]
-    fn resolve_user_judgment_writes_deferred_action_outcome_pair() -> Result<(), Box<dyn Error>> {
+    fn user_action_store_derives_expiry_resolution_and_stale_status() -> Result<(), Box<dyn Error>>
+    {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let task_id = "task_deferred_judgment";
-        let judgment_id = "judgment_deferred_pair";
+        let task_id = "task_user_action_status";
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_action_expiring")),
+                &RequestHash::new("sha256:action-expiring"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("action_expiring", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    "action_expiring",
+                    task_id,
+                    Some("2026-01-01T00:15:00Z"),
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let before_expiry = UtcTimestamp::parse("2026-01-01T00:14:59Z")?;
+        let at_expiry = UtcTimestamp::parse("2026-01-01T00:15:00Z")?;
+        assert_eq!(
+            store
+                .user_action_record("action_expiring", &before_expiry)?
+                .expect("expiring action should be readable")
+                .status,
+            UserActionStatus::Pending
+        );
+        assert_eq!(
+            store
+                .user_action_record("action_expiring", &at_expiry)?
+                .expect("expired action should remain readable")
+                .status,
+            UserActionStatus::Expired
+        );
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_action_current")),
+                &RequestHash::new("sha256:action-current"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(1),
+                vec![pending_event_for_task("action_current", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    "action_current",
+                    task_id,
+                    None,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new("idem_store_action_resolve")),
+                &RequestHash::new("sha256:action-resolve"),
+                Some(VerifiedReplayContext {
+                    actor_source: "local_user".to_owned(),
+                    operation_category: "user_only".to_owned(),
+                    verification_basis: Some("store_test_user_channel".to_owned()),
+                    git_workspace_context_json: None,
+                }),
+                Some(2),
+                vec![pending_event_for_task("action_resolve", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
+                    "resolution_current",
+                    "action_current",
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert_eq!(
+            store
+                .user_action_record("action_current", &at_expiry)?
+                .expect("resolved action should be readable")
+                .status,
+            UserActionStatus::Resolved
+        );
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::UpdateScope,
+                Some(&IdempotencyKey::new("idem_store_action_stale")),
+                &RequestHash::new("sha256:action-stale"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(3),
+                vec![pending_event_for_task("action_stale", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::MarkUserActionBasesStatus(UserActionBasisStatusMark {
+                    user_action_request_ids: vec!["action_current".to_owned()],
+                    basis_status: UserActionBasisStatus::Stale,
+                })
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        let stale = store
+            .user_action_record("action_current", &at_expiry)?
+            .expect("stale action should be readable");
+        assert_eq!(stale.status, UserActionStatus::Stale);
+        assert_eq!(
+            serde_json::from_str::<Value>(&stale.request.basis_json)?["coordinates"]
+                ["compatibility_status"],
+            "stale"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_resolution_round_trips_choice_and_channel_provenance(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_deferred_action";
+        let request_id = "action_deferred_pair";
+        let resolution_id = "resolution_deferred_pair";
+        let mut deferred_request = user_action_request_insert(request_id, task_id, None);
+        let mut deferred_request_json =
+            serde_json::from_str::<Value>(&deferred_request.request_json)?;
+        deferred_request_json["body"]["options"]
+            .as_array_mut()
+            .expect("choice options should be an array")
+            .push(json!({
+                "option_id": "defer",
+                "label": "Defer",
+                "description": "Defer this bounded decision.",
+                "consequence": "The request remains resolved as deferred.",
+                "machine_action": "defer",
+                "resolution_outcome": "deferred",
+                "is_default": false
+            }));
+        deferred_request.request_json = deferred_request_json.to_string();
 
         let insert_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserJudgment,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_defer_insert")),
             &RequestHash::new("sha256:defer-insert"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -3920,12 +5595,7 @@ mod tests {
             |mutation, facts| {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                        judgment_id,
-                        task_id,
-                        None,
-                        JudgmentBasisCompatibilityStatus::Current,
-                    )),
+                    CoreStorageMutation::InsertUserActionRequest(deferred_request),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
                 }
@@ -3935,67 +5605,309 @@ mod tests {
         )?;
         assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
 
+        let mut resolution = user_action_resolution_insert(resolution_id, request_id);
+        resolution.channel_kind = UserActionChannelKind::PromptCapture;
+        resolution.channel_submission_id = "submission_deferred_pair".to_owned();
+        resolution.resolution_json = choice_resolution_json(
+            "defer",
+            UserActionOptionAction::Defer,
+            JudgmentResolutionOutcome::Deferred,
+        );
+        resolution.resolved_verification_basis = "user_prompt_submit_hook".to_owned();
+        resolution.resolved_assurance_level = "verified_local_user_channel".to_owned();
         let resolve_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RecordUserJudgment,
+            MethodName::ResolveUserAction,
             Some(&IdempotencyKey::new("idem_store_defer_resolve")),
             &RequestHash::new("sha256:defer-resolve"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(user_replay_context()),
             Some(1),
             vec![pending_event_for_task("defer_resolve", task_id)],
         );
         let resolved = store.commit_mutation(
             resolve_input,
             |mutation, facts| {
-                CoreStorageMutation::ResolveUserJudgment(user_judgment_resolution_update(
-                    judgment_id,
-                    UserJudgmentOptionAction::Defer,
-                    JudgmentResolutionOutcome::Deferred,
-                ))
-                .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::InsertUserActionResolution(resolution)
+                    .apply(mutation, facts.committed_state_version)
             },
             response_json,
         )?;
         assert!(matches!(resolved, MutationCommitOutcome::Committed { .. }));
 
         let record = store
-            .user_judgment_record(judgment_id)?
-            .expect("resolved judgment should be readable");
-        assert_eq!(record.resolution_machine_action, Some("defer".to_owned()));
-        assert_eq!(record.resolution_outcome, Some("deferred".to_owned()));
+            .user_action_resolution_record(resolution_id)?
+            .expect("resolved user action should be readable");
+        assert_eq!(record.user_action_request_id, request_id);
+        assert_eq!(record.channel_kind, UserActionChannelKind::PromptCapture);
+        assert_eq!(record.channel_submission_id, "submission_deferred_pair");
+        assert_eq!(record.resolved_by_actor_source, "local_user");
         assert_eq!(
-            serde_json::from_str::<Value>(
-                record
-                    .resolution_json
-                    .as_deref()
-                    .expect("resolution JSON should be stored"),
-            )?["machine_action"],
+            serde_json::from_str::<Value>(&record.resolution_json)?["machine_action"],
             "defer"
         );
         assert_eq!(
-            serde_json::from_str::<Value>(
-                record
-                    .resolution_rationale_json
-                    .as_deref()
-                    .expect("resolution rationale JSON should be stored"),
-            )?["summary"],
-            "The user selected the focused judgment option."
+            store
+                .user_action_resolution_for_channel_submission(
+                    UserActionChannelKind::PromptCapture,
+                    "submission_deferred_pair",
+                )?
+                .expect("channel submission lookup should return the immutable resolution"),
+            record
         );
+        assert_eq!(
+            store
+                .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:11:00Z")?,)?
+                .expect("resolved request should remain readable")
+                .status,
+            UserActionStatus::Resolved
+        );
+        let before_tamper = store.effect_counts()?;
+        store
+            .conn
+            .execute_batch("PRAGMA ignore_check_constraints = ON")?;
+        store.conn.execute(
+            "UPDATE user_action_resolutions
+                SET channel_submission_id = ?3
+              WHERE project_id = ?1
+                AND user_action_resolution_id = ?2",
+            params![PROJECT_ID, resolution_id, "x".repeat(257)],
+        )?;
+        store
+            .conn
+            .execute_batch("PRAGMA ignore_check_constraints = OFF")?;
+        assert!(matches!(
+            store.user_action_resolution_record(resolution_id),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+        assert_eq!(store.effect_counts()?, before_tamper);
         Ok(())
     }
 
     #[test]
-    fn local_web_consent_token_consumption_rolls_back_with_judgment_record_failure(
+    fn user_action_resolution_timestamp_order_enforces_half_open_boundaries(
+    ) -> Result<(), Box<dyn Error>> {
+        for (suffix, resolved_at, expected_error) in [
+            (
+                "before_request",
+                "2025-12-31T23:59:59.999Z",
+                Some(
+                    "user_action_resolutions.resolved_at must be at or after user_action_requests.requested_at",
+                ),
+            ),
+            ("at_request", "2026-01-01T00:00:00Z", None),
+            ("before_expiry", "2026-01-01T00:00:09.999Z", None),
+            (
+                "at_expiry",
+                "2026-01-01T00:00:10Z",
+                Some(
+                    "user_action_resolutions.resolved_at must be before user_action_requests.expires_at",
+                ),
+            ),
+            (
+                "after_expiry",
+                "2026-01-01T00:00:10.001Z",
+                Some(
+                    "user_action_resolutions.resolved_at must be before user_action_requests.expires_at",
+                ),
+            ),
+        ] {
+            let harness = StoreHarness::new()?;
+            let mut store = harness.store()?;
+            let task_id = format!("task_resolution_timestamp_{suffix}");
+            let request_id = format!("action_resolution_timestamp_{suffix}");
+            let resolution_id = format!("resolution_timestamp_{suffix}");
+            let mut action = user_action_request_insert(&request_id, &task_id, None);
+            set_user_action_request_expiry(&mut action, "2026-01-01T00:00:10Z");
+            store.commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::RequestUserAction,
+                    Some(&IdempotencyKey::new(format!(
+                        "idem_resolution_timestamp_request_{suffix}"
+                    ))),
+                    &RequestHash::new(format!(
+                        "sha256:resolution-timestamp-request-{suffix}"
+                    )),
+                    Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                    Some(0),
+                    vec![pending_event_for_task(
+                        &format!("{suffix}_request"),
+                        &task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertTask(task_insert(&task_id))
+                        .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertUserActionRequest(action)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )?;
+
+            let mut resolution = user_action_resolution_insert(&resolution_id, &request_id);
+            resolution.resolved_at = resolved_at.to_owned();
+            let outcome = store.commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new(format!(
+                        "idem_resolution_timestamp_resolve_{suffix}"
+                    ))),
+                    &RequestHash::new(format!(
+                        "sha256:resolution-timestamp-resolve-{suffix}"
+                    )),
+                    Some(user_replay_context()),
+                    Some(1),
+                    vec![pending_event_for_task(
+                        &format!("{suffix}_resolve"),
+                        &task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertUserActionResolution(resolution)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            );
+
+            if let Some(expected_error) = expected_error {
+                let error = outcome.expect_err("out-of-window resolution must reject atomically");
+                assert!(matches!(
+                    error,
+                    StoreError::InvalidInput { detail } if detail == expected_error
+                ));
+                assert_eq!(store.effect_counts()?.user_action_resolutions, 0);
+                assert_eq!(store.project_state()?.state_version, 1);
+            } else {
+                assert!(matches!(outcome?, MutationCommitOutcome::Committed { .. }));
+                assert_eq!(
+                    store
+                        .user_action_resolution_record(&resolution_id)?
+                        .expect("in-window resolution should remain readable")
+                        .resolved_at,
+                    resolved_at
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_observation_resolution_preserves_exact_candidate_after_projection_advances(
     ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
+        let task_id = "task_observation_resolution_reread";
+        let request_id = "action_observation_resolution_reread";
+        let resolution_id = "resolution_observation_reread";
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_observation_request")),
+                &RequestHash::new("sha256:observation-request"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("observation_request", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(evidence_user_action_request_insert(
+                    request_id, task_id, 3,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let before_mismatch = store.effect_counts()?;
+        let mismatch = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new("idem_store_observation_resolution")),
+                &RequestHash::new("sha256:observation-resolution"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task("observation_resolution", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionResolution(
+                    evidence_user_action_resolution_insert(resolution_id, request_id, task_id, 4),
+                )
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        );
+        assert!(matches!(mismatch, Err(StoreError::InvalidInput { .. })));
+        assert_eq!(store.effect_counts()?, before_mismatch);
+        assert!(store
+            .user_action_resolution_record(resolution_id)?
+            .is_none());
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new("idem_store_observation_resolution")),
+                &RequestHash::new("sha256:observation-resolution"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task("observation_resolution", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionResolution(
+                    evidence_user_action_resolution_insert(resolution_id, request_id, task_id, 3),
+                )
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let resolved = store
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
+            .expect("resolved evidence-observation action should remain readable");
+        assert_eq!(resolved.status, UserActionStatus::Resolved);
+        let resolution = store
+            .user_action_resolution_record(resolution_id)?
+            .expect("the immutable resolution should be readable by id");
+        assert_eq!(
+            serde_json::from_str::<Value>(&resolution.resolution_json)?["observation"]
+                ["output_artifact_refs"][0]["created_by_run_ref"]["produced_at_state_version"],
+            3
+        );
+
+        let mut tampered: Value = serde_json::from_str(&resolution.resolution_json)?;
+        tampered["observation"]["output_artifact_refs"][0]["sha256"] =
+            json!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        store.conn.execute(
+            "UPDATE user_action_resolutions
+                SET resolution_json = ?2
+              WHERE project_id = ?1
+                AND user_action_resolution_id = ?3",
+            params![PROJECT_ID, tampered.to_string(), resolution_id],
+        )?;
+        assert!(matches!(
+            store.user_action_resolution_record(resolution_id),
+            Err(StoreError::CorruptOwnerStateValue { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_token_and_resolution_roll_back_with_later_failure() -> Result<(), Box<dyn Error>>
+    {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
         let task_id = "task_local_web_atomic_rollback";
-        let judgment_id = "judgment_local_web_atomic_rollback";
+        let request_id = "action_local_web_atomic_rollback";
         let token_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
         let insert_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserJudgment,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_local_web_insert")),
             &RequestHash::new("sha256:local-web-insert"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -4007,11 +5919,8 @@ mod tests {
             |mutation, facts| {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                        judgment_id,
-                        task_id,
-                        None,
-                        JudgmentBasisCompatibilityStatus::Current,
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        request_id, task_id, None,
                     )),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
@@ -4023,20 +5932,133 @@ mod tests {
         assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
 
         store.conn.execute(
-            "INSERT INTO local_web_consent_tokens (
-                project_id, token_hash, connection_internal_id, judgment_id, capture_basis,
-                status, created_at, expires_at, created_metadata_json, completion_metadata_json
-             ) VALUES (?1, ?2, ?3, ?4, 'local_user_local_web', 'pending', 't0', 't9', '{}', '{}')",
-            params![PROJECT_ID, token_hash, CONNECTION_ID, judgment_id],
+            "INSERT INTO user_action_channel_tokens (
+                project_id, token_hash, channel_kind, connection_internal_id,
+                user_action_request_id, capture_basis, status, created_at, expires_at,
+                consumed_at, completed_at, created_metadata_json, completion_metadata_json
+             ) VALUES (
+                ?1, ?2, 'local_web_consent', ?3, ?4, 'local_user_local_web', 'pending',
+                '2026-01-01T00:00:00Z', '2026-01-01T00:10:00Z', NULL, NULL, '{}', '{}'
+             )",
+            params![PROJECT_ID, token_hash, CONNECTION_ID, request_id],
         )?;
+        let before_invalid_timestamp = store.effect_counts()?;
+        let invalid_timestamp = store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new(
+                    "idem_store_local_web_invalid_timestamp",
+                )),
+                &RequestHash::new("sha256:local-web-invalid-timestamp"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task(
+                    "local_web_invalid_timestamp",
+                    task_id,
+                )],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::ConsumeUserActionChannelToken(
+                    UserActionChannelTokenConsumption {
+                        token_hash: token_hash.to_owned(),
+                        connection_internal_id: CONNECTION_ID.to_owned(),
+                        user_action_request_id: request_id.to_owned(),
+                        consumed_at: "tomorrow".to_owned(),
+                        completion_metadata_json: "{}".to_owned(),
+                    },
+                )
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        );
+        assert!(matches!(
+            invalid_timestamp,
+            Err(StoreError::InvalidInput { .. })
+        ));
+        assert_eq!(store.effect_counts()?, before_invalid_timestamp);
+        assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
+
+        for (variant, field, tampered, original) in [
+            (
+                "created_at",
+                "created_at",
+                "9999-12-31T23:59:59-23:59",
+                "2026-01-01T00:00:00Z",
+            ),
+            (
+                "expires_at",
+                "expires_at",
+                "9999-12-31T23:59:59-23:59",
+                "2026-01-01T00:10:00Z",
+            ),
+            (
+                "extended_window",
+                "expires_at",
+                "2026-01-01T00:10:00.000000001Z",
+                "2026-01-01T00:10:00Z",
+            ),
+            (
+                "shortened_window",
+                "expires_at",
+                "2026-01-01T00:09:59Z",
+                "2026-01-01T00:10:00Z",
+            ),
+        ] {
+            let sql = format!(
+                "UPDATE user_action_channel_tokens
+                    SET {field} = ?3
+                  WHERE project_id = ?1
+                    AND token_hash = ?2"
+            );
+            store
+                .conn
+                .execute(&sql, params![PROJECT_ID, token_hash, tampered])?;
+            let before_corrupt_consume = store.effect_counts()?;
+            let result = store.commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new(format!(
+                        "idem_store_local_web_corrupt_{variant}"
+                    ))),
+                    &RequestHash::new(format!("sha256:local-web-corrupt-{variant}")),
+                    Some(user_replay_context()),
+                    Some(1),
+                    vec![pending_event_for_task(
+                        &format!("local_web_corrupt_{variant}"),
+                        task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::ConsumeUserActionChannelToken(
+                        UserActionChannelTokenConsumption {
+                            token_hash: token_hash.to_owned(),
+                            connection_internal_id: CONNECTION_ID.to_owned(),
+                            user_action_request_id: request_id.to_owned(),
+                            consumed_at: "2026-01-01T00:09:59.999Z".to_owned(),
+                            completion_metadata_json: "{}".to_owned(),
+                        },
+                    )
+                    .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            );
+            assert!(matches!(result, Err(StoreError::CorruptStoredValue { .. })));
+            assert_eq!(store.effect_counts()?, before_corrupt_consume);
+            assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
+            store
+                .conn
+                .execute(&sql, params![PROJECT_ID, token_hash, original])?;
+        }
         let before = store.effect_counts()?;
 
         let resolve_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RecordUserJudgment,
+            MethodName::ResolveUserAction,
             Some(&IdempotencyKey::new("idem_store_local_web_rollback")),
             &RequestHash::new("sha256:local-web-rollback"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(user_replay_context()),
             Some(1),
             vec![pending_event_for_task("local_web_rollback", task_id)],
         );
@@ -4044,20 +6066,19 @@ mod tests {
             .commit_mutation(
                 resolve_input,
                 |mutation, facts| {
-                    CoreStorageMutation::ConsumeLocalWebConsentToken(
-                        LocalWebConsentTokenConsumption {
+                    CoreStorageMutation::ConsumeUserActionChannelToken(
+                        UserActionChannelTokenConsumption {
                             token_hash: token_hash.to_owned(),
                             connection_internal_id: CONNECTION_ID.to_owned(),
-                            judgment_id: judgment_id.to_owned(),
-                            consumed_at: "t1".to_owned(),
+                            user_action_request_id: request_id.to_owned(),
+                            consumed_at: "2026-01-01T00:09:59.999Z".to_owned(),
                             completion_metadata_json: "{}".to_owned(),
                         },
                     )
                     .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::ResolveUserJudgment(user_judgment_resolution_update(
-                        judgment_id,
-                        UserJudgmentOptionAction::Accept,
-                        JudgmentResolutionOutcome::Accepted,
+                    CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
+                        "resolution_local_web_atomic_rollback",
+                        request_id,
                     ))
                     .apply(mutation, facts.committed_state_version)?;
                     CoreStorageMutation::InsertRun(run_insert_with_missing_task())
@@ -4070,11 +6091,11 @@ mod tests {
 
         assert_eq!(store.effect_counts()?, before);
         let record = store
-            .user_judgment_record(judgment_id)?
-            .expect("pending judgment should remain readable");
-        assert_eq!(record.status, "pending");
-        assert_eq!(record.resolution_outcome, None);
-        let (status, consumed_at, completed_at) = local_web_token_state(&store, token_hash)?;
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
+            .expect("pending user action should remain readable");
+        assert_eq!(record.status, UserActionStatus::Pending);
+        assert!(record.resolution.is_none());
+        let (status, consumed_at, completed_at) = user_action_token_state(&store, token_hash)?;
         assert_eq!(status, "pending");
         assert_eq!(consumed_at, None);
         assert_eq!(completed_at, None);
@@ -4082,67 +6103,345 @@ mod tests {
     }
 
     #[test]
-    fn insert_user_judgment_rejects_blocked_option_outcome() -> Result<(), Box<dyn Error>> {
+    fn user_action_token_consume_rejects_equal_instant_with_mixed_timestamp_formats(
+    ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let task_id = "task_blocked_option_outcome";
-        let judgment_id = "judgment_blocked_option_outcome";
-        let before = store.effect_counts()?;
+        let task_id = "task_local_web_expiry_equality";
+        let request_id = "action_local_web_expiry_equality";
+        let token_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let before_expiry_token_hash =
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let after_expiry_token_hash =
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
-        let input = commit_input(
-            &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserJudgment,
-            Some(&IdempotencyKey::new("idem_store_blocked_option")),
-            &RequestHash::new("sha256:blocked-option"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
-            Some(0),
-            vec![pending_event_for_task("blocked_option", task_id)],
-        );
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_local_web_expiry_insert")),
+                &RequestHash::new("sha256:local-web-expiry-insert"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("local_web_expiry_insert", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    request_id, task_id, None,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.conn.execute(
+            "INSERT INTO user_action_channel_tokens (
+                project_id, token_hash, channel_kind, connection_internal_id,
+                user_action_request_id, capture_basis, status, created_at, expires_at,
+                consumed_at, completed_at, created_metadata_json, completion_metadata_json
+             ) VALUES (
+                ?1, ?2, 'local_web_consent', ?3, ?4, 'local_user_local_web', 'pending',
+                '2026-07-13T00:00:00.000000001Z',
+                '2026-07-13T00:10:00.000000001Z', NULL, NULL, '{}', '{}'
+             )",
+            params![PROJECT_ID, token_hash, CONNECTION_ID, request_id],
+        )?;
+        for extra_token_hash in [before_expiry_token_hash, after_expiry_token_hash] {
+            store.conn.execute(
+                "INSERT INTO user_action_channel_tokens (
+                    project_id, token_hash, channel_kind, connection_internal_id,
+                    user_action_request_id, capture_basis, status, created_at, expires_at,
+                    consumed_at, completed_at, created_metadata_json, completion_metadata_json
+                 ) VALUES (
+                    ?1, ?2, 'local_web_consent', ?3, ?4, 'local_user_local_web', 'pending',
+                    '2026-07-13T00:00:00.000000001Z',
+                    '2026-07-13T00:10:00.000000001Z', NULL, NULL, '{}', '{}'
+                 )",
+                params![PROJECT_ID, extra_token_hash, CONNECTION_ID, request_id],
+            )?;
+        }
+
+        let before_lower_bound = store.effect_counts()?;
         let error = store
             .commit_mutation(
-                input,
-                |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    let mut insert = user_judgment_insert(
-                        judgment_id,
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new(
+                        "idem_store_local_web_before_creation_consume",
+                    )),
+                    &RequestHash::new("sha256:local-web-before-creation-consume"),
+                    Some(user_replay_context()),
+                    Some(1),
+                    vec![pending_event_for_task(
+                        "local_web_before_creation_consume",
                         task_id,
-                        None,
-                        JudgmentBasisCompatibilityStatus::Current,
-                    );
-                    insert.options_json = json!({
-                        "options": [{
-                            "option_id": "accept",
-                            "label": "Accept",
-                            "description": "Accept the current close basis.",
-                            "consequence": "The judgment can be resolved.",
-                            "machine_action": "accept",
-                            "resolution_outcome": "blocked",
-                            "is_default": true
-                        }]
-                    })
-                    .to_string();
-                    CoreStorageMutation::InsertUserJudgment(insert)
-                        .apply(mutation, facts.committed_state_version)
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::ConsumeUserActionChannelToken(
+                        UserActionChannelTokenConsumption {
+                            token_hash: token_hash.to_owned(),
+                            connection_internal_id: CONNECTION_ID.to_owned(),
+                            user_action_request_id: request_id.to_owned(),
+                            consumed_at: "2026-07-12T23:59:59.999Z".to_owned(),
+                            completion_metadata_json: "{}".to_owned(),
+                        },
+                    )
+                    .apply(mutation, facts.committed_state_version)
                 },
                 response_json,
             )
-            .expect_err("blocked persisted option outcome should reject");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-        assert_eq!(store.effect_counts()?, before);
+            .expect_err("a token cannot be consumed before its creation instant");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        assert_eq!(store.effect_counts()?, before_lower_bound);
+        assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new(
+                    "idem_store_local_web_just_before_expiry_consume",
+                )),
+                &RequestHash::new("sha256:local-web-just-before-expiry-consume"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task(
+                    "local_web_just_before_expiry_consume",
+                    task_id,
+                )],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::ConsumeUserActionChannelToken(
+                    UserActionChannelTokenConsumption {
+                        token_hash: before_expiry_token_hash.to_owned(),
+                        connection_internal_id: CONNECTION_ID.to_owned(),
+                        user_action_request_id: request_id.to_owned(),
+                        consumed_at: "2026-07-13T00:10:00.000000000Z".to_owned(),
+                        completion_metadata_json: "{}".to_owned(),
+                    },
+                )
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert_eq!(
+            user_action_token_state(&store, before_expiry_token_hash)?.0,
+            "consumed"
+        );
+        let before_expiry_rejections = (store.effect_counts()?, store.project_state()?);
+
+        let error = store
+            .commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new("idem_store_local_web_expiry_consume")),
+                    &RequestHash::new("sha256:local-web-expiry-consume"),
+                    Some(user_replay_context()),
+                    Some(2),
+                    vec![pending_event_for_task("local_web_expiry_consume", task_id)],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::ConsumeUserActionChannelToken(
+                        UserActionChannelTokenConsumption {
+                            token_hash: token_hash.to_owned(),
+                            connection_internal_id: CONNECTION_ID.to_owned(),
+                            user_action_request_id: request_id.to_owned(),
+                            consumed_at: "2026-07-13T00:10:00.000000001Z".to_owned(),
+                            completion_metadata_json: "{}".to_owned(),
+                        },
+                    )
+                    .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("a token cannot be consumed at its expiry instant");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        assert_eq!(user_action_token_state(&store, token_hash)?.0, "pending");
+
+        let error = store
+            .commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new(
+                        "idem_store_local_web_after_expiry_consume",
+                    )),
+                    &RequestHash::new("sha256:local-web-after-expiry-consume"),
+                    Some(user_replay_context()),
+                    Some(2),
+                    vec![pending_event_for_task(
+                        "local_web_after_expiry_consume",
+                        task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::ConsumeUserActionChannelToken(
+                        UserActionChannelTokenConsumption {
+                            token_hash: after_expiry_token_hash.to_owned(),
+                            connection_internal_id: CONNECTION_ID.to_owned(),
+                            user_action_request_id: request_id.to_owned(),
+                            consumed_at: "2026-07-13T00:10:00.000000002Z".to_owned(),
+                            completion_metadata_json: "{}".to_owned(),
+                        },
+                    )
+                    .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("a token cannot be consumed after its expiry instant");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        assert_eq!(
+            user_action_token_state(&store, after_expiry_token_hash)?.0,
+            "pending"
+        );
+        assert_eq!(
+            (store.effect_counts()?, store.project_state()?),
+            before_expiry_rejections
+        );
         Ok(())
     }
 
     #[test]
-    fn resolve_user_judgment_requires_resolution_json_action() -> Result<(), Box<dyn Error>> {
+    fn user_action_resolution_is_one_to_one_and_channel_submission_is_unique(
+    ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let task_id = "task_missing_json_action";
-        let judgment_id = "judgment_missing_json_action";
+        let task_id = "task_resolution_uniqueness";
+        let first_request_id = "action_resolution_unique_first";
+        let second_request_id = "action_resolution_unique_second";
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_resolution_unique_insert")),
+                &RequestHash::new("sha256:resolution-unique-insert"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("resolution_unique_insert", task_id)],
+            ),
+            |mutation, facts| {
+                for storage_mutation in [
+                    CoreStorageMutation::InsertTask(task_insert(task_id)),
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        first_request_id,
+                        task_id,
+                        None,
+                    )),
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        second_request_id,
+                        task_id,
+                        None,
+                    )),
+                ] {
+                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                }
+                Ok(())
+            },
+            response_json,
+        )?;
+
+        let mut first_resolution =
+            user_action_resolution_insert("resolution_unique_first", first_request_id);
+        first_resolution.channel_submission_id = "submission_unique".to_owned();
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new("idem_store_resolution_unique_first")),
+                &RequestHash::new("sha256:resolution-unique-first"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task("resolution_unique_first", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionResolution(first_resolution)
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        let before_conflicts = store.effect_counts()?;
+
+        let second_for_same_request = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::ResolveUserAction,
+            Some(&IdempotencyKey::new("idem_store_resolution_same_request")),
+            &RequestHash::new("sha256:resolution-same-request"),
+            Some(user_replay_context()),
+            Some(2),
+            vec![pending_event_for_task("resolution_same_request", task_id)],
+        );
+        let error = store
+            .commit_mutation(
+                second_for_same_request,
+                |mutation, facts| {
+                    CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
+                        "resolution_unique_duplicate_request",
+                        first_request_id,
+                    ))
+                    .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("one request must not accept a second immutable resolution");
+        assert!(matches!(error, StoreError::Sqlite(_)));
+        assert_eq!(store.effect_counts()?, before_conflicts);
+
+        let mut reused_submission =
+            user_action_resolution_insert("resolution_unique_submission", second_request_id);
+        reused_submission.channel_submission_id = "submission_unique".to_owned();
+        let error = store
+            .commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new(
+                        "idem_store_resolution_same_submission",
+                    )),
+                    &RequestHash::new("sha256:resolution-same-submission"),
+                    Some(user_replay_context()),
+                    Some(2),
+                    vec![pending_event_for_task(
+                        "resolution_same_submission",
+                        task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertUserActionResolution(reused_submission)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("one channel submission must not resolve two requests");
+        assert!(matches!(error, StoreError::Sqlite(_)));
+        assert_eq!(store.effect_counts()?, before_conflicts);
+        assert_eq!(
+            store
+                .user_action_resolution_for_channel_submission(
+                    UserActionChannelKind::Cli,
+                    "submission_unique",
+                )?
+                .expect("the first resolution must remain canonical")
+                .user_action_request_id,
+            first_request_id
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_resolution_rejects_request_action_kind_mismatch() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_resolution_kind_mismatch";
+        let request_id = "action_resolution_kind_mismatch";
 
         let insert_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserJudgment,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_missing_action_insert")),
             &RequestHash::new("sha256:missing-action-insert"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -4154,11 +6453,8 @@ mod tests {
             |mutation, facts| {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                        judgment_id,
-                        task_id,
-                        None,
-                        JudgmentBasisCompatibilityStatus::Current,
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        request_id, task_id, None,
                     )),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
@@ -4172,66 +6468,126 @@ mod tests {
 
         let resolve_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RecordUserJudgment,
+            MethodName::ResolveUserAction,
             Some(&IdempotencyKey::new("idem_store_missing_action_resolve")),
             &RequestHash::new("sha256:missing-action-resolve"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(user_replay_context()),
             Some(1),
             vec![pending_event_for_task("missing_action_resolve", task_id)],
         );
-        let mut update = user_judgment_resolution_update(
-            judgment_id,
-            UserJudgmentOptionAction::Accept,
-            JudgmentResolutionOutcome::Accepted,
-        );
-        update.resolution_json = json!({
-            "selected_option_id": "accept",
-            "resolution_outcome": "accepted",
-            "answer": {
-                "product_decision": null,
-                "technical_decision": null,
-                "scope_decision": null,
-                "sensitive_action_scope": null,
-                "final_acceptance": { "judgment": { "decision": "accepted" } },
-                "residual_risk_acceptance": null,
-                "cancellation": null
-            },
-            "note": null,
-            "accepted_risks": [],
-            "resolved_by_actor_source": "local_user"
-        })
-        .to_string();
+        let mut resolution = user_action_resolution_insert("resolution_kind_mismatch", request_id);
+        resolution.action_kind = UserActionKind::TechnicalDecision;
 
         let error = store
             .commit_mutation(
                 resolve_input,
                 |mutation, facts| {
-                    CoreStorageMutation::ResolveUserJudgment(update)
+                    CoreStorageMutation::InsertUserActionResolution(resolution)
                         .apply(mutation, facts.committed_state_version)
                 },
                 response_json,
             )
-            .expect_err("resolution JSON without machine_action should reject");
+            .expect_err("resolution action kind must match its request");
         assert!(matches!(error, StoreError::InvalidInput { .. }));
         assert_eq!(store.effect_counts()?, before);
         let record = store
-            .user_judgment_record(judgment_id)?
-            .expect("pending judgment should remain readable");
-        assert_eq!(record.status, "pending");
-        assert_eq!(record.resolution_machine_action, None);
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
+            .expect("pending user action should remain readable");
+        assert_eq!(record.status, UserActionStatus::Pending);
+        assert!(record.resolution.is_none());
         Ok(())
     }
 
     #[test]
-    fn resolve_user_judgment_rejects_blocked_resolution_json() -> Result<(), Box<dyn Error>> {
+    fn user_action_resolution_read_fails_closed_on_tampered_choice_authority(
+    ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let task_id = "task_blocked_resolution_json";
-        let judgment_id = "judgment_blocked_resolution_json";
+        let task_id = "task_tampered_choice_authority";
+        let request_id = "action_tampered_choice_authority";
+        let resolution_id = "resolution_tampered_choice_authority";
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_tampered_choice_insert")),
+                &RequestHash::new("sha256:tampered-choice-insert"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("tampered_choice_insert", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    request_id, task_id, None,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new("idem_store_tampered_choice_resolve")),
+                &RequestHash::new("sha256:tampered-choice-resolve"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task("tampered_choice_resolve", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
+                    resolution_id,
+                    request_id,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        for tampered_resolution in [
+            choice_resolution_json(
+                "not_a_request_option",
+                UserActionOptionAction::Accept,
+                JudgmentResolutionOutcome::Accepted,
+            ),
+            choice_resolution_json(
+                "accept",
+                UserActionOptionAction::Reject,
+                JudgmentResolutionOutcome::Rejected,
+            ),
+        ] {
+            store.conn.execute(
+                "UPDATE user_action_resolutions
+                    SET resolution_json = ?2
+                  WHERE project_id = ?1
+                    AND user_action_resolution_id = ?3",
+                params![PROJECT_ID, tampered_resolution, resolution_id],
+            )?;
+            assert!(matches!(
+                store.user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?),
+                Err(StoreError::CorruptOwnerStateValue { .. })
+            ));
+            assert!(matches!(
+                store.user_action_resolution_record(resolution_id),
+                Err(StoreError::CorruptOwnerStateValue { .. })
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_resolution_requires_local_user_and_verified_provenance(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_resolution_provenance";
+        let request_id = "action_resolution_provenance";
 
         let insert_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserJudgment,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_blocked_resolution_insert")),
             &RequestHash::new("sha256:blocked-resolution-insert"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -4243,11 +6599,8 @@ mod tests {
             |mutation, facts| {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                        judgment_id,
-                        task_id,
-                        None,
-                        JudgmentBasisCompatibilityStatus::Current,
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        request_id, task_id, None,
                     )),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
@@ -4259,69 +6612,66 @@ mod tests {
         assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
         let before = store.effect_counts()?;
 
-        let resolve_input = commit_input(
-            &ProjectId::new(PROJECT_ID),
-            MethodName::RecordUserJudgment,
-            Some(&IdempotencyKey::new("idem_store_blocked_resolution")),
-            &RequestHash::new("sha256:blocked-resolution"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
-            Some(1),
-            vec![pending_event_for_task("blocked_resolution", task_id)],
-        );
-        let mut update = user_judgment_resolution_update(
-            judgment_id,
-            UserJudgmentOptionAction::Accept,
-            JudgmentResolutionOutcome::Accepted,
-        );
-        update.resolution_json = json!({
-            "selected_option_id": "accept",
-            "machine_action": "accept",
-            "resolution_outcome": "blocked",
-            "answer": {
-                "product_decision": null,
-                "technical_decision": null,
-                "scope_decision": null,
-                "sensitive_action_scope": null,
-                "final_acceptance": { "judgment": { "decision": "accepted" } },
-                "residual_risk_acceptance": null,
-                "cancellation": null
-            },
-            "note": null,
-            "accepted_risks": [],
-            "resolved_by_actor_source": "local_user"
-        })
-        .to_string();
+        let mut invalid_resolutions = Vec::new();
+        let mut wrong_actor = user_action_resolution_insert("resolution_wrong_actor", request_id);
+        wrong_actor.resolved_by_actor_source = ACTOR_SOURCE.to_owned();
+        invalid_resolutions.push(("wrong_actor", wrong_actor));
+        let mut missing_basis =
+            user_action_resolution_insert("resolution_missing_basis", request_id);
+        missing_basis.resolved_verification_basis.clear();
+        invalid_resolutions.push(("missing_basis", missing_basis));
+        let mut missing_assurance =
+            user_action_resolution_insert("resolution_missing_assurance", request_id);
+        missing_assurance.resolved_assurance_level.clear();
+        invalid_resolutions.push(("missing_assurance", missing_assurance));
+        let mut mismatched_channel_basis =
+            user_action_resolution_insert("resolution_mismatched_channel_basis", request_id);
+        mismatched_channel_basis.channel_kind = UserActionChannelKind::PromptCapture;
+        invalid_resolutions.push(("mismatched_channel_basis", mismatched_channel_basis));
 
-        let error = store
-            .commit_mutation(
-                resolve_input,
-                |mutation, facts| {
-                    CoreStorageMutation::ResolveUserJudgment(update)
-                        .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
-            .expect_err("resolution JSON with blocked outcome should reject");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-        assert_eq!(store.effect_counts()?, before);
+        for (marker, resolution) in invalid_resolutions {
+            let error = store
+                .commit_mutation(
+                    commit_input(
+                        &ProjectId::new(PROJECT_ID),
+                        MethodName::ResolveUserAction,
+                        Some(&IdempotencyKey::new(format!(
+                            "idem_store_resolution_{marker}"
+                        ))),
+                        &RequestHash::new(format!("sha256:resolution-{marker}")),
+                        Some(user_replay_context()),
+                        Some(1),
+                        vec![pending_event_for_task(marker, task_id)],
+                    ),
+                    |mutation, facts| {
+                        CoreStorageMutation::InsertUserActionResolution(resolution)
+                            .apply(mutation, facts.committed_state_version)
+                    },
+                    response_json,
+                )
+                .expect_err("invalid user actor or provenance must reject");
+            assert!(matches!(error, StoreError::InvalidInput { .. }));
+            assert_eq!(store.effect_counts()?, before);
+        }
         let record = store
-            .user_judgment_record(judgment_id)?
-            .expect("pending judgment should remain readable");
-        assert_eq!(record.status, "pending");
-        assert_eq!(record.resolution_outcome, None);
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
+            .expect("pending request should remain readable");
+        assert_eq!(record.status, UserActionStatus::Pending);
+        assert!(record.resolution.is_none());
         Ok(())
     }
 
     #[test]
-    fn resolve_user_judgment_rejects_unknown_rationale_field() -> Result<(), Box<dyn Error>> {
+    fn user_action_resolution_rejects_unknown_fields_and_invalid_outcomes(
+    ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
-        let task_id = "task_unknown_rationale_json";
-        let judgment_id = "judgment_unknown_rationale_json";
+        let task_id = "task_invalid_resolution_json";
+        let request_id = "action_invalid_resolution_json";
 
         let insert_input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RequestUserJudgment,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_unknown_rationale_insert")),
             &RequestHash::new("sha256:unknown-rationale-insert"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -4333,11 +6683,8 @@ mod tests {
             |mutation, facts| {
                 for storage_mutation in [
                     CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                        judgment_id,
-                        task_id,
-                        None,
-                        JudgmentBasisCompatibilityStatus::Current,
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        request_id, task_id, None,
                     )),
                 ] {
                     storage_mutation.apply(mutation, facts.committed_state_version)?;
@@ -4349,54 +6696,63 @@ mod tests {
         assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
         let before = store.effect_counts()?;
 
-        let resolve_input = commit_input(
-            &ProjectId::new(PROJECT_ID),
-            MethodName::RecordUserJudgment,
-            Some(&IdempotencyKey::new("idem_store_unknown_rationale")),
-            &RequestHash::new("sha256:unknown-rationale"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
-            Some(1),
-            vec![pending_event_for_task("unknown_rationale", task_id)],
-        );
-        let mut update = user_judgment_resolution_update(
-            judgment_id,
-            UserJudgmentOptionAction::Accept,
-            JudgmentResolutionOutcome::Accepted,
-        );
-        let mut rationale: Value = serde_json::from_str(&update.resolution_rationale_json)?;
-        rationale["unknown_rationale_field"] = json!(true);
-        update.resolution_rationale_json = rationale.to_string();
+        let mut unknown_field =
+            user_action_resolution_insert("resolution_unknown_field", request_id);
+        let mut unknown_value: Value = serde_json::from_str(&unknown_field.resolution_json)?;
+        unknown_value["unknown_resolution_field"] = json!(true);
+        unknown_field.resolution_json = unknown_value.to_string();
+        let mut invalid_outcome =
+            user_action_resolution_insert("resolution_invalid_outcome", request_id);
+        let mut invalid_outcome_value: Value =
+            serde_json::from_str(&invalid_outcome.resolution_json)?;
+        invalid_outcome_value["resolution_outcome"] = json!("blocked");
+        invalid_outcome.resolution_json = invalid_outcome_value.to_string();
 
-        let error = store
-            .commit_mutation(
-                resolve_input,
-                |mutation, facts| {
-                    CoreStorageMutation::ResolveUserJudgment(update)
-                        .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
-            .expect_err("rationale JSON with unknown field should reject");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-        assert_eq!(store.effect_counts()?, before);
+        for (marker, resolution) in [
+            ("unknown_field", unknown_field),
+            ("invalid_outcome", invalid_outcome),
+        ] {
+            let error = store
+                .commit_mutation(
+                    commit_input(
+                        &ProjectId::new(PROJECT_ID),
+                        MethodName::ResolveUserAction,
+                        Some(&IdempotencyKey::new(format!(
+                            "idem_store_resolution_{marker}"
+                        ))),
+                        &RequestHash::new(format!("sha256:resolution-{marker}")),
+                        Some(user_replay_context()),
+                        Some(1),
+                        vec![pending_event_for_task(marker, task_id)],
+                    ),
+                    |mutation, facts| {
+                        CoreStorageMutation::InsertUserActionResolution(resolution)
+                            .apply(mutation, facts.committed_state_version)
+                    },
+                    response_json,
+                )
+                .expect_err("unsupported closed resolution shapes must reject");
+            assert!(matches!(error, StoreError::InvalidInput { .. }));
+            assert_eq!(store.effect_counts()?, before);
+        }
         let record = store
-            .user_judgment_record(judgment_id)?
-            .expect("pending judgment should remain readable");
-        assert_eq!(record.status, "pending");
-        assert_eq!(record.resolution_rationale_json, None);
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
+            .expect("pending request should remain readable");
+        assert_eq!(record.status, UserActionStatus::Pending);
+        assert!(record.resolution.is_none());
         Ok(())
     }
 
     #[test]
-    fn malformed_stored_judgment_basis_json_is_store_data_error() -> Result<(), Box<dyn Error>> {
+    fn malformed_stored_user_action_basis_json_is_store_data_error() -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let task_id = "task_malformed_basis";
-        let basis_json = serde_json::to_string(&judgment_basis(task_id, 0, None))?;
+        let request_id = "action_malformed_basis";
 
         let input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::UpdateScope,
+            MethodName::RequestUserAction,
             Some(&IdempotencyKey::new("idem_store_basis_malformed")),
             &RequestHash::new("sha256:basis-malformed"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
@@ -4408,11 +6764,8 @@ mod tests {
             |mutation, facts| {
                 CoreStorageMutation::InsertTask(task_insert(task_id))
                     .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
-                    "judgment_malformed_basis",
-                    task_id,
-                    Some(basis_json),
-                    JudgmentBasisCompatibilityStatus::Current,
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    request_id, task_id, None,
                 ))
                 .apply(mutation, facts.committed_state_version)
             },
@@ -4427,26 +6780,439 @@ mod tests {
                 .join("state.sqlite"),
         )?;
         conn.execute(
-            "UPDATE user_judgments
+            "UPDATE user_action_requests
                 SET basis_json = 'not-json'
               WHERE project_id = ?1
-                AND judgment_id = 'judgment_malformed_basis'",
-            [PROJECT_ID],
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, request_id],
         )?;
         drop(conn);
 
         let store = harness.store()?;
         let error = store
-            .user_judgment_basis_record("judgment_malformed_basis")
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)
             .expect_err("malformed persisted basis JSON should be corruption");
         assert!(matches!(
             error,
-            StoreError::CorruptOwnerStateJson {
-                table: "user_judgments",
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_requests",
                 logical_column: "basis_json",
                 ..
             }
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn stored_user_action_request_errors_preserve_request_and_required_for_columns(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_request_owner_columns";
+        let malformed_request_id = "action_malformed_request_column";
+        let mismatched_required_for_id = "action_mismatched_required_for_column";
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_request_owner_columns")),
+                &RequestHash::new("sha256:request-owner-columns"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("request_owner_columns", task_id)],
+            ),
+            |mutation, facts| {
+                for storage_mutation in [
+                    CoreStorageMutation::InsertTask(task_insert(task_id)),
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        malformed_request_id,
+                        task_id,
+                        None,
+                    )),
+                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                        mismatched_required_for_id,
+                        task_id,
+                        None,
+                    )),
+                ] {
+                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                }
+                Ok(())
+            },
+            response_json,
+        )?;
+        store.conn.execute(
+            "UPDATE user_action_requests
+                SET request_json = 'not-json'
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, malformed_request_id],
+        )?;
+        store.conn.execute(
+            "UPDATE user_action_requests
+                SET required_for_json = '[\"close_complete\"]'
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, mismatched_required_for_id],
+        )?;
+
+        for (request_id, expected_column) in [
+            (malformed_request_id, "request_json"),
+            (mismatched_required_for_id, "required_for_json"),
+        ] {
+            let error = store
+                .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)
+                .expect_err("invalid owner JSON should fail closed on its canonical column");
+            assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateValue {
+                    table: "user_action_requests",
+                    logical_column,
+                    ..
+                } if logical_column == expected_column
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn stored_user_action_request_fails_closed_on_incompatible_required_for(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_incompatible_required_for_reread";
+        let request_id = "action_incompatible_required_for_reread";
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new(
+                    "idem_store_incompatible_required_for_reread",
+                )),
+                &RequestHash::new("sha256:incompatible-required-for-reread"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task(
+                    "incompatible_required_for_reread",
+                    task_id,
+                )],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    request_id, task_id, None,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let stored_request_json: String = store.conn.query_row(
+            "SELECT request_json
+               FROM user_action_requests
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, request_id],
+            |row| row.get(0),
+        )?;
+        let mut request_json = serde_json::from_str::<Value>(&stored_request_json)?;
+        request_json["required_for"] = json!(["close_cancel"]);
+        store.conn.execute(
+            "UPDATE user_action_requests
+                SET request_json = ?3,
+                    required_for_json = '[\"close_cancel\"]'
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, request_id, request_json.to_string()],
+        )?;
+
+        let error = store
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)
+            .expect_err("incompatible persisted required_for must fail closed");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_requests",
+                logical_column: "request_json",
+                ..
+            }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn stored_user_action_request_fails_closed_on_invalid_timestamp_order(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_request_timestamp_reread";
+        let request_id = "action_request_timestamp_reread";
+        let mut action = user_action_request_insert(request_id, task_id, None);
+        set_user_action_request_expiry(&mut action, "2026-01-01T00:00:10Z");
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_request_timestamp_reread")),
+                &RequestHash::new("sha256:request-timestamp-reread"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("request_timestamp_reread", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(action)
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let stored_request_json: String = store.conn.query_row(
+            "SELECT request_json
+               FROM user_action_requests
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, request_id],
+            |row| row.get(0),
+        )?;
+        let mut request_json = serde_json::from_str::<Value>(&stored_request_json)?;
+        request_json["expires_at"] = json!("2026-01-01T00:00:00Z");
+        store.conn.execute(
+            "UPDATE user_action_requests
+                SET request_json = ?3,
+                    expires_at = '2026-01-01T00:00:00Z'
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![PROJECT_ID, request_id, request_json.to_string()],
+        )?;
+
+        let error = store
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:00:00Z")?)
+            .expect_err("invalid stored request timestamp order must fail closed");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_requests",
+                logical_column: "expires_at",
+                ..
+            }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn stored_user_action_resolution_fails_closed_on_invalid_timestamp_order(
+    ) -> Result<(), Box<dyn Error>> {
+        for (suffix, corrupted_resolved_at) in [
+            ("before_request", "2025-12-31T23:59:59.999Z"),
+            ("at_expiry", "2026-01-01T00:00:10Z"),
+        ] {
+            let harness = StoreHarness::new()?;
+            let mut store = harness.store()?;
+            let task_id = format!("task_resolution_timestamp_reread_{suffix}");
+            let request_id = format!("action_resolution_timestamp_reread_{suffix}");
+            let resolution_id = format!("resolution_timestamp_reread_{suffix}");
+            let mut action = user_action_request_insert(&request_id, &task_id, None);
+            set_user_action_request_expiry(&mut action, "2026-01-01T00:00:10Z");
+            store.commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::RequestUserAction,
+                    Some(&IdempotencyKey::new(format!(
+                        "idem_resolution_timestamp_reread_request_{suffix}"
+                    ))),
+                    &RequestHash::new(format!(
+                        "sha256:resolution-timestamp-reread-request-{suffix}"
+                    )),
+                    Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                    Some(0),
+                    vec![pending_event_for_task(
+                        &format!("{suffix}_request"),
+                        &task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertTask(task_insert(&task_id))
+                        .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::InsertUserActionRequest(action)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )?;
+            let mut resolution = user_action_resolution_insert(&resolution_id, &request_id);
+            resolution.resolved_at = "2026-01-01T00:00:05Z".to_owned();
+            store.commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::ResolveUserAction,
+                    Some(&IdempotencyKey::new(format!(
+                        "idem_resolution_timestamp_reread_resolve_{suffix}"
+                    ))),
+                    &RequestHash::new(format!(
+                        "sha256:resolution-timestamp-reread-resolve-{suffix}"
+                    )),
+                    Some(user_replay_context()),
+                    Some(1),
+                    vec![pending_event_for_task(
+                        &format!("{suffix}_resolve"),
+                        &task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertUserActionResolution(resolution)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )?;
+
+            store.conn.execute(
+                "UPDATE user_action_resolutions
+                    SET resolved_at = ?3
+                  WHERE project_id = ?1
+                    AND user_action_resolution_id = ?2",
+                params![PROJECT_ID, resolution_id, corrupted_resolved_at],
+            )?;
+            let error = store
+                .user_action_resolution_record(&resolution_id)
+                .expect_err("invalid stored resolution timestamp order must fail closed");
+            assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateValue {
+                    table: "user_action_resolutions",
+                    logical_column: "resolved_at",
+                    ..
+                }
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn effective_user_action_rejects_resolution_from_future_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_resolution_future_reread";
+        let request_id = "action_resolution_future_reread";
+        let resolution_id = "resolution_future_reread";
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_resolution_future_request")),
+                &RequestHash::new("sha256:resolution-future-request"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("resolution_future_request", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    request_id, task_id, None,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new("idem_resolution_future_resolve")),
+                &RequestHash::new("sha256:resolution-future-resolve"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task("resolution_future_resolve", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
+                    resolution_id,
+                    request_id,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        store.conn.execute(
+            "UPDATE user_action_resolutions
+                SET resolved_at = '2999-07-13T00:00:00Z'
+              WHERE project_id = ?1 AND user_action_resolution_id = ?2",
+            params![PROJECT_ID, resolution_id],
+        )?;
+        let before = (store.effect_counts()?, store.project_state()?);
+        let now = UtcTimestamp::parse(&store.current_timestamp()?)?;
+
+        let error = store
+            .user_action_record(request_id, &now)
+            .expect_err("a future stored resolution cannot be current authority");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_resolutions",
+                logical_column: "resolved_at",
+                ..
+            }
+        ));
+        assert_eq!((store.effect_counts()?, store.project_state()?), before);
+        Ok(())
+    }
+
+    #[test]
+    fn effective_user_action_read_enforces_requested_at_lower_bound() -> Result<(), Box<dyn Error>>
+    {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_requested_at_lower_bound";
+        let request_id = "action_requested_at_lower_bound";
+
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::RequestUserAction,
+                Some(&IdempotencyKey::new("idem_store_requested_at_lower_bound")),
+                &RequestHash::new("sha256:requested-at-lower-bound"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task("requested_at_lower_bound", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)?;
+                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
+                    request_id, task_id, None,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let error = store
+            .user_action_record(
+                request_id,
+                &UtcTimestamp::parse("2025-12-31T23:59:59.999Z")?,
+            )
+            .expect_err("time before requested_at must fail closed");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_requests",
+                logical_column: "requested_at",
+                ..
+            }
+        ));
+
+        assert_eq!(
+            store
+                .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:00:00Z")?,)?
+                .expect("requested_at boundary is inclusive")
+                .status,
+            UserActionStatus::Pending
+        );
         Ok(())
     }
 
@@ -4459,10 +7225,10 @@ mod tests {
         let change_unit_id = "cu_continuity_store";
         let input = commit_input(
             &ProjectId::new(PROJECT_ID),
-            MethodName::RecordUserJudgment,
+            MethodName::ResolveUserAction,
             Some(&IdempotencyKey::new("idem_store_continuity")),
             &RequestHash::new("sha256:store-continuity"),
-            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(user_replay_context()),
             Some(0),
             vec![pending_event_for_task("continuity", task_id)],
         );
@@ -4547,6 +7313,15 @@ mod tests {
         }
     }
 
+    fn user_replay_context() -> VerifiedReplayContext {
+        VerifiedReplayContext {
+            actor_source: "local_user".to_owned(),
+            operation_category: "user_only".to_owned(),
+            verification_basis: Some("store_test_user_channel".to_owned()),
+            git_workspace_context_json: None,
+        }
+    }
+
     fn pending_event(marker: &str) -> PendingTaskEvent {
         pending_event_for_task(marker, &format!("task_{marker}"))
     }
@@ -4585,6 +7360,23 @@ mod tests {
         }
     }
 
+    fn evidence_summary_upsert(
+        evidence_summary_id: &str,
+        task_id: &str,
+        updated_by_run_id: &str,
+    ) -> EvidenceSummaryUpsert {
+        EvidenceSummaryUpsert {
+            evidence_summary_id: evidence_summary_id.to_owned(),
+            task_id: task_id.to_owned(),
+            change_unit_id: None,
+            status: "unknown".to_owned(),
+            coverage_json: "[]".to_owned(),
+            supporting_refs_json: "[]".to_owned(),
+            gap_refs_json: "[]".to_owned(),
+            metadata_json: json!({ "updated_by_run_id": updated_by_run_id }).to_string(),
+        }
+    }
+
     fn change_unit_insert(
         change_unit_id: &str,
         task_id: &str,
@@ -4607,103 +7399,233 @@ mod tests {
         }
     }
 
-    fn user_judgment_insert(
-        judgment_id: &str,
+    fn user_action_request_insert(
+        request_id: &str,
         task_id: &str,
-        basis_json: Option<String>,
-        basis_status: JudgmentBasisCompatibilityStatus,
-    ) -> UserJudgmentInsert {
-        let basis_json = basis_json.unwrap_or_else(|| {
-            serde_json::to_string(&judgment_basis(task_id, 0, None))
-                .expect("test judgment basis should serialize")
-        });
-        UserJudgmentInsert {
-            judgment_id: judgment_id.to_owned(),
+        expires_at: Option<&str>,
+    ) -> UserActionRequestInsert {
+        let request_json = json!({
+            "body": {
+                "action_type": "choice",
+                "judgment_kind": "product_decision",
+                "presentation": "short",
+                "question": "Choose the current product direction.",
+                "options": [{
+                    "option_id": "accept",
+                    "label": "Accept",
+                    "description": "Accept the current direction.",
+                    "consequence": "The work may continue.",
+                    "machine_action": "accept",
+                    "resolution_outcome": "accepted",
+                    "is_default": true
+                }],
+                "context": {
+                    "summary": "A bounded choice is required.",
+                    "related_refs": [],
+                    "artifact_refs": [],
+                    "visible_risks": [],
+                    "constraints": []
+                },
+                "affected_refs": [],
+                "sensitive_action_scope": null
+            },
+            "required_for": ["informational"],
+            "expires_at": expires_at
+        })
+        .to_string();
+        let basis_json = json!({
+            "action_type": "choice",
+            "coordinates": {
+                "task_id": task_id,
+                "change_unit_id": null,
+                "scope_revision": 0,
+                "baseline_ref": null,
+                "created_at_state_version": 0,
+                "compatibility_status": "current"
+            },
+            "close_basis_revision": null,
+            "result_refs": [],
+            "residual_risk_ids": [],
+            "sensitive_action_scope": null
+        })
+        .to_string();
+        UserActionRequestInsert {
+            user_action_request_id: request_id.to_owned(),
             task_id: task_id.to_owned(),
             change_unit_id: None,
-            judgment_kind: "final_acceptance".to_owned(),
-            request_json: json!({
-                "presentation": "short",
-                "question": "Accept the current close basis?",
-                "required_for": ["close_complete"],
-                "expires_at": Value::Null
-            })
-            .to_string(),
-            context_json: "{}".to_owned(),
-            options_json: json!({
-                "options": [{
-                "option_id": "accept",
-                "label": "Accept",
-                "description": "Accept the current close basis.",
-                "consequence": "The judgment can be resolved.",
-                "machine_action": "accept",
-                "resolution_outcome": "accepted",
-                "is_default": true
-                }]
-            })
-            .to_string(),
-            affected_refs_json: "[]".to_owned(),
-            artifact_refs_json: "[]".to_owned(),
-            sensitive_action_scope_json: "{}".to_owned(),
+            action_kind: UserActionKind::ProductDecision,
+            request_json,
             basis_json,
-            basis_status,
+            basis_status: UserActionBasisStatus::Current,
+            required_for_json: r#"["informational"]"#.to_owned(),
             requested_by_actor_source: ACTOR_SOURCE.to_owned(),
-            requested_at: "t0".to_owned(),
+            source_method: MethodName::RequestUserAction.as_str().to_owned(),
+            source_idempotency_key: format!("idem_{request_id}"),
+            requested_at: "2026-01-01T00:00:00Z".to_owned(),
+            expires_at: expires_at.map(str::to_owned),
             metadata_json: "{}".to_owned(),
         }
     }
 
-    fn user_judgment_resolution_update(
-        judgment_id: &str,
-        action: UserJudgmentOptionAction,
-        outcome: JudgmentResolutionOutcome,
-    ) -> UserJudgmentResolutionUpdate {
-        UserJudgmentResolutionUpdate {
-            judgment_id: judgment_id.to_owned(),
-            status: "resolved".to_owned(),
-            resolution_outcome: outcome,
-            resolution_machine_action: action,
-            resolution_json: json!({
-                "selected_option_id": match action {
-                    UserJudgmentOptionAction::Accept => "accept",
-                    UserJudgmentOptionAction::Reject => "reject",
-                    UserJudgmentOptionAction::Defer => "defer",
+    fn set_user_action_request_expiry(input: &mut UserActionRequestInsert, expires_at: &str) {
+        let mut request_json = serde_json::from_str::<Value>(&input.request_json)
+            .expect("test user-action request JSON should decode");
+        request_json["expires_at"] = json!(expires_at);
+        input.request_json = request_json.to_string();
+        input.expires_at = Some(expires_at.to_owned());
+    }
+
+    fn evidence_user_action_request_insert(
+        request_id: &str,
+        task_id: &str,
+        produced_at_state_version: u64,
+    ) -> UserActionRequestInsert {
+        let target = json!({
+            "target_kind": "acceptance_criterion",
+            "acceptance_criterion_id": "criterion_observation_reread"
+        });
+        let artifact = user_action_artifact_ref_json(task_id, produced_at_state_version);
+        UserActionRequestInsert {
+            user_action_request_id: request_id.to_owned(),
+            task_id: task_id.to_owned(),
+            change_unit_id: None,
+            action_kind: UserActionKind::EvidenceObservation,
+            request_json: json!({
+                "body": {
+                    "action_type": "evidence_observation",
+                    "question": "Does this artifact support the criterion?",
+                    "context_summary": "Review the exact stored artifact bytes.",
+                    "target_candidates": [target.clone()],
+                    "artifact_candidates": [artifact.clone()]
                 },
-                "machine_action": action,
-                "resolution_outcome": outcome,
-                "answer": {
-                    "product_decision": null,
-                    "technical_decision": null,
-                    "scope_decision": null,
-                    "sensitive_action_scope": null,
-                    "final_acceptance": { "judgment": { "decision": outcome } },
-                    "residual_risk_acceptance": null,
-                    "cancellation": null
-                },
-                "note": null,
-                "accepted_risks": [],
-                "resolved_by_actor_source": "local_user"
+                "required_for": ["record_run"],
+                "expires_at": "2026-01-01T00:15:00Z"
             })
             .to_string(),
-            resolution_rationale_json: json!({
-                "summary": "The user selected the focused judgment option.",
-                "selected_reason": "The selected option matches the visible judgment prompt.",
-                "considered_alternatives": ["Use a different judgment option."],
-                "rejected_alternatives": [],
-                "assumptions": [],
-                "tradeoffs": ["The recorded judgment remains limited to its stored option and basis."],
-                "uncertainties": [],
-                "review_triggers": ["Review if the judgment basis becomes stale."],
-                "related_refs": [],
-                "artifact_refs": []
+            basis_json: json!({
+                "action_type": "evidence_observation",
+                "coordinates": {
+                    "task_id": task_id,
+                    "change_unit_id": null,
+                    "scope_revision": 0,
+                    "baseline_ref": null,
+                    "created_at_state_version": 0,
+                    "compatibility_status": "current"
+                },
+                "target_candidates": [target],
+                "artifact_candidates": [artifact]
             })
             .to_string(),
-            sensitive_action_scope_json: None,
-            resolved_by_actor_source: "local_user".to_owned(),
-            resolved_verification_basis: "store_test_registration".to_owned(),
-            resolved_assurance_level: "local_user_channel".to_owned(),
-            resolved_at: "t1".to_owned(),
+            basis_status: UserActionBasisStatus::Current,
+            required_for_json: r#"["record_run"]"#.to_owned(),
+            requested_by_actor_source: ACTOR_SOURCE.to_owned(),
+            source_method: MethodName::RequestUserAction.as_str().to_owned(),
+            source_idempotency_key: format!("idem_{request_id}"),
+            requested_at: "2026-01-01T00:00:00Z".to_owned(),
+            expires_at: Some("2026-01-01T00:15:00Z".to_owned()),
+            metadata_json: "{}".to_owned(),
         }
+    }
+
+    fn evidence_user_action_resolution_insert(
+        resolution_id: &str,
+        request_id: &str,
+        task_id: &str,
+        produced_at_state_version: u64,
+    ) -> UserActionResolutionInsert {
+        UserActionResolutionInsert {
+            user_action_resolution_id: resolution_id.to_owned(),
+            user_action_request_id: request_id.to_owned(),
+            action_kind: UserActionKind::EvidenceObservation,
+            channel_kind: UserActionChannelKind::Cli,
+            channel_submission_id: format!("submission_{resolution_id}"),
+            resolution_json: json!({
+                "resolution_type": "evidence_observation",
+                "observation": {
+                    "target": {
+                        "target_kind": "acceptance_criterion",
+                        "acceptance_criterion_id": "criterion_observation_reread"
+                    },
+                    "relevance_status": "supported",
+                    "output_artifact_refs": [user_action_artifact_ref_json(
+                        task_id,
+                        produced_at_state_version
+                    )],
+                    "summary": "The exact artifact bytes support the criterion."
+                }
+            })
+            .to_string(),
+            resolved_by_actor_source: "local_user".to_owned(),
+            resolved_verification_basis: "cli_direct_user_channel".to_owned(),
+            resolved_assurance_level: "local_user_channel".to_owned(),
+            resolved_at: "2026-01-01T00:10:00Z".to_owned(),
+        }
+    }
+
+    fn user_action_artifact_ref_json(task_id: &str, produced_at_state_version: u64) -> Value {
+        json!({
+            "artifact_id": "artifact_observation_reread",
+            "project_id": PROJECT_ID,
+            "task_id": task_id,
+            "display_name": "observation.json",
+            "content_type": "application/json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 64,
+            "integrity_status": "verified",
+            "redaction_state": "none",
+            "availability": "available",
+            "created_by_run_ref": {
+                "record_kind": "run",
+                "record_id": "run_observation_reread",
+                "project_id": PROJECT_ID,
+                "task_id": task_id,
+                "produced_at_state_version": produced_at_state_version
+            },
+            "created_by_actor_source": ACTOR_SOURCE,
+            "storage_ref": "artifact-storage://observation-reread"
+        })
+    }
+
+    fn user_action_resolution_insert(
+        resolution_id: &str,
+        request_id: &str,
+    ) -> UserActionResolutionInsert {
+        UserActionResolutionInsert {
+            user_action_resolution_id: resolution_id.to_owned(),
+            user_action_request_id: request_id.to_owned(),
+            action_kind: UserActionKind::ProductDecision,
+            channel_kind: UserActionChannelKind::Cli,
+            channel_submission_id: format!("submission_{resolution_id}"),
+            resolution_json: json!({
+                "resolution_type": "choice",
+                "selected_option_id": "accept",
+                "machine_action": "accept",
+                "resolution_outcome": "accepted",
+                "note": null,
+                "accepted_risk_ids": []
+            })
+            .to_string(),
+            resolved_by_actor_source: "local_user".to_owned(),
+            resolved_verification_basis: "cli_direct_user_channel".to_owned(),
+            resolved_assurance_level: "local_user_channel".to_owned(),
+            resolved_at: "2026-01-01T00:10:00Z".to_owned(),
+        }
+    }
+
+    fn choice_resolution_json(
+        selected_option_id: &str,
+        machine_action: UserActionOptionAction,
+        resolution_outcome: JudgmentResolutionOutcome,
+    ) -> String {
+        json!({
+            "resolution_type": "choice",
+            "selected_option_id": selected_option_id,
+            "machine_action": machine_action,
+            "resolution_outcome": resolution_outcome,
+            "note": null,
+            "accepted_risk_ids": []
+        })
+        .to_string()
     }
 
     fn project_continuity_record_insert(
@@ -4740,68 +7662,6 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_owned(),
             updated_at: "2026-01-01T00:00:00Z".to_owned(),
             metadata_json: json!({"source": "store_test"}).to_string(),
-        }
-    }
-
-    fn current_close_basis(
-        task_id: &str,
-        scope_revision: u64,
-        close_basis_revision: u64,
-    ) -> CurrentCloseBasis {
-        CurrentCloseBasis {
-            close_basis_revision,
-            scope_revision,
-            task_id: TaskId::new(task_id),
-            change_unit_id: ChangeUnitId::new("cu_basis"),
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_store")),
-            result_summary: "Store basis result summary.".to_owned(),
-            result_refs: vec![state_ref(StateRecordKind::Run, "run_basis", task_id, 1)],
-            evidence_summary_ref: RequiredNullable::null(),
-            residual_risks: vec![volicord_types::ResidualRisk {
-                risk_id: RiskId::new("risk_store_001"),
-                summary: "Known visible risk.".to_owned(),
-                consequence: "The user may accept this named risk.".to_owned(),
-                acceptance_required: true,
-                source_refs: vec![state_ref(StateRecordKind::Run, "run_basis", task_id, 1)],
-            }],
-            sensitive_categories: vec!["network".to_owned()],
-            sensitive_action_requirements: vec![volicord_types::SensitiveActionRequirement {
-                action_kind: "local_sensitive_step".to_owned(),
-                normalized_paths: vec!["src/export.rs".to_owned()],
-                sensitive_categories: vec!["network".to_owned()],
-                baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_store")),
-                change_unit_id: ChangeUnitId::new("cu_basis"),
-                source_run_ref: state_ref(StateRecordKind::Run, "run_basis", task_id, 1),
-                source_write_ticket_ref: state_ref(
-                    StateRecordKind::WriteTicket,
-                    "wt_basis",
-                    task_id,
-                    1,
-                ),
-            }],
-            recovery_constraints: vec!["Rollback requires operator action.".to_owned()],
-            source_run_ref: state_ref(StateRecordKind::Run, "run_basis", task_id, 1),
-            updated_at: UtcTimestamp::parse("2026-06-18T00:00:00Z")
-                .expect("test timestamp should parse"),
-        }
-    }
-
-    fn judgment_basis(
-        task_id: &str,
-        scope_revision: u64,
-        close_basis_revision: Option<u64>,
-    ) -> JudgmentBasis {
-        JudgmentBasis {
-            task_id: TaskId::new(task_id),
-            change_unit_id: RequiredNullable::some(ChangeUnitId::new("cu_basis")),
-            scope_revision,
-            close_basis_revision: RequiredNullable::new(close_basis_revision),
-            baseline_ref: RequiredNullable::some(BaselineRef::new("baseline_store")),
-            result_refs: vec![state_ref(StateRecordKind::Run, "run_basis", task_id, 1)],
-            residual_risk_ids: vec![RiskId::new("risk_store_001")],
-            sensitive_action_scope: RequiredNullable::null(),
-            created_at_state_version: 1,
-            compatibility_status: JudgmentBasisCompatibilityStatus::Current,
         }
     }
 
@@ -4856,7 +7716,7 @@ mod tests {
         }
     }
 
-    fn local_web_token_state(
+    fn user_action_token_state(
         store: &CoreProjectStore,
         token_hash: &str,
     ) -> StoreResult<(String, Option<String>, Option<String>)> {
@@ -4864,7 +7724,7 @@ mod tests {
             .conn
             .query_row(
                 "SELECT status, consumed_at, completed_at
-               FROM local_web_consent_tokens
+               FROM user_action_channel_tokens
               WHERE project_id = ?1
                 AND token_hash = ?2",
                 params![PROJECT_ID, token_hash],

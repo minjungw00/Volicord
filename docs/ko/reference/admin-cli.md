@@ -53,7 +53,7 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 `volicord`는 로컬 관리/부트스트랩 실행 파일입니다. 일반 목적의 장기 실행 서버가
 아닙니다. 명시적 `volicord serve` 명령은 [MCP 전송](mcp-transport.md)이 설명하는 로컬
 MCP 전송 프로세스로 제한됩니다. `volicord inbox` 명령군은 사용자에게 보이는
-`Judgment Inbox`이자 선택된 Core 메서드 위에 있는 로컬 `User Channel` CLI
+사용자 행동 받은편지함이자 선택된 Core 메서드 위에 있는 로컬 `User Channel` CLI
 어댑터입니다. 이 명령 이름은 공개 Volicord API 메서드가 아니라 관리 CLI 명령으로
 남습니다.
 
@@ -85,9 +85,8 @@ volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-lis
 volicord export authority-bundle --output PATH [--repo PATH] [--json]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
-volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
-volicord inbox open <judgment-id> [--repo PATH] [--json]
-volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
+volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
+volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
 ```
 
 지원되는 `HOST` 값은 `codex`와 `claude-code`입니다. `HOST`를 생략하면 명령은
@@ -153,14 +152,14 @@ volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifa
   `volicord status`, `volicord doctor`, 연결 상태와 검증, 변경 조정, 받은편지함이
   포함됩니다. 명령이 공통 요약 카드 텍스트 렌더러를 사용할 때 라벨은
   `Task lifecycle`, `Volicord record effect for this command`, `Profile`, `Write Ticket`,
-  `Evidence`, `Pending user judgments`, `Unrecorded Product Repository changes`,
+  `Evidence`, `Pending user actions`, `Unrecorded Product Repository changes`,
   `Close readiness`, `Transport`, `Primary next action`입니다.
 - `Volicord record effect for this command`는 현재 명령이 Core 권한 상태를 변경했는지만
   나타냅니다. 사람용 텍스트는 JSON 값 `read_only`를 `none`으로 표시하며, 이는
   `this command made no Core authority-state mutation`을 뜻합니다. 커밋된 기록 효과는
   `recorded`로 표시합니다. 같은 줄의 괄호는 이 값이 Product Repository 파일 쓰기나
   Runtime Home 쓰기 능력을 나타내지 않는다고 명시합니다. 마찬가지로 `not_selected`는
-  `not shown in this view`로, 대기 판단 수가 0이면 `pending (0)`으로 표시합니다.
+  `not shown in this view`로, 대기 사용자 행동 수가 0이면 `pending (0)`으로 표시합니다.
 - `Primary next action`은 알 수 있는 경우 간결한 카드가 제시하는 즉시 수행할 행동을
   표시하며, 필요하면 후속 검증 명령을 포함합니다. 다음 행동을 알 수 없을 때만 `none`을
   사용합니다. 상태와 변경 조정 텍스트는 카드의 행동이 유일한 행동처럼 보이지 않도록
@@ -177,9 +176,9 @@ volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifa
   사전 점검과 핸드셰이크, 호스트 관찰은 JSON에 둡니다. Codex 텍스트는 프로젝트 신뢰,
   관리 시작, 관리 `tools/list`, 관리 도구 호출, 활성 도구 노출, 호스트 MCP 명령을 별도
   점검으로 보여 줄 수 있습니다.
-- 대기 판단이 있으면 상태와 받은편지함 텍스트는 `Available answer paths:`에 호스트
+- 대기 중인 사용자 행동이 있으면 상태와 받은편지함 텍스트는 `Available answer paths:`에 호스트
   프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI 받은편지함을 표시할 수 있습니다.
-  이 줄은 사용자를 답변 경로로 안내할 뿐 판단을 기록하거나 Agent Connection이 사용자처럼
+  이 줄은 사용자를 resolution 경로로 안내할 뿐 사용자 행동을 해결하거나 Agent Connection이 사용자처럼
   동작하게 하지 않습니다. JSON은 같은 사실을 `user_channel_availability` 또는
   `answer_path_availability`에 담습니다.
 - 다른 진단 보기는 `action_required` 또는 저하 상태에 간결한 `Result`, `Why`, `Next`,
@@ -915,6 +914,11 @@ Codex에서는 활성 세션이 도구 스냅샷을 캐시했거나 `volicord.*`
 
 - 권한 번들 내보내기는 선택된 Runtime Home과 프로젝트 상태를 읽기만 하며 Runtime
   Home 기록을 만들거나, 등록하거나, migration하거나, 복구하거나, 갱신하지 않습니다.
+- `tool_invocations` 행의 재실행 및 감사 메타데이터는 유지하지만,
+  `operation_category=user_only` 행은 `response_json=null`로 내보냅니다. 이
+  내보내기 전용 가림 처리는 원본 재실행 행을 변경하지 않습니다. 비공개 사용자 텍스트는
+  해당 정규 담당 기록이 번들에 포함될 때 그 기록에만 남고, 중복된 정확한 user-only
+  응답을 통해 내보내기 상태 보기에 다시 나타나지 않습니다.
 - 체크섬 파일은 내보낸 복사본에 라벨을 붙입니다. Runtime Home이 내보내기 전에
   한 번도 수정되지 않았다는 증명이 아닙니다.
 - 이 번들은 변조 방지 저장소, 암호학적 서명, 외부 감사 로그, 정확성 증명,
@@ -1032,10 +1036,19 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
 기본적으로 해시하거나 생략합니다. 프롬프트 캡처 기록은 프롬프트 해시를 저장하고 본문은
 생략합니다.
 
+호스트가 보고한 `occurred_at`은 관찰 metadata일 뿐입니다. Volicord가 받아들이면 담당자가
+검증한 원천 사실로 보존하지만 영속 정규 Core UTC 하한의 입력이나 전진 값으로 사용하지
+않습니다. 현재 Task, 쓰기 티켓 expiry, UserAction 유효 상태를 평가하는 권한 시계도
+아닙니다. guard 맥락, 대기 행동 표시, 프롬프트 명령 resolution 적격성은
+[정규 Core UTC 시계](storage-versioning.md#canonical-core-utc-clock)를 사용합니다. 지연,
+재전달, 미래 시각, 시계 차이가 있는 호스트 이벤트가 이런 현재 경계를 앞뒤로 옮기면 안
+됩니다. 관찰을 기록할 때 Store가 생성하는 transaction metadata는 보존된 호스트 사실과
+분리됩니다.
+
 생명주기 동작:
 
 - `session-start`는 Agent Session을 기록하거나 재사용하고, 호스트 세션 주입용으로
-  간결한 프로젝트, 현재 작업, 쓰기 티켓, 대기 판단, 차단 사유, 미해결 변경
+  간결한 프로젝트, 현재 작업, 쓰기 티켓, 대기 사용자 행동, 차단 사유, 미해결 변경
   맥락과 함께 `inject_context`를 반환합니다.
 - `pre-tool`은 읽기 전용, 명확한 변경, 불확실한 도구 시도를 분류합니다. 읽기와 상태
   명령은 차단 사유를 만들지 않고 허용됩니다. 제품 파일 쓰기 시도는 현재 작업이 없거나,
@@ -1062,22 +1075,44 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
   명령을 실행하지 않습니다.
 - `prompt-capture`는 현재 호스트, 프로젝트, 연결의 프롬프트 캡처 사용 가능 상태가
   `configured`, `observed`, `active`일 때만 프롬프트 캡처 메타데이터를 기록하고 엄격한
-  채팅 판단 명령을 인식합니다. 프롬프트에는
-  `Volicord: answer J-3 1 #AB7K`, `Volicord: answer J-3 reject #AB7K`,
-  `Volicord: answer J-3 defer #AB7K`, `Volicord: note J-3 "text" #AB7K` 같은 명시적
-  줄이 있어야 합니다. 지원되지 않거나, 설정되지 않았거나, 다시 읽어야 하거나,
+  채팅 사용자 행동 명령을 인식합니다. 프롬프트에는 저장된 양식과 일치하는 명시적 줄이
+  정확히 하나 있어야 합니다. 선택 양식은 `Volicord: resolve A-3 --request
+  USER_ACTION_REQUEST_ID --choice accept [--note "text"] #AB7K`를 사용합니다. Evidence
+  관찰 양식은 `Volicord: resolve A-4 --request USER_ACTION_REQUEST_ID (--criterion ID |
+  --claim ID) --artifact ID [--artifact ID ...] --summary "text" [--contradicted] #AB7K`를
+  사용합니다. 오래 유지되는 request ID는 필수입니다. `A-N`은 표시되는 Task 로컬
+  binding으로 남으며 나중에 다른 Task가 활성이 되어도 저장 요청의 Task와 대조합니다.
+  에이전트 대상 입력에 적합하다고 분류된 presentation에서 세션 시작의 호스트 네이티브
+  맥락은 요청에 결합된 `A-N`, 현재 검증 코드, 명령 템플릿, Core가 도출한 완전한 닫힌
+  폼을 보여 줍니다. 완전한 UTF-8 호스트 네이티브
+  훅 출력 JSON 객체와 끝의 LF를 합친 크기는 32 KiB 이하여야 합니다. 이 크기에 맞지
+  않으면 해당 표시에 프롬프트 캡처를 사용할 수 없고, 폼 일부를 보여 주지 않으며, 다른
+  사용 가능한 User Channel 경로를 계속 보여 줍니다. MCP 어댑터와 같은 보수적인
+  presentation safety 분류가 질문, context summary, 완전하게 렌더링한 폼을 평가합니다.
+  사용자 전용 입력을 요구하면 세션 시작과 다른 guard context는 일반적인 local consent
+  또는 `volicord inbox` 안내만 담고 질문, context, 폼, 검증 코드, 명령 템플릿을
+  생략합니다. 직접 입력된 채팅 resolve 명령도 영속 요청의 질문, context, 완전한 폼을
+  같은 분류로 다시 검증합니다. 사용자 전용 presentation이면 `deny`를 반환하고
+  resolution을 기록하지 않습니다. 터미널 `volicord inbox` 경로는 사용자 전용으로 남아
+  완전한 canonical 폼을 표시합니다. 이 경로 선택 검사는 일반 비밀값 scanner나 OS 보안
+  경계가 아닙니다. 지원되지 않거나, 설정되지 않았거나, 다시 읽어야 하거나,
   저하된 프롬프트 캡처는 `prompt_capture_unsupported`,
   `prompt_capture_not_configured`, `prompt_capture_reload_required` 같은 구조화된
   비기록 출력을 하나의 다음 행동과 함께 반환합니다. 명령이 아닌 프롬프트는 프롬프트
   캡처를 사용할 수 있을 때만 정상적으로 진행됩니다. 형식이 잘못되었거나,
-  모호하거나, 알 수 없거나, 코드가 없거나, 코드가 틀렸거나, 오래되었거나, 이미
-  답했거나, 프로젝트나 연결이 맞지 않는 판단 명령은 판단을 기록하지 않고 `deny`를
-  반환합니다. 유효한 명령은 로컬 `User Channel`을 통해 지정된 대기 판단을
+  모호하거나, 알 수 없거나, 코드가 없거나, 코드가 틀렸거나, 해결되지 않은 채
+  stale이 되었거나, 중복 답변이 충돌하거나, 프로젝트나 연결이 맞지 않는 사용자 행동
+  명령은 resolution을 기록하지 않고 `deny`를 반환합니다. 같은 요청, 연결, channel
+  submission identity, canonical resolution을 사용하는 정확한 재시도는 이후 basis 변경으로
+  해결된 요청의 유효 상태가 `stale`이 된 뒤에도 효과 없이 원래 커밋 응답을 반환합니다.
+  유효한 명령은 로컬 `User Channel`을 통해 지정된 대기 중인 사용자 행동을
   `actor_source=local_user`와
   `resolved_verification_basis=user_prompt_submit_hook`으로
   기록하고, 프롬프트 캡처 저장소에는 전체 프롬프트 본문을 생략하며, 그 명령을 일반
-  에이전트 지시로 다루지 않고 모델에 보이는 기록 완료 맥락을 반환합니다. 인식된 명령
-  객체의 `replayed=true`는 동일한 지속 판단 기록이 멱등 재실행으로 반환됐을 때만
+  에이전트 지시로 다루지 않고 모델에 보이는 기록 완료 맥락을 반환합니다.
+  `recognized_user_action_command` 객체는 저장된 행동 종류, 안전한 선택 식별자,
+  비공개 `note` 또는 Evidence 관찰 `summary` 텍스트의 생략 여부를 보고합니다.
+  `replayed=true`는 동일한 지속 resolution이 멱등 재실행으로 반환됐을 때만
   사용합니다. 로컬 진단은 성공한 인식 명령을 모두 Core 도달로 세지만, 재실행이 아닌
   경우만 Core 커밋으로 셉니다.
 - `stop`은 현재 작업을 완료로 다뤄도 되는지 점검합니다. 현재 작업에 대해 `allow`를
@@ -1125,7 +1160,7 @@ JSON은 검증한 최신 `AuthorityReceipt`를 최상위 `systemMessage` 사용�
 - 기본값은 현재 작업입니다. `--task`로 다른 작업을 선택할 수 있습니다.
 - 명령은 `actor_source=local_user`, `operation_category=local_recovery`로
   `volicord.reconcile_changes`를 호출합니다.
-- 출력에는 간결한 요약 카드와 해결된 변경, 대기 판단, 미해결 변경, 최상위 닫기 차단
+- 출력에는 간결한 요약 카드와 해결된 변경, 대기 사용자 행동, 미해결 변경, 최상위 닫기 차단
   사유 전체, 최상위 다음 행동 전체의 개수가 들어갑니다. 개수와 배열 순서는 표시 역할을
   부여하지 않으며 구조화된 `presentation_role` 필드가 그 역할을 나타냅니다. 거절된 Core
   응답은 거절된 CLI 결과로 유지합니다.
@@ -1139,68 +1174,72 @@ JSON은 검증한 최신 `AuthorityReceipt`를 최상위 `systemMessage` 사용�
 `--dry-run`이 없으면 명령은 결정적인 변경을 해결하거나 대기 중인 사용자 소유 판단을
 만들 수 있습니다. 판단에 답하거나, 사용자를 대신해 변경을 수락하거나, 신원·의도·정확성,
 검토·테스트 충분성을 증명하거나, 닫기 준비를 완료하지 않습니다. 대기 판단이 만들어지면
-사용자는 `Judgment Inbox`에서 답한 뒤 명령을 다시 실행합니다.
+  사용자는 사용자 행동 받은편지함에서 답한 뒤 명령을 다시 실행합니다.
 
 ## User Channel 명령
 
 <a id="user-channel-commands"></a>
 <a id="user-interaction-commands"></a>
 
-`volicord inbox` 명령은 사람이 로컬 CLI에서 `User Channel`을 통해 대기 중인 사용자
-판단을 나열하고 답하거나 대상 결합 Evidence 관찰을 기록하는 경로를 제공합니다. 이
-명령은 Agent
+`volicord inbox` 명령은 사람이 로컬 CLI에서 `User Channel`을 통해 대기 중인
+`UserActionRequest` 레코드를 나열하고 해결하는 경로를 제공합니다. 이 명령은 Agent
 Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Connection이 사용자처럼
 동작할 수 있게 하지 않습니다.
 
 초기화된 MCP 클라이언트가 호스트 프롬프트 지원을 선언하면 호스트 프롬프트 입력은
-`volicord.request_user_judgment`로 만들어진 대기 판단의 선호 User Channel 입력 방법입니다.
-호스트 프롬프트 입력을 사용할 수 없고 채팅 명령 캡처가 `configured`, `observed`,
-`active`이면 대체 안내가 현재 검증 코드가 포함된
-`Volicord: answer J-3 1 #AB7K` 같은 정확한 채팅 명령을 보여 줄 수 있습니다.
-호스트 프롬프트 입력과 채팅 명령 캡처를 모두 사용할 수 없고 어댑터가 로컬 consent URL을
-안전하게 노출할 수 있으면, 대체 안내가 짧게 만료되는 일회성 토큰을 쓰는 루프백 consent
-URL을 보여 줄 수 있습니다. 터미널의 `volicord inbox` 명령은 호스트 프롬프트 입력, 채팅
-명령 캡처, 로컬 consent URL을 사용할 수 없거나, 비활성화되었거나, 저하되었거나, 작업
-흐름에 부적합할 때 쓰는 CLI 받은편지함과 수동 점검 경로로 남습니다.
+`volicord.request_user_action`으로 만들어진 호환 대기 행동의 선호 User Channel 입력
+방법입니다. 호스트 프롬프트 입력을 사용할 수 없고 채팅 명령 캡처가 `configured`,
+`observed`, `active`이면 대체 안내가 요청에 결합된 정확한 채팅 명령과 현재 검증 코드를
+보여 줄 수 있습니다. 호스트 프롬프트 입력과 채팅 명령 캡처를 모두 사용할 수 없고
+어댑터가 로컬 consent URL을 안전하게 노출할 수 있으면, 대체 안내가 짧게 만료되는
+일회성 토큰을 쓰는 루프백 consent URL을 보여 줄 수 있습니다. 터미널의
+`volicord inbox` 명령은 다른 캡처 경로를 사용할 수 없거나, 비활성화되었거나,
+저하되었거나, 해당 행동 양식에 부적합할 때 쓰는 CLI 받은편지함과 수동 점검 경로로
+남습니다.
+완전한 presentation이 사용자 전용 입력을 요구하면 풍부한 호스트 prompt 및 채팅 명령
+presentation은 그 폼에 부적합합니다. 이때 표시된 local web consent와 터미널 inbox가
+완전한 폼을 보여 주는 표면으로 남습니다.
 
 프로젝트 선택은 `--repo PATH` 또는 현재 작업 디렉터리의 저장소 루트를 사용합니다.
 작업 선택은 기본적으로 현재 작업을 사용합니다. `--task active`는 이를 명시하고,
 `--task ID`는 이름 붙은 작업을 선택합니다.
 
-일반 텍스트 모드 판단 흐름은 `volicord inbox`가 출력하는 안정적인 판단 식별자와
-선택지 식별자를 중심으로 합니다. 저장된 판단 참조와 추가 캡처 경로 세부사항은
-JSON 출력에서 확인할 수 있습니다.
+일반 텍스트 모드 흐름은 `volicord inbox`가 출력하는 안정적인 행동 요청 식별자와 Core가
+도출한 캡처 양식을 중심으로 합니다. 저장된 요청 참조, 후보 참조, 추가 캡처 경로
+세부사항은 JSON 출력에서 확인할 수 있습니다.
 
 명령:
 
-- `volicord inbox`는 선택된 작업의 대기 `JudgmentInboxItem` 항목을 나열합니다.
-  항목에는 판단 ID, 질문, 선택지 또는 답변 제약, 필수·선택 상태, 선호 캡처 경로,
-  사용할 수 있을 때의 로컬 consent URL 또는 CLI 답변 명령 같은 대체 경로가 들어갑니다.
-- `volicord inbox answer <judgment-id> --choice <choice>`는 `actor_source=local_user`,
-  `operation_category=user_only`, 호환 User Channel 출처, 선택된 선택지의 저장된 기계
-  동작과 결과로 `volicord.record_user_judgment`를 통해 Core 생성 선택지 하나를
-  기록합니다. `--note`는 메모로만 저장됩니다.
-- `volicord inbox open <judgment-id>`는 선택한 판단이 여전히 대기 중인지 검증한 뒤,
-  이 CLI 프로세스가 로컬 consent URL을 소유하지 않으므로 `action_required`를
-  보고합니다. 사용할 수 있다면 MCP Judgment Inbox 항목에 이미 표시된 URL을
-  사용하도록 안내하고, 그렇지 않으면 CLI 답변 명령을 안내합니다.
-- `volicord inbox observe`는 직접 로컬 사용자 User Channel을 통해
-  `volicord.record_user_observation`을 호출합니다. 각 `--artifact` ID를 현재의
-  검증된 바이트로 해석하고 정확히 하나의 `--criterion` 또는 기존 `--claim`에
-  대해 기본 supported 또는 `--contradicted` relevance를 기록합니다. 이는
-  Evidence provenance이며 판단이나 최종 수락이 아닙니다.
+- `volicord inbox`는 선택된 작업의 대기 `UserActionInboxItem` 항목을 나열합니다.
+  각 항목에는 요청 ID, 행동 종류, 질문, Core가 도출한 캡처 양식, 필수·선택 상태, 선호
+  캡처 경로, 사용 가능한 대체 경로가 들어갑니다.
+- `volicord inbox resolve <user-action-request-id> --choice <choice>`는 판단 양식 요청을
+  `volicord.resolve_user_action`으로 해결합니다. 저장된 선택지 ID와 선택적 `--note`만
+  보내며, Core는 저장된 요청·선택지·현재의 호환 basis에서 기계 동작, 결과, 종류별
+  권위 사실을 도출합니다.
+- `volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID)
+  --artifact ID [--artifact ID ...] --summary TEXT [--contradicted]`는 Evidence 관찰
+  양식을 해결합니다. 대상과 모든 아티팩트는 저장된 캡처 양식에서 선택해야 하고,
+  `--artifact`는 비어 있지 않은 고유 부분집합이어야 하며, relevance 기본값은
+  `supported`입니다. 만들어지는 resolution은 Evidence provenance이며 판단이나 최종
+  수락이 아닙니다.
+각 `resolve` 호출은 저장된 폐쇄형 캡처 양식이 나타내는 variant만 제출합니다. CLI는
+`actor_source=local_user`와 `operation_category=user_only`를 도출하고, Core가 preflight
+버전을 고정하도록 `expected_state_version`을 생략하며, 재실행을 위해 요청에 결합된
+`channel_submission_id`를 생성합니다. 판단 양식에 관찰 플래그를 쓰거나, 관찰 양식에 판단
+플래그를 쓰거나, 호출자가 제공한 선택지·후보를 쓰거나, 대기 요청 없는 자유 형식 직접
+관찰을 만들 수 없습니다.
 
-판단 하나를 기록하는 것은 그 판단만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
-판단 종류와 동작으로 남아야 하며, 이 명령이 둘을 하나로 합치면 안 됩니다.
+행동 하나를 해결하는 것은 그 행동만 기록합니다. 최종 수락과 잔여 위험 수락은 별개의
+행동 종류로 남으며, `evidence_observation` resolution은 어느 쪽도 대신하지 않습니다.
 
 상태와 받은편지함 목록 출력은 사용자의 다음 행동을 위해 선택된 담당 상태를 보여 주며,
-보기를 계산할 수 있을 때 간결한 `summary_card`를 포함합니다. 대기 판단이 있으면 텍스트
+보기를 계산할 수 있을 때 간결한 `summary_card`를 포함합니다. 대기 행동이 있으면 텍스트
 출력은 사용할 수 없는 호스트 프롬프트 입력이 채팅 캡처, 로컬 consent URL, CLI
-받은편지함 같은 다른 답변 경로를 숨기지 않도록 사용 가능한 답변 경로도 요약합니다. 이
-출력은 증거, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 만들지 않습니다.
-`volicord inbox answer`는 선택된 Core 생성 선택지를 통해 대기 중인 해당 판단만
-변경합니다. `volicord inbox observe`는 별도로 User Channel Evidence 관찰 하나를
-만들며 판단을 해결하지 않습니다.
+받은편지함 같은 다른 캡처 경로를 숨기지 않도록 사용 가능한 경로도 요약합니다. 목록과
+열기는 증거, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 만들지 않습니다.
+`volicord inbox resolve`만 저장된 캡처 양식을 통해 해당 대기 요청의 불변 resolution을
+삽입합니다.
 
 <a id="dry-run"></a>
 ## 미리보기와 JSON 출력
@@ -1298,7 +1337,7 @@ JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 �
 진단 저장은 최선 노력 방식입니다. `diagnostics.sqlite`의 실패, 손상, 쓰기 거부는 MCP
 결과, guard 결정, User Channel 결과, Core 커밋, CLI 권한 결과를 바꾸면 안 됩니다. 이
 명령은 관찰 전용이며 `state_version`, 증거 또는 보장 수준, 닫기 준비 상태,
-UserJudgment, 권한 행을 바꾸면 안 됩니다.
+`UserActionRequest`, `UserActionResolution`, 권한 행을 바꾸면 안 됩니다.
 
 JSON 출력의 최상위 필드는 다음과 같습니다.
 
@@ -1318,10 +1357,11 @@ JSON 출력의 최상위 필드는 다음과 같습니다.
 Core 커밋 수, 재실행 수를 보고합니다. 전체 집계는 관찰된 제품 파일 쓰기 수와 권한
 상태 새로 고침 실패 수도 보고합니다. 이는 로컬 진단 관찰일 뿐 증거, 행위자 귀속,
 쓰기 권한, 호스트 적합성, 정확성 주장이 아닙니다. 대체 경로 수는 대기 답변에 그 경로가
-선택되었다는 뜻이며 사용자가 그 경로로 판단을 해결했다는 뜻이 아닙니다.
+선택되었다는 뜻이며 사용자가 그 경로로 사용자 행동을 해결했다는 뜻이 아닙니다.
 
-기본 저장소는 프롬프트 본문, Product Repository 경로나 파일 내용, 오류 본문, 비밀값
-텍스트, 판단 질문·답변·이유·메모를 받지 않습니다. 허용 목록 식별 정보와 범주형 결과,
+기본 저장소는 프롬프트 본문, Product Repository 경로나 파일 내용, 오류 본문, 비밀값,
+사용자 행동 질문이나 캡처 양식, 선택 note, Evidence 관찰 summary를 받지 않습니다.
+허용 목록 식별 정보와 범주형 결과,
 카운터, 바이트 크기, 지연, 빌드 식별 정보만 저장합니다. 내용을 담는 상세 추적 모드는
 지원하지 않습니다. 향후 상세 추적을 추가하려면 별도로 문서화한 명시적 opt-in 표면과
 독립된 보존·가림 계약이 필요하며, 이 기본 수집 범위를 조용히 넓히면 안 됩니다. 정확한

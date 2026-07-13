@@ -150,7 +150,7 @@ StateSummary:
   baseline_ref: string | null
   workspace_context: WorkspaceContext | null
   shaping_readiness: ShapingReadiness | null
-  pending_user_judgment_refs: StateRecordRef[]
+  pending_user_action_request_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
@@ -178,7 +178,10 @@ Meaning:
 - `workspace_context` is the optional verified Git coordinate captured for the
   current Change Unit baseline. Its paths and hashes are local authority facts,
   not portable repository identity or a security guarantee.
-- `pending_user_judgment_refs` lists current pending judgments relevant to the response view. A pending judgment is operation-blocking only when its `required_for` target, judgment kind, Task, Change Unit, affected refs, and basis are compatible with that operation.
+- `pending_user_action_request_refs` lists effectively pending user-action
+  requests relevant to the response view. A request is operation-blocking only
+  when its `required_for` target, action kind, Task, Change Unit, affected refs,
+  and current basis are compatible with that operation.
 
 Does not imply:
 - `StateSummary` field presence does not define whether a method committed.
@@ -405,7 +408,7 @@ UnrecordedChangeResolutionSummary:
   resolution_basis: string
   resolved_by_actor_source: string
   capture_basis: string
-  user_judgment_ref: StateRecordRef | null
+  user_action_resolution_ref: StateRecordRef | null
   resolved_at: string
 ```
 
@@ -418,7 +421,7 @@ Meaning:
 - `can_resolve_in_chat` reports whether the finding can proceed through a chat-mediated user path selected by the method owner.
 - `resolution_basis` classifies why the finding became resolved.
 - `resolved_by_actor_source=system` means Core verified a deterministic basis; `resolved_by_actor_source=local_user` means a compatible User Channel judgment supplied the authority.
-- `user_judgment_ref` is non-null only for user-owned acceptance resolution.
+- `user_action_resolution_ref` is non-null only for user-owned acceptance resolution.
 
 These shapes do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. Resolution behavior and caller restrictions belong to [`volicord.reconcile_changes`](method-reconcile-changes.md).
 
@@ -529,7 +532,7 @@ Owner links:
 ## `ShapingReadiness`
 
 Meaning:
-- `ShapingReadiness` is an API view shape over Task, Change Unit, pending judgment, evidence summary, blocker, and next-action fields.
+- `ShapingReadiness` is an API view shape over Task, Change Unit, pending user action, evidence summary, blocker, and next-action fields.
 - Its boolean fields and `gaps` array expose readiness-shaped data for the current state.
 
 ```yaml
@@ -549,11 +552,12 @@ ShapingGap:
   gap_kind: string
   message: string
   blocker_ref: StateRecordRef | null
-  user_judgment_candidate_ref: StateRecordRef | null
+  user_action_request_candidate_ref: StateRecordRef | null
 ```
 
 Meaning:
-- `ShapingGap` can reference a blocker or user-judgment candidate by shape.
+- `ShapingGap` can reference a blocker or an owner-proposed user-action request
+  candidate by shape; the candidate ref is not itself a resolution.
 - `user_owned_blocker_kind` and `ShapingGap.gap_kind` are opaque readiness classification strings. They are not exhaustive public value sets unless an affected owner publishes narrower values.
 - `ShapingGap.message` is a free-form display string.
 
@@ -570,7 +574,7 @@ SummaryCard:
   profile: string
   write_ticket: string
   evidence: string
-  user_judgment: string
+  user_action: string
   changes: string
   close_status: string
   transport: string
@@ -907,22 +911,6 @@ EvidenceRelevanceAssessment:
   assessment_ref: StateRecordRef | null
   assessed_by_actor_source: string | null
 
-UserEvidenceObservation:
-  observation_id: string
-  project_id: string
-  task_id: string
-  change_unit_id: string
-  scope_revision: integer
-  baseline_ref: string
-  target: EvidenceTarget
-  relevance_status: string
-  output_artifact_refs: ArtifactRef[]
-  summary: string
-  observed_by_actor_source: string
-  verification_basis: string
-  observed_at: string
-  recorded_at: string
-
 EvidenceObservationInput:
   target: EvidenceTarget
   source_kind: string
@@ -1008,10 +996,17 @@ Meaning:
   authority source assessed those outputs as supporting the target. Byte
   integrity, producer provenance, basis freshness, target identity, and claim
   relevance remain distinct checks.
-- `UserEvidenceObservation` is the User Channel-owned, target- and basis-bound
-  record created by `volicord.record_user_observation`. It binds exact canonical
-  artifact refs and may establish user-observed provenance when its relevance is
-  `supported`; it is not a `UserJudgment` or final acceptance.
+- An `evidence_observation` `UserActionResolution` is the User Channel-owned,
+  target- and basis-bound relevance record. Its closed nested observation body
+  binds exact canonical artifact refs. An exact stored relevance of `supported`
+  or `contradicted` establishes user-observed producer provenance while
+  preserving that same status as the separate relevance assessment. The
+  committed observation uses the enclosing resolution's `resolved_at` as
+  `observed_at`, not the caller's `EvidenceObservationInput.observed_at`. A
+  contradicted observation is negative relevance and cannot satisfy supported
+  coverage, evidence sufficiency, or validated reuse that establishes
+  `supported`; it is not a judgment resolution or final acceptance. Its public
+  shape is owned by [API User Action Schemas](schema-user-action.md).
 - `source_refs` uses `SourceRef`. `input_refs` remains a separate `StateRecordRef[]`; a source ref never becomes a Core state ref or close-basis result ref.
 - `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, `recorded_at`, and the observer actor source when it commits. Request-side source and assurance values are provenance claims, not caller-granted assurance.
 - Only coverage for a current criterion with
@@ -1028,9 +1023,14 @@ Meaning:
   command, verified tool, or registered connection-observation producer. A
   direct `external_tool` or `connection_observation` input without that anchor
   remains cooperative even when its artifacts have verified bytes.
-- `user_observation` requires a current `UserEvidenceObservation`, exact output
-  equality, `relevance_status=supported`, verified local-user provenance, and a
-  matching Task, Change Unit, scope, baseline, and target.
+- `user_observation` requires a current `evidence_observation`
+  `UserActionResolution`, exact output equality, an exact stored
+  `relevance_status` of `supported` or `contradicted`, verified local-user
+  provenance, and a matching Task, Change Unit, scope, baseline, and target.
+  Core preserves that exact status in `relevance_assessment` and derives
+  `observed_at` from the resolution's `resolved_at`; only `supported` may
+  satisfy coverage or sufficiency or qualify for validated reuse that
+  establishes `supported`.
 - `reused_evidence` is Core-derived only after every recursive observation's
   strict persisted producer/relevance metadata, exact outputs, target, current
   basis, source Run, and inherited assurance are revalidated.
@@ -1086,7 +1086,7 @@ ResidualRisk:
 RiskAcceptanceCoverage:
   risk_id: string
   accepted: boolean
-  accepted_by_judgment_refs: StateRecordRef[]
+  accepted_by_user_action_resolution_refs: StateRecordRef[]
   missing_reason: string | null
 
 CloseReadinessBlocker:
@@ -1121,11 +1121,11 @@ Meaning:
 - `CurrentCloseBasis` is the current result and residual-risk state used by close-readiness responses. It is not a terminal close summary.
 - `close_basis_revision` and `scope_revision` are internal current-state coordinates surfaced for compatibility checks. They are not caller-selected authority.
 - `ResidualRisk.risk_id` is an opaque Core-generated identifier. `ResidualRisk.summary` and `ResidualRisk.consequence` are display strings and do not authorize text matching.
-- `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, and `accepted_by_judgment_refs` use `StateRecordRef`.
+- `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, and `accepted_by_user_action_resolution_refs` use `StateRecordRef`.
 - `sensitive_categories` are opaque sensitive-category classification strings unless an affected method or profile owner publishes a narrower local list.
 - `sensitive_action_requirements` are Core-derived close requirements from committed Runs and consumed write tickets. Category-only caller input cannot establish or erase these requirements.
 - `recovery_constraints` and `RiskAcceptanceCoverage.missing_reason` are display strings. Current close-readiness results use `acceptance_required` when required acceptance is absent and may use `stale_acceptance` when a non-current residual-risk acceptance exists but does not cover the current residual-risk `risk_id` values.
-- `RiskAcceptanceCoverage` reports whether the current residual-risk requirements are covered by compatible judgments. It does not report evidence sufficiency or final acceptance.
+- `RiskAcceptanceCoverage` reports whether the current residual-risk requirements are covered by compatible user-action resolutions. It does not report evidence sufficiency or final acceptance.
 - `CloseReadinessBlocker` is a data shape for close-readiness findings.
 - `CloseReadinessBlocker.category` is a controlled value string.
 - `CloseReadinessBlocker.code` is an owner-defined blocker code. It is not an exhaustive global public enum unless the blocker or method owner publishes a narrower local list.
@@ -1144,7 +1144,10 @@ These shapes do not define close-readiness meaning, response routing, or persist
 
 Close-basis reference rules:
 - Caller-supplied close-assessment refs accepted into `CurrentCloseBasis.result_refs` or `ResidualRisk.source_refs` are limited to result/evidence record kinds `run`, `artifact`, `evidence_summary`, and `change_unit` unless an owner document explicitly adds another kind.
-- `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, and `task` are not caller-supplied result refs for a close basis unless an owner document explicitly adds them.
+- `project_state`, `write_ticket`, `user_action_request`,
+  `user_action_resolution`, `blocker`, `task_event`, and `task` are not
+  caller-supplied result refs for a close basis unless an owner document
+  explicitly adds them.
 - Every accepted ref must exist, belong to the same project and Task, and be canonicalized by Core. Core never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
 - Artifact refs used for close evidence must be linked to the Task and have `integrity_status=verified` plus current-byte verification at use time under [Artifact Storage](../storage-artifacts.md).
 - Evidence refs must identify the current Task evidence summary. Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
@@ -1172,5 +1175,6 @@ Owner links:
 - [API Value Sets](schema-value-sets.md#state-and-blocker-values) for exact close-readiness blocker category values and neighboring state values.
 - [API Methods](methods.md) and method owner documents for the methods that return these schemas.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.
-- [API Judgment Schemas](schema-judgment.md) for `UserJudgmentCandidate`.
+- [API User Action Schemas](schema-user-action.md) for durable action requests
+  and capture forms.
 - [Storage Effects](../storage-effects.md) for persistence and state-effect consequences.

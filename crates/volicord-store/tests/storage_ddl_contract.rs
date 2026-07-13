@@ -196,8 +196,8 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert!(
         !initial_registry_schema
             .tables
-            .contains_key("local_web_consent_tokens"),
-        "local web consent tokens are project-state rows, not registry rows"
+            .contains_key("user_action_channel_tokens"),
+        "user-action channel tokens are project-state rows, not registry rows"
     );
 
     assert!(initial_project_schema.tables.contains_key("write_tickets"));
@@ -212,7 +212,9 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "unrecorded_changes",
             "session_watch_baselines",
             "session_watch_observations",
-            "local_web_consent_tokens",
+            "user_action_requests",
+            "user_action_resolutions",
+            "user_action_channel_tokens",
             "evidence_capture_intents",
             "evidence_capture_receipts",
             "evidence_capture_source_claims",
@@ -433,12 +435,13 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     );
     assert_columns_include(
         &initial_project_schema,
-        "local_web_consent_tokens",
+        "user_action_channel_tokens",
         &[
             "project_id",
             "token_hash",
+            "channel_kind",
             "connection_internal_id",
-            "judgment_id",
+            "user_action_request_id",
             "capture_basis",
             "status",
             "created_at",
@@ -449,31 +452,106 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "completion_metadata_json",
         ],
     );
+    assert_columns_include(
+        &initial_project_schema,
+        "user_action_requests",
+        &[
+            "user_action_request_id",
+            "task_id",
+            "change_unit_id",
+            "action_kind",
+            "request_json",
+            "basis_json",
+            "basis_status",
+            "required_for_json",
+            "requested_by_actor_source",
+            "source_method",
+            "source_idempotency_key",
+            "requested_at",
+            "expires_at",
+            "metadata_json",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "user_action_resolutions",
+        &[
+            "user_action_resolution_id",
+            "user_action_request_id",
+            "action_kind",
+            "channel_kind",
+            "channel_submission_id",
+            "resolution_json",
+            "resolved_by_actor_source",
+            "resolved_verification_basis",
+            "resolved_assurance_level",
+            "resolved_at",
+        ],
+    );
     assert_primary_key_columns(
         &initial_project_schema,
-        "local_web_consent_tokens",
+        "user_action_channel_tokens",
         &["project_id", "token_hash"],
     );
     assert_foreign_key_columns(
         &initial_project_schema,
-        "local_web_consent_tokens",
+        "user_action_channel_tokens",
         "project_state",
         &[("project_id", "project_id")],
     );
     assert_foreign_key_columns(
         &initial_project_schema,
-        "local_web_consent_tokens",
-        "user_judgments",
-        &[("project_id", "project_id"), ("judgment_id", "judgment_id")],
+        "user_action_channel_tokens",
+        "user_action_requests",
+        &[
+            ("project_id", "project_id"),
+            ("user_action_request_id", "user_action_request_id"),
+        ],
     );
     assert!(
         initial_project_schema
             .explicit_indexes
-            .contains_key("idx_local_web_consent_tokens_expiry"),
-        "expected local web consent expiry index"
+            .contains_key("idx_user_action_channel_tokens_expiry"),
+        "expected user-action channel expiry index"
     );
 
     assert_project_contract_behavior("initial project state.sqlite", &initial_project)?;
+
+    Ok(())
+}
+
+#[test]
+fn user_action_direct_origin_is_unique_while_reconcile_origin_can_repeat(
+) -> Result<(), Box<dyn Error>> {
+    let conn = initial_project_state_schema()?;
+    insert_minimal_project_graph(&conn)?;
+
+    insert_ddl_user_action_request_with_origin(
+        &conn,
+        "action_direct_origin_a",
+        "product_decision",
+        "volicord.request_user_action",
+        "idem_shared_direct_origin",
+    )?;
+    let duplicate_direct_origin = insert_ddl_user_action_request_with_origin(
+        &conn,
+        "action_direct_origin_b",
+        "technical_decision",
+        "volicord.request_user_action",
+        "idem_shared_direct_origin",
+    )
+    .unwrap_err();
+    assert_constraint_error("initial project state.sqlite", duplicate_direct_origin);
+
+    for request_id in ["action_reconcile_origin_a", "action_reconcile_origin_b"] {
+        insert_ddl_user_action_request_with_origin(
+            &conn,
+            request_id,
+            "scope_decision",
+            "volicord.reconcile_changes",
+            "idem_shared_reconcile_origin",
+        )?;
+    }
 
     Ok(())
 }
@@ -1138,11 +1216,10 @@ fn is_word_char(ch: char) -> bool {
 
 fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<(), Box<dyn Error>> {
     insert_minimal_project_graph(conn)?;
-    assert_user_judgments_status_is_closed(label, conn);
-    assert_resolution_outcome_is_closed(label, conn);
-    assert_resolution_machine_action_is_closed(label, conn);
-    assert_user_judgments_require_basis(label, conn);
-    assert_resolved_user_judgments_require_complete_resolution(label, conn);
+    assert_user_action_value_sets_are_closed(label, conn);
+    assert_user_action_requests_require_basis(label, conn);
+    assert_user_action_resolution_identity_is_unique(label, conn);
+    assert_channel_submission_id_bounds(label, conn);
     assert_project_continuity_value_sets_are_closed(label, conn);
     assert_write_ticket_status_is_closed(label, conn);
     assert_evidence_observation_value_sets_are_closed(label, conn);
@@ -1248,28 +1325,58 @@ fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn assert_user_judgments_status_is_closed(label: &str, conn: &Connection) {
+fn assert_user_action_value_sets_are_closed(label: &str, conn: &Connection) {
+    let bad_request_kind = conn
+        .execute(
+            "INSERT INTO user_action_requests (
+                project_id, user_action_request_id, task_id, action_kind,
+                request_json, basis_json, required_for_json,
+                requested_by_actor_source, source_method,
+                source_idempotency_key, requested_at
+            ) VALUES (
+                'project_a', 'action_bad_kind', 'task_a', 'approval',
+                '{}', '{}', '[]', 'agent_connection:conn_main',
+                'volicord.request_user_action', 'idem_action_bad_kind', 't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, bad_request_kind);
+
+    insert_ddl_user_action_request(conn, "action_for_bad_resolution", "product_decision");
+    for (resolution_id, channel_kind, actor_source) in [
+        ("resolution_bad_channel", "browser", "local_user"),
+        ("resolution_bad_actor", "cli", "agent_connection:conn_main"),
+    ] {
+        let error = conn
+            .execute(
+                "INSERT INTO user_action_resolutions (
+                    project_id, user_action_resolution_id, user_action_request_id,
+                    action_kind, channel_kind, channel_submission_id, resolution_json,
+                    resolved_by_actor_source, resolved_verification_basis,
+                    resolved_assurance_level, resolved_at
+                ) VALUES (
+                    'project_a', ?1, 'action_for_bad_resolution',
+                    'product_decision', ?2, ?1, '{}', ?3, 'fixture', 'local_user_channel', 't2'
+                )",
+                params![resolution_id, channel_kind, actor_source],
+            )
+            .unwrap_err();
+        assert_constraint_error(label, error);
+    }
+}
+
+fn assert_user_action_requests_require_basis(label: &str, conn: &Connection) {
     let error = conn
         .execute(
-            "INSERT INTO user_judgments (
-                project_id,
-                judgment_id,
-                task_id,
-                judgment_kind,
-                status,
-                basis_json,
-                requested_by_actor_source,
-                requested_at
-            )
-            VALUES (
-                'project_a',
-                'judgment_bad_status',
-                'task_a',
-                'approval',
-                'accepted',
-                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
-                'agent_connection:conn_main',
-                't1'
+            "INSERT INTO user_action_requests (
+                project_id, user_action_request_id, task_id, action_kind,
+                request_json, required_for_json, requested_by_actor_source,
+                source_method, source_idempotency_key, requested_at
+            ) VALUES (
+                'project_a', 'action_missing_basis', 'task_a', 'product_decision',
+                '{}', '[]', 'agent_connection:conn_main',
+                'volicord.request_user_action', 'idem_action_missing_basis', 't1'
             )",
             [],
         )
@@ -1277,150 +1384,143 @@ fn assert_user_judgments_status_is_closed(label: &str, conn: &Connection) {
     assert_constraint_error(label, error);
 }
 
-fn assert_resolution_outcome_is_closed(label: &str, conn: &Connection) {
-    let error = conn
+fn assert_user_action_resolution_identity_is_unique(label: &str, conn: &Connection) {
+    insert_ddl_user_action_request(conn, "action_unique_a", "product_decision");
+    insert_ddl_user_action_request(conn, "action_unique_b", "technical_decision");
+    conn.execute(
+        "INSERT INTO user_action_resolutions (
+            project_id, user_action_resolution_id, user_action_request_id,
+            action_kind, channel_kind, channel_submission_id, resolution_json,
+            resolved_by_actor_source, resolved_verification_basis,
+            resolved_assurance_level, resolved_at
+        ) VALUES (
+            'project_a', 'resolution_unique_a', 'action_unique_a',
+            'product_decision', 'cli', 'submission_unique', '{}',
+            'local_user', 'fixture', 'local_user_channel', 't2'
+        )",
+        [],
+    )
+    .expect("first immutable resolution should insert");
+
+    let duplicate_request = conn
         .execute(
-            "INSERT INTO user_judgments (
-                project_id,
-                judgment_id,
-                task_id,
-                judgment_kind,
-                status,
-                basis_json,
-                resolution_outcome,
-                resolution_machine_action,
-                resolution_json,
-                resolution_rationale_json,
-                requested_by_actor_source,
-                resolved_by_actor_source,
-                resolved_verification_basis,
-                resolved_assurance_level,
-                resolved_at,
-                requested_at
-            )
-            VALUES (
-                'project_a',
-                'judgment_bad_outcome',
-                'task_a',
-                'approval',
-                'resolved',
-                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
-                'blocked',
-                'accept',
-                '{\"selected_option_id\":\"accept\",\"machine_action\":\"accept\",\"resolution_outcome\":\"blocked\",\"answer\":{\"product_decision\":{\"judgment\":{\"decision\":\"accepted\"}},\"technical_decision\":null,\"scope_decision\":null,\"sensitive_action_scope\":null,\"final_acceptance\":null,\"residual_risk_acceptance\":null,\"cancellation\":null},\"note\":null,\"accepted_risks\":[],\"resolved_by_actor_source\":\"local_user\"}',
-                '{\"summary\":\"test rationale\",\"selected_reason\":\"test reason\",\"considered_alternatives\":[],\"rejected_alternatives\":[],\"assumptions\":[],\"tradeoffs\":[\"test tradeoff\"],\"uncertainties\":[],\"review_triggers\":[\"test trigger\"],\"related_refs\":[],\"artifact_refs\":[]}',
-                'agent_connection:conn_main',
-                'local_user',
-                'fixture',
-                'cooperative',
-                't1',
-                't1'
+            "INSERT INTO user_action_resolutions (
+                project_id, user_action_resolution_id, user_action_request_id,
+                action_kind, channel_kind, channel_submission_id, resolution_json,
+                resolved_by_actor_source, resolved_verification_basis,
+                resolved_assurance_level, resolved_at
+            ) VALUES (
+                'project_a', 'resolution_unique_a_second', 'action_unique_a',
+                'product_decision', 'cli', 'submission_other', '{}',
+                'local_user', 'fixture', 'local_user_channel', 't3'
             )",
             [],
         )
         .unwrap_err();
-    assert_constraint_error(label, error);
+    assert_constraint_error(label, duplicate_request);
+
+    let duplicate_submission = conn
+        .execute(
+            "INSERT INTO user_action_resolutions (
+                project_id, user_action_resolution_id, user_action_request_id,
+                action_kind, channel_kind, channel_submission_id, resolution_json,
+                resolved_by_actor_source, resolved_verification_basis,
+                resolved_assurance_level, resolved_at
+            ) VALUES (
+                'project_a', 'resolution_unique_b', 'action_unique_b',
+                'technical_decision', 'cli', 'submission_unique', '{}',
+                'local_user', 'fixture', 'local_user_channel', 't3'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, duplicate_submission);
 }
 
-fn assert_resolution_machine_action_is_closed(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO user_judgments (
-                project_id,
-                judgment_id,
-                task_id,
-                judgment_kind,
-                status,
-                basis_json,
-                resolution_outcome,
-                resolution_machine_action,
-                resolution_json,
-                resolution_rationale_json,
-                requested_by_actor_source,
-                resolved_by_actor_source,
-                resolved_verification_basis,
-                resolved_assurance_level,
-                resolved_at,
-                requested_at
+fn assert_channel_submission_id_bounds(label: &str, conn: &Connection) {
+    insert_ddl_user_action_request(conn, "action_submission_256", "product_decision");
+    let accepted = "x".repeat(256);
+    conn.execute(
+        "INSERT INTO user_action_resolutions (
+            project_id, user_action_resolution_id, user_action_request_id,
+            action_kind, channel_kind, channel_submission_id, resolution_json,
+            resolved_by_actor_source, resolved_verification_basis,
+            resolved_assurance_level, resolved_at
+        ) VALUES (
+            'project_a', 'resolution_submission_256', 'action_submission_256',
+            'product_decision', 'cli', ?1, '{}',
+            'local_user', 'fixture', 'local_user_channel', 't2'
+        )",
+        [&accepted],
+    )
+    .expect("256 visible ASCII submission bytes should satisfy the DDL");
+
+    insert_ddl_user_action_request(conn, "action_submission_invalid", "technical_decision");
+    for (index, rejected) in [
+        String::new(),
+        " ".to_owned(),
+        "contains whitespace".to_owned(),
+        "x".repeat(257),
+        "submission\0suffix".to_owned(),
+        "제출".to_owned(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = conn
+            .execute(
+                "INSERT INTO user_action_resolutions (
+                    project_id, user_action_resolution_id, user_action_request_id,
+                    action_kind, channel_kind, channel_submission_id, resolution_json,
+                    resolved_by_actor_source, resolved_verification_basis,
+                    resolved_assurance_level, resolved_at
+                ) VALUES (
+                    'project_a', ?1, 'action_submission_invalid',
+                    'technical_decision', 'cli', ?2, '{}',
+                    'local_user', 'fixture', 'local_user_channel', 't2'
+                )",
+                params![format!("resolution_submission_invalid_{index}"), rejected],
             )
-            VALUES (
-                'project_a',
-                'judgment_bad_action',
-                'task_a',
-                'approval',
-                'resolved',
-                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
-                'accepted',
-                'approve',
-                '{\"selected_option_id\":\"accept\",\"machine_action\":\"accept\",\"resolution_outcome\":\"accepted\",\"answer\":{\"product_decision\":{\"judgment\":{\"decision\":\"accepted\"}},\"technical_decision\":null,\"scope_decision\":null,\"sensitive_action_scope\":null,\"final_acceptance\":null,\"residual_risk_acceptance\":null,\"cancellation\":null},\"note\":null,\"accepted_risks\":[],\"resolved_by_actor_source\":\"local_user\"}',
-                '{\"summary\":\"test rationale\",\"selected_reason\":\"test reason\",\"considered_alternatives\":[],\"rejected_alternatives\":[],\"assumptions\":[],\"tradeoffs\":[\"test tradeoff\"],\"uncertainties\":[],\"review_triggers\":[\"test trigger\"],\"related_refs\":[],\"artifact_refs\":[]}',
-                'agent_connection:conn_main',
-                'local_user',
-                'fixture',
-                'cooperative',
-                't1',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
+            .unwrap_err();
+        assert_constraint_error(label, error);
+    }
 }
 
-fn assert_user_judgments_require_basis(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO user_judgments (
-                project_id,
-                judgment_id,
-                task_id,
-                judgment_kind,
-                status,
-                requested_by_actor_source,
-                requested_at
-            )
-            VALUES (
-                'project_a',
-                'judgment_missing_basis',
-                'task_a',
-                'approval',
-                'pending',
-                'agent_connection:conn_main',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
+fn insert_ddl_user_action_request(conn: &Connection, request_id: &str, action_kind: &str) {
+    insert_ddl_user_action_request_with_origin(
+        conn,
+        request_id,
+        action_kind,
+        "volicord.request_user_action",
+        &format!("idem_{request_id}"),
+    )
+    .expect("user-action DDL fixture should insert");
 }
 
-fn assert_resolved_user_judgments_require_complete_resolution(label: &str, conn: &Connection) {
-    let error = conn
-        .execute(
-            "INSERT INTO user_judgments (
-                project_id,
-                judgment_id,
-                task_id,
-                judgment_kind,
-                status,
-                basis_json,
-                requested_by_actor_source,
-                requested_at
-            )
-            VALUES (
-                'project_a',
-                'judgment_incomplete_resolution',
-                'task_a',
-                'approval',
-                'resolved',
-                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
-                'agent_connection:conn_main',
-                't1'
-            )",
-            [],
-        )
-        .unwrap_err();
-    assert_constraint_error(label, error);
+fn insert_ddl_user_action_request_with_origin(
+    conn: &Connection,
+    request_id: &str,
+    action_kind: &str,
+    source_method: &str,
+    source_idempotency_key: &str,
+) -> rusqlite::Result<usize> {
+    conn.execute(
+        "INSERT INTO user_action_requests (
+            project_id, user_action_request_id, task_id, action_kind,
+            request_json, basis_json, required_for_json,
+            requested_by_actor_source, source_method,
+            source_idempotency_key, requested_at
+        ) VALUES (
+            'project_a', ?1, 'task_a', ?2, '{}', '{}', '[]',
+            'agent_connection:conn_main', ?3, ?4, 't1'
+        )",
+        params![
+            request_id,
+            action_kind,
+            source_method,
+            source_idempotency_key
+        ],
+    )
 }
 
 fn assert_project_continuity_value_sets_are_closed(label: &str, conn: &Connection) {

@@ -141,10 +141,15 @@ CLI 훅 작업 흐름은 Runtime Home과 등록 프로젝트를 해석하고, �
   확인하고, `expected write` 상관관계 정보를 저장할 수 있습니다.
 - `post-tool`은 관찰된 도구 결과를 기록하고 `expected write` 또는 현재 쓰기 티켓 정보와
   연결합니다. 아직 해결되지 않은 Product Repository 변경도 기록할 수 있습니다.
-- `prompt-capture`는 프롬프트 캡처를 사용할 수 있을 때 User Channel 판단 답변에 필요한
+- `prompt-capture`는 프롬프트 캡처를 사용할 수 있을 때 User Channel 사용자 행동 resolution에 필요한
   프롬프트 메타데이터와 엄격한 채팅 명령 처리를 담당합니다.
 - `stop`은 닫기 관련 정보를 확인하고, 세션 완료에 대한 호스트 고유 허용 또는 거부 결과를
   렌더링합니다.
+
+이벤트 timestamp는 guard 기록과 상관관계를 위한 관찰 metadata로만 남습니다. 현재
+Task, 쓰기 티켓, 대기 UserAction, 프롬프트 명령 적격성 조회는 호스트 보고 시각이 아니라
+프로젝트/Core 현재 시계를 사용하므로 지연되거나 시계 차이가 있는 이벤트가 현재 권한을
+바꾸지 못합니다.
 
 단계 처리 뒤 CLI는 협력형 비보장 안내를 붙이고, 아직 기록하지 않은 guard 이벤트와 해당
 단계가 만든 `expected write` 정보를 저장합니다. 결과는 Volicord JSON, 텍스트, 호스트 고유

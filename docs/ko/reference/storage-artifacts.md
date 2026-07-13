@@ -328,7 +328,7 @@ expires_at: "<future-expiration-timestamp>"
 - `redaction_state`.
 - 생산자와 보존 사실.
 - 가용성 `status`.
-- `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` 같은 기존 담당 기록에 대한 담당 연결.
+- `task`, `change_unit`, `run`, `user_action_request`, `user_action_resolution`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` 같은 기존 담당 기록에 대한 담당 연결.
 
 증거 자격, 아티팩트 가용성, 증거 충분성은 서로 분리됩니다. `artifact_links`가 다형 담당 테이블이어도 아티팩트 담당 관계 무결성은 필요합니다.
 
@@ -339,6 +339,21 @@ expires_at: "<future-expiration-timestamp>"
 authority-owned producer 앵커, 정확한 출력 결합, 현재 Task/scope/baseline과
 대상, supported relevance 평가가 추가로 필요합니다.
 
+기존 아티팩트나 승계한 출력이 권한을 가질 수 있으려면 소비하는 담당자가 저장소 소유
+사실에서 현재 정규 `ArtifactRef`를 다시 만들고, 저장된 아티팩트·producer·storage
+메타데이터를 엄격히 decode하며, 현재 본문 또는 안전 알림을 다시 검증해야 합니다. 현재
+저장된 `content_type`, `redaction_state`, producer 메타데이터, `storage_ref`, 가용성,
+무결성 사실, 담당 관계, 크기, SHA-256, 바이트가 해당 담당자가 요구하는 정확한 출력
+결합과 계속 호환되어야 합니다. 이력의 상태 보기 최신성 값을 정규화하더라도 이 사실을
+무시하거나 대체할 수 없습니다.
+
+메타데이터 불일치, 손상된 저장 값, 누락되거나 유효하지 않은 담당 관계, 권한 효력이 있는
+출력 집합 안의 중복 `artifact_id`, 현재 바이트 검증 실패는 fail-closed로 처리합니다.
+중복 제거하거나 일부만 일치시켜 strong provenance로 유지하면 안 됩니다. 커밋 전에
+검증이 실패하면 소비 트랜잭션은 계획한 아티팩트 생명주기, 연결, evidence provenance
+효과를 하나도 커밋하지 않습니다. 더 넓은 메서드 무효과 동작은 [저장 효과](storage-effects.md)와
+소비 메서드가 담당합니다.
+
 허용되는 것:
 
 - `integrity_status=verified`이고 유효한 담당 연결이 있는 `artifacts.status=available` 행은 증거 범위 항목을 뒷받침할 수 있습니다.
@@ -346,7 +361,7 @@ authority-owned producer 앵커, 정확한 출력 결합, 현재 Task/scope/base
 
 필수 검증:
 
-- `owner_record_kind`가 `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` 중 하나인지 확인합니다.
+- `owner_record_kind`가 `task`, `change_unit`, `run`, `user_action_request`, `user_action_resolution`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` 중 하나인지 확인합니다.
 - `owner_record_id`가 해당 담당 테이블에 존재하는지 확인합니다.
 - 담당 기록이 같은 `project_id`와 `task_id`에 속하는지 확인합니다.
 - 관계가 아티팩트 사용 방식과 호환되는지 확인합니다.

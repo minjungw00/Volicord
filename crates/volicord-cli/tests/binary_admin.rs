@@ -11,6 +11,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::time::Instant;
+
 #[cfg(unix)]
 use chrono::{DateTime, SecondsFormat, Utc};
 
@@ -39,10 +42,11 @@ use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, AcceptanceCriterionInput, ActorSource,
     BaselineRef, ChangeUnitOperation, ConnectionObservationSourceKind, EvidenceCaptureSpec,
     EvidenceRequirement, EvidenceTarget, IdempotencyKey, InitialScope, JudgmentKind,
-    JudgmentPresentation, JudgmentRequiredFor, OperationCategory, PrepareEvidenceCaptureRequest,
-    ProjectId, RequestId, RequestedMode, RequiredNullable, ResumePolicy, StateRecordKind,
-    StateRecordRef, TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentOptionId,
-    UserJudgmentOptionInput, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    JudgmentPresentation, OperationCategory, PrepareEvidenceCaptureRequest, ProjectId, RequestId,
+    RequestedMode, RequiredNullable, ResumePolicy, StateRecordKind, StateRecordRef, TaskId,
+    ToolEnvelope, UserActionChoiceDraft, UserActionContext, UserActionDraft, UserActionOptionId,
+    UserActionOptionInput, UserActionRequiredFor, UtcTimestamp,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -110,7 +114,7 @@ fn binary_help_uses_agent_connection_model() -> Result<(), Box<dyn Error>> {
     assert!(text.contains("volicord changes reconcile"));
     assert!(text.contains("volicord serve --transport local-http"));
     assert!(text.contains("volicord mcp --stdio"));
-    assert!(text.contains("volicord inbox answer <judgment-id> --choice <choice>"));
+    assert!(text.contains("volicord inbox resolve <user-action-request-id> --choice <choice>"));
     assert!(text.contains("User Channel"));
 
     let init_help = run_without_home(["init", "--help"])?;
@@ -391,6 +395,205 @@ fn evidence_capture_command_records_complete_nonzero_receipt_without_raw_data_an
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
+fn evidence_capture_command_uses_future_persisted_project_clock_for_receipt_times(
+) -> Result<(), Box<dyn Error>> {
+    let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), "exit 0".to_owned()];
+    let (fixture, intent_id) =
+        prepared_command_capture("cli-evidence-project-clock-receipt", &argv)?;
+    let future_floor = "2999-07-13T12:34:56.789Z";
+    let future_expiry = "2999-07-13T12:49:56.789Z";
+    set_capture_intent_clock(
+        &fixture,
+        &intent_id,
+        future_floor,
+        future_expiry,
+        future_floor,
+    )?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--json",
+            "--",
+            "/bin/sh",
+            "-c",
+            "exit 0",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert_success(&output);
+
+    let receipt = fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .expect("receipt should exist");
+    assert_eq!(receipt.observed_at, future_floor);
+    assert_eq!(receipt.created_at, future_floor);
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_rejects_project_clock_at_expiry_before_execution(
+) -> Result<(), Box<dyn Error>> {
+    let script = "printf 'ran' > expired-command-marker.txt";
+    let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.to_owned()];
+    let (fixture, intent_id) =
+        prepared_command_capture("cli-evidence-project-clock-expired", &argv)?;
+    let created_at = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    let expires_at = capture_intent_timestamp(&fixture, &intent_id, "expires_at")?;
+    set_capture_intent_clock(&fixture, &intent_id, &created_at, &expires_at, &expires_at)?;
+    let before = fixture.counts()?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--",
+            "/bin/sh",
+            "-c",
+            script,
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("intent has expired"));
+    assert!(!fixture
+        .product_repo_path()
+        .join("expired-command-marker.txt")
+        .exists());
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_rejects_corrupt_intent_window_before_execution(
+) -> Result<(), Box<dyn Error>> {
+    for case in [
+        "unrepresentable_created_at",
+        "unrepresentable_expires_at",
+        "reversed",
+        "extended_ttl",
+    ] {
+        let marker_name = format!("corrupt-intent-{case}-marker.txt");
+        let script = format!("printf 'ran' > {marker_name}");
+        let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.clone()];
+        let (fixture, intent_id) =
+            prepared_command_capture(&format!("cli-evidence-corrupt-intent-{case}"), &argv)?;
+        let original_created_at = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+        let original_expires_at = capture_intent_timestamp(&fixture, &intent_id, "expires_at")?;
+        let extended_expires_at = UtcTimestamp::parse(&original_expires_at)?
+            .checked_add(chrono::Duration::minutes(1))?
+            .to_string();
+        let (created_at, expires_at) = match case {
+            "unrepresentable_created_at" => {
+                ("9999-12-31T23:59:59-23:59", original_expires_at.as_str())
+            }
+            "unrepresentable_expires_at" => {
+                (original_created_at.as_str(), "9999-12-31T23:59:59-23:59")
+            }
+            "reversed" => (original_expires_at.as_str(), original_created_at.as_str()),
+            "extended_ttl" => (original_created_at.as_str(), extended_expires_at.as_str()),
+            _ => unreachable!(),
+        };
+        set_capture_intent_clock(
+            &fixture,
+            &intent_id,
+            created_at,
+            expires_at,
+            &original_created_at,
+        )?;
+        let before = fixture.counts()?;
+
+        let output = run_with_home_env_in_dir(
+            fixture.runtime_home_path(),
+            [
+                "evidence",
+                "capture-command",
+                "--intent",
+                &intent_id,
+                "--",
+                "/bin/sh",
+                "-c",
+                &script,
+            ],
+            &[],
+            &fixture.product_repo_path(),
+        )?;
+        assert!(
+            !output.status.success(),
+            "case {case} unexpectedly succeeded"
+        );
+        assert!(
+            stderr(&output).contains("is invalid"),
+            "case {case} returned an unexpected error: {}",
+            stderr(&output)
+        );
+        assert!(!fixture.product_repo_path().join(&marker_name).exists());
+        assert!(fixture
+            .store()?
+            .evidence_capture_receipt_for_intent(&intent_id)?
+            .is_none());
+        assert_eq!(fixture.counts()?, before);
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn evidence_capture_command_caps_runtime_with_future_project_clock_remaining_ttl(
+) -> Result<(), Box<dyn Error>> {
+    let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), "sleep 5".to_owned()];
+    let (fixture, intent_id) =
+        prepared_command_capture("cli-evidence-project-clock-deadline", &argv)?;
+    set_capture_intent_clock(
+        &fixture,
+        &intent_id,
+        "2999-07-13T12:34:56.000Z",
+        "2999-07-13T12:49:56.000Z",
+        "2999-07-13T12:49:55.900Z",
+    )?;
+    let before = fixture.counts()?;
+
+    let started = Instant::now();
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-command",
+            "--intent",
+            &intent_id,
+            "--",
+            "/bin/sh",
+            "-c",
+            "sleep 5",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("did not finish before"));
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(fixture.counts()?, before);
+    assert!(fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .is_none());
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
 fn evidence_capture_command_digest_mismatch_has_no_source_effects_or_execution(
 ) -> Result<(), Box<dyn Error>> {
     let intended_script = "printf 'should-not-run' > intended-marker.txt".to_owned();
@@ -547,7 +750,15 @@ fn evidence_capture_tool_requires_exact_complete_pre_post_pair_and_keeps_raw_res
         Some("session_evidence_tool"),
         Some("guard_evidence_tool"),
     )?;
-    let source_timestamp = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    let intent_created_at = volicord_types::UtcTimestamp::parse(&capture_intent_timestamp(
+        &fixture,
+        &intent_id,
+        "created_at",
+    )?)?;
+    let source_timestamp = volicord_types::UtcTimestamp::from_datetime(
+        *intent_created_at.as_datetime() + chrono::Duration::microseconds(500),
+    )
+    .to_string();
     insert_tool_guard_event(
         &fixture,
         "guard_event_tool_pre",
@@ -605,6 +816,7 @@ fn evidence_capture_tool_requires_exact_complete_pre_post_pair_and_keeps_raw_res
     let rendered = json_stdout(&output)?;
     assert_eq!(rendered["observed_outcome"]["success"], false);
     assert_eq!(rendered["observed_outcome"]["exit_code"], 3);
+    assert_eq!(rendered["observed_at"], source_timestamp);
     assert_eq!(
         rendered["observed_outcome"]["tool_result_size_bytes"],
         canonical_json_bytes(&tool_response)?.len() as u64
@@ -843,6 +1055,7 @@ fn evidence_capture_connection_accepts_exact_registered_guard_event() -> Result<
     let rendered = json_stdout(&output)?;
     assert_eq!(rendered["observed_outcome"]["complete"], true);
     assert_eq!(rendered["observed_outcome"]["guard_event_kind"], "stop");
+    assert_eq!(rendered["observed_at"], source_timestamp);
     Ok(())
 }
 
@@ -1038,7 +1251,7 @@ fn doctor_without_setup_reports_action_required() -> Result<(), Box<dyn Error>> 
     assert!(
         text.contains("Volicord record effect for this command: local diagnostic observation only")
     );
-    assert!(text.contains("Pending user judgments: not shown in this view"));
+    assert!(text.contains("Pending user actions: not shown in this view"));
     assert!(text.contains("Close readiness: not shown in this view"));
     assert!(text.contains(
         "Primary next action: Initialize the primary host connection from the Product Repository"
@@ -4368,7 +4581,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(agents.contains("Check Volicord status before planning"));
     assert!(agents.contains("Start a task before planning implementation"));
     assert!(agents.contains("Prepare write before product-file changes"));
-    assert!(agents.contains("Request user judgment through Volicord"));
+    assert!(agents.contains("Request a user action through Volicord"));
     assert!(agents.contains("Check close before claiming completion"));
     assert!(agents.contains("If Volicord tools are unavailable"));
     assert!(!agents.contains("old managed text"));
@@ -7041,8 +7254,7 @@ fn ambiguous_connection_selector_reports_actionable_choices() -> Result<(), Box<
 }
 
 #[test]
-fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<(), Box<dyn Error>>
-{
+fn user_channel_resolves_pending_action_with_local_user_provenance() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-user-channel")?;
     let repo_root = runtime_home.create_product_repo("product-repo")?;
     fs::create_dir_all(repo_root.join(".git"))?;
@@ -7064,28 +7276,28 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
         core_invocation(OperationCategory::AgentWorkflow),
     )?;
     let task_id = record_id(&intake.response_value["task_ref"])?;
-    let judgment = service.request_user_judgment(
-        request_user_judgment_request(
-            "req_cli_user_judgment",
-            "idem_cli_user_judgment",
+    let user_action = service.request_user_action(
+        request_user_action_request(
+            "req_cli_user_action",
+            "idem_cli_user_action",
             Some(1),
             &task_id,
         ),
         core_invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = record_id(&judgment.response_value["user_judgment_ref"])?;
+    let user_action_request_id = record_id(&user_action.response_value["user_action_request_ref"])?;
 
     let status = run_with_home_env_in_dir(runtime_home.path(), ["status"], &[], &repo_root)?;
     assert_success(&status);
     let status_text = stdout(&status);
     assert!(status_text.contains("User Channel status"));
     assert!(status_text.contains("Close readiness: blocked"));
-    assert!(status_text.contains("Pending user judgments: pending (1)"));
+    assert!(status_text.contains("Pending user actions: pending (1)"));
     assert!(status_text.contains(
         "Volicord record effect for this command: none (does not describe product-file writes or Runtime Home write capability)"
     ));
     assert!(status_text.contains(
-        "Available answer paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
+        "Available resolve paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
     ));
     assert!(status_text.contains("Primary next action:"));
     assert!(status_text.contains("Does not prove:"));
@@ -7096,7 +7308,7 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert_success(&status_json);
     let status_value = json_stdout(&status_json)?;
     assert_eq!(status_value["summary_card"]["close_status"], "blocked");
-    assert_eq!(status_value["summary_card"]["user_judgment"], "pending (1)");
+    assert_eq!(status_value["summary_card"]["user_action"], "pending (1)");
     let close_blocker_count = status_value["close_blockers"]
         .as_array()
         .expect("close_blockers should be an array")
@@ -7126,23 +7338,23 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     let list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&list);
     let list_text = stdout(&list);
-    assert!(list_text.contains("Judgment Inbox"));
-    assert!(list_text.contains("Pending user judgments: pending (1)"));
+    assert!(list_text.contains("User Action Inbox"));
+    assert!(list_text.contains("Pending user actions: pending (1)"));
     assert!(list_text.contains("Profile: not shown in this view"));
     assert!(list_text.contains("1. Should the focused CLI user-channel choice be accepted?"));
     assert!(list_text.contains("id: "));
     assert!(list_text.contains("accept: Accept focused choice"));
     assert!(list_text.contains(
-        "Available answer paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
+        "Available resolve paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
     ));
-    assert!(list_text.contains("volicord inbox answer"));
+    assert!(list_text.contains("volicord inbox resolve"));
     assert!(list_text.contains("Does not prove: approval"));
     assert!(!list_text.contains("project_user_channel"));
     assert_text_renders_volicord_commands_as_standalone_lines(
         &list_text,
         &[&format!(
-            "volicord inbox answer {} --choice <choice>",
-            judgment_id
+            "volicord inbox resolve {} --choice <choice>",
+            user_action_request_id
         )],
     );
 
@@ -7150,7 +7362,7 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
         run_with_home_env_in_dir(runtime_home.path(), ["inbox", "--json"], &[], &repo_root)?;
     assert_success(&list_json);
     let list_value = json_stdout(&list_json)?;
-    assert_eq!(list_value["summary_card"]["user_judgment"], "pending (1)");
+    assert_eq!(list_value["summary_card"]["user_action"], "pending (1)");
     assert_eq!(
         channel_path(&list_value["user_channel_availability"], "cli")["available"],
         true
@@ -7162,11 +7374,14 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(list_value["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .starts_with("answer pending judgment"));
-    let first = &list_value["pending_judgment_inbox_items"][0];
-    assert_eq!(first["judgment_id"], judgment_id.as_str());
-    assert_eq!(first["requirement_status"], "required");
-    assert_eq!(first["choices"][0]["choice_id"], "accept");
+        .starts_with("resolve pending user action"));
+    let first = &list_value["pending_user_action_inbox_items"][0];
+    assert_eq!(
+        first["user_action_request_id"],
+        user_action_request_id.as_str()
+    );
+    assert_eq!(first["requirement_status"], "optional");
+    assert_eq!(first["form"]["choices"][0]["choice_id"], "accept");
     assert_eq!(
         channel_path(&first["answer_path_availability"], "cli")["available"],
         true
@@ -7175,38 +7390,28 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     assert!(first["preferred_capture_path"]["command"]
         .as_str()
         .expect("CLI command should be present")
-        .contains("volicord inbox answer"));
-    assert!(first["choices"][0].get("machine_action").is_none());
-    assert!(first["choices"][0].get("resolution_outcome").is_none());
+        .contains("volicord inbox resolve"));
+    assert!(first["form"]["choices"][0].get("machine_action").is_none());
+    assert!(first["form"]["choices"][0]
+        .get("resolution_outcome")
+        .is_none());
 
-    let open = run_with_home_env_in_dir(
+    let removed_open = run_with_home_env_in_dir(
         runtime_home.path(),
-        ["inbox", "open", judgment_id.as_str()],
+        ["inbox", "open", user_action_request_id.as_str()],
         &[],
         &repo_root,
     )?;
-    assert_success(&open);
-    let open_text = stdout(&open);
-    assert!(open_text.contains("Judgment Inbox open action_required"));
-    assert!(open_text.contains("Summary:\n  No local consent URL is available"));
-    assert!(open_text.contains("Next:\n  1. Use the URL shown in the MCP Judgment Inbox item"));
-    assert!(open_text.contains("This does not prove approval"));
-    assert_text_renders_volicord_commands_as_standalone_lines(
-        &open_text,
-        &[&format!(
-            "volicord inbox answer {} --choice <choice>",
-            judgment_id
-        )],
-    );
-    assert_non_connection_text_omits_diagnostic_dump_fields(&open_text);
+    assert_eq!(removed_open.status.code(), Some(2));
+    assert!(stderr(&removed_open).contains("unknown inbox command: open"));
 
     let record_note = "Recorded from inbox CLI";
     let record = run_with_home_env_in_dir(
         runtime_home.path(),
         [
             "inbox",
-            "answer",
-            judgment_id.as_str(),
+            "resolve",
+            user_action_request_id.as_str(),
             "--choice",
             "accept",
             "--note",
@@ -7217,50 +7422,150 @@ fn user_channel_records_pending_judgment_with_local_user_provenance() -> Result<
     )?;
     assert_success(&record);
     let text = stdout(&record);
-    assert!(text.contains("Judgment Inbox answer recorded"));
-    assert!(text.contains("selected: Accept focused choice"));
+    assert!(text.contains("User action resolved"));
     assert!(!text.contains("project_user_channel"));
-    assert!(!text.contains(judgment_id.as_str()));
+    assert!(!text.contains(user_action_request_id.as_str()));
     assert!(!text.contains("operation_category"));
 
     let store =
         CoreProjectStore::open(runtime_home.path(), &ProjectId::new("project_user_channel"))?;
-    let persisted = store
-        .user_judgment_record(&judgment_id)?
-        .expect("recorded judgment should be stored");
-    assert_eq!(persisted.status, "resolved");
+    let committed_state_version = store.project_state()?.state_version;
+    let retry_args = [
+        "inbox",
+        "resolve",
+        user_action_request_id.as_str(),
+        "--choice",
+        "accept",
+        "--note",
+        record_note,
+        "--json",
+    ];
+    let exact_retry = run_with_home_env_in_dir(runtime_home.path(), retry_args, &[], &repo_root)?;
+    assert_success(&exact_retry);
+    let exact_retry_again =
+        run_with_home_env_in_dir(runtime_home.path(), retry_args, &[], &repo_root)?;
+    assert_success(&exact_retry_again);
+    assert_eq!(stdout(&exact_retry), stdout(&exact_retry_again));
     assert_eq!(
-        persisted.resolved_by_actor_source.as_deref(),
-        Some("local_user")
+        store.project_state()?.state_version,
+        committed_state_version
     );
-    assert_eq!(
-        persisted.resolved_verification_basis.as_deref(),
-        Some("cli_direct_user_channel")
-    );
-    assert_eq!(
-        persisted.resolved_assurance_level.as_deref(),
-        Some("local_user_channel")
-    );
-    let resolution_json: Value = serde_json::from_str(
-        persisted
-            .resolution_json
-            .as_deref()
-            .expect("resolution_json should be stored"),
+
+    let state_db = runtime_home
+        .path()
+        .join("projects")
+        .join("project_user_channel")
+        .join("state.sqlite");
+    let conn = rusqlite::Connection::open(state_db)?;
+    let (original_basis_status, original_basis_json): (String, String) = conn.query_row(
+        "SELECT basis_status, basis_json
+           FROM user_action_requests
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params!["project_user_channel", user_action_request_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
+    let mut stale_basis: Value = serde_json::from_str(&original_basis_json)?;
+    stale_basis["coordinates"]["compatibility_status"] = json!("stale");
+    conn.execute(
+        "UPDATE user_action_requests
+            SET basis_status = 'stale',
+                basis_json = ?3
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![
+            "project_user_channel",
+            user_action_request_id.as_str(),
+            stale_basis.to_string()
+        ],
+    )?;
+    let current_time = UtcTimestamp::parse(&store.current_timestamp()?)?;
+    assert_eq!(
+        store
+            .user_action_record(&user_action_request_id, &current_time)?
+            .expect("resolved user action should remain addressable")
+            .status,
+        volicord_types::UserActionStatus::Stale
+    );
+    let before_stale_replay = store.effect_counts()?;
+    let before_stale_replay_floor = store.project_state()?.updated_at;
+    let stale_exact_retry =
+        run_with_home_env_in_dir(runtime_home.path(), retry_args, &[], &repo_root)?;
+    assert_success(&stale_exact_retry);
+    assert_eq!(stdout(&stale_exact_retry), stdout(&exact_retry));
+    assert_eq!(store.effect_counts()?, before_stale_replay);
+    assert_eq!(store.project_state()?.updated_at, before_stale_replay_floor);
+    conn.execute(
+        "UPDATE user_action_requests
+            SET basis_status = ?3,
+                basis_json = ?4
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![
+            "project_user_channel",
+            user_action_request_id.as_str(),
+            original_basis_status,
+            original_basis_json
+        ],
+    )?;
+
+    let changed_retry = run_with_home_env_in_dir(
+        runtime_home.path(),
+        [
+            "inbox",
+            "resolve",
+            user_action_request_id.as_str(),
+            "--choice",
+            "decline",
+            "--note",
+            record_note,
+        ],
+        &[],
+        &repo_root,
+    )?;
+    assert_success(&changed_retry);
+    assert!(
+        stdout(&changed_retry).contains("idempotency_key was reused with a different request hash")
+    );
+    assert_eq!(
+        store.project_state()?.state_version,
+        committed_state_version
+    );
+
+    let persisted = store
+        .user_action_record(
+            &user_action_request_id,
+            &volicord_types::UtcTimestamp::parse("2026-12-01T00:00:00Z")?,
+        )?
+        .expect("resolved user action should be stored");
+    assert_eq!(persisted.status, volicord_types::UserActionStatus::Resolved);
+    let persisted_resolution = persisted
+        .resolution
+        .expect("user-action resolution should be stored");
+    assert_eq!(persisted_resolution.resolved_by_actor_source, "local_user");
+    assert_eq!(
+        persisted_resolution.resolved_verification_basis,
+        "cli_direct_user_channel"
+    );
+    assert_eq!(
+        persisted_resolution.resolved_assurance_level,
+        "local_user_channel"
+    );
+    let resolution_json: Value = serde_json::from_str(&persisted_resolution.resolution_json)?;
     assert_eq!(resolution_json["note"], record_note);
 
     let empty_list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&empty_list);
     let empty_list_text = stdout(&empty_list);
-    assert!(empty_list_text.contains("Pending user judgments: pending (0)"));
-    assert!(empty_list_text.contains("No pending judgments."));
+    assert!(empty_list_text.contains("Pending user actions: pending (0)"));
+    assert!(empty_list_text.contains("No pending user actions."));
     assert!(!empty_list_text.contains("not_selected"));
 
     let empty_list_json =
         run_with_home_env_in_dir(runtime_home.path(), ["inbox", "--json"], &[], &repo_root)?;
     assert_success(&empty_list_json);
     let empty_list_value = json_stdout(&empty_list_json)?;
-    assert_eq!(empty_list_value["summary_card"]["user_judgment"], "none");
+    assert_eq!(empty_list_value["summary_card"]["user_action"], "none");
     Ok(())
 }
 
@@ -7594,6 +7899,32 @@ fn capture_intent_timestamp(
         "expires_at" => Ok(intent.expires_at),
         _ => Err(format!("unsupported capture-intent timestamp field: {field}").into()),
     }
+}
+
+#[cfg(unix)]
+fn set_capture_intent_clock(
+    fixture: &CoreFixture,
+    intent_id: &str,
+    created_at: &str,
+    expires_at: &str,
+    project_clock_floor: &str,
+) -> Result<(), Box<dyn Error>> {
+    let conn = fixture.conn()?;
+    conn.execute(
+        "UPDATE evidence_capture_intents
+            SET created_at = ?3,
+                expires_at = ?4
+          WHERE project_id = ?1
+            AND evidence_capture_intent_id = ?2",
+        rusqlite::params![fixture.project_id(), intent_id, created_at, expires_at],
+    )?;
+    conn.execute(
+        "UPDATE project_state
+            SET updated_at = ?2
+          WHERE project_id = ?1",
+        rusqlite::params![fixture.project_id(), project_clock_floor],
+    )?;
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -8620,7 +8951,7 @@ fn intake_request(
             boundary: "Exercise the local User Channel.".to_owned(),
             non_goals: vec!["Changing unrelated CLI behavior.".to_owned()],
             acceptance_criteria: vec![AcceptanceCriterionInput {
-                statement: "The pending judgment can be recorded locally.".to_owned(),
+                statement: "The pending user action can be resolved locally.".to_owned(),
                 evidence_requirement: EvidenceRequirement::Required,
             }],
         },
@@ -8629,13 +8960,13 @@ fn intake_request(
     }
 }
 
-fn request_user_judgment_request(
+fn request_user_action_request(
     request_id: &str,
     idempotency_key: &str,
     expected_state_version: Option<u64>,
     task_id: &str,
-) -> volicord_types::RequestUserJudgmentRequest {
-    volicord_types::RequestUserJudgmentRequest {
+) -> volicord_types::RequestUserActionRequest {
+    volicord_types::RequestUserActionRequest {
         envelope: envelope(
             request_id,
             Some(idempotency_key),
@@ -8644,33 +8975,44 @@ fn request_user_judgment_request(
         ),
         task_id: TaskId::new(task_id),
         change_unit_id: RequiredNullable::null(),
-        sensitive_action_scope: RequiredNullable::null(),
-        judgment_kind: JudgmentKind::ProductDecision,
-        presentation: JudgmentPresentation::Short,
-        question: "Should the focused CLI user-channel choice be accepted?".to_owned(),
-        options: Some(vec![UserJudgmentOptionInput {
-            option_id: UserJudgmentOptionId::new("accept"),
-            label: "Accept focused choice".to_owned(),
-            description: "Record the focused user-owned choice.".to_owned(),
-            consequence: "Only this judgment is resolved.".to_owned(),
-            is_default: true,
-        }])
-        .into(),
-        context: UserJudgmentContext {
-            summary: "The CLI needs a pending judgment to record.".to_owned(),
-            related_refs: Vec::new(),
-            artifact_refs: Vec::new(),
-            visible_risks: Vec::new(),
-            constraints: vec!["This choice does not imply broader acceptance.".to_owned()],
-        },
-        affected_refs: vec![StateRecordRef {
-            record_kind: StateRecordKind::Task,
-            record_id: volicord_types::RecordId::new(task_id),
-            project_id: ProjectId::new("project_user_channel"),
-            task_id: Some(TaskId::new(task_id)).into(),
-            produced_at_state_version: expected_state_version.into(),
-        }],
-        required_for: vec![JudgmentRequiredFor::Informational],
+        action: UserActionDraft::Choice(Box::new(UserActionChoiceDraft {
+            judgment_kind: JudgmentKind::ProductDecision,
+            presentation: JudgmentPresentation::Short,
+            question: "Should the focused CLI user-channel choice be accepted?".to_owned(),
+            options: Some(vec![
+                UserActionOptionInput {
+                    option_id: UserActionOptionId::new("accept"),
+                    label: "Accept focused choice".to_owned(),
+                    description: "Record the focused user-owned choice.".to_owned(),
+                    consequence: "Only this user action is resolved.".to_owned(),
+                    is_default: true,
+                },
+                UserActionOptionInput {
+                    option_id: UserActionOptionId::new("decline"),
+                    label: "Decline focused choice".to_owned(),
+                    description: "Decline the focused user-owned choice.".to_owned(),
+                    consequence: "The user action resolves without acceptance.".to_owned(),
+                    is_default: false,
+                },
+            ])
+            .into(),
+            context: UserActionContext {
+                summary: "The CLI needs a pending user action to resolve.".to_owned(),
+                related_refs: Vec::new(),
+                artifact_refs: Vec::new(),
+                visible_risks: Vec::new(),
+                constraints: vec!["This choice does not imply broader acceptance.".to_owned()],
+            },
+            affected_refs: vec![StateRecordRef {
+                record_kind: StateRecordKind::Task,
+                record_id: volicord_types::RecordId::new(task_id),
+                project_id: ProjectId::new("project_user_channel"),
+                task_id: Some(TaskId::new(task_id)).into(),
+                produced_at_state_version: expected_state_version.into(),
+            }],
+            sensitive_action_scope: RequiredNullable::null(),
+        })),
+        required_for: vec![UserActionRequiredFor::Informational],
         expires_at: RequiredNullable::null(),
     }
 }

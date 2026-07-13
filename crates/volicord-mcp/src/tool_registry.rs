@@ -98,9 +98,10 @@ pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID: &str =
 pub(crate) const RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_advisor_analysis_001","change_unit_id":"cu_advisor_analysis_001","kind":"shaping_update","baseline_ref":"baseline_advisor_analysis_001","summary":"Advisor analysis completed without Product Repository file writes.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_advisor_analysis_001"}}"#;
 const RECORD_RUN_EVIDENCE_BEARING_ARGUMENTS_JSON: &str = r#"{"task_id":"task_run_002","change_unit_id":"cu_run_002","kind":"implementation","baseline_ref":"baseline_run_002","summary":"Saved-filter validation reviewed.","observed_changes":{"changed_paths":[],"product_file_write_observed":false,"sensitive_categories":[],"baseline_ref":"baseline_run_002"},"evidence_updates":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"coverage_state":"supported"}],"evidence_observations":[{"target":{"target_kind":"acceptance_criterion","acceptance_criterion_id":"criterion_saved_filter_001"},"source_kind":"agent_report","assurance_level":"cooperative_report","observed_at":"2026-07-12T00:00:00Z"}],"close_assessment":{"result_summary":"Saved-filter validation reviewed.","result_refs":[],"residual_risks":[],"sensitive_categories":[],"recovery_constraints":[]}}"#;
 
-pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID: &str =
-    "final_acceptance_request";
-pub(crate) const REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str = r#"{"task_id":"task_close_001","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"required_for":["close_complete"]}"#;
+pub(crate) const REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID: &str = "final_acceptance_request";
+pub(crate) const REQUEST_USER_ACTION_FINAL_ACCEPTANCE_ARGUMENTS_JSON: &str = r#"{"request":{"operation":"create","task_id":"task_close_001","change_unit_id":null,"action":{"action_type":"choice","judgment_kind":"final_acceptance","presentation":"short","question":"Do you accept this result as complete?","options":null,"context":{"summary":"Review the current close basis and decide final acceptance.","related_refs":[],"artifact_refs":[],"visible_risks":[],"constraints":["Only final acceptance for the current close basis is in scope."]},"affected_refs":[],"sensitive_action_scope":null},"required_for":["close_complete"],"expires_at":null}}"#;
+const REQUEST_USER_ACTION_RESUME_ARGUMENTS_JSON: &str =
+    r#"{"request":{"operation":"resume","user_action_request_id":"uact_existing_001"}}"#;
 
 const RECONCILE_CHANGES_ARGUMENTS_JSON: &str =
     r#"{"detail":"full","task_id":"task_reconcile_001"}"#;
@@ -224,11 +225,18 @@ const RECORD_RUN_EXAMPLES: [McpToolExample; 2] = [
     },
 ];
 
-const REQUEST_USER_JUDGMENT_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
-    id: REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
-    description: "Request final acceptance with Core-owned authority options.",
-    arguments_json: REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
-}];
+const REQUEST_USER_ACTION_EXAMPLES: [McpToolExample; 2] = [
+    McpToolExample {
+        id: REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        description: "Create final acceptance through the common user-action model.",
+        arguments_json: REQUEST_USER_ACTION_FINAL_ACCEPTANCE_ARGUMENTS_JSON,
+    },
+    McpToolExample {
+        id: "resume_user_action",
+        description: "Resume the original exact Agent Connection result after a later User Channel resolution.",
+        arguments_json: REQUEST_USER_ACTION_RESUME_ARGUMENTS_JSON,
+    },
+];
 
 const RECONCILE_CHANGES_EXAMPLES: [McpToolExample; 1] = [McpToolExample {
     id: "reconcile_current_task",
@@ -270,7 +278,7 @@ pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExamp
         PREPARE_WRITE_TOOL_NAME => &PREPARE_WRITE_EXAMPLES,
         STAGE_ARTIFACT_TOOL_NAME => &STAGE_ARTIFACT_EXAMPLES,
         RECORD_RUN_TOOL_NAME => &RECORD_RUN_EXAMPLES,
-        REQUEST_USER_JUDGMENT_TOOL_NAME => &REQUEST_USER_JUDGMENT_EXAMPLES,
+        REQUEST_USER_ACTION_TOOL_NAME => &REQUEST_USER_ACTION_EXAMPLES,
         RECONCILE_CHANGES_TOOL_NAME => &RECONCILE_CHANGES_EXAMPLES,
         CHECK_CLOSE_TOOL_NAME => &CHECK_CLOSE_EXAMPLES,
         CLOSE_TASK_TOOL_NAME => &CLOSE_TASK_EXAMPLES,
@@ -319,9 +327,13 @@ pub fn mcp_tools_for_mode_and_storage(
 ) -> Vec<McpToolDefinition> {
     let mut tools = match effective_tool_mode_for_mode_and_storage(mode, storage_capability) {
         McpEffectiveToolMode::Unavailable => Vec::new(),
-        McpEffectiveToolMode::ReadOnly | McpEffectiveToolMode::ReadOnlyDegraded => {
-            method_tools(READ_ONLY_METHOD_TOOL_NAMES)
-        }
+        McpEffectiveToolMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES),
+        McpEffectiveToolMode::ReadOnlyDegraded => method_tools([
+            STATUS_TOOL_NAME,
+            GET_OPERATION_RESULT_TOOL_NAME,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            CHECK_CLOSE_TOOL_NAME,
+        ]),
         McpEffectiveToolMode::Workflow => public_method_tools(),
     };
     tools.extend(adapter_utility_tools());
@@ -462,7 +474,7 @@ fn tool_annotations(name: &str) -> McpToolAnnotations {
         INTAKE_TOOL_NAME
         | UPDATE_SCOPE_TOOL_NAME
         | RECORD_RUN_TOOL_NAME
-        | REQUEST_USER_JUDGMENT_TOOL_NAME
+        | REQUEST_USER_ACTION_TOOL_NAME
         | RECONCILE_CHANGES_TOOL_NAME
         | CLOSE_TASK_TOOL_NAME => McpToolAnnotations::destructive_mutation(),
         _ => panic!("missing MCP annotation policy for tool `{name}`"),
@@ -491,8 +503,8 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         RECORD_RUN_TOOL_NAME => {
             "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
         }
-        REQUEST_USER_JUDGMENT_TOOL_NAME => {
-            "Create one focused user-owned judgment. The default result reports the pending or selected outcome without the user's free-form note."
+        REQUEST_USER_ACTION_TOOL_NAME => {
+            "Create one focused user action, or resume its original result by request ID, and capture only a still-pending action through an available verified User Channel."
         }
         RECONCILE_CHANGES_TOOL_NAME => {
             "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes."

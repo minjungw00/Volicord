@@ -1,4 +1,8 @@
 use super::*;
+use crate::evidence_capture::{
+    validate_evidence_capture_intent_window, EvidenceCaptureIntentWindowError,
+};
+use crate::user_action_channel::validate_persisted_user_action_channel_token_window;
 
 impl CoreStorageMutation {
     /// Applies this storage mutation inside the active Core commit transaction.
@@ -36,27 +40,26 @@ impl CoreStorageMutation {
             }
             Self::PromoteStagedArtifact(input) => mutation.promote_staged_artifact(input),
             Self::LinkArtifact(input) => mutation.link_artifact(input),
-            Self::UpsertEvidenceSummary(input) => mutation.upsert_evidence_summary(input),
+            Self::UpsertEvidenceSummary(input) => {
+                mutation.upsert_evidence_summary(input, committed_state_version)
+            }
             Self::InsertEvidenceObservation(input) => mutation.insert_evidence_observation(input),
             Self::InsertEvidenceProducer(input) => mutation.insert_evidence_producer(input),
-            Self::InsertUserEvidenceObservation(input) => {
-                mutation.insert_user_evidence_observation(input)
+            Self::InsertUserActionRequest(input) => mutation.insert_user_action_request(input),
+            Self::InsertUserActionResolution(input) => {
+                mutation.insert_user_action_resolution(input)
             }
-            Self::InsertUserJudgment(input) => mutation.insert_user_judgment(input),
-            Self::ResolveUserJudgment(input) => mutation.resolve_user_judgment(input),
-            Self::ConsumeLocalWebConsentToken(input) => {
-                mutation.consume_local_web_consent_token(input)
+            Self::ConsumeUserActionChannelToken(input) => {
+                mutation.consume_user_action_channel_token(input)
             }
             Self::ResolveUnrecordedChange(input) => mutation.resolve_unrecorded_change(input),
             Self::InsertProjectContinuityRecord(input) => {
                 mutation.insert_project_continuity_record(input)
             }
-            Self::UpdateUserJudgmentBasis(input) => mutation.update_user_judgment_basis(input),
-            Self::MarkUserJudgmentBasesStatus(input) => {
-                mutation.mark_user_judgment_bases_status(input)
-            }
-            Self::MarkUserJudgmentsSupersededOrStale(input) => {
-                mutation.mark_user_judgments_superseded_or_stale(input)
+            Self::UpdateUserActionBasis(input) => mutation.update_user_action_basis(input),
+            Self::MarkUserActionBasesStatus(input) => mutation.mark_user_action_bases_status(input),
+            Self::MarkUserActionsSupersededOrStale(input) => {
+                mutation.mark_user_actions_superseded_or_stale(input)
             }
         }
     }
@@ -116,8 +119,8 @@ impl ProjectMutation<'_> {
                 ?4,
                 ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ?21,
+                ?21
             )",
             params![
                 self.project_id,
@@ -139,7 +142,8 @@ impl ProjectMutation<'_> {
                 input.bounded_context_json,
                 input.autonomy_boundary_json,
                 input.close_summary_json,
-                input.current_change_unit_id
+                input.current_change_unit_id,
+                self.committed_at
             ],
         )?;
         Ok(())
@@ -149,8 +153,7 @@ impl ProjectMutation<'_> {
         validate_identifier("task_id", task_id)?;
         let changed = self.tx.execute(
             "UPDATE project_state
-                SET active_task_id = ?2,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                SET active_task_id = ?2
               WHERE project_id = ?1",
             params![self.project_id, task_id],
         )?;
@@ -171,11 +174,11 @@ impl ProjectMutation<'_> {
                 SET lifecycle_phase = 'superseded',
                     result = 'superseded',
                     close_summary_json = '{\"close_reason\":\"superseded\"}',
-                    closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    closed_at = ?3,
+                    updated_at = ?3
               WHERE project_id = ?1
                 AND task_id = ?2",
-            params![self.project_id, task_id],
+            params![self.project_id, task_id, self.committed_at],
         )?;
         Ok(())
     }
@@ -185,7 +188,7 @@ impl ProjectMutation<'_> {
         validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
         validate_identifier("result", &input.result)?;
         validate_json_text("tasks.close_summary_json", &input.close_summary_json)?;
-        validate_identifier("closed_at", &input.closed_at)?;
+        validate_timestamp("tasks.closed_at", &input.closed_at)?;
 
         let changed = self.tx.execute(
             "UPDATE tasks
@@ -193,7 +196,7 @@ impl ProjectMutation<'_> {
                     result = ?4,
                     close_summary_json = ?5,
                     closed_at = ?6,
-                    updated_at = ?6
+                    updated_at = ?7
               WHERE project_id = ?1
                 AND task_id = ?2",
             params![
@@ -202,7 +205,8 @@ impl ProjectMutation<'_> {
                 input.lifecycle_phase,
                 input.result,
                 input.close_summary_json,
-                input.closed_at
+                input.closed_at,
+                self.committed_at
             ],
         )?;
         if changed == 1 {
@@ -291,15 +295,15 @@ impl ProjectMutation<'_> {
                 )
                 VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, 'active',
-                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                    ?7,
+                    ?7,
                     NULL
                 )
                 ON CONFLICT(project_id, acceptance_criterion_id) DO UPDATE SET
                     statement = excluded.statement,
                     evidence_requirement = excluded.evidence_requirement,
                     position = excluded.position,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    updated_at = excluded.updated_at
                 WHERE acceptance_criteria.task_id = excluded.task_id
                   AND acceptance_criteria.status = 'active'",
                 params![
@@ -312,6 +316,7 @@ impl ProjectMutation<'_> {
                         "project_state",
                         "acceptance criterion position exceeds SQLite INTEGER range",
                     ))?,
+                    self.committed_at,
                 ],
             )?;
         }
@@ -320,26 +325,31 @@ impl ProjectMutation<'_> {
             self.tx.execute(
                 "UPDATE acceptance_criteria
                     SET status = 'retired',
-                        retired_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        retired_at = ?3,
+                        updated_at = ?3
                   WHERE project_id = ?1
                     AND task_id = ?2
                     AND status = 'active'",
-                params![self.project_id, input.task_id],
+                params![self.project_id, input.task_id, self.committed_at],
             )?;
         } else {
             let placeholders = (0..ids.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
             let sql = format!(
                 "UPDATE acceptance_criteria
                     SET status = 'retired',
-                        retired_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        retired_at = ?,
+                        updated_at = ?
                   WHERE project_id = ?
                     AND task_id = ?
                     AND status = 'active'
                     AND acceptance_criterion_id NOT IN ({placeholders})"
             );
-            let mut values: Vec<&dyn rusqlite::ToSql> = vec![&self.project_id, &input.task_id];
+            let mut values: Vec<&dyn rusqlite::ToSql> = vec![
+                &self.committed_at,
+                &self.committed_at,
+                &self.project_id,
+                &input.task_id,
+            ];
             values.extend(ids.iter().map(|id| id as &dyn rusqlite::ToSql));
             self.tx.execute(&sql, values.as_slice())?;
         }
@@ -359,13 +369,14 @@ impl ProjectMutation<'_> {
             "INSERT OR IGNORE INTO evidence_claims (
                 project_id, evidence_claim_id, task_id, statement, created_at
             ) VALUES (
-                ?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ?1, ?2, ?3, ?4, ?5
             )",
             params![
                 self.project_id,
                 input.evidence_claim_id,
                 input.task_id,
                 input.statement,
+                self.committed_at,
             ],
         )?;
         Ok(())
@@ -377,10 +388,15 @@ impl ProjectMutation<'_> {
         let changed = self.tx.execute(
             "UPDATE tasks
                 SET scope_revision = ?3,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    updated_at = ?4
               WHERE project_id = ?1
                 AND task_id = ?2",
-            params![self.project_id, input.task_id, scope_revision],
+            params![
+                self.project_id,
+                input.task_id,
+                scope_revision,
+                self.committed_at
+            ],
         )?;
         if changed == 1 {
             Ok(())
@@ -403,14 +419,15 @@ impl ProjectMutation<'_> {
             "UPDATE tasks
                 SET close_basis_revision = ?3,
                     close_basis_json = ?4,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    updated_at = ?5
               WHERE project_id = ?1
                 AND task_id = ?2",
             params![
                 self.project_id,
                 input.task_id,
                 close_basis_revision,
-                input.close_basis_json
+                input.close_basis_json,
+                self.committed_at
             ],
         )?;
         if changed == 1 {
@@ -442,13 +459,13 @@ impl ProjectMutation<'_> {
             "UPDATE change_units
                 SET status = 'replaced',
                     is_current = 0,
-                    closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    closed_at = ?3,
+                    updated_at = ?3
               WHERE project_id = ?1
                 AND task_id = ?2
                 AND status = 'active'
                 AND is_current = 1",
-            params![self.project_id, input.task_id],
+            params![self.project_id, input.task_id, self.committed_at],
         )?;
         self.insert_current_change_unit(input, committed_state_version)
     }
@@ -498,8 +515,8 @@ impl ProjectMutation<'_> {
                 ?7,
                 ?8,
                 ?9,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ?10,
+                ?10
             )",
             params![
                 self.project_id,
@@ -510,7 +527,8 @@ impl ProjectMutation<'_> {
                 input.bounded_paths_json,
                 input.write_basis_json,
                 input.effect_contract_json,
-                input.lifecycle_json
+                input.lifecycle_json,
+                self.committed_at
             ],
         )?;
         Ok(())
@@ -529,10 +547,10 @@ impl ProjectMutation<'_> {
                         WHEN ?3 IS NULL THEN lifecycle_phase
                         ELSE 'ready'
                     END,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    updated_at = ?4
               WHERE project_id = ?1
                 AND task_id = ?2",
-            params![self.project_id, task_id, change_unit_id],
+            params![self.project_id, task_id, change_unit_id, self.committed_at],
         )?;
         if changed == 1 {
             Ok(())
@@ -570,11 +588,11 @@ impl ProjectMutation<'_> {
             &input.attempt_scope_json,
         )?;
         validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
-        if let Some(created_by_judgment_id) = &input.created_by_judgment_id {
-            validate_identifier("created_by_judgment_id", created_by_judgment_id)?;
+        if let Some(resolution_id) = &input.created_by_user_action_resolution_id {
+            validate_identifier("created_by_user_action_resolution_id", resolution_id)?;
         }
-        validate_identifier("expires_at", &input.expires_at)?;
-        validate_identifier("created_at", &input.created_at)?;
+        validate_timestamp("write_tickets.expires_at", &input.expires_at)?;
+        validate_timestamp("write_tickets.created_at", &input.created_at)?;
         validate_json_text("write_tickets.metadata_json", &input.metadata_json)?;
         let basis_state_version = u64_to_i64("basis_state_version", committed_state_version)?;
 
@@ -588,7 +606,7 @@ impl ProjectMutation<'_> {
                 status,
                 attempt_scope_json,
                 created_by_actor_source,
-                created_by_judgment_id,
+                created_by_user_action_resolution_id,
                 expires_at,
                 consumed_by_run_id,
                 consumed_at,
@@ -621,7 +639,7 @@ impl ProjectMutation<'_> {
                 basis_state_version,
                 input.attempt_scope_json,
                 input.created_by_actor_source,
-                input.created_by_judgment_id,
+                input.created_by_user_action_resolution_id,
                 input.expires_at,
                 input.created_at,
                 input.metadata_json
@@ -641,7 +659,7 @@ impl ProjectMutation<'_> {
             "UPDATE write_tickets
                 SET status = 'consumed',
                     consumed_by_run_id = ?3,
-                    consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    consumed_at = ?5
               WHERE project_id = ?1
                 AND write_ticket_id = ?2
                 AND status = 'active'
@@ -650,7 +668,8 @@ impl ProjectMutation<'_> {
                 self.project_id,
                 input.write_ticket_id,
                 input.run_id,
-                expected_basis
+                expected_basis,
+                self.committed_at
             ],
         )?;
         if changed == 1 {
@@ -719,10 +738,10 @@ impl ProjectMutation<'_> {
                 ?11,
                 ?12,
                 ?13,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?14
+                ?14,
+                ?14,
+                ?14,
+                ?15
             )",
             params![
                 self.project_id,
@@ -738,6 +757,7 @@ impl ProjectMutation<'_> {
                 input.evidence_updates_json,
                 input.write_ticket_effect_json,
                 input.created_by_actor_source,
+                self.committed_at,
                 input.metadata_json
             ],
         )?;
@@ -781,20 +801,21 @@ impl ProjectMutation<'_> {
         ] {
             validate_json_text(field, value)?;
         }
-        validate_timestamp("created_at", &input.created_at)?;
-        validate_timestamp("expires_at", &input.expires_at)?;
-        let created_at = UtcTimestamp::parse(&input.created_at).map_err(|_| {
-            StoreError::schema_invariant("project_state", "invalid capture-intent created_at")
-        })?;
-        let expires_at = UtcTimestamp::parse(&input.expires_at).map_err(|_| {
-            StoreError::schema_invariant("project_state", "invalid capture-intent expires_at")
-        })?;
-        if expires_at <= created_at {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "evidence-capture intent expiration must follow creation",
-            ));
-        }
+        validate_evidence_capture_intent_window(&input.created_at, &input.expires_at).map_err(
+            |field| {
+                StoreError::schema_invariant(
+                    "project_state",
+                    match field {
+                        EvidenceCaptureIntentWindowError::CreatedAt => {
+                            "invalid capture-intent created_at"
+                        }
+                        EvidenceCaptureIntentWindowError::ExpiresAt => {
+                            "capture-intent expires_at must be exactly 15 minutes after created_at"
+                        }
+                    },
+                )
+            },
+        )?;
 
         self.tx.execute(
             "INSERT INTO evidence_capture_intents (
@@ -858,6 +879,7 @@ impl ProjectMutation<'_> {
         )?;
         validate_artifact_sha256("expected_sha256", &input.expected_sha256)?;
         validate_identifier("expected_redaction_state", &input.expected_redaction_state)?;
+        validate_timestamp("expected_created_at", &input.expected_created_at)?;
         validate_timestamp("expected_expires_at", &input.expected_expires_at)?;
         validate_identifier("artifacts.uri", &input.uri)?;
         validate_json_text("artifacts.retention_json", &input.retention_json)?;
@@ -878,11 +900,35 @@ impl ProjectMutation<'_> {
             || staging.sha256.as_deref() != Some(input.expected_sha256.as_str())
             || staging.size_bytes != Some(input.expected_size_bytes)
             || staging.redaction_state != input.expected_redaction_state
+            || staging.created_at != input.expected_created_at
             || staging.expires_at != input.expected_expires_at
         {
             return Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
                 detail: "staged artifact changed before promotion".to_owned(),
+            });
+        }
+        let created_at = UtcTimestamp::parse(&staging.created_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "artifact_staging",
+                &staging.handle_id,
+                "created_at",
+            )
+        })?;
+        let expires_at = UtcTimestamp::parse(&staging.expires_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "artifact_staging",
+                &staging.handle_id,
+                "expires_at",
+            )
+        })?;
+        let committed_at = UtcTimestamp::parse(self.committed_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value("project_state", self.project_id, "updated_at")
+        })?;
+        if committed_at < created_at || committed_at >= expires_at {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact is outside its exact eligibility window".to_owned(),
             });
         }
         let staging_tmp_path =
@@ -939,9 +985,9 @@ impl ProjectMutation<'_> {
                 'available',
                 ?12,
                 ?13,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?14
+                ?14,
+                ?14,
+                ?15
             )",
             params![
                 self.project_id,
@@ -957,6 +1003,7 @@ impl ProjectMutation<'_> {
                 input.expected_redaction_state,
                 input.retention_json,
                 input.producer_json,
+                self.committed_at,
                 input.metadata_json
             ],
         )?;
@@ -966,7 +1013,7 @@ impl ProjectMutation<'_> {
                 SET status = 'consumed',
                     consumed_by_run_id = ?3,
                     promoted_artifact_id = ?4,
-                    consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    consumed_at = ?5
               WHERE project_id = ?1
                 AND handle_id = ?2
                 AND status = 'staged'",
@@ -974,7 +1021,8 @@ impl ProjectMutation<'_> {
                 self.project_id,
                 input.handle_id,
                 input.run_id,
-                input.artifact_id
+                input.artifact_id,
+                self.committed_at
             ],
         )?;
         if changed == 1 {
@@ -1013,8 +1061,8 @@ impl ProjectMutation<'_> {
                 ?4,
                 ?5,
                 ?6,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?7
+                ?7,
+                ?8
             )",
             params![
                 self.project_id,
@@ -1023,13 +1071,18 @@ impl ProjectMutation<'_> {
                 input.owner_record_kind,
                 input.owner_record_id,
                 input.created_by_run_id,
+                self.committed_at,
                 input.metadata_json
             ],
         )?;
         Ok(())
     }
 
-    fn upsert_evidence_summary(&mut self, input: &EvidenceSummaryUpsert) -> StoreResult<()> {
+    fn upsert_evidence_summary(
+        &mut self,
+        input: &EvidenceSummaryUpsert,
+        committed_state_version: u64,
+    ) -> StoreResult<()> {
         validate_identifier("evidence_summary_id", &input.evidence_summary_id)?;
         validate_identifier("task_id", &input.task_id)?;
         if let Some(change_unit_id) = &input.change_unit_id {
@@ -1043,6 +1096,10 @@ impl ProjectMutation<'_> {
         )?;
         validate_state_refs_json("evidence_summaries.gap_refs_json", &input.gap_refs_json)?;
         validate_evidence_metadata_json("evidence_summaries.metadata_json", &input.metadata_json)?;
+        let produced_at_state_version = u64_to_i64(
+            "evidence_summaries.produced_at_state_version",
+            committed_state_version,
+        )?;
 
         self.tx.execute(
             "INSERT INTO evidence_summaries (
@@ -1050,6 +1107,7 @@ impl ProjectMutation<'_> {
                 evidence_summary_id,
                 task_id,
                 change_unit_id,
+                produced_at_state_version,
                 status,
                 coverage_json,
                 supporting_refs_json,
@@ -1067,28 +1125,32 @@ impl ProjectMutation<'_> {
                 ?6,
                 ?7,
                 ?8,
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?9
+                ?9,
+                ?10,
+                ?10,
+                ?11
             )
             ON CONFLICT(project_id, evidence_summary_id) DO UPDATE SET
                 task_id = excluded.task_id,
                 change_unit_id = excluded.change_unit_id,
+                produced_at_state_version = excluded.produced_at_state_version,
                 status = excluded.status,
                 coverage_json = excluded.coverage_json,
                 supporting_refs_json = excluded.supporting_refs_json,
                 gap_refs_json = excluded.gap_refs_json,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                updated_at = excluded.updated_at,
                 metadata_json = excluded.metadata_json",
             params![
                 self.project_id,
                 input.evidence_summary_id,
                 input.task_id,
                 input.change_unit_id,
+                produced_at_state_version,
                 input.status,
                 input.coverage_json,
                 input.supporting_refs_json,
                 input.gap_refs_json,
+                self.committed_at,
                 input.metadata_json
             ],
         )?;
@@ -1298,272 +1360,201 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn insert_user_evidence_observation(
-        &mut self,
-        input: &UserEvidenceObservationInsert,
-    ) -> StoreResult<()> {
-        validate_identifier(
-            "user_evidence_observation_id",
-            &input.user_evidence_observation_id,
-        )?;
-        validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("change_unit_id", &input.change_unit_id)?;
-        validate_identifier("baseline_ref", &input.baseline_ref)?;
-        if input.acceptance_criterion_id.is_some() == input.evidence_claim_id.is_some() {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "user evidence observation must select exactly one target identity",
-            ));
-        }
-        if !matches!(
-            input.relevance_status.as_str(),
-            "supported" | "contradicted"
-        ) {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "user evidence observation relevance_status must be supported or contradicted",
-            ));
-        }
-        validate_artifact_refs_json(
-            "user_evidence_observations.output_artifact_refs_json",
-            &input.output_artifact_refs_json,
-        )?;
-        if input.summary.trim().is_empty() {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "user evidence observation summary must not be empty",
-            ));
-        }
-        if input.observed_by_actor_source != "local_user" {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "user evidence observation actor must be local_user",
-            ));
-        }
-        validate_identifier("verification_basis", &input.verification_basis)?;
-        validate_timestamp("observed_at", &input.observed_at)?;
-        validate_timestamp("recorded_at", &input.recorded_at)?;
-
-        self.tx.execute(
-            "INSERT INTO user_evidence_observations (
-                project_id,
-                user_evidence_observation_id,
-                task_id,
-                change_unit_id,
-                scope_revision,
-                baseline_ref,
-                acceptance_criterion_id,
-                evidence_claim_id,
-                relevance_status,
-                output_artifact_refs_json,
-                summary,
-                observed_by_actor_source,
-                verification_basis,
-                observed_at,
-                recorded_at
-            ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
-            )",
-            params![
-                self.project_id,
-                input.user_evidence_observation_id,
-                input.task_id,
-                input.change_unit_id,
-                input.scope_revision,
-                input.baseline_ref,
-                input.acceptance_criterion_id,
-                input.evidence_claim_id,
-                input.relevance_status,
-                input.output_artifact_refs_json,
-                input.summary,
-                input.observed_by_actor_source,
-                input.verification_basis,
-                input.observed_at,
-                input.recorded_at,
-            ],
-        )?;
-        Ok(())
-    }
-
-    fn insert_user_judgment(&mut self, input: &UserJudgmentInsert) -> StoreResult<()> {
-        validate_identifier("judgment_id", &input.judgment_id)?;
+    fn insert_user_action_request(&mut self, input: &UserActionRequestInsert) -> StoreResult<()> {
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
         validate_identifier("task_id", &input.task_id)?;
         if let Some(change_unit_id) = &input.change_unit_id {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
-        validate_identifier("judgment_kind", &input.judgment_kind)?;
-        validate_user_judgment_request_json("user_judgments.request_json", &input.request_json)?;
-        validate_json_text("user_judgments.context_json", &input.context_json)?;
-        validate_user_judgment_options_json("user_judgments.options_json", &input.options_json)?;
-        validate_json_text(
-            "user_judgments.affected_refs_json",
-            &input.affected_refs_json,
+        validate_persisted_user_action_request_json(
+            "user_action_requests.request_json",
+            &input.request_json,
         )?;
-        validate_json_text(
-            "user_judgments.artifact_refs_json",
-            &input.artifact_refs_json,
+        validate_user_action_basis_json("user_action_requests.basis_json", &input.basis_json)?;
+        validate_user_action_required_for_json(
+            "user_action_requests.required_for_json",
+            &input.required_for_json,
         )?;
-        validate_json_text(
-            "user_judgments.sensitive_action_scope_json",
-            &input.sensitive_action_scope_json,
-        )?;
-        validate_judgment_basis_json("user_judgments.basis_json", &input.basis_json)?;
         validate_identifier(
             "requested_by_actor_source",
             &input.requested_by_actor_source,
         )?;
-        validate_identifier("requested_at", &input.requested_at)?;
-        validate_json_text("user_judgments.metadata_json", &input.metadata_json)?;
+        validate_timestamp("requested_at", &input.requested_at)?;
+        if let Some(expires_at) = &input.expires_at {
+            validate_timestamp("expires_at", expires_at)?;
+        }
+        validate_json_text("user_action_requests.metadata_json", &input.metadata_json)?;
+        if !matches!(
+            input.source_method.as_str(),
+            "volicord.request_user_action" | "volicord.reconcile_changes"
+        ) {
+            return Err(StoreError::InvalidInput {
+                detail: "user-action request source_method is not an allowed creator".to_owned(),
+            });
+        }
+        validate_identifier(
+            "user_action_requests.source_idempotency_key",
+            &input.source_idempotency_key,
+        )?;
+        validate_user_action_request_column_agreement(UserActionRequestColumnFacts {
+            task_id: &input.task_id,
+            change_unit_id: input.change_unit_id.as_deref(),
+            request_json: &input.request_json,
+            basis_json: &input.basis_json,
+            required_for_json: &input.required_for_json,
+            requested_at: &input.requested_at,
+            expires_at: input.expires_at.as_deref(),
+            action_kind: input.action_kind,
+            basis_status: input.basis_status,
+        })?;
 
         self.tx.execute(
-            "INSERT INTO user_judgments (
+            "INSERT INTO user_action_requests (
                 project_id,
-                judgment_id,
+                user_action_request_id,
                 task_id,
                 change_unit_id,
-                judgment_kind,
-                status,
+                action_kind,
                 request_json,
-                context_json,
-                options_json,
-                affected_refs_json,
-                artifact_refs_json,
-                sensitive_action_scope_json,
                 basis_json,
                 basis_status,
-                resolution_outcome,
-                resolution_machine_action,
-                resolution_json,
-                resolution_rationale_json,
+                required_for_json,
                 requested_by_actor_source,
+                source_method,
+                source_idempotency_key,
                 requested_at,
-                resolved_at,
+                expires_at,
                 metadata_json
             )
             VALUES (
-                ?1,
-                ?2,
-                ?3,
-                ?4,
-                ?5,
-                'pending',
-                ?6,
-                ?7,
-                ?8,
-                ?9,
-                ?10,
-                ?11,
-                ?12,
-                ?13,
-                NULL,
-                NULL,
-                NULL,
-                NULL,
-                ?14,
-                ?15,
-                NULL,
-                ?16
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
             )",
             params![
                 self.project_id,
-                input.judgment_id,
+                input.user_action_request_id,
                 input.task_id,
                 input.change_unit_id,
-                input.judgment_kind,
+                user_action_kind_as_str(input.action_kind),
                 input.request_json,
-                input.context_json,
-                input.options_json,
-                input.affected_refs_json,
-                input.artifact_refs_json,
-                input.sensitive_action_scope_json,
                 input.basis_json,
-                judgment_basis_status_as_str(input.basis_status),
+                user_action_basis_status_as_str(input.basis_status),
+                input.required_for_json,
                 input.requested_by_actor_source,
+                input.source_method,
+                input.source_idempotency_key,
                 input.requested_at,
+                input.expires_at,
                 input.metadata_json
             ],
         )?;
         Ok(())
     }
 
-    fn resolve_user_judgment(&mut self, input: &UserJudgmentResolutionUpdate) -> StoreResult<()> {
-        validate_identifier("judgment_id", &input.judgment_id)?;
-        validate_identifier("status", &input.status)?;
-        let resolution_outcome = judgment_resolution_outcome_as_str(input.resolution_outcome);
-        let resolution_machine_action =
-            judgment_machine_action_as_str(input.resolution_machine_action);
-        if input.resolution_machine_action.resolution_outcome() != input.resolution_outcome {
+    fn insert_user_action_resolution(
+        &mut self,
+        input: &UserActionResolutionInsert,
+    ) -> StoreResult<()> {
+        validate_identifier(
+            "user_action_resolution_id",
+            &input.user_action_resolution_id,
+        )?;
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+        validate_channel_submission_id(&input.channel_submission_id).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: error.to_string(),
+            }
+        })?;
+        validate_persisted_user_action_resolution_json(
+            "user_action_resolutions.resolution_json",
+            &input.resolution_json,
+        )?;
+        if input.resolved_by_actor_source != "local_user" {
             return Err(StoreError::InvalidInput {
-                detail: "user_judgments.resolution_machine_action must match resolution_outcome"
-                    .to_owned(),
+                detail: "user-action resolution actor must be local_user".to_owned(),
             });
         }
-        validate_user_judgment_resolution_json(
-            "user_judgments.resolution_json",
-            &input.resolution_json,
-            input.resolution_machine_action,
-            input.resolution_outcome,
-        )?;
-        validate_judgment_rationale_json(
-            "user_judgments.resolution_rationale_json",
-            &input.resolution_rationale_json,
-        )?;
-        if let Some(value) = &input.sensitive_action_scope_json {
-            validate_json_text("user_judgments.sensitive_action_scope_json", value)?;
-        }
-        validate_identifier("resolved_by_actor_source", &input.resolved_by_actor_source)?;
         validate_identifier(
             "resolved_verification_basis",
             &input.resolved_verification_basis,
         )?;
         validate_identifier("resolved_assurance_level", &input.resolved_assurance_level)?;
-        validate_identifier("resolved_at", &input.resolved_at)?;
+        validate_user_action_resolution_provenance(
+            input.channel_kind,
+            &input.resolved_by_actor_source,
+            &input.resolved_verification_basis,
+            &input.resolved_assurance_level,
+        )?;
+        validate_timestamp("resolved_at", &input.resolved_at)?;
+        validate_user_action_resolution_column_agreement(
+            &input.resolution_json,
+            input.action_kind,
+            &input.user_action_resolution_id,
+        )?;
+        if let Some(request) =
+            user_action_request_record(self.tx, self.project_id, &input.user_action_request_id)?
+        {
+            validate_user_action_resolution_timestamp_order_for_insert(
+                &request,
+                &input.resolved_at,
+            )?;
+            let candidate = UserActionResolutionRecord {
+                project_id: self.project_id.to_owned(),
+                user_action_resolution_id: input.user_action_resolution_id.clone(),
+                user_action_request_id: input.user_action_request_id.clone(),
+                action_kind: input.action_kind,
+                channel_kind: input.channel_kind,
+                channel_submission_id: input.channel_submission_id.clone(),
+                resolution_json: input.resolution_json.clone(),
+                resolved_by_actor_source: input.resolved_by_actor_source.clone(),
+                resolved_verification_basis: input.resolved_verification_basis.clone(),
+                resolved_assurance_level: input.resolved_assurance_level.clone(),
+                resolved_at: input.resolved_at.clone(),
+            };
+            validate_user_action_request_resolution_pair(&request, &candidate).map_err(|_| {
+                StoreError::InvalidInput {
+                    detail:
+                        "user-action resolution must exactly preserve its stored request authority"
+                            .to_owned(),
+                }
+            })?;
+        }
 
-        let changed = self.tx.execute(
-            "UPDATE user_judgments
-                SET status = ?3,
-                    resolution_outcome = ?4,
-                    resolution_machine_action = ?5,
-                    resolution_json = ?6,
-                    resolution_rationale_json = ?7,
-                    sensitive_action_scope_json = COALESCE(?8, sensitive_action_scope_json),
-                    resolved_by_actor_source = ?9,
-                    resolved_verification_basis = ?10,
-                    resolved_assurance_level = ?11,
-                    resolved_at = ?12
-              WHERE project_id = ?1
-                AND judgment_id = ?2
-                AND status = 'pending'",
+        self.tx.execute(
+            "INSERT INTO user_action_resolutions (
+                project_id,
+                user_action_resolution_id,
+                user_action_request_id,
+                action_kind,
+                channel_kind,
+                channel_submission_id,
+                resolution_json,
+                resolved_by_actor_source,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 self.project_id,
-                input.judgment_id,
-                input.status,
-                resolution_outcome,
-                resolution_machine_action,
+                input.user_action_resolution_id,
+                input.user_action_request_id,
+                user_action_kind_as_str(input.action_kind),
+                user_action_channel_kind_as_str(input.channel_kind),
+                input.channel_submission_id,
                 input.resolution_json,
-                input.resolution_rationale_json,
-                input.sensitive_action_scope_json,
                 input.resolved_by_actor_source,
                 input.resolved_verification_basis,
                 input.resolved_assurance_level,
                 input.resolved_at
             ],
         )?;
-        if changed == 1 {
-            Ok(())
-        } else {
-            Err(StoreError::SchemaInvariant {
-                database_kind: "project_state",
-                detail: "pending user judgment resolution changed no rows".to_owned(),
-            })
-        }
+        Ok(())
     }
 
-    fn consume_local_web_consent_token(
+    fn consume_user_action_channel_token(
         &mut self,
-        input: &LocalWebConsentTokenConsumption,
+        input: &UserActionChannelTokenConsumption,
     ) -> StoreResult<()> {
-        validate_identifier("local_web_consent_tokens.token_hash", &input.token_hash)?;
+        validate_identifier("user_action_channel_tokens.token_hash", &input.token_hash)?;
         if input.token_hash.len() != 64
             || input
                 .token_hash
@@ -1571,19 +1562,81 @@ impl ProjectMutation<'_> {
                 .any(|character| !character.is_ascii_hexdigit())
         {
             return Err(StoreError::InvalidInput {
-                detail: "local_web_consent_tokens.token_hash must be 64 hex characters".to_owned(),
+                detail: "user_action_channel_tokens.token_hash must be 64 hex characters"
+                    .to_owned(),
             });
         }
         validate_identifier("connection_internal_id", &input.connection_internal_id)?;
-        validate_identifier("judgment_id", &input.judgment_id)?;
-        validate_identifier("consumed_at", &input.consumed_at)?;
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+        validate_timestamp("user_action_channel_tokens.consumed_at", &input.consumed_at)?;
         validate_json_text(
-            "local_web_consent_tokens.completion_metadata_json",
+            "user_action_channel_tokens.completion_metadata_json",
             &input.completion_metadata_json,
         )?;
 
+        let consumed_at =
+            UtcTimestamp::parse(&input.consumed_at).map_err(|_| StoreError::InvalidInput {
+                detail: "user_action_channel_tokens.consumed_at must be a valid RFC 3339 timestamp"
+                    .to_owned(),
+            })?;
+        let stored = self
+            .tx
+            .query_row(
+                "SELECT status, created_at, expires_at
+                   FROM user_action_channel_tokens
+                  WHERE project_id = ?1
+                    AND token_hash = ?2
+                    AND connection_internal_id = ?3
+                    AND user_action_request_id = ?4",
+                params![
+                    self.project_id,
+                    input.token_hash,
+                    input.connection_internal_id,
+                    input.user_action_request_id
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((status, created_at, expires_at)) = stored else {
+            return Err(StoreError::Conflict {
+                entity: "user_action_channel_token",
+                id: input.token_hash.clone(),
+                detail: "token is not pending, is expired, or is not bound to this user action"
+                    .to_owned(),
+            });
+        };
+        if status != "pending" {
+            return Err(StoreError::Conflict {
+                entity: "user_action_channel_token",
+                id: input.token_hash.clone(),
+                detail: "token is not pending, is expired, or is not bound to this user action"
+                    .to_owned(),
+            });
+        }
+        let (created_at, expires_at) = validate_persisted_user_action_channel_token_window(
+            self.tx,
+            self.project_id,
+            &input.user_action_request_id,
+            &created_at,
+            &expires_at,
+        )?;
+        if consumed_at < created_at || consumed_at >= expires_at {
+            return Err(StoreError::Conflict {
+                entity: "user_action_channel_token",
+                id: input.token_hash.clone(),
+                detail: "token is not pending, is expired, or is not bound to this user action"
+                    .to_owned(),
+            });
+        }
+
         let changed = self.tx.execute(
-            "UPDATE local_web_consent_tokens
+            "UPDATE user_action_channel_tokens
                 SET status = 'consumed',
                     consumed_at = ?5,
                     completed_at = ?5,
@@ -1591,14 +1644,13 @@ impl ProjectMutation<'_> {
               WHERE project_id = ?1
                 AND token_hash = ?2
                 AND connection_internal_id = ?3
-                AND judgment_id = ?4
-                AND status = 'pending'
-                AND expires_at > ?5",
+                AND user_action_request_id = ?4
+                AND status = 'pending'",
             params![
                 self.project_id,
                 input.token_hash,
                 input.connection_internal_id,
-                input.judgment_id,
+                input.user_action_request_id,
                 input.consumed_at,
                 input.completion_metadata_json
             ],
@@ -1607,9 +1659,9 @@ impl ProjectMutation<'_> {
             Ok(())
         } else {
             Err(StoreError::Conflict {
-                entity: "local_web_consent_token",
+                entity: "user_action_channel_token",
                 id: input.token_hash.clone(),
-                detail: "token is not pending, is expired, or is not bound to this judgment"
+                detail: "token is not pending, is expired, or is not bound to this user action"
                     .to_owned(),
             })
         }
@@ -1763,20 +1815,21 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn update_user_judgment_basis(&mut self, input: &UserJudgmentBasisUpdate) -> StoreResult<()> {
-        validate_identifier("judgment_id", &input.judgment_id)?;
-        validate_judgment_basis_json("user_judgments.basis_json", &input.basis_json)?;
+    fn update_user_action_basis(&mut self, input: &UserActionBasisUpdate) -> StoreResult<()> {
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+        validate_user_action_basis_json("user_action_requests.basis_json", &input.basis_json)?;
+        let basis_json = user_action_basis_json_with_status(&input.basis_json, input.basis_status)?;
         let changed = self.tx.execute(
-            "UPDATE user_judgments
+            "UPDATE user_action_requests
                 SET basis_json = ?3,
                     basis_status = ?4
               WHERE project_id = ?1
-                AND judgment_id = ?2",
+                AND user_action_request_id = ?2",
             params![
                 self.project_id,
-                input.judgment_id,
-                input.basis_json,
-                judgment_basis_status_as_str(input.basis_status)
+                input.user_action_request_id,
+                basis_json,
+                user_action_basis_status_as_str(input.basis_status)
             ],
         )?;
         if changed == 1 {
@@ -1784,42 +1837,58 @@ impl ProjectMutation<'_> {
         } else {
             Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
-                detail: "user judgment basis update changed no rows".to_owned(),
+                detail: "user-action basis update changed no rows".to_owned(),
             })
         }
     }
 
-    fn mark_user_judgment_bases_status(
+    fn mark_user_action_bases_status(
         &mut self,
-        input: &UserJudgmentBasisStatusMark,
+        input: &UserActionBasisStatusMark,
     ) -> StoreResult<()> {
         let status = match input.basis_status {
-            JudgmentBasisCompatibilityStatus::Stale
-            | JudgmentBasisCompatibilityStatus::Superseded => {
-                judgment_basis_status_as_str(input.basis_status)
+            UserActionBasisStatus::Stale | UserActionBasisStatus::Superseded => {
+                user_action_basis_status_as_str(input.basis_status)
             }
-            _ => {
+            UserActionBasisStatus::Current => {
                 return Err(StoreError::InvalidInput {
-                    detail: "selected judgment bases may only be marked stale or superseded"
+                    detail: "selected user-action bases may only be marked stale or superseded"
                         .to_owned(),
                 })
             }
         };
 
-        for judgment_id in &input.judgment_ids {
-            validate_identifier("judgment_id", judgment_id)?;
+        for request_id in &input.user_action_request_ids {
+            validate_identifier("user_action_request_id", request_id)?;
+            let basis_json = self
+                .tx
+                .query_row(
+                    "SELECT basis_json FROM user_action_requests
+                      WHERE project_id = ?1 AND user_action_request_id = ?2",
+                    params![self.project_id, request_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            let Some(basis_json) = basis_json else {
+                return Err(StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: "selected user-action basis request does not exist".to_owned(),
+                });
+            };
+            let basis_json = user_action_basis_json_with_status(&basis_json, input.basis_status)?;
             let changed = self.tx.execute(
-                "UPDATE user_judgments
-                    SET basis_status = ?3
+                "UPDATE user_action_requests
+                    SET basis_status = ?3,
+                        basis_json = ?4
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                params![self.project_id, judgment_id, status],
+                    AND user_action_request_id = ?2",
+                params![self.project_id, request_id, status, basis_json],
             )?;
             if changed != 1 {
                 return Err(StoreError::SchemaInvariant {
                     database_kind: "project_state",
                     detail: format!(
-                        "selected user judgment basis status update changed {changed} rows"
+                        "selected user-action basis status update changed {changed} rows"
                     ),
                 });
             }
@@ -1828,77 +1897,90 @@ impl ProjectMutation<'_> {
         Ok(())
     }
 
-    fn mark_user_judgments_superseded_or_stale(
+    fn mark_user_actions_superseded_or_stale(
         &mut self,
-        input: &UserJudgmentInvalidation,
+        input: &UserActionInvalidation,
     ) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        if input.judgment_kinds.is_empty() {
-            self.mark_user_judgments_superseded_or_stale_for_kind(&input.task_id, None)?;
+        if input.action_kinds.is_empty() {
+            self.mark_user_actions_superseded_or_stale_for_kind(&input.task_id, None)?;
         } else {
-            for judgment_kind in &input.judgment_kinds {
-                validate_identifier("judgment_kind", judgment_kind)?;
-                self.mark_user_judgments_superseded_or_stale_for_kind(
+            for action_kind in &input.action_kinds {
+                self.mark_user_actions_superseded_or_stale_for_kind(
                     &input.task_id,
-                    Some(judgment_kind),
+                    Some(*action_kind),
                 )?;
             }
         }
         Ok(())
     }
 
-    fn mark_user_judgments_superseded_or_stale_for_kind(
+    fn mark_user_actions_superseded_or_stale_for_kind(
         &mut self,
         task_id: &str,
-        judgment_kind: Option<&str>,
+        action_kind: Option<UserActionKind>,
     ) -> StoreResult<()> {
-        match judgment_kind {
-            Some(judgment_kind) => {
-                self.tx.execute(
-                    "UPDATE user_judgments
-                        SET status = 'superseded',
-                            basis_status = 'superseded'
-                      WHERE project_id = ?1
-                        AND task_id = ?2
-                        AND judgment_kind = ?3
-                        AND status = 'pending'
-                        AND basis_status = 'current'",
-                    params![self.project_id, task_id, judgment_kind],
-                )?;
-                self.tx.execute(
-                    "UPDATE user_judgments
-                        SET status = 'stale',
-                            basis_status = 'stale'
-                      WHERE project_id = ?1
-                        AND task_id = ?2
-                        AND judgment_kind = ?3
-                        AND status = 'resolved'
-                        AND basis_status = 'current'",
-                    params![self.project_id, task_id, judgment_kind],
-                )?;
-            }
-            None => {
-                self.tx.execute(
-                    "UPDATE user_judgments
-                        SET status = 'superseded',
-                            basis_status = 'superseded'
-                      WHERE project_id = ?1
-                        AND task_id = ?2
-                        AND status = 'pending'
-                        AND basis_status = 'current'",
-                    params![self.project_id, task_id],
-                )?;
-                self.tx.execute(
-                    "UPDATE user_judgments
-                        SET status = 'stale',
-                            basis_status = 'stale'
-                      WHERE project_id = ?1
-                        AND task_id = ?2
-                        AND status = 'resolved'
-                        AND basis_status = 'current'",
-                    params![self.project_id, task_id],
-                )?;
-            }
+        let sql = if action_kind.is_some() {
+            "SELECT
+                a.user_action_request_id,
+                a.basis_json,
+                EXISTS (
+                  SELECT 1 FROM user_action_resolutions AS r
+                   WHERE r.project_id = a.project_id
+                     AND r.user_action_request_id = a.user_action_request_id
+                )
+               FROM user_action_requests AS a
+              WHERE a.project_id = ?1
+                AND a.task_id = ?2
+                AND a.action_kind = ?3
+                AND a.basis_status = 'current'"
+        } else {
+            "SELECT
+                a.user_action_request_id,
+                a.basis_json,
+                EXISTS (
+                  SELECT 1 FROM user_action_resolutions AS r
+                   WHERE r.project_id = a.project_id
+                     AND r.user_action_request_id = a.user_action_request_id
+                )
+               FROM user_action_requests AS a
+              WHERE a.project_id = ?1
+                AND a.task_id = ?2
+                AND (?3 IS NULL OR a.action_kind = ?3)
+                AND a.basis_status = 'current'"
+        };
+        let kind = action_kind.map(user_action_kind_as_str);
+        let rows = {
+            let mut stmt = self.tx.prepare(sql)?;
+            let mapped = stmt.query_map(params![self.project_id, task_id, kind], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, bool>(2)?,
+                ))
+            })?;
+            mapped.collect::<Result<Vec<_>, _>>()?
+        };
+        for (request_id, basis_json, has_resolution) in rows {
+            let status = if has_resolution {
+                UserActionBasisStatus::Stale
+            } else {
+                UserActionBasisStatus::Superseded
+            };
+            let basis_json = user_action_basis_json_with_status(&basis_json, status)?;
+            self.tx.execute(
+                "UPDATE user_action_requests
+                    SET basis_status = ?3,
+                        basis_json = ?4
+                  WHERE project_id = ?1
+                    AND user_action_request_id = ?2",
+                params![
+                    self.project_id,
+                    request_id,
+                    user_action_basis_status_as_str(status),
+                    basis_json
+                ],
+            )?;
         }
         Ok(())
     }
@@ -1911,25 +1993,25 @@ impl ProjectMutation<'_> {
     ) -> StoreResult<()> {
         let sql = match column {
             "shaping_summary_json" => {
-                "UPDATE tasks SET shaping_summary_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET shaping_summary_json = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "bounded_context_json" => {
-                "UPDATE tasks SET bounded_context_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET bounded_context_json = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "autonomy_boundary_json" => {
-                "UPDATE tasks SET autonomy_boundary_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET autonomy_boundary_json = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "close_summary_json" => {
-                "UPDATE tasks SET close_summary_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET close_summary_json = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "lifecycle_phase" => {
-                "UPDATE tasks SET lifecycle_phase = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET lifecycle_phase = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "work_phase" => {
-                "UPDATE tasks SET work_phase = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET work_phase = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "result" => {
-                "UPDATE tasks SET result = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET result = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             _ => {
                 return Err(StoreError::InvalidInput {
@@ -1937,9 +2019,10 @@ impl ProjectMutation<'_> {
                 })
             }
         };
-        let changed = self
-            .tx
-            .execute(sql, params![self.project_id, task_id, value])?;
+        let changed = self.tx.execute(
+            sql,
+            params![self.project_id, task_id, value, self.committed_at],
+        )?;
         if changed == 1 {
             Ok(())
         } else {
@@ -1958,10 +2041,10 @@ impl ProjectMutation<'_> {
     ) -> StoreResult<()> {
         let sql = match column {
             "title" => {
-                "UPDATE tasks SET title = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET title = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             "summary" => {
-                "UPDATE tasks SET summary = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ?1 AND task_id = ?2"
+                "UPDATE tasks SET summary = ?3, updated_at = ?4 WHERE project_id = ?1 AND task_id = ?2"
             }
             _ => {
                 return Err(StoreError::InvalidInput {
@@ -1969,15 +2052,68 @@ impl ProjectMutation<'_> {
                 })
             }
         };
-        let changed = self
-            .tx
-            .execute(sql, params![self.project_id, task_id, value])?;
+        let changed = self.tx.execute(
+            sql,
+            params![self.project_id, task_id, value, self.committed_at],
+        )?;
         if changed == 1 {
             Ok(())
         } else {
             Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
                 detail: format!("Task column {column} update changed no rows"),
+            })
+        }
+    }
+}
+
+fn validate_user_action_resolution_timestamp_order_for_insert(
+    request: &UserActionRequestRecord,
+    resolved_at: &str,
+) -> StoreResult<()> {
+    let requested_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "requested_at",
+        )
+    })?;
+    let expires_at = request
+        .expires_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                &request.user_action_request_id,
+                "expires_at",
+            )
+        })?;
+    let resolved_at = UtcTimestamp::parse(resolved_at).map_err(|_| StoreError::InvalidInput {
+        detail: "user_action_resolutions.resolved_at must be a valid RFC 3339 timestamp".to_owned(),
+    })?;
+    match validate_user_action_timestamp_order(
+        &requested_at,
+        expires_at.as_ref(),
+        Some(&resolved_at),
+    ) {
+        Ok(()) => Ok(()),
+        Err(UserActionTimestampOrderFailure::ExpiryNotAfterRequest) => {
+            Err(StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                &request.user_action_request_id,
+                "expires_at",
+            ))
+        }
+        Err(UserActionTimestampOrderFailure::ResolutionBeforeRequest) => {
+            Err(StoreError::InvalidInput {
+                detail: "user_action_resolutions.resolved_at must be at or after user_action_requests.requested_at".to_owned(),
+            })
+        }
+        Err(UserActionTimestampOrderFailure::ResolutionAtOrAfterExpiry) => {
+            Err(StoreError::InvalidInput {
+                detail: "user_action_resolutions.resolved_at must be before user_action_requests.expires_at".to_owned(),
             })
         }
     }

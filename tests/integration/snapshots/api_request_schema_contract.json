@@ -22,9 +22,8 @@
     "volicord.prepare_write",
     "volicord.stage_artifact",
     "volicord.record_run",
-    "volicord.request_user_judgment",
-    "volicord.record_user_judgment",
-    "volicord.record_user_observation",
+    "volicord.request_user_action",
+    "volicord.resolve_user_action",
     "volicord.reconcile_changes",
     "volicord.close_task"
   ],
@@ -83,7 +82,7 @@
         "envelope",
         "operation_result_ref"
       ],
-      "sha256": "sha256:7f34d9fe014978fcaf3aa0c574ca9eac3932e3f5cdfed4e4ddaab4079d602190"
+      "sha256": "sha256:0cd01a30a8aed68caf33b20c4bab0b229fc6b00242d62b20c8db3fd65f56b9f5"
     },
     "volicord.intake": {
       "definitions": [
@@ -136,7 +135,7 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:8a228bd1b058619e44e2961f8adbee89f231a5c65077cceaed55480e04947281"
+      "sha256": "sha256:606287dd872046380e8eeb49d7e0d156ea6b9e38ba2d3805309aae8ffb256790"
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
@@ -204,7 +203,7 @@
         "envelope",
         "task_id"
       ],
-      "sha256": "sha256:98a05e12212db0dd6fd1e8c4a94133231b2e648b39b6b0c0f3cca1075f5dc92c"
+      "sha256": "sha256:207db7571bf5999e9df4c83a8b17399ec9a7bea61d8d93a13033c3b2ac46033e"
     },
     "volicord.record_run": {
       "definitions": [
@@ -270,122 +269,67 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:443c04d39019b360e13e92cdde59cb53f0f681860dfd42d530916db87efabd8b"
+      "sha256": "sha256:cf07386f3fb918a99dd6c42fe1b457c43639fa4bd01a73b8c224dce63e65cfbb"
     },
-    "volicord.record_user_judgment": {
+    "volicord.request_user_action": {
       "definitions": [
         "AcceptedRiskInput",
         "ActorSource",
         "ArtifactAvailability",
         "ArtifactIntegrityStatus",
         "ArtifactRef",
+        "EvidenceTarget",
         "JudgmentKind",
-        "JudgmentRationale",
-        "RecordUserJudgmentPayload",
+        "JudgmentPresentation",
         "RedactionState",
         "SensitiveActionScope",
         "StateRecordKind",
         "StateRecordRef",
         "ToolEnvelope",
+        "UserActionContext",
+        "UserActionDraft",
+        "UserActionOptionInput",
+        "UserActionRequiredFor",
         "UtcTimestamp"
       ],
       "root_properties": [
-        "accepted_risks",
-        "answer",
+        "action",
+        "change_unit_id",
         "envelope",
-        "judgment_kind",
-        "note",
-        "rationale",
-        "selected_option_id",
-        "user_judgment_id"
+        "expires_at",
+        "required_for",
+        "task_id"
       ],
       "root_required": [
-        "accepted_risks",
-        "answer",
+        "action",
+        "change_unit_id",
         "envelope",
-        "judgment_kind",
-        "note",
-        "rationale",
-        "selected_option_id",
-        "user_judgment_id"
+        "expires_at",
+        "required_for",
+        "task_id"
       ],
-      "sha256": "sha256:eda119cc66a54d249142052b81732515a56e0fa069222accce78977be049102a"
+      "sha256": "sha256:21ad393005e12c74c40c9d5ec4a635a93bb6a4814a1fb1ca4811515f45d65cc3"
     },
-    "volicord.record_user_observation": {
+    "volicord.resolve_user_action": {
       "definitions": [
         "EvidenceRelevanceStatus",
         "EvidenceTarget",
         "ToolEnvelope",
-        "UtcTimestamp"
+        "UserActionResolutionInput"
       ],
       "root_properties": [
-        "artifact_ids",
-        "change_unit_id",
+        "channel_submission_id",
         "envelope",
-        "observed_at",
-        "relevance_status",
-        "summary",
-        "target",
-        "task_id"
+        "resolution",
+        "user_action_request_id"
       ],
       "root_required": [
-        "artifact_ids",
-        "change_unit_id",
+        "channel_submission_id",
         "envelope",
-        "observed_at",
-        "relevance_status",
-        "summary",
-        "target",
-        "task_id"
+        "resolution",
+        "user_action_request_id"
       ],
-      "sha256": "sha256:be11046488a867d08987583b62ae1c0c3cb567a5a3829a406beced63c5779e63"
-    },
-    "volicord.request_user_judgment": {
-      "definitions": [
-        "AcceptedRiskInput",
-        "ActorSource",
-        "ArtifactAvailability",
-        "ArtifactIntegrityStatus",
-        "ArtifactRef",
-        "JudgmentKind",
-        "JudgmentPresentation",
-        "JudgmentRequiredFor",
-        "RedactionState",
-        "SensitiveActionScope",
-        "StateRecordKind",
-        "StateRecordRef",
-        "ToolEnvelope",
-        "UserJudgmentContext",
-        "UserJudgmentOptionInput",
-        "UtcTimestamp"
-      ],
-      "root_properties": [
-        "affected_refs",
-        "change_unit_id",
-        "context",
-        "envelope",
-        "expires_at",
-        "judgment_kind",
-        "options",
-        "presentation",
-        "question",
-        "required_for",
-        "sensitive_action_scope",
-        "task_id"
-      ],
-      "root_required": [
-        "affected_refs",
-        "change_unit_id",
-        "context",
-        "envelope",
-        "expires_at",
-        "judgment_kind",
-        "presentation",
-        "question",
-        "required_for",
-        "task_id"
-      ],
-      "sha256": "sha256:f9c9692d614ffb4b9954d71220c5a2e680d3cda08b127817493831323a6fbaed"
+      "sha256": "sha256:e558c1db2cb87d9789f13eb3b08464e4796461e347b230c4799a5ab73428c860"
     },
     "volicord.stage_artifact": {
       "definitions": [
@@ -429,7 +373,7 @@
         "envelope",
         "include"
       ],
-      "sha256": "sha256:b67e3f3022b4297fdcde2a78897c84e8d4a6402b209343ac0f6da43f756d8232"
+      "sha256": "sha256:8358ef5672ec6dcac9bf900cad9b9bbba7e88192e790cda673a0c4d3bada3537"
     },
     "volicord.update_scope": {
       "definitions": [
@@ -470,7 +414,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:a458855261b3c721b96252c8c855c7dd2861b7459b776f811a12eb13610750f4"
+      "sha256": "sha256:882cb1be979a92aa413f5240e33bc0267aa1a2c4511e7775dd9217ea5f03c606"
     }
   }
 }

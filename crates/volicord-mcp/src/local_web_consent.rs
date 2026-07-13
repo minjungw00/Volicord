@@ -3,7 +3,6 @@ use crate::errors::{LocalHttpError, McpAdapterError};
 use crate::http::*;
 use crate::prelude::*;
 use crate::routing::*;
-use crate::stdio::*;
 use crate::util::*;
 
 /// Local MCP adapter bound to a Core service and one Agent Connection.
@@ -146,7 +145,17 @@ pub(crate) fn handle_local_web_consent_get(
     adapter: &McpAdapter,
     request: HttpRequest,
 ) -> HttpResponse {
-    let fields = parse_urlencoded(http_request_query(&request.target));
+    let fields = match parse_urlencoded(http_request_query(&request.target)) {
+        Ok(fields) => fields,
+        Err(_) => {
+            return local_web_consent_error_page(
+                400,
+                "Bad Request",
+                "FORM_ENCODING_INVALID",
+                "Consent link data must use valid percent encoding.",
+            )
+        }
+    };
     let Some(project_id) = single_param(&fields, "project") else {
         return local_web_consent_error_page(
             400,
@@ -165,6 +174,14 @@ pub(crate) fn handle_local_web_consent_get(
     };
     let now = match local_web_consent_timestamp_for_validation(adapter, project_id) {
         Ok(now) => now,
+        Err(McpAdapterError::Store(StoreError::NotFound { .. })) => {
+            return local_web_consent_error_page(
+                404,
+                "Not Found",
+                "INVALID_TOKEN",
+                "This consent link is not valid.",
+            )
+        }
         Err(_) => {
             return local_web_consent_error_page(
                 500,
@@ -175,13 +192,16 @@ pub(crate) fn handle_local_web_consent_get(
         }
     };
     match validate_local_web_consent(adapter, project_id, token, &now) {
-        Ok(LocalWebConsentTokenValidation::Valid(record)) => {
-            match local_web_pending_judgment(adapter, &record) {
-                Ok(judgment) => local_web_consent_page(adapter, &record, &judgment, token),
+        Ok(UserActionChannelTokenValidation::Valid(record)) => {
+            match local_web_pending_user_action(adapter, &record, false) {
+                Ok(action) => match validate_local_web_consent_form(&record, &action) {
+                    Ok(()) => local_web_consent_page(adapter, &record, &action, token),
+                    Err(response) => response,
+                },
                 Err(response) => response,
             }
         }
-        Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+        Ok(UserActionChannelTokenValidation::Rejected(rejection)) => {
             local_web_consent_rejection_page(rejection)
         }
         Err(_) => local_web_consent_error_page(
@@ -216,7 +236,17 @@ pub(crate) fn handle_local_web_consent_post(
             )
         }
     };
-    let fields = parse_urlencoded(body);
+    let fields = match parse_urlencoded(body) {
+        Ok(fields) => fields,
+        Err(_) => {
+            return local_web_consent_error_page(
+                400,
+                "Bad Request",
+                "FORM_ENCODING_INVALID",
+                "Consent form data must use valid percent encoding.",
+            )
+        }
+    };
     let Some(project_id) = single_param(&fields, "project") else {
         return local_web_consent_error_page(
             400,
@@ -233,26 +263,16 @@ pub(crate) fn handle_local_web_consent_post(
             "The consent form is missing required token context.",
         );
     };
-    let Some(selected_option_id) = single_param(&fields, "selected_option_id") else {
-        return local_web_consent_error_page(
-            400,
-            "Bad Request",
-            "INVALID_SELECTION",
-            "Choose one judgment option before submitting.",
-        );
-    };
-    let note = optional_param(&fields, "note");
-    if note.as_ref().is_some_and(|value| value.len() > 1000) {
-        return local_web_consent_error_page(
-            400,
-            "Bad Request",
-            "NOTE_TOO_LONG",
-            "The optional note must be at most 1000 characters.",
-        );
-    }
-
     let now = match local_web_consent_timestamp_for_validation(adapter, project_id) {
         Ok(now) => now,
+        Err(McpAdapterError::Store(StoreError::NotFound { .. })) => {
+            return local_web_consent_error_page(
+                404,
+                "Not Found",
+                "INVALID_TOKEN",
+                "This consent link is not valid.",
+            )
+        }
         Err(_) => {
             return local_web_consent_error_page(
                 500,
@@ -274,37 +294,36 @@ pub(crate) fn handle_local_web_consent_post(
         }
     };
     let record = match validation {
-        LocalWebConsentTokenValidation::Valid(record) => record,
-        LocalWebConsentTokenValidation::Rejected(rejection) => {
+        UserActionChannelTokenValidation::Valid(record)
+        | UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Consumed(
+            record,
+        )) => record,
+        UserActionChannelTokenValidation::Rejected(rejection) => {
             return local_web_consent_rejection_page(rejection)
         }
     };
-    let judgment = match local_web_pending_judgment(adapter, &record) {
-        Ok(judgment) => judgment,
+    let action = match local_web_pending_user_action(adapter, &record, true) {
+        Ok(action) => action,
         Err(response) => return response,
     };
-    let Some(selected_option) = judgment
-        .options
-        .iter()
-        .find(|option| option.option_id.as_str() == selected_option_id)
-        .cloned()
-    else {
-        return local_web_consent_error_page(
-            400,
-            "Bad Request",
-            "INVALID_SELECTION",
-            "The selected option is not valid for this pending judgment.",
-        );
+    if let Err(response) = validate_local_web_consent_form(&record, &action) {
+        return response;
+    }
+    let resolution = match local_web_resolution_from_fields(&action, &fields) {
+        Ok(resolution) => resolution,
+        Err(message) => {
+            return local_web_consent_error_page(400, "Bad Request", "INVALID_SELECTION", &message)
+        }
     };
 
-    match record_local_web_judgment(adapter, &judgment, &selected_option, token, note) {
+    match resolve_local_web_user_action(adapter, &action, resolution, token) {
         Ok(recorded)
             if recorded.response_value["base"]["response_kind"].as_str() == Some("result") =>
         {
             let consumed =
                 local_web_consumed_record_after_recording(adapter, project_id, token, &now)
                     .unwrap_or(record);
-            local_web_consent_success_page(&consumed, &judgment, &selected_option)
+            local_web_consent_success_page(&consumed, &action)
         }
         Ok(_) => local_web_post_recording_rejected(adapter, project_id, token, &now),
         Err(_) => local_web_post_recording_failed(adapter, project_id, token, &now),
@@ -316,10 +335,10 @@ pub(crate) fn validate_local_web_consent(
     project_id: &str,
     token: &str,
     now: &str,
-) -> Result<LocalWebConsentTokenValidation, McpAdapterError> {
-    validate_local_web_consent_token(
+) -> Result<UserActionChannelTokenValidation, McpAdapterError> {
+    validate_user_action_channel_token(
         &adapter.runtime_home,
-        LocalWebConsentTokenCheck {
+        UserActionChannelTokenCheck {
             token: token.to_owned(),
             expected_project_id: project_id.to_owned(),
             expected_connection_internal_id: adapter.context.connection_internal_id.to_string(),
@@ -333,26 +352,8 @@ pub(crate) fn local_web_consent_timestamp_for_validation(
     adapter: &McpAdapter,
     project_id: &str,
 ) -> Result<String, McpAdapterError> {
-    match local_web_consent_current_timestamp(&adapter.runtime_home, project_id) {
-        Ok(now) => Ok(now),
-        Err(StoreError::NotFound { entity, id }) if entity == "project" => {
-            let projects = match adapter.allowed_project_availabilities("local web consent") {
-                Ok(projects) => projects,
-                Err(_) => return Err(McpAdapterError::Store(StoreError::NotFound { entity, id })),
-            };
-            for project in projects {
-                if project.available {
-                    return local_web_consent_current_timestamp(
-                        &adapter.runtime_home,
-                        &project.project_id,
-                    )
-                    .map_err(McpAdapterError::Store);
-                }
-            }
-            Err(McpAdapterError::Store(StoreError::NotFound { entity, id }))
-        }
-        Err(error) => Err(McpAdapterError::Store(error)),
-    }
+    user_action_channel_current_timestamp(&adapter.runtime_home, project_id)
+        .map_err(McpAdapterError::Store)
 }
 
 pub(crate) fn local_web_consumed_record_after_recording(
@@ -360,9 +361,9 @@ pub(crate) fn local_web_consumed_record_after_recording(
     project_id: &str,
     token: &str,
     now: &str,
-) -> Option<LocalWebConsentTokenRecord> {
+) -> Option<UserActionChannelTokenRecord> {
     match validate_local_web_consent(adapter, project_id, token, now).ok()? {
-        LocalWebConsentTokenValidation::Rejected(LocalWebConsentTokenRejection::Consumed(
+        UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Consumed(
             record,
         )) => Some(record),
         _ => None,
@@ -376,14 +377,14 @@ pub(crate) fn local_web_post_recording_rejected(
     now: &str,
 ) -> HttpResponse {
     match validate_local_web_consent(adapter, project_id, token, now) {
-        Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+        Ok(UserActionChannelTokenValidation::Rejected(rejection)) => {
             local_web_consent_rejection_page(rejection)
         }
         _ => local_web_consent_error_page(
             409,
             "Conflict",
-            "JUDGMENT_RECORDING_REJECTED",
-            "Volicord could not record this answer because the pending judgment is no longer current. The token remains usable until it expires.",
+            "USER_ACTION_RESOLUTION_REJECTED",
+            "Volicord could not resolve this action because the pending request is no longer current.",
         ),
     }
 }
@@ -395,39 +396,96 @@ pub(crate) fn local_web_post_recording_failed(
     now: &str,
 ) -> HttpResponse {
     match validate_local_web_consent(adapter, project_id, token, now) {
-        Ok(LocalWebConsentTokenValidation::Rejected(rejection)) => {
+        Ok(UserActionChannelTokenValidation::Rejected(rejection)) => {
             local_web_consent_rejection_page(rejection)
         }
         _ => local_web_consent_error_page(
             500,
             "Internal Server Error",
-            "JUDGMENT_RECORDING_FAILED",
-            "Volicord could not record this answer. The token remains usable until it expires if the pending judgment is still current.",
+            "USER_ACTION_RESOLUTION_FAILED",
+            "Volicord could not resolve this action. The token remains usable only while the request is current and unexpired.",
         ),
     }
 }
 
-pub(crate) fn local_web_pending_judgment(
+#[derive(Debug, Clone)]
+pub(crate) struct LocalWebPendingUserAction {
+    request: UserActionRequest,
+    form: UserActionInboxForm,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalWebConsentTokenMetadata {
+    fallback_kind: String,
+    endpoint: String,
+    form_digest: String,
+}
+
+fn validate_local_web_consent_form(
+    token_record: &UserActionChannelTokenRecord,
+    pending: &LocalWebPendingUserAction,
+) -> Result<(), HttpResponse> {
+    let metadata: LocalWebConsentTokenMetadata =
+        serde_json::from_str(&token_record.created_metadata_json)
+            .map_err(|_| local_web_consent_form_mismatch_page())?;
+    if metadata.fallback_kind != "local_web_consent" || metadata.endpoint != LOCAL_WEB_CONSENT_PATH
+    {
+        return Err(local_web_consent_form_mismatch_page());
+    }
+    let current_digest = canonical_json_bare_sha256(&pending.form).map_err(|_| {
+        local_web_consent_error_page(
+            500,
+            "Internal Server Error",
+            "STORE_UNAVAILABLE",
+            "Volicord could not verify this consent form.",
+        )
+    })?;
+    if metadata.form_digest != current_digest {
+        return Err(local_web_consent_form_mismatch_page());
+    }
+    Ok(())
+}
+
+fn local_web_consent_form_mismatch_page() -> HttpResponse {
+    local_web_consent_error_page(
+        409,
+        "Conflict",
+        "TOKEN_FORM_MISMATCH",
+        "This consent link does not match the current canonical user-action form.",
+    )
+}
+
+pub(crate) fn local_web_pending_user_action(
     adapter: &McpAdapter,
-    token_record: &LocalWebConsentTokenRecord,
-) -> Result<UserJudgment, HttpResponse> {
+    token_record: &UserActionChannelTokenRecord,
+    allow_resolved_replay: bool,
+) -> Result<LocalWebPendingUserAction, HttpResponse> {
     let project_id = ProjectId::new(token_record.project_id.clone());
     let store = CoreProjectStore::open(&adapter.runtime_home, &project_id).map_err(|_| {
         local_web_consent_error_page(
             404,
             "Not Found",
-            "WRONG_PROJECT",
-            "This consent token does not match an available project.",
+            "INVALID_TOKEN",
+            "This consent link is not valid for an available project.",
         )
     })?;
-    let record = store
-        .user_judgment_record(&token_record.judgment_id)
+    let now = SystemClock.project_now(&store).map_err(|_| {
+        local_web_consent_error_page(
+            500,
+            "Internal Server Error",
+            "STORE_UNAVAILABLE",
+            "Volicord could not read the user-action clock.",
+        )
+    })?;
+    let effective = store
+        .user_action_record(&token_record.user_action_request_id, &now)
         .map_err(|_| {
             local_web_consent_error_page(
                 500,
                 "Internal Server Error",
                 "STORE_UNAVAILABLE",
-                "Volicord could not read this pending judgment.",
+                "Volicord could not read this pending user action.",
             )
         })?
         .ok_or_else(|| {
@@ -435,156 +493,238 @@ pub(crate) fn local_web_pending_judgment(
                 404,
                 "Not Found",
                 "INVALID_TOKEN",
-                "This consent token does not identify an available pending judgment.",
+                "This consent token does not identify an available pending user action.",
             )
         })?;
-    if record.status != "pending" {
+    let has_replayable_resolution = allow_resolved_replay && effective.resolution.is_some();
+    if effective.status != UserActionStatus::Pending && !has_replayable_resolution {
         return Err(local_web_consent_error_page(
             409,
             "Conflict",
             "TOKEN_CONSUMED",
-            "This pending judgment has already been answered or is no longer available.",
+            "This pending user action has already been resolved or is no longer available.",
         ));
     }
-    user_judgment_from_record(&record).map_err(|_| {
+    user_action_from_record(&effective).map_err(|_| {
         local_web_consent_error_page(
             500,
             "Internal Server Error",
             "STORE_UNAVAILABLE",
-            "Volicord could not render this pending judgment.",
+            "Volicord could not render this pending user action.",
         )
     })
 }
 
-pub(crate) fn user_judgment_from_record(
-    record: &UserJudgmentRecord,
-) -> Result<UserJudgment, McpAdapterError> {
-    let request_json: Value =
-        serde_json::from_str(&record.request_json).map_err(McpAdapterError::Json)?;
-    let context: UserJudgmentContext =
-        serde_json::from_str(&record.context_json).map_err(McpAdapterError::Json)?;
-    let affected_refs: Vec<StateRecordRef> =
-        serde_json::from_str(&record.affected_refs_json).map_err(McpAdapterError::Json)?;
-    let options = serde_json::from_str::<PersistedUserJudgmentOptions>(&record.options_json)
-        .map_err(McpAdapterError::Json)?
-        .into_current_options()
+pub(crate) fn user_action_from_record(
+    effective: &volicord_store::core_pipeline::EffectiveUserActionRecord,
+) -> Result<LocalWebPendingUserAction, McpAdapterError> {
+    let stored: volicord_types::PersistedUserActionRequest =
+        serde_json::from_str(&effective.request.request_json).map_err(McpAdapterError::Json)?;
+    let basis =
+        serde_json::from_str(&effective.request.basis_json).map_err(McpAdapterError::Json)?;
+    let created_at =
+        volicord_types::UtcTimestamp::parse(&effective.request.requested_at).map_err(|error| {
+            McpAdapterError::ToolExecution {
+                tool_name: LOCAL_WEB_CONSENT_PATH.to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+    let request = UserActionRequest {
+        user_action_request_id: effective.request.user_action_request_id.clone().into(),
+        project_id: effective.request.project_id.clone().into(),
+        task_id: effective.request.task_id.clone().into(),
+        change_unit_id: effective
+            .request
+            .change_unit_id
+            .clone()
+            .map(Into::into)
+            .into(),
+        action_kind: effective.request.action_kind,
+        status: effective.status,
+        body: stored.body,
+        basis,
+        required_for: stored.required_for,
+        user_action_resolution_ref: RequiredNullable::null(),
+        expires_at: stored.expires_at,
+        created_at,
+    };
+    let form = request
+        .body
+        .capture_form()
         .map_err(|error| McpAdapterError::ToolExecution {
             tool_name: LOCAL_WEB_CONSENT_PATH.to_owned(),
-            message: error.to_string(),
+            message: format!("invalid stored user-action form: {error}"),
         })?;
-    let basis: PersistedJudgmentBasis =
-        serde_json::from_str(&record.basis_json).map_err(McpAdapterError::Json)?;
-    let judgment_kind =
-        serde_json::from_value::<JudgmentKind>(Value::String(record.judgment_kind.clone()))
-            .map_err(McpAdapterError::Json)?;
-    let status = serde_json::from_value::<UserJudgmentStatus>(Value::String(record.status.clone()))
-        .map_err(McpAdapterError::Json)?;
-    let presentation = serde_json::from_value(
-        request_json
-            .get("presentation")
-            .cloned()
-            .unwrap_or(Value::String("short".to_owned())),
-    )
-    .map_err(McpAdapterError::Json)?;
-    let question = request_json
-        .get("question")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
-    let required_for = serde_json::from_value(
-        request_json
-            .get("required_for")
-            .cloned()
-            .unwrap_or_else(|| json!([])),
-    )
-    .map_err(McpAdapterError::Json)?;
-    let expires_at = serde_json::from_value(
-        request_json
-            .get("expires_at")
-            .cloned()
-            .unwrap_or(Value::Null),
-    )
-    .map_err(McpAdapterError::Json)?;
-    let created_at = serde_json::from_value(Value::String(record.requested_at.clone()))
-        .map_err(McpAdapterError::Json)?;
-    Ok(UserJudgment {
-        judgment_id: record.judgment_id.clone().into(),
-        project_id: record.project_id.clone().into(),
-        task_id: record.task_id.clone().into(),
-        change_unit_id: record.change_unit_id.clone().map(Into::into),
-        judgment_kind,
-        status,
-        presentation,
-        question,
-        options,
-        context,
-        affected_refs,
-        basis,
-        required_for,
-        resolution: None,
-        expires_at,
-        created_at,
-        resolved_at: None,
-    })
+    Ok(LocalWebPendingUserAction { request, form })
 }
 
-pub(crate) fn record_local_web_judgment(
+fn local_web_resolution_from_fields(
+    pending: &LocalWebPendingUserAction,
+    fields: &BTreeMap<String, Vec<String>>,
+) -> Result<UserActionResolutionInput, String> {
+    match &pending.form {
+        UserActionInboxForm::Choice {
+            choices,
+            note_allowed,
+            note_max_chars,
+        } => {
+            let allowed = if *note_allowed {
+                &["project", "token", "selected_option_id", "note"][..]
+            } else {
+                &["project", "token", "selected_option_id"][..]
+            };
+            reject_unknown_field_names(fields.keys().map(String::as_str), allowed, "Consent form")?;
+            let selected = single_param(fields, "selected_option_id").ok_or_else(|| {
+                "Choose one stored user-action option before submitting.".to_owned()
+            })?;
+            let choice = choices
+                .iter()
+                .find(|choice| choice.choice_id.as_str() == selected)
+                .ok_or_else(|| {
+                    "The selected option is not valid for this pending user action.".to_owned()
+                })?;
+            let note = optional_param(fields, "note");
+            if !*note_allowed && note.is_some() {
+                return Err("This form does not accept a note.".to_owned());
+            }
+            if note
+                .as_ref()
+                .is_some_and(|note| note.chars().count() > *note_max_chars as usize)
+            {
+                return Err("The optional note exceeds its character limit.".to_owned());
+            }
+            Ok(UserActionResolutionInput::Choice {
+                selected_option_id: choice.choice_id.clone(),
+                note: note.into(),
+            })
+        }
+        UserActionInboxForm::EvidenceObservation {
+            target_candidates,
+            artifact_candidates,
+            relevance_options,
+            summary_max_chars,
+        } => {
+            reject_unknown_field_names(
+                fields.keys().map(String::as_str),
+                &[
+                    "project",
+                    "token",
+                    "selected_target",
+                    "selected_artifact_ids",
+                    "relevance_status",
+                    "summary",
+                ],
+                "Consent form",
+            )?;
+            let target_selector = single_param(fields, "selected_target")
+                .ok_or_else(|| "Choose one stored evidence target.".to_owned())?;
+            let presentation = UserActionPresentationPlan::from_form(&pending.form)
+                .map_err(|_| "The stored evidence form cannot be rendered.".to_owned())?;
+            let UserActionPresentationForm::EvidenceObservation { targets, .. } =
+                &presentation.form
+            else {
+                return Err("The stored evidence form is invalid.".to_owned());
+            };
+            let target_index = targets
+                .iter()
+                .position(|target| target.selector == target_selector)
+                .ok_or_else(|| {
+                    "The selected evidence target is not a stored candidate.".to_owned()
+                })?;
+            let target = target_candidates[target_index].clone();
+            let selected_artifacts = fields
+                .get("selected_artifact_ids")
+                .ok_or_else(|| "Choose at least one stored artifact.".to_owned())?;
+            if selected_artifacts.is_empty() {
+                return Err("Choose at least one stored artifact.".to_owned());
+            }
+            let mut seen = BTreeSet::new();
+            let mut artifact_ids = Vec::with_capacity(selected_artifacts.len());
+            for id in selected_artifacts {
+                let artifact = artifact_candidates
+                    .iter()
+                    .find(|artifact| artifact.artifact_id.as_str() == id)
+                    .ok_or_else(|| "A selected artifact is not a stored candidate.".to_owned())?;
+                if !seen.insert(id.clone()) {
+                    return Err("Selected artifacts must not contain duplicates.".to_owned());
+                }
+                artifact_ids.push(artifact.artifact_id.clone());
+            }
+            let relevance_text = single_param(fields, "relevance_status")
+                .ok_or_else(|| "Choose one relevance value.".to_owned())?;
+            let relevance_status = serde_json::from_value(Value::String(relevance_text.to_owned()))
+                .map_err(|_| "The selected relevance value is invalid.".to_owned())?;
+            if !relevance_options.contains(&relevance_status) {
+                return Err("The selected relevance value is not a stored option.".to_owned());
+            }
+            let summary = single_param(fields, "summary")
+                .ok_or_else(|| "Enter an observation summary.".to_owned())?;
+            if summary.trim().is_empty() || summary.chars().count() > *summary_max_chars as usize {
+                return Err(
+                    "The observation summary must be non-empty and within its character limit."
+                        .to_owned(),
+                );
+            }
+            Ok(UserActionResolutionInput::EvidenceObservation {
+                target,
+                artifact_ids,
+                relevance_status,
+                summary: summary.to_owned(),
+            })
+        }
+    }
+}
+
+pub(crate) fn resolve_local_web_user_action(
     adapter: &McpAdapter,
-    judgment: &UserJudgment,
-    selected_option: &UserJudgmentOption,
+    pending: &LocalWebPendingUserAction,
+    resolution: UserActionResolutionInput,
     token: &str,
-    note: Option<String>,
 ) -> Result<PipelineResponse, McpAdapterError> {
-    let state_version = judgment.basis.created_at_state_version + 1;
-    let request = RecordUserJudgmentRequest {
+    let completion_metadata = LocalWebConsentCompletionMetadata {
+        selection_recording: Some("recorded".to_owned()),
+        endpoint: Some(LOCAL_WEB_CONSENT_PATH.to_owned()),
+    };
+    let channel_submission_id = local_web_channel_submission_id(
+        &pending.request.project_id,
+        &pending.request.user_action_request_id,
+        token,
+        adapter.context.connection_internal_id.as_str(),
+        &completion_metadata,
+    )
+    .map_err(McpAdapterError::Json)?;
+    let request = ResolveUserActionRequest {
         envelope: ToolEnvelope {
-            project_id: judgment.project_id.clone(),
-            task_id: Some(judgment.task_id.clone()).into(),
-            request_id: RequestId::new(generated_metadata_id(
-                "req_local_web_record",
-                adapter.context.connection_internal_id.as_str(),
-                "volicord.record_user_judgment",
+            project_id: pending.request.project_id.clone(),
+            task_id: Some(pending.request.task_id.clone()).into(),
+            request_id: RequestId::new(format!(
+                "req_{}",
+                sanitize_metadata_component(&channel_submission_id)
             )),
-            idempotency_key: Some(IdempotencyKey::new(generated_metadata_id(
-                "idem_local_web_record",
-                adapter.context.connection_internal_id.as_str(),
-                "volicord.record_user_judgment",
-            )))
-            .into(),
-            expected_state_version: Some(state_version).into(),
+            idempotency_key: Some(IdempotencyKey::new(channel_submission_id.clone())).into(),
+            expected_state_version: RequiredNullable::null(),
             dry_run: false,
             locale: Some(DEFAULT_LOCALE.to_owned()).into(),
         },
-        user_judgment_id: judgment.judgment_id.clone(),
-        judgment_kind: judgment.judgment_kind,
-        selected_option_id: selected_option.option_id.clone(),
-        answer: answer_payload_for_judgment(judgment, selected_option)?,
-        rationale: rationale_for_selected_option(
-            judgment.judgment_kind,
-            selected_option,
-            "local web consent",
-        ),
-        note: note.into(),
-        accepted_risks: accepted_risks_for_judgment(judgment, selected_option),
+        user_action_request_id: pending.request.user_action_request_id.clone(),
+        channel_submission_id,
+        resolution,
     };
     let invocation = InvocationContext::new(
-        judgment.project_id.clone(),
+        pending.request.project_id.clone(),
         ActorSource::LocalUser,
         OperationCategory::UserOnly,
         VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
     );
     adapter
         .core
-        .record_local_web_consent_judgment(
-            LocalWebConsentJudgmentRequest {
+        .resolve_local_web_consent_user_action(
+            LocalWebConsentUserActionRequest {
                 request,
                 token: token.to_owned(),
                 expected_connection_internal_id: adapter.context.connection_internal_id.to_string(),
-                completion_metadata_json: json!({
-                    "selection_recording": "recorded",
-                    "endpoint": LOCAL_WEB_CONSENT_PATH
-                })
-                .to_string(),
+                completion_metadata_json: serde_json::to_string(&completion_metadata)
+                    .map_err(McpAdapterError::Json)?,
             },
             invocation,
         )
@@ -593,8 +733,8 @@ pub(crate) fn record_local_web_judgment(
 
 pub(crate) fn local_web_consent_page(
     adapter: &McpAdapter,
-    token_record: &LocalWebConsentTokenRecord,
-    judgment: &UserJudgment,
+    token_record: &UserActionChannelTokenRecord,
+    pending: &LocalWebPendingUserAction,
     token: &str,
 ) -> HttpResponse {
     let Some(consent_context) = adapter.local_web_consent.as_ref() else {
@@ -618,70 +758,77 @@ pub(crate) fn local_web_consent_page(
         })
         .unwrap_or_default();
     let cli_command = format!(
-        "volicord inbox answer {} --choice <choice>",
-        judgment.judgment_id.as_str()
+        "volicord inbox resolve {}",
+        pending.request.user_action_request_id.as_str()
     );
-    let options = judgment
-        .options
-        .iter()
-        .map(|option| {
-            format!(
-                "<label class=\"option\"><input type=\"radio\" name=\"selected_option_id\" value=\"{}\"{}><span><strong>{}</strong><br><small>Option ID: <code>{}</code></small><br>{}<br><small>Meaning: {}</small></span></label>",
-                html_escape(option.option_id.as_str()),
-                if option.is_default { " checked" } else { "" },
-                html_escape(&option.label),
-                html_escape(option.option_id.as_str()),
-                html_escape(&option.description),
-                html_escape(&option.consequence)
+    let presentation = match UserActionPresentationPlan::from_form(&pending.form) {
+        Ok(presentation) => presentation,
+        Err(_) => {
+            return local_web_consent_error_page(
+                500,
+                "Internal Server Error",
+                "FORM_UNAVAILABLE",
+                "Volicord could not render the complete closed user-action form.",
             )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let constraints = if judgment.context.constraints.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "<h2>Constraints</h2><ul>{}</ul>",
-            judgment
-                .context
-                .constraints
-                .iter()
-                .map(|constraint| format!("<li>{}</li>", html_escape(constraint)))
-                .collect::<Vec<_>>()
-                .join("")
-        )
+        }
+    };
+    let form_fields = match &presentation.form {
+        UserActionPresentationForm::Choice {
+            choices,
+            note_allowed,
+            note_max_chars,
+        } => {
+            let options = choices.iter().map(|choice| format!(
+                "<label class=\"option\"><input type=\"radio\" name=\"selected_option_id\" value=\"{}\"{}><span><strong>{}</strong><br><small>Choice ID: <code>{}</code></small><br>{}<br><small>Consequence: {}</small></span></label>",
+                html_escape(choice.choice_id.as_str()), if choice.is_default { " checked" } else { "" }, html_escape(&choice.label), html_escape(choice.choice_id.as_str()), html_escape(&choice.description), html_escape(&choice.consequence)
+            )).collect::<Vec<_>>().join("\n");
+            let note = if *note_allowed {
+                format!("<label>Optional note<textarea name=\"note\" maxlength=\"{}\" rows=\"4\"></textarea></label>", note_max_chars)
+            } else {
+                String::new()
+            };
+            format!("<fieldset><legend>Available choices</legend>{options}</fieldset>{note}")
+        }
+        UserActionPresentationForm::EvidenceObservation {
+            targets,
+            artifacts,
+            relevance_options,
+            summary_max_chars,
+        } => {
+            let targets = targets.iter().enumerate().map(|(index, target)| format!("<label class=\"option\"><input type=\"radio\" name=\"selected_target\" value=\"{}\"{}><span><strong>{}</strong><br><code>{}</code><br><small>{}</small></span></label>", html_escape(&target.selector), if index == 0 { " checked" } else { "" }, html_escape(&target.display_name), html_escape(&target.selector), html_escape(&target.metadata_json))).collect::<Vec<_>>().join("\n");
+            let artifacts = artifacts.iter().map(|artifact| format!("<label class=\"option\"><input type=\"checkbox\" name=\"selected_artifact_ids\" value=\"{}\"><span><strong>{}</strong><br><code>{}</code><br><small>{}</small></span></label>", html_escape(&artifact.artifact_id), html_escape(&artifact.display_name), html_escape(&artifact.artifact_id), html_escape(&artifact.metadata_json))).collect::<Vec<_>>().join("\n");
+            let relevance = relevance_options.iter().enumerate().map(|(index, status)| format!("<label class=\"option\"><input type=\"radio\" name=\"relevance_status\" value=\"{}\"{}><span>{}</span></label>", html_escape(status), if index == 0 { " checked" } else { "" }, html_escape(status))).collect::<Vec<_>>().join("\n");
+            format!("<fieldset><legend>Evidence target</legend>{targets}</fieldset><fieldset><legend>Observed artifacts</legend>{artifacts}</fieldset><fieldset><legend>Relevance</legend>{relevance}</fieldset><label>Observation summary<textarea name=\"summary\" maxlength=\"{}\" rows=\"6\" required></textarea></label>", summary_max_chars)
+        }
     };
     let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Volicord User Judgment</title>{}</head><body><main><h1>Record user-owned judgment</h1><section class="notice"><p>This page records one user-owned judgment through the local User Channel. The agent cannot record this judgment on your behalf.</p><p>This judgment records only the selected option for the pending judgment shown here. It does not prove correctness, test sufficiency, deployment success, review completion, security enforcement, or close readiness.</p></section><section><h2>Question</h2><p>{}</p><h2>Context</h2><p>{}</p>{}</section><section><h2>Judgment identity</h2><dl><dt>Project name</dt><dd>{}</dd><dt>Project identifier</dt><dd><code>{}</code></dd>{}<dt>Connection identifier</dt><dd><code>{}</code></dd><dt>Judgment id</dt><dd><code>{}</code></dd><dt>Token expires</dt><dd>{}</dd><dt>Fallback CLI command</dt><dd><code>{}</code></dd></dl></section><form method="post" action="{}"><input type="hidden" name="project" value="{}"><input type="hidden" name="token" value="{}"><fieldset><legend>Available choices</legend>{}</fieldset><label>Optional note<textarea name="note" maxlength="1000" rows="4"></textarea></label><button type="submit">Record selected judgment</button></form></main></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Volicord User Action</title>{}</head><body><main><h1>Resolve user action</h1><section class="notice"><p>This page records one user-owned action through the local User Channel. The agent cannot resolve it on your behalf.</p><p>The resolution does not prove correctness, test sufficiency, deployment success, review completion, security enforcement, or close readiness.</p></section><section><h2>Question</h2><p>{}</p><h2>Context</h2><p>{}</p></section><section><h2>Action identity</h2><dl><dt>Project name</dt><dd>{}</dd><dt>Project identifier</dt><dd><code>{}</code></dd>{}<dt>Connection identifier</dt><dd><code>{}</code></dd><dt>User-action request id</dt><dd><code>{}</code></dd><dt>Token expires</dt><dd>{}</dd><dt>Fallback CLI command</dt><dd><code>{}</code></dd></dl></section><form method="post" action="{}"><input type="hidden" name="project" value="{}"><input type="hidden" name="token" value="{}">{}<button type="submit">Record user action</button></form></main></body></html>"#,
         local_web_consent_css(),
-        html_escape(&judgment.question),
-        html_escape(&judgment.context.summary),
-        constraints,
+        html_escape(pending.request.body.question()),
+        html_escape(pending.request.body.context_summary()),
         html_escape(&project.project_name),
         html_escape(&project.project_id),
         repository_path,
         html_escape(token_record.connection_internal_id.as_str()),
-        html_escape(token_record.judgment_id.as_str()),
+        html_escape(token_record.user_action_request_id.as_str()),
         html_escape(token_record.expires_at.as_str()),
         html_escape(&cli_command),
         html_escape(&action),
         html_escape(token_record.project_id.as_str()),
         html_escape(token),
-        options
+        form_fields
     );
     local_web_consent_html_response(200, "OK", body)
 }
 
 pub(crate) fn local_web_consent_success_page(
-    token_record: &LocalWebConsentTokenRecord,
-    judgment: &UserJudgment,
-    selected_option: &UserJudgmentOption,
+    token_record: &UserActionChannelTokenRecord,
+    pending: &LocalWebPendingUserAction,
 ) -> HttpResponse {
     let body = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Volicord Consent Recorded</title>{}</head><body><main><h1>Answer recorded</h1><p>Volicord recorded user-owned judgment <code>{}</code> with option <code>{}</code> through the local User Channel.</p><p>This record does not prove correctness, test sufficiency, deployment success, review completion, security enforcement, or close readiness.</p><dl><dt>Project identifier</dt><dd><code>{}</code></dd><dt>Connection identifier</dt><dd><code>{}</code></dd><dt>Completed</dt><dd>{}</dd></dl></main></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Volicord User Action Recorded</title>{}</head><body><main><h1>Resolution recorded</h1><p>Volicord resolved user action <code>{}</code> through the local User Channel.</p><p>This record does not prove correctness, test sufficiency, deployment success, review completion, security enforcement, or close readiness.</p><dl><dt>Project identifier</dt><dd><code>{}</code></dd><dt>Connection identifier</dt><dd><code>{}</code></dd><dt>Completed</dt><dd>{}</dd></dl></main></body></html>"#,
         local_web_consent_css(),
-        html_escape(judgment.judgment_id.as_str()),
-        html_escape(selected_option.option_id.as_str()),
+        html_escape(pending.request.user_action_request_id.as_str()),
         html_escape(token_record.project_id.as_str()),
         html_escape(token_record.connection_internal_id.as_str()),
         html_escape(
@@ -695,34 +842,28 @@ pub(crate) fn local_web_consent_success_page(
 }
 
 pub(crate) fn local_web_consent_rejection_page(
-    rejection: LocalWebConsentTokenRejection,
+    rejection: UserActionChannelTokenRejection,
 ) -> HttpResponse {
     match rejection {
-        LocalWebConsentTokenRejection::Invalid => local_web_consent_error_page(
+        UserActionChannelTokenRejection::Invalid => local_web_consent_error_page(
             404,
             "Not Found",
             "INVALID_TOKEN",
             "This consent link is not valid.",
         ),
-        LocalWebConsentTokenRejection::Expired(_) => local_web_consent_error_page(
+        UserActionChannelTokenRejection::Expired(_) => local_web_consent_error_page(
             410,
             "Gone",
             "TOKEN_EXPIRED",
             "This consent link has expired.",
         ),
-        LocalWebConsentTokenRejection::Consumed(_) => local_web_consent_error_page(
+        UserActionChannelTokenRejection::Consumed(_) => local_web_consent_error_page(
             409,
             "Conflict",
             "TOKEN_CONSUMED",
             "This consent link has already been used.",
         ),
-        LocalWebConsentTokenRejection::WrongProject { .. } => local_web_consent_error_page(
-            403,
-            "Forbidden",
-            "WRONG_PROJECT",
-            "This consent link does not match the requested project.",
-        ),
-        LocalWebConsentTokenRejection::WrongConnection { .. } => local_web_consent_error_page(
+        UserActionChannelTokenRejection::WrongConnection { .. } => local_web_consent_error_page(
             403,
             "Forbidden",
             "WRONG_CONNECTION",
@@ -820,22 +961,20 @@ pub(crate) fn http_request_query(target: &str) -> &str {
     target.split_once('?').map(|(_, query)| query).unwrap_or("")
 }
 
-pub(crate) fn parse_urlencoded(input: &str) -> BTreeMap<String, Vec<String>> {
+pub(crate) fn parse_urlencoded(input: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
     let mut fields = BTreeMap::<String, Vec<String>>::new();
     for pair in input.split('&') {
         if pair.is_empty() {
             continue;
         }
         let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-        let Some(name) = percent_decode_form(name) else {
-            continue;
-        };
-        let Some(value) = percent_decode_form(value) else {
-            continue;
-        };
+        let name = percent_decode_form(name)
+            .ok_or_else(|| "form field name uses invalid percent encoding".to_owned())?;
+        let value = percent_decode_form(value)
+            .ok_or_else(|| "form field value uses invalid percent encoding".to_owned())?;
         fields.entry(name).or_default().push(value);
     }
-    fields
+    Ok(fields)
 }
 
 pub(crate) fn single_param<'a>(

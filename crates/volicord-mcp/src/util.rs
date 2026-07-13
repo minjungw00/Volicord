@@ -1,5 +1,22 @@
 use crate::errors::McpAdapterError;
 use crate::prelude::*;
+
+pub(crate) fn reject_unknown_field_names<'a>(
+    field_names: impl IntoIterator<Item = &'a str>,
+    allowed: &[&str],
+    context: &str,
+) -> Result<(), String> {
+    if let Some(field_name) = field_names
+        .into_iter()
+        .find(|field_name| !allowed.contains(field_name))
+    {
+        return Err(format!(
+            "{context} contains unsupported field `{field_name}`"
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn current_dir_environment_error(error: io::Error) -> McpAdapterError {
     McpAdapterError::Environment(format!("failed to read current directory: {error}"))
 }

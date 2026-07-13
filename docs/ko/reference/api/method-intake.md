@@ -320,7 +320,7 @@ state:
   active_change_unit_ref: null
   baseline_ref: null
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

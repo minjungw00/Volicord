@@ -6,6 +6,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
+use rusqlite::OptionalExtension;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
@@ -25,12 +26,12 @@ use volicord_store::{
         GuardEventInsert, GuardInstallationObservation, GuardInstallationUpsert,
         UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
-    local_consent::{create_local_web_consent_token, LocalWebConsentTokenCreate},
     session_watch::{
         create_watch_baseline, snapshot_product_repository, SessionWatchStatus,
         WatchBaselineCreate, WatchSnapshotOptions,
     },
     sqlite::open_project_state_database,
+    user_action_channel::{create_user_action_channel_token, UserActionChannelTokenCreate},
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::CloseMutationIntent;
@@ -39,7 +40,8 @@ use volicord_types::{
     ChangeUnitUpdate, DurableIdError, DurableIdGenerator, DurableIdKind, EvidenceAssuranceLevel,
     EvidenceSourceKind, EvidenceUpdateProvenance, IdempotencyKey, InitialScope, OperationCategory,
     RequestId, ScopeUpdate, SequenceDurableIdGenerator, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
-    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use super::*;
@@ -48,10 +50,12 @@ const PROJECT_ID: &str = "project_methods";
 const CONNECTION_ID: &str = "connection_methods";
 const AGENT_ACTOR_SOURCE: &str = "agent_connection:connection_methods";
 const LOCAL_USER_ACTOR_SOURCE: &str = "local_user";
+const DEFAULT_METHOD_TEST_CLOCK: &str = "2026-06-18T00:00:00Z";
 
 #[derive(Debug, Clone)]
 struct ManualClock {
     now: Arc<Mutex<DateTime<Utc>>>,
+    samples: Arc<Mutex<usize>>,
 }
 
 impl ManualClock {
@@ -59,8 +63,13 @@ impl ManualClock {
         let now = DateTime::parse_from_rfc3339(timestamp)
             .expect("test timestamp should be RFC3339")
             .with_timezone(&Utc);
+        Self::from_datetime(now)
+    }
+
+    fn from_datetime(now: DateTime<Utc>) -> Self {
         Self {
             now: Arc::new(Mutex::new(now)),
+            samples: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -71,10 +80,21 @@ impl ManualClock {
             .expect("manual clock mutex should not be poisoned");
         *now += duration;
     }
+
+    fn sample_count(&self) -> usize {
+        *self
+            .samples
+            .lock()
+            .expect("manual clock sample counter mutex should not be poisoned")
+    }
 }
 
 impl crate::pipeline::Clock for ManualClock {
     fn now(&self) -> DateTime<Utc> {
+        *self
+            .samples
+            .lock()
+            .expect("manual clock sample counter mutex should not be poisoned") += 1;
         self.now
             .lock()
             .expect("manual clock mutex should not be poisoned")
@@ -137,13 +157,7 @@ type LocalWebTokenStatus = (String, Option<String>, Option<String>);
 
 #[derive(Debug, Clone)]
 struct ContinuityRecordRow {
-    source_task_id: String,
-    source_change_unit_id: Option<String>,
     kind: String,
-    title: String,
-    summary: String,
-    status: String,
-    source_refs_json: String,
 }
 
 impl MethodHarness {
@@ -193,7 +207,20 @@ impl MethodHarness {
         )?;
 
         let runtime_home_path = runtime_home.path().to_path_buf();
-        let service = CoreService::new(&runtime_home_path);
+        open_project_state_database(
+            runtime_home_path
+                .join("projects")
+                .join(PROJECT_ID)
+                .join("state.sqlite"),
+        )?
+        .execute(
+            "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+            rusqlite::params![PROJECT_ID, DEFAULT_METHOD_TEST_CLOCK],
+        )?;
+        let service = CoreService::with_clock(
+            &runtime_home_path,
+            ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
+        );
         Ok(Self {
             _runtime_home: runtime_home,
             runtime_home_path,
@@ -228,28 +255,13 @@ impl MethodHarness {
     fn continuity_records(&self) -> Result<Vec<ContinuityRecordRow>, Box<dyn Error>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT
-                source_task_id,
-                source_change_unit_id,
-                kind,
-                title,
-                summary,
-                status,
-                source_refs_json
+            "SELECT kind
              FROM project_continuity_records
              WHERE project_id = ?1
-             ORDER BY created_at, continuity_record_id",
+             ORDER BY julianday(created_at), continuity_record_id",
         )?;
         let rows = stmt.query_map([PROJECT_ID], |row| {
-            Ok(ContinuityRecordRow {
-                source_task_id: row.get(0)?,
-                source_change_unit_id: row.get(1)?,
-                kind: row.get(2)?,
-                title: row.get(3)?,
-                summary: row.get(4)?,
-                status: row.get(5)?,
-                source_refs_json: row.get(6)?,
-            })
+            Ok(ContinuityRecordRow { kind: row.get(0)? })
         })?;
         let mut records = Vec::new();
         for row in rows {
@@ -315,13 +327,6 @@ fn set_method_harness_connection_verification_status(
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct UserJudgmentActorProvenance {
-    resolved_by_actor_source: Option<String>,
-    resolved_verification_basis: Option<String>,
-    resolved_assurance_level: Option<String>,
-}
-
 fn response_record_id(response_value: &Value, field: &str) -> String {
     response_value[field]["record_id"]
         .as_str()
@@ -365,7 +370,7 @@ mod replay;
 mod stage_artifact;
 mod status;
 mod update_scope;
-mod user_judgment;
+mod user_action;
 
 fn envelope(
     request_id: &str,
@@ -386,6 +391,14 @@ fn envelope(
 }
 
 fn invocation(operation_category: OperationCategory) -> InvocationContext {
+    if operation_category == OperationCategory::UserOnly {
+        return InvocationContext::new(
+            ProjectId::new(PROJECT_ID),
+            ActorSource::LocalUser,
+            operation_category,
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        );
+    }
     invocation_with_actor(
         actor_source_for_operation_category(operation_category),
         operation_category,
@@ -647,7 +660,11 @@ fn assert_verified_invocation(response: &PipelineResponse, operation_category: O
     assert_eq!(verified.operation_category, operation_category);
     assert_eq!(
         verified.verification_basis,
-        VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+        if operation_category == OperationCategory::UserOnly {
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+        } else {
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+        }
     );
 }
 
@@ -839,7 +856,7 @@ fn corrupt_owner_json() -> &'static str {
 fn status_include() -> StatusInclude {
     StatusInclude {
         task: true,
-        pending_user_judgments: true,
+        pending_user_actions: true,
         write_ticket: true,
         evidence: true,
         close: true,
@@ -1546,6 +1563,118 @@ fn record_close_evidence(
     )
 }
 
+struct UserObservationFixture<'a> {
+    task_id: &'a str,
+    change_unit_id: &'a str,
+    expected_state_version: u64,
+    suffix: &'a str,
+    target: EvidenceTarget,
+    artifact_ref: &'a ArtifactRef,
+    relevance_status: EvidenceRelevanceStatus,
+}
+
+fn request_and_resolve_user_observation(
+    harness: &MethodHarness,
+    input: UserObservationFixture<'_>,
+) -> Result<(u64, StateRecordRef), Box<dyn Error>> {
+    let UserObservationFixture {
+        task_id,
+        change_unit_id,
+        expected_state_version,
+        suffix,
+        target,
+        artifact_ref,
+        relevance_status,
+    } = input;
+    let requested = harness.service.request_user_action(
+        volicord_types::RequestUserActionRequest {
+            envelope: envelope(
+                &format!("req_user_action_observation_{suffix}"),
+                Some(&format!("idem_user_action_observation_{suffix}")),
+                false,
+                Some(expected_state_version),
+                Some(task_id),
+            ),
+            task_id: TaskId::new(task_id),
+            change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
+            action: volicord_types::UserActionDraft::EvidenceObservation(
+                volicord_types::UserActionEvidenceObservationDraft {
+                    question: "Does this exact artifact support the selected target?".to_owned(),
+                    context_summary: "The user must inspect the exact candidate bytes.".to_owned(),
+                    target_candidates: vec![target.clone()],
+                    artifact_candidate_ids: vec![artifact_ref.artifact_id.clone()],
+                },
+            ),
+            required_for: vec![volicord_types::UserActionRequiredFor::RecordRun],
+            expires_at: None.into(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let user_action_request_id =
+        response_record_id(&requested.response_value, "user_action_request_ref");
+    let resolved = harness.service.resolve_user_action(
+        volicord_types::ResolveUserActionRequest {
+            envelope: envelope(
+                &format!("req_user_action_observation_resolve_{suffix}"),
+                Some(&format!("submission_user_action_observation_{suffix}")),
+                false,
+                None,
+                Some(task_id),
+            ),
+            user_action_request_id: volicord_types::UserActionRequestId::new(
+                user_action_request_id,
+            ),
+            channel_submission_id: format!("submission_user_action_observation_{suffix}"),
+            resolution: volicord_types::UserActionResolutionInput::EvidenceObservation {
+                target,
+                artifact_ids: vec![artifact_ref.artifact_id.clone()],
+                relevance_status,
+                summary: "The user assessed the exact candidate bytes.".to_owned(),
+            },
+        },
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let state_version = resolved.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("user-action resolution state version");
+    let resolution_ref: StateRecordRef =
+        serde_json::from_value(resolved.response_value["user_action_resolution_ref"].clone())?;
+    let raw_resolution: (String, String) = harness.conn()?.query_row(
+        "SELECT action_kind, resolution_json
+           FROM user_action_resolutions
+          WHERE project_id = ?1
+            AND user_action_resolution_id = ?2",
+        rusqlite::params![PROJECT_ID, resolution_ref.record_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let decoded_resolution: volicord_types::UserActionResolutionBody =
+        serde_json::from_str(&raw_resolution.1).unwrap_or_else(|error| {
+            panic!(
+                "fresh resolution JSON should decode: {error}: {}",
+                raw_resolution.1
+            )
+        });
+    decoded_resolution.validate().unwrap_or_else(|error| {
+        panic!(
+            "fresh resolution JSON should validate (field={}, message={}): {}",
+            error.field(),
+            error.message(),
+            raw_resolution.1
+        )
+    });
+    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    store
+        .user_action_resolution_record(resolution_ref.record_id.as_str())
+        .unwrap_or_else(|error| {
+            panic!(
+                "fresh user-action resolution should reread (kind={}, json={}): {error}",
+                raw_resolution.0, raw_resolution.1
+            )
+        })
+        .expect("fresh user-action resolution should exist");
+    Ok((state_version, resolution_ref))
+}
+
 fn record_close_evidence_with_updates(
     harness: &MethodHarness,
     task_id: &str,
@@ -1612,32 +1741,20 @@ fn record_close_evidence_with_updates(
                 .expect("artifact promotion state version");
             let artifact_ref: ArtifactRef =
                 serde_json::from_value(promoted.response_value["registered_artifacts"][0].clone())?;
-            let user_observation = harness.service.record_user_observation(
-                RecordUserObservationRequest {
-                    envelope: envelope(
-                        &format!("req_user_observation_{artifact_suffix}"),
-                        Some(&format!("idem_user_observation_{artifact_suffix}")),
-                        false,
-                        Some(current_state_version),
-                        Some(task_id),
-                    ),
-                    task_id: TaskId::new(task_id),
-                    change_unit_id: ChangeUnitId::new(change_unit_id),
-                    target: update.target.clone(),
-                    relevance_status: EvidenceRelevanceStatus::Supported,
-                    artifact_ids: vec![artifact_ref.artifact_id.clone()],
-                    summary: "The user confirms that these exact bytes support the target."
-                        .to_owned(),
-                    observed_at: UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
-                },
-                invocation(OperationCategory::UserOnly),
-            )?;
-            current_state_version = user_observation.response_value["base"]["state_version"]
-                .as_u64()
-                .expect("user observation state version");
-            let user_observation_ref: StateRecordRef = serde_json::from_value(
-                user_observation.response_value["user_observation_ref"].clone(),
-            )?;
+            let (resolved_state_version, user_observation_ref) =
+                request_and_resolve_user_observation(
+                    harness,
+                    UserObservationFixture {
+                        task_id,
+                        change_unit_id,
+                        expected_state_version: current_state_version,
+                        suffix: &artifact_suffix,
+                        target: update.target.clone(),
+                        artifact_ref: &artifact_ref,
+                        relevance_status: EvidenceRelevanceStatus::Supported,
+                    },
+                )?;
+            current_state_version = resolved_state_version;
             evidence_observations.push(EvidenceObservationInput {
                 target: update.target.clone(),
                 source_kind: EvidenceSourceKind::UserObservation,
@@ -1685,6 +1802,11 @@ fn record_close_evidence_with_updates(
     let response = harness
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        response.response_value["base"]["response_kind"], "result",
+        "close-evidence helper should commit: {}",
+        response.response_value
+    );
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present"))
@@ -1762,8 +1884,8 @@ fn record_final_acceptance_with_id(
 ) -> Result<(u64, String), Box<dyn Error>> {
     let request_id = format!("req_close_final_{suffix}");
     let idempotency_key = format!("idem_close_final_{suffix}");
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let action = harness.service.request_user_action(
+        user_action_request(
             &request_id,
             &idempotency_key,
             false,
@@ -1774,100 +1896,27 @@ fn record_final_acceptance_with_id(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = judgment.response_value["user_judgment_ref"]["record_id"]
+    let user_action_request_id = action.response_value["user_action_request_ref"]["record_id"]
         .as_str()
-        .expect("user judgment ref should be present")
+        .expect("user-action request ref should be present")
         .to_owned();
     let record_request_id = format!("req_close_final_record_{suffix}");
     let record_idempotency_key = format!("idem_close_final_record_{suffix}");
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
             &record_request_id,
             &record_idempotency_key,
-            Some(expected_state_version + 1),
+            None,
             task_id,
-            &judgment_id,
-            JudgmentKind::FinalAcceptance,
-            answer_payload(JudgmentKind::FinalAcceptance),
+            &user_action_request_id,
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
     let state_version = response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
-    Ok((state_version, judgment_id))
-}
-
-fn assert_final_acceptance_action_corruption<F>(
-    suffix: &str,
-    mutate: F,
-) -> Result<(), Box<dyn Error>>
-where
-    F: FnOnce(&MethodHarness, &str) -> Result<(), Box<dyn Error>>,
-{
-    assert_final_acceptance_action_corruption_with(
-        suffix,
-        "resolution_machine_action",
-        "corrupt_stored_value",
-        mutate,
-    )
-}
-
-fn assert_final_acceptance_action_corruption_with<F>(
-    suffix: &str,
-    logical_column: &str,
-    corruption_category: &str,
-    mutate: F,
-) -> Result<(), Box<dyn Error>>
-where
-    F: FnOnce(&MethodHarness, &str) -> Result<(), Box<dyn Error>>,
-{
-    let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, &format!("bad_action_{suffix}"))?;
-    let after_basis = record_close_evidence(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        2,
-        &format!("bad_action_{suffix}"),
-        true,
-    )?;
-    let (_, judgment_id) = record_final_acceptance_with_id(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        after_basis,
-        &format!("bad_action_{suffix}"),
-    )?;
-    mutate(&harness, &judgment_id)?;
-    let before = harness.counts()?;
-
-    let response = harness.service.check_close(
-        check_close_request(CloseTaskFixture {
-            request_id: &format!("req_close_bad_action_{suffix}"),
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }),
-        invocation(OperationCategory::Read),
-    )?;
-
-    assert_owner_state_rejection_with_category(
-        &response,
-        "user_judgments",
-        &judgment_id,
-        logical_column,
-        corruption_category,
-        &harness.runtime_home_path,
-    );
-    assert_eq!(harness.counts()?, before);
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
-    Ok(())
+    Ok((state_version, user_action_request_id))
 }
 
 fn record_cancellation_authority(
@@ -1880,8 +1929,8 @@ fn record_cancellation_authority(
 ) -> Result<(u64, String), Box<dyn Error>> {
     let request_id = format!("req_cancel_authority_{suffix}");
     let idempotency_key = format!("idem_cancel_authority_{suffix}");
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let action = harness.service.request_user_action(
+        user_action_request(
             &request_id,
             &idempotency_key,
             false,
@@ -1892,33 +1941,25 @@ fn record_cancellation_authority(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let user_action_request_id =
+        response_record_id(&action.response_value, "user_action_request_ref");
     let record_request_id = format!("req_cancel_authority_record_{suffix}");
     let record_idempotency_key = format!("idem_cancel_authority_record_{suffix}");
-    let mut request = record_judgment_request(
+    let request = resolve_user_action_request(
         &record_request_id,
         &record_idempotency_key,
-        Some(expected_state_version + 1),
+        None,
         task_id,
-        &judgment_id,
-        JudgmentKind::Cancellation,
-        answer_payload(JudgmentKind::Cancellation),
+        &user_action_request_id,
+        if accepted { "accept" } else { "reject" },
     );
-    if !accepted {
-        request.selected_option_id = volicord_types::UserJudgmentOptionId::new("reject");
-        request.answer.cancellation = Some(json_object(json!({
-            "decision": "rejected",
-            "reason": "The user chose not to cancel the Task."
-        })))
-        .into();
-    }
     let response = harness
         .service
-        .record_user_judgment(request, invocation(OperationCategory::UserOnly))?;
+        .resolve_user_action(request, invocation(OperationCategory::UserOnly))?;
     let state_version = response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
-    Ok((state_version, judgment_id))
+    Ok((state_version, user_action_request_id))
 }
 
 fn record_scope_decision_authority(
@@ -1931,8 +1972,8 @@ fn record_scope_decision_authority(
 ) -> Result<(u64, StateRecordRef, String), Box<dyn Error>> {
     let request_id = format!("req_scope_authority_{suffix}");
     let idempotency_key = format!("idem_scope_authority_{suffix}");
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let action = harness.service.request_user_action(
+        user_action_request(
             &request_id,
             &idempotency_key,
             false,
@@ -1944,134 +1985,27 @@ fn record_scope_decision_authority(
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let decision_ref: StateRecordRef =
-        serde_json::from_value(judgment.response_value["user_judgment_ref"].clone())?;
-    let judgment_id = decision_ref.record_id.as_str().to_owned();
+        serde_json::from_value(action.response_value["user_action_request_ref"].clone())?;
+    let user_action_request_id = decision_ref.record_id.as_str().to_owned();
     let record_request_id = format!("req_scope_authority_record_{suffix}");
     let record_idempotency_key = format!("idem_scope_authority_record_{suffix}");
-    let mut request = record_judgment_request(
+    let request = resolve_user_action_request(
         &record_request_id,
         &record_idempotency_key,
-        Some(expected_state_version + 1),
+        None,
         task_id,
-        &judgment_id,
-        JudgmentKind::ScopeDecision,
-        scope_decision_payload(if accepted { "accepted" } else { "rejected" }),
+        &user_action_request_id,
+        if accepted { "accept" } else { "reject" },
     );
-    if !accepted {
-        request.selected_option_id = volicord_types::UserJudgmentOptionId::new("reject");
-    }
     let response = harness
         .service
-        .record_user_judgment(request, invocation(OperationCategory::UserOnly))?;
+        .resolve_user_action(request, invocation(OperationCategory::UserOnly))?;
     let state_version = response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
-    Ok((state_version, decision_ref, judgment_id))
-}
-
-fn record_sensitive_approval(
-    harness: &MethodHarness,
-    task_id: &str,
-    change_unit_id: &str,
-    expected_state_version: u64,
-    suffix: &str,
-) -> Result<(u64, String), Box<dyn Error>> {
-    let request_id = format!("req_sensitive_approval_{suffix}");
-    let idempotency_key = format!("idem_sensitive_approval_{suffix}");
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
-            &request_id,
-            &idempotency_key,
-            false,
-            Some(expected_state_version),
-            task_id,
-            Some(change_unit_id),
-            JudgmentKind::SensitiveApproval,
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let record_request_id = format!("req_sensitive_approval_record_{suffix}");
-    let record_idempotency_key = format!("idem_sensitive_approval_record_{suffix}");
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
-            &record_request_id,
-            &record_idempotency_key,
-            Some(expected_state_version + 1),
-            task_id,
-            &judgment_id,
-            JudgmentKind::SensitiveApproval,
-            answer_payload(JudgmentKind::SensitiveApproval),
-        ),
-        invocation(OperationCategory::UserOnly),
-    )?;
-    let state_version = response.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("state_version should be present");
-    Ok((state_version, judgment_id))
-}
-
-fn record_sensitive_approval_with_scope(
-    harness: &MethodHarness,
-    task_id: &str,
-    change_unit_id: &str,
-    expected_state_version: u64,
-    suffix: &str,
-    scope: volicord_types::SensitiveActionScope,
-    accepted: bool,
-) -> Result<(u64, String), Box<dyn Error>> {
-    let request_id = format!("req_sensitive_scope_{suffix}");
-    let idempotency_key = format!("idem_sensitive_scope_{suffix}");
-    let mut judgment_request = user_judgment_request(
-        &request_id,
-        &idempotency_key,
-        false,
-        Some(expected_state_version),
-        task_id,
-        Some(change_unit_id),
-        JudgmentKind::SensitiveApproval,
-    );
-    judgment_request.sensitive_action_scope = Some(scope.clone()).into();
-    let judgment = harness.service.request_user_judgment(
-        judgment_request,
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let record_request_id = format!("req_sensitive_scope_record_{suffix}");
-    let record_idempotency_key = format!("idem_sensitive_scope_record_{suffix}");
-    let mut record_request = record_judgment_request(
-        &record_request_id,
-        &record_idempotency_key,
-        Some(expected_state_version + 1),
-        task_id,
-        &judgment_id,
-        JudgmentKind::SensitiveApproval,
-        sensitive_approval_payload(scope),
-    );
-    if !accepted {
-        record_request.selected_option_id = volicord_types::UserJudgmentOptionId::new("reject");
-    }
-    let response = harness
-        .service
-        .record_user_judgment(record_request, invocation(OperationCategory::UserOnly))?;
-    let state_version = response.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("state_version should be present");
-    Ok((state_version, judgment_id))
-}
-
-fn sensitive_approval_payload(
-    scope: volicord_types::SensitiveActionScope,
-) -> RecordUserJudgmentPayload {
-    RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: Some(scope).into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    }
+    let resolution_ref =
+        serde_json::from_value(response.response_value["user_action_resolution_ref"].clone())?;
+    Ok((state_version, resolution_ref, user_action_request_id))
 }
 
 fn sensitive_scope(
@@ -2282,8 +2216,8 @@ fn assert_close_blocker_category(response_value: &Value, code: &str, category: &
 }
 
 fn assert_pending_judgment_prompt_capture_guidance(response_value: &Value) {
-    assert_close_blocker(response_value, "pending_user_judgment");
-    let blocker = close_blocker_by_code(response_value, "pending_user_judgment");
+    assert_close_blocker(response_value, "pending_user_action");
+    let blocker = close_blocker_by_code(response_value, "pending_user_action");
     let guidance = blocker["next_actions"][0]["blocking_question"]
         .as_str()
         .expect("pending blocker should include answer-path guidance");
@@ -2801,7 +2735,7 @@ fn staged_artifact_body_path(
         .join(row.tmp_path))
 }
 
-fn user_judgment_request(
+fn user_action_request(
     request_id: &str,
     idempotency_key: &str,
     dry_run: bool,
@@ -2809,21 +2743,21 @@ fn user_judgment_request(
     task_id: &str,
     change_unit_id: Option<&str>,
     judgment_kind: JudgmentKind,
-) -> volicord_types::RequestUserJudgmentRequest {
+) -> volicord_types::RequestUserActionRequest {
     let options = if matches!(
         judgment_kind,
         JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision
     ) {
         vec![
-            volicord_types::UserJudgmentOptionInput {
-                option_id: volicord_types::UserJudgmentOptionId::new("accept"),
+            volicord_types::UserActionOptionInput {
+                option_id: volicord_types::UserActionOptionId::new("accept"),
                 label: "Accept".to_owned(),
                 description: "Record the focused user-owned judgment.".to_owned(),
                 consequence: "Only this judgment record is resolved.".to_owned(),
                 is_default: true,
             },
-            volicord_types::UserJudgmentOptionInput {
-                option_id: volicord_types::UserJudgmentOptionId::new("decline"),
+            volicord_types::UserActionOptionInput {
+                option_id: volicord_types::UserActionOptionId::new("decline"),
                 label: "Decline".to_owned(),
                 description: "Record that the focused judgment was not accepted.".to_owned(),
                 consequence: "The Task remains unresolved for this question.".to_owned(),
@@ -2834,7 +2768,7 @@ fn user_judgment_request(
         Vec::new()
     };
 
-    volicord_types::RequestUserJudgmentRequest {
+    volicord_types::RequestUserActionRequest {
         envelope: envelope(
             request_id,
             Some(idempotency_key),
@@ -2844,43 +2778,83 @@ fn user_judgment_request(
         ),
         task_id: TaskId::new(task_id),
         change_unit_id: change_unit_id.map(ChangeUnitId::new).into(),
-        judgment_kind,
-        presentation: volicord_types::JudgmentPresentation::Short,
-        question: "Choose the focused test judgment outcome.".to_owned(),
-        options: Some(options).into(),
-        context: UserJudgmentContext {
-            summary: "A focused test judgment needs a user-owned answer.".to_owned(),
-            related_refs: Vec::new(),
-            artifact_refs: Vec::new(),
-            visible_risks: Vec::new(),
-            constraints: vec!["The answer covers only the requested judgment kind.".to_owned()],
-        },
-        affected_refs: vec![StateRecordRef {
-            record_kind: StateRecordKind::Task,
-            record_id: RecordId::new(task_id),
-            project_id: ProjectId::new(PROJECT_ID),
-            task_id: Some(TaskId::new(task_id)).into(),
-            produced_at_state_version: expected_state_version.into(),
-        }],
-        sensitive_action_scope: sensitive_action_scope_for_kind(judgment_kind).into(),
+        action: volicord_types::UserActionDraft::Choice(Box::new(
+            volicord_types::UserActionChoiceDraft {
+                judgment_kind,
+                presentation: volicord_types::JudgmentPresentation::Short,
+                question: "Choose the focused test user-action outcome.".to_owned(),
+                options: (!options.is_empty()).then_some(options).into(),
+                context: volicord_types::UserActionContext {
+                    summary: "A focused test user action needs a user-owned answer.".to_owned(),
+                    related_refs: Vec::new(),
+                    artifact_refs: Vec::new(),
+                    visible_risks: Vec::new(),
+                    constraints: vec![
+                        "The answer covers only the requested action kind.".to_owned()
+                    ],
+                },
+                affected_refs: vec![StateRecordRef {
+                    record_kind: StateRecordKind::Task,
+                    record_id: RecordId::new(task_id),
+                    project_id: ProjectId::new(PROJECT_ID),
+                    task_id: Some(TaskId::new(task_id)).into(),
+                    produced_at_state_version: expected_state_version.into(),
+                }],
+                sensitive_action_scope: sensitive_action_scope_for_kind(judgment_kind).into(),
+            },
+        )),
         required_for: required_for_for_kind(judgment_kind),
         expires_at: None.into(),
     }
 }
 
-fn required_for_for_kind(judgment_kind: JudgmentKind) -> Vec<volicord_types::JudgmentRequiredFor> {
+fn observation_action_request(
+    request_id: &str,
+    idempotency_key: &str,
+    expected_state_version: u64,
+    task_id: &str,
+    change_unit_id: &str,
+    target: EvidenceTarget,
+    artifact_ids: Vec<volicord_types::ArtifactId>,
+) -> volicord_types::RequestUserActionRequest {
+    volicord_types::RequestUserActionRequest {
+        envelope: envelope(
+            request_id,
+            Some(idempotency_key),
+            false,
+            Some(expected_state_version),
+            Some(task_id),
+        ),
+        task_id: TaskId::new(task_id),
+        change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
+        action: volicord_types::UserActionDraft::EvidenceObservation(
+            volicord_types::UserActionEvidenceObservationDraft {
+                question: "Does the selected artifact support this exact target?".to_owned(),
+                context_summary: "The user must inspect the candidate artifact bytes.".to_owned(),
+                target_candidates: vec![target],
+                artifact_candidate_ids: artifact_ids,
+            },
+        ),
+        required_for: vec![volicord_types::UserActionRequiredFor::RecordRun],
+        expires_at: None.into(),
+    }
+}
+
+fn required_for_for_kind(
+    judgment_kind: JudgmentKind,
+) -> Vec<volicord_types::UserActionRequiredFor> {
     match judgment_kind {
-        JudgmentKind::ScopeDecision => vec![volicord_types::JudgmentRequiredFor::ScopeUpdate],
+        JudgmentKind::ScopeDecision => vec![volicord_types::UserActionRequiredFor::ScopeUpdate],
         JudgmentKind::SensitiveApproval => vec![
-            volicord_types::JudgmentRequiredFor::PrepareWrite,
-            volicord_types::JudgmentRequiredFor::CloseComplete,
+            volicord_types::UserActionRequiredFor::PrepareWrite,
+            volicord_types::UserActionRequiredFor::CloseComplete,
         ],
         JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance => {
-            vec![volicord_types::JudgmentRequiredFor::CloseComplete]
+            vec![volicord_types::UserActionRequiredFor::CloseComplete]
         }
-        JudgmentKind::Cancellation => vec![volicord_types::JudgmentRequiredFor::CloseCancel],
+        JudgmentKind::Cancellation => vec![volicord_types::UserActionRequiredFor::CloseCancel],
         JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision => {
-            vec![volicord_types::JudgmentRequiredFor::CloseComplete]
+            vec![volicord_types::UserActionRequiredFor::CloseComplete]
         }
     }
 }
@@ -2904,188 +2878,28 @@ fn sensitive_action_scope_for_kind(
     }
 }
 
-fn record_judgment_request(
+fn resolve_user_action_request(
     request_id: &str,
-    idempotency_key: &str,
+    channel_submission_id: &str,
     expected_state_version: Option<u64>,
     task_id: &str,
-    user_judgment_id: &str,
-    judgment_kind: JudgmentKind,
-    answer: RecordUserJudgmentPayload,
-) -> RecordUserJudgmentRequest {
-    let request_envelope = envelope(
-        request_id,
-        Some(idempotency_key),
-        false,
-        expected_state_version,
-        Some(task_id),
-    );
-    RecordUserJudgmentRequest {
-        envelope: request_envelope,
-        user_judgment_id: volicord_types::UserJudgmentId::new(user_judgment_id),
-        judgment_kind,
-        selected_option_id: volicord_types::UserJudgmentOptionId::new("accept"),
-        answer,
-        rationale: default_judgment_rationale(),
-        note: Some("Recorded by the focused judgment test.".to_owned()).into(),
-        accepted_risks: Vec::new(),
-    }
-}
-
-fn residual_risk_acceptance_payload(risk_ids: &[String]) -> RecordUserJudgmentPayload {
-    let mut payload = RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: None.into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    };
-    payload.residual_risk_acceptance = Some(json_object(json!({ "risk_ids": risk_ids }))).into();
-    payload
-}
-
-fn cancellation_payload_with_decision(decision: &str) -> RecordUserJudgmentPayload {
-    let mut payload = RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: None.into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    };
-    payload.cancellation = Some(json_object(json!({
-        "decision": decision,
-        "reason": "The user selected this cancellation outcome."
-    })))
-    .into();
-    payload
-}
-
-fn scope_decision_payload(decision: &str) -> RecordUserJudgmentPayload {
-    let mut payload = RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: None.into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    };
-    payload.scope_decision = Some(json_object(json!({
-        "requested_scope_summary": "Expanded scope that must not apply silently.",
-        "decision": decision
-    })))
-    .into();
-    payload
-}
-
-fn rejected_final_acceptance_payload() -> RecordUserJudgmentPayload {
-    let mut payload = answer_payload(JudgmentKind::FinalAcceptance);
-    payload.final_acceptance = Some(json_object(json!({
-        "judgment": {
-            "decision": "rejected",
-            "basis": "The visible close basis is not accepted."
-        }
-    })))
-    .into();
-    payload
-}
-
-fn default_judgment_rationale() -> JudgmentRationale {
-    JudgmentRationale {
-        summary: "The user selected the focused judgment option.".to_owned(),
-        selected_reason: Some("The selected option matches the visible prompt.".to_owned()).into(),
-        considered_alternatives: vec!["Use another listed option.".to_owned()],
-        rejected_alternatives: Vec::new(),
-        assumptions: vec!["The pending judgment basis is current.".to_owned()],
-        tradeoffs: vec![
-            "The rationale preserves intent without changing the selected option.".to_owned(),
-        ],
-        uncertainties: Vec::new(),
-        review_triggers: vec!["Review if the judgment basis changes.".to_owned()],
-        related_refs: Vec::new(),
-        artifact_refs: Vec::new(),
-    }
-}
-
-fn default_judgment_rationale_json() -> String {
-    serde_json::to_string(&default_judgment_rationale())
-        .expect("default judgment rationale should serialize")
-}
-
-fn answer_payload(judgment_kind: JudgmentKind) -> RecordUserJudgmentPayload {
-    let mut payload = RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: None.into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    };
-    match judgment_kind {
-        JudgmentKind::ProductDecision => {
-            payload.product_decision = Some(json_object(json!({
-                "judgment": {
-                    "decision": "accepted",
-                    "rationale": "The product direction is accepted for this focused test."
-                }
-            })))
-            .into();
-        }
-        JudgmentKind::TechnicalDecision => {
-            payload.technical_decision = Some(json_object(json!({
-                "judgment": {
-                    "decision": "accepted",
-                    "rationale": "The technical direction is accepted for this focused test."
-                }
-            })))
-            .into();
-        }
-        JudgmentKind::ScopeDecision => {
-            payload.scope_decision = Some(json_object(json!({
-                "requested_scope_summary": "Expanded scope that must not apply silently.",
-                "decision": "accepted"
-            })))
-            .into();
-        }
-        JudgmentKind::SensitiveApproval => {
-            payload.sensitive_action_scope = sensitive_action_scope_for_kind(judgment_kind).into();
-        }
-        JudgmentKind::FinalAcceptance => {
-            payload.final_acceptance = Some(json_object(json!({
-                "judgment": {
-                    "decision": "accepted",
-                    "basis": "The visible close basis is acceptable."
-                }
-            })))
-            .into();
-        }
-        JudgmentKind::ResidualRiskAcceptance => {
-            payload.residual_risk_acceptance = Some(json_object(json!({
-                "risk_id": "risk_visible_001",
-                "decision": "accepted"
-            })))
-            .into();
-        }
-        JudgmentKind::Cancellation => {
-            payload.cancellation = Some(json_object(json!({
-                "decision": "cancel",
-                "reason": "The user chose to stop the Task."
-            })))
-            .into();
-        }
-    }
-    payload
-}
-
-fn json_object(value: Value) -> JsonObject {
-    match value {
-        Value::Object(object) => object,
-        _ => panic!("test helper expected a JSON object"),
+    user_action_request_id: &str,
+    selected_option_id: &str,
+) -> volicord_types::ResolveUserActionRequest {
+    volicord_types::ResolveUserActionRequest {
+        envelope: envelope(
+            request_id,
+            Some(channel_submission_id),
+            false,
+            expected_state_version,
+            Some(task_id),
+        ),
+        user_action_request_id: volicord_types::UserActionRequestId::new(user_action_request_id),
+        channel_submission_id: channel_submission_id.to_owned(),
+        resolution: volicord_types::UserActionResolutionInput::Choice {
+            selected_option_id: volicord_types::UserActionOptionId::new(selected_option_id),
+            note: Some("Recorded by the focused user-action test.".to_owned()).into(),
+        },
     }
 }
 
@@ -3223,74 +3037,6 @@ fn mutate_write_ticket_scope_json(
     Ok(())
 }
 
-struct SensitiveProductWriteBasisFixture<'a> {
-    task_id: &'a str,
-    change_unit_id: &'a str,
-    expected_state_version: u64,
-    suffix: &'a str,
-    write_ticket_id: &'a str,
-    intended_operation: &'a str,
-    intended_paths: &'a [&'a str],
-    observed_categories: &'a [&'a str],
-    assessment_categories: &'a [&'a str],
-}
-
-fn record_sensitive_product_write_close_basis(
-    harness: &MethodHarness,
-    input: SensitiveProductWriteBasisFixture<'_>,
-) -> Result<PipelineResponse, Box<dyn Error>> {
-    enable_record_run_capabilities(harness)?;
-    insert_active_write_ticket_with_scope(
-        harness,
-        WriteTicketScopeFixture {
-            task_id: input.task_id,
-            change_unit_id: input.change_unit_id,
-            write_ticket_id: input.write_ticket_id,
-            basis_state_version: input.expected_state_version,
-            created_at: "2999-01-01T00:00:00.000Z",
-            expires_at: "2999-01-01T00:15:00.000Z",
-            intended_operation: input.intended_operation,
-            intended_paths: input.intended_paths,
-            sensitive_categories: input.observed_categories,
-        },
-    )?;
-    let mut request = product_write_record_run_request(
-        &format!("req_sensitive_run_{}", input.suffix),
-        &format!("idem_sensitive_run_{}", input.suffix),
-        input.expected_state_version,
-        input.task_id,
-        input.change_unit_id,
-        input.write_ticket_id,
-        &format!("run_sensitive_{}", input.suffix),
-    );
-    request.observed_changes.changed_paths = input
-        .intended_paths
-        .iter()
-        .map(|path| path.to_string())
-        .collect();
-    request.observed_changes.sensitive_categories = input
-        .observed_categories
-        .iter()
-        .map(|category| category.to_string())
-        .collect();
-    request.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
-        result_summary: "Sensitive product write is ready for close.".to_owned(),
-        result_refs: Vec::new(),
-        residual_risks: Vec::new(),
-        sensitive_categories: input
-            .assessment_categories
-            .iter()
-            .map(|category| category.to_string())
-            .collect(),
-        recovery_constraints: Vec::new(),
-    })
-    .into();
-    Ok(harness
-        .service
-        .record_run(request, invocation(OperationCategory::AgentWorkflow))?)
-}
-
 fn write_ticket_count(harness: &MethodHarness) -> Result<u64, Box<dyn Error>> {
     let conn = harness.conn()?;
     let count: i64 = conn.query_row(
@@ -3389,35 +3135,54 @@ fn write_ticket_timestamps(
     )?)
 }
 
-fn user_judgment_status(
+fn user_action_status(
     harness: &MethodHarness,
-    user_judgment_id: &str,
+    user_action_request_id: &str,
 ) -> Result<String, Box<dyn Error>> {
     let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT status
-               FROM user_judgments
-              WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
-        |row| row.get(0),
-    )?)
+    let (basis_status, has_resolution, expired): (String, bool, bool) = conn.query_row(
+        "SELECT
+                 request.basis_status,
+                 EXISTS (
+                   SELECT 1
+                     FROM user_action_resolutions AS resolution
+                    WHERE resolution.project_id = request.project_id
+                      AND resolution.user_action_request_id = request.user_action_request_id
+                 ),
+                 request.expires_at IS NOT NULL
+                   AND julianday(request.expires_at) <= julianday('now')
+               FROM user_action_requests AS request
+              WHERE request.project_id = ?1
+                AND request.user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    if basis_status != "current" {
+        return Ok(basis_status);
+    }
+    if has_resolution {
+        return Ok("resolved".to_owned());
+    }
+    if expired {
+        return Ok("expired".to_owned());
+    }
+    Ok("pending".to_owned())
 }
 
-fn create_local_web_token_for_judgment(
+fn create_local_web_token_for_user_action(
     harness: &MethodHarness,
     token: &str,
-    judgment_id: &str,
+    user_action_request_id: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let record = create_local_web_consent_token(
+    let record = create_user_action_channel_token(
         &harness.runtime_home_path,
-        LocalWebConsentTokenCreate {
+        UserActionChannelTokenCreate {
             token: token.to_owned(),
             project_id: PROJECT_ID.to_owned(),
+            channel_kind: volicord_types::UserActionChannelKind::LocalWebConsent,
             connection_internal_id: CONNECTION_ID.to_owned(),
-            judgment_id: judgment_id.to_owned(),
+            user_action_request_id: user_action_request_id.to_owned(),
             capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            ttl_seconds: 600,
             created_metadata_json: "{}".to_owned(),
         },
     )?;
@@ -3431,7 +3196,7 @@ fn local_web_token_status(
     let conn = harness.conn()?;
     Ok(conn.query_row(
         "SELECT status, consumed_at, completed_at
-           FROM local_web_consent_tokens
+           FROM user_action_channel_tokens
           WHERE project_id = ?1
             AND token_hash = ?2",
         rusqlite::params![PROJECT_ID, token_hash],
@@ -3439,89 +3204,45 @@ fn local_web_token_status(
     )?)
 }
 
-fn user_judgment_basis_status(
+fn user_action_basis_status(
     harness: &MethodHarness,
-    user_judgment_id: &str,
+    user_action_request_id: &str,
 ) -> Result<String, Box<dyn Error>> {
     let conn = harness.conn()?;
     Ok(conn.query_row(
         "SELECT basis_status
-               FROM user_judgments
+               FROM user_action_requests
               WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
+                AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
         |row| row.get(0),
     )?)
 }
 
-fn user_judgment_resolution_outcome(
+fn user_action_resolution_outcome(
     harness: &MethodHarness,
-    user_judgment_id: &str,
+    user_action_request_id: &str,
 ) -> Result<Option<String>, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT resolution_outcome
-               FROM user_judgments
-              WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
-        |row| row.get(0),
-    )?)
+    let value = resolution_json(harness, user_action_request_id)?;
+    Ok(value
+        .get("resolution_outcome")
+        .and_then(Value::as_str)
+        .map(str::to_owned))
 }
 
-fn user_judgment_resolution_machine_action(
+fn clear_user_action_actor_provenance(
     harness: &MethodHarness,
-    user_judgment_id: &str,
-) -> Result<Option<String>, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT resolution_machine_action
-               FROM user_judgments
-              WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
-        |row| row.get(0),
-    )?)
-}
-
-fn user_judgment_actor_provenance(
-    harness: &MethodHarness,
-    user_judgment_id: &str,
-) -> Result<UserJudgmentActorProvenance, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT
-                resolved_by_actor_source,
-                resolved_verification_basis,
-                resolved_assurance_level
-           FROM user_judgments
-          WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
-        |row| {
-            Ok(UserJudgmentActorProvenance {
-                resolved_by_actor_source: row.get(0)?,
-                resolved_verification_basis: row.get(1)?,
-                resolved_assurance_level: row.get(2)?,
-            })
-        },
-    )?)
-}
-
-fn clear_user_judgment_actor_provenance(
-    harness: &MethodHarness,
-    user_judgment_id: &str,
+    user_action_request_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     conn.pragma_update(None, "ignore_check_constraints", true)?;
     conn.execute(
-        "UPDATE user_judgments
-            SET resolved_by_actor_source = NULL,
-                resolved_verification_basis = NULL,
-                resolved_assurance_level = NULL
+        "UPDATE user_action_resolutions
+            SET resolved_verification_basis = '',
+                resolved_assurance_level = ''
           WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
     )?;
     conn.pragma_update(None, "ignore_check_constraints", false)?;
     Ok(())
@@ -3529,49 +3250,18 @@ fn clear_user_judgment_actor_provenance(
 
 fn resolution_json(
     harness: &MethodHarness,
-    user_judgment_id: &str,
+    user_action_request_id: &str,
 ) -> Result<Value, Box<dyn Error>> {
     let conn = harness.conn()?;
     let text: String = conn.query_row(
         "SELECT resolution_json
-               FROM user_judgments
+               FROM user_action_resolutions
               WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
+                AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
         |row| row.get(0),
     )?;
     Ok(serde_json::from_str(&text)?)
-}
-
-fn resolution_rationale_json(
-    harness: &MethodHarness,
-    user_judgment_id: &str,
-) -> Result<Value, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let text: String = conn.query_row(
-        "SELECT resolution_rationale_json
-               FROM user_judgments
-              WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
-        |row| row.get(0),
-    )?;
-    Ok(serde_json::from_str(&text)?)
-}
-
-fn current_change_unit_id(
-    harness: &MethodHarness,
-    task_id: &str,
-) -> Result<Option<String>, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    Ok(conn.query_row(
-        "SELECT current_change_unit_id
-               FROM tasks
-              WHERE project_id = ?1
-                AND task_id = ?2",
-        rusqlite::params![PROJECT_ID, task_id],
-        |row| row.get(0),
-    )?)
 }
 
 fn task_revision(
@@ -3800,272 +3490,248 @@ fn set_change_unit_owner_json(
     Ok(())
 }
 
-fn set_user_judgment_resolution_json(
+fn set_user_action_resolution_json(
     harness: &MethodHarness,
-    judgment_id: &str,
+    user_action_request_id: &str,
     value: Option<&str>,
-) -> Result<(), Box<dyn Error>> {
-    let (machine_action, resolution_outcome) = match value {
-        Some(text) => match serde_json::from_str::<Value>(text) {
-            Ok(value) => (
-                value
-                    .get("machine_action")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
-                value
-                    .get("resolution_outcome")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
+) -> Result<String, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let existing_resolution_id = conn
+        .query_row(
+            "SELECT user_action_resolution_id
+               FROM user_action_resolutions
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            rusqlite::params![PROJECT_ID, user_action_request_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    drop(conn);
+
+    if existing_resolution_id.is_none() {
+        let task_id: String = harness.conn()?.query_row(
+            "SELECT task_id
+               FROM user_action_requests
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            rusqlite::params![PROJECT_ID, user_action_request_id],
+            |row| row.get(0),
+        )?;
+        let response = harness.service.resolve_user_action(
+            resolve_user_action_request(
+                &format!("req_corrupt_resolution_{user_action_request_id}"),
+                &format!("submission_corrupt_resolution_{user_action_request_id}"),
+                None,
+                &task_id,
+                user_action_request_id,
+                "accept",
             ),
-            Err(_) => (Some("accept".to_owned()), Some("accepted".to_owned())),
-        },
-        None => (None, None),
-    };
+            invocation(OperationCategory::UserOnly),
+        )?;
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+    }
+
     let conn = harness.conn()?;
-    let rationale = value.map(|_| default_judgment_rationale_json());
+    let user_action_resolution_id: String = conn.query_row(
+        "SELECT user_action_resolution_id
+           FROM user_action_resolutions
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
+        |row| row.get(0),
+    )?;
     conn.pragma_update(None, "ignore_check_constraints", true)?;
     conn.execute(
-        "UPDATE user_judgments
-            SET status = 'resolved',
-                resolution_json = ?3,
-                resolution_rationale_json = ?4,
-                resolution_machine_action = ?5,
-                resolution_outcome = ?6,
-                resolved_at = 't1'
-          WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![
-            PROJECT_ID,
-            judgment_id,
-            value,
-            rationale,
-            machine_action,
-            resolution_outcome
-        ],
-    )?;
-    conn.pragma_update(None, "ignore_check_constraints", false)?;
-    Ok(())
-}
-
-fn set_user_judgment_resolution_machine_action(
-    harness: &MethodHarness,
-    judgment_id: &str,
-    value: Option<&str>,
-) -> Result<(), Box<dyn Error>> {
-    let conn = harness.conn()?;
-    conn.pragma_update(None, "ignore_check_constraints", true)?;
-    conn.execute(
-        "UPDATE user_judgments
-            SET resolution_machine_action = ?3
-          WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, value],
-    )?;
-    conn.pragma_update(None, "ignore_check_constraints", false)?;
-    Ok(())
-}
-
-fn set_user_judgment_resolution_machine_action_raw(
-    harness: &MethodHarness,
-    judgment_id: &str,
-    value: Option<&str>,
-) -> Result<(), Box<dyn Error>> {
-    let conn = harness.conn()?;
-    conn.pragma_update(None, "ignore_check_constraints", true)?;
-    conn.execute(
-        "UPDATE user_judgments
-            SET resolution_machine_action = ?3
-          WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, value],
-    )?;
-    conn.pragma_update(None, "ignore_check_constraints", false)?;
-    Ok(())
-}
-
-fn set_user_judgment_resolution_json_value(
-    harness: &MethodHarness,
-    judgment_id: &str,
-    value: &Value,
-) -> Result<(), Box<dyn Error>> {
-    let text = serde_json::to_string(value)?;
-    set_user_judgment_resolution_json(harness, judgment_id, Some(&text))
-}
-
-fn set_user_judgment_resolution_json_only_value(
-    harness: &MethodHarness,
-    judgment_id: &str,
-    value: &Value,
-) -> Result<(), Box<dyn Error>> {
-    let text = serde_json::to_string(value)?;
-    harness.conn()?.execute(
-        "UPDATE user_judgments
+        "UPDATE user_action_resolutions
             SET resolution_json = ?3
           WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, text],
+            AND user_action_resolution_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_resolution_id, value],
     )?;
-    Ok(())
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
+    Ok(user_action_resolution_id)
 }
 
-fn set_user_judgment_resolution_actor(
+fn set_user_action_resolution_actor(
     harness: &MethodHarness,
-    judgment_id: &str,
+    user_action_request_id: &str,
     actor_kind: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let mut resolution = resolution_json(harness, judgment_id)?;
-    resolution["resolved_by_actor_source"] = json!(actor_kind);
-    harness.conn()?.execute(
-        "UPDATE user_judgments
-            SET resolution_json = ?3,
-                resolved_by_actor_source = ?4
-          WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, resolution.to_string(), actor_kind],
-    )?;
-    Ok(())
-}
-
-fn set_user_judgment_resolved_by_actor_source(
-    harness: &MethodHarness,
-    judgment_id: &str,
-    role: &str,
-) -> Result<(), Box<dyn Error>> {
-    harness.conn()?.execute(
-        "UPDATE user_judgments
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
+        "UPDATE user_action_resolutions
             SET resolved_by_actor_source = ?3
           WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, role],
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id, actor_kind],
     )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
     Ok(())
 }
 
-fn set_user_judgment_required_for(
+fn set_user_action_resolved_by_actor_source(
     harness: &MethodHarness,
-    judgment_id: &str,
-    required_for: &[volicord_types::JudgmentRequiredFor],
+    user_action_request_id: &str,
+    role: &str,
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
+        "UPDATE user_action_resolutions
+            SET resolved_by_actor_source = ?3
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id, role],
+    )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
+    Ok(())
+}
+
+fn set_user_action_required_for(
+    harness: &MethodHarness,
+    user_action_request_id: &str,
+    required_for: &[volicord_types::UserActionRequiredFor],
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     let text: String = conn.query_row(
         "SELECT request_json
-           FROM user_judgments
+           FROM user_action_requests
           WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id],
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
         |row| row.get(0),
     )?;
     let mut value: Value = serde_json::from_str(&text)?;
     value["required_for"] = serde_json::to_value(required_for)?;
-    set_user_judgment_owner_json(
+    conn.execute(
+        "UPDATE user_action_requests
+            SET request_json = ?3,
+                required_for_json = ?4
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![
+            PROJECT_ID,
+            user_action_request_id,
+            value.to_string(),
+            serde_json::to_string(required_for)?
+        ],
+    )?;
+    Ok(())
+}
+
+fn set_user_action_affected_refs(
+    harness: &MethodHarness,
+    user_action_request_id: &str,
+    affected_refs: &[StateRecordRef],
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let text: String = conn.query_row(
+        "SELECT request_json
+           FROM user_action_requests
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
+        |row| row.get(0),
+    )?;
+    let mut value: Value = serde_json::from_str(&text)?;
+    value["body"]["affected_refs"] = serde_json::to_value(affected_refs)?;
+    set_user_action_owner_json(
         harness,
-        judgment_id,
+        user_action_request_id,
         "request_json",
         Some(&value.to_string()),
     )
 }
 
-fn set_user_judgment_affected_refs(
+fn set_user_action_expires_at(
     harness: &MethodHarness,
-    judgment_id: &str,
-    affected_refs: &[StateRecordRef],
-) -> Result<(), Box<dyn Error>> {
-    let value = serde_json::to_string(affected_refs)?;
-    set_user_judgment_owner_json(harness, judgment_id, "affected_refs_json", Some(&value))
-}
-
-fn set_user_judgment_expires_at(
-    harness: &MethodHarness,
-    judgment_id: &str,
+    user_action_request_id: &str,
     expires_at: &str,
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     let text: String = conn.query_row(
         "SELECT request_json
-           FROM user_judgments
+           FROM user_action_requests
           WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id],
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
         |row| row.get(0),
     )?;
     let mut value: Value = serde_json::from_str(&text)?;
     value["expires_at"] = json!(expires_at);
-    set_user_judgment_owner_json(
-        harness,
-        judgment_id,
-        "request_json",
-        Some(&value.to_string()),
-    )
+    conn.execute(
+        "UPDATE user_action_requests
+            SET request_json = ?3,
+                expires_at = ?4
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        rusqlite::params![
+            PROJECT_ID,
+            user_action_request_id,
+            value.to_string(),
+            expires_at
+        ],
+    )?;
+    Ok(())
 }
 
-fn set_user_judgment_owner_json(
+fn set_user_action_owner_json(
     harness: &MethodHarness,
-    judgment_id: &str,
+    user_action_request_id: &str,
     logical_column: &str,
     value: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let sql = match logical_column {
         "request_json" => {
-            "UPDATE user_judgments
+            "UPDATE user_action_requests
                 SET request_json = ?3
               WHERE project_id = ?1
-                AND judgment_id = ?2"
+                AND user_action_request_id = ?2"
         }
         "basis_json" => {
-            "UPDATE user_judgments
+            "UPDATE user_action_requests
                 SET basis_json = ?3
               WHERE project_id = ?1
-                AND judgment_id = ?2"
-        }
-        "options_json" => {
-            "UPDATE user_judgments
-                SET options_json = ?3
-              WHERE project_id = ?1
-                AND judgment_id = ?2"
+                AND user_action_request_id = ?2"
         }
         "resolution_json" => {
-            "UPDATE user_judgments
+            "UPDATE user_action_resolutions
                 SET resolution_json = ?3
               WHERE project_id = ?1
-                AND judgment_id = ?2"
+                AND user_action_request_id = ?2"
         }
-        "artifact_refs_json" => {
-            "UPDATE user_judgments
-                SET artifact_refs_json = ?3
-              WHERE project_id = ?1
-                AND judgment_id = ?2"
-        }
-        "affected_refs_json" => {
-            "UPDATE user_judgments
-                SET affected_refs_json = ?3
-              WHERE project_id = ?1
-                AND judgment_id = ?2"
-        }
-        _ => panic!("unsupported user-judgment owner JSON column {logical_column}"),
+        _ => panic!("unsupported user-action owner JSON column {logical_column}"),
     };
-    harness
-        .conn()?
-        .execute(sql, rusqlite::params![PROJECT_ID, judgment_id, value])?;
+    harness.conn()?.execute(
+        sql,
+        rusqlite::params![PROJECT_ID, user_action_request_id, value],
+    )?;
     Ok(())
 }
 
-fn mutate_user_judgment_basis_json(
+fn mutate_user_action_basis_json(
     harness: &MethodHarness,
-    judgment_id: &str,
+    user_action_request_id: &str,
     mutate: impl FnOnce(&mut Value),
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     let text: String = conn.query_row(
         "SELECT basis_json
-           FROM user_judgments
+           FROM user_action_requests
           WHERE project_id = ?1
-            AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id],
+            AND user_action_request_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_request_id],
         |row| row.get(0),
     )?;
     let mut value: Value = serde_json::from_str(&text)?;
     mutate(&mut value);
-    set_user_judgment_owner_json(harness, judgment_id, "basis_json", Some(&value.to_string()))
+    set_user_action_owner_json(
+        harness,
+        user_action_request_id,
+        "basis_json",
+        Some(&value.to_string()),
+    )
 }
 
 fn set_artifact_owner_json(
@@ -4178,7 +3844,7 @@ fn latest_evidence_summary_id(
                FROM evidence_summaries
               WHERE project_id = ?1
                 AND task_id = ?2
-              ORDER BY updated_at DESC, evidence_summary_id DESC
+              ORDER BY produced_at_state_version DESC
               LIMIT 1",
         rusqlite::params![PROJECT_ID, task_id],
         |row| row.get(0),
@@ -4358,7 +4024,7 @@ fn status_with_evidence_and_close(
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -4441,7 +4107,8 @@ fn expire_staged_artifact(harness: &MethodHarness, handle_id: &str) -> Result<()
     let conn = harness.conn()?;
     conn.execute(
         "UPDATE artifact_staging
-                SET expires_at = '2000-01-01T00:00:00.000Z'
+                SET created_at = '1999-12-31T23:59:59.000Z',
+                    expires_at = '2000-01-01T00:00:00.000Z'
               WHERE project_id = ?1
                 AND handle_id = ?2",
         rusqlite::params![PROJECT_ID, handle_id],
@@ -4461,6 +4128,23 @@ fn set_staged_artifact_expires_at(
               WHERE project_id = ?1
                 AND handle_id = ?2",
         rusqlite::params![PROJECT_ID, handle_id, expires_at],
+    )?;
+    Ok(())
+}
+
+fn set_staged_artifact_window(
+    harness: &MethodHarness,
+    handle_id: &str,
+    created_at: &str,
+    expires_at: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE artifact_staging
+            SET created_at = ?3,
+                expires_at = ?4
+          WHERE project_id = ?1
+            AND handle_id = ?2",
+        rusqlite::params![PROJECT_ID, handle_id, created_at, expires_at],
     )?;
     Ok(())
 }

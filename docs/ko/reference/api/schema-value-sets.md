@@ -67,9 +67,8 @@ volicord.prepare_write
 volicord.prepare_evidence_capture
 volicord.stage_artifact
 volicord.record_run
-volicord.request_user_judgment
-volicord.record_user_judgment
-volicord.record_user_observation
+volicord.request_user_action
+volicord.resolve_user_action
 volicord.reconcile_changes
 volicord.close_task
 ```
@@ -80,19 +79,19 @@ volicord.close_task
 <a id="actor-values"></a>
 ## 행위자 출처 값
 
-`EvidenceObservation.observed_by_actor_source`, `UserEvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, `UserJudgmentResolution.resolved_by_actor_source` 같은 행위자 출처 필드는 `ActorSource` 값 집합을 사용합니다.
+`EvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, `UserActionResolution.resolved_by_actor_source` 같은 행위자 출처 필드는 `ActorSource` 값 집합을 사용합니다.
 
 | 값 | 사용하는 곳 | 담당 문서 경로 |
 |---|---|---|
-| `local_user` | User Channel 호출 출처와 권한 효력이 있는 사용자 판단 결과 기록. | 호출 의미: [Agent Connection](../agent-connection.md). 결과 형태 담당 문서: [API 판단 스키마](schema-judgment.md). |
+| `local_user` | 모든 사용자 행동 해결의 User Channel 호출 출처. | 호출 의미: [Agent Connection](../agent-connection.md). 결과 형태 담당 문서: [API 사용자 행동 스키마](schema-user-action.md). |
 | `agent_connection:<connection_id>` | Agent Connection 호출 출처와 에이전트가 만들거나 관찰한 상태. | 호출 의미: [Agent Connection](../agent-connection.md). 중첩 형태 담당 문서가 값이 나타나는 위치를 정의합니다. |
 | `system` | 담당 문서가 명시적으로 허용하는 내부 시스템 출처. | 메서드와 저장소 담당 문서가 값이 나타나는 위치를 정의합니다. |
 
 이 값들은 파생된 호출 출처 또는 지속 행위자 출처를 분류합니다. 이 값만으로 사용자
-소유 판단, 승인, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 쓰기 티켓이 생기지는
-않습니다. 사용자 판단을 권한 효력이 있는 결과로 기록하려면 [Agent
-Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 호환 User
-Channel 출처와 함께 `resolved_by_actor_source=local_user`가 필요합니다.
+소유 판단, 증거 relevance, 승인, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 쓰기
+티켓이 생기지는 않습니다. 모든 사용자 행동 해결은 [Agent
+Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 호환 User Channel
+출처와 함께 `resolved_by_actor_source=local_user`가 필요합니다.
 
 <a id="next-action-values"></a>
 ## 다음 행동 값
@@ -112,8 +111,8 @@ Channel 출처와 함께 `resolved_by_actor_source=local_user`가 필요합니�
 | `prepare_write` | `volicord.prepare_write` | `agent_workflow` |
 | `stage_artifact` | `volicord.stage_artifact` | `agent_workflow` |
 | `record_run` | `volicord.record_run` | `agent_workflow` |
-| `request_user_judgment` | `volicord.request_user_judgment` | `agent_workflow` |
-| `record_user_judgment` | `volicord.record_user_judgment` | `user_only` |
+| `request_user_action` | `volicord.request_user_action` | `agent_workflow` |
+| `resolve_user_action` | `volicord.resolve_user_action` | `user_only` |
 | `reconcile_changes` | `volicord.reconcile_changes` | `agent_workflow`, `local_recovery` |
 | `close_task` | `volicord.close_task` | `agent_workflow` |
 
@@ -183,13 +182,13 @@ project_state
 task
 change_unit
 write_ticket
-user_judgment
+user_action_request
+user_action_resolution
 run
 evidence_summary
 evidence_observation
 evidence_capture_intent
 evidence_producer
-user_evidence_observation
 artifact
 blocker
 task_event
@@ -221,7 +220,7 @@ superseded
 closed
 ```
 
-이 값들은 오래 유지하는 프로젝트 수준 맥락을 분류합니다. 그 자체로 현재 `Task` 권한을 만들거나, 대기 중인 사용자 판단을 만족하거나, 증거를 증명하거나, 쓰기 티켓 권한을 부여하거나, 닫기 준비 상태를 만족하거나, 미래 닫기 근거의 잔여 위험을 수락하지 않습니다.
+이 값들은 오래 유지하는 프로젝트 수준 맥락을 분류합니다. 그 자체로 현재 `Task` 권한을 만들거나, 대기 중인 사용자 행동을 해결하거나, 증거를 증명하거나, 쓰기 티켓 권한을 부여하거나, 닫기 준비 상태를 만족하거나, 미래 닫기 근거의 잔여 위험을 수락하지 않습니다.
 
 <a id="task-lifecycle-values"></a>
 ## `Task` 생명주기 값
@@ -314,12 +313,12 @@ cancelled
 superseded
 ```
 
-사용자 소유 판단 대기의 생명주기 의미:
+사용자 소유 행동 대기의 생명주기 의미:
 
-- `waiting_user`는 현재 종료되지 않은 `Task`에 현재 호환되는 근거 상태와 정보성이 아닌 작업 대상을 가진 대기 사용자 판단이 하나 이상 있고 사용자 답변이 아직 필요하다는 뜻입니다. 여기에는 `product_decision`과 `technical_decision`도 포함되며 Core가 만든 권한 선택지를 사용하는 판단 종류로 한정되지 않습니다.
-- 정보성 판단과 근거 상태가 오래됐거나 대체된 대기 판단은 `waiting_user`를 만들거나 유지하지 않습니다.
-- 마지막 해당 대기 판단을 해결하면 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다. 여러 해당 판단 중 하나만 해결하면 `waiting_user`를 유지합니다.
-- `completed`, `cancelled`, `superseded`는 종료 상태이며 판단 생명주기 유지 작업으로 바뀌지 않습니다.
+- `waiting_user`는 현재 종료되지 않은 `Task`에 현재 호환되는 근거 상태와 정보성이 아닌 `required_for` 대상을 가진 대기 `UserActionRequest`가 하나 이상 있고 사용자 resolution이 아직 필요하다는 뜻입니다. 여기에는 `product_decision`, `technical_decision` 같은 선택 판단과 Evidence 관찰이 모두 포함되며 Core가 만든 권한 선택지를 사용하는 판단으로 한정되지 않습니다.
+- 정보성 요청과 근거 상태가 오래됐거나 대체된 대기 요청은 `waiting_user`를 만들거나 유지하지 않습니다.
+- 마지막 해당 사용자 행동을 해결하면 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다. 여러 해당 행동 중 하나만 해결하면 `waiting_user`를 유지합니다.
+- `completed`, `cancelled`, `superseded`는 종료 상태이며 사용자 행동 생명주기 유지 작업으로 바뀌지 않습니다.
 
 `CloseTaskResult.close_state`는 아래 값을 사용합니다.
 
@@ -401,7 +400,7 @@ replace_current
 product_file_write
 artifact_registration
 run_recording
-user_judgment_request
+user_action_request
 evidence_update
 sensitive_action
 external_network
@@ -619,7 +618,7 @@ degraded
 - `guard_observation_status`는 현재 설치에 일치하는 훅 관찰이 있는지를 나타냅니다.
 - `effective_guard_status`는 `detective` 경로의 닫기 준비 상태에 쓰는 값입니다. `active`가 되려면 `detective` 프로필, 완전한 필수 훅 설정, 오래되거나 깨지지 않은 설치, 현재 일치하는 관찰, 일치하는 호스트와 정책 식별 정보가 필요합니다.
 
-`prompt_capture_status`는 사용자 소유 판단 채팅 명령을 사용할 수 있는지를
+`prompt_capture_status`는 사용자 소유 행동 채팅 명령을 사용할 수 있는지를
 보고합니다.
 
 - `unsupported_by_host`: 호스트 기능이 없습니다.
@@ -688,7 +687,8 @@ invalid_observation
 | 값 | 범주 계열 |
 |---|---|
 | `scope` | 범위 호환성 또는 범위 경계 사유. |
-| `user_judgment` | 필요한 사용자 소유 판단 사유. |
+| `workspace` | Product Repository workspace 또는 변경 경로 호환성 사유. |
+| `user_action` | 필요한 사용자 소유 행동 사유. |
 | `sensitive_approval` | 필요한 별도 민감 동작 승인 사유. |
 | `write_compatibility` | 쓰기 호환성 사유. |
 | `baseline` | 기준선 호환성 사유. |
@@ -708,8 +708,8 @@ invalid_observation
 task
 open_run
 scope
-user_judgment
-pending_user_judgment
+user_action
+pending_user_action
 sensitive_approval
 write_compatibility
 baseline
@@ -832,8 +832,8 @@ unverified_claim
   output artifact에 결합된 authority-owned verified tool 또는 command producer를
   요구합니다. 앵커 없는 직접 요청은 계속 강등되며 검증된 아티팩트 바이트만으로는
   충분하지 않습니다.
-- `user_observation`은 `volicord.record_user_observation`이 만든 현재의 대상 결합
-  `UserEvidenceObservation`으로 뒷받침되는 관찰입니다. 앵커 없는 직접 선택은
+- `user_observation`은 `volicord.resolve_user_action`이 만든 현재의 대상 결합
+  `evidence_observation` `UserActionResolution`으로 뒷받침되는 관찰입니다. 앵커 없는 직접 선택은
   강등되며 최종 수락이나 다른 권한 효력이 있는 판단은 아닙니다.
 - `reused_evidence`는 Core가 검증한 이전 강한 관찰의 재사용을 기록합니다. 호출자가 직접 선택한 값은 강등되며 검증된 재사용 자체도 새 관찰은 아닙니다.
 - `unverified_claim`은 확인된 관찰 없는 주장을 보존합니다. 그 자체로 충분한 증거가 아닙니다.
@@ -856,8 +856,11 @@ unverified
 - `external_tool_result`에는 authority-owned producer 레코드, 정확한 정규 출력
   결합, 현재 바이트가 필요합니다. 이 값은 producer provenance만 분류하며 supported
   relevance를 뜻하지 않습니다.
-- `user_observed`에는 현재의 대상별 User Channel 관찰, 정확한 출력,
-  `relevance_status=supported`가 필요합니다.
+- `user_observed`에는 현재의 대상별 User Channel 관찰, 정확한 출력, 저장된 정확한
+  `relevance_status`인 `supported` 또는 `contradicted`가 필요합니다. 이 값은 로컬
+  사용자 producer provenance를 분류하며 부정적 relevance를 뒷받침으로 바꾸지
+  않습니다. `supported`만 증거 coverage나 충분성을 만족하거나 `supported`를 세우는
+  검증된 재사용 자격을 얻을 수 있습니다.
 - `unverified`는 확인된 관찰 보장 수준이 없음을 기록합니다.
 
 Core는 필요한 앵커가 없는 요청된 강한 조합을 `agent_report` /
@@ -896,14 +899,17 @@ session_watcher
 값 자체가 source 완전성, host identity, 증거 relevance를 증명하지는 않습니다.
 
 `EvidenceRelevanceAssessment.status`와
-`UserEvidenceObservation.relevance_status`는 `unassessed`, `supported`,
-`contradicted`를 사용합니다. User Channel 메서드는 `supported` 또는
+evidence-observation 해결 본문은 `unassessed`, `supported`, `contradicted`를
+사용합니다. User Channel 해결은 `supported` 또는
 `contradicted`만 받습니다. `unassessed`는 관찰이 대상을 뒷받침하는지 독립된 권한이
 세우지 않았다는 뜻이며, 완전하고 일치하는 등록 capture는 이 상태를 사용합니다.
 `supported`에는 별도의 담당 문서가 정의한 relevance 권한이 필요하며, 검증된
 재사용은 이미 supported인 권한 체인에서만 이 상태를 유지할 수 있습니다.
 `contradicted`는 완전한 capture 실패나 불일치, 담당 문서가 정의한 부정적 relevance
-평가를 보존합니다. Strong evidence에는 분리된 현재 `supported` 평가가 필요합니다.
+평가를 보존합니다. `contradicted` relevance를 가진 현재 User Channel 관찰은
+`user_observation` / `user_observed` producer provenance를 유지하지만 supported
+coverage나 supported 재사용 gate를 만족할 수 없습니다. Strong evidence에는 분리된
+현재 `supported` 평가가 필요합니다.
 
 <a id="source-ref-values"></a>
 ### 출처 참조 값
@@ -960,14 +966,14 @@ detective
 authority_record
 cooperative_host_decision
 detective_observation
-user_judgment_record
+user_action_resolution
 ```
 
 값 의미:
 - `authority_record`는 결과가 문서화된 메서드 계약 안에서 Core 권한 상태, 응답 분기 메타데이터, 메서드별 결과 필드를 보고한다는 뜻입니다.
 - `cooperative_host_decision`은 결과가 관찰된 호스트 이벤트에 대해 협력형 호스트 훅으로 반환한 결정을 보고한다는 뜻입니다.
 - `detective_observation`은 결과가 Volicord가 검사할 수 있었던 로컬 진단, 검증, 관찰, 전송 상태 사실을 보고한다는 뜻입니다.
-- `user_judgment_record`는 결과가 지원되는 `User Channel` 경로로 받은 사용자 소유 판단을 기록한다는 뜻입니다.
+- `user_action_resolution`은 결과가 지원되는 `User Channel` 경로로 받은 불변 사용자 소유 해결을 기록한다는 뜻입니다.
 
 `GuaranteeDisclosure.non_guarantees`는 아래 값을 사용합니다.
 
@@ -1037,7 +1043,20 @@ corrupt
 아티팩트 저장소 생명주기와 본문 읽기 자격은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 <a id="judgment-values"></a>
-## 판단 값
+## 사용자 행동과 판단 값
+
+`UserActionRequest.action_kind`는 정확히 아래 값을 사용합니다.
+
+```text
+product_decision
+technical_decision
+scope_decision
+sensitive_approval
+final_acceptance
+residual_risk_acceptance
+cancellation
+evidence_observation
+```
 
 `judgment_kind`는 아래 값을 사용합니다.
 
@@ -1069,7 +1088,7 @@ close_supersede
 informational
 ```
 
-`UserJudgment.status`는 아래 값을 사용합니다.
+`UserActionRequest.status`는 아래 값을 사용합니다.
 
 ```text
 pending
@@ -1079,7 +1098,9 @@ superseded
 expired
 ```
 
-상태 값은 판단 생명주기를 설명합니다. `resolved`는 답변이 기록되었다는 뜻이며, 그 자체로 승인, 수락, 권한 부여를 뜻하지 않습니다.
+하나의 Core evaluator가 변경 불가능한 해결 존재 여부, 근거 호환성, 현재 시각에서 이
+유효 상태를 파생합니다. `resolved`는 해결이 기록되었다는 뜻이며, 그 자체로 승인,
+수락, 권한 부여, 증거 뒷받침을 뜻하지 않습니다.
 
 `JudgmentResolutionOutcome`은 아래 값을 사용합니다.
 
@@ -1089,7 +1110,7 @@ rejected
 deferred
 ```
 
-`JudgmentBasis.compatibility_status`는 아래 값을 사용합니다.
+`UserActionBasis.coordinates.compatibility_status`는 아래 값을 사용합니다.
 
 ```text
 current
@@ -1100,7 +1121,7 @@ superseded
 의미:
 - `current`는 근거가 현재 만족할 수 있는 요구사항과 지금 일치한다는 뜻입니다.
 - `stale`은 저장된 근거가 더 이상 현재 상태와 일치하지 않는다는 뜻입니다. 해결된 행은 감사용으로 남을 수 있지만 현재 요구사항에는 사용할 수 없습니다.
-- `superseded`는 대기 판단이 더 새 질문이나 근거로 대체되어 성공적으로 답할 수 없다는 뜻입니다.
+- `superseded`는 답하지 않은 행동 요청이 더 새 요청이나 근거로 대체되어 성공적으로 해결할 수 없다는 뜻입니다.
 
 권한 선택지 동작 값:
 - `accept`는 `accepted`로 매핑됩니다.
@@ -1118,10 +1139,10 @@ superseded
 - 민감 승인 질문은 민감 동작 범위가 현재 민감 동작 요구사항과 겹칠 때만 관련됩니다.
 - `informational` 판단은 감사 또는 표시 맥락이며 그 자체로 쓰기, 실행 기록, 닫기를 차단하지 않습니다.
 
-`UserJudgmentOption.option_id`의 범위는 그 판단 안으로 제한되며 전역 값 집합이
+`UserActionOption.option_id`의 범위는 그 요청 안으로 제한되며 전역 값 집합이
 아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다.
-공개 API의 `UserJudgmentOption.machine_action`은 위의 권한 선택지 동작 값을
-사용합니다. `UserJudgmentOption.resolution_outcome`은
+공개 API의 `UserActionOption.machine_action`은 위의 권한 선택지 동작 값을
+사용합니다. `UserActionOption.resolution_outcome`은
 `JudgmentResolutionOutcome`을 사용합니다. 선택지 라벨과 설명 문구가 기계 판독
 가능한 동작이나 결과를 뒤집으면 안 됩니다.
 

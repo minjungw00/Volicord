@@ -26,7 +26,7 @@
 | User Judgment | 사용자 판단 | 사용자에게 속한 결정입니다. Volicord 상태로 남길 때는 User Channel을 통해 기록합니다. | [Core 모델](core-model.md) |
 | Close Status | 닫기 상태 | 현재 Volicord 기록에서 현재 작업을 정직하게 끝낼 수 있는지 판단하도록 돕는 상태입니다. | [Core 모델](core-model.md) |
 | Agent Connection | 에이전트 연결 | 에이전트가 지원되는 Volicord 작업 흐름을 조회하거나 참여할 수 있는 로컬 MCP 호스트 연결입니다. | [Agent Connection 참조](agent-connection.md) |
-| User Channel | 사용자 채널 | 권한 효력이 있는 User Judgment를 기록하는 로컬 경로입니다. | [Core 모델](core-model.md) |
+| User Channel | 사용자 채널 | User Judgment와 Evidence 관찰을 포함해 권한 효력이 있는 사용자 행동을 기록하는 로컬 경로입니다. | [Core 모델](core-model.md) |
 | Record profile | 기록 프로필 | MCP를 통한 협력적 Volicord 작업 기록용 에이전트 연결 프로필입니다. 탐지용 호스트 훅은 필요하지 않습니다. | [관리 CLI](admin-cli.md) |
 | Detective profile | 탐지 프로필 | 지원되는 호스트 훅과 감시기 관찰을 추가하는 에이전트 연결 프로필입니다. | [Agent Connection 참조](agent-connection.md) |
 | Local HTTP transport | 로컬 HTTP 전송 | `localhost`와 Docker 호스트 루프백 동작에 쓰는 로컬 MCP HTTP 전송입니다. | [MCP 전송](mcp-transport.md) |

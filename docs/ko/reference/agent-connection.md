@@ -12,7 +12,7 @@
 - 연결 의도 의미: `personal`, `shared`, `global`
 - MCP 호스트 호출의 현재 연결 맥락 경계
 - `actor_source`와 `operation_category` 출처 경계
-- 권한 효력이 있는 판단 해결에서 User Channel과 Agent Connection의 경계
+- 권한 효력이 있는 사용자 행동 resolution에서 User Channel과 Agent Connection의 경계
 - Agent Connection 계층의 저장소 루트 프로젝트 선택과 프로젝트 가용성 경계
 - 담당 결과와 Agent Connection 사이의 에이전트 맥락 전달 규칙
 - 선택된 Agent Connection이나 현재 연결 맥락을 사용할 수 없거나, 맞지 않거나,
@@ -146,7 +146,7 @@ Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_
 - 연결은 Connection Projects 기록에 명시적으로 들어 있는 프로젝트나 담당자가 정의한
   저장소 루트 등록 경로로 선택된 프로젝트만 다룰 수 있습니다.
 - `connection.mode=workflow`는 기본 Agent Connection 모드입니다. 읽기와 프로젝트
-  탐색 동작에 더해 에이전트 워크플로 동작을 노출합니다. 사용자 전용 판단 기록은
+  탐색 동작에 더해 에이전트 워크플로 동작을 노출합니다. 사용자 전용 User Action 해결은
   노출하지 않습니다.
 - `connection.mode=read_only`는 읽기와 프로젝트 탐색 동작을 노출합니다. 워크플로 쓰기
   역량이 아닙니다.
@@ -371,7 +371,7 @@ MCP 세션은 어댑터 시작 시 저장된 `connection_internal_id`를 가리�
 
 | Agent Connection 모드 | MCP를 통해 허용되는 동작 범주 | MCP에 보이는 공개 메서드 도구 |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
 | `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
 
 어댑터 소유 `volicord.list_projects` 유틸리티는 `workflow`와 `read_only` 모드 모두에
@@ -399,7 +399,7 @@ Core 변경 응답을 page로 나누어 읽으며 변경을 replay하거나 현�
 않습니다. 어댑터와 Core는 page마다 활성 연결, Connection Projects membership, 선택한
 프로젝트, 저장된 `actor_source`를 다시 확인합니다. Ref와 cursor는 bearer가 아닌
 locator이며 연결 접근 범위를 넓히지 않습니다. Agent Connection은 정확한
-`volicord.record_user_judgment` 응답이나 비공개 사용자 note를 포함한 `user_only`
+`volicord.resolve_user_action` 응답이나 비공개 사용자 텍스트를 포함한 `user_only`
 결과를 이 도구로 읽을 수 없습니다. 호출자는 과거 사실을 현재 값으로 다루기 전에
 `volicord.status`를 별도로 읽어야 합니다. 정확한 메서드와 응답 계약은
 [`volicord.get_operation_result`](api/method-get-operation-result.md#volicordget_operation_result)가
@@ -413,7 +413,7 @@ locator이며 연결 접근 범위를 넓히지 않습니다. Agent Connection�
 
 워크플로 쓰기 경로 간단 점검은 Agent Connection 워크플로 도구를 사용하며 Volicord
 상태를 만들 수 있습니다. 최소 경로는 `volicord.intake`, `volicord.update_scope`,
-`volicord.record_run`, 닫기에 최종 수락이 필요할 때 `volicord.request_user_judgment`,
+`volicord.record_run`, 닫기에 최종 수락이 필요할 때 `volicord.request_user_action`,
 그리고 `volicord.check_close`를 포함할 수 있습니다. 만들어진 `Task`는 사용자가 지원되는
 `User Channel`을 통해 필요한 최종 판단을 기록할 때까지 `missing_final_acceptance`로 막힌
 상태에 남을 수 있습니다.
@@ -427,10 +427,11 @@ locator이며 연결 접근 범위를 넓히지 않습니다. Agent Connection�
 세지 않습니다. 이 테스트 하네스는 기본적으로 무시되며 이식 가능한 호스트 적합성이나 보안
 테스트가 아닙니다.
 
-`volicord.record_user_judgment`는 `operation_category=user_only`입니다. User Channel
-경로를 위한 공개 Core API 메서드이지만 Agent Connection에는 노출되지 않습니다. 권한을
-지니는 답변을 기록하는 지원 로컬 사용자 경로는
-[관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord inbox` 명령군입니다.
+`volicord.resolve_user_action`은 `operation_category=user_only`입니다. 판단과 대상 결속
+증거 관찰을 포함한 모든 User Channel 해결의 공개 Core API 메서드이지만 Agent
+Connection에는 노출되지 않습니다. 지원 로컬 fallback은
+[관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 공통 `volicord inbox`
+명령군입니다.
 
 내부 행위자 형태이며 공개 API 스키마가 아닙니다.
 
@@ -443,7 +444,7 @@ InvocationContext:
 ```
 
 기준 `assurance_level`은 협력적 로컬 출처를 뜻하며 암호학적 인간 신원 증명이 아닙니다.
-권한 효력이 있는 사용자 판단을 해결하려면 `actor_source=local_user`, `operation_category=user_only`,
+권한 효력이 있는 사용자 행동을 해결하려면 `actor_source=local_user`, `operation_category=user_only`,
 호환 User Channel 출처, 메서드가 정의한 호환성이 필요합니다. Agent Connection은 복사된
 사용자 텍스트나 생성 지침을 제출해 사용자 권한을 얻을 수 없습니다.
 
@@ -457,7 +458,7 @@ InvocationContext:
   이 필드가 들어 있으면 어댑터는 Core 실행 전에 호출을 거절합니다.
 - `ArtifactInput`이나 `StagedArtifactHandle` 같은 중첩 페이로드는 두 번째 호출 맥락을
   추가하지 않습니다.
-- 해결된 권한 판단의 권한 출처 필드는 호출자 텍스트, 라벨, 답변 본문, 복사된 참조,
+- 해결된 권한 효력 사용자 행동의 권한 출처 필드는 호출자 텍스트, 라벨, 답변 본문, 복사된 참조,
   생성된 Markdown, Product Repository 지침이 아니라 파생된 `InvocationContext`에서
   옵니다.
 - 보호된 읽기, 상태 변경, 아티팩트 동작은 메서드 담당 문서가 파생된 호출 맥락을
@@ -496,48 +497,49 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 
 조건:
 
-- 사람이 대기 중인 판단을 확인하고 Core 생성 선택지를 골라 기록하는 지원 로컬 CLI
+- 사람이 대기 사용자 행동을 확인하고 저장된 행동별 폼을 제출하는 지원 로컬 CLI
   경로는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하는 `volicord inbox`
   명령군입니다.
-- `volicord.record_user_observation`은 `user_only`이며 Agent Connection에 노출되지
-  않습니다. `volicord inbox observe`가 대상 결합 User Channel Evidence를
-  기록합니다. Agent Connection은 일반 `record_run` 주장, staged artifact, tool
-  metadata, raw guard payload를 사용자 소유 producer/relevance 레코드 대신 사용할
-  수 없습니다.
+- Agent Connection은 일반 `record_run` 주장, staged artifact, tool metadata, raw
+  guard payload, 전달된 텍스트를 사용자 행동 해결 대신 사용할 수 없습니다.
 - 초기화된 MCP 클라이언트가 `capabilities.elicitation`을 선언하면
-  `volicord mcp --stdio`는 `volicord.request_user_judgment`가 만든 대기 판단에 대해 서버
+  `volicord mcp --stdio`는 `volicord.request_user_action`이 만든 대기 요청에 대해 서버
   시작 사용자 입력 요청을 User Channel 경로로 사용할 수 있습니다. 전송 동작은
-  [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당합니다.
+  [MCP 전송](mcp-transport.md#user-action-elicitation)이 담당합니다.
 - 호스트 프롬프트 입력을 사용할 수 없으면 MCP 대체 안내 텍스트는 명령 캡처가
   `configured`, `observed`, `active`일 때 프롬프트 제출 훅 경로와 호환되는 채팅
   명령으로 사람 사용자를 안내할 수 있습니다.
 - 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없으면 MCP 대체 안내 텍스트는
-  사람 사용자를 [MCP 전송](mcp-transport.md#user-judgment-elicitation)이 담당하는
+  사람 사용자를 [MCP 전송](mcp-transport.md#user-action-elicitation)이 담당하는
   루프백 로컬 consent URL로 안내할 수 있습니다. 이 웹 답변은 여전히 `local_user` User
   Channel 경로이지 Agent Connection 답변이 아닙니다. 동의 페이지는 사용자에게 대기
-  판단과 비보장을 식별해 보여 주며, Agent Connection이 판단에 답할 권한을 만들지
+  요청, 저장된 후보, 비보장을 식별해 보여 주며, Agent Connection이 행동을 해결할 권한을 만들지
   않습니다.
 - 대체 안내 텍스트는 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 모두
   사용할 수 없을 때만 사용자를 `volicord inbox` CLI inbox 경로로 안내합니다.
-- 상태 보기와 판단 받은편지함은 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL,
+- 상태 보기와 사용자 행동 받은편지함은 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL,
   CLI 받은편지함의 User Channel 사용 가능 상태를 함께 보여 줄 수 있습니다. 호스트
   프롬프트 입력을 사용할 수 없다는 사실이 다른 사용 가능한 답변 경로를 숨기면 안 되며,
   적용 가능한 경우 CLI 받은편지함은 계속 보입니다. 이 상태 보기는 사용자가 어디에서 답할 수
-  있는지 알려 줄 뿐이며 Agent Connection이 판단을 기록할 수 있게 하지 않습니다.
-- 권한 효력이 있는 사용자 판단을 해결하려면 `actor_source=local_user`,
+  있는지 알려 줄 뿐이며 Agent Connection이 행동을 해결할 수 있게 하지 않습니다.
+- 특정 행동의 rich 경로는 요청에 결합된 완전한 표시를 자르지 않고 MCP 전송 또는 관리
+  CLI가 담당하는 전송·호스트 렌더링 바이트 예산 안에 넣을 수 있을 때만 사용할 수
+  있습니다. 표시가 바이트 예산을 넘으면 그 경로를 사용할 수 없으며 다음 호환 User
+  Channel 경로로 계속 진행해야 합니다.
+- 모든 사용자 행동 resolution에는 `actor_source=local_user`,
   `operation_category=user_only`, 호환 User Channel 출처가 필요합니다.
 - `actor_source=agent_connection:<connection_id>`는 사용자의 텍스트를 전달해도
   `local_user` 출처가 될 수 없습니다.
 
 에이전트가 할 수 있는 것:
 
-- 메서드 담당 문서가 그 경로를 지원할 때 빠진 사용자 소유 판단을 요청할 수 있습니다.
-- 담당 결과가 반환한 대기 판단 상태와 Core 생성 선택지를 표시할 수 있습니다.
+- 메서드 담당 문서가 그 경로를 지원할 때 빠진 사용자 행동을 요청할 수 있습니다.
+- 담당 결과가 반환한 대기 행동 상태와 Core 생성 캡처 양식을 표시할 수 있습니다.
 - 사람 사용자를 지원되는 `User Channel`로 안내할 수 있습니다.
 
 에이전트가 하면 안 되는 것:
 
-- Agent Connection에서 권한 효력이 있는 사용자 결정을 기록하면 안 됩니다.
+- Agent Connection에서 사용자 행동을 해결하면 안 됩니다.
 - Agent Connection 도구 인자를 MCP elicitation 응답으로 취급하면 안 됩니다.
 - 자연어 승인, 채팅 답변, 생성된 Markdown 상태, 렌더링된 상태 보기를 User Channel
   출처로 취급하면 안 됩니다.
@@ -550,7 +552,7 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 
 - [Core 모델](core-model.md)은 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 증거,
   닫기 준비 상태의 권한 의미를 담당합니다.
-- [사용자 판단 기록 메서드](api/method-record-user-judgment.md)는 대기 판단 하나를
+- [사용자 행동 해결 메서드](api/method-resolve-user-action.md)는 대기 사용자 행동 하나를
   해결하는 공개 메서드 동작을 담당합니다.
 - [상태 보기와 템플릿 표시 경계](projection-and-templates.md)는 생성 표시와 상태 보기
   권한 경계를 담당합니다.
@@ -587,7 +589,7 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 
 에이전트가 할 수 있는 것:
 
-- 현재 `Task` 요약, 현재 적용 범위, `state_version`, 대기 중인 사용자 소유 판단, 차단
+- 현재 `Task` 요약, 현재 적용 범위, `state_version`, 대기 중인 사용자 소유 행동, 차단
   사유, 다음 안전한 행동, 증거와 아티팩트 요약, 닫기 준비 상태와 잔여 위험 요약,
   담당 문서가 뒷받침하는 보장 표시, 출처 또는 제한 메모를 담은 압축 맥락을 전달할 수
   있습니다.

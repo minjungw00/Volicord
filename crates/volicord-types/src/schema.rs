@@ -1,4 +1,9 @@
-use std::{borrow::Cow, collections::BTreeMap, fmt, ops::Deref};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    ops::Deref,
+};
 
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
@@ -9,8 +14,8 @@ use crate::ids::{
     BaselineRef, ChangeUnitId, EventId, EvidenceCaptureIntentId, EvidenceCaptureReceiptId,
     EvidenceClaimId, EvidenceObservationId, EvidenceProducerId, GuardEventId, GuardInstallationId,
     IdempotencyKey, ProjectContinuityRecordId, ProjectId, PromptCaptureId, RecordId, RequestId,
-    RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId, UserJudgmentId,
-    UserJudgmentOptionId, WriteTicketId,
+    RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId, UnrecordedChangeId,
+    UserActionOptionId, UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
@@ -22,16 +27,16 @@ use crate::values::{
     EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind,
     EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
     GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
-    IntegrationProfile, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
-    NextActionPresentationRole, NonGuarantee, OperationCategory, PlannedBlockerSourceKind,
-    ProjectContinuityKind, ProjectContinuityStatus, ProjectEnforcementProfileSource,
-    ProjectEnforcementProfileStatus, PromptCaptureStatus, RedactionState, ResponseKind, RunKind,
-    SessionWatchCoverageBasis, SessionWatchStatus, StateRecordKind, StatusCloseState,
-    TaskLifecyclePhase, TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeResolutionBasis,
-    UnrecordedChangeStatus, UserJudgmentOptionAction, UserJudgmentStatus, UtcTimestamp,
-    ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs, WriteDecisionCategory,
-    WriteTicketState, WriteTicketStatus,
+    IntegrationProfile, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
+    NextActionKind, NextActionPresentationRole, NonGuarantee, OperationCategory,
+    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
+    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
+    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
+    StateRecordKind, StatusCloseState, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
+    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
+    UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
+    UserActionStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
+    WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -39,6 +44,15 @@ pub type JsonObject = Map<String, Value>;
 
 /// Stable snapshot digest algorithm used by session-watch capture outcomes.
 pub const WATCH_SNAPSHOT_ALGORITHM: &str = "volicord_session_watch_snapshot_v1_sha256";
+
+/// Owner-defined lifetime of one immutable evidence-capture intent.
+pub const EVIDENCE_CAPTURE_INTENT_TTL_MINUTES: i64 = 15;
+
+/// Owner-defined lifetime of one evidence-observation user-action request.
+pub const USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES: i64 = 15;
+
+/// Owner-defined maximum lifetime of one request-bound User Channel token.
+pub const USER_ACTION_CHANNEL_TOKEN_MAX_TTL_SECONDS: u64 = 10 * 60;
 
 /// Controlled limitation recorded for Volicord-owned command capture.
 pub const EVIDENCE_CAPTURE_COMMAND_LIMITATION: &str = "environment_not_bound";
@@ -312,14 +326,14 @@ impl GuaranteeDisclosure {
         }
     }
 
-    /// Disclosure for user-owned judgment records.
-    pub fn user_judgment_record() -> Self {
+    /// Disclosure for immutable user-owned action resolutions.
+    pub fn user_action_resolution() -> Self {
         Self {
-            guarantee_class: GuaranteeClass::UserJudgmentRecord,
+            guarantee_class: GuaranteeClass::UserActionResolution,
             guarantees: vec![
-                "Records a user-owned judgment received through a supported User Channel path."
+                "Records a user-owned action resolution received through a supported User Channel path."
                     .to_owned(),
-                "Preserves the judgment payload and compatibility basis used by the owning method."
+                "Preserves the closed resolution body and compatibility basis used by the owning method."
                     .to_owned(),
             ],
             non_guarantees: broad_non_guarantees(),
@@ -564,7 +578,7 @@ pub struct UnrecordedChangeResolutionSummary {
     pub resolution_basis: UnrecordedChangeResolutionBasis,
     pub resolved_by_actor_source: ActorSource,
     pub capture_basis: String,
-    pub user_judgment_ref: RequiredNullable<StateRecordRef>,
+    pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
     pub resolved_at: UtcTimestamp,
 }
 
@@ -759,7 +773,7 @@ pub struct StateSummary {
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context: Option<WorkspaceContext>,
     pub shaping_readiness: Option<ShapingReadiness>,
-    pub pending_user_judgment_refs: Vec<StateRecordRef>,
+    pub pending_user_action_refs: Vec<StateRecordRef>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
@@ -891,7 +905,7 @@ pub struct ShapingGap {
     pub gap_kind: String,
     pub message: String,
     pub blocker_ref: Option<StateRecordRef>,
-    pub user_judgment_candidate_ref: Option<StateRecordRef>,
+    pub user_action_request_candidate_ref: Option<StateRecordRef>,
 }
 
 /// Canonical next-action display shape.
@@ -915,7 +929,7 @@ pub struct SummaryCard {
     pub profile: String,
     pub write_ticket: String,
     pub evidence: String,
-    pub user_judgment: String,
+    pub user_action: String,
     pub changes: String,
     pub close_status: String,
     pub transport: String,
@@ -1498,24 +1512,14 @@ pub struct EvidenceRelevanceAssessment {
     pub assessed_by_actor_source: RequiredNullable<ActorSource>,
 }
 
-/// User Channel-owned observation of exact artifact bytes and one evidence target.
+/// User-action-resolution projection over exact artifact bytes and one evidence target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct UserEvidenceObservation {
-    pub observation_id: EvidenceObservationId,
-    pub project_id: ProjectId,
-    pub task_id: TaskId,
-    pub change_unit_id: ChangeUnitId,
-    pub scope_revision: u64,
-    pub baseline_ref: BaselineRef,
+pub struct UserActionEvidenceObservation {
     pub target: EvidenceTarget,
     pub relevance_status: EvidenceRelevanceStatus,
     pub output_artifact_refs: Vec<ArtifactRef>,
     pub summary: String,
-    pub observed_by_actor_source: ActorSource,
-    pub verification_basis: String,
-    pub observed_at: UtcTimestamp,
-    pub recorded_at: UtcTimestamp,
 }
 
 /// Persisted authority metadata for one evidence observation row.
@@ -1644,7 +1648,7 @@ pub struct ResidualRisk {
 pub struct RiskAcceptanceCoverage {
     pub risk_id: RiskId,
     pub accepted: bool,
-    pub accepted_by_judgment_refs: Vec<StateRecordRef>,
+    pub accepted_by_user_action_resolution_refs: Vec<StateRecordRef>,
     pub missing_reason: RequiredNullable<String>,
 }
 
@@ -1764,49 +1768,676 @@ pub struct ArtifactInput {
     pub redaction_state: RequiredNullable<RedactionState>,
 }
 
-/// Durable user-owned judgment shape.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct UserJudgment {
-    pub judgment_id: UserJudgmentId,
-    pub project_id: ProjectId,
-    pub task_id: TaskId,
-    pub change_unit_id: Option<ChangeUnitId>,
-    pub judgment_kind: JudgmentKind,
-    pub status: UserJudgmentStatus,
-    pub presentation: JudgmentPresentation,
-    pub question: String,
-    pub options: Vec<UserJudgmentOption>,
-    pub context: UserJudgmentContext,
-    pub affected_refs: Vec<StateRecordRef>,
-    pub basis: JudgmentBasis,
-    pub required_for: Vec<JudgmentRequiredFor>,
-    pub resolution: Option<UserJudgmentResolution>,
-    pub expires_at: Option<UtcTimestamp>,
-    pub created_at: UtcTimestamp,
-    pub resolved_at: Option<UtcTimestamp>,
-}
+/// Maximum Unicode scalar count for a user-authored action-resolution note.
+pub const USER_ACTION_NOTE_MAX_CHARS: usize = 1_000;
 
-/// User-facing inbox item for a pending judgment that requires user action.
+/// Maximum Unicode scalar count for a user-authored evidence-observation summary.
+pub const USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS: usize = 4_000;
+
+/// Maximum number of target candidates in one observation action.
+pub const USER_ACTION_TARGET_CANDIDATE_LIMIT: usize = 32;
+
+/// Maximum number of artifact candidates in one observation action.
+pub const USER_ACTION_ARTIFACT_CANDIDATE_LIMIT: usize = 32;
+
+/// Maximum serialized byte size of one closed user-action form or resolution input.
+pub const USER_ACTION_FORM_MAX_BYTES: usize = 32 * 1_024;
+/// Maximum UTF-8 byte length of one adapter-owned user-channel submission id.
+///
+/// Canonical adapters use visible ASCII, so this is also the public schema's
+/// maximum character length.
+pub const CHANNEL_SUBMISSION_ID_MAX_BYTES: usize = 256;
+
+/// Agent-authored draft for one pending user action.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JudgmentInboxItem {
-    pub judgment_id: UserJudgmentId,
-    pub judgment_ref: StateRecordRef,
+pub struct UserActionChoiceDraft {
+    pub judgment_kind: JudgmentKind,
+    pub presentation: JudgmentPresentation,
+    pub question: String,
+    #[serde(default)]
+    pub options: RequiredNullable<Vec<UserActionOptionInput>>,
+    pub context: UserActionContext,
+    pub affected_refs: Vec<StateRecordRef>,
+    #[schemars(required)]
+    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
+}
+
+/// Agent-authored draft for a bounded evidence observation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionEvidenceObservationDraft {
+    pub question: String,
+    pub context_summary: String,
+    pub target_candidates: Vec<EvidenceTarget>,
+    pub artifact_candidate_ids: Vec<ArtifactId>,
+}
+
+/// Agent-authored draft for one pending user action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action_type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UserActionDraft {
+    Choice(Box<UserActionChoiceDraft>),
+    EvidenceObservation(UserActionEvidenceObservationDraft),
+}
+
+impl UserActionDraft {
+    /// Returns the canonical action kind derived from this closed draft.
+    pub const fn action_kind(&self) -> UserActionKind {
+        match self {
+            Self::Choice(choice) => match choice.judgment_kind {
+                JudgmentKind::ProductDecision => UserActionKind::ProductDecision,
+                JudgmentKind::TechnicalDecision => UserActionKind::TechnicalDecision,
+                JudgmentKind::ScopeDecision => UserActionKind::ScopeDecision,
+                JudgmentKind::SensitiveApproval => UserActionKind::SensitiveApproval,
+                JudgmentKind::FinalAcceptance => UserActionKind::FinalAcceptance,
+                JudgmentKind::ResidualRiskAcceptance => UserActionKind::ResidualRiskAcceptance,
+                JudgmentKind::Cancellation => UserActionKind::Cancellation,
+            },
+            Self::EvidenceObservation(_) => UserActionKind::EvidenceObservation,
+        }
+    }
+
+    /// Returns the user-facing question from either draft shape.
+    pub fn question(&self) -> &str {
+        match self {
+            Self::Choice(choice) => &choice.question,
+            Self::EvidenceObservation(observation) => &observation.question,
+        }
+    }
+
+    /// Validates shared bounded-form invariants before Core planning or Store persistence.
+    pub fn validate_bounds(&self) -> Result<(), UserActionShapeError> {
+        match self {
+            Self::Choice(choice) => {
+                if choice
+                    .options
+                    .as_ref()
+                    .is_some_and(|options| options.len() > USER_ACTION_TARGET_CANDIDATE_LIMIT)
+                {
+                    return Err(UserActionShapeError::new(
+                        "action.options",
+                        "choice option count exceeds the user-action candidate limit",
+                    ));
+                }
+            }
+            Self::EvidenceObservation(observation) => {
+                validate_candidate_count(
+                    "action.target_candidates",
+                    observation.target_candidates.len(),
+                    USER_ACTION_TARGET_CANDIDATE_LIMIT,
+                )?;
+                validate_candidate_count(
+                    "action.artifact_candidate_ids",
+                    observation.artifact_candidate_ids.len(),
+                    USER_ACTION_ARTIFACT_CANDIDATE_LIMIT,
+                )?;
+            }
+        }
+        validate_user_action_serialized_size("action", self)
+    }
+}
+
+/// Canonical Core-owned body stored for one user-action request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionChoiceRequestBody {
+    pub judgment_kind: JudgmentKind,
+    pub presentation: JudgmentPresentation,
+    pub question: String,
+    pub options: Vec<UserActionOption>,
+    pub context: UserActionContext,
+    pub affected_refs: Vec<StateRecordRef>,
+    #[schemars(required)]
+    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
+}
+
+/// Core-owned bounded evidence-observation request body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionEvidenceObservationRequestBody {
+    pub question: String,
+    pub context_summary: String,
+    pub target_candidates: Vec<EvidenceTarget>,
+    pub artifact_candidates: Vec<ArtifactRef>,
+}
+
+/// Canonical Core-owned body stored for one user-action request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action_type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UserActionRequestBody {
+    Choice(Box<UserActionChoiceRequestBody>),
+    EvidenceObservation(UserActionEvidenceObservationRequestBody),
+}
+
+impl UserActionRequestBody {
+    /// Returns the canonical action kind derived from this stored body.
+    pub const fn action_kind(&self) -> UserActionKind {
+        match self {
+            Self::Choice(choice) => match choice.judgment_kind {
+                JudgmentKind::ProductDecision => UserActionKind::ProductDecision,
+                JudgmentKind::TechnicalDecision => UserActionKind::TechnicalDecision,
+                JudgmentKind::ScopeDecision => UserActionKind::ScopeDecision,
+                JudgmentKind::SensitiveApproval => UserActionKind::SensitiveApproval,
+                JudgmentKind::FinalAcceptance => UserActionKind::FinalAcceptance,
+                JudgmentKind::ResidualRiskAcceptance => UserActionKind::ResidualRiskAcceptance,
+                JudgmentKind::Cancellation => UserActionKind::Cancellation,
+            },
+            Self::EvidenceObservation(_) => UserActionKind::EvidenceObservation,
+        }
+    }
+
+    /// Returns the user-facing question for this closed request body.
+    pub fn question(&self) -> &str {
+        match self {
+            Self::Choice(choice) => &choice.question,
+            Self::EvidenceObservation(observation) => &observation.question,
+        }
+    }
+
+    /// Returns the compact context summary for inbox projection.
+    pub fn context_summary(&self) -> &str {
+        match self {
+            Self::Choice(choice) => &choice.context.summary,
+            Self::EvidenceObservation(observation) => &observation.context_summary,
+        }
+    }
+
+    /// Returns choice-specific affected refs, empty for observation requests.
+    pub fn affected_refs(&self) -> &[StateRecordRef] {
+        match self {
+            Self::Choice(choice) => &choice.affected_refs,
+            Self::EvidenceObservation(_) => &[],
+        }
+    }
+
+    /// Projects this immutable request body into the canonical User Channel form.
+    ///
+    /// The projection validates the stored body first and copies only the exact
+    /// user-presentable candidates and canonical input limits. Current channel
+    /// availability and capture-path selection are separate runtime facts.
+    pub fn capture_form(&self) -> Result<UserActionInboxForm, UserActionShapeError> {
+        self.validate_bounds()?;
+        let form = match self {
+            Self::Choice(choice) => UserActionInboxForm::Choice {
+                choices: choice
+                    .options
+                    .iter()
+                    .map(|option| UserActionInboxChoice {
+                        choice_id: option.option_id.clone(),
+                        label: option.label.clone(),
+                        description: option.description.clone(),
+                        consequence: option.consequence.clone(),
+                        is_default: option.is_default,
+                    })
+                    .collect(),
+                note_allowed: true,
+                note_max_chars: USER_ACTION_NOTE_MAX_CHARS as u64,
+            },
+            Self::EvidenceObservation(observation) => UserActionInboxForm::EvidenceObservation {
+                target_candidates: observation.target_candidates.clone(),
+                artifact_candidates: observation.artifact_candidates.clone(),
+                relevance_options: vec![
+                    EvidenceRelevanceStatus::Supported,
+                    EvidenceRelevanceStatus::Contradicted,
+                ],
+                summary_max_chars: USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64,
+            },
+        };
+        form.validate_canonical_size()?;
+        Ok(form)
+    }
+
+    /// Validates shared persisted-form candidate and byte bounds.
+    pub fn validate_bounds(&self) -> Result<(), UserActionShapeError> {
+        match self {
+            Self::Choice(choice) => {
+                validate_nonblank_user_action_text("body.question", &choice.question)?;
+                validate_nonblank_user_action_text(
+                    "body.context.summary",
+                    &choice.context.summary,
+                )?;
+                validate_candidate_count(
+                    "body.options",
+                    choice.options.len(),
+                    USER_ACTION_TARGET_CANDIDATE_LIMIT,
+                )?;
+                if choice
+                    .options
+                    .iter()
+                    .map(|option| &option.option_id)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != choice.options.len()
+                {
+                    return Err(UserActionShapeError::new(
+                        "body.options",
+                        "choice option identifiers must be unique",
+                    ));
+                }
+                if choice
+                    .options
+                    .iter()
+                    .filter(|option| option.is_default)
+                    .count()
+                    > 1
+                {
+                    return Err(UserActionShapeError::new(
+                        "body.options",
+                        "choice options may contain at most one default",
+                    ));
+                }
+                if choice.options.iter().any(|option| {
+                    option.label.trim().is_empty()
+                        || option.description.trim().is_empty()
+                        || option.consequence.trim().is_empty()
+                        || option.machine_action.resolution_outcome() != option.resolution_outcome
+                }) {
+                    return Err(UserActionShapeError::new(
+                        "body.options",
+                        "choice options must be nonblank and have matching action/outcome authority",
+                    ));
+                }
+            }
+            Self::EvidenceObservation(observation) => {
+                validate_nonblank_user_action_text("body.question", &observation.question)?;
+                validate_nonblank_user_action_text(
+                    "body.context_summary",
+                    &observation.context_summary,
+                )?;
+                validate_candidate_count(
+                    "body.target_candidates",
+                    observation.target_candidates.len(),
+                    USER_ACTION_TARGET_CANDIDATE_LIMIT,
+                )?;
+                validate_candidate_count(
+                    "body.artifact_candidates",
+                    observation.artifact_candidates.len(),
+                    USER_ACTION_ARTIFACT_CANDIDATE_LIMIT,
+                )?;
+                if observation
+                    .target_candidates
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != observation.target_candidates.len()
+                {
+                    return Err(UserActionShapeError::new(
+                        "body.target_candidates",
+                        "observation targets must be unique",
+                    ));
+                }
+                if observation
+                    .artifact_candidates
+                    .iter()
+                    .map(|artifact| &artifact.artifact_id)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != observation.artifact_candidates.len()
+                {
+                    return Err(UserActionShapeError::new(
+                        "body.artifact_candidates",
+                        "observation artifact identifiers must be unique",
+                    ));
+                }
+            }
+        }
+        validate_user_action_serialized_size("body", self)
+    }
+}
+
+/// Shared Core-derived request-basis coordinates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionBasisCoordinates {
+    pub task_id: TaskId,
+    pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub scope_revision: u64,
+    pub baseline_ref: RequiredNullable<BaselineRef>,
+    pub created_at_state_version: u64,
+    pub compatibility_status: UserActionBasisStatus,
+}
+
+/// Closed Core-derived compatibility basis for one user-action request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionChoiceBasis {
+    pub coordinates: UserActionBasisCoordinates,
+    pub close_basis_revision: RequiredNullable<u64>,
+    pub result_refs: Vec<StateRecordRef>,
+    pub residual_risk_ids: Vec<RiskId>,
+    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
+}
+
+/// Core-derived compatibility basis for an evidence-observation request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionEvidenceObservationBasis {
+    pub coordinates: UserActionBasisCoordinates,
+    pub target_candidates: Vec<EvidenceTarget>,
+    pub artifact_candidates: Vec<ArtifactRef>,
+}
+
+/// Closed Core-derived compatibility basis for one user-action request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "action_type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UserActionBasis {
+    Choice(Box<UserActionChoiceBasis>),
+    EvidenceObservation(UserActionEvidenceObservationBasis),
+}
+
+impl UserActionBasis {
+    /// Returns the stored compatibility status for the request basis.
+    pub const fn compatibility_status(&self) -> UserActionBasisStatus {
+        match self {
+            Self::Choice(choice) => choice.coordinates.compatibility_status,
+            Self::EvidenceObservation(observation) => observation.coordinates.compatibility_status,
+        }
+    }
+
+    /// Returns the shared compatibility coordinates for either action shape.
+    pub const fn coordinates(&self) -> &UserActionBasisCoordinates {
+        match self {
+            Self::Choice(choice) => &choice.coordinates,
+            Self::EvidenceObservation(observation) => &observation.coordinates,
+        }
+    }
+
+    /// Returns the close-basis revision carried by a choice action.
+    pub fn close_basis_revision(&self) -> Option<u64> {
+        match self {
+            Self::Choice(choice) => choice.close_basis_revision.as_ref().copied(),
+            Self::EvidenceObservation(_) => None,
+        }
+    }
+
+    /// Returns choice result refs, empty for observation actions.
+    pub fn result_refs(&self) -> &[StateRecordRef] {
+        match self {
+            Self::Choice(choice) => &choice.result_refs,
+            Self::EvidenceObservation(_) => &[],
+        }
+    }
+
+    /// Returns choice residual-risk ids, empty for observation actions.
+    pub fn residual_risk_ids(&self) -> &[RiskId] {
+        match self {
+            Self::Choice(choice) => &choice.residual_risk_ids,
+            Self::EvidenceObservation(_) => &[],
+        }
+    }
+
+    /// Returns the choice sensitive-action scope when one is bound.
+    pub fn sensitive_action_scope(&self) -> Option<&SensitiveActionScope> {
+        match self {
+            Self::Choice(choice) => choice.sensitive_action_scope.as_ref(),
+            Self::EvidenceObservation(_) => None,
+        }
+    }
+}
+
+/// User-owned input for resolving one pending action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "resolution_type",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum UserActionResolutionInput {
+    Choice {
+        selected_option_id: UserActionOptionId,
+        #[serde(default)]
+        note: RequiredNullable<String>,
+    },
+    EvidenceObservation {
+        target: EvidenceTarget,
+        artifact_ids: Vec<ArtifactId>,
+        relevance_status: EvidenceRelevanceStatus,
+        summary: String,
+    },
+}
+
+impl UserActionResolutionInput {
+    /// Validates shared user-authored text, candidate, and byte bounds.
+    pub fn validate_bounds(&self) -> Result<(), UserActionShapeError> {
+        match self {
+            Self::Choice { note, .. } => {
+                if note
+                    .as_ref()
+                    .is_some_and(|note| note.chars().count() > USER_ACTION_NOTE_MAX_CHARS)
+                {
+                    return Err(UserActionShapeError::new(
+                        "resolution.note",
+                        "note exceeds the user-action character limit",
+                    ));
+                }
+            }
+            Self::EvidenceObservation {
+                artifact_ids,
+                relevance_status,
+                summary,
+                ..
+            } => {
+                validate_candidate_count(
+                    "resolution.artifact_ids",
+                    artifact_ids.len(),
+                    USER_ACTION_ARTIFACT_CANDIDATE_LIMIT,
+                )?;
+                if artifact_ids.iter().collect::<BTreeSet<_>>().len() != artifact_ids.len() {
+                    return Err(UserActionShapeError::new(
+                        "resolution.artifact_ids",
+                        "observation artifact identifiers must be unique",
+                    ));
+                }
+                if !matches!(
+                    relevance_status,
+                    EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
+                ) {
+                    return Err(UserActionShapeError::new(
+                        "resolution.relevance_status",
+                        "observation relevance must be supported or contradicted",
+                    ));
+                }
+                if summary.trim().is_empty()
+                    || summary.chars().count() > USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS
+                {
+                    return Err(UserActionShapeError::new(
+                        "resolution.summary",
+                        "summary exceeds the user-action character limit",
+                    ));
+                }
+            }
+        }
+        validate_user_action_serialized_size("resolution", self)
+    }
+}
+
+/// Canonical Core-derived resolution body for one user-owned action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "resolution_type",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum UserActionResolutionBody {
+    Choice {
+        selected_option_id: UserActionOptionId,
+        machine_action: UserActionOptionAction,
+        resolution_outcome: JudgmentResolutionOutcome,
+        note: RequiredNullable<String>,
+        accepted_risk_ids: Vec<RiskId>,
+    },
+    EvidenceObservation {
+        observation: UserActionEvidenceObservation,
+    },
+}
+
+impl UserActionResolutionBody {
+    /// Validates shared persisted resolution bounds and action/outcome agreement.
+    pub fn validate(&self) -> Result<(), UserActionShapeError> {
+        match self {
+            Self::Choice {
+                machine_action,
+                resolution_outcome,
+                note,
+                ..
+            } => {
+                if machine_action.resolution_outcome() != *resolution_outcome {
+                    return Err(UserActionShapeError::new(
+                        "resolution.resolution_outcome",
+                        "choice resolution outcome must match its machine action",
+                    ));
+                }
+                if note
+                    .as_ref()
+                    .is_some_and(|note| note.chars().count() > USER_ACTION_NOTE_MAX_CHARS)
+                {
+                    return Err(UserActionShapeError::new(
+                        "resolution.note",
+                        "note exceeds the user-action character limit",
+                    ));
+                }
+            }
+            Self::EvidenceObservation { observation } => {
+                validate_candidate_count(
+                    "resolution.observation.output_artifact_refs",
+                    observation.output_artifact_refs.len(),
+                    USER_ACTION_ARTIFACT_CANDIDATE_LIMIT,
+                )?;
+                if observation
+                    .output_artifact_refs
+                    .iter()
+                    .map(|artifact| &artifact.artifact_id)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != observation.output_artifact_refs.len()
+                {
+                    return Err(UserActionShapeError::new(
+                        "resolution.observation.output_artifact_refs",
+                        "observation artifact identifiers must be unique",
+                    ));
+                }
+                if !matches!(
+                    observation.relevance_status,
+                    EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
+                ) {
+                    return Err(UserActionShapeError::new(
+                        "resolution.observation.relevance_status",
+                        "observation relevance must be supported or contradicted",
+                    ));
+                }
+                if observation.summary.trim().is_empty()
+                    || observation.summary.chars().count()
+                        > USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS
+                {
+                    return Err(UserActionShapeError::new(
+                        "resolution.observation.summary",
+                        "summary exceeds the user-action character limit",
+                    ));
+                }
+            }
+        }
+        validate_user_action_serialized_size("resolution", self)
+    }
+}
+
+/// Durable user-action request plus its current effective status.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionRequest {
+    pub user_action_request_id: UserActionRequestId,
     pub project_id: ProjectId,
     pub task_id: TaskId,
     pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub action_kind: UserActionKind,
+    pub status: UserActionStatus,
+    pub body: UserActionRequestBody,
+    pub basis: UserActionBasis,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+    pub created_at: UtcTimestamp,
+}
+
+/// Immutable user-owned resolution of one action request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionResolution {
+    pub user_action_resolution_id: UserActionResolutionId,
+    pub user_action_request_id: UserActionRequestId,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub action_kind: UserActionKind,
+    pub body: UserActionResolutionBody,
+    pub resolved_by_actor_source: ActorSource,
+    pub resolved_verification_basis: String,
+    pub resolved_assurance_level: String,
+    pub channel_kind: UserActionChannelKind,
+    #[schemars(
+        length(min = 1, max = "CHANNEL_SUBMISSION_ID_MAX_BYTES"),
+        regex(pattern = "^[!-~]+$")
+    )]
+    pub channel_submission_id: String,
+    pub resolved_at: UtcTimestamp,
+}
+
+/// Stored request JSON shape for `user_action_requests.request_json`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedUserActionRequest {
+    pub body: UserActionRequestBody,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Stored resolution JSON shape for `user_action_resolutions.resolution_json`.
+pub type PersistedUserActionResolution = UserActionResolutionBody;
+
+/// User-facing inbox item for one actionable request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserActionInboxItem {
+    pub user_action_request_id: UserActionRequestId,
+    pub request_ref: StateRecordRef,
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub change_unit_id: RequiredNullable<ChangeUnitId>,
+    pub action_kind: UserActionKind,
     pub question: String,
     pub context_summary: String,
-    pub choices: Vec<JudgmentInboxChoice>,
-    pub answer_constraints: JudgmentAnswerConstraints,
+    pub form: UserActionInboxForm,
     pub required: bool,
     pub requirement_status: String,
-    pub required_for: Vec<JudgmentRequiredFor>,
-    pub status: UserJudgmentStatus,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub status: UserActionStatus,
     pub answer_path_availability: UserChannelAvailability,
-    pub preferred_capture_path: RequiredNullable<JudgmentCapturePath>,
-    pub fallbacks: Vec<JudgmentCapturePath>,
+    pub preferred_capture_path: RequiredNullable<UserActionCapturePath>,
+    pub fallbacks: Vec<UserActionCapturePath>,
     pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Closed user-facing form derived from the stored request body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "form_type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UserActionInboxForm {
+    Choice {
+        choices: Vec<UserActionInboxChoice>,
+        note_allowed: bool,
+        note_max_chars: u64,
+    },
+    EvidenceObservation {
+        target_candidates: Vec<EvidenceTarget>,
+        artifact_candidates: Vec<ArtifactRef>,
+        relevance_options: Vec<EvidenceRelevanceStatus>,
+        summary_max_chars: u64,
+    },
+}
+
+impl UserActionInboxForm {
+    /// Validates the canonical serialized form size shared by every User Channel.
+    pub fn validate_canonical_size(&self) -> Result<(), UserActionShapeError> {
+        validate_user_action_serialized_size("form", self)
+    }
 }
 
 /// Current availability summary for supported User Channel answer paths.
@@ -1831,30 +2462,21 @@ pub struct UserChannelPathAvailability {
     pub detail: RequiredNullable<String>,
 }
 
-/// User-facing answer choice for a judgment inbox item.
+/// User-facing answer choice for a choice-action inbox item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JudgmentInboxChoice {
-    pub choice_id: UserJudgmentOptionId,
+pub struct UserActionInboxChoice {
+    pub choice_id: UserActionOptionId,
     pub label: String,
     pub description: String,
     pub consequence: String,
     pub is_default: bool,
 }
 
-/// User-facing answer constraints for a judgment inbox item.
+/// User-facing capture path for resolving one user action.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JudgmentAnswerConstraints {
-    pub choice_required: bool,
-    pub note_allowed: bool,
-    pub note_max_chars: u64,
-}
-
-/// User-facing capture path for answering a judgment inbox item.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JudgmentCapturePath {
+pub struct UserActionCapturePath {
     pub kind: String,
     pub label: String,
     pub available: bool,
@@ -1865,304 +2487,39 @@ pub struct JudgmentCapturePath {
     pub detail: RequiredNullable<String>,
 }
 
-/// Core-derived state snapshot used to decide whether a judgment is compatible.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JudgmentBasis {
-    pub task_id: TaskId,
-    pub change_unit_id: RequiredNullable<ChangeUnitId>,
-    pub scope_revision: u64,
-    pub close_basis_revision: RequiredNullable<u64>,
-    pub baseline_ref: RequiredNullable<BaselineRef>,
-    pub result_refs: Vec<StateRecordRef>,
-    pub residual_risk_ids: Vec<RiskId>,
-    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
-    pub created_at_state_version: u64,
-    pub compatibility_status: JudgmentBasisCompatibilityStatus,
-}
-
-/// Stored shape for `user_judgments.basis_json`.
-pub type PersistedJudgmentBasis = JudgmentBasis;
-
-/// Stored shape for `user_judgments.request_json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PersistedUserJudgmentRequest {
-    pub presentation: JudgmentPresentation,
-    pub question: String,
-    pub required_for: Vec<JudgmentRequiredFor>,
-    pub expires_at: RequiredNullable<UtcTimestamp>,
-}
-
-/// Proposed focused judgment shape.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct UserJudgmentCandidate {
-    pub judgment_kind: JudgmentKind,
-    pub presentation: JudgmentPresentation,
-    pub question: String,
-    pub options: Vec<UserJudgmentOption>,
-    pub context: UserJudgmentContext,
-    pub affected_refs: Vec<StateRecordRef>,
-    pub required_for: Vec<JudgmentRequiredFor>,
-    pub expires_at: Option<UtcTimestamp>,
-}
-
-/// Caller-authored request input for a non-authority judgment option.
+/// Caller-authored request input for a non-authority choice option.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct UserJudgmentOptionInput {
-    pub option_id: UserJudgmentOptionId,
+pub struct UserActionOptionInput {
+    pub option_id: UserActionOptionId,
     pub label: String,
     pub description: String,
     pub consequence: String,
     pub is_default: bool,
 }
 
-/// Stored representation for `user_judgments.options_json`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Current Core-owned choice option.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct PersistedUserJudgmentOptions {
-    pub options: Vec<PersistedUserJudgmentOption>,
-}
-
-impl PersistedUserJudgmentOptions {
-    /// Creates the current persisted option representation.
-    pub fn current(options: Vec<UserJudgmentOption>) -> Self {
-        Self {
-            options: options
-                .into_iter()
-                .map(PersistedUserJudgmentOption::from_current)
-                .collect(),
-        }
-    }
-
-    /// Consumes the persisted wrapper and returns its current public option set.
-    pub fn into_current_options(
-        self,
-    ) -> Result<Vec<UserJudgmentOption>, PersistedUserJudgmentCompatibilityError> {
-        self.options
-            .into_iter()
-            .map(PersistedUserJudgmentOption::into_current)
-            .collect()
-    }
-}
-
-/// Persisted internal representation for `user_judgments.options_json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PersistedUserJudgmentOption {
-    pub option_id: UserJudgmentOptionId,
+pub struct UserActionOption {
+    pub option_id: UserActionOptionId,
     pub label: String,
     pub description: String,
     pub consequence: String,
-    pub machine_action: UserJudgmentOptionAction,
+    pub machine_action: UserActionOptionAction,
     pub resolution_outcome: JudgmentResolutionOutcome,
     pub is_default: bool,
 }
 
-impl PersistedUserJudgmentOption {
-    /// Creates a persisted option from a current public option.
-    pub fn from_current(option: UserJudgmentOption) -> Self {
-        Self {
-            option_id: option.option_id,
-            label: option.label,
-            description: option.description,
-            consequence: option.consequence,
-            machine_action: option.machine_action,
-            resolution_outcome: option.resolution_outcome,
-            is_default: option.is_default,
-        }
-    }
-
-    /// Converts a persisted option into the current public option shape.
-    pub fn into_current(
-        self,
-    ) -> Result<UserJudgmentOption, PersistedUserJudgmentCompatibilityError> {
-        if self.resolution_outcome != self.machine_action.resolution_outcome() {
-            return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
-        }
-        Ok(UserJudgmentOption {
-            option_id: self.option_id,
-            label: self.label,
-            description: self.description,
-            consequence: self.consequence,
-            machine_action: self.machine_action,
-            resolution_outcome: self.resolution_outcome,
-            is_default: self.is_default,
-        })
-    }
-}
-
-/// Reason a persisted judgment shape cannot be emitted as current public data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PersistedUserJudgmentCompatibilityError {
-    MismatchedResolutionOutcome,
-}
-
-impl fmt::Display for PersistedUserJudgmentCompatibilityError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::MismatchedResolutionOutcome => {
-                "persisted judgment option outcome does not match machine_action"
-            }
-        };
-        formatter.write_str(message)
-    }
-}
-
-impl std::error::Error for PersistedUserJudgmentCompatibilityError {}
-
-/// Current Core-owned user judgment option.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UserJudgmentOption {
-    pub option_id: UserJudgmentOptionId,
-    pub label: String,
-    pub description: String,
-    pub consequence: String,
-    pub machine_action: UserJudgmentOptionAction,
-    pub resolution_outcome: JudgmentResolutionOutcome,
-    pub is_default: bool,
-}
-
-/// User judgment context.
+/// User-action choice context.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct UserJudgmentContext {
+pub struct UserActionContext {
     pub summary: String,
     pub related_refs: Vec<StateRecordRef>,
     pub artifact_refs: Vec<ArtifactRef>,
     pub visible_risks: Vec<AcceptedRiskInput>,
     pub constraints: Vec<String>,
-}
-
-/// Recorded judgment resolution.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UserJudgmentResolution {
-    pub selected_option_id: UserJudgmentOptionId,
-    pub machine_action: UserJudgmentOptionAction,
-    pub resolution_outcome: JudgmentResolutionOutcome,
-    pub answer: RecordUserJudgmentPayload,
-    pub rationale: JudgmentRationale,
-    pub note: RequiredNullable<String>,
-    pub accepted_risks: Vec<AcceptedRiskInput>,
-    pub resolved_by_actor_source: ActorSource,
-}
-
-/// Stored shape for `user_judgments.resolution_json`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct PersistedUserJudgmentResolution {
-    pub selected_option_id: UserJudgmentOptionId,
-    pub machine_action: UserJudgmentOptionAction,
-    pub resolution_outcome: JudgmentResolutionOutcome,
-    pub answer: RecordUserJudgmentPayload,
-    pub note: Option<String>,
-    pub accepted_risks: Vec<AcceptedRiskInput>,
-    pub resolved_by_actor_source: ActorSource,
-}
-
-impl PersistedUserJudgmentResolution {
-    /// Creates the current persisted representation from a current public resolution.
-    pub fn current(resolution: UserJudgmentResolution) -> Self {
-        Self {
-            selected_option_id: resolution.selected_option_id,
-            machine_action: resolution.machine_action,
-            resolution_outcome: resolution.resolution_outcome,
-            answer: resolution.answer,
-            note: resolution.note.into_option(),
-            accepted_risks: resolution.accepted_risks,
-            resolved_by_actor_source: resolution.resolved_by_actor_source,
-        }
-    }
-
-    /// Converts a persisted resolution into the current public resolution shape.
-    pub fn into_current_with_outcome(
-        self,
-        resolution_outcome: JudgmentResolutionOutcome,
-        rationale: JudgmentRationale,
-    ) -> Result<UserJudgmentResolution, PersistedUserJudgmentCompatibilityError> {
-        if self.resolution_outcome != resolution_outcome {
-            return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
-        }
-        if self.machine_action.resolution_outcome() != resolution_outcome {
-            return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
-        }
-        Ok(UserJudgmentResolution {
-            selected_option_id: self.selected_option_id,
-            machine_action: self.machine_action,
-            resolution_outcome,
-            answer: self.answer,
-            rationale,
-            note: self.note.into(),
-            accepted_risks: self.accepted_risks,
-            resolved_by_actor_source: self.resolved_by_actor_source,
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Wire {
-            selected_option_id: UserJudgmentOptionId,
-            machine_action: UserJudgmentOptionAction,
-            resolution_outcome: JudgmentResolutionOutcome,
-            answer: RecordUserJudgmentPayload,
-            note: Option<String>,
-            accepted_risks: Vec<AcceptedRiskInput>,
-            resolved_by_actor_source: ActorSource,
-        }
-
-        let wire = Wire::deserialize(deserializer)?;
-        if populated_judgment_answer_branches(&wire.answer) != 1 {
-            return Err(serde::de::Error::custom(
-                "persisted judgment resolution must populate exactly one answer branch",
-            ));
-        }
-        Ok(Self {
-            selected_option_id: wire.selected_option_id,
-            machine_action: wire.machine_action,
-            resolution_outcome: wire.resolution_outcome,
-            answer: wire.answer,
-            note: wire.note,
-            accepted_risks: wire.accepted_risks,
-            resolved_by_actor_source: wire.resolved_by_actor_source,
-        })
-    }
-}
-
-/// Decision-specific judgment payload branches.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RecordUserJudgmentPayload {
-    pub product_decision: RequiredNullable<JsonObject>,
-    pub technical_decision: RequiredNullable<JsonObject>,
-    pub scope_decision: RequiredNullable<JsonObject>,
-    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
-    pub final_acceptance: RequiredNullable<JsonObject>,
-    pub residual_risk_acceptance: RequiredNullable<JsonObject>,
-    pub cancellation: RequiredNullable<JsonObject>,
-}
-
-/// Descriptive, non-authority explanation for a recorded judgment.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JudgmentRationale {
-    pub summary: String,
-    pub selected_reason: RequiredNullable<String>,
-    pub considered_alternatives: Vec<String>,
-    pub rejected_alternatives: Vec<String>,
-    pub assumptions: Vec<String>,
-    pub tradeoffs: Vec<String>,
-    pub uncertainties: Vec<String>,
-    pub review_triggers: Vec<String>,
-    pub related_refs: Vec<StateRecordRef>,
-    pub artifact_refs: Vec<ArtifactRef>,
 }
 
 /// Sensitive-action approval context shape.
@@ -2191,12 +2548,123 @@ pub struct AcceptedRiskInput {
     pub accepted_for_close: bool,
 }
 
-fn populated_judgment_answer_branches(answer: &RecordUserJudgmentPayload) -> usize {
-    usize::from(answer.product_decision.is_some())
-        + usize::from(answer.technical_decision.is_some())
-        + usize::from(answer.scope_decision.is_some())
-        + usize::from(answer.sensitive_action_scope.is_some())
-        + usize::from(answer.final_acceptance.is_some())
-        + usize::from(answer.residual_risk_acceptance.is_some())
-        + usize::from(answer.cancellation.is_some())
+/// Derives the effective request status from immutable resolution and current time facts.
+///
+/// Returns `None` when the supplied current time precedes the immutable request creation time.
+pub fn effective_user_action_status(
+    basis_status: UserActionBasisStatus,
+    created_at: &UtcTimestamp,
+    expires_at: Option<&UtcTimestamp>,
+    has_resolution: bool,
+    now: &UtcTimestamp,
+) -> Option<UserActionStatus> {
+    if now < created_at {
+        return None;
+    }
+    Some(match basis_status {
+        UserActionBasisStatus::Stale => UserActionStatus::Stale,
+        UserActionBasisStatus::Superseded => UserActionStatus::Superseded,
+        UserActionBasisStatus::Current if has_resolution => UserActionStatus::Resolved,
+        UserActionBasisStatus::Current
+            if expires_at.is_some_and(|expires_at| now >= expires_at) =>
+        {
+            UserActionStatus::Expired
+        }
+        UserActionBasisStatus::Current => UserActionStatus::Pending,
+    })
+}
+
+/// Shared typed user-action shape-validation failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionShapeError {
+    field: &'static str,
+    message: &'static str,
+}
+
+impl UserActionShapeError {
+    /// Creates one bounded user-action shape failure.
+    pub const fn new(field: &'static str, message: &'static str) -> Self {
+        Self { field, message }
+    }
+
+    /// Returns the stable logical field path.
+    pub const fn field(&self) -> &'static str {
+        self.field
+    }
+
+    /// Returns the stable validation message.
+    pub const fn message(&self) -> &'static str {
+        self.message
+    }
+}
+
+impl fmt::Display for UserActionShapeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.field, self.message)
+    }
+}
+
+impl std::error::Error for UserActionShapeError {}
+
+/// Validates the closed adapter-owned shape of a channel submission id.
+pub fn validate_channel_submission_id(value: &str) -> Result<(), UserActionShapeError> {
+    if value.is_empty()
+        || value.len() > CHANNEL_SUBMISSION_ID_MAX_BYTES
+        || !value.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+    {
+        return Err(UserActionShapeError::new(
+            "channel_submission_id",
+            "channel submission id must be 1..=256 bytes of visible ASCII",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_candidate_count(
+    field: &'static str,
+    count: usize,
+    limit: usize,
+) -> Result<(), UserActionShapeError> {
+    if count == 0 {
+        return Err(UserActionShapeError::new(
+            field,
+            "candidate selection must not be empty",
+        ));
+    }
+    if count > limit {
+        return Err(UserActionShapeError::new(
+            field,
+            "candidate selection exceeds the user-action limit",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_nonblank_user_action_text(
+    field: &'static str,
+    value: &str,
+) -> Result<(), UserActionShapeError> {
+    if value.trim().is_empty() {
+        Err(UserActionShapeError::new(
+            field,
+            "user-action text must not be blank",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_user_action_serialized_size<T: Serialize>(
+    field: &'static str,
+    value: &T,
+) -> Result<(), UserActionShapeError> {
+    let size = crate::canonical_json_size_bytes(value)
+        .map_err(|_| UserActionShapeError::new(field, "user-action JSON cannot be serialized"))?;
+    if size > USER_ACTION_FORM_MAX_BYTES {
+        return Err(UserActionShapeError::new(
+            field,
+            "user-action JSON exceeds the canonical byte limit",
+        ));
+    }
+    Ok(())
 }

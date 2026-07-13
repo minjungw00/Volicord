@@ -10,6 +10,7 @@
 pub mod canonical;
 pub mod ids;
 pub mod methods;
+pub mod presentation;
 pub mod schema;
 pub mod tool_names;
 pub mod values;
@@ -17,6 +18,7 @@ pub mod values;
 pub use canonical::*;
 pub use ids::*;
 pub use methods::*;
+pub use presentation::*;
 pub use schema::*;
 pub use tool_names::*;
 pub use values::*;
@@ -752,17 +754,15 @@ mod tests {
             OperationCategory::AgentWorkflow
         );
         assert_eq!(
-            serde_json::from_value::<RecordUserJudgmentRequest>(record_user_judgment_request_json())
-                .expect("record judgment request")
+            serde_json::from_value::<RequestUserActionRequest>(request_user_action_request_json())
+                .expect("request user action")
                 .operation_category(),
-            OperationCategory::UserOnly
+            OperationCategory::AgentWorkflow
         );
         assert_eq!(
-            serde_json::from_value::<RecordUserObservationRequest>(
-                record_user_observation_request_json(),
-            )
-            .expect("record user observation request")
-            .operation_category(),
+            serde_json::from_value::<ResolveUserActionRequest>(resolve_user_action_request_json())
+                .expect("resolve user action")
+                .operation_category(),
             OperationCategory::UserOnly
         );
 
@@ -804,19 +804,6 @@ mod tests {
             .change_unit
             .fields
             .contains_key("owner_defined_note"));
-
-        let mut judgment = record_user_judgment_request_json();
-        judgment["answer"]["product_decision"]["owner_defined"] = json!({
-            "nested": ["payload", "data"]
-        });
-        let request: RecordUserJudgmentRequest = serde_json::from_value(judgment)
-            .expect("decision-specific payload objects remain open");
-        assert!(request
-            .answer
-            .product_decision
-            .as_ref()
-            .expect("product decision branch")
-            .contains_key("owner_defined"));
     }
 
     #[test]
@@ -865,47 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn record_user_judgment_request_keeps_payload_branches_as_objects() {
-        let request: RecordUserJudgmentRequest = serde_json::from_value(json!({
-            "envelope": envelope_json(),
-            "user_judgment_id": "uj_empty_001",
-            "judgment_kind": "product_decision",
-            "selected_option_id": "keep",
-            "answer": {
-                "product_decision": {
-                    "judgment": {
-                        "decision": "accepted",
-                        "rationale": "The illustration is suitable."
-                    }
-                },
-                "technical_decision": null,
-                "scope_decision": null,
-                "sensitive_action_scope": null,
-                "final_acceptance": null,
-                "residual_risk_acceptance": null,
-                "cancellation": null
-            },
-            "rationale": judgment_rationale_json(),
-            "note": null,
-            "accepted_risks": []
-        }))
-        .expect("judgment request should deserialize");
-
-        assert_eq!(request.judgment_kind, JudgmentKind::ProductDecision);
-        assert_eq!(request.selected_option_id.as_str(), "keep");
-        assert!(request.answer.product_decision.is_some());
-        assert!(request.answer.sensitive_action_scope.is_none());
-
-        let encoded = serde_json::to_value(&request).expect("judgment request should serialize");
-        assert_eq!(
-            encoded["answer"]["product_decision"]["judgment"]["decision"],
-            "accepted"
-        );
-        assert_eq!(encoded["answer"]["technical_decision"], Value::Null);
-    }
-
-    #[test]
-    fn close_basis_and_judgment_basis_round_trip_json() {
+    fn close_basis_and_user_action_basis_round_trip_json() {
         let close_basis: CurrentCloseBasis = serde_json::from_value(json!({
             "close_basis_revision": 4,
             "scope_revision": 2,
@@ -963,31 +910,34 @@ mod tests {
             serde_json::from_value(encoded).expect("CurrentCloseBasis round-trips");
         assert_eq!(decoded, close_basis);
 
-        let judgment_basis: JudgmentBasis = serde_json::from_value(json!({
-            "task_id": "task_close_basis_001",
-            "change_unit_id": "cu_close_basis_001",
-            "scope_revision": 2,
+        let action_basis: UserActionBasis = serde_json::from_value(json!({
+            "action_type": "choice",
+            "coordinates": {
+                "task_id": "task_close_basis_001",
+                "change_unit_id": "cu_close_basis_001",
+                "scope_revision": 2,
+                "baseline_ref": "baseline_close_basis",
+                "created_at_state_version": 11,
+                "compatibility_status": "current"
+            },
             "close_basis_revision": 4,
-            "baseline_ref": "baseline_close_basis",
             "result_refs": [
                 state_ref_json("run", "run_close_basis_001", "task_close_basis_001")
             ],
             "residual_risk_ids": ["risk_close_basis_001"],
-            "sensitive_action_scope": null,
-            "created_at_state_version": 11,
-            "compatibility_status": "current"
+            "sensitive_action_scope": null
         }))
-        .expect("JudgmentBasis should deserialize");
+        .expect("UserActionBasis should deserialize");
 
         assert_eq!(
-            judgment_basis.residual_risk_ids[0].as_str(),
-            "risk_close_basis_001"
+            action_basis.compatibility_status(),
+            UserActionBasisStatus::Current
         );
-        let encoded = serde_json::to_value(&judgment_basis).expect("JudgmentBasis serializes");
-        assert_eq!(encoded["compatibility_status"], "current");
-        let decoded: JudgmentBasis =
-            serde_json::from_value(encoded).expect("JudgmentBasis round-trips");
-        assert_eq!(decoded, judgment_basis);
+        let encoded = serde_json::to_value(&action_basis).expect("UserActionBasis serializes");
+        assert_eq!(encoded["coordinates"]["compatibility_status"], "current");
+        let decoded: UserActionBasis =
+            serde_json::from_value(encoded).expect("UserActionBasis round-trips");
+        assert_eq!(decoded, action_basis);
     }
 
     #[test]
@@ -1145,24 +1095,13 @@ mod tests {
             .remove("idempotency_key");
         assert_schema_and_serde("volicord.status", envelope_missing_nullable, false);
 
-        let mut answer_missing_branch = record_user_judgment_request_json();
-        answer_missing_branch["answer"]
+        let mut selected_option_missing = resolve_user_action_request_json();
+        selected_option_missing["resolution"]
             .as_object_mut()
-            .expect("answer should be an object")
-            .remove("technical_decision");
-        assert_schema_and_serde(
-            "volicord.record_user_judgment",
-            answer_missing_branch,
-            false,
-        );
-
-        let mut selected_option_missing = record_user_judgment_request_json();
-        selected_option_missing
-            .as_object_mut()
-            .expect("record request should be an object")
+            .expect("resolution should be an object")
             .remove("selected_option_id");
         assert_schema_and_serde(
-            "volicord.record_user_judgment",
+            "volicord.resolve_user_action",
             selected_option_missing,
             false,
         );
@@ -1171,27 +1110,19 @@ mod tests {
     #[test]
     fn public_timestamp_inputs_reject_invalid_strings() {
         for invalid in ["zzzz", "tomorrow", "9999"] {
-            let mut request = request_user_judgment_request_json();
+            let mut request = request_user_action_request_json();
             request["expires_at"] = json!(invalid);
             assert!(
-                deserialize_public_request("volicord.request_user_judgment", request).is_err(),
-                "request_user_judgment expires_at should reject {invalid}"
+                deserialize_public_request("volicord.request_user_action", request).is_err(),
+                "request_user_action expires_at should reject {invalid}"
             );
         }
 
-        let mut request = request_user_judgment_request_json();
-        request["sensitive_action_scope"] = sensitive_action_scope_json(json!("zzzz"));
+        let mut request = request_user_action_request_json();
+        request["action"]["sensitive_action_scope"] = sensitive_action_scope_json(json!("zzzz"));
         assert!(
-            deserialize_public_request("volicord.request_user_judgment", request).is_err(),
-            "request_user_judgment sensitive_action_scope.expires_at should reject invalid text"
-        );
-
-        let mut answer = record_user_judgment_request_json();
-        answer["answer"]["product_decision"] = Value::Null;
-        answer["answer"]["sensitive_action_scope"] = sensitive_action_scope_json(json!("tomorrow"));
-        assert!(
-            deserialize_public_request("volicord.record_user_judgment", answer).is_err(),
-            "record_user_judgment answer.sensitive_action_scope.expires_at should reject invalid text"
+            deserialize_public_request("volicord.request_user_action", request).is_err(),
+            "request_user_action action.sensitive_action_scope.expires_at should reject invalid text"
         );
 
         let mut run = record_run_request_json();
@@ -1223,17 +1154,17 @@ mod tests {
 
     #[test]
     fn equivalent_timestamp_offsets_have_equal_canonical_request_hashes() {
-        let mut zulu = request_user_judgment_request_json();
+        let mut zulu = request_user_action_request_json();
         zulu["expires_at"] = json!("2026-06-18T00:00:00Z");
-        let mut offset = request_user_judgment_request_json();
+        let mut offset = request_user_action_request_json();
         offset["expires_at"] = json!("2026-06-18T09:00:00+09:00");
 
         assert_eq!(
-            typed_request_hash("volicord.request_user_judgment", zulu),
-            typed_request_hash("volicord.request_user_judgment", offset.clone())
+            typed_request_hash("volicord.request_user_action", zulu),
+            typed_request_hash("volicord.request_user_action", offset.clone())
         );
 
-        let decoded: RequestUserJudgmentRequest =
+        let decoded: RequestUserActionRequest =
             serde_json::from_value(offset).expect("offset request should decode");
         assert_eq!(
             serde_json::to_value(decoded.expires_at).expect("expires_at should serialize"),
@@ -1355,22 +1286,6 @@ mod tests {
             ],
             "EvidenceObservationInput",
         );
-
-        let judgment =
-            public_request_schema("volicord.record_user_judgment").expect("judgment schema");
-        assert_required(
-            definition(&judgment, "RecordUserJudgmentPayload"),
-            &[
-                "product_decision",
-                "technical_decision",
-                "scope_decision",
-                "sensitive_action_scope",
-                "final_acceptance",
-                "residual_risk_acceptance",
-                "cancellation",
-            ],
-            "RecordUserJudgmentPayload",
-        );
     }
 
     #[test]
@@ -1470,9 +1385,8 @@ mod tests {
             "volicord.prepare_write",
             "volicord.stage_artifact",
             "volicord.record_run",
-            "volicord.request_user_judgment",
-            "volicord.record_user_judgment",
-            "volicord.record_user_observation",
+            "volicord.request_user_action",
+            "volicord.resolve_user_action",
             "volicord.reconcile_changes",
             "volicord.close_task",
         ] {
@@ -1619,20 +1533,20 @@ mod tests {
 
     #[test]
     fn generated_mutation_response_schemas_cover_fresh_wrappers_and_recovery_facts() {
-        let judgment = mcp_response_schema("volicord.request_user_judgment")
-            .expect("judgment MCP response schema");
+        let action = mcp_response_schema("volicord.request_user_action")
+            .expect("user-action MCP response schema");
         assert_required(
-            definition(&judgment, "McpMutationFullResponse"),
+            definition(&action, "McpMutationFullResponse"),
             &["operation_result_ref", "authority_receipt", "method_result"],
             "McpMutationFullResponse",
         );
         assert_required(
-            definition(&judgment, "McpMutationSummaryResponse"),
+            definition(&action, "McpMutationSummaryResponse"),
             &["operation_result_ref", "authority_receipt", "method_result"],
             "McpMutationSummaryResponse",
         );
         assert_required(
-            definition(&judgment, "McpMutationWorkflowResponse"),
+            definition(&action, "McpMutationWorkflowResponse"),
             &[
                 "operation_result_ref",
                 "authority_receipt",
@@ -1642,19 +1556,49 @@ mod tests {
             "McpMutationWorkflowResponse",
         );
         assert_required(
-            definition(&judgment, "McpRequestUserJudgmentCompactResult"),
+            definition(&action, "McpRequestUserActionCompactResult"),
             &[
                 "effect",
-                "judgment_ref",
+                "agent_workflow_result_replayed",
+                "user_action_request_ref",
+                "current_projection_state_version",
+                "current_projection_observed_at",
+                "user_action_resolution_ref",
                 "status",
-                "selected_option_id",
-                "selected_option_label",
-                "resolution_outcome",
+                "resolution_summary",
+                "derived_refs",
             ],
-            "McpRequestUserJudgmentCompactResult",
+            "McpRequestUserActionCompactResult",
         );
+        let agent_safe_resolution = definition(&action, "AgentSafeUserActionResolution");
+        assert_required(
+            agent_safe_resolution,
+            &[
+                "user_action_resolution_id",
+                "user_action_request_id",
+                "action_kind",
+                "channel_kind",
+                "resolved_at",
+                "resolution_summary",
+            ],
+            "AgentSafeUserActionResolution",
+        );
+        for excluded in [
+            "body",
+            "note",
+            "observation",
+            "summary",
+            "channel_submission_id",
+            "resolved_verification_basis",
+            "resolved_assurance_level",
+        ] {
+            assert!(
+                agent_safe_resolution["properties"].get(excluded).is_none(),
+                "agent-safe resolution schema exposed {excluded}"
+            );
+        }
 
-        let refresh = definition(&judgment, "McpAuthoritativeRefreshFailure");
+        let refresh = definition(&action, "McpAuthoritativeRefreshFailure");
         assert_required(
             refresh,
             &[
@@ -1673,7 +1617,7 @@ mod tests {
             ],
             "McpAuthoritativeRefreshFailure",
         );
-        let budget = definition(&judgment, "McpMutationResponseBudgetExceeded");
+        let budget = definition(&action, "McpMutationResponseBudgetExceeded");
         assert_required(
             budget,
             &[
@@ -1697,7 +1641,7 @@ mod tests {
             "McpMutationResponseBudgetExceeded",
         );
         assert_required(
-            definition(&judgment, "McpMutationPostEffectFailure"),
+            definition(&action, "McpMutationPostEffectFailure"),
             &[
                 "code",
                 "tool_name",
@@ -1779,6 +1723,198 @@ mod tests {
     }
 
     #[test]
+    fn agent_safe_user_action_resolution_serde_excludes_user_authored_text() {
+        let resolution = AgentSafeUserActionResolution {
+            user_action_resolution_id: UserActionResolutionId::new("ures_test"),
+            user_action_request_id: UserActionRequestId::new("uar_test"),
+            action_kind: UserActionKind::ProductDecision,
+            channel_kind: UserActionChannelKind::McpElicitation,
+            resolved_at: timestamp("2026-07-13T00:00:00Z"),
+            resolution_summary: McpUserActionResolutionSummary::Choice {
+                selected_option_id: UserActionOptionId::new("uao_accept"),
+                selected_option_label: "Use the selected product direction".to_owned(),
+                machine_action: UserActionOptionAction::Accept,
+                resolution_outcome: JudgmentResolutionOutcome::Accepted,
+            },
+        };
+
+        let value = serde_json::to_value(&resolution).expect("agent-safe resolution serializes");
+        assert_eq!(value["resolution_summary"]["resolution_type"], "choice");
+        for excluded in [
+            "body",
+            "note",
+            "observation",
+            "summary",
+            "channel_submission_id",
+            "resolved_verification_basis",
+            "resolved_assurance_level",
+        ] {
+            assert!(value.get(excluded).is_none(), "serialized {excluded}");
+        }
+
+        let mut with_user_note = value.clone();
+        with_user_note["note"] = json!("private user-authored note");
+        assert!(serde_json::from_value::<AgentSafeUserActionResolution>(with_user_note).is_err());
+
+        let mut with_observation_summary = value;
+        with_observation_summary["observation_summary"] =
+            json!("private user-authored observation summary");
+        assert!(
+            serde_json::from_value::<AgentSafeUserActionResolution>(with_observation_summary)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn user_action_channels_have_one_exhaustive_verification_basis_mapping() {
+        let rows = [
+            (
+                UserActionChannelKind::McpElicitation,
+                VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+            ),
+            (
+                UserActionChannelKind::PromptCapture,
+                VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+            ),
+            (
+                UserActionChannelKind::LocalWebConsent,
+                VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+            ),
+            (
+                UserActionChannelKind::Cli,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        ];
+        for (channel_kind, verification_basis) in rows {
+            assert_eq!(channel_kind.verification_basis(), verification_basis);
+            assert_eq!(
+                UserActionChannelKind::from_verification_basis(verification_basis),
+                Some(channel_kind)
+            );
+        }
+        assert_eq!(
+            UserActionChannelKind::from_verification_basis("unsupported_user_channel"),
+            None
+        );
+    }
+
+    #[test]
+    fn channel_submission_id_runtime_and_schema_share_visible_ascii_byte_bounds() {
+        assert!(validate_channel_submission_id(&"x".repeat(256)).is_ok());
+        for rejected in [
+            String::new(),
+            " ".to_owned(),
+            "contains whitespace".to_owned(),
+            "x".repeat(257),
+            "submission\nnewline".to_owned(),
+            "제출".to_owned(),
+        ] {
+            assert!(
+                validate_channel_submission_id(&rejected).is_err(),
+                "unexpectedly accepted {rejected:?}"
+            );
+        }
+
+        let request = public_request_schema("volicord.resolve_user_action")
+            .expect("resolve-user-action request schema");
+        let submission = &request["properties"]["channel_submission_id"];
+        assert_eq!(submission["minLength"], 1);
+        assert_eq!(submission["maxLength"], 256);
+        assert_eq!(submission["pattern"], "^[!-~]+$");
+
+        let resolution = serde_json::to_value(schemars::schema_for!(UserActionResolution))
+            .expect("user-action resolution schema serializes");
+        let submission = &resolution["properties"]["channel_submission_id"];
+        assert_eq!(submission["minLength"], 1);
+        assert_eq!(submission["maxLength"], 256);
+        assert_eq!(submission["pattern"], "^[!-~]+$");
+    }
+
+    #[test]
+    fn user_action_kind_required_for_compatibility_matrix_is_exhaustive() {
+        use UserActionKind::{
+            Cancellation, EvidenceObservation, FinalAcceptance, ProductDecision,
+            ResidualRiskAcceptance, ScopeDecision, SensitiveApproval, TechnicalDecision,
+        };
+        use UserActionRequiredFor::{
+            CloseCancel, CloseComplete, CloseSupersede, Informational, PrepareWrite, RecordRun,
+            ScopeUpdate,
+        };
+
+        let required_for_values = [
+            ScopeUpdate,
+            PrepareWrite,
+            RecordRun,
+            CloseComplete,
+            CloseCancel,
+            CloseSupersede,
+            Informational,
+        ];
+        let rows: [(UserActionKind, &[UserActionRequiredFor]); 8] = [
+            (
+                ProductDecision,
+                &[
+                    ScopeUpdate,
+                    PrepareWrite,
+                    RecordRun,
+                    CloseComplete,
+                    CloseSupersede,
+                    Informational,
+                ],
+            ),
+            (
+                TechnicalDecision,
+                &[
+                    ScopeUpdate,
+                    PrepareWrite,
+                    RecordRun,
+                    CloseComplete,
+                    CloseSupersede,
+                    Informational,
+                ],
+            ),
+            (
+                ScopeDecision,
+                &[
+                    ScopeUpdate,
+                    PrepareWrite,
+                    RecordRun,
+                    CloseComplete,
+                    CloseSupersede,
+                    Informational,
+                ],
+            ),
+            (
+                SensitiveApproval,
+                &[
+                    PrepareWrite,
+                    RecordRun,
+                    CloseComplete,
+                    CloseSupersede,
+                    Informational,
+                ],
+            ),
+            (FinalAcceptance, &[CloseComplete, Informational]),
+            (ResidualRiskAcceptance, &[CloseComplete, Informational]),
+            (Cancellation, &[CloseCancel, Informational]),
+            (
+                EvidenceObservation,
+                &[RecordRun, CloseComplete, Informational],
+            ),
+        ];
+
+        for (action_kind, compatible_values) in rows {
+            for required_for in required_for_values {
+                assert_eq!(
+                    action_kind.is_compatible_with_required_for(required_for),
+                    compatible_values.contains(&required_for),
+                    "unexpected compatibility for {action_kind:?} × {required_for:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn generated_mutation_response_schemas_accept_bare_non_result_branches() {
         let rejected = serde_json::to_value(ToolRejectedResponse {
             base: ToolResultBase {
@@ -1817,7 +1953,7 @@ mod tests {
             "volicord.prepare_write",
             "volicord.stage_artifact",
             "volicord.record_run",
-            "volicord.request_user_judgment",
+            "volicord.request_user_action",
             "volicord.reconcile_changes",
             "volicord.close_task",
         ] {
@@ -1872,10 +2008,10 @@ mod tests {
     }
 
     #[test]
-    fn request_user_judgment_option_input_exposes_no_authority_outcome_mapping() {
+    fn request_user_action_option_input_exposes_no_authority_outcome_mapping() {
         let schema =
-            public_request_schema("volicord.request_user_judgment").expect("judgment schema");
-        let option_input = definition(&schema, "UserJudgmentOptionInput");
+            public_request_schema("volicord.request_user_action").expect("user-action schema");
+        let option_input = definition(&schema, "UserActionOptionInput");
         assert!(
             option_input["properties"].get("machine_action").is_none(),
             "request option input must not expose machine_action"
@@ -1887,20 +2023,20 @@ mod tests {
             "request option input must not expose resolution_outcome"
         );
 
-        let mut request = request_user_judgment_request_json();
-        request["judgment_kind"] = json!("cancellation");
-        request["options"][0]["resolution_outcome"] = json!("accepted");
-        assert_schema_and_serde("volicord.request_user_judgment", request, false);
+        let mut request = request_user_action_request_json();
+        request["action"]["judgment_kind"] = json!("cancellation");
+        request["action"]["options"][0]["resolution_outcome"] = json!("accepted");
+        assert_schema_and_serde("volicord.request_user_action", request, false);
 
-        let mut request = request_user_judgment_request_json();
-        request["judgment_kind"] = json!("cancellation");
-        request["options"][0]["machine_action"] = json!("reject");
-        assert_schema_and_serde("volicord.request_user_judgment", request, false);
+        let mut request = request_user_action_request_json();
+        request["action"]["judgment_kind"] = json!("cancellation");
+        request["action"]["options"][0]["machine_action"] = json!("reject");
+        assert_schema_and_serde("volicord.request_user_action", request, false);
     }
 
     #[test]
-    fn current_user_judgment_option_requires_action_and_outcome() {
-        let schema = serde_json::to_value(schemars::schema_for!(UserJudgmentOption))
+    fn current_user_action_option_requires_action_and_outcome() {
+        let schema = serde_json::to_value(schemars::schema_for!(UserActionOption))
             .expect("option schema should serialize");
         assert_required(
             &schema,
@@ -1913,35 +2049,35 @@ mod tests {
                 "resolution_outcome",
                 "is_default",
             ],
-            "UserJudgmentOption",
+            "UserActionOption",
         );
         assert_eq!(
             schema["additionalProperties"], false,
-            "UserJudgmentOption should be closed"
+            "UserActionOption should be closed"
         );
 
-        let valid = user_judgment_option_json();
-        assert!(serde_json::from_value::<UserJudgmentOption>(valid.clone()).is_ok());
+        let valid = user_action_option_json();
+        assert!(serde_json::from_value::<UserActionOption>(valid.clone()).is_ok());
         assert!(validate_json_schema(&schema, &valid).is_ok());
 
-        let mut missing_action = user_judgment_option_json();
+        let mut missing_action = user_action_option_json();
         remove_path(&mut missing_action, &["machine_action"]);
-        assert!(serde_json::from_value::<UserJudgmentOption>(missing_action.clone()).is_err());
+        assert!(serde_json::from_value::<UserActionOption>(missing_action.clone()).is_err());
         assert!(validate_json_schema(&schema, &missing_action).is_err());
 
-        let mut missing_outcome = user_judgment_option_json();
+        let mut missing_outcome = user_action_option_json();
         remove_path(&mut missing_outcome, &["resolution_outcome"]);
-        assert!(serde_json::from_value::<UserJudgmentOption>(missing_outcome.clone()).is_err());
+        assert!(serde_json::from_value::<UserActionOption>(missing_outcome.clone()).is_err());
         assert!(validate_json_schema(&schema, &missing_outcome).is_err());
 
-        let mut blocked_outcome = user_judgment_option_json();
+        let mut blocked_outcome = user_action_option_json();
         blocked_outcome["resolution_outcome"] = json!("blocked");
-        assert!(serde_json::from_value::<UserJudgmentOption>(blocked_outcome.clone()).is_err());
+        assert!(serde_json::from_value::<UserActionOption>(blocked_outcome.clone()).is_err());
         assert!(validate_json_schema(&schema, &blocked_outcome).is_err());
 
-        let mut unknown = user_judgment_option_json();
+        let mut unknown = user_action_option_json();
         unknown["unsupported_note"] = json!("not current public shape");
-        assert_unknown::<UserJudgmentOption>(unknown, "unsupported_note");
+        assert_unknown::<UserActionOption>(unknown, "unsupported_note");
     }
 
     #[test]
@@ -1955,7 +2091,8 @@ mod tests {
             &record_kinds,
             &[
                 "write_ticket",
-                "user_judgment",
+                "user_action_request",
+                "user_action_resolution",
                 "evidence_summary",
                 "evidence_observation",
                 "project_continuity_record",
@@ -1974,7 +2111,7 @@ mod tests {
                 "evidence_provenance",
                 "final_acceptance",
                 "residual_risk_acceptance",
-                "pending_user_judgment",
+                "pending_user_action",
             ],
         );
 
@@ -2028,115 +2165,304 @@ mod tests {
     }
 
     #[test]
-    fn persisted_options_reject_bare_array_and_missing_current_fields() {
-        let current = serde_json::to_value(PersistedUserJudgmentOptions::current(Vec::new()))
-            .expect("current persisted options should serialize");
-        assert_eq!(current, json!({ "options": [] }));
-        let decoded = serde_json::from_value::<PersistedUserJudgmentOptions>(current)
-            .expect("current persisted options should deserialize");
-        assert!(decoded.options.is_empty());
+    fn user_action_resolution_inputs_are_closed_and_bounded() {
+        let valid: UserActionResolutionInput =
+            serde_json::from_value(resolve_user_action_request_json()["resolution"].clone())
+                .expect("choice resolution input");
+        valid.validate_bounds().expect("bounded note");
 
-        let bare_array = serde_json::from_value::<PersistedUserJudgmentOptions>(json!([
-            {
-                "option_id": "unsupported_accept",
-                "label": "Accept",
-                "description": "Unsupported option with no outcome.",
-                "consequence": "Audit only.",
-                "machine_action": "accept",
-                "is_default": true
-            }
-        ]));
-        assert!(bare_array.is_err());
+        let oversized: UserActionResolutionInput = serde_json::from_value(json!({
+            "resolution_type": "choice",
+            "selected_option_id": "accept",
+            "note": "한".repeat(USER_ACTION_NOTE_MAX_CHARS + 1)
+        }))
+        .expect("shape remains syntactically valid");
+        assert_eq!(
+            oversized.validate_bounds().unwrap_err().field(),
+            "resolution.note"
+        );
 
-        let missing_action = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
-            "options": [{
-                "option_id": "accept",
-                "label": "Accept",
-                "description": "Accept the current close basis.",
-                "consequence": "The judgment can be resolved.",
-                "resolution_outcome": "accepted",
-                "is_default": true
-            }]
-        }));
-        assert!(missing_action.is_err());
-
-        let missing_outcome = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
-            "options": [{
-                "option_id": "accept",
-                "label": "Accept",
-                "description": "Accept the current close basis.",
-                "consequence": "The judgment can be resolved.",
-                "machine_action": "accept",
-                "is_default": true
-            }]
-        }));
-        assert!(missing_outcome.is_err());
-
-        let blocked_outcome = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
-            "options": [{
-                "option_id": "accept",
-                "label": "Accept",
-                "description": "Accept the current close basis.",
-                "consequence": "The judgment can be resolved.",
-                "machine_action": "accept",
-                "resolution_outcome": "blocked",
-                "is_default": true
-            }]
-        }));
-        assert!(blocked_outcome.is_err());
+        let unknown = json!({
+            "resolution_type": "choice",
+            "selected_option_id": "accept",
+            "note": null,
+            "resolution_outcome": "accepted"
+        });
+        assert_unknown::<UserActionResolutionInput>(unknown, "resolution_outcome");
     }
 
     #[test]
-    fn current_user_judgment_resolution_requires_non_null_outcome() {
-        let schema = serde_json::to_value(schemars::schema_for!(UserJudgmentResolution))
-            .expect("resolution schema should serialize");
-        assert_required(
-            &schema,
-            &[
-                "selected_option_id",
-                "machine_action",
-                "resolution_outcome",
-                "answer",
-                "rationale",
-                "note",
-                "accepted_risks",
-                "resolved_by_actor_source",
-            ],
-            "UserJudgmentResolution",
+    fn user_action_validation_rejects_ambiguous_or_empty_closed_forms() {
+        for (field, value) in [
+            (
+                "resolution.artifact_ids",
+                json!({
+                    "resolution_type": "evidence_observation",
+                    "target": {"target_kind": "acceptance_criterion", "acceptance_criterion_id": "ac_1"},
+                    "artifact_ids": ["artifact_1", "artifact_1"],
+                    "relevance_status": "supported",
+                    "summary": "Observed current output."
+                }),
+            ),
+            (
+                "resolution.relevance_status",
+                json!({
+                    "resolution_type": "evidence_observation",
+                    "target": {"target_kind": "acceptance_criterion", "acceptance_criterion_id": "ac_1"},
+                    "artifact_ids": ["artifact_1"],
+                    "relevance_status": "unassessed",
+                    "summary": "Observed current output."
+                }),
+            ),
+            (
+                "resolution.summary",
+                json!({
+                    "resolution_type": "evidence_observation",
+                    "target": {"target_kind": "acceptance_criterion", "acceptance_criterion_id": "ac_1"},
+                    "artifact_ids": ["artifact_1"],
+                    "relevance_status": "supported",
+                    "summary": "   "
+                }),
+            ),
+        ] {
+            let input: UserActionResolutionInput =
+                serde_json::from_value(value).expect("observation input shape");
+            assert_eq!(input.validate_bounds().unwrap_err().field(), field);
+        }
+
+        let mut choice_body = json!({
+            "action_type": "choice",
+            "judgment_kind": "product_decision",
+            "presentation": "short",
+            "question": "Choose one option.",
+            "options": [user_action_option_json(), user_action_option_json()],
+            "context": {
+                "summary": "One bounded decision.",
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": []
+            },
+            "affected_refs": [],
+            "sensitive_action_scope": null
+        });
+        let duplicated: UserActionRequestBody =
+            serde_json::from_value(choice_body.clone()).expect("choice body shape");
+        assert_eq!(
+            duplicated.validate_bounds().unwrap_err().field(),
+            "body.options"
+        );
+        choice_body["options"] = json!([user_action_option_json()]);
+        choice_body["question"] = json!("  ");
+        let blank: UserActionRequestBody =
+            serde_json::from_value(choice_body).expect("blank choice body shape");
+        assert_eq!(
+            blank.validate_bounds().unwrap_err().field(),
+            "body.question"
+        );
+    }
+
+    #[test]
+    fn immutable_user_action_body_is_the_single_validated_capture_form_owner() {
+        let choice_context_private = "choice-context-must-not-enter-the-capture-form";
+        let choice_body: UserActionRequestBody = serde_json::from_value(json!({
+            "action_type": "choice",
+            "judgment_kind": "product_decision",
+            "presentation": "short",
+            "question": "Choose one exact option.",
+            "options": [user_action_option_json()],
+            "context": {
+                "summary": choice_context_private,
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": []
+            },
+            "affected_refs": [],
+            "sensitive_action_scope": null
+        }))
+        .expect("choice request body");
+        let choice_form = choice_body.capture_form().expect("valid choice form");
+        assert_eq!(
+            choice_form,
+            UserActionInboxForm::Choice {
+                choices: vec![UserActionInboxChoice {
+                    choice_id: UserActionOptionId::new("accept"),
+                    label: "Accept".to_owned(),
+                    description: "Accept the focused judgment.".to_owned(),
+                    consequence: "The accepted option is recorded.".to_owned(),
+                    is_default: true,
+                }],
+                note_allowed: true,
+                note_max_chars: USER_ACTION_NOTE_MAX_CHARS as u64,
+            }
+        );
+        assert!(!serde_json::to_string(&choice_form)
+            .expect("choice form serializes")
+            .contains(choice_context_private));
+
+        let observation_context_private = "observation-context-must-not-enter-the-capture-form";
+        let target = json!({
+            "target_kind": "acceptance_criterion",
+            "acceptance_criterion_id": "criterion_capture_form"
+        });
+        let artifact = artifact_ref_json(
+            "verified",
+            json!("text/plain"),
+            json!("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+            json!(18),
+        );
+        let observation_body: UserActionRequestBody = serde_json::from_value(json!({
+            "action_type": "evidence_observation",
+            "question": "Does the exact artifact support this target?",
+            "context_summary": observation_context_private,
+            "target_candidates": [target.clone()],
+            "artifact_candidates": [artifact.clone()]
+        }))
+        .expect("observation request body");
+        let observation_form = observation_body
+            .capture_form()
+            .expect("valid observation form");
+        assert_eq!(
+            serde_json::to_value(&observation_form).expect("observation form serializes"),
+            json!({
+                "form_type": "evidence_observation",
+                "target_candidates": [target],
+                "artifact_candidates": [artifact],
+                "relevance_options": ["supported", "contradicted"],
+                "summary_max_chars": USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64
+            })
+        );
+        assert!(!serde_json::to_string(&observation_form)
+            .expect("observation form serializes")
+            .contains(observation_context_private));
+
+        let invalid_body: UserActionRequestBody = serde_json::from_value(json!({
+            "action_type": "choice",
+            "judgment_kind": "product_decision",
+            "presentation": "short",
+            "question": "  ",
+            "options": [user_action_option_json()],
+            "context": {
+                "summary": "Invalid body must fail before projection.",
+                "related_refs": [],
+                "artifact_refs": [],
+                "visible_risks": [],
+                "constraints": []
+            },
+            "affected_refs": [],
+            "sensitive_action_scope": null
+        }))
+        .expect("invalid body remains syntactically decodable");
+        assert_eq!(
+            invalid_body.capture_form().unwrap_err().field(),
+            "body.question"
+        );
+    }
+
+    #[test]
+    fn canonical_user_action_form_size_accepts_32768_and_rejects_the_next_byte() {
+        fn form_with_size(target: usize) -> UserActionInboxForm {
+            let mut form = UserActionInboxForm::Choice {
+                choices: vec![UserActionInboxChoice {
+                    choice_id: UserActionOptionId::new("boundary"),
+                    label: "Boundary".to_owned(),
+                    description: "Canonical form byte boundary.".to_owned(),
+                    consequence: String::new(),
+                    is_default: true,
+                }],
+                note_allowed: true,
+                note_max_chars: USER_ACTION_NOTE_MAX_CHARS as u64,
+            };
+            let base = canonical_json_size_bytes(&form).expect("form should serialize");
+            let UserActionInboxForm::Choice { choices, .. } = &mut form else {
+                unreachable!("choice fixture")
+            };
+            choices[0].consequence = "x".repeat(target - base);
+            assert_eq!(
+                canonical_json_size_bytes(&form).expect("form should serialize"),
+                target
+            );
+            form
+        }
+
+        let at_limit = form_with_size(USER_ACTION_FORM_MAX_BYTES);
+        assert!(at_limit.validate_canonical_size().is_ok());
+        let over_limit = form_with_size(USER_ACTION_FORM_MAX_BYTES + 1);
+        let error = over_limit
+            .validate_canonical_size()
+            .expect_err("one byte above the canonical limit must reject");
+        assert_eq!(error.field(), "form");
+    }
+
+    #[test]
+    fn effective_user_action_status_has_half_open_expiry_and_basis_precedence() {
+        let created_at = timestamp("2026-06-17T23:59:59Z");
+        let now = timestamp("2026-06-18T00:00:00Z");
+        assert_eq!(
+            effective_user_action_status(
+                UserActionBasisStatus::Current,
+                &created_at,
+                None,
+                false,
+                &now,
+            ),
+            Some(UserActionStatus::Pending)
         );
         assert_eq!(
-            schema["additionalProperties"], false,
-            "UserJudgmentResolution should be closed"
+            effective_user_action_status(
+                UserActionBasisStatus::Current,
+                &created_at,
+                Some(&now),
+                false,
+                &now,
+            ),
+            Some(UserActionStatus::Expired)
         );
-
-        let valid = user_judgment_resolution_json(json!("accept"), json!("accepted"));
-        assert!(serde_json::from_value::<UserJudgmentResolution>(valid.clone()).is_ok());
-        assert!(validate_json_schema(&schema, &valid).is_ok());
-
-        let mut unknown_rationale = valid.clone();
-        unknown_rationale["rationale"]["unknown_rationale_field"] = json!(true);
-        assert!(
-            serde_json::from_value::<UserJudgmentResolution>(unknown_rationale.clone()).is_err()
+        assert_eq!(
+            effective_user_action_status(
+                UserActionBasisStatus::Current,
+                &created_at,
+                Some(&now),
+                true,
+                &now,
+            ),
+            Some(UserActionStatus::Resolved)
         );
-        assert!(validate_json_schema(&schema, &unknown_rationale).is_err());
-
-        let blocked = user_judgment_resolution_json(json!("accept"), json!("blocked"));
-        assert!(serde_json::from_value::<UserJudgmentResolution>(blocked.clone()).is_err());
-        assert!(validate_json_schema(&schema, &blocked).is_err());
-
-        let mut missing_action = user_judgment_resolution_json(json!("accept"), json!("accepted"));
-        remove_path(&mut missing_action, &["machine_action"]);
-        assert!(serde_json::from_value::<UserJudgmentResolution>(missing_action.clone()).is_err());
-        assert!(validate_json_schema(&schema, &missing_action).is_err());
-
-        let mut missing_outcome = user_judgment_resolution_json(json!("accept"), json!("accepted"));
-        remove_path(&mut missing_outcome, &["resolution_outcome"]);
-        assert!(serde_json::from_value::<UserJudgmentResolution>(missing_outcome.clone()).is_err());
-        assert!(validate_json_schema(&schema, &missing_outcome).is_err());
-
-        let null_outcome = user_judgment_resolution_json(json!("accept"), Value::Null);
-        assert!(serde_json::from_value::<UserJudgmentResolution>(null_outcome.clone()).is_err());
-        assert!(validate_json_schema(&schema, &null_outcome).is_err());
+        assert_eq!(
+            effective_user_action_status(
+                UserActionBasisStatus::Stale,
+                &created_at,
+                None,
+                true,
+                &now,
+            ),
+            Some(UserActionStatus::Stale)
+        );
+        assert_eq!(
+            effective_user_action_status(
+                UserActionBasisStatus::Superseded,
+                &created_at,
+                None,
+                true,
+                &now,
+            ),
+            Some(UserActionStatus::Superseded)
+        );
+        assert_eq!(
+            effective_user_action_status(UserActionBasisStatus::Current, &now, None, false, &now,),
+            Some(UserActionStatus::Pending)
+        );
+        assert_eq!(
+            effective_user_action_status(
+                UserActionBasisStatus::Stale,
+                &now,
+                None,
+                true,
+                &created_at,
+            ),
+            None
+        );
     }
 
     #[test]
@@ -2282,16 +2608,16 @@ mod tests {
 
     #[test]
     fn timestamp_json_schemas_are_date_time_strings() {
-        let judgment =
-            public_request_schema("volicord.request_user_judgment").expect("judgment schema");
+        let action =
+            public_request_schema("volicord.request_user_action").expect("user-action schema");
         assert_date_time_schema(
-            &judgment,
-            &judgment["properties"]["expires_at"],
-            "RequestUserJudgmentRequest.expires_at",
+            &action,
+            &action["properties"]["expires_at"],
+            "RequestUserActionRequest.expires_at",
         );
         assert_date_time_schema(
-            &judgment,
-            &definition(&judgment, "SensitiveActionScope")["properties"]["expires_at"],
+            &action,
+            &definition(&action, "SensitiveActionScope")["properties"]["expires_at"],
             "SensitiveActionScope.expires_at",
         );
 
@@ -2312,7 +2638,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_request_objects_are_closed_but_open_payload_objects_stay_open() {
+    fn exact_request_and_user_action_payload_objects_are_closed() {
         let record = public_request_schema("volicord.record_run").expect("record_run schema");
         for definition_name in [
             "ToolEnvelope",
@@ -2340,20 +2666,9 @@ mod tests {
             "ChangeUnitUpdate intentionally carries open owner-defined fields"
         );
 
-        let judgment =
-            public_request_schema("volicord.record_user_judgment").expect("judgment schema");
-        let payload = definition(&judgment, "RecordUserJudgmentPayload");
-        let product_decision = &payload["properties"]["product_decision"];
-        assert!(
-            validate_against(
-                &judgment,
-                product_decision,
-                &json!({ "owner_defined": true }),
-                "$.answer.product_decision",
-            )
-            .is_ok(),
-            "decision-specific payload objects intentionally remain open"
-        );
+        let mut unknown = resolve_user_action_request_json();
+        unknown["resolution"]["rationale"] = json!({ "owner_defined": true });
+        assert_schema_and_serde("volicord.resolve_user_action", unknown, false);
     }
 
     #[test]
@@ -2463,16 +2778,12 @@ mod tests {
             ("volicord.stage_artifact", stage_artifact_request_json()),
             ("volicord.record_run", record_run_request_json()),
             (
-                "volicord.request_user_judgment",
-                request_user_judgment_request_json(),
+                "volicord.request_user_action",
+                request_user_action_request_json(),
             ),
             (
-                "volicord.record_user_judgment",
-                record_user_judgment_request_json(),
-            ),
-            (
-                "volicord.record_user_observation",
-                record_user_observation_request_json(),
+                "volicord.resolve_user_action",
+                resolve_user_action_request_json(),
             ),
             (
                 "volicord.reconcile_changes",
@@ -2750,12 +3061,11 @@ mod tests {
             ("volicord.record_run", &["write_ticket_id"]),
             ("volicord.record_run", &["observed_changes", "baseline_ref"]),
             ("volicord.record_run", &["close_assessment"]),
-            ("volicord.request_user_judgment", &["change_unit_id"]),
-            ("volicord.request_user_judgment", &["expires_at"]),
-            ("volicord.record_user_judgment", &["note"]),
+            ("volicord.request_user_action", &["change_unit_id"]),
+            ("volicord.request_user_action", &["expires_at"]),
             (
-                "volicord.record_user_judgment",
-                &["answer", "technical_decision"],
+                "volicord.request_user_action",
+                &["action", "sensitive_action_scope"],
             ),
             ("volicord.close_task", &["close_reason"]),
             ("volicord.close_task", &["superseding_task_id"]),
@@ -2839,17 +3149,13 @@ mod tests {
             "volicord.record_run" => canonical_request_hash(
                 &serde_json::from_value::<RecordRunRequest>(value).expect("record run request"),
             ),
-            "volicord.request_user_judgment" => canonical_request_hash(
-                &serde_json::from_value::<RequestUserJudgmentRequest>(value)
-                    .expect("request judgment request"),
+            "volicord.request_user_action" => canonical_request_hash(
+                &serde_json::from_value::<RequestUserActionRequest>(value)
+                    .expect("request user action request"),
             ),
-            "volicord.record_user_judgment" => canonical_request_hash(
-                &serde_json::from_value::<RecordUserJudgmentRequest>(value)
-                    .expect("record judgment request"),
-            ),
-            "volicord.record_user_observation" => canonical_request_hash(
-                &serde_json::from_value::<RecordUserObservationRequest>(value)
-                    .expect("record user observation request"),
+            "volicord.resolve_user_action" => canonical_request_hash(
+                &serde_json::from_value::<ResolveUserActionRequest>(value)
+                    .expect("resolve user action request"),
             ),
             "volicord.reconcile_changes" => canonical_request_hash(
                 &serde_json::from_value::<ReconcileChangesRequest>(value)
@@ -2940,37 +3246,19 @@ mod tests {
                 "evidence_observations",
                 "close_assessment",
             ],
-            "volicord.request_user_judgment" => &[
+            "volicord.request_user_action" => &[
                 "envelope",
                 "task_id",
                 "change_unit_id",
-                "judgment_kind",
-                "presentation",
-                "question",
-                "context",
-                "affected_refs",
+                "action",
                 "required_for",
                 "expires_at",
             ],
-            "volicord.record_user_judgment" => &[
+            "volicord.resolve_user_action" => &[
                 "envelope",
-                "user_judgment_id",
-                "judgment_kind",
-                "selected_option_id",
-                "answer",
-                "rationale",
-                "note",
-                "accepted_risks",
-            ],
-            "volicord.record_user_observation" => &[
-                "envelope",
-                "task_id",
-                "change_unit_id",
-                "target",
-                "relevance_status",
-                "artifact_ids",
-                "summary",
-                "observed_at",
+                "user_action_request_id",
+                "channel_submission_id",
+                "resolution",
             ],
             "volicord.reconcile_changes" => &["envelope", "task_id"],
             "volicord.close_task" => &[
@@ -3009,14 +3297,11 @@ mod tests {
                 serde_json::from_value::<StageArtifactRequest>(value).map(drop)
             }
             "volicord.record_run" => serde_json::from_value::<RecordRunRequest>(value).map(drop),
-            "volicord.request_user_judgment" => {
-                serde_json::from_value::<RequestUserJudgmentRequest>(value).map(drop)
+            "volicord.request_user_action" => {
+                serde_json::from_value::<RequestUserActionRequest>(value).map(drop)
             }
-            "volicord.record_user_judgment" => {
-                serde_json::from_value::<RecordUserJudgmentRequest>(value).map(drop)
-            }
-            "volicord.record_user_observation" => {
-                serde_json::from_value::<RecordUserObservationRequest>(value).map(drop)
+            "volicord.resolve_user_action" => {
+                serde_json::from_value::<ResolveUserActionRequest>(value).map(drop)
             }
             "volicord.reconcile_changes" => {
                 serde_json::from_value::<ReconcileChangesRequest>(value).map(drop)
@@ -3090,7 +3375,7 @@ mod tests {
             "envelope": envelope_json(),
             "include": {
                 "task": true,
-                "pending_user_judgments": true,
+                "pending_user_actions": true,
                 "write_ticket": false,
                 "evidence": false,
                 "close": true,
@@ -3321,7 +3606,7 @@ mod tests {
         })
     }
 
-    fn user_judgment_option_json() -> Value {
+    fn user_action_option_json() -> Value {
         json!({
             "option_id": "accept",
             "label": "Accept",
@@ -3333,57 +3618,35 @@ mod tests {
         })
     }
 
-    fn user_judgment_resolution_json(machine_action: Value, resolution_outcome: Value) -> Value {
-        json!({
-            "selected_option_id": "accept",
-            "machine_action": machine_action,
-            "resolution_outcome": resolution_outcome,
-            "answer": {
-                "product_decision": {
-                    "judgment": {
-                        "decision": "accepted",
-                        "rationale": "The focused judgment is accepted."
-                    }
-                },
-                "technical_decision": null,
-                "scope_decision": null,
-                "sensitive_action_scope": null,
-                "final_acceptance": null,
-                "residual_risk_acceptance": null,
-                "cancellation": null
-            },
-            "rationale": judgment_rationale_json(),
-            "note": null,
-            "accepted_risks": [],
-            "resolved_by_actor_source": "local_user"
-        })
-    }
-
-    fn request_user_judgment_request_json() -> Value {
+    fn request_user_action_request_json() -> Value {
         json!({
             "envelope": envelope_json(),
             "task_id": "task_empty_001",
             "change_unit_id": "cu_empty_001",
-            "judgment_kind": "product_decision",
-            "presentation": "short",
-            "question": "Should the dashboard banner use concise copy?",
-            "options": [
-                {
-                    "option_id": "concise",
-                    "label": "Use concise copy",
-                    "description": "Record the focused product decision.",
-                    "consequence": "The pending decision can be resolved.",
-                    "is_default": true
-                }
-            ],
-            "context": {
-                "summary": "The banner has two candidate copy lengths.",
-                "related_refs": [],
-                "artifact_refs": [],
-                "visible_risks": [],
-                "constraints": ["Only banner copy length is in scope."]
+            "action": {
+                "action_type": "choice",
+                "judgment_kind": "product_decision",
+                "presentation": "short",
+                "question": "Should the dashboard banner use concise copy?",
+                "options": [
+                    {
+                        "option_id": "concise",
+                        "label": "Use concise copy",
+                        "description": "Record the focused product decision.",
+                        "consequence": "The pending decision can be resolved.",
+                        "is_default": true
+                    }
+                ],
+                "context": {
+                    "summary": "The banner has two candidate copy lengths.",
+                    "related_refs": [],
+                    "artifact_refs": [],
+                    "visible_risks": [],
+                    "constraints": ["Only banner copy length is in scope."]
+                },
+                "affected_refs": [],
+                "sensitive_action_scope": null
             },
-            "affected_refs": [],
             "required_for": ["close_complete"],
             "expires_at": null
         })
@@ -3403,45 +3666,16 @@ mod tests {
         })
     }
 
-    fn record_user_judgment_request_json() -> Value {
+    fn resolve_user_action_request_json() -> Value {
         json!({
             "envelope": envelope_json(),
-            "user_judgment_id": "uj_empty_001",
-            "judgment_kind": "product_decision",
-            "selected_option_id": "keep",
-            "answer": {
-                "product_decision": {
-                    "judgment": {
-                        "decision": "accepted",
-                        "rationale": "The illustration is suitable."
-                    }
-                },
-                "technical_decision": null,
-                "scope_decision": null,
-                "sensitive_action_scope": null,
-                "final_acceptance": null,
-                "residual_risk_acceptance": null,
-                "cancellation": null
-            },
-            "rationale": judgment_rationale_json(),
-            "note": null,
-            "accepted_risks": []
-        })
-    }
-
-    fn record_user_observation_request_json() -> Value {
-        json!({
-            "envelope": envelope_json(),
-            "task_id": "task_empty_001",
-            "change_unit_id": "cu_empty_001",
-            "target": {
-                "target_kind": "acceptance_criterion",
-                "acceptance_criterion_id": "ac_empty_001"
-            },
-            "relevance_status": "supported",
-            "artifact_ids": ["artifact_evidence_001"],
-            "summary": "The stored output supports the criterion.",
-            "observed_at": "2026-06-18T00:00:00Z"
+            "user_action_request_id": "uar_empty_001",
+            "channel_submission_id": "cli_submission_001",
+            "resolution": {
+                "resolution_type": "choice",
+                "selected_option_id": "keep",
+                "note": null
+            }
         })
     }
 
@@ -3449,21 +3683,6 @@ mod tests {
         json!({
             "envelope": envelope_json(),
             "task_id": "task_empty_001"
-        })
-    }
-
-    fn judgment_rationale_json() -> Value {
-        json!({
-            "summary": "The user selected the focused option.",
-            "selected_reason": "The selected option matches the visible prompt.",
-            "considered_alternatives": ["Use a different option."],
-            "rejected_alternatives": [],
-            "assumptions": ["The judgment basis remains current."],
-            "tradeoffs": ["The rationale preserves intent without changing authority."],
-            "uncertainties": [],
-            "review_triggers": ["Review if the basis changes."],
-            "related_refs": [],
-            "artifact_refs": []
         })
     }
 

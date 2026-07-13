@@ -1,5 +1,8 @@
 use serde_json::{json, Value};
-use volicord_types::{canonical_json_string, AuthorityReceipt, GuardDecision};
+use volicord_types::{
+    canonical_json_string, AuthorityReceipt, GuardDecision, UserActionInboxForm,
+    UserActionPresentationPlan, USER_ACTION_FORM_MAX_BYTES,
+};
 
 use crate::disclosure::{
     cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
@@ -10,13 +13,14 @@ use super::{
     context::{ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
     json_error,
     mutation::PathAssessment,
-    prompt_capture::GuardPendingJudgmentSummary,
+    prompt_capture::GuardPendingUserActionSummary,
     tool_observation::ToolObservation,
     write_ticket::WriteTicketCoverage,
     GuardCommandError,
 };
 
 const MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES: usize = 8 * 1024;
+const MAX_HOST_USER_ACTION_CONTEXT_BYTES: usize = USER_ACTION_FORM_MAX_BYTES;
 const AUTHORITY_RECEIPT_SYSTEM_MESSAGE_PREFIX: &str = "Volicord fresh AuthorityReceipt: ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,7 +133,7 @@ pub(super) fn render_host_native_output(
 ) -> Result<RenderedGuardOutput, GuardCommandError> {
     let event_name = host_hook_event_name(phase);
     let value = match phase {
-        GuardPhase::SessionStart => context_output(event_name, guard_context_message(&result)),
+        GuardPhase::SessionStart => guard_context_output(event_name, &result),
         GuardPhase::PreTool => match decision {
             GuardDecision::Deny => Some(json!({
                 "hookSpecificOutput": {
@@ -139,7 +143,7 @@ pub(super) fn render_host_native_output(
                 }
             })),
             GuardDecision::Warn | GuardDecision::InjectContext => {
-                context_output(event_name, guard_context_message(&result))
+                guard_context_output(event_name, &result)
             }
             GuardDecision::Allow => None,
         },
@@ -280,6 +284,23 @@ fn context_output(event_name: &str, message: Option<String>) -> Option<Value> {
     }))
 }
 
+fn guard_context_output(event_name: &str, result: &Value) -> Option<Value> {
+    let output = context_output(event_name, guard_context_message(result))?;
+    let within_budget = serde_json::to_vec(&output)
+        .ok()
+        .is_some_and(|bytes| bytes.len().saturating_add(1) <= MAX_HOST_USER_ACTION_CONTEXT_BYTES);
+    if within_budget {
+        return Some(output);
+    }
+    context_output(
+        event_name,
+        Some(
+            "Volicord prompt-capture presentation is unavailable because the complete closed form exceeds the host additional-context byte budget; no partial form is shown. Use another advertised User Channel, or inspect and resolve it with `volicord inbox`."
+                .to_owned(),
+        ),
+    )
+}
+
 fn blocking_reason(phase: GuardPhase, result: &Value) -> String {
     let reason = first_reason_message(result).unwrap_or_else(|| match phase {
         GuardPhase::SessionStart => "Volicord session context could not be prepared.".to_owned(),
@@ -334,16 +355,66 @@ fn guard_context_message(result: &Value) -> Option<String> {
         .and_then(Value::as_array)
         .map(Vec::len)
         .unwrap_or(0);
-    let pending_judgments = context
-        .get("pending_user_judgment_count")
+    let pending_actions = context
+        .get("pending_user_action_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let unresolved_changes = context
         .get("unresolved_unrecorded_change_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
+    let mut message = format!(
+        "Volicord context: project `{project_name}`, state_version {state_version}, active_task {active_task}, current_write_tickets {write_tickets}, pending_user_actions {pending_actions}, unresolved_unrecorded_changes {unresolved_changes}."
+    );
+    let mut rendered_actions = 0usize;
+    if let Some(items) = context
+        .get("pending_user_actions")
+        .and_then(Value::as_array)
+    {
+        for item in items {
+            let Some(presentation) = pending_user_action_context(item) else {
+                continue;
+            };
+            message.push_str("\n\n");
+            message.push_str(&presentation);
+            rendered_actions += 1;
+        }
+    }
+    if pending_actions as usize > rendered_actions {
+        message.push_str(
+            "\n\nOne or more pending user actions are unavailable for agent-facing prompt capture. Use a user-only local consent channel when advertised, or inspect and resolve them with `volicord inbox`. No question, context, form, verification code, or resolve-command template was shown for those actions.",
+        );
+    }
+    Some(message)
+}
+
+fn pending_user_action_context(item: &Value) -> Option<String> {
+    let chat_id = item.get("chat_id")?.as_str()?;
+    let verification_code = item.get("verification_code")?.as_str()?;
+    let request_id = item.get("user_action_request_id")?.as_str()?;
+    let action_kind = item.get("action_kind")?.as_str()?;
+    let question = item.get("question")?.as_str()?;
+    let context_summary = item.get("context_summary")?.as_str()?;
+    let form_digest = item.get("form_digest")?.as_str()?;
+    let resolve_instruction = item.get("resolve_instruction")?.as_str()?;
+    let expires_at = item
+        .get("expires_at")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    let form = serde_json::from_value::<UserActionInboxForm>(item.get("form")?.clone()).ok()?;
+    let presentation = UserActionPresentationPlan::from_form(&form).ok()?;
+    if !presentation
+        .agent_facing_input_safety(question, context_summary)
+        .ok()?
+        .allows_agent_facing_input()
+    {
+        return None;
+    }
+    let form_text = presentation.render_plain_text().ok()?;
     Some(format!(
-        "Volicord context: project `{project_name}`, state_version {state_version}, active_task {active_task}, current_write_tickets {write_tickets}, pending_user_judgments {pending_judgments}, unresolved_unrecorded_changes {unresolved_changes}."
+        "Volicord pending user action {chat_id}:\nrequest_id: {request_id}\naction_kind: {action_kind}\nverification_code: {verification_code}\nexpires_at: {expires_at}\nform_digest: {form_digest}\nquestion: {}\ncontext: {}\nexact command: {resolve_instruction}\n{form_text}",
+        serde_json::to_string(question).ok()?,
+        serde_json::to_string(context_summary).ok()?
     ))
 }
 
@@ -386,10 +457,10 @@ pub(super) fn context_json(summary: &GuardStateSummary) -> Value {
             .iter()
             .map(active_write_ticket_json)
             .collect::<Vec<_>>(),
-        "pending_user_judgment_count": summary.pending_user_judgment_count,
-        "pending_user_judgments": summary.pending_user_judgments
+        "pending_user_action_count": summary.pending_user_action_count,
+        "pending_user_actions": summary.pending_user_actions
             .iter()
-            .map(pending_judgment_summary_json)
+            .map(pending_user_action_summary_json)
             .collect::<Vec<_>>(),
         "active_blocker_count": summary.active_blocker_count,
         "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count,
@@ -464,24 +535,18 @@ pub(super) fn write_ticket_backing_json(coverage: WriteTicketCoverage) -> Value 
     }
 }
 
-pub(super) fn pending_judgment_summary_json(summary: &GuardPendingJudgmentSummary) -> Value {
+pub(super) fn pending_user_action_summary_json(summary: &GuardPendingUserActionSummary) -> Value {
     json!({
         "chat_id": summary.chat_id,
         "verification_code": summary.verification_code,
-        "judgment_kind": summary.judgment_kind,
+        "user_action_request_id": summary.user_action_request_id,
+        "action_kind": summary.action_kind,
         "question": summary.question,
-        "answer_instruction": summary.answer_instruction,
-        "note_instruction": summary.note_instruction,
-        "options": summary.options.iter().map(|option| {
-            json!({
-                "selector": option.selector,
-                "option_id": option.option_id,
-                "label": option.label,
-                "machine_action": option.machine_action,
-                "resolution_outcome": option.resolution_outcome,
-                "instruction": option.instruction
-            })
-        }).collect::<Vec<_>>()
+        "context_summary": summary.context_summary,
+        "expires_at": summary.expires_at,
+        "form_digest": summary.form_digest,
+        "resolve_instruction": summary.resolve_instruction,
+        "form": summary.form
     })
 }
 
@@ -587,6 +652,47 @@ mod tests {
         serde_json::from_str(rendered.stdout.trim()).expect("Stop host output should be JSON")
     }
 
+    fn session_result_with_form_padding(padding: usize) -> Value {
+        json!({
+            "context": {
+                "project_name": "render-project",
+                "state_version": 7,
+                "active_task_id": "task_render",
+                "current_write_ticket_ids": [],
+                "pending_user_action_count": 1,
+                "unresolved_unrecorded_change_count": 0,
+                "pending_user_actions": [{
+                    "chat_id": "A-1",
+                    "verification_code": "#ABC123",
+                    "user_action_request_id": "action_render_boundary",
+                    "action_kind": "product_decision",
+                    "question": "Choose the complete host presentation.",
+                    "context_summary": "Exercise the actual host-native JSON line budget.",
+                    "expires_at": null,
+                    "form_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "resolve_instruction": "Volicord: resolve A-1 --request action_render_boundary --choice <choice_id> #ABC123",
+                    "form": {
+                        "form_type": "choice",
+                        "choices": [{
+                            "choice_id": "accept",
+                            "label": "Accept boundary",
+                            "description": "Display the entire closed choice.",
+                            "consequence": format!("HOST_FORM_MARKER{}", "x".repeat(padding)),
+                            "is_default": true
+                        }],
+                        "note_allowed": true,
+                        "note_max_chars": 1000
+                    }
+                }]
+            }
+        })
+    }
+
+    fn unbounded_session_output(result: &Value) -> Value {
+        context_output("SessionStart", guard_context_message(result))
+            .expect("session fixture should produce context")
+    }
+
     #[test]
     fn stop_output_renders_complete_receipt_for_allow_and_deny() {
         let receipt = authority_receipt(None);
@@ -668,5 +774,75 @@ mod tests {
         assert!(message.contains("state_version=7"));
         assert!(message.contains("volicord status --task task_render --json"));
         assert!(message.len() <= MAX_HOST_AUTHORITY_SYSTEM_MESSAGE_BYTES);
+    }
+
+    #[test]
+    fn session_host_native_budget_accepts_exact_json_line_and_uses_no_partial_at_next_byte() {
+        let base_result = session_result_with_form_padding(1);
+        let base_wire = serde_json::to_vec(&unbounded_session_output(&base_result))
+            .expect("base host output serializes")
+            .len()
+            + 1;
+        assert!(base_wire < MAX_HOST_USER_ACTION_CONTEXT_BYTES);
+        let exact_padding = 1 + (MAX_HOST_USER_ACTION_CONTEXT_BYTES - base_wire);
+
+        let exact_result = session_result_with_form_padding(exact_padding);
+        let exact_form: UserActionInboxForm = serde_json::from_value(
+            exact_result["context"]["pending_user_actions"][0]["form"].clone(),
+        )
+        .expect("exact form parses");
+        exact_form
+            .validate_canonical_size()
+            .expect("exact host line still carries an owner-valid form");
+        assert_eq!(
+            serde_json::to_vec(&unbounded_session_output(&exact_result))
+                .expect("exact host output serializes")
+                .len()
+                + 1,
+            MAX_HOST_USER_ACTION_CONTEXT_BYTES
+        );
+        for host in [HostOutputMode::Codex, HostOutputMode::ClaudeCode] {
+            let exact = render_host_native_output(
+                host,
+                GuardPhase::SessionStart,
+                GuardDecision::InjectContext,
+                exact_result.clone(),
+            )
+            .expect("exact host output renders");
+            assert_eq!(exact.stdout.len(), MAX_HOST_USER_ACTION_CONTEXT_BYTES);
+            assert!(exact.stdout.contains("HOST_FORM_MARKER"));
+            assert!(exact.stdout.ends_with('\n'));
+        }
+
+        let over_result = session_result_with_form_padding(exact_padding + 1);
+        let over_form: UserActionInboxForm = serde_json::from_value(
+            over_result["context"]["pending_user_actions"][0]["form"].clone(),
+        )
+        .expect("one-byte-over form parses");
+        over_form
+            .validate_canonical_size()
+            .expect("the transport envelope, not the canonical form, exceeds its budget");
+        assert_eq!(
+            serde_json::to_vec(&unbounded_session_output(&over_result))
+                .expect("one-byte-over host output serializes")
+                .len()
+                + 1,
+            MAX_HOST_USER_ACTION_CONTEXT_BYTES + 1
+        );
+        for host in [HostOutputMode::Codex, HostOutputMode::ClaudeCode] {
+            let over = render_host_native_output(
+                host,
+                GuardPhase::SessionStart,
+                GuardDecision::InjectContext,
+                over_result.clone(),
+            )
+            .expect("one-byte-over host output renders fallback");
+            assert!(over.stdout.len() <= MAX_HOST_USER_ACTION_CONTEXT_BYTES);
+            assert!(over.stdout.contains("no partial form is shown"));
+            assert!(over.stdout.contains("volicord inbox"));
+            assert!(!over.stdout.contains("HOST_FORM_MARKER"));
+            assert!(!over.stdout.contains("choice_id"));
+            assert!(over.stdout.ends_with('\n'));
+        }
     }
 }

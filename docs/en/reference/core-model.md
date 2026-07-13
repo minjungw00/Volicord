@@ -84,6 +84,32 @@ Scope and close-basis revisions are internal current-state coordinates.
 - Recording a user-owned judgment does not increment either revision.
 - Callers do not choose these revisions, and a revision value is not authority by itself.
 
+Project time is Core-owned.
+
+- The canonical Core UTC clock is project-scoped and non-decreasing. Temporal
+  authority checks must not substitute a host clock, caller timestamp, or
+  observation timestamp for it.
+- After common preflight, one prepared Core operation samples current project
+  time exactly once and reuses that `operation_now` for all current-time
+  decisions and owner-defined semantic operation timestamps. This prevents one
+  operation from changing meaning merely because time advanced between checks.
+- The canonical UTC clock and `project_state.state_version` are distinct.
+  `state_version` orders authority-state transitions and supplies conflict
+  coordinates; project time supplies temporal-authority ordering. Neither is a
+  substitute for the other.
+- Owner-verified `occurred_at`, `observed_at`, `started_at`, and similar values
+  can preserve source observation facts. They do not move the canonical clock
+  backward or become its input merely because Core records them.
+- A custom or injected Clock may replace the live-time source but cannot bypass
+  the persisted project floor or a later sample already accepted by the same
+  Store handle. Core's service boundary preserves those lower bounds.
+- Derived deadlines require checked addition and a representable canonical UTC
+  timestamp. An overflow is a rejected operation, not an infinite or wrapped
+  deadline.
+
+[Storage Versioning](storage-versioning.md#canonical-core-utc-clock) owns the
+persisted floor, commit-time, bootstrap, and no-effect rules.
+
 ### Concept relationship map
 
 This map shows which Core concepts depend on, qualify, or remain separate from
@@ -102,8 +128,11 @@ flowchart TD
     WriteTicket --> Run["Run<br/>execution or observation"]
     Run --> Evidence["Evidence<br/>target-scoped support"]
     ArtifactRef["ArtifactRef"] -. "eligible only when recorded as support" .-> Evidence
-    AgentConnection["Agent Connection"] -. "may request, not record" .-> Judgment["user-owned judgment"]
-    UserChannel["User Channel"] --> Judgment
+    AgentConnection["Agent Connection"] -. "may request, not resolve" .-> UserAction["UserActionRequest"]
+    UserChannel["User Channel"] --> Resolution["UserActionResolution"]
+    UserAction --> Resolution
+    Resolution --> Judgment["user-owned judgment"]
+    Resolution -. "evidence-observation kind" .-> Evidence
     Judgment -. "may satisfy required decision" .-> Scope
     Judgment -. "basis-tied" .-> CloseBasis["CurrentCloseBasis"]
     Evidence --> CloseBasis
@@ -118,7 +147,8 @@ flowchart TD
 
 Read the map with the owner boundary above. An artifact is not evidence unless
 the relevant owners allow and record that use. Final acceptance and
-residual-risk acceptance are user-owned judgments, and close readiness remains
+residual-risk acceptance are judgment-shaped user action resolutions, evidence
+observation stays separate, and close readiness remains
 decision support rather than proof of correctness.
 
 ## 3. Core Concepts
@@ -284,9 +314,16 @@ Current authority for a future operation still comes from the current `Task`, cu
 Projection output, template output, status cards, summaries, and reports are derived display. They can help a reader see Core state, but they do not become Core authority, evidence, acceptance, or risk acceptance.
 
 <a id="4-user-owned-judgment"></a>
-## 4. User-owned judgment
+## 4. User actions and user-owned judgment
 
 Core preserves the boundary between what the agent may decide and what the user must decide.
+
+Every supported user-owned act uses one Core-owned `UserActionRequest` and at
+most one immutable `UserActionResolution`. The closed kinds are the seven
+judgment kinds below and `evidence_observation`. A shared lifecycle does not
+collapse their meanings: judgment options can carry decision authority, while
+an evidence-observation resolution carries only target relevance for exact
+stored artifacts and current basis.
 
 A judgment is user-owned when it changes or accepts a user-visible product outcome, a material technical direction, current scope, a named sensitive step, final acceptance, residual risk, or cancellation.
 
@@ -317,13 +354,31 @@ invalid owner state when it lacks a machine-readable action or outcome,
 resolution payload, timestamp, compatible basis, or required `User Channel`
 provenance. Invalid owner state cannot satisfy a current authority requirement.
 
-Agent Connections may request a user judgment through the supported request path, but they must not record authority-bearing user judgments. The `User Channel` is the only authority-bearing path for recording those judgments.
+Agent Connections may create a user-action request through
+`volicord.request_user_action`, but they cannot resolve any user action.
+`volicord.resolve_user_action` is the only resolution transition and requires
+verified `local_user` provenance through the `User Channel`.
 
 For authority-bearing prompts, callers do not define visible-label-to-machine-outcome mappings. Core creates the canonical authority options: `machine_action=accept` maps to `resolution_outcome=accepted`, `machine_action=reject` maps to `resolution_outcome=rejected`, and `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a judgment resolution outcome. Core also creates localized labels and consequences; labels, explanatory text, free-form notes, or answer-payload prose are display-only and must not invert the selected option's machine-readable action or outcome.
 
-Core creates a basis snapshot for each stored judgment from current state. The basis ties the judgment to the current `Task`, Change Unit when applicable, `scope_revision`, close-basis revision when applicable, baseline, result references, named residual-risk IDs, sensitive-action scope when applicable, and creation state version. Callers do not submit scope revisions or close-basis revisions.
+Core creates one basis snapshot and one closed capture form for each stored
+user-action request. A choice basis ties the request to the current `Task`,
+Change Unit when applicable, `scope_revision`, close-basis revision when
+applicable, baseline, result references, named residual-risk IDs,
+sensitive-action scope when applicable, and creation state version. An
+evidence-observation basis additionally binds the current target candidates and
+exact canonical artifact candidates. Callers do not submit revisions,
+canonical basis coordinates, or capture time.
 
-Judgment compatibility:
+One canonical evaluator derives effective request status from immutable
+resolution presence, basis compatibility, and the operation's one canonical
+Core-time sample. An unanswered
+incompatible request is `superseded`; a resolved request becomes `stale` when
+its basis no longer matches; only an otherwise-pending request can be
+`expired`. Reads do not persist a state change merely to observe time-based
+expiry.
+
+User-action compatibility:
 
 - Final acceptance must match the current `Task`, current Change Unit, `scope_revision`, `close_basis_revision`, baseline, and result references.
 - Residual-risk acceptance must match the current `close_basis_revision` and exact current `risk_id` values.
@@ -331,20 +386,31 @@ Judgment compatibility:
 - Scope decision authority for a scope update must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, a current basis, `required_for` that includes scope update, `actor_source=local_user` from the `User Channel`, and compatible `Task`, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, stale, superseded, expired, judgments with invalid basis state, or agent-recorded scope decisions do not authorize a scope transition.
 - Cancellation authority must have `machine_action=accept`, `resolution_outcome=accepted`, and match the current `Task`, current scope revision, current Change Unit, and `actor_source=local_user` from the `User Channel`. Rejected, deferred, stale, superseded, judgments with invalid basis state, or agent-recorded cancellation judgments do not permit cancellation.
 - A scope decision records the user's decision but does not mutate current scope by itself.
-- A stale pending judgment cannot be answered successfully.
-- Scope changes and Run changes do not delete historical judgments; they make incompatible judgments ineligible for current close, write, or sensitive-approval requirements.
+- A stale, superseded, or expired request cannot be resolved successfully.
+- Scope changes and Run changes do not delete historical requests or
+  resolutions; they make incompatible resolutions ineligible for current
+  close, write, evidence, or sensitive-approval requirements.
 
-Judgments without a stored basis are invalid owner state. Pending judgments may become `superseded`; resolved judgments may remain stored while becoming `stale`.
+Requests without a stored basis or closed capture form are invalid owner state.
+One request can have at most one immutable resolution, and replay or concurrent
+submission cannot fork that result.
 
-Pending-judgment relevance:
+For `evidence_observation`, the user chooses one stored target candidate, a
+non-empty subset of stored artifact candidates, and `supported` or
+`contradicted`. Core records current capture time. The resolution does not
+create a Run, update evidence coverage, prove artifact origin, or become final
+acceptance. A later `record_run` must reference its exact resolution ref and
+selected artifacts.
 
-- A pending judgment blocks an operation only when it is current and pending, its `required_for` operation target includes that operation, its judgment kind is relevant to that operation, and its `Task`, Change Unit, affected refs, and basis are compatible.
+Pending-user-action relevance:
+
+- A pending user-action request blocks an operation only when it is current and pending, its `required_for` operation target includes that operation, its action kind is relevant to that operation, and its `Task`, Change Unit, affected refs, and basis are compatible.
 - Sensitive approval questions block only when they overlap the current sensitive action requirement.
-- Informational judgments do not block write, Run recording, or close by themselves.
-- A current non-terminal `Task` uses the `waiting_user` lifecycle phase while it has a pending user judgment with a current compatible basis and at least one non-informational `required_for` target that still needs a user answer. A non-current `Task` is not moved to `waiting_user` by this rule.
-- This waiting rule is separate from the authority-option classification above: `product_decision` and `technical_decision` also keep the `Task` waiting when their pending judgment has a current compatible basis and a non-informational `required_for` target.
-- Informational judgments and judgments with stale or superseded basis state do not put or keep a `Task` in `waiting_user`. Once a judgment is resolved, including with a rejected or deferred outcome, it no longer keeps the `Task` waiting; any other current compatible pending user judgments that meet this waiting rule still do.
-- When the last judgment that keeps the current `Task` waiting is resolved or made non-current, the lifecycle returns to `ready` when a current Change Unit exists and to `shaping` otherwise. Terminal lifecycle phases take precedence and are never reopened by judgment lifecycle maintenance.
+- Informational requests do not block write, Run recording, or close by themselves.
+- A current non-terminal `Task` uses the `waiting_user` lifecycle phase while it has an effective pending user-action request with a current compatible basis and at least one non-informational `required_for` target that still needs user input. A non-current `Task` is not moved to `waiting_user` by this rule.
+- This waiting rule is separate from the authority-option classification above: `product_decision` and `technical_decision` requests also keep the `Task` waiting when they have a current compatible basis and a non-informational `required_for` target.
+- Informational requests and requests with stale, superseded, expired, or resolved effective status do not put or keep a `Task` in `waiting_user`; any other current compatible pending request that meets this rule still does.
+- When the last request that keeps the current `Task` waiting is resolved or made non-current, the lifecycle returns to `ready` when a current Change Unit exists and to `shaping` otherwise. Terminal lifecycle phases take precedence and are never reopened by user-action lifecycle maintenance.
 
 Agent latitude:
 
@@ -404,7 +470,7 @@ The lifecycle here is conceptual authority meaning, not an API state table.
 | Lineage and carry-forward | A new Task may name one predecessor and explicitly select compatible material. Applied material is validated as new input; reference-only context never revives predecessor authority. |
 | Scope update | Accepted scope or Change Unit changes become currently applied only through the scope owner-defined transition. A judgment record alone does not mutate current scope. |
 | Execution and observation | Runs record actions and observations. Product-file writes must be compatible with current scope and a write ticket; read-only work does not create compatibility for subsequent writes. |
-| Waiting or blocked | A current non-terminal `Task` is `waiting_user` while a current compatible pending user judgment with a non-informational operation target requires a user answer. When the last such judgment is resolved or made non-current, the `Task` returns to `ready` if it has a current Change Unit and to `shaping` otherwise. Other missing, stale, incompatible, or unsafe-to-bypass authority data remains visible through owner-defined blocker state rather than being hidden. |
+| Waiting or blocked | A current non-terminal `Task` is `waiting_user` while a current compatible pending user-action request with a non-informational operation target requires a user answer. When the last such request is resolved or made non-current, the `Task` returns to `ready` if it has a current Change Unit and to `shaping` otherwise. Other missing, stale, incompatible, or unsafe-to-bypass authority data remains visible through owner-defined blocker state rather than being hidden. |
 | Close attempt | Core evaluates whether the current state can close honestly. A final chat summary or generated report is not enough by itself. |
 | Terminal outcome | Completion, cancellation, or supersession ends the `Task` path. Cancellation and supersession are terminal, but they are not successful completion and do not satisfy completion evidence, acceptance, or risk requirements. |
 
@@ -518,11 +584,11 @@ Evidence authority:
   freshness, target identity, and claim relevance as separate axes. Strong
   evidence requires every applicable axis; artifact integrity alone is never
   producer or relevance proof.
-- The baseline provides a distinct `user_only`
-  `volicord.record_user_observation` transition. Its
-  `UserEvidenceObservation` binds local-user provenance and supported or
-  contradicted relevance to the exact current artifacts and basis. It is
-  evidence, not a `UserJudgment` or final acceptance.
+- The common `user_only` `volicord.resolve_user_action` transition records an
+  immutable `evidence_observation` `UserActionResolution` only for a pending
+  Core-derived capture form. It binds local-user provenance and supported or
+  contradicted relevance to the exact selected current artifacts and basis. It
+  is evidence, not a judgment resolution or final acceptance.
 - Verified command, tool, and registered-connection evidence uses one
   authority chain: `volicord.prepare_evidence_capture` creates an expiring
   current-basis `EvidenceCaptureIntent`; only a registered source can create
@@ -591,7 +657,7 @@ Close-basis authority:
 
 - Caller-supplied close-basis result and risk refs must be accepted only from owner-allowed result/evidence kinds and must exist, belong to the same project and `Task`, and be canonicalized by Core.
 - Baseline allowed caller-supplied result/evidence kinds are Run, Artifact, EvidenceSummary, and ChangeUnit unless an owner explicitly adds another kind.
-- ProjectState, write ticket, UserJudgment, Blocker, TaskEvent, AgentConnection, and Task are not caller-supplied result refs unless an owner explicitly adds them.
+- ProjectState, write ticket, UserActionRequest, UserActionResolution, Blocker, TaskEvent, AgentConnection, and Task are not caller-supplied result refs unless an owner explicitly adds them.
 - Artifact refs used for close evidence must be linked to the `Task` and have current-byte verified integrity at use time. Evidence refs must identify the current `Task` evidence summary. Run refs must identify a recorded current Run compatible with the current `Task`, current Change Unit, current scope revision, and compatible baseline. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
 - Evidence observation refs used for close evidence must match the required
   `AcceptanceCriterionId` and remain current for the `Task`, Change Unit, source
@@ -605,7 +671,7 @@ The current close basis changes through owner-defined transitions:
 
 - A committed `record_run` increments `close_basis_revision` and either establishes a new current close basis from its close assessment or records that no current close basis is established.
 - A material scope or current Change Unit change increments `scope_revision`, invalidates the current close basis, and increments `close_basis_revision`.
-- Recording user-owned judgment may make a requirement satisfied, stale, or rejected, but it does not increment `scope_revision` or `close_basis_revision`.
+- Recording a user-owned resolution may make a requirement satisfied, stale, or rejected, but it does not increment `scope_revision` or `close_basis_revision`.
 
 Residual-risk identity for close readiness uses opaque `risk_id` values from the current close basis. Risk summary or consequence text can explain the risk to the user, but text matching is not authority.
 
@@ -666,7 +732,7 @@ Use this table for owner routing. Do not copy the linked contracts into this pag
 | User judgment schema shapes, `SensitiveActionScope`, and accepted-risk input shapes | [API Judgment Schemas](api/schema-judgment.md) |
 | Artifact refs, artifact input shapes, staging handles, and artifact schema rules | [API Artifact Schemas](api/schema-artifacts.md) |
 | Public error code meanings, error routing, and error precedence | [API error codes](api/error-codes.md), [API error routing](api/error-routing.md), and [API error precedence](api/error-precedence.md) |
-| Storage records, storage effects, state-version effects, and persistence layout | [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Storage Versioning](storage-versioning.md) |
+| Storage records, storage effects, state-version and canonical-time effects, and persistence layout | [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Storage Versioning](storage-versioning.md) |
 | Artifact storage lifecycle and body-read rules | [Artifact Storage](storage-artifacts.md) |
 | Projection authority and derived display boundaries | [Projection Authority Reference](projection-and-templates.md) |
 | Template bodies and rendered display wording | [Template Bodies](template-bodies.md) |

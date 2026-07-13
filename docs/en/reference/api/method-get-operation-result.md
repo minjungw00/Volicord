@@ -54,13 +54,14 @@ Projects membership for every page. The selected project and current verified
 `actor_source` must match the stored agent-workflow invocation. Possession of a
 reference or cursor alone grants no access.
 
-User-only results, including the exact `volicord.record_user_judgment` body and
-free-form user note, are not exposed to an Agent Connection. A host-mediated
-Judgment flow keeps the original agent-owned
-`volicord.request_user_judgment` reference. Its exact-result lookup therefore
+User-only results, including the exact `volicord.resolve_user_action` body,
+free-form user note, and evidence-observation summary, are not exposed to an
+Agent Connection. A host-mediated user-action flow keeps the original agent-owned
+`volicord.request_user_action` reference. Its exact-result lookup therefore
 reconstructs the original pending response. The separately owned MCP outcome
-projection may report the selection, but it never substitutes the user-only
-reference or exposes the user note or exact user-only response body.
+projection may report safe selected identifiers and derived refs, but it never
+substitutes the user-only reference or exposes the user note, evidence-
+observation summary, or exact user-only response body.
 
 ## Result
 

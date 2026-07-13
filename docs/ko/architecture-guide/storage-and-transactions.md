@@ -109,6 +109,12 @@ flowchart LR
 이 구조는 로컬 관리 준비와 Core 메서드 의미를 분리합니다. 정확한 CLI
 동작은 [관리 CLI](../reference/admin-cli.md)가 담당합니다.
 
+새 프로젝트에서 bootstrap은 SQLite 현재 UTC로 `project_state.created_at`과
+`project_state.updated_at`을 초기화합니다. 기존 프로젝트를 다시 등록하면 정확한
+`updated_at` 정규 시계 하한을 검증하고 보존하며 등록 upsert는 담당 문서가 허용한 등록
+데이터만 바꿉니다. 기존 하한의 형식이 잘못되면 쓰기 전에 실패하고, 올바른 미래 시각
+하한을 실시간 또는 호스트 시각으로 초기화하지 않습니다.
+
 ## 읽기와 계획 흐름
 
 정상 공개 메서드 실행은 영속 효과 전에 두 구현 단계를 거칩니다.
@@ -120,6 +126,22 @@ flowchart LR
 2. [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)의
    메서드 모듈이 메서드별 계획을 수행하고 `OwnerPipelineBranch`를
    반환합니다.
+
+공통 preflight 뒤 계획까지 진행하는 요청은 프로젝트 범위 정규 Core UTC 시계에서
+`operation_now`를 정확히 하나 얻습니다. `SystemClock`에서 Store는 SQLite 실시간 UTC,
+영속 `project_state.updated_at`, Store handle이 이미 받아들인 더 늦은 샘플 중 최댓값으로
+이 시계를 샘플링합니다. 메서드 계획은 모든 현재 시각 판단과 의미 있는 동작 timestamp에
+`operation_now`를 다시 사용합니다.
+
+`SystemClock`은 SQLite에서 실시간 후보를 얻습니다. 주입 Clock은 이 후보를 대신할 수
+있지만 `CoreService` 경계는 계속 영속 하한 및 같은 handle 샘플과의 최댓값을 취합니다.
+이 합성은 저장 담당 timestamp를 다시 쓰지 않습니다. 미래 시각 행은 해당 담당자가 그
+값을 invalid로 정의한 경우에만 닫힌 상태로 실패합니다. TTL 파생은 분기가 커밋될 수
+있기 전에 checked 덧셈과 정규 RFC 3339 UTC 표현 가능성을 사용합니다. 같은 구성 후보
+선택을 커밋에도 적용합니다. `SystemClock`은 transaction 안에서 SQLite 현재 UTC를
+샘플링하고, 주입 Clock은 이 SQLite 후보에 더하는 것이 아니라 그 후보를 대신해 자신의
+실시간 후보를 제공합니다. 정확한 선택은
+[저장소 버전 관리](../reference/storage-versioning.md#canonical-core-utc-clock)가 담당합니다.
 
 읽기 전용 메서드와 `dry-run` 미리보기는 Core 변이 커밋 없이 반환할 수 있습니다.
 커밋 분기는 결과 필드, 이벤트 데이터, `CoreStorageMutation` 값 목록을
@@ -133,12 +155,14 @@ flowchart LR
 
 | 효과 경로 | Store 경계 |
 |---|---|
-| 계획 또는 커밋 전 거부 | `CoreProjectStore::commit_mutation`을 호출하지 않고 반환합니다. Core 변이를 위한 Store 트랜잭션은 시작하지 않습니다. |
-| 읽기 전용 결과 | Store 읽기를 사용하고 Core 변이 커밋 없이 반환합니다. |
-| 효과 없음 결과 | 정상 Core 변이 커밋 경로를 호출하지 않고 유효한 메서드 결과를 반환합니다. |
-| `dry-run` 미리보기 | 생성된 영속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, 상태 버전 변경을 저장하지 않고 미리보기 데이터를 만듭니다. |
-| 정상 커밋된 Core 변이 | `CoreProjectStore::commit_mutation`을 실행하며, 이 함수는 메서드가 제공한 `CoreStorageMutation` 값과 대기 이벤트를 하나의 트랜잭션 안에서 적용합니다. |
-| 일시적 아티팩트 스테이징 | 정상 Core 변이 커밋 경로 대신 아티팩트 스테이징 도우미를 사용합니다. 이 경로에는 별도의 저장소와 정리 경계가 있습니다. |
+| 계획 또는 커밋 전 거부 | `CoreProjectStore::commit_mutation`을 호출하지 않고 반환합니다. Core 변이를 위한 Store 트랜잭션은 시작하지 않고 더 늦은 시계 하한도 영속화하지 않습니다. |
+| 읽기 전용 결과 | Store 읽기를 사용하고 Core 변이 커밋 없이 반환합니다. 현재 프로젝트 시각 샘플은 읽었다는 이유만으로 영속화하지 않습니다. |
+| 효과 없음 결과 | 정상 Core 변이 커밋 경로를 호출하거나 영속 하한을 전진시키지 않고 유효한 메서드 결과를 반환합니다. |
+| `dry-run` 미리보기 | 생성된 영속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, 상태 버전 변경, 더 늦은 시계 하한을 저장하지 않고 미리보기 데이터를 만듭니다. |
+| 정상 커밋된 Core 변이 | `CoreProjectStore::commit_mutation`을 실행하며, 이 함수는 메서드가 제공한 `CoreStorageMutation` 값과 대기 이벤트를 정규 커밋 timestamp 하나로 한 transaction 안에서 적용합니다. |
+| 일시적 아티팩트 스테이징 | 정상 Core 변이 커밋 경로 대신 아티팩트 스테이징 도우미를 사용합니다. 자체 transaction에서 `state_version` 변경 없이 프로젝트 시각 하한을 staging `created_at` 이상으로 전진시킵니다. |
+| 등록된 evidence-capture fulfillment | Receipt, 일시적 staging, source claim을 함께 만들고 하한을 receipt `created_at` 이상으로 전진시킵니다. Core event, replay 행, state-version 증가는 없습니다. |
+| 로컬 User Channel token 발급 | 요청 결속 token을 삽입하고 하한을 token `created_at` 이상으로 전진시킵니다. Core event, replay 행, state-version 증가는 없습니다. |
 
 ## 변이 값
 
@@ -159,7 +183,8 @@ flowchart LR
 
 정상 커밋된 Core 변이에서 Core는 프로젝트 ID, 메서드 이름, 선택적
 멱등성 키, 정규화된 요청 해시, 검증된 재실행 맥락, 선택적 예상 상태
-버전, 대기 중인 이벤트로 `CommitMutationInput`을 만듭니다.
+버전, 대기 중인 이벤트, 커밋 시계 하한인 준비된 `operation_now`로
+`CommitMutationInput`을 만듭니다.
 
 [`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs)의
 `CoreProjectStore::commit_mutation`은 원자적 Store 경계입니다. 이 함수는
@@ -170,13 +195,30 @@ flowchart LR
 3. 트랜잭션 안에서 현재 프로젝트 상태를 읽습니다.
 4. 새 변이를 적용하기 전에 적격 재실행, 재실행 맥락 불일치,
    멱등성 충돌, 오래된 예상 상태 결과를 처리합니다.
-5. 새 커밋 변이에 대해 `project_state.state_version`을 전진시킵니다.
-6. 메서드가 제공한 `CoreStorageMutation` 값을 `ProjectMutation`으로
+5. 구성된 Clock 분기에 따라 정규 `committed_at` 하나를 선택합니다.
+   - Production `SystemClock`에서는 `operation_now`, transaction 안에서 샘플링한 SQLite
+     현재 UTC, 영속 프로젝트 시각 하한, 같은 handle이 받아들인 더 늦은 샘플의
+     최댓값을 사용합니다.
+   - 주입 또는 custom Clock에서는 `operation_now`, 그 Clock의 주입 실시간 후보, 영속
+     하한, 같은 handle이 받아들인 더 늦은 샘플의 최댓값을 사용합니다. 주입 후보는
+     SQLite 현재 UTC를 보충하지 않고 대신합니다.
+6. 새 커밋 변이에 대해 `project_state.state_version`을 전진시킵니다.
+7. 메서드가 제공한 `CoreStorageMutation` 값을 `ProjectMutation`으로
    적용합니다.
-7. 권한 이벤트를 추가합니다.
-8. 응답 JSON을 만들고 검증합니다.
-9. 커밋 호출에 멱등성 키가 있으면 재실행 기록 행을 저장합니다.
-10. 트랜잭션을 커밋하거나 오류 시 전체 시도를 롤백합니다.
+8. `project_state.updated_at=committed_at`을 쓰고
+   `created_at=committed_at`인 권한 event를 추가합니다.
+9. 응답 JSON을 만들고 검증합니다.
+10. 커밋 호출에 멱등성 키가 있으면 `created_at=committed_at`인 재실행 기록 행을
+    저장합니다.
+11. 트랜잭션을 커밋하거나 오류 시 전체 시도를 롤백합니다.
+
+Mutation application이 생성하는 적용 가능한 Store transaction metadata인
+`created_at`, `updated_at`, `retired_at`, `promoted_at`은 정확히 같은
+`committed_at`을 사용합니다. 담당 문서가 정의한 의미 있는 동작 시각인
+`requested_at`, `resolved_at`, `closed_at`, `recorded_at`, `consumed_at`과
+`observed_at`, `started_at` 같은 관찰 사실은 준비된 동작 샘플 또는 검증된 원천 시각을
+유지합니다. 커밋 timestamp는 `operation_now`보다 늦을 수 있지만 이런 의미 사실을
+다시 쓰지 않습니다.
 
 이 경계를 보호하는 구현 테스트에는
 [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
@@ -192,6 +234,12 @@ Core 파이프라인 테스트가 있습니다.
 전진시키고, 그 결과 상태 버전을 가진 해당 `authority_events` 행이나
 담당 문서가 정의한 이벤트 배치를 저장합니다. 재실행은 적격 멱등
 호출에 대해 또 다른 변이를 적용하지 않고 저장된 원래 응답을 반환합니다.
+
+`state_version`과 영속 UTC 하한은 서로 독립된 좌표입니다. 전자는 권한 상태 전이의
+순서를 정하고 후자는 이후 시간 확인에서 더 이른 프로젝트 시각을 관찰하지 못하게
+합니다. Replay, 충돌, 거부, dry run, 읽기 전용 결과는 `state_version`을 증가시키거나
+더 늦은 하한을 영속화하지 않습니다. 여러 상태 버전이 감소하지 않는 UTC 값 하나를
+공유할 수 있습니다.
 
 재실행에 쓰는 요청 해시는 형식화된 요청을 디코딩한 뒤
 [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs)의
@@ -212,7 +260,10 @@ Core 파이프라인 테스트가 있습니다.
   바이트를 만듭니다.
 - 이 경로는 `CoreProjectStore::commit_mutation`을 사용하지 않고,
   `project_state.state_version`을 증가시키지 않으며, `authority_events`나
-  재실행 기록 행을 만들지 않고, 영속 `artifacts` 행도 삽입하지 않습니다.
+  재실행 기록 행을 만들지 않고, 영속 `artifacts` 행도 삽입하지 않습니다. 자체
+  transaction은 `project_state.updated_at`을 staging 행의 `created_at` 이상으로
+  전진시킵니다. 다른 writer가 이미 더 늦은 하한을 만들었다면 두 값이 정확히 같을
+  필요는 없습니다.
 
 영속 아티팩트 승격은 적용되는 담당 문서가 허용하는 경우 `record_run` 같은
 메서드 계획 Core 변이를 통해 일어납니다.
@@ -226,16 +277,33 @@ Core 파이프라인 테스트가 있습니다.
 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)의
 `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`가 있습니다.
 
+## 그 밖의 저장소 소유 시계 하한 writer
+
+등록된 evidence-capture fulfillment와 로컬 web User Channel token 발급도 일반 Core
+변이 커밋 밖에서 실행됩니다.
+
+- Receipt fulfillment는 receipt 하나, 일시적 staging 행과 bytes, 모든 source claim을
+  원자적으로 삽입하면서 하한을 receipt `created_at` 이상으로 전진시킵니다.
+- Token 발급은 정규 현재 프로젝트 시각을 token `created_at`으로 샘플링하고
+  `expires_at`을 파생하며 hash-only token을 삽입하고 하한을 `created_at` 이상으로 한
+  transaction에서 전진시킵니다. 검증은 `created_at <= now < expires_at`만 허용합니다.
+
+두 경로 모두 `state_version`을 증가시키거나 권한 event 또는 replay 행을 만들지
+않습니다. Transaction이 실패하면 담당 행과 하한 갱신이 함께 rollback됩니다.
+
 ## 실패 경계
 
 구현은 효과 경로별로 실패 경계를 나눕니다.
 
 - 사전 점검과 검증 거부는 Core 커밋 없이 반환합니다.
+- 시계 또는 TTL overflow와 표현 불가능한 파생 timestamp는 행이나 하한 효과 없이 커밋
+  전에 거부됩니다. Store도 쓰기 경계에서 timestamp 열을 다시 검증합니다.
 - 읽기 전용, 효과 없음, `dry-run` 분기는 `CoreProjectStore::commit_mutation`을
   호출하지 않습니다.
 - Store 커밋 결과는 커밋, 재실행, 재실행 맥락 불일치, 멱등성 충돌,
   오래된 예상 상태 사례를 구분합니다.
-- Store 트랜잭션 중 오류가 나면 커밋 시도 전체를 롤백합니다.
+- Store 트랜잭션 중 오류가 나면 상태 버전과 정규 하한 변경을 포함해 커밋 시도 전체를
+  롤백합니다.
 - 아티팩트 스테이징에는 별도의 트랜잭션과 파일 정리 경계가 있습니다.
 - Product Repository 파일 직접 쓰기는 공개 Volicord API 경로 밖에 있습니다.
 

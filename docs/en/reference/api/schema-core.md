@@ -142,7 +142,7 @@ Meaning:
 - `ToolResultBase.disclosure` is the public machine-readable guarantee and non-guarantee disclosure for interpreting the response branch.
 
 Does not imply:
-- `ToolRejectedResponse` and `ToolDryRunResponse` do not carry result-only fields such as `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_judgment_ref`, `decision`, or `close_state`.
+- `ToolRejectedResponse` and `ToolDryRunResponse` do not carry result-only fields such as `task_ref`, `run_summary`, `staged_artifact_handle`, `write_ticket_ref`, `user_action_resolution_ref`, `decision`, or `close_state`.
 - `ToolResultBase.disclosure` does not create OS sandboxing, network isolation, malware defense, tamper-proof audit logging, full write prevention, full filesystem monitoring, actor attribution proof, correctness proof, test sufficiency proof, or a replacement for human review.
 
 Owner links:

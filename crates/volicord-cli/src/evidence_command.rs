@@ -9,7 +9,7 @@ use std::{
         Arc,
     },
     thread,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -18,8 +18,9 @@ use rustix::process::{kill_process_group, Pid, Signal};
 use std::os::unix::process::CommandExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::process::{Child, Command, Stdio};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::time::Instant;
 
-use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_platform_fs::capture_git_workspace_snapshot;
@@ -52,6 +53,7 @@ use crate::project_context::{
 
 const RECEIPT_SCHEMA_VERSION: &str = "volicord.evidence_capture_receipt.v1";
 const MAX_CAPTURE_COMMAND_OUTPUT_BYTES: u64 = 16 * 1024 * 1024;
+const PROJECT_CLOCK_RESAMPLE_DELAY: Duration = Duration::from_millis(1);
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -451,7 +453,7 @@ fn load_and_validate_intent(
     }
     validate_connection_access(context, &record.requesting_connection_internal_id)?;
     validate_current_basis(context, &record)?;
-    validate_not_expired(&record)?;
+    validate_not_expired(&context.store, &record)?;
 
     let capture: EvidenceCaptureSpec = strict_json(
         "evidence capture intent capture_spec_json",
@@ -621,16 +623,79 @@ fn validate_workspace(
     Ok(())
 }
 
-fn validate_not_expired(intent: &EvidenceCaptureIntentRecord) -> Result<(), EvidenceCommandError> {
-    let expires_at = UtcTimestamp::parse(&intent.expires_at)
-        .map_err(|_| EvidenceCommandError::runtime("evidence capture intent expiry is corrupt"))?;
-    let now = DateTime::<Utc>::from(SystemTime::now());
-    if *expires_at.as_datetime() <= now {
+fn project_current_timestamp(
+    store: &CoreProjectStore,
+) -> Result<UtcTimestamp, EvidenceCommandError> {
+    let timestamp = store.current_timestamp()?;
+    strict_stored_timestamp(
+        &timestamp,
+        "Store returned an invalid Core current UTC timestamp",
+    )
+}
+
+fn project_time_before_intent_expiry(
+    store: &CoreProjectStore,
+    intent: &EvidenceCaptureIntentRecord,
+) -> Result<(UtcTimestamp, UtcTimestamp), EvidenceCommandError> {
+    let created_at = strict_stored_timestamp(
+        &intent.created_at,
+        "evidence capture intent creation timestamp is corrupt",
+    )?;
+    let expires_at = strict_stored_timestamp(
+        &intent.expires_at,
+        "evidence capture intent expiry is corrupt",
+    )?;
+    if expires_at <= created_at {
+        return Err(EvidenceCommandError::runtime(
+            "evidence capture intent time window is corrupt",
+        ));
+    }
+    let now = project_current_timestamp(store)?;
+    if now >= expires_at {
         return Err(EvidenceCommandError::runtime(
             "evidence capture intent has expired",
         ));
     }
+    Ok((now, expires_at))
+}
+
+fn receipt_creation_timestamp(
+    store: &CoreProjectStore,
+    intent: &EvidenceCaptureIntentRecord,
+    observed_at: &UtcTimestamp,
+) -> Result<UtcTimestamp, EvidenceCommandError> {
+    let (mut created_at, _) = project_time_before_intent_expiry(store, intent)?;
+    if observed_at > &created_at {
+        thread::sleep(PROJECT_CLOCK_RESAMPLE_DELAY);
+        (created_at, _) = project_time_before_intent_expiry(store, intent)?;
+    }
+    if observed_at > &created_at {
+        return Err(EvidenceCommandError::runtime(
+            "source observation is later than the current Core clock",
+        ));
+    }
+    Ok(created_at)
+}
+
+fn validate_not_expired(
+    store: &CoreProjectStore,
+    intent: &EvidenceCaptureIntentRecord,
+) -> Result<(), EvidenceCommandError> {
+    project_time_before_intent_expiry(store, intent)?;
     Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn remaining_intent_ttl(
+    store: &CoreProjectStore,
+    intent: &EvidenceCaptureIntentRecord,
+) -> Result<Duration, EvidenceCommandError> {
+    let (now, expires_at) = project_time_before_intent_expiry(store, intent)?;
+    expires_at
+        .as_datetime()
+        .signed_duration_since(*now.as_datetime())
+        .to_std()
+        .map_err(|_| EvidenceCommandError::runtime("capture-intent TTL is out of range"))
 }
 
 fn stale_intent<T>(detail: &str) -> Result<T, EvidenceCommandError> {
@@ -670,8 +735,10 @@ fn fulfill_command(
             "capture-command argument-vector digest does not match the intent",
         ));
     }
+    let remaining_ttl = remaining_intent_ttl(&context.store, &intent.record)?;
     let (status, stdout, stderr) =
-        run_bounded_capture_command(&context.project.repo_root, argv, &intent.record.expires_at)?;
+        run_bounded_capture_command(&context.project.repo_root, argv, remaining_ttl)?;
+    let (observed_at, _) = project_time_before_intent_expiry(&context.store, &intent.record)?;
     let exit_code = status.code().ok_or_else(|| {
         EvidenceCommandError::runtime(
             "capture command ended without a numeric exit status; no receipt was created",
@@ -698,7 +765,7 @@ fn fulfill_command(
             &[],
             Some(&host_invocation_id),
         ),
-        observed_at: current_timestamp(),
+        observed_at: observed_at.to_string(),
         limitations: vec![COMMAND_LIMITATION.to_owned()],
     })
 }
@@ -707,7 +774,7 @@ fn fulfill_command(
 fn run_bounded_capture_command(
     repo_root: &Path,
     argv: &[String],
-    expires_at: &str,
+    remaining_ttl: Duration,
 ) -> Result<
     (
         std::process::ExitStatus,
@@ -716,8 +783,9 @@ fn run_bounded_capture_command(
     ),
     EvidenceCommandError,
 > {
-    let expires_at = UtcTimestamp::parse(expires_at)
-        .map_err(|_| EvidenceCommandError::runtime("capture-intent expiry is corrupt"))?;
+    let deadline = Instant::now().checked_add(remaining_ttl).ok_or_else(|| {
+        EvidenceCommandError::runtime("capture-intent TTL exceeds the monotonic timer range")
+    })?;
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
@@ -751,7 +819,7 @@ fn run_bounded_capture_command(
                 "capture command output exceeded the {MAX_CAPTURE_COMMAND_OUTPUT_BYTES}-byte bound; no receipt was created"
             )));
         }
-        if DateTime::<Utc>::from(SystemTime::now()) >= *expires_at.as_datetime() {
+        if Instant::now() >= deadline {
             terminate_capture_processes(&mut child);
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
@@ -1106,6 +1174,7 @@ fn persist_fulfillment(
     facts: FulfillmentFacts,
     output_json: bool,
 ) -> Result<String, EvidenceCommandError> {
+    validate_source_time_window(intent, &facts.observed_at, "source observation")?;
     let result_sha256 =
         canonical_json_bare_sha256(&facts.observed_outcome).map_err(json_runtime)?;
     let observed_at = UtcTimestamp::parse(&facts.observed_at)
@@ -1144,6 +1213,8 @@ fn persist_fulfillment(
     let observed_at = safe_receipt.observed_at.to_canonical_string();
     let metadata_json =
         canonical_json_string(&json!({ "source": &safe_receipt.source })).map_err(json_runtime)?;
+    let created_at =
+        receipt_creation_timestamp(&context.store, &intent.record, &safe_receipt.observed_at)?;
     let record = context
         .store
         .fulfill_evidence_capture_source(EvidenceCaptureReceiptInsert {
@@ -1161,7 +1232,7 @@ fn persist_fulfillment(
             observed_at,
             limitations_json,
             safe_receipt_json,
-            created_at: current_timestamp(),
+            created_at: created_at.to_string(),
             staging_expires_at: intent.record.expires_at.clone(),
             metadata_json,
         })?;
@@ -1348,10 +1419,8 @@ fn validate_event_order(
     pre: &GuardEventRecord,
     post: &GuardEventRecord,
 ) -> Result<(), EvidenceCommandError> {
-    let pre_time = UtcTimestamp::parse(&pre.occurred_at)
-        .map_err(|_| EvidenceCommandError::runtime("pre-tool timestamp is corrupt"))?;
-    let post_time = UtcTimestamp::parse(&post.occurred_at)
-        .map_err(|_| EvidenceCommandError::runtime("post-tool timestamp is corrupt"))?;
+    let pre_time = strict_stored_timestamp(&pre.occurred_at, "pre-tool timestamp is corrupt")?;
+    let post_time = strict_stored_timestamp(&post.occurred_at, "post-tool timestamp is corrupt")?;
     if pre_time.as_datetime() > post_time.as_datetime() {
         return Err(EvidenceCommandError::runtime(
             "post-tool event precedes its pre-tool event",
@@ -1365,14 +1434,21 @@ fn validate_source_time_window(
     observed_at: &str,
     source_label: &str,
 ) -> Result<(), EvidenceCommandError> {
-    let created_at = UtcTimestamp::parse(&intent.record.created_at).map_err(|_| {
-        EvidenceCommandError::runtime("evidence capture intent creation timestamp is corrupt")
-    })?;
-    let expires_at = UtcTimestamp::parse(&intent.record.expires_at)
-        .map_err(|_| EvidenceCommandError::runtime("evidence capture intent expiry is corrupt"))?;
-    let observed_at = UtcTimestamp::parse(observed_at).map_err(|_| {
-        EvidenceCommandError::runtime(format!("{source_label} timestamp is corrupt"))
-    })?;
+    let created_at = strict_stored_timestamp(
+        &intent.record.created_at,
+        "evidence capture intent creation timestamp is corrupt",
+    )?;
+    let expires_at = strict_stored_timestamp(
+        &intent.record.expires_at,
+        "evidence capture intent expiry is corrupt",
+    )?;
+    if expires_at <= created_at {
+        return Err(EvidenceCommandError::runtime(
+            "evidence capture intent time window is corrupt",
+        ));
+    }
+    let observed_at =
+        strict_stored_timestamp(observed_at, &format!("{source_label} timestamp is corrupt"))?;
     if observed_at.as_datetime() < created_at.as_datetime()
         || observed_at.as_datetime() >= expires_at.as_datetime()
     {
@@ -1381,6 +1457,18 @@ fn validate_source_time_window(
         )));
     }
     Ok(())
+}
+
+fn strict_stored_timestamp(
+    raw: &str,
+    corrupt_message: &str,
+) -> Result<UtcTimestamp, EvidenceCommandError> {
+    let timestamp =
+        UtcTimestamp::parse(raw).map_err(|_| EvidenceCommandError::runtime(corrupt_message))?;
+    timestamp
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| EvidenceCommandError::runtime(corrupt_message))?;
+    Ok(timestamp)
 }
 
 fn guard_subject_value(event: &GuardEventRecord) -> Result<Value, EvidenceCommandError> {
@@ -1708,10 +1796,6 @@ fn value_i64(value: &Value, paths: &[&[&str]]) -> Option<i64> {
         .find_map(|path| value_at(value, path).and_then(Value::as_i64))
 }
 
-fn current_timestamp() -> String {
-    DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::AutoSi, true)
-}
-
 fn json_runtime(error: serde_json::Error) -> EvidenceCommandError {
     EvidenceCommandError::runtime(format!("failed to encode canonical JSON: {error}"))
 }
@@ -1844,11 +1928,11 @@ mod tests {
     #[test]
     fn command_runner_rejects_deadline_without_waiting_for_child_completion() {
         let argv = vec!["/bin/sh".to_owned(), "-c".to_owned(), "sleep 5".to_owned()];
-        let started = SystemTime::now();
-        let error = run_bounded_capture_command(Path::new("/tmp"), &argv, "2000-01-01T00:00:00Z")
+        let started = Instant::now();
+        let error = run_bounded_capture_command(Path::new("/tmp"), &argv, Duration::ZERO)
             .expect_err("expired deadline should kill the child");
         assert!(error.to_string().contains("did not finish before"));
-        assert!(started.elapsed().expect("clock should advance") < Duration::from_secs(2));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1859,13 +1943,12 @@ mod tests {
             "-c".to_owned(),
             "sleep 5 & wait".to_owned(),
         ];
-        let expires_at = DateTime::<Utc>::from(SystemTime::now() + Duration::from_millis(100))
-            .to_rfc3339_opts(SecondsFormat::Millis, true);
-        let started = SystemTime::now();
-        let error = run_bounded_capture_command(Path::new("/tmp"), &argv, &expires_at)
-            .expect_err("deadline should terminate the isolated command process group");
+        let started = Instant::now();
+        let error =
+            run_bounded_capture_command(Path::new("/tmp"), &argv, Duration::from_millis(100))
+                .expect_err("deadline should terminate the isolated command process group");
         assert!(error.to_string().contains("did not finish before"));
-        assert!(started.elapsed().expect("clock should advance") < Duration::from_secs(2));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[test]

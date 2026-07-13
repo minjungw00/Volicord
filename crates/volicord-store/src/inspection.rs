@@ -17,7 +17,8 @@ use crate::{
     },
     bootstrap::{validate_project_record_for_execution, ProjectRecord},
     schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND, STORAGE_PROFILE},
-    sqlite::{open_read_only_database, registry_db_path},
+    sqlite::{open_read_only_database, registry_db_path, validate_project_state_schema},
+    StoreError,
 };
 
 /// Read-only inspection result for a selected `Volicord Runtime Home`.
@@ -340,8 +341,8 @@ fn inspect_project_state_database_at(
         Err(error) => return unreadable(path, error),
     };
 
-    if let Err(issue) = validate_project_state_required_schema(&conn) {
-        return issue.into_database_inspection(path);
+    if let Err(error) = validate_project_state_schema(&conn) {
+        return project_state_validation_issue(error).into_database_inspection(path);
     }
 
     let project_state = match read_project_state_record(&conn, project_id) {
@@ -368,6 +369,25 @@ impl InspectionIssue {
                 detail,
             },
         }
+    }
+}
+
+fn project_state_validation_issue(error: StoreError) -> InspectionIssue {
+    match error {
+        StoreError::UnsupportedStorageProfile {
+            database_kind,
+            actual_storage_profile,
+            expected_storage_profile,
+        } => InspectionIssue::Unsupported {
+            detail: unsupported_storage_profile_detail(
+                database_kind,
+                &actual_storage_profile,
+                expected_storage_profile,
+            ),
+        },
+        StoreError::Io(error) => InspectionIssue::Unreadable(error.to_string()),
+        StoreError::Sqlite(error) => sqlite_unreadable(error),
+        error => InspectionIssue::Malformed(error.to_string()),
     }
 }
 
@@ -525,109 +545,6 @@ fn validate_registry_required_schema(conn: &Connection) -> Result<(), Inspection
             "updated_at",
         ],
     )?;
-    Ok(())
-}
-
-fn validate_project_state_required_schema(conn: &Connection) -> Result<(), InspectionIssue> {
-    reject_table(conn, PROJECT_STATE_DATABASE_KIND, "schema_migrations")?;
-    require_tables(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        &[
-            "project_state",
-            "acceptance_criteria",
-            "evidence_claims",
-            "evidence_observations",
-            "user_evidence_observations",
-            "project_continuity_records",
-        ],
-    )?;
-    require_columns(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_state",
-        &[
-            "project_id",
-            "storage_profile",
-            "state_version",
-            "metadata_json",
-        ],
-    )?;
-    require_columns(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "evidence_observations",
-        &[
-            "project_id",
-            "evidence_observation_id",
-            "task_id",
-            "change_unit_id",
-            "run_id",
-            "acceptance_criterion_id",
-            "evidence_claim_id",
-            "source_kind",
-            "assurance_level",
-            "observed_by_actor_source",
-            "tool_name",
-            "tool_invocation_id",
-            "tool_metadata_json",
-            "input_refs_json",
-            "source_refs_json",
-            "output_artifact_refs_json",
-            "limitations_json",
-            "observed_at",
-            "recorded_at",
-            "metadata_json",
-        ],
-    )?;
-    require_columns(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "user_evidence_observations",
-        &[
-            "project_id",
-            "user_evidence_observation_id",
-            "task_id",
-            "change_unit_id",
-            "scope_revision",
-            "baseline_ref",
-            "acceptance_criterion_id",
-            "evidence_claim_id",
-            "relevance_status",
-            "output_artifact_refs_json",
-            "summary",
-            "observed_by_actor_source",
-            "verification_basis",
-            "observed_at",
-            "recorded_at",
-        ],
-    )?;
-    require_columns(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "project_continuity_records",
-        &[
-            "project_id",
-            "continuity_record_id",
-            "source_task_id",
-            "source_change_unit_id",
-            "kind",
-            "title",
-            "summary",
-            "rationale",
-            "applies_to_paths_json",
-            "applies_to_refs_json",
-            "source_refs_json",
-            "artifact_refs_json",
-            "status",
-            "supersedes_refs_json",
-            "review_triggers_json",
-            "created_at",
-            "updated_at",
-            "metadata_json",
-        ],
-    )?;
-
     Ok(())
 }
 
@@ -1750,6 +1667,47 @@ mod tests {
         let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
 
         assert!(matches!(state, DatabaseInspection::Malformed { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn missing_user_action_channel_tokens_table_is_malformed() -> Result<(), Box<dyn Error>> {
+        let fixture = current_fixture("inspect-missing-user-action-channel-tokens")?;
+        let conn = Connection::open(&fixture.project.state_db_path)?;
+        conn.execute("DROP TABLE user_action_channel_tokens", [])?;
+        drop(conn);
+
+        let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
+
+        match state {
+            DatabaseInspection::Malformed { detail, .. } => {
+                assert!(detail.contains("user_action_channel_tokens"));
+            }
+            other => panic!("expected malformed project-state diagnostic, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_user_action_origin_columns_are_malformed() -> Result<(), Box<dyn Error>> {
+        for column in ["source_method", "source_idempotency_key"] {
+            let fixture = current_fixture(&format!("inspect-missing-user-action-{column}"))?;
+            let conn = Connection::open(&fixture.project.state_db_path)?;
+            conn.execute(
+                &format!(
+                    "ALTER TABLE user_action_requests RENAME COLUMN {column} TO removed_{column}"
+                ),
+                [],
+            )?;
+            drop(conn);
+
+            let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
+
+            assert!(
+                matches!(state, DatabaseInspection::Malformed { .. }),
+                "missing user_action_requests.{column} must not inspect as current: {state:?}"
+            );
+        }
         Ok(())
     }
 

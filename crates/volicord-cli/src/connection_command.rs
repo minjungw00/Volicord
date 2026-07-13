@@ -32,7 +32,9 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
-use volicord_types::{GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus};
+use volicord_types::{
+    GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus, UtcTimestamp,
+};
 
 use crate::guard_integration::audit::{
     all_recorded_values_true, combine_optional_file_states, file_state_rank,
@@ -1686,10 +1688,11 @@ fn guard_state_for_connection(
         file_findings.merge(findings);
         if installation.last_seen_at.is_some() {
             observed = true;
-            last_observed_at = max_optional_text(
+            last_observed_at = max_optional_utc_timestamp(
                 last_observed_at,
-                installation.last_seen_at.as_deref().map(str::to_owned),
-            );
+                installation.last_seen_at.as_deref(),
+                "guard_installations.last_seen_at",
+            )?;
         }
         if installation.last_seen_phase.as_deref() == Some("prompt_capture") {
             prompt_capture_observed = true;
@@ -1701,6 +1704,7 @@ fn guard_state_for_connection(
         }
         prompt_capture_host_supported |= file_findings.prompt_capture_host_supported;
     }
+    let last_observed_at = last_observed_at.map(|timestamp| timestamp.to_canonical_string());
     file_findings.sort_dedup();
     let guard_profile_state = guard_profile_state_for_installations(&installations, &file_findings);
     let managed_source_state =
@@ -2183,19 +2187,53 @@ fn last_guard_event_for_projects(
         if let Some(event) =
             guard_health_record(runtime_home, &project.project_id, connection_id)?.latest_event
         {
-            latest = max_optional_text(latest, Some(event.occurred_at));
+            latest = max_optional_utc_timestamp(
+                latest,
+                Some(&event.occurred_at),
+                "guard_events.occurred_at",
+            )?;
         }
     }
-    Ok(latest)
+    Ok(latest.map(|timestamp| timestamp.to_canonical_string()))
 }
 
-fn max_optional_text(current: Option<String>, candidate: Option<String>) -> Option<String> {
+fn max_optional_utc_timestamp(
+    current: Option<UtcTimestamp>,
+    candidate: Option<&str>,
+    owner_field: &str,
+) -> Result<Option<UtcTimestamp>, ConnectionCommandError> {
+    let Some(candidate) = candidate else {
+        return Ok(current);
+    };
+    let candidate = canonical_utc_timestamp(candidate).ok_or_else(|| {
+        ConnectionCommandError::runtime(format!(
+            "stored {owner_field} is not a canonical four-digit RFC 3339 UTC instant"
+        ))
+    })?;
+    Ok(Some(match current {
+        Some(current) => current.max(candidate),
+        None => candidate,
+    }))
+}
+
+fn max_optional_observation_timestamp(
+    current: Option<String>,
+    candidate: Option<String>,
+) -> Option<String> {
+    let current = current.as_deref().and_then(canonical_utc_timestamp);
+    let candidate = candidate.as_deref().and_then(canonical_utc_timestamp);
     match (current, candidate) {
-        (Some(current), Some(candidate)) => Some(current.max(candidate)),
-        (Some(current), None) => Some(current),
-        (None, Some(candidate)) => Some(candidate),
+        (Some(current), Some(candidate)) => Some(current.max(candidate).to_canonical_string()),
+        (Some(current), None) => Some(current.to_canonical_string()),
+        (None, Some(candidate)) => Some(candidate.to_canonical_string()),
         (None, None) => None,
     }
+}
+
+fn canonical_utc_timestamp(value: &str) -> Option<UtcTimestamp> {
+    let timestamp = UtcTimestamp::parse(value).ok()?;
+    timestamp.ensure_canonical_rfc3339_representable().ok()?;
+    Some(timestamp)
 }
 
 fn user_actions_json(
@@ -2401,6 +2439,61 @@ mod tests {
     use super::*;
     use volicord_store::agent_connections::VERIFIED_STATUS_COMPLETE;
     use volicord_types::RECONCILE_CHANGES_TOOL_NAME;
+
+    #[test]
+    fn optional_utc_max_uses_exact_instants_and_canonicalizes_offsets() {
+        let current = max_optional_utc_timestamp(
+            None,
+            Some("2026-07-13T09:00:00.000000499+09:00"),
+            "fixture.observed_at",
+        )
+        .expect("first timestamp should parse");
+        let latest = max_optional_utc_timestamp(
+            current,
+            Some("2026-07-13T00:00:00.000000501Z"),
+            "fixture.observed_at",
+        )
+        .expect("later timestamp should parse")
+        .expect("latest timestamp should exist");
+
+        assert_eq!(
+            latest.to_canonical_string(),
+            "2026-07-13T00:00:00.000000501Z"
+        );
+    }
+
+    #[test]
+    fn optional_utc_max_rejects_unrepresentable_stored_instants() {
+        let error = max_optional_utc_timestamp(
+            None,
+            Some("9999-12-31T23:59:59-23:59"),
+            "fixture.observed_at",
+        )
+        .expect_err("normalized year 10000 must fail closed");
+
+        assert!(error.to_string().contains("fixture.observed_at"));
+        assert!(error.to_string().contains("four-digit RFC 3339"));
+    }
+
+    #[test]
+    fn observation_timestamp_max_ignores_invalid_values_and_uses_exact_instants() {
+        assert_eq!(
+            max_optional_observation_timestamp(None, Some("9999-12-31T23:59:59-23:59".to_owned())),
+            None
+        );
+        let current = max_optional_observation_timestamp(
+            None,
+            Some("2026-07-13T09:00:00.000000499+09:00".to_owned()),
+        );
+        assert_eq!(
+            max_optional_observation_timestamp(
+                current,
+                Some("2026-07-13T00:00:00.000000501Z".to_owned())
+            )
+            .as_deref(),
+            Some("2026-07-13T00:00:00.000000501Z")
+        );
+    }
 
     fn plan_guard_integration_for_test(
         host_kind: HostKind,

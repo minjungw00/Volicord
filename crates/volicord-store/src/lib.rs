@@ -17,11 +17,11 @@ pub mod evidence_capture;
 pub mod export;
 pub mod guards;
 pub mod inspection;
-pub mod local_consent;
 pub mod runtime_home;
 pub mod schema;
 pub mod session_watch;
 pub mod sqlite;
+pub mod user_action_channel;
 
 pub use error::{StoreError, StoreFailureRoute, StoreResult};
 

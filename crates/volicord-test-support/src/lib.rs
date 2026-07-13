@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
 use volicord_store::{
@@ -117,20 +117,21 @@ pub mod core_fixtures {
 
     use volicord_store::StoreError;
     use volicord_types::{
-        AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
-        ArtifactInputId, ArtifactInputSourceKind, BaselineRef, ChangeUnitId, ChangeUnitOperation,
-        ChangeUnitUpdate, CheckCloseRequest, CloseIntent, CloseMutationIntent, CloseReason,
-        CloseTaskRequest, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceCoverageUpdate,
-        EvidenceCoverageUpdateState, EvidenceRequirement, EvidenceSourceKind, EvidenceTarget,
-        EvidenceUpdateProvenance, IdempotencyKey, InitialScope, IntakeRequest, JsonObject,
-        JudgmentKind, JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor,
-        ObservedChanges, PrepareWriteRequest, ProjectId, RecordId, RecordRunRequest,
-        RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestId,
-        RequestUserJudgmentRequest, RequestedMode, RequiredNullable, ResumePolicy, RunKind,
-        ScopeUpdate, SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle,
-        StateRecordKind, StateRecordRef, StatusInclude, StatusRequest, TaskId, ToolEnvelope,
-        UpdateScopeRequest, UserJudgmentId, UserJudgmentOptionId, UserJudgmentOptionInput,
-        WriteTicketId,
+        AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactId,
+        ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, BaselineRef, ChangeUnitId,
+        ChangeUnitOperation, ChangeUnitUpdate, CheckCloseRequest, CloseIntent, CloseMutationIntent,
+        CloseReason, CloseTaskRequest, EvidenceAssuranceLevel, EvidenceClaimId,
+        EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceRelevanceStatus,
+        EvidenceRequirement, EvidenceSourceKind, EvidenceTarget, EvidenceUpdateProvenance,
+        IdempotencyKey, InitialScope, IntakeRequest, JsonObject, JudgmentKind,
+        JudgmentPresentation, ObservedChanges, PrepareWriteRequest, ProjectId, RecordId,
+        RecordRunRequest, RedactionState, RequestId, RequestUserActionRequest, RequestedMode,
+        RequiredNullable, ResolveUserActionRequest, ResumePolicy, RunKind, ScopeUpdate,
+        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
+        StateRecordRef, StatusInclude, StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest,
+        UserActionChoiceDraft, UserActionContext, UserActionDraft,
+        UserActionEvidenceObservationDraft, UserActionOptionId, UserActionOptionInput,
+        UserActionRequestId, UserActionRequiredFor, UserActionResolutionInput, WriteTicketId,
     };
 
     use super::*;
@@ -512,29 +513,28 @@ pub mod core_fixtures {
             }
         }
 
-        /// Builds a default `volicord.request_user_judgment` request.
-        pub fn user_judgment_request(
+        /// Builds a default choice-shaped `volicord.request_user_action` request.
+        pub fn user_action_request(
             &self,
-            input: UserJudgmentFixture<'_>,
-        ) -> RequestUserJudgmentRequest {
+            input: UserActionFixture<'_>,
+        ) -> RequestUserActionRequest {
             let options = if matches!(
                 input.judgment_kind,
                 JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision
             ) {
                 vec![
-                    UserJudgmentOptionInput {
-                        option_id: UserJudgmentOptionId::new("accept"),
+                    UserActionOptionInput {
+                        option_id: UserActionOptionId::new("accept"),
                         label: "Accept".to_owned(),
-                        description: "Record the focused user-owned judgment.".to_owned(),
-                        consequence: "Only this judgment record is resolved.".to_owned(),
+                        description: "Resolve the focused user-owned choice.".to_owned(),
+                        consequence: "Only this user action is accepted.".to_owned(),
                         is_default: true,
                     },
-                    UserJudgmentOptionInput {
-                        option_id: UserJudgmentOptionId::new("decline"),
+                    UserActionOptionInput {
+                        option_id: UserActionOptionId::new("decline"),
                         label: "Decline".to_owned(),
-                        description: "Record that the focused judgment was not accepted."
-                            .to_owned(),
-                        consequence: "The Task remains unresolved for this question.".to_owned(),
+                        description: "Record that the focused choice was not accepted.".to_owned(),
+                        consequence: "The user action resolves without acceptance.".to_owned(),
                         is_default: false,
                     },
                 ]
@@ -542,7 +542,7 @@ pub mod core_fixtures {
                 Vec::new()
             };
 
-            RequestUserJudgmentRequest {
+            RequestUserActionRequest {
                 envelope: self.envelope(
                     input.request_id,
                     Some(input.idempotency_key),
@@ -552,47 +552,72 @@ pub mod core_fixtures {
                 ),
                 task_id: TaskId::new(input.task_id),
                 change_unit_id: input.change_unit_id.map(ChangeUnitId::new).into(),
-                judgment_kind: input.judgment_kind,
-                presentation: JudgmentPresentation::Short,
-                question: "Choose the focused test judgment outcome.".to_owned(),
-                options: Some(options).into(),
-                context: volicord_types::UserJudgmentContext {
-                    summary: "A focused test judgment needs a user-owned answer.".to_owned(),
-                    related_refs: Vec::new(),
-                    artifact_refs: Vec::new(),
-                    visible_risks: Vec::new(),
-                    constraints: vec![
-                        "The answer covers only the requested judgment kind.".to_owned()
-                    ],
-                },
-                affected_refs: vec![self.task_ref(input.task_id, input.expected_state_version)],
-                sensitive_action_scope: sensitive_action_scope_for_kind(input.judgment_kind).into(),
+                action: UserActionDraft::Choice(Box::new(UserActionChoiceDraft {
+                    judgment_kind: input.judgment_kind,
+                    presentation: JudgmentPresentation::Short,
+                    question: "Choose the focused test user-action outcome.".to_owned(),
+                    options: Some(options).into(),
+                    context: UserActionContext {
+                        summary: "A focused test user action needs a user-owned answer.".to_owned(),
+                        related_refs: Vec::new(),
+                        artifact_refs: Vec::new(),
+                        visible_risks: Vec::new(),
+                        constraints: vec![
+                            "The answer covers only the requested action kind.".to_owned()
+                        ],
+                    },
+                    affected_refs: vec![self.task_ref(input.task_id, input.expected_state_version)],
+                    sensitive_action_scope: sensitive_action_scope_for_kind(input.judgment_kind)
+                        .into(),
+                })),
                 required_for: required_for_for_kind(input.judgment_kind),
                 expires_at: None.into(),
             }
         }
 
-        /// Builds a default `volicord.record_user_judgment` request.
-        pub fn record_judgment_request(
+        /// Builds an evidence-observation `volicord.request_user_action` request.
+        pub fn observation_user_action_request(
             &self,
-            input: RecordJudgmentFixture<'_>,
-        ) -> RecordUserJudgmentRequest {
-            let envelope = self.envelope(
-                input.request_id,
-                Some(input.idempotency_key),
-                false,
-                input.expected_state_version,
-                Some(input.task_id),
-            );
-            RecordUserJudgmentRequest {
-                envelope,
-                user_judgment_id: UserJudgmentId::new(input.user_judgment_id),
-                judgment_kind: input.judgment_kind,
-                selected_option_id: UserJudgmentOptionId::new("accept"),
-                answer: input.answer,
-                rationale: default_judgment_rationale(),
-                note: Some("Recorded by a focused conformance fixture.".to_owned()).into(),
-                accepted_risks: Vec::new(),
+            input: ObservationUserActionFixture<'_>,
+        ) -> RequestUserActionRequest {
+            RequestUserActionRequest {
+                envelope: self.envelope(
+                    input.request_id,
+                    Some(input.idempotency_key),
+                    input.dry_run,
+                    input.expected_state_version,
+                    Some(input.task_id),
+                ),
+                task_id: TaskId::new(input.task_id),
+                change_unit_id: Some(ChangeUnitId::new(input.change_unit_id)).into(),
+                action: UserActionDraft::EvidenceObservation(UserActionEvidenceObservationDraft {
+                    question: "Classify the focused evidence observation.".to_owned(),
+                    context_summary: "A user must assess the candidate artifact for the target."
+                        .to_owned(),
+                    target_candidates: input.target_candidates,
+                    artifact_candidate_ids: input.artifact_candidate_ids,
+                }),
+                required_for: vec![UserActionRequiredFor::RecordRun],
+                expires_at: None.into(),
+            }
+        }
+
+        /// Builds a `volicord.resolve_user_action` request for a verified User Channel.
+        pub fn resolve_user_action_request(
+            &self,
+            input: ResolveUserActionFixture<'_>,
+        ) -> ResolveUserActionRequest {
+            ResolveUserActionRequest {
+                envelope: self.envelope(
+                    input.request_id,
+                    Some(input.channel_submission_id),
+                    false,
+                    None,
+                    Some(input.task_id),
+                ),
+                user_action_request_id: UserActionRequestId::new(input.user_action_request_id),
+                channel_submission_id: input.channel_submission_id.to_owned(),
+                resolution: input.resolution,
             }
         }
 
@@ -672,71 +697,122 @@ pub mod core_fixtures {
             Ok(u64::try_from(basis)?)
         }
 
-        /// Reads the current status of a user-owned judgment row.
-        pub fn user_judgment_status(&self, judgment_id: &str) -> Result<String, StoreError> {
+        /// Reads the effective non-expiry status of a user-action request fixture.
+        pub fn user_action_status(
+            &self,
+            user_action_request_id: &str,
+        ) -> Result<String, StoreError> {
             Ok(self.conn()?.query_row(
-                "SELECT status
-                   FROM user_judgments
-                  WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
+                "SELECT CASE
+                          WHEN request.basis_status = 'stale' THEN 'stale'
+                          WHEN request.basis_status = 'superseded' THEN 'superseded'
+                          WHEN resolution.user_action_resolution_id IS NOT NULL THEN 'resolved'
+                          ELSE 'pending'
+                        END
+                   FROM user_action_requests AS request
+              LEFT JOIN user_action_resolutions AS resolution
+                     ON resolution.project_id = request.project_id
+                    AND resolution.user_action_request_id = request.user_action_request_id
+                  WHERE request.project_id = ?1
+                    AND request.user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id],
                 |row| row.get(0),
             )?)
         }
 
-        /// Reads the current compatibility status for a user-owned judgment basis.
-        pub fn user_judgment_basis_status(&self, judgment_id: &str) -> Result<String, StoreError> {
+        /// Reads the current compatibility status for a user-action request basis.
+        pub fn user_action_basis_status(
+            &self,
+            user_action_request_id: &str,
+        ) -> Result<String, StoreError> {
             Ok(self.conn()?.query_row(
                 "SELECT basis_status
-                   FROM user_judgments
+                   FROM user_action_requests
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id],
                 |row| row.get(0),
             )?)
         }
 
-        /// Reads the resolved answer JSON for a user-owned judgment row.
-        pub fn user_judgment_resolution(&self, judgment_id: &str) -> Result<Value, Box<dyn Error>> {
+        /// Reads the immutable resolution JSON for a user-action request.
+        pub fn user_action_resolution(
+            &self,
+            user_action_request_id: &str,
+        ) -> Result<Value, Box<dyn Error>> {
             let text: String = self.conn()?.query_row(
                 "SELECT resolution_json
-                   FROM user_judgments
+                   FROM user_action_resolutions
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id],
                 |row| row.get(0),
             )?;
             Ok(serde_json::from_str(&text)?)
         }
 
-        /// Reads the stored machine-readable resolution outcome for a user-owned judgment row.
-        pub fn user_judgment_resolution_outcome(
+        /// Reads the Core-derived resolution outcome for a choice user action.
+        pub fn user_action_resolution_outcome(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
         ) -> Result<Option<String>, StoreError> {
-            Ok(self.conn()?.query_row(
-                "SELECT resolution_outcome
-                   FROM user_judgments
-                  WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
-                |row| row.get(0),
-            )?)
+            let Some(text) = self
+                .conn()?
+                .query_row(
+                    "SELECT resolution_json
+                       FROM user_action_resolutions
+                      WHERE project_id = ?1
+                        AND user_action_request_id = ?2",
+                    rusqlite::params![self.project_id, user_action_request_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+            else {
+                return Ok(None);
+            };
+            let value: Value = serde_json::from_str(&text).map_err(|_| {
+                StoreError::corrupt_owner_state_json(
+                    "user_action_resolutions",
+                    user_action_request_id,
+                    "resolution_json",
+                )
+            })?;
+            Ok(value
+                .get("resolution_outcome")
+                .and_then(Value::as_str)
+                .map(str::to_owned))
         }
 
-        /// Reads the stored machine-readable resolution action for a user-owned judgment row.
-        pub fn user_judgment_resolution_machine_action(
+        /// Reads the Core-derived machine action for a choice user action.
+        pub fn user_action_resolution_machine_action(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
         ) -> Result<Option<String>, StoreError> {
-            Ok(self.conn()?.query_row(
-                "SELECT resolution_machine_action
-                   FROM user_judgments
-                  WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
-                |row| row.get(0),
-            )?)
+            let Some(text) = self
+                .conn()?
+                .query_row(
+                    "SELECT resolution_json
+                       FROM user_action_resolutions
+                      WHERE project_id = ?1
+                        AND user_action_request_id = ?2",
+                    rusqlite::params![self.project_id, user_action_request_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+            else {
+                return Ok(None);
+            };
+            let value: Value = serde_json::from_str(&text).map_err(|_| {
+                StoreError::corrupt_owner_state_json(
+                    "user_action_resolutions",
+                    user_action_request_id,
+                    "resolution_json",
+                )
+            })?;
+            Ok(value
+                .get("machine_action")
+                .and_then(Value::as_str)
+                .map(str::to_owned))
         }
 
         /// Reads the currently applied Change Unit id for a Task.
@@ -789,7 +865,7 @@ pub mod core_fixtures {
                    FROM evidence_summaries
                   WHERE project_id = ?1
                     AND task_id = ?2
-                  ORDER BY updated_at DESC, evidence_summary_id DESC
+                  ORDER BY produced_at_state_version DESC, evidence_summary_id DESC
                   LIMIT 1",
                 rusqlite::params![self.project_id, task_id],
                 |row| row.get(0),
@@ -959,57 +1035,39 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces a user-owned judgment resolution JSON value with SQL NULL or raw text.
-        pub fn set_user_judgment_resolution_raw(
+        /// Replaces a user-action resolution JSON value with SQL NULL or raw text.
+        pub fn set_user_action_resolution_raw(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
             raw_json: Option<&str>,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE user_judgments
-                    SET resolution_json = ?3,
-                        status = 'resolved',
-                        resolved_at = 't_corrupt_fixture'
+                "UPDATE user_action_resolutions
+                    SET resolution_json = ?3
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id, raw_json],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id, raw_json],
             )?;
             Ok(())
         }
 
-        /// Rewrites the stored machine-readable outcome for controlled authority fixtures.
-        pub fn set_user_judgment_resolution_outcome(
+        /// Rewrites the stored choice outcome for controlled authority fixtures.
+        pub fn set_user_action_resolution_outcome(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
             outcome: Option<&str>,
         ) -> Result<(), Box<dyn Error>> {
             let outcome = outcome.ok_or("resolution outcome is required for current fixtures")?;
-            let current_json: Option<String> = self.conn()?.query_row(
+            let current_json: String = self.conn()?.query_row(
                 "SELECT resolution_json
-                   FROM user_judgments
+                   FROM user_action_resolutions
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id],
                 |row| row.get(0),
             )?;
-            let updated_json = current_json
-                .map(|text| -> Result<String, Box<dyn Error>> {
-                    let mut value: Value = serde_json::from_str(&text)?;
-                    value["resolution_outcome"] = Value::String(outcome.to_owned());
-                    value["machine_action"] = match outcome {
-                        "accepted" => Value::String("accept".to_owned()),
-                        "rejected" => Value::String("reject".to_owned()),
-                        "deferred" => Value::String("defer".to_owned()),
-                        "blocked" => {
-                            return Err("blocked has no current machine action".into());
-                        }
-                        value => {
-                            return Err(format!("unsupported test outcome {value}").into());
-                        }
-                    };
-                    Ok(serde_json::to_string(&value)?)
-                })
-                .transpose()?;
+            let mut value: Value = serde_json::from_str(&current_json)?;
+            value["resolution_outcome"] = Value::String(outcome.to_owned());
             let machine_action = match outcome {
                 "accepted" => "accept",
                 "rejected" => "reject",
@@ -1021,96 +1079,80 @@ pub mod core_fixtures {
                     return Err(format!("unsupported test outcome {value}").into());
                 }
             };
+            value["machine_action"] = Value::String(machine_action.to_owned());
             self.conn()?.execute(
-                "UPDATE user_judgments
-                    SET resolution_outcome = ?3,
-                        resolution_machine_action = ?4,
-                        resolution_json = ?5
+                "UPDATE user_action_resolutions
+                    SET resolution_json = ?3
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
+                    AND user_action_request_id = ?2",
                 rusqlite::params![
                     self.project_id,
-                    judgment_id,
-                    outcome,
-                    machine_action,
-                    updated_json
+                    user_action_request_id,
+                    serde_json::to_string(&value)?
                 ],
             )?;
             Ok(())
         }
 
         /// Rewrites the stored resolving actor for controlled authority fixtures.
-        pub fn set_user_judgment_resolution_actor(
+        pub fn set_user_action_resolution_actor(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
             actor_source: &str,
         ) -> Result<(), Box<dyn Error>> {
-            let text: String = self.conn()?.query_row(
-                "SELECT resolution_json
-                   FROM user_judgments
-                  WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
-                |row| row.get(0),
-            )?;
-            let mut value: Value = serde_json::from_str(&text)?;
-            value["resolved_by_actor_source"] = Value::String(actor_source.to_owned());
             self.conn()?.execute(
-                "UPDATE user_judgments
-                    SET resolution_json = ?3,
-                        resolved_by_actor_source = ?4
+                "UPDATE user_action_resolutions
+                    SET resolved_by_actor_source = ?3
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![
-                    self.project_id,
-                    judgment_id,
-                    serde_json::to_string(&value)?,
-                    actor_source
-                ],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id, actor_source],
             )?;
             Ok(())
         }
 
-        /// Replaces a user-owned judgment request JSON value with raw text.
-        pub fn set_user_judgment_request_raw(
+        /// Replaces a user-action request JSON value with raw text.
+        pub fn set_user_action_request_raw(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE user_judgments
+                "UPDATE user_action_requests
                     SET request_json = ?3
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id, raw_json],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id, raw_json],
             )?;
             Ok(())
         }
 
-        /// Replaces a user-owned judgment basis JSON value with raw text.
-        pub fn set_user_judgment_basis_raw(
+        /// Replaces a user-action request basis JSON value with raw text.
+        pub fn set_user_action_basis_raw(
             &self,
-            judgment_id: &str,
+            user_action_request_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE user_judgments
+                "UPDATE user_action_requests
                     SET basis_json = ?3
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id, raw_json],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id, raw_json],
             )?;
             Ok(())
         }
 
-        /// Attempts to clear the required user-owned judgment basis JSON value.
-        pub fn clear_user_judgment_basis(&self, judgment_id: &str) -> Result<(), StoreError> {
+        /// Attempts to clear the required user-action request basis JSON value.
+        pub fn clear_user_action_basis(
+            &self,
+            user_action_request_id: &str,
+        ) -> Result<(), StoreError> {
             self.conn()?.execute(
-                "UPDATE user_judgments
+                "UPDATE user_action_requests
                     SET basis_json = NULL
                   WHERE project_id = ?1
-                    AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id],
+                    AND user_action_request_id = ?2",
+                rusqlite::params![self.project_id, user_action_request_id],
             )?;
             Ok(())
         }
@@ -1372,9 +1414,9 @@ pub mod core_fixtures {
         pub scope_summary: &'a str,
     }
 
-    /// Input object for request-user-judgment request builders.
+    /// Input object for choice-shaped request-user-action builders.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct UserJudgmentFixture<'a> {
+    pub struct UserActionFixture<'a> {
         pub request_id: &'a str,
         pub idempotency_key: &'a str,
         pub dry_run: bool,
@@ -1384,33 +1426,45 @@ pub mod core_fixtures {
         pub judgment_kind: JudgmentKind,
     }
 
-    fn required_for_for_kind(judgment_kind: JudgmentKind) -> Vec<JudgmentRequiredFor> {
-        match judgment_kind {
-            JudgmentKind::ScopeDecision => vec![JudgmentRequiredFor::ScopeUpdate],
-            JudgmentKind::SensitiveApproval => vec![
-                JudgmentRequiredFor::PrepareWrite,
-                JudgmentRequiredFor::CloseComplete,
-            ],
-            JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance => {
-                vec![JudgmentRequiredFor::CloseComplete]
-            }
-            JudgmentKind::Cancellation => vec![JudgmentRequiredFor::CloseCancel],
-            JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision => {
-                vec![JudgmentRequiredFor::CloseComplete]
-            }
-        }
-    }
-
-    /// Input object for record-user-judgment request builders.
+    /// Input object for evidence-observation request-user-action builders.
     #[derive(Debug, Clone, PartialEq)]
-    pub struct RecordJudgmentFixture<'a> {
+    pub struct ObservationUserActionFixture<'a> {
         pub request_id: &'a str,
         pub idempotency_key: &'a str,
+        pub dry_run: bool,
         pub expected_state_version: Option<u64>,
         pub task_id: &'a str,
-        pub user_judgment_id: &'a str,
-        pub judgment_kind: JudgmentKind,
-        pub answer: RecordUserJudgmentPayload,
+        pub change_unit_id: &'a str,
+        pub target_candidates: Vec<EvidenceTarget>,
+        pub artifact_candidate_ids: Vec<ArtifactId>,
+    }
+
+    /// Input object for resolve-user-action request builders.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct ResolveUserActionFixture<'a> {
+        pub request_id: &'a str,
+        pub task_id: &'a str,
+        pub user_action_request_id: &'a str,
+        /// Stable User Channel submission id, also used as the idempotency key.
+        pub channel_submission_id: &'a str,
+        pub resolution: UserActionResolutionInput,
+    }
+
+    fn required_for_for_kind(judgment_kind: JudgmentKind) -> Vec<UserActionRequiredFor> {
+        match judgment_kind {
+            JudgmentKind::ScopeDecision => vec![UserActionRequiredFor::ScopeUpdate],
+            JudgmentKind::SensitiveApproval => vec![
+                UserActionRequiredFor::PrepareWrite,
+                UserActionRequiredFor::CloseComplete,
+            ],
+            JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance => {
+                vec![UserActionRequiredFor::CloseComplete]
+            }
+            JudgmentKind::Cancellation => vec![UserActionRequiredFor::CloseCancel],
+            JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision => {
+                vec![UserActionRequiredFor::CloseComplete]
+            }
+        }
     }
 
     /// Input object for close-task request builders.
@@ -1447,12 +1501,35 @@ pub mod core_fixtures {
     pub fn status_include_all() -> StatusInclude {
         StatusInclude {
             task: true,
-            pending_user_judgments: true,
+            pending_user_actions: true,
             write_ticket: true,
             evidence: true,
             close: true,
             guarantees: true,
             continuity: true,
+        }
+    }
+
+    /// Builds a choice resolution that preserves the selected user value and a bounded note.
+    pub fn choice_user_action_resolution(selected_option_id: &str) -> UserActionResolutionInput {
+        UserActionResolutionInput::Choice {
+            selected_option_id: UserActionOptionId::new(selected_option_id),
+            note: Some("Recorded by a focused user-action fixture.".to_owned()).into(),
+        }
+    }
+
+    /// Builds a user-owned evidence-observation resolution with no caller-supplied time.
+    pub fn observation_user_action_resolution(
+        target: EvidenceTarget,
+        artifact_ids: Vec<ArtifactId>,
+        relevance_status: EvidenceRelevanceStatus,
+        summary: impl Into<String>,
+    ) -> UserActionResolutionInput {
+        UserActionResolutionInput::EvidenceObservation {
+            target,
+            artifact_ids,
+            relevance_status,
+            summary: summary.into(),
         }
     }
 
@@ -1543,94 +1620,6 @@ pub mod core_fixtures {
         }
     }
 
-    fn default_judgment_rationale() -> JudgmentRationale {
-        JudgmentRationale {
-            summary: "The user selected the focused fixture judgment option.".to_owned(),
-            selected_reason: Some(
-                "The selected option matches the fixture's visible judgment prompt.".to_owned(),
-            )
-            .into(),
-            considered_alternatives: vec!["Use another listed option.".to_owned()],
-            rejected_alternatives: Vec::new(),
-            assumptions: vec!["The fixture basis is current at record time.".to_owned()],
-            tradeoffs: vec![
-                "The rationale preserves intent without changing option authority.".to_owned(),
-            ],
-            uncertainties: Vec::new(),
-            review_triggers: vec!["Review if the fixture basis becomes stale.".to_owned()],
-            related_refs: Vec::new(),
-            artifact_refs: Vec::new(),
-        }
-    }
-
-    /// Builds a judgment answer payload with exactly one branch populated.
-    pub fn answer_payload(judgment_kind: JudgmentKind) -> RecordUserJudgmentPayload {
-        let mut payload = RecordUserJudgmentPayload {
-            product_decision: None.into(),
-            technical_decision: None.into(),
-            scope_decision: None.into(),
-            sensitive_action_scope: None.into(),
-            final_acceptance: None.into(),
-            residual_risk_acceptance: None.into(),
-            cancellation: None.into(),
-        };
-        match judgment_kind {
-            JudgmentKind::ProductDecision => {
-                payload.product_decision = Some(json_object(json!({
-                    "judgment": {
-                        "decision": "accepted",
-                        "rationale": "The product direction is accepted for this focused test."
-                    }
-                })))
-                .into();
-            }
-            JudgmentKind::TechnicalDecision => {
-                payload.technical_decision = Some(json_object(json!({
-                    "judgment": {
-                        "decision": "accepted",
-                        "rationale": "The technical direction is accepted for this focused test."
-                    }
-                })))
-                .into();
-            }
-            JudgmentKind::ScopeDecision => {
-                payload.scope_decision = Some(json_object(json!({
-                    "requested_scope_summary": "Expanded scope that must not apply silently.",
-                    "decision": "accepted"
-                })))
-                .into();
-            }
-            JudgmentKind::SensitiveApproval => {
-                payload.sensitive_action_scope =
-                    sensitive_action_scope_for_kind(judgment_kind).into();
-            }
-            JudgmentKind::FinalAcceptance => {
-                payload.final_acceptance = Some(json_object(json!({
-                    "judgment": {
-                        "decision": "accepted",
-                        "basis": "The visible close basis is acceptable."
-                    }
-                })))
-                .into();
-            }
-            JudgmentKind::ResidualRiskAcceptance => {
-                payload.residual_risk_acceptance = Some(json_object(json!({
-                    "risk_id": "risk_visible_001",
-                    "decision": "accepted"
-                })))
-                .into();
-            }
-            JudgmentKind::Cancellation => {
-                payload.cancellation = Some(json_object(json!({
-                    "decision": "cancel",
-                    "reason": "The user chose to stop the Task."
-                })))
-                .into();
-            }
-        }
-        payload
-    }
-
     /// Builds an accepted-risk input for close-readiness fixtures.
     pub fn accepted_risk(summary: &str) -> AcceptedRiskInput {
         AcceptedRiskInput {
@@ -1666,13 +1655,6 @@ pub mod core_fixtures {
             component
         }
     }
-
-    fn json_object(value: Value) -> JsonObject {
-        match value {
-            Value::Object(object) => object,
-            _ => panic!("fixture helper expected a JSON object"),
-        }
-    }
 }
 
 /// Identifies the shared type boundary used by test helpers.
@@ -1682,8 +1664,14 @@ pub const fn shared_type_boundary() -> TypeBoundary {
 
 #[cfg(test)]
 mod tests {
-    use super::{disposable_runtime_home, shared_type_boundary, TempRuntimeHome};
-    use volicord_types::TypeBoundary;
+    use super::{
+        core_fixtures::{choice_user_action_resolution, observation_user_action_resolution},
+        disposable_runtime_home, shared_type_boundary, TempRuntimeHome,
+    };
+    use volicord_types::{
+        ArtifactId, EvidenceClaimId, EvidenceRelevanceStatus, EvidenceTarget, TypeBoundary,
+        UserActionResolutionInput,
+    };
 
     #[test]
     fn disposable_runtime_home_stays_under_system_temp() {
@@ -1709,5 +1697,31 @@ mod tests {
         assert!(runtime_home
             .artifacts_tmp_path("PRJ-helpers")
             .ends_with("projects/PRJ-helpers/artifacts/tmp"));
+    }
+
+    #[test]
+    fn user_action_resolution_helpers_keep_user_selection_bounded() {
+        let choice = choice_user_action_resolution("accept");
+        assert!(matches!(
+            choice,
+            UserActionResolutionInput::Choice {
+                selected_option_id,
+                note,
+            } if selected_option_id.as_str() == "accept" && note.is_some()
+        ));
+
+        let observation = observation_user_action_resolution(
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id: EvidenceClaimId::new("claim_fixture"),
+                statement: "The exact artifact is relevant.".to_owned(),
+            },
+            vec![ArtifactId::new("artifact_fixture")],
+            EvidenceRelevanceStatus::Supported,
+            "The user selected the exact candidate.",
+        );
+        assert!(matches!(
+            observation,
+            UserActionResolutionInput::EvidenceObservation { .. }
+        ));
     }
 }

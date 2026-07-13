@@ -29,7 +29,7 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
-        let plan_now = utc_timestamp(self.now());
+        let plan_now = prepared.operation_now.clone();
         if !request.envelope.dry_run && prepared.store.is_writable() {
             if let Err(error) = session_watch::run_session_watch_check(
                 &prepared.store,
@@ -118,7 +118,7 @@ impl CoreService {
         )? {
             return Ok(response);
         }
-        let plan_now = utc_timestamp(self.now());
+        let plan_now = prepared.operation_now.clone();
         if request.intent == CloseIntent::Complete && !request.envelope.dry_run {
             if let Err(error) = session_watch::run_session_watch_check(
                 &prepared.store,
@@ -436,7 +436,8 @@ pub(super) fn plan_close_task(
     request: CloseTaskPlanRequest,
     now: &UtcTimestamp,
 ) -> Result<CloseTaskPlan, PlanError> {
-    let context = load_close_task_context(store, project_state, verified_invocation, &request)?;
+    let context =
+        load_close_task_context(store, project_state, verified_invocation, &request, now)?;
     plan_close_task_with_context(
         store,
         project_state,
@@ -584,7 +585,7 @@ pub(super) fn plan_close_task_with_context(
         task: &synthetic_task,
         current_change_unit: context.current_change_unit.as_ref(),
         acceptance_criteria,
-        pending_user_judgment_refs: context.pending_user_judgment_refs.clone(),
+        pending_user_action_refs: context.pending_user_action_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
         write_ticket_summary: projected_write_ticket_summary(
             store,
@@ -608,14 +609,14 @@ pub(super) fn plan_close_task_with_context(
         .guard_health
         .as_ref()
         .map(coverage_summary_from_guard_health);
-    let current_close_pending_judgment_ids = blockers
+    let current_close_pending_user_action_ids = blockers
         .iter()
-        .filter(|blocker| blocker.code == "pending_user_judgment")
+        .filter(|blocker| blocker.code == "pending_user_action")
         .flat_map(|blocker| blocker.related_refs.iter())
-        .filter(|record_ref| record_ref.record_kind == StateRecordKind::UserJudgment)
+        .filter(|record_ref| record_ref.record_kind == StateRecordKind::UserActionRequest)
         .map(|record_ref| record_ref.record_id.as_str())
         .collect::<BTreeSet<_>>();
-    let mut result_pending_judgment_inbox_items = pending_judgment_inbox_items(
+    let mut result_pending_user_action_inbox_items = pending_user_action_inbox_items(
         store,
         project_state,
         &request.envelope,
@@ -630,9 +631,11 @@ pub(super) fn plan_close_task_with_context(
                 .map(|invocation| invocation.local_web_consent_available)
                 .unwrap_or(false),
         },
+        now,
     )?;
-    result_pending_judgment_inbox_items
-        .retain(|item| current_close_pending_judgment_ids.contains(item.judgment_id.as_str()));
+    result_pending_user_action_inbox_items.retain(|item| {
+        current_close_pending_user_action_ids.contains(item.user_action_request_id.as_str())
+    });
     let no_next_actions: &[NextActionSummary] = &[];
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&synthetic_task),
@@ -647,7 +650,7 @@ pub(super) fn plan_close_task_with_context(
         ),
         write_ticket: write_ticket_summary_text(true, result_state.write_ticket_summary.as_ref()),
         evidence: evidence_gate_summary_text(true, result_state.evidence_gate.as_ref()),
-        pending_user_judgments: result_state.pending_user_judgment_refs.len(),
+        pending_user_actions: result_state.pending_user_action_refs.len(),
         changes: changes_summary_text(
             true,
             context
@@ -670,7 +673,7 @@ pub(super) fn plan_close_task_with_context(
         continuity_summary: Vec::new(),
         state: result_state.clone(),
         blockers: blockers.clone(),
-        pending_judgment_inbox_items: result_pending_judgment_inbox_items,
+        pending_user_action_inbox_items: result_pending_user_action_inbox_items,
         guard_health: context.guard_health.clone(),
         coverage_summary: result_coverage_summary,
         evidence_summary: result_evidence_summary.clone(),
@@ -856,6 +859,7 @@ fn load_close_task_context(
     project_state: &ProjectStateHeader,
     verified_invocation: Option<&VerifiedInvocationContext>,
     request: &CloseTaskPlanRequest,
+    now: &UtcTimestamp,
 ) -> Result<CloseTaskContext, PlanError> {
     let task = store
         .task_record(&request.task_id)
@@ -897,8 +901,8 @@ fn load_close_task_context(
             )))
         })?;
     let current_close_basis = task_revision.current_close_basis;
-    let pending_user_judgment_refs = store
-        .pending_user_judgment_refs(&request.task_id, project_state.state_version)
+    let pending_user_action_refs = store
+        .pending_user_action_refs(&request.task_id, project_state.state_version, now)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,
@@ -951,11 +955,12 @@ fn load_close_task_context(
         .unwrap_or_default();
 
     Ok(CloseTaskContext {
+        now: now.clone(),
         task,
         current_change_unit,
         current_close_basis,
         guard_health: projected_guard_health(store, project_state, verified_invocation, request)?,
-        pending_user_judgment_refs,
+        pending_user_action_refs,
         blocker_refs,
         evidence_summary,
         artifact_refs,
@@ -963,7 +968,7 @@ fn load_close_task_context(
         projected_evidence_observations: Vec::new(),
         projected_artifacts: Vec::new(),
         projected_required_criterion_ids: None,
-        pending_judgment_authorities: None,
+        pending_user_action_authorities: None,
         resolved_judgment_authorities: None,
     })
 }
@@ -1139,18 +1144,21 @@ pub(super) fn guard_health_summary_from_record(
         .map_err(PlanError::Core)?;
     let prompt_capture_status = prompt_capture_availability.status;
     let prompt_capture_available = prompt_capture_availability.can_use_chat_commands();
-    let missing_or_stale_write_ticket = record
-        .latest_event
-        .as_ref()
-        .map(latest_guard_event_has_write_ticket_issue)
-        .transpose()?
-        .unwrap_or(false);
-    let write_ticket_path_scope_violation = record
-        .latest_event
-        .as_ref()
-        .map(latest_guard_event_has_write_ticket_path_scope_violation)
-        .transpose()?
-        .unwrap_or(false);
+    let missing_or_stale_write_ticket = record.co_latest_events.iter().try_fold(
+        false,
+        |found, event| -> Result<bool, PlanError> {
+            let event_has_issue = latest_guard_event_has_write_ticket_issue(event)?;
+            Ok(found || event_has_issue)
+        },
+    )?;
+    let write_ticket_path_scope_violation = record.co_latest_events.iter().try_fold(
+        false,
+        |found, event| -> Result<bool, PlanError> {
+            let event_has_violation =
+                latest_guard_event_has_write_ticket_path_scope_violation(event)?;
+            Ok(found || event_has_violation)
+        },
+    )?;
     let mut summary = GuardHealthSummary {
         selected_profile,
         control_surface: inactive_control_surface(selected_profile),
@@ -2493,7 +2501,7 @@ fn guard_blockers_with_control_surface(
     blockers
 }
 
-pub(super) fn user_channel_pending_judgment_instruction(
+pub(super) fn user_channel_pending_action_instruction(
     guard_health: Option<&GuardHealthSummary>,
 ) -> String {
     if guard_health.is_some_and(|summary| summary.prompt_capture_available) {
@@ -2501,7 +2509,7 @@ pub(super) fn user_channel_pending_judgment_instruction(
     } else if guard_health.is_some_and(|summary| summary.local_web_consent_available) {
         "Use the local consent URL if the adapter offers one.".to_owned()
     } else {
-        "Use `volicord inbox` to list and answer pending user-owned judgments.".to_owned()
+        "Use `volicord inbox` to list and resolve pending user actions.".to_owned()
     }
 }
 
@@ -2693,28 +2701,27 @@ fn terminal_close_blockers(
             }
         }
         CloseIntent::Supersede => {
-            let pending_refs = pending_judgment_refs_for_close_operation(
+            let pending_refs = pending_user_action_refs_for_close_operation(
                 store,
                 project_state,
                 request,
                 context,
-                JudgmentOperation::CloseSupersede,
+                UserActionOperation::CloseSupersede,
                 now,
             )?;
             if !pending_refs.is_empty() {
                 blockers.push(close_blocker(
-                    CloseReadinessBlockerCategory::PendingUserJudgment,
-                    "pending_user_judgment",
-                    "A user-owned judgment required before superseding this Task is still pending.",
+                    CloseReadinessBlockerCategory::PendingUserAction,
+                    "pending_user_action",
+                    "A user action required before superseding this Task is still pending.",
                     pending_refs.clone(),
                     vec![NextActionSummary {
                         presentation_role: NextActionPresentationRole::Primary,
-                        action_kind: NextActionKind::RecordUserJudgment,
-                        owner_method: Some(MethodName::RecordUserJudgment),
+                        action_kind: NextActionKind::ResolveUserAction,
+                        owner_method: Some(MethodName::ResolveUserAction),
                         allowed_operation_categories: vec![OperationCategory::UserOnly],
-                        label: "Resolve pending user-owned judgments through the User Channel."
-                            .to_owned(),
-                        blocking_question: Some(user_channel_pending_judgment_instruction(
+                        label: "Resolve pending user actions through the User Channel.".to_owned(),
+                        blocking_question: Some(user_channel_pending_action_instruction(
                             context.guard_health.as_ref(),
                         )),
                         expected_state_version: RequiredNullable::null(),
@@ -2810,16 +2817,16 @@ pub(super) fn open_write_ticket_close_blocker(
     )
 }
 
-fn pending_judgment_refs_for_close_operation(
+fn pending_user_action_refs_for_close_operation(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
-    operation: JudgmentOperation,
+    operation: UserActionOperation,
     now: &UtcTimestamp,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let authorities =
-        pending_judgment_authorities_for_context(store, project_state, request, context)?;
+        pending_user_action_authorities_for_context(store, project_state, request, context)?;
     let current_change_unit_id = context
         .current_change_unit
         .as_ref()
@@ -2827,8 +2834,8 @@ fn pending_judgment_refs_for_close_operation(
     let operation_refs = close_operation_refs(request, project_state, context);
     let mut refs = Vec::new();
     for authority in &authorities {
-        let blocks = if operation == JudgmentOperation::CloseComplete
-            && authority.judgment_kind == JudgmentKind::SensitiveApproval
+        let blocks = if operation == UserActionOperation::CloseComplete
+            && authority.action_kind == UserActionKind::SensitiveApproval
         {
             pending_sensitive_judgment_blocks_close(
                 store,
@@ -2840,7 +2847,7 @@ fn pending_judgment_refs_for_close_operation(
                 now,
             )
         } else {
-            let operation_context = JudgmentOperationContext {
+            let operation_context = UserActionOperationContext {
                 operation,
                 task_id: &request.task_id,
                 change_unit_id: current_change_unit_id.as_ref(),
@@ -2849,12 +2856,12 @@ fn pending_judgment_refs_for_close_operation(
                 operation_refs: &operation_refs,
                 sensitive_approval: None,
             };
-            judgment_blocks_operation(authority, &operation_context)
+            user_action_blocks_operation(authority, &operation_context)
         };
         if blocks {
             refs.push(state_ref(
-                StateRecordKind::UserJudgment,
-                &authority.judgment_id,
+                StateRecordKind::UserActionRequest,
+                &authority.user_action_request_id,
                 &request.envelope.project_id,
                 Some(&request.task_id),
                 Some(project_state.state_version),
@@ -2864,16 +2871,22 @@ fn pending_judgment_refs_for_close_operation(
     Ok(refs)
 }
 
-fn pending_judgment_authorities_for_context(
+fn pending_user_action_authorities_for_context(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
-) -> Result<Vec<JudgmentAuthority>, PlanError> {
-    if let Some(authorities) = &context.pending_judgment_authorities {
+) -> Result<Vec<UserActionAuthority>, PlanError> {
+    if let Some(authorities) = &context.pending_user_action_authorities {
         return Ok(authorities.clone());
     }
-    pending_judgment_authorities_for_plan(store, project_state, &request.envelope, &request.task_id)
+    pending_user_action_authorities_for_plan(
+        store,
+        project_state,
+        &request.envelope,
+        &request.task_id,
+        &context.now,
+    )
 }
 
 fn resolved_judgment_authorities_for_context(
@@ -2882,20 +2895,21 @@ fn resolved_judgment_authorities_for_context(
     request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
     judgment_kind: JudgmentKind,
-) -> Result<Vec<JudgmentAuthority>, PlanError> {
+) -> Result<Vec<UserActionAuthority>, PlanError> {
     if let Some(authorities) = &context.resolved_judgment_authorities {
         return Ok(authorities
             .iter()
-            .filter(|authority| authority.judgment_kind == judgment_kind)
+            .filter(|authority| authority.action_kind == judgment_kind.into())
             .cloned()
             .collect());
     }
-    resolved_judgment_authorities_for_plan(
+    resolved_user_action_authorities_for_plan(
         store,
         project_state,
         &request.envelope,
         &request.task_id,
         judgment_kind,
+        &context.now,
     )
 }
 
@@ -2903,7 +2917,7 @@ fn pending_sensitive_judgment_blocks_close(
     store: &CoreProjectStore,
     request: &CloseTaskPlanRequest,
     context: &CloseTaskContext,
-    authority: &JudgmentAuthority,
+    authority: &UserActionAuthority,
     current_change_unit_id: Option<&ChangeUnitId>,
     operation_refs: &[StateRecordRef],
     now: &UtcTimestamp,
@@ -2923,12 +2937,12 @@ fn pending_sensitive_judgment_blocks_close(
                 normalized_paths: &close_requirement.normalized_paths,
                 sensitive_categories: &close_requirement.sensitive_categories,
                 baseline_ref: close_requirement.baseline_ref.as_ref(),
-                required_for: JudgmentRequiredFor::CloseComplete,
+                required_for: UserActionRequiredFor::CloseComplete,
                 now,
                 repo_root: &store.project_record().repo_root,
             };
-            let operation_context = JudgmentOperationContext {
-                operation: JudgmentOperation::CloseComplete,
+            let operation_context = UserActionOperationContext {
+                operation: UserActionOperation::CloseComplete,
                 task_id: &request.task_id,
                 change_unit_id: current_change_unit_id,
                 scope_revision: context.task.scope_revision,
@@ -2936,7 +2950,7 @@ fn pending_sensitive_judgment_blocks_close(
                 operation_refs,
                 sensitive_approval: Some(&requirement),
             };
-            judgment_blocks_operation(authority, &operation_context)
+            user_action_blocks_operation(authority, &operation_context)
         })
 }
 
@@ -2989,7 +3003,7 @@ fn cancellation_authority_blocker(
         JudgmentKind::Cancellation,
     )?;
     if authorities.iter().any(|authority| {
-        judgment_required_for(authority, JudgmentRequiredFor::CloseCancel)
+        user_action_required_for(authority, UserActionRequiredFor::CloseCancel)
             && current_cancellation_authority(authority, &requirement)
     }) {
         return Ok(None);
@@ -2998,30 +3012,29 @@ fn cancellation_authority_blocker(
     let mut stale_refs = Vec::new();
     let mut rejected_refs = Vec::new();
     for authority in &authorities {
-        if !judgment_required_for(authority, JudgmentRequiredFor::CloseCancel) {
+        if !user_action_required_for(authority, UserActionRequiredFor::CloseCancel) {
             continue;
         }
-        let judgment_ref = state_ref(
-            StateRecordKind::UserJudgment,
-            &authority.judgment_id,
+        let user_action_request_ref = state_ref(
+            StateRecordKind::UserActionRequest,
+            &authority.user_action_request_id,
             &request.envelope.project_id,
             Some(&request.task_id),
             Some(project_state.state_version),
         );
         let current_basis_matches = authority.basis.as_ref().is_some_and(|basis| {
-            basis.task_id == request.task_id
-                && basis.scope_revision == context.task.scope_revision
-                && basis.change_unit_id.as_ref() == current_change_unit_id.as_ref()
+            let coordinates = basis.coordinates();
+            coordinates.task_id == request.task_id
+                && coordinates.scope_revision == context.task.scope_revision
+                && coordinates.change_unit_id.as_ref() == current_change_unit_id.as_ref()
         });
-        if !judgment_has_current_basis(authority) || !current_basis_matches {
-            stale_refs.push(judgment_ref);
+        if !user_action_has_current_basis(authority) || !current_basis_matches {
+            stale_refs.push(user_action_request_ref);
         } else if authority.resolution_outcome == Some(JudgmentResolutionOutcome::Rejected)
-            && authority.resolution.as_ref().is_some_and(|resolution| {
-                resolution.resolved_by_actor_source == ActorSource::LocalUser
-            })
+            && authority.resolved_by_actor_source == Some(ActorSource::LocalUser)
             && verified_user_channel_provenance(authority)
         {
-            rejected_refs.push(judgment_ref);
+            rejected_refs.push(user_action_request_ref);
         }
     }
     if stale_refs.is_empty() {
@@ -3030,38 +3043,39 @@ fn cancellation_authority_blocker(
             project_state,
             request,
             JudgmentKind::Cancellation,
+            &context.now,
         )?);
     }
 
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let (code, message, related_refs) = if !rejected_refs.is_empty() {
         (
-            "cancellation_rejected",
-            "The current user cancellation judgment rejected cancellation.",
+            "rejected_cancellation_authority",
+            "The current user cancellation resolution rejected cancellation.",
             refs_with_context(vec![task_ref.clone()], rejected_refs),
         )
     } else if !stale_refs.is_empty() {
         (
-            "cancellation_judgment_stale",
-            "The available cancellation judgment is stale or incompatible with the current Task scope.",
+            "stale_cancellation_authority",
+            "The available cancellation resolution is stale or incompatible with the current Task scope.",
             refs_with_context(vec![task_ref.clone()], stale_refs),
         )
     } else {
         (
             "missing_cancellation_authority",
-            "Cancelling the Task requires a current accepted user cancellation judgment.",
+            "Cancelling the Task requires a current accepted user cancellation resolution.",
             vec![task_ref.clone()],
         )
     };
     Ok(Some(close_blocker(
-        CloseReadinessBlockerCategory::UserJudgment,
+        CloseReadinessBlockerCategory::UserAction,
         code,
         message,
         related_refs,
         vec![NextActionSummary {
             presentation_role: NextActionPresentationRole::Primary,
-            action_kind: NextActionKind::RequestUserJudgment,
-            owner_method: Some(MethodName::RequestUserJudgment),
+            action_kind: NextActionKind::RequestUserAction,
+            owner_method: Some(MethodName::RequestUserAction),
             allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label: "Request current user cancellation authority.".to_owned(),
             blocking_question: None,
@@ -3118,27 +3132,27 @@ fn completion_close_blockers(
         blockers.push(blocker);
     }
 
-    let close_complete_pending_refs = pending_judgment_refs_for_close_operation(
+    let close_complete_pending_refs = pending_user_action_refs_for_close_operation(
         store,
         project_state,
         request,
         context,
-        JudgmentOperation::CloseComplete,
+        UserActionOperation::CloseComplete,
         now,
     )?;
     if !close_complete_pending_refs.is_empty() {
         blockers.push(close_blocker(
-            CloseReadinessBlockerCategory::PendingUserJudgment,
-            "pending_user_judgment",
-            "A user-owned judgment required before close is still pending.",
+            CloseReadinessBlockerCategory::PendingUserAction,
+            "pending_user_action",
+            "A user action required before close is still pending.",
             close_complete_pending_refs.clone(),
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::RecordUserJudgment,
-                owner_method: Some(MethodName::RecordUserJudgment),
+                action_kind: NextActionKind::ResolveUserAction,
+                owner_method: Some(MethodName::ResolveUserAction),
                 allowed_operation_categories: vec![OperationCategory::UserOnly],
-                label: "Resolve pending user-owned judgments through the User Channel.".to_owned(),
-                blocking_question: Some(user_channel_pending_judgment_instruction(
+                label: "Resolve pending user actions through the User Channel.".to_owned(),
+                blocking_question: Some(user_channel_pending_action_instruction(
                     context.guard_health.as_ref(),
                 )),
                 expected_state_version: RequiredNullable::null(),
@@ -3157,6 +3171,7 @@ fn completion_close_blockers(
                 project_state,
                 request,
                 JudgmentKind::SensitiveApproval,
+                &context.now,
             )?,
         );
         blockers.push(close_blocker(
@@ -3166,8 +3181,8 @@ fn completion_close_blockers(
             related_refs,
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::RequestUserJudgment,
-                owner_method: Some(MethodName::RequestUserJudgment),
+                action_kind: NextActionKind::RequestUserAction,
+                owner_method: Some(MethodName::RequestUserAction),
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request the user-owned sensitive-action approval.".to_owned(),
                 blocking_question: None,
@@ -3285,8 +3300,8 @@ fn completion_close_blockers(
             vec![task_ref.clone()],
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::RequestUserJudgment,
-                owner_method: Some(MethodName::RequestUserJudgment),
+                action_kind: NextActionKind::RequestUserAction,
+                owner_method: Some(MethodName::RequestUserAction),
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Make residual risk visible before requesting acceptance.".to_owned(),
                 blocking_question: None,
@@ -3306,6 +3321,7 @@ fn completion_close_blockers(
             project_state,
             request,
             JudgmentKind::ResidualRiskAcceptance,
+            &context.now,
         )?;
         let (code, message) = if stale_refs.is_empty() {
             (
@@ -3326,8 +3342,8 @@ fn completion_close_blockers(
             related_refs,
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::RequestUserJudgment,
-                owner_method: Some(MethodName::RequestUserJudgment),
+                action_kind: NextActionKind::RequestUserAction,
+                owner_method: Some(MethodName::RequestUserAction),
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request current residual-risk acceptance from the user.".to_owned(),
                 blocking_question: None,
@@ -4006,6 +4022,7 @@ fn close_evidence_issue_for_item(
                 scope_revision: basis.scope_revision,
                 baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
                 target: &item.target,
+                now: &context.now,
             },
         )? {
             EvidenceProvenanceClass::Strong => return Ok(None),
@@ -4099,6 +4116,7 @@ fn projected_evidence_observation_provenance_class(
             scope_revision: basis.scope_revision,
             baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
             target: &observation.target,
+            now: &context.now,
         },
         &context.projected_artifacts,
     )
@@ -4297,8 +4315,8 @@ fn final_acceptance_blocker(
             vec![task_ref.clone()],
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::RequestUserJudgment,
-                owner_method: Some(MethodName::RequestUserJudgment),
+                action_kind: NextActionKind::RequestUserAction,
+                owner_method: Some(MethodName::RequestUserAction),
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label:
                     "The Agent Connection must create a current final-acceptance request for the user."
@@ -4332,6 +4350,7 @@ fn final_acceptance_blocker(
         project_state,
         request,
         JudgmentKind::FinalAcceptance,
+        &context.now,
     )?;
     let (code, message, related_refs) = if stale_refs.is_empty() {
         (
@@ -4353,8 +4372,8 @@ fn final_acceptance_blocker(
         related_refs,
         vec![NextActionSummary {
             presentation_role: NextActionPresentationRole::Primary,
-            action_kind: NextActionKind::RequestUserJudgment,
-            owner_method: Some(MethodName::RequestUserJudgment),
+            action_kind: NextActionKind::RequestUserAction,
+            owner_method: Some(MethodName::RequestUserAction),
             allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
             label:
                 "The Agent Connection must create a current final-acceptance request for the user."
@@ -4404,7 +4423,7 @@ fn has_current_sensitive_approval_for_close(
                 normalized_paths: &close_requirement.normalized_paths,
                 sensitive_categories: &close_requirement.sensitive_categories,
                 baseline_ref: close_requirement.baseline_ref.as_ref(),
-                required_for: JudgmentRequiredFor::CloseComplete,
+                required_for: UserActionRequiredFor::CloseComplete,
                 now,
                 repo_root: &store.project_record().repo_root,
             };
@@ -4442,6 +4461,7 @@ fn risk_acceptance_coverage(
         project_state,
         request,
         JudgmentKind::ResidualRiskAcceptance,
+        &context.now,
     )?;
     if !stale_refs.is_empty() {
         for item in coverage.iter_mut().filter(|item| !item.accepted) {
@@ -4456,10 +4476,15 @@ fn non_current_judgment_refs_for_plan(
     project_state: &ProjectStateHeader,
     request: &CloseTaskPlanRequest,
     judgment_kind: JudgmentKind,
+    now: &UtcTimestamp,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
-    let kind = storage_value(judgment_kind)?;
     store
-        .non_current_user_judgment_refs(&request.task_id, &kind, project_state.state_version)
+        .non_current_user_action_refs(
+            &request.task_id,
+            judgment_kind.into(),
+            project_state.state_version,
+            now,
+        )
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,

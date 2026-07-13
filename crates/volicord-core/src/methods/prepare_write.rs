@@ -40,6 +40,7 @@ impl CoreService {
             &prepared.context.project_state,
             request.clone(),
             &prepared.context.verified_invocation,
+            &prepared.operation_now,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -107,6 +108,7 @@ fn plan_prepare_write(
     project_state: &ProjectStateHeader,
     request: PrepareWriteRequest,
     verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
 ) -> Result<PrepareWritePlan, PlanError> {
     if request.intended_operation.trim().is_empty() {
         validation_plan_error(
@@ -151,7 +153,7 @@ fn plan_prepare_write(
     };
 
     let planned_state_version = project_state.state_version + 1;
-    let plan_now = utc_timestamp(service.now());
+    let plan_now = operation_now.clone();
     let (task_id, task, mut reasons) = resolve_prepare_write_task(store, project_state, &request)?;
     if parse_task_mode(&task.mode)? == TaskMode::Advisor {
         validation_plan_error(
@@ -299,15 +301,20 @@ fn plan_prepare_write(
                 normalized_paths: &normalized_paths,
                 sensitive_categories: &normalized_sensitive_categories,
                 baseline_ref: Some(&request.baseline_ref),
-                required_for: JudgmentRequiredFor::PrepareWrite,
+                required_for: UserActionRequiredFor::PrepareWrite,
                 now: &plan_now,
                 repo_root: &store.project_record().repo_root,
             })
     };
-    let pending_authorities =
-        pending_judgment_authorities_for_plan(store, project_state, &request.envelope, &task_id)?;
-    let operation_context = JudgmentOperationContext {
-        operation: JudgmentOperation::PrepareWrite,
+    let pending_authorities = pending_user_action_authorities_for_plan(
+        store,
+        project_state,
+        &request.envelope,
+        &task_id,
+        &plan_now,
+    )?;
+    let operation_context = UserActionOperationContext {
+        operation: UserActionOperation::PrepareWrite,
         task_id: &task_id,
         change_unit_id: current_change_unit_id.as_ref(),
         scope_revision: task.scope_revision,
@@ -315,29 +322,30 @@ fn plan_prepare_write(
         operation_refs: &operation_refs,
         sensitive_approval: sensitive_requirement.as_ref(),
     };
-    let pending_user_judgment_refs = pending_authorities
+    let pending_user_action_refs = pending_authorities
         .iter()
-        .filter(|authority| judgment_blocks_operation(authority, &operation_context))
+        .filter(|authority| user_action_blocks_operation(authority, &operation_context))
         .map(|authority| {
             state_ref(
-                StateRecordKind::UserJudgment,
-                &authority.judgment_id,
+                StateRecordKind::UserActionRequest,
+                &authority.user_action_request_id,
                 &request.envelope.project_id,
                 Some(&task_id),
                 Some(project_state.state_version),
             )
         })
         .collect::<Vec<_>>();
-    if !pending_user_judgment_refs.is_empty() {
+    if !pending_user_action_refs.is_empty() {
         reasons.push(write_decision_reason(
-            WriteDecisionCategory::UserJudgment,
-            "user_judgment_unresolved",
-            "A user-owned judgment required before write preparation remains unresolved.",
-            pending_user_judgment_refs.clone(),
+            WriteDecisionCategory::UserAction,
+            "user_action_unresolved",
+            "A user action required before write preparation remains unresolved.",
+            pending_user_action_refs.clone(),
         ));
     }
 
-    let mut active_user_judgment_refs = Vec::new();
+    let mut active_user_action_refs = Vec::new();
+    let mut created_by_user_action_resolution_id = None;
     if !normalized_sensitive_categories.is_empty() {
         let matching_sensitive_approval = matching_sensitive_approval(SensitiveApprovalSearch {
             store,
@@ -352,13 +360,17 @@ fn plan_prepare_write(
             now: &plan_now,
         })?;
         if let Some(record) = matching_sensitive_approval {
-            active_user_judgment_refs.push(state_ref(
-                StateRecordKind::UserJudgment,
-                &record.judgment_id,
-                &request.envelope.project_id,
-                Some(&task_id),
-                Some(project_state.state_version),
-            ));
+            if let Some(resolution) = record.resolution.as_ref() {
+                created_by_user_action_resolution_id =
+                    Some(resolution.user_action_resolution_id.clone());
+                active_user_action_refs.push(state_ref(
+                    StateRecordKind::UserActionResolution,
+                    &resolution.user_action_resolution_id,
+                    &request.envelope.project_id,
+                    Some(&task_id),
+                    Some(project_state.state_version),
+                ));
+            }
         } else {
             reasons.push(write_decision_reason(
                 WriteDecisionCategory::SensitiveApproval,
@@ -401,7 +413,18 @@ fn plan_prepare_write(
     };
     let attempt_scope_json = serde_json::to_string(&attempt_scope)?;
     let created_at = plan_now.to_string();
-    let expires_at_timestamp = utc_timestamp(write_ticket_expires_at(*plan_now.as_datetime()));
+    let expires_at_timestamp = match write_ticket_expires_at(&plan_now) {
+        Ok(expires_at) => expires_at,
+        Err(_) => {
+            validation_plan_error(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "write_ticket.expires_at",
+                "derived expiration exceeds the supported canonical RFC 3339 range",
+            )?;
+            unreachable!("validation_plan_error always returns Err")
+        }
+    };
     let expires_at = expires_at_timestamp.to_string();
     let write_ticket_id = write_ticket_id
         .as_ref()
@@ -474,9 +497,10 @@ fn plan_prepare_write(
             task.clone(),
             change_unit.cloned(),
             projected_close_basis(store, &task_id)?,
-            pending_user_judgment_refs.clone(),
+            pending_user_action_refs.clone(),
             blocker_refs.clone(),
             evidence_summary.clone(),
+            plan_now.clone(),
         ),
         *plan_now.as_datetime(),
     )?;
@@ -537,7 +561,7 @@ fn plan_prepare_write(
         task: &task,
         current_change_unit: change_unit,
         acceptance_criteria: active_acceptance_criteria_for_task(store, &task_id)?,
-        pending_user_judgment_refs,
+        pending_user_action_refs,
         blocker_refs,
         write_ticket_summary: synthetic_write_ticket
             .as_ref()
@@ -574,9 +598,9 @@ fn plan_prepare_write(
         allowed_path_patterns,
         denied_path_patterns,
         control_surface,
-        active_user_judgment_refs,
+        active_user_action_refs,
         write_decision_reasons: reasons.clone(),
-        user_judgment_candidate: None,
+        user_action_draft: None,
         guarantee_display: guarantee_display.clone(),
     };
 
@@ -587,7 +611,7 @@ fn plan_prepare_write(
             change_unit_id: scope_change_unit_id.as_str().to_owned(),
             attempt_scope_json,
             created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-            created_by_judgment_id: None,
+            created_by_user_action_resolution_id,
             expires_at,
             created_at,
             metadata_json: serde_json::to_string(&json!({

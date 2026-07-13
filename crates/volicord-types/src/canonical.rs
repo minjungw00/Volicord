@@ -13,6 +13,11 @@ pub fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_js
     serde_json::to_vec(&json)
 }
 
+/// Returns the byte length of the deterministic canonical JSON representation.
+pub fn canonical_json_size_bytes<T: Serialize>(value: &T) -> Result<usize, serde_json::Error> {
+    canonical_json_bytes(value).map(|bytes| bytes.len())
+}
+
 /// Serializes a value to a deterministic canonical JSON string.
 pub fn canonical_json_string<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
     let bytes = canonical_json_bytes(value)?;

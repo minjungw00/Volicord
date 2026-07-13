@@ -17,6 +17,8 @@ const CODEX_HOST_VALUE: &str = "codex";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
+pub(crate) const MAX_MCP_ELICITATION_WIRE_BYTES: usize = USER_ACTION_FORM_MAX_BYTES;
+pub(crate) const MAX_MCP_PROMPT_CAPTURE_PRESENTATION_BYTES: usize = USER_ACTION_FORM_MAX_BYTES;
 
 pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
 where
@@ -849,6 +851,11 @@ where
         }
     };
     let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
+    let allow_user_action_capture = tool_name == REQUEST_USER_ACTION_TOOL_NAME
+        && arguments
+            .pointer("/request/operation")
+            .and_then(Value::as_str)
+            == Some("create");
 
     let session_id = state.session_id.clone();
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
@@ -858,11 +865,12 @@ where
             Some(&session_id),
             state.client_supports_elicitation,
         ) {
-            Ok(response) if tool_name == REQUEST_USER_JUDGMENT_TOOL_NAME => {
+            Ok(response) if tool_name == REQUEST_USER_ACTION_TOOL_NAME => {
                 let pending_response = response.clone();
-                match user_judgment_tool_output(
+                match user_action_tool_output(
                     adapter,
                     response,
+                    allow_user_action_capture,
                     state.client_supports_elicitation,
                     &mut state.next_server_request_id,
                     lines,
@@ -1005,7 +1013,7 @@ where
     );
     let diagnostic_facts = output.diagnostic_facts();
     let diagnostic_outcome =
-        if output.structured_content["base"]["response_kind"].as_str() == Some("rejected") {
+        if response_kind_from_structured_content(&output.structured_content) == Some("rejected") {
             DiagnosticOutcome::Rejected
         } else if output.is_error {
             DiagnosticOutcome::ToolError
@@ -1376,11 +1384,10 @@ where
     if output.is_error {
         return Ok(output);
     }
-    if output.structured_content["base"]["response_kind"].as_str() != Some("result") {
+    if response_kind_from_structured_content(&output.structured_content) != Some("result") {
         output.primary_text = bounded_mutation_compatibility_text(format!(
             "Volicord {tool_name} returned response_kind={}; inspect structuredContent for the authoritative result.",
-            output.structured_content["base"]["response_kind"]
-                .as_str()
+            response_kind_from_structured_content(&output.structured_content)
                 .unwrap_or("unknown")
         ));
         return Ok(output);
@@ -1487,6 +1494,13 @@ where
     Ok(output)
 }
 
+fn response_kind_from_structured_content(value: &Value) -> Option<&str> {
+    value
+        .pointer("/agent_workflow_result/base/response_kind")
+        .or_else(|| value.pointer("/base/response_kind"))
+        .and_then(Value::as_str)
+}
+
 fn compact_mutation_method_result(
     tool_name: &str,
     method_result: &Value,
@@ -1517,7 +1531,7 @@ fn compact_mutation_method_result(
                 allowed_path_patterns: result.allowed_path_patterns,
                 denied_path_patterns: result.denied_path_patterns,
                 write_decision_reasons: result.write_decision_reasons,
-                user_judgment_candidate: result.user_judgment_candidate,
+                user_action_draft: result.user_action_draft,
             })
             .map_err(McpAdapterError::Json)
         }
@@ -1576,9 +1590,7 @@ fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        REQUEST_USER_JUDGMENT_TOOL_NAME => {
-            compact_request_user_judgment_result(effect, method_result)
-        }
+        REQUEST_USER_ACTION_TOOL_NAME => compact_request_user_action_result(effect, method_result),
         RECONCILE_CHANGES_TOOL_NAME => {
             let result: ReconcileChangesResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
@@ -1586,7 +1598,7 @@ fn compact_mutation_method_result(
                 effect,
                 unresolved_changes: result.unresolved_changes,
                 resolved_changes: result.resolved_changes,
-                pending_user_judgment_refs: result.pending_user_judgment_refs,
+                pending_user_action_refs: result.pending_user_action_refs,
                 rejected_resolution_requests: result.rejected_resolution_requests,
             })
             .map_err(McpAdapterError::Json)
@@ -1603,6 +1615,9 @@ fn compact_mutation_method_result(
 fn compact_mutation_effect(
     method_result: &Value,
 ) -> Result<McpMutationEffectSummary, McpAdapterError> {
+    let method_result = method_result
+        .get("agent_workflow_result")
+        .unwrap_or(method_result);
     let base: ToolResultBase =
         serde_json::from_value(method_result["base"].clone()).map_err(McpAdapterError::Json)?;
     Ok(McpMutationEffectSummary {
@@ -1612,43 +1627,34 @@ fn compact_mutation_effect(
     })
 }
 
-fn compact_request_user_judgment_result(
+fn compact_request_user_action_result(
     effect: McpMutationEffectSummary,
     method_result: &Value,
 ) -> Result<Value, McpAdapterError> {
-    let judgment_ref: StateRecordRef =
-        serde_json::from_value(method_result["user_judgment_ref"].clone())
-            .map_err(McpAdapterError::Json)?;
-    let judgment: UserJudgment = serde_json::from_value(method_result["user_judgment"].clone())
-        .map_err(McpAdapterError::Json)?;
-    let (selected_option_id, selected_option_label, resolution_outcome) =
-        if let Some(resolution) = judgment.resolution.as_ref() {
-            let selected_option = judgment
-                .options
-                .iter()
-                .find(|option| option.option_id == resolution.selected_option_id)
-                .ok_or_else(|| {
-                    McpAdapterError::Protocol(format!(
-                        "resolved judgment {} does not contain selected option {}",
-                        judgment.judgment_id.as_str(),
-                        resolution.selected_option_id.as_str()
-                    ))
-                })?;
-            (
-                Some(resolution.selected_option_id.clone()),
-                Some(selected_option.label.clone()),
-                Some(resolution.resolution_outcome),
-            )
-        } else {
-            (None, None, None)
-        };
-    serde_json::to_value(McpRequestUserJudgmentCompactResult {
+    let compound: McpRequestUserActionResponse =
+        serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+    let agent_result = match compound.agent_workflow_result {
+        volicord_types::ToolResponse::Result(result) => result,
+        _ => {
+            return Err(McpAdapterError::Protocol(
+                "request-user-action compact projection requires a result branch".to_owned(),
+            ))
+        }
+    };
+    let resolution_summary = compound
+        .user_channel_resolution
+        .as_ref()
+        .map(|resolution| resolution.resolution_summary.clone());
+    serde_json::to_value(McpRequestUserActionCompactResult {
         effect,
-        judgment_ref,
-        status: judgment.status,
-        selected_option_id: selected_option_id.into(),
-        selected_option_label: selected_option_label.into(),
-        resolution_outcome: resolution_outcome.into(),
+        agent_workflow_result_replayed: compound.agent_workflow_result_replayed,
+        user_action_request_ref: agent_result.user_action_request_ref,
+        current_projection_state_version: compound.current_projection_state_version,
+        current_projection_observed_at: compound.current_projection_observed_at,
+        user_action_resolution_ref: compound.user_channel_resolution_ref,
+        status: compound.current_status,
+        resolution_summary: resolution_summary.into(),
+        derived_refs: compound.derived_refs,
     })
     .map_err(McpAdapterError::Json)
 }
@@ -2019,7 +2025,7 @@ fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
         PREPARE_WRITE_TOOL_NAME => Some(MethodName::PrepareWrite),
         STAGE_ARTIFACT_TOOL_NAME => Some(MethodName::StageArtifact),
         RECORD_RUN_TOOL_NAME => Some(MethodName::RecordRun),
-        REQUEST_USER_JUDGMENT_TOOL_NAME => Some(MethodName::RequestUserJudgment),
+        REQUEST_USER_ACTION_TOOL_NAME => Some(MethodName::RequestUserAction),
         RECONCILE_CHANGES_TOOL_NAME => Some(MethodName::ReconcileChanges),
         CLOSE_TASK_TOOL_NAME => Some(MethodName::CloseTask),
         _ => None,
@@ -2144,9 +2150,10 @@ pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
     })
 }
 
-pub(crate) fn user_judgment_tool_output<R, W>(
+pub(crate) fn user_action_tool_output<R, W>(
     adapter: &McpAdapter,
     pending_response: PipelineResponse,
+    allow_user_action_capture: bool,
     client_supports_elicitation: bool,
     server_request_sequence: &mut u64,
     lines: &mut io::Lines<R>,
@@ -2156,122 +2163,160 @@ where
     R: BufRead,
     W: Write,
 {
-    let Some(pending) = pending_judgment_from_response(&pending_response) else {
+    let Some(pending) = pending_user_action_from_response(&pending_response)? else {
         return ToolCallOutput::from_pipeline_response(&pending_response);
     };
-    let pending_operation_result_ref = pending_response.operation_result_ref.clone();
-
-    if !client_supports_elicitation {
-        let fallback = user_judgment_fallback(adapter, &pending)?;
-        let fallback_kind = fallback.kind;
-        return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
-            &pending_response,
-            &fallback,
-        )?)?
-        .with_pipeline_diagnostics(&pending_response)
-        .with_fallback(fallback_kind)
-        .with_extras(fallback.texts));
+    let current = current_user_action_projection(adapter, &pending)?;
+    if !allow_user_action_capture {
+        return compound_user_action_output(&pending_response, &current);
+    }
+    if current.status != UserActionStatus::Pending {
+        return Ok(compound_user_action_output(&pending_response, &current)?.with_extra(format!(
+            "Volicord did not open a new User Channel prompt because user action `{}` is currently {}.",
+            pending.request.user_action_request_id.as_str(),
+            user_action_status_text(current.status)
+        )));
     }
 
-    if let Some(reason) = elicitation_secret_request_risk(&pending) {
-        let fallback = user_judgment_fallback(adapter, &pending)?;
+    if !client_supports_elicitation {
+        let fallback = user_action_fallback(adapter, &pending)?;
         let fallback_kind = fallback.kind;
-        return Ok(ToolCallOutput::success(response_json_with_inbox_capture(
-            &pending_response,
-            &fallback,
-        )?)?
-            .with_pipeline_diagnostics(&pending_response)
+        return Ok(compound_user_action_output(&pending_response, &current)?
+            .with_fallback(fallback_kind)
+            .with_extras(fallback.texts));
+    }
+
+    if !agent_facing_user_action_input_allowed(&pending) {
+        let fallback = user_action_fallback(adapter, &pending)?;
+        let fallback_kind = fallback.kind;
+        return Ok(compound_user_action_output(&pending_response, &current)?
             .with_fallback(fallback_kind)
             .with_extra(format!(
-                "Volicord did not open host prompt input for pending judgment `{}` because the prompt text appears to request or expose sensitive secret material ({reason}). Do not ask the user to enter secrets, credentials, tokens, or private keys through host prompt input.",
-                pending.judgment_id.as_str()
+                "Volicord did not open host prompt input for pending user action `{}` because its complete presentation requires a user-only channel. No elicitation or prompt-capture presentation was opened. Do not ask the user to enter secrets, credentials, tokens, or private keys through agent-facing host input.",
+                pending.request.user_action_request_id.as_str()
             ))
             .with_extras(fallback.texts));
     }
 
-    let request_id = next_server_request_id("elicit_user_judgment", server_request_sequence);
-    let request = elicitation_create_request(&request_id, &pending);
+    let request_id = next_server_request_id("elicit_user_action", server_request_sequence);
+    let Some(request) = elicitation_create_request(&request_id, &pending)? else {
+        let fallback = user_action_fallback(adapter, &pending)?;
+        let fallback_kind = fallback.kind;
+        return Ok(compound_user_action_output(&pending_response, &current)?
+            .with_fallback(fallback_kind)
+            .with_extra(format!(
+                "Volicord did not open host prompt input for pending user action `{}` because the complete elicitation request exceeds the {}-byte wire budget; no partial form was sent.",
+                pending.request.user_action_request_id.as_str(),
+                MAX_MCP_ELICITATION_WIRE_BYTES
+            ))
+            .with_extras(fallback.texts));
+    };
     write_json_line(writer, request)?;
     writer.flush().map_err(McpAdapterError::Io)?;
 
     match read_elicitation_response(&request_id, lines) {
-        ElicitationReply::Accepted {
-            selected_option_id,
-            note,
-        } => match record_elicited_judgment(adapter, &pending, &selected_option_id, note)? {
-            ElicitedRecordOutcome::Recorded(recorded) => Ok(
-                ToolCallOutput::from_pipeline_response(
-                    &recorded_judgment_agent_projection(&recorded)?,
-                )?
-                    .with_operation_result_ref(pending_operation_result_ref.clone())
+        ElicitationReply::Accepted(content) => {
+            let resolution = match resolution_from_elicitation(&pending, &content) {
+                Ok(resolution) => resolution,
+                Err(message) => {
+                    let current = current_user_action_projection(adapter, &pending)?;
+                    return Ok(compound_user_action_output(&pending_response, &current)?
+                        .with_extra(format!(
+                            "Volicord rejected the host prompt response: {message}. User action `{}` is currently {}.",
+                            pending.request.user_action_request_id.as_str(),
+                            user_action_status_text(current.status)
+                        ))
+                        .with_extras(pending_user_action_resume_texts(&pending, &current)));
+                }
+            };
+            match resolve_elicited_user_action(adapter, &pending, resolution, &request_id)? {
+            ElicitedResolutionOutcome::Committed(current) => Ok(
+                compound_user_action_output(&pending_response, &current)?
                     .with_user_channel(DiagnosticUserChannelKind::McpElicitation)
                     .with_extra(format!(
-                "Volicord recorded pending judgment `{}` through host prompt input with User Channel basis `{}`.",
-                pending.judgment_id.as_str(),
+                "Volicord resolved pending user action `{}` through host prompt input with User Channel basis `{}`.",
+                pending.request.user_action_request_id.as_str(),
                 VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
             )),
             ),
-            ElicitedRecordOutcome::PostEffectFailure => Ok(
-                ToolCallOutput::from_pipeline_response(&pending_response)?
-                    .with_post_effect_failure(
-                        McpPostEffectFailureCode::McpPostEffectAdapterFailed,
-                    ),
+            ElicitedResolutionOutcome::NotCommitted(current) => Ok(
+                compound_user_action_output(&pending_response, &current)?
+                    .with_extra(format!(
+                    "Volicord did not record the host prompt response; user action `{}` is currently {}. No second Agent Workflow request was created.",
+                    pending.request.user_action_request_id.as_str(),
+                    user_action_status_text(current.status)
+                ))
+                    .with_extras(pending_user_action_resume_texts(&pending, &current)),
             ),
-            ElicitedRecordOutcome::InvalidSelection(message) => Ok(
-                ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
-                "{message} The pending judgment remains unresolved."
-            )),
-            ),
-        },
-        ElicitationReply::Declined => match reject_option_id(&pending) {
-            Some(option_id) => match record_elicited_judgment(adapter, &pending, option_id, None)? {
-                ElicitedRecordOutcome::Recorded(recorded) => Ok(
-                    ToolCallOutput::from_pipeline_response(
-                        &recorded_judgment_agent_projection(&recorded)?,
-                    )?
-                        .with_operation_result_ref(pending_operation_result_ref.clone())
+            }
+        }
+        ElicitationReply::Declined => match reject_resolution(&pending) {
+            Some(resolution) => match resolve_elicited_user_action(
+                adapter,
+                &pending,
+                resolution,
+                &request_id,
+            )? {
+                ElicitedResolutionOutcome::Committed(current) => Ok(
+                    compound_user_action_output(&pending_response, &current)?
                         .with_user_channel(DiagnosticUserChannelKind::McpElicitation)
                         .with_extra(format!(
-                    "Volicord recorded pending judgment `{}` as rejected through host prompt input with User Channel basis `{}`.",
-                    pending.judgment_id.as_str(),
+                    "Volicord resolved pending user action `{}` with its stored reject choice through host prompt input with User Channel basis `{}`.",
+                    pending.request.user_action_request_id.as_str(),
                     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
                 )),
                 ),
-                ElicitedRecordOutcome::PostEffectFailure => Ok(
-                    ToolCallOutput::from_pipeline_response(&pending_response)?
-                        .with_post_effect_failure(
-                            McpPostEffectFailureCode::McpPostEffectAdapterFailed,
-                        ),
-                ),
-                ElicitedRecordOutcome::InvalidSelection(message) => Ok(
-                    ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
-                    "{message} The pending judgment remains unresolved."
-                )),
+                ElicitedResolutionOutcome::NotCommitted(current) => Ok(
+                    compound_user_action_output(&pending_response, &current)?
+                        .with_extra(format!(
+                        "Volicord did not record the declined host prompt response; user action `{}` is currently {}. No second Agent Workflow request was created.",
+                        pending.request.user_action_request_id.as_str(),
+                        user_action_status_text(current.status)
+                    ))
+                        .with_extras(pending_user_action_resume_texts(&pending, &current)),
                 ),
             },
-            None => Ok(ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(
-                    "The MCP client declined the host prompt request, but this judgment has no reject option to record. The pending judgment remains unresolved.",
-                )),
+            None => {
+                let current = current_user_action_projection(adapter, &pending)?;
+                Ok(compound_user_action_output(&pending_response, &current)?
+                    .with_extra(format!(
+                    "The MCP client declined the host prompt request, but this user action has no stored reject choice. User action `{}` is currently {}.",
+                    pending.request.user_action_request_id.as_str(),
+                    user_action_status_text(current.status)
+                ))
+                    .with_extras(pending_user_action_resume_texts(&pending, &current)))
+            },
         },
-        ElicitationReply::Cancelled => Ok(
-            ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
-                "The MCP client cancelled or dismissed host prompt input for pending judgment `{}`. Volicord did not record an answer; the judgment remains pending.",
-                pending.judgment_id.as_str()
-            )),
-        ),
-        ElicitationReply::Invalid(message) => Ok(
-            ToolCallOutput::from_pipeline_response(&pending_response)?.with_extra(format!(
-            "Volicord rejected the host prompt response: {message}. The pending judgment remains unresolved."
-        )),
-        ),
+        ElicitationReply::Cancelled => {
+            let current = current_user_action_projection(adapter, &pending)?;
+            Ok(compound_user_action_output(&pending_response, &current)?
+                .with_extra(format!(
+                "The MCP client cancelled or dismissed host prompt input for user action `{}`. Its current status is {}.",
+                pending.request.user_action_request_id.as_str(),
+                user_action_status_text(current.status)
+            ))
+                .with_extras(pending_user_action_resume_texts(&pending, &current)))
+        },
+        ElicitationReply::Invalid(message) => {
+            let current = current_user_action_projection(adapter, &pending)?;
+            Ok(compound_user_action_output(&pending_response, &current)?
+                .with_extra(format!(
+                "Volicord rejected the host prompt response: {message}. User action `{}` is currently {}.",
+                pending.request.user_action_request_id.as_str(),
+                user_action_status_text(current.status)
+            ))
+                .with_extras(pending_user_action_resume_texts(&pending, &current)))
+        },
         ElicitationReply::Unavailable(message) => {
-            let fallback = user_judgment_fallback(adapter, &pending)?;
+            let current = current_user_action_projection(adapter, &pending)?;
+            if current.status != UserActionStatus::Pending {
+                return Ok(compound_user_action_output(&pending_response, &current)?.with_extra(
+                    "Host prompt input became unavailable after the user action had already left pending status. No fallback request was created.",
+                ));
+            }
+            let fallback = user_action_fallback(adapter, &pending)?;
             let fallback_kind = fallback.kind;
-            Ok(ToolCallOutput::success(response_json_with_inbox_capture(
-                &pending_response,
-                &fallback,
-            )?)?
-            .with_pipeline_diagnostics(&pending_response)
+            Ok(compound_user_action_output(&pending_response, &current)?
             .with_fallback(fallback_kind)
             .with_extra(format!(
                 "Host prompt input was unavailable after the client advertised support: {message}."
@@ -2281,99 +2326,250 @@ where
     }
 }
 
-fn recorded_judgment_agent_projection(
-    response: &PipelineResponse,
-) -> Result<PipelineResponse, McpAdapterError> {
-    let mut agent_projection = response.clone();
-    if let Some(note) = agent_projection
-        .response_value
-        .pointer_mut("/user_judgment/resolution/note")
-    {
-        *note = Value::Null;
-    }
-    agent_projection.response_json =
-        serde_json::to_string(&agent_projection.response_value).map_err(McpAdapterError::Json)?;
-    Ok(agent_projection)
+fn compound_user_action_output(
+    pending_response: &PipelineResponse,
+    current: &CurrentUserActionProjection,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    let compound = McpRequestUserActionResponse {
+        agent_workflow_result: serde_json::from_value::<RequestUserActionResponse>(
+            pending_response.response_value.clone(),
+        )
+        .map_err(McpAdapterError::Json)?,
+        agent_workflow_result_replayed: pending_response.replayed,
+        current_projection_state_version: current.observed_state_version,
+        current_projection_observed_at: current.observed_at.clone(),
+        current_status: current.status,
+        user_channel_resolution_ref: current.user_action_resolution_ref.clone().into(),
+        user_channel_resolution: current.user_action_resolution.clone().into(),
+        derived_refs: current.derived_refs.clone(),
+    };
+    let response_value = serde_json::to_value(compound).map_err(McpAdapterError::Json)?;
+    let response_json = serde_json::to_string(&response_value).map_err(McpAdapterError::Json)?;
+    Ok(ToolCallOutput::success(response_json)?
+        .with_operation_result_ref(pending_response.operation_result_ref.clone())
+        .with_pipeline_diagnostics(pending_response))
 }
 
-pub(crate) fn pending_judgment_from_response(response: &PipelineResponse) -> Option<UserJudgment> {
-    if response.response_value["base"]["response_kind"].as_str() != Some("result") {
-        return None;
-    }
-    let judgment = serde_json::from_value::<UserJudgment>(
-        response.response_value.get("user_judgment")?.clone(),
-    )
-    .ok()?;
-    (judgment.resolution.is_none()).then_some(judgment)
-}
-
-pub(crate) fn elicitation_create_request(id: &str, judgment: &UserJudgment) -> Value {
-    let option_ids = judgment
-        .options
-        .iter()
-        .map(|option| option.option_id.as_str())
-        .collect::<Vec<_>>();
-    let option_names = judgment
-        .options
-        .iter()
-        .map(|option| option.label.as_str())
-        .collect::<Vec<_>>();
-    let option_lines = judgment
-        .options
-        .iter()
-        .map(|option| {
-            format!(
-                "- {} (`{}`): {}",
-                option.label,
-                option.option_id.as_str(),
-                option.consequence
+fn current_user_action_projection(
+    adapter: &McpAdapter,
+    pending: &PendingUserAction,
+) -> Result<CurrentUserActionProjection, McpAdapterError> {
+    let current = adapter
+        .core
+        .current_user_action_projection(
+            &pending.request.project_id,
+            &pending.request.user_action_request_id,
+        )
+        .map_err(McpAdapterError::Core)?
+        .ok_or_else(|| {
+            McpAdapterError::Protocol(
+                "committed user-action request disappeared during current-state reread".to_owned(),
             )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let message = format!(
-        "Volicord needs a user-owned judgment for Task `{}`.\n\nQuestion: {}\n\nContext: {}\n\nOptions:\n{}\n\nSelect exactly one option. Do not enter secrets, credentials, tokens, private keys, or other private secret material.",
-        judgment.task_id.as_str(),
-        judgment.question,
-        judgment.context.summary,
-        option_lines
-    );
+        })?;
+    if current.project_id != pending.request.project_id
+        || current.user_action_request_id != pending.request.user_action_request_id
+    {
+        return Err(McpAdapterError::Protocol(
+            "current user-action projection does not match the original request".to_owned(),
+        ));
+    }
+    Ok(current)
+}
 
-    json!({
+fn user_action_status_text(status: UserActionStatus) -> &'static str {
+    match status {
+        UserActionStatus::Pending => "pending",
+        UserActionStatus::Resolved => "resolved",
+        UserActionStatus::Stale => "stale",
+        UserActionStatus::Superseded => "superseded",
+        UserActionStatus::Expired => "expired",
+    }
+}
+
+fn pending_user_action_resume_texts(
+    pending: &PendingUserAction,
+    current: &CurrentUserActionProjection,
+) -> Vec<String> {
+    if current.status != UserActionStatus::Pending {
+        return Vec::new();
+    }
+    vec![
+        format!(
+            "To continue this same pending user action after User Channel completion, call `volicord.request_user_action` with nested `request.operation=resume` and request ID `{}`; do not create a second request.",
+            pending.request.user_action_request_id.as_str()
+        ),
+        fallback_state_json(json!({
+            "kind": "resume_pending_user_action",
+            "project_id": pending.request.project_id.as_str(),
+            "user_action_request_id": pending.request.user_action_request_id.as_str(),
+            "resume": user_action_resume_guidance(pending),
+        })),
+    ]
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PendingUserAction {
+    pub(crate) request: UserActionRequest,
+    pub(crate) inbox_item: UserActionInboxItem,
+}
+
+pub(crate) fn pending_user_action_from_response(
+    response: &PipelineResponse,
+) -> Result<Option<PendingUserAction>, McpAdapterError> {
+    if response.response_value["base"]["response_kind"].as_str() != Some("result") {
+        return Ok(None);
+    }
+    let result = serde_json::from_value::<RequestUserActionResult>(response.response_value.clone())
+        .map_err(McpAdapterError::Json)?;
+    if result.user_action_request.status != UserActionStatus::Pending {
+        return Ok(None);
+    }
+    let canonical_form = result
+        .user_action_request
+        .body
+        .capture_form()
+        .map_err(|error| {
+            McpAdapterError::Protocol(format!(
+                "pending user-action request body cannot produce a canonical form: {error}"
+            ))
+        })?;
+    result
+        .inbox_item
+        .form
+        .validate_canonical_size()
+        .map_err(|error| {
+            McpAdapterError::Protocol(format!(
+                "pending user-action inbox form is invalid: {error}"
+            ))
+        })?;
+    if result.inbox_item.form != canonical_form {
+        return Err(McpAdapterError::Protocol(
+            "pending user-action inbox form does not match the canonical request-body projection"
+                .to_owned(),
+        ));
+    }
+    Ok(Some(PendingUserAction {
+        request: result.user_action_request,
+        inbox_item: result.inbox_item,
+    }))
+}
+
+pub(crate) fn elicitation_create_request(
+    id: &str,
+    pending: &PendingUserAction,
+) -> Result<Option<Value>, McpAdapterError> {
+    let presentation = UserActionPresentationPlan::from_form(&pending.inbox_item.form)
+        .map_err(McpAdapterError::Json)?;
+    let form_text = presentation
+        .render_plain_text()
+        .map_err(McpAdapterError::Json)?;
+    let (message, requested_schema) = match &presentation.form {
+        UserActionPresentationForm::Choice {
+            choices,
+            note_allowed,
+            note_max_chars,
+        } => {
+            let option_ids = choices
+                .iter()
+                .map(|choice| choice.choice_id.as_str())
+                .collect::<Vec<_>>();
+            let option_names = choices
+                .iter()
+                .map(|choice| {
+                    format!(
+                        "{} ({}){}",
+                        choice.label,
+                        choice.choice_id,
+                        if choice.is_default { " [default]" } else { "" }
+                    )
+                })
+                .collect::<Vec<_>>();
+            let mut properties = json!({
+                "selected_option_id": {
+                    "type": "string",
+                    "title": "User-action choice",
+                    "description": "The exact stored choice_id selected by the user.",
+                    "enum": option_ids,
+                    "enumNames": option_names
+                }
+            });
+            if *note_allowed {
+                properties["note"] = json!({
+                    "type": "string",
+                    "title": "Optional note",
+                    "description": "Optional user note. Do not include secrets, credentials, tokens, or private keys.",
+                    "maxLength": note_max_chars
+                });
+            }
+            (
+                format!(
+                    "Volicord needs one user-owned choice for Task `{}`.\n\nQuestion: {}\n\nContext: {}\n\nCanonical closed form:\n{}\n\nSelect exactly one stored choice. Do not enter secrets, credentials, tokens, private keys, or other private secret material.",
+                    pending.request.task_id.as_str(), pending.inbox_item.question, pending.inbox_item.context_summary, form_text
+                ),
+                json!({"type":"object","properties":properties,"required":["selected_option_id"],"additionalProperties":false}),
+            )
+        }
+        UserActionPresentationForm::EvidenceObservation {
+            targets,
+            artifacts,
+            relevance_options,
+            summary_max_chars,
+        } => {
+            let target_values = targets
+                .iter()
+                .map(|target| target.selector.as_str())
+                .collect::<Vec<_>>();
+            let target_names = targets
+                .iter()
+                .map(|target| format!("{} ({})", target.display_name, target.selector))
+                .collect::<Vec<_>>();
+            let artifact_ids = artifacts
+                .iter()
+                .map(|artifact| artifact.artifact_id.as_str())
+                .collect::<Vec<_>>();
+            let artifact_names = artifacts
+                .iter()
+                .map(|artifact| format!("{} ({})", artifact.display_name, artifact.artifact_id))
+                .collect::<Vec<_>>();
+            (
+                format!(
+                    "Volicord needs one user-owned evidence observation for Task `{}`.\n\nQuestion: {}\n\nContext: {}\n\nCanonical closed form:\n{}\n\nSelect one stored target, one or more stored artifacts, a relevance value, and enter a concise observation summary. Do not enter secrets, credentials, tokens, private keys, or other private secret material.",
+                    pending.request.task_id.as_str(), pending.inbox_item.question, pending.inbox_item.context_summary, form_text
+                ),
+                json!({
+                    "type":"object",
+                    "properties":{
+                        "selected_target": {"type":"string","title":"Evidence target","enum":target_values,"enumNames":target_names},
+                        "selected_artifact_ids": {"type":"array","title":"Observed artifacts","items":{"type":"string","enum":artifact_ids,"enumNames":artifact_names},"minItems":1,"uniqueItems":true},
+                        "relevance_status": {"type":"string","title":"Relevance","enum":relevance_options},
+                        "summary": {"type":"string","title":"Observation summary","maxLength":summary_max_chars}
+                    },
+                    "required":["selected_target","selected_artifact_ids","relevance_status","summary"],
+                    "additionalProperties":false
+                }),
+            )
+        }
+    };
+
+    let request = json!({
         "jsonrpc": "2.0",
         "id": id,
         "method": ELICITATION_CREATE_METHOD,
         "params": {
             "message": message,
-            "requestedSchema": {
-                "type": "object",
-                "properties": {
-                    "selected_option_id": {
-                        "type": "string",
-                        "title": "Judgment option",
-                        "description": "The exact Volicord option_id selected by the user.",
-                        "enum": option_ids,
-                        "enumNames": option_names
-                    },
-                    "note": {
-                        "type": "string",
-                        "title": "Optional note",
-                        "description": "Optional user note for this judgment. Do not include secrets, credentials, tokens, or private keys.",
-                        "maxLength": 1000
-                    }
-                },
-                "required": ["selected_option_id"]
-            }
+            "requestedSchema": requested_schema
         }
-    })
+    });
+    let wire_bytes = serde_json::to_vec(&request)
+        .map_err(McpAdapterError::Json)?
+        .len()
+        .saturating_add(1);
+    Ok((wire_bytes <= MAX_MCP_ELICITATION_WIRE_BYTES).then_some(request))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ElicitationReply {
-    Accepted {
-        selected_option_id: String,
-        note: Option<String>,
-    },
+    Accepted(Value),
     Declined,
     Cancelled,
     Invalid(String),
@@ -2430,36 +2626,7 @@ pub(crate) fn read_elicitation_response<R: BufRead>(
                     "accepted elicitation must include object content".to_owned(),
                 );
             };
-            let Some(selected_option_id) =
-                content.get("selected_option_id").and_then(Value::as_str)
-            else {
-                return ElicitationReply::Invalid(
-                    "accepted elicitation content.selected_option_id must be a string".to_owned(),
-                );
-            };
-            if selected_option_id.trim().is_empty() {
-                return ElicitationReply::Invalid(
-                    "accepted elicitation selected_option_id must not be empty".to_owned(),
-                );
-            }
-            let note = match content.get("note") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(note)) if note.len() <= 1000 => Some(note.clone()),
-                Some(Value::String(_)) => {
-                    return ElicitationReply::Invalid(
-                        "accepted elicitation note must be at most 1000 characters".to_owned(),
-                    )
-                }
-                Some(_) => {
-                    return ElicitationReply::Invalid(
-                        "accepted elicitation note must be a string when supplied".to_owned(),
-                    )
-                }
-            };
-            ElicitationReply::Accepted {
-                selected_option_id: selected_option_id.to_owned(),
-                note,
-            }
+            ElicitationReply::Accepted(Value::Object(content.clone()))
         }
         Some("decline") => ElicitationReply::Declined,
         Some("cancel") => ElicitationReply::Cancelled,
@@ -2470,349 +2637,381 @@ pub(crate) fn read_elicitation_response<R: BufRead>(
     }
 }
 
-pub(crate) enum ElicitedRecordOutcome {
-    Recorded(Box<PipelineResponse>),
-    PostEffectFailure,
-    InvalidSelection(String),
+pub(crate) enum ElicitedResolutionOutcome {
+    Committed(CurrentUserActionProjection),
+    NotCommitted(CurrentUserActionProjection),
 }
 
-pub(crate) fn record_elicited_judgment(
+fn resolution_from_elicitation(
+    pending: &PendingUserAction,
+    content: &Value,
+) -> Result<UserActionResolutionInput, String> {
+    let content = content
+        .as_object()
+        .ok_or_else(|| "accepted elicitation content must be an object".to_owned())?;
+    match &pending.inbox_item.form {
+        UserActionInboxForm::Choice {
+            choices,
+            note_allowed,
+            note_max_chars,
+        } => {
+            let allowed = if *note_allowed {
+                &["selected_option_id", "note"][..]
+            } else {
+                &["selected_option_id"][..]
+            };
+            reject_unknown_field_names(
+                content.keys().map(String::as_str),
+                allowed,
+                "accepted elicitation content",
+            )?;
+            let selected = content
+                .get("selected_option_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "content.selected_option_id must be a string".to_owned())?;
+            let choice = choices
+                .iter()
+                .find(|choice| choice.choice_id.as_str() == selected)
+                .ok_or_else(|| "content.selected_option_id is not a stored choice".to_owned())?;
+            let note = match content.get("note") {
+                None if *note_allowed => None,
+                Some(Value::String(note))
+                    if *note_allowed && note.chars().count() <= *note_max_chars as usize =>
+                {
+                    Some(note.clone())
+                }
+                Some(Value::String(_)) if *note_allowed => {
+                    return Err("content.note exceeds its character limit".to_owned())
+                }
+                Some(_) if *note_allowed => {
+                    return Err("content.note must be a string when supplied".to_owned())
+                }
+                None => None,
+                Some(_) => return Err("this form does not accept a note".to_owned()),
+            };
+            Ok(UserActionResolutionInput::Choice {
+                selected_option_id: choice.choice_id.clone(),
+                note: note.into(),
+            })
+        }
+        UserActionInboxForm::EvidenceObservation {
+            target_candidates,
+            artifact_candidates,
+            relevance_options,
+            summary_max_chars,
+        } => {
+            reject_unknown_field_names(
+                content.keys().map(String::as_str),
+                &[
+                    "selected_target",
+                    "selected_artifact_ids",
+                    "relevance_status",
+                    "summary",
+                ],
+                "accepted elicitation content",
+            )?;
+            let selected_target = content
+                .get("selected_target")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "content.selected_target must be a string".to_owned())?;
+            let presentation = UserActionPresentationPlan::from_form(&pending.inbox_item.form)
+                .map_err(|_| "stored evidence form cannot be rendered".to_owned())?;
+            let UserActionPresentationForm::EvidenceObservation { targets, .. } =
+                &presentation.form
+            else {
+                return Err("stored evidence form has the wrong variant".to_owned());
+            };
+            let target_index = targets
+                .iter()
+                .position(|target| target.selector == selected_target)
+                .ok_or_else(|| "content.selected_target is not a stored target".to_owned())?;
+            let target = target_candidates[target_index].clone();
+            let artifact_values = content
+                .get("selected_artifact_ids")
+                .and_then(Value::as_array)
+                .ok_or_else(|| "content.selected_artifact_ids must be an array".to_owned())?;
+            if artifact_values.is_empty() {
+                return Err("content.selected_artifact_ids must not be empty".to_owned());
+            }
+            let mut artifact_ids = Vec::with_capacity(artifact_values.len());
+            let mut seen = BTreeSet::new();
+            for value in artifact_values {
+                let id = value.as_str().ok_or_else(|| {
+                    "content.selected_artifact_ids must contain strings".to_owned()
+                })?;
+                let artifact = artifact_candidates
+                    .iter()
+                    .find(|artifact| artifact.artifact_id.as_str() == id)
+                    .ok_or_else(|| {
+                        "content.selected_artifact_ids contains an unknown artifact".to_owned()
+                    })?;
+                if !seen.insert(id.to_owned()) {
+                    return Err(
+                        "content.selected_artifact_ids must not contain duplicates".to_owned()
+                    );
+                }
+                artifact_ids.push(artifact.artifact_id.clone());
+            }
+            let relevance_value = content
+                .get("relevance_status")
+                .cloned()
+                .ok_or_else(|| "content.relevance_status is required".to_owned())?;
+            let relevance_status: EvidenceRelevanceStatus = serde_json::from_value(relevance_value)
+                .map_err(|_| "content.relevance_status is invalid".to_owned())?;
+            if !relevance_options.contains(&relevance_status) {
+                return Err("content.relevance_status is not a stored option".to_owned());
+            }
+            let summary = content
+                .get("summary")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "content.summary must be a string".to_owned())?;
+            if summary.trim().is_empty() || summary.chars().count() > *summary_max_chars as usize {
+                return Err(
+                    "content.summary must be non-empty and within its character limit".to_owned(),
+                );
+            }
+            Ok(UserActionResolutionInput::EvidenceObservation {
+                target,
+                artifact_ids,
+                relevance_status,
+                summary: summary.to_owned(),
+            })
+        }
+    }
+}
+
+pub(crate) fn resolve_elicited_user_action(
     adapter: &McpAdapter,
-    judgment: &UserJudgment,
-    selected_option_id: &str,
-    note: Option<String>,
-) -> Result<ElicitedRecordOutcome, McpAdapterError> {
-    let Some(selected_option) = judgment
-        .options
-        .iter()
-        .find(|option| option.option_id.as_str() == selected_option_id)
-    else {
-        return Ok(ElicitedRecordOutcome::InvalidSelection(format!(
-            "Host prompt input selected unknown option_id `{selected_option_id}` for pending judgment `{}`.",
-            judgment.judgment_id.as_str()
-        )));
-    };
-    let state_version = judgment.basis.created_at_state_version + 1;
-    let request = RecordUserJudgmentRequest {
+    pending: &PendingUserAction,
+    resolution: UserActionResolutionInput,
+    elicitation_request_id: &str,
+) -> Result<ElicitedResolutionOutcome, McpAdapterError> {
+    let channel_submission_id = format!("mcp_elicitation:{elicitation_request_id}");
+    let request = ResolveUserActionRequest {
         envelope: ToolEnvelope {
-            project_id: judgment.project_id.clone(),
-            task_id: Some(judgment.task_id.clone()).into(),
-            request_id: RequestId::new(generated_metadata_id(
-                "req_mcp_elicitation_record",
-                adapter.context.connection_internal_id.as_str(),
-                "volicord.record_user_judgment",
+            project_id: pending.request.project_id.clone(),
+            task_id: Some(pending.request.task_id.clone()).into(),
+            request_id: RequestId::new(format!(
+                "req_{}",
+                sanitize_metadata_component(&channel_submission_id)
             )),
-            idempotency_key: Some(IdempotencyKey::new(generated_metadata_id(
-                "idem_mcp_elicitation_record",
-                adapter.context.connection_internal_id.as_str(),
-                "volicord.record_user_judgment",
-            )))
-            .into(),
-            expected_state_version: Some(state_version).into(),
+            idempotency_key: Some(IdempotencyKey::new(channel_submission_id.clone())).into(),
+            expected_state_version: RequiredNullable::null(),
             dry_run: false,
             locale: Some(DEFAULT_LOCALE.to_owned()).into(),
         },
-        user_judgment_id: judgment.judgment_id.clone(),
-        judgment_kind: judgment.judgment_kind,
-        selected_option_id: selected_option.option_id.clone(),
-        answer: answer_payload_for_judgment(judgment, selected_option)?,
-        rationale: rationale_for_selected_option(
-            judgment.judgment_kind,
-            selected_option,
-            "host prompt input",
-        ),
-        note: note.into(),
-        accepted_risks: accepted_risks_for_judgment(judgment, selected_option),
+        user_action_request_id: pending.request.user_action_request_id.clone(),
+        channel_submission_id,
+        resolution,
     };
     let invocation = InvocationContext::new(
-        judgment.project_id.clone(),
+        pending.request.project_id.clone(),
         ActorSource::LocalUser,
         OperationCategory::UserOnly,
         VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     );
     let response = adapter
         .core
-        .record_user_judgment(request, invocation)
+        .resolve_user_action(request, invocation)
         .map_err(McpAdapterError::Core)?;
+    let current = current_user_action_projection(adapter, pending)?;
     if response.response_value["base"]["response_kind"].as_str() == Some("result") {
-        Ok(ElicitedRecordOutcome::Recorded(Box::new(response)))
+        Ok(ElicitedResolutionOutcome::Committed(current))
     } else {
-        Ok(ElicitedRecordOutcome::PostEffectFailure)
+        Ok(ElicitedResolutionOutcome::NotCommitted(current))
     }
 }
 
-pub(crate) fn answer_payload_for_judgment(
-    judgment: &UserJudgment,
-    selected_option: &UserJudgmentOption,
-) -> Result<RecordUserJudgmentPayload, McpAdapterError> {
-    let mut payload = empty_answer_payload();
-    let branch = json_object(json!({
-        "summary": format!("User selected option {}", selected_option.option_id.as_str()),
-        "selected_option": selected_option.option_id.as_str(),
-        "selected_option_label": selected_option.label,
-        "selected_option_consequence": selected_option.consequence,
-    }));
-    match judgment.judgment_kind {
-        JudgmentKind::ProductDecision => payload.product_decision = Some(branch).into(),
-        JudgmentKind::TechnicalDecision => payload.technical_decision = Some(branch).into(),
-        JudgmentKind::ScopeDecision => payload.scope_decision = Some(branch).into(),
-        JudgmentKind::SensitiveApproval => {
-            let Some(scope) = judgment.basis.sensitive_action_scope.as_ref() else {
-                return Err(McpAdapterError::ToolExecution {
-                    tool_name: "volicord.request_user_judgment".to_owned(),
-                    message: "pending sensitive approval is missing its Core-derived sensitive action scope".to_owned(),
-                });
-            };
-            payload.sensitive_action_scope = Some(scope.clone()).into();
-        }
-        JudgmentKind::FinalAcceptance => payload.final_acceptance = Some(branch).into(),
-        JudgmentKind::ResidualRiskAcceptance => {
-            payload.residual_risk_acceptance = Some(json_object(json!({
-                "summary": format!("User selected option {}", selected_option.option_id.as_str()),
-                "selected_option": selected_option.option_id.as_str(),
-                "risk_ids": accepted_risk_ids(selected_option, judgment),
-            })))
-            .into();
-        }
-        JudgmentKind::Cancellation => payload.cancellation = Some(branch).into(),
-    }
-    Ok(payload)
-}
-
-pub(crate) fn empty_answer_payload() -> RecordUserJudgmentPayload {
-    RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: None.into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    }
-}
-
-pub(crate) fn rationale_for_selected_option(
-    judgment_kind: JudgmentKind,
-    selected_option: &UserJudgmentOption,
-    capture_path: &str,
-) -> JudgmentRationale {
-    let accepted = selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted;
-    JudgmentRationale {
-        summary: format!(
-            "User selected `{}` for `{}` through {capture_path}.",
-            selected_option.option_id.as_str(),
-            judgment_kind_value(judgment_kind)
-        ),
-        selected_reason: Some(format!(
-            "{} {}",
-            selected_option.description, selected_option.consequence
-        ))
-        .into(),
-        considered_alternatives: Vec::new(),
-        rejected_alternatives: Vec::new(),
-        assumptions: vec!["The answer covers only the addressed Core UserJudgment.".to_owned()],
-        tradeoffs: if accepted {
-            vec![selected_option.consequence.clone()]
-        } else {
-            Vec::new()
-        },
-        uncertainties: Vec::new(),
-        review_triggers: if accepted {
-            vec!["Revisit if the captured judgment basis becomes stale or superseded.".to_owned()]
-        } else {
-            Vec::new()
-        },
-        related_refs: Vec::new(),
-        artifact_refs: Vec::new(),
-    }
-}
-
-pub(crate) fn accepted_risks_for_judgment(
-    judgment: &UserJudgment,
-    selected_option: &UserJudgmentOption,
-) -> Vec<volicord_types::AcceptedRiskInput> {
-    if judgment.judgment_kind == JudgmentKind::ResidualRiskAcceptance
-        && selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted
-    {
-        judgment.context.visible_risks.clone()
-    } else {
-        Vec::new()
-    }
-}
-
-pub(crate) fn accepted_risk_ids(
-    selected_option: &UserJudgmentOption,
-    judgment: &UserJudgment,
-) -> Vec<String> {
-    if selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted {
-        judgment
-            .context
-            .visible_risks
-            .iter()
-            .map(|risk| risk.risk_id.as_str().to_owned())
-            .collect()
-    } else {
-        Vec::new()
-    }
-}
-
-pub(crate) fn reject_option_id(judgment: &UserJudgment) -> Option<&str> {
-    judgment
+fn reject_resolution(pending: &PendingUserAction) -> Option<UserActionResolutionInput> {
+    let UserActionRequestBody::Choice(choice) = &pending.request.body else {
+        return None;
+    };
+    let selected = choice
         .options
         .iter()
-        .find(|option| option.machine_action == UserJudgmentOptionAction::Reject)
-        .map(|option| option.option_id.as_str())
+        .find(|option| option.machine_action == UserActionOptionAction::Reject)?;
+    Some(UserActionResolutionInput::Choice {
+        selected_option_id: selected.option_id.clone(),
+        note: RequiredNullable::null(),
+    })
 }
 
-pub(crate) struct UserJudgmentFallback {
+pub(crate) struct UserActionFallback {
     texts: Vec<String>,
-    preferred_capture_path: Option<Value>,
-    fallbacks: Vec<Value>,
     kind: DiagnosticFallbackKind,
 }
 
-pub(crate) fn user_judgment_fallback(
+pub(crate) fn user_action_fallback(
     adapter: &McpAdapter,
-    judgment: &UserJudgment,
-) -> Result<UserJudgmentFallback, McpAdapterError> {
-    let availability = guard_health_record(
-        &adapter.runtime_home,
-        judgment.project_id.as_str(),
-        adapter.context.connection_internal_id.as_str(),
-    )
-    .and_then(|record| prompt_capture_availability(&record))
-    .map_err(McpAdapterError::Store)?;
-    if availability.can_use_chat_commands() {
-        return chat_capture_fallback(adapter, judgment, availability.status.as_str());
-    }
-
+    pending: &PendingUserAction,
+) -> Result<UserActionFallback, McpAdapterError> {
+    let agent_facing_input_allowed = agent_facing_user_action_input_allowed(pending);
+    let prompt_path = pending
+        .inbox_item
+        .preferred_capture_path
+        .as_ref()
+        .into_iter()
+        .chain(pending.inbox_item.fallbacks.iter())
+        .find(|path| path.available && path.kind == "prompt_capture");
+    let prompt_capture_unavailable = if !agent_facing_input_allowed {
+        true
+    } else if let Some(path) = prompt_path {
+        if let Some(fallback) = prompt_capture_fallback(adapter, pending, path) {
+            return Ok(fallback);
+        }
+        true
+    } else {
+        false
+    };
+    let unavailable_reason = if !agent_facing_input_allowed {
+        "PROMPT_CAPTURE_PRESENTATION_REQUIRES_USER_ONLY_CHANNEL"
+    } else if prompt_capture_unavailable {
+        "PROMPT_CAPTURE_PRESENTATION_UNAVAILABLE"
+    } else {
+        "LOCAL_WEB_CONSENT_DISABLED"
+    };
+    let prompt_notice = if !agent_facing_input_allowed {
+        Some(
+            "Prompt capture is unavailable for this action because its complete presentation requires a user-only channel; no question, context, closed form, or resolve-command template was placed in agent-facing fallback text."
+                .to_owned(),
+        )
+    } else {
+        prompt_capture_unavailable.then(|| {
+            format!(
+                "Prompt capture is unavailable for this action because its complete request-bound presentation could not be rendered within the {}-byte budget; no partial form was shown.",
+                MAX_MCP_PROMPT_CAPTURE_PRESENTATION_BYTES
+            )
+        })
+    };
     if adapter.local_web_consent.is_some() {
-        match local_web_consent_fallback(adapter, judgment) {
-            Ok(fallback) => return Ok(fallback),
+        match local_web_consent_fallback(adapter, pending) {
+            Ok(mut fallback) => {
+                if let Some(notice) = prompt_notice.as_ref() {
+                    fallback.texts.push(notice.clone());
+                }
+                return Ok(fallback);
+            }
             Err(_) => {
-                return Ok(cli_recovery_fallback(
+                let mut fallback = cli_recovery_fallback(
                     adapter,
-                    judgment,
-                    availability.status.as_str(),
-                    "LOCAL_WEB_CONSENT_TOKEN_UNAVAILABLE",
-                ))
+                    pending,
+                    if prompt_capture_unavailable {
+                        unavailable_reason
+                    } else {
+                        "LOCAL_WEB_CONSENT_TOKEN_UNAVAILABLE"
+                    },
+                );
+                if let Some(notice) = prompt_notice.as_ref() {
+                    fallback.texts.push(notice.clone());
+                }
+                return Ok(fallback);
             }
         }
     }
-
-    Ok(cli_recovery_fallback(
-        adapter,
-        judgment,
-        availability.status.as_str(),
-        "LOCAL_WEB_CONSENT_DISABLED",
-    ))
-}
-
-pub(crate) fn response_json_with_inbox_capture(
-    response: &PipelineResponse,
-    fallback: &UserJudgmentFallback,
-) -> Result<String, McpAdapterError> {
-    let mut value = response.response_value.clone();
-    if let Some(inbox_item) = value.get_mut("inbox_item").and_then(Value::as_object_mut) {
-        if let Some(preferred_capture_path) = fallback.preferred_capture_path.clone() {
-            inbox_item.insert("preferred_capture_path".to_owned(), preferred_capture_path);
-        }
-        if !fallback.fallbacks.is_empty() {
-            inbox_item.insert(
-                "fallbacks".to_owned(),
-                Value::Array(fallback.fallbacks.clone()),
-            );
-        }
+    let mut fallback = cli_recovery_fallback(adapter, pending, unavailable_reason);
+    if let Some(notice) = prompt_notice {
+        fallback.texts.push(notice);
     }
-    serde_json::to_string(&value).map_err(McpAdapterError::Json)
+    Ok(fallback)
 }
 
-pub(crate) fn chat_capture_fallback(
+fn prompt_capture_fallback(
     adapter: &McpAdapter,
-    judgment: &UserJudgment,
-    prompt_capture_status: &str,
-) -> Result<UserJudgmentFallback, McpAdapterError> {
-    let store = CoreProjectStore::open(&adapter.runtime_home, &judgment.project_id)
-        .map_err(McpAdapterError::Store)?;
+    pending: &PendingUserAction,
+    path: &UserActionCapturePath,
+) -> Option<UserActionFallback> {
+    if !agent_facing_user_action_input_allowed(pending) {
+        return None;
+    }
+    let store =
+        CoreProjectStore::open_read_only(&adapter.runtime_home, &pending.request.project_id)
+            .ok()?;
+    let now = SystemClock.project_now(&store).ok()?;
     let records = store
-        .user_judgment_records_for_task(&judgment.task_id)
-        .map_err(McpAdapterError::Store)?;
-    let chat_index = records
-        .iter()
-        .position(|record| record.judgment_id == judgment.judgment_id.as_str())
-        .map(|index| index + 1)
-        .unwrap_or(1);
-    let requested_at = records
-        .iter()
-        .find(|record| record.judgment_id == judgment.judgment_id.as_str())
-        .map(|record| record.requested_at.clone())
-        .unwrap_or_else(|| judgment.created_at.to_canonical_string());
-    let chat_id = format!("J-{chat_index}");
-    let verification_code = chat_judgment_verification_code(
-        judgment.project_id.as_str(),
-        judgment.task_id.as_str(),
-        judgment.judgment_id.as_str(),
-        &requested_at,
+        .user_action_records_for_task(&pending.request.task_id, &now)
+        .ok()?;
+    let (index, record) = records.iter().enumerate().find(|(_, record)| {
+        record.request.user_action_request_id == pending.request.user_action_request_id.as_str()
+    })?;
+    let expected_actor =
+        ActorSource::agent_connection(adapter.context.connection_internal_id.as_str().to_owned())
+            .to_canonical_string();
+    if record.status != UserActionStatus::Pending
+        || record.request.requested_by_actor_source != expected_actor
+    {
+        return None;
+    }
+    let chat_id = format!("A-{}", index + 1);
+    let verification_code = chat_user_action_verification_code(
+        &record.request.project_id,
+        &record.request.task_id,
+        &record.request.user_action_request_id,
+        &record.request.requested_at,
         adapter.context.connection_internal_id.as_str(),
     );
-    let commands = judgment
-        .options
-        .iter()
-        .enumerate()
-        .map(|(index, option)| {
-            format!(
-                "`Volicord: answer {chat_id} {} {verification_code}` for option `{}` ({})",
-                chat_option_selector(index + 1, option),
-                option.option_id.as_str(),
-                option.label
-            )
-        })
-        .collect::<Vec<_>>();
-    let options = commands.join("; ");
-    let note_command = format!("Volicord: note {chat_id} \"text\" {verification_code}");
+    let presentation = UserActionPresentationPlan::from_form(&pending.inbox_item.form).ok()?;
+    let form_text = presentation.render_plain_text().ok()?;
+    let instruction = presentation.prompt_capture_instruction(
+        &chat_id,
+        pending.request.user_action_request_id.as_str(),
+        &verification_code,
+    );
+    let form_digest = canonical_json_bare_sha256(&pending.inbox_item.form).ok()?;
     let human_text = format!(
-        "Host prompt input is unavailable. The pending judgment `{}` remains unresolved. To use chat command capture, ask the user to send one exact command in chat: {options}. To defer with a note, use `Volicord: note {chat_id} \"text\" {verification_code}`. Do not ask the user to include secrets, credentials, tokens, or private keys.",
-        judgment.judgment_id.as_str()
+        "Host elicitation is unavailable. The pending user action `{}` remains unresolved. Use chat action `{chat_id}` with current verification code `{verification_code}`. Exact request-bound command template: {instruction}\n\nQuestion: {}\n\nContext: {}\n\nCanonical closed form:\n{form_text}\n\nAfter the User Channel completes, call `volicord.request_user_action` with nested `request.operation=resume` and this request ID; do not create a second request.",
+        pending.request.user_action_request_id.as_str(),
+        pending.inbox_item.question,
+        pending.inbox_item.context_summary
     );
     let structured_text = fallback_state_json(json!({
         "kind": "prompt_capture",
-        "project_id": judgment.project_id.as_str(),
+        "project_id": pending.request.project_id.as_str(),
         "connection_id": adapter.context.connection_internal_id.as_str(),
-        "judgment_id": judgment.judgment_id.as_str(),
-        "prompt_capture_status": prompt_capture_status,
-        "commands": commands,
-        "note_command": note_command
+        "user_action_request_id": pending.request.user_action_request_id.as_str(),
+        "chat_id": chat_id,
+        "verification_code": verification_code,
+        "resolve_instruction": instruction,
+        "form_digest": form_digest,
+        "expires_at": pending.request.expires_at,
+        "capture_path": path,
+        "resume": user_action_resume_guidance(pending),
     }));
-    Ok(UserJudgmentFallback {
-        texts: vec![human_text, structured_text],
-        preferred_capture_path: Some(prompt_capture_path_json()),
-        fallbacks: vec![cli_inbox_capture_path_json(judgment)],
+    let texts = vec![human_text, structured_text];
+    let rendered_bytes = serde_json::to_vec(&texts).ok()?.len();
+    if rendered_bytes > MAX_MCP_PROMPT_CAPTURE_PRESENTATION_BYTES {
+        return None;
+    }
+    Some(UserActionFallback {
+        texts,
         kind: DiagnosticFallbackKind::PromptCapture,
     })
 }
 
 pub(crate) fn local_web_consent_fallback(
     adapter: &McpAdapter,
-    judgment: &UserJudgment,
-) -> Result<UserJudgmentFallback, McpAdapterError> {
+    pending: &PendingUserAction,
+) -> Result<UserActionFallback, McpAdapterError> {
     let Some(context) = adapter.local_web_consent.as_ref() else {
         return Err(McpAdapterError::Environment(
             "local consent URL is not available".to_owned(),
         ));
     };
     let token = generate_bearer_token()?;
-    let record = create_local_web_consent_token(
+    let form_digest =
+        canonical_json_bare_sha256(&pending.inbox_item.form).map_err(McpAdapterError::Json)?;
+    let record = create_user_action_channel_token(
         &adapter.runtime_home,
-        LocalWebConsentTokenCreate {
+        UserActionChannelTokenCreate {
             token: token.clone(),
-            project_id: judgment.project_id.as_str().to_owned(),
+            project_id: pending.request.project_id.as_str().to_owned(),
+            channel_kind: UserActionChannelKind::LocalWebConsent,
             connection_internal_id: adapter.context.connection_internal_id.to_string(),
-            judgment_id: judgment.judgment_id.as_str().to_owned(),
+            user_action_request_id: pending.request.user_action_request_id.as_str().to_owned(),
             capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            ttl_seconds: LOCAL_WEB_CONSENT_TOKEN_TTL_SECONDS,
             created_metadata_json: json!({
                 "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH
+                "endpoint": LOCAL_WEB_CONSENT_PATH,
+                "form_digest": form_digest,
             })
             .to_string(),
         },
@@ -2822,12 +3021,12 @@ pub(crate) fn local_web_consent_fallback(
         "{}{}?project={}&token={}",
         context.base_url,
         LOCAL_WEB_CONSENT_PATH,
-        percent_encode_query(judgment.project_id.as_str()),
+        percent_encode_query(pending.request.project_id.as_str()),
         percent_encode_query(&token)
     );
     let human_text = format!(
-        "Host prompt input and chat command capture are unavailable. The pending judgment `{}` remains unresolved. Open this local Volicord consent link before {}: {}",
-        judgment.judgment_id.as_str(),
+        "Host prompt input is unavailable. The pending user action `{}` remains unresolved. Open this local Volicord consent link before {}: {} After consent completes, call `volicord.request_user_action` with nested `request.operation=resume` and this request ID; do not create a second request.",
+        pending.request.user_action_request_id.as_str(),
         record.expires_at,
         url
     );
@@ -2837,98 +3036,55 @@ pub(crate) fn local_web_consent_fallback(
         "expires_at": record.expires_at,
         "project_id": record.project_id,
         "connection_id": record.connection_internal_id,
-        "judgment_id": record.judgment_id,
+        "user_action_request_id": record.user_action_request_id,
         "capture_basis": record.capture_basis,
-        "ttl_seconds": LOCAL_WEB_CONSENT_TOKEN_TTL_SECONDS,
-        "endpoint": LOCAL_WEB_CONSENT_PATH
+        "endpoint": LOCAL_WEB_CONSENT_PATH,
+        "resume": user_action_resume_guidance(pending),
     }));
-    Ok(UserJudgmentFallback {
+    Ok(UserActionFallback {
         texts: vec![human_text, structured_text],
-        preferred_capture_path: Some(local_web_consent_path_json(
-            judgment,
-            &record.capture_basis,
-            &record.expires_at,
-            &url,
-        )),
-        fallbacks: vec![cli_inbox_capture_path_json(judgment)],
         kind: DiagnosticFallbackKind::LocalWebConsent,
     })
 }
 
 pub(crate) fn cli_recovery_fallback(
     adapter: &McpAdapter,
-    judgment: &UserJudgment,
-    prompt_capture_status: &str,
+    pending: &PendingUserAction,
     local_web_reason: &'static str,
-) -> UserJudgmentFallback {
+) -> UserActionFallback {
     let human_text = format!(
-        "Host prompt input is unavailable. The pending judgment `{}` remains unresolved. Chat command capture is not available for this connection (prompt_capture_status={prompt_capture_status}). Local consent URL is unavailable ({local_web_reason}). Use `volicord inbox` and `volicord inbox answer` as the CLI inbox path.",
-        judgment.judgment_id.as_str()
+        "Host prompt input is unavailable. The pending user action `{}` remains unresolved. Local consent URL is unavailable ({local_web_reason}). Use `volicord inbox` and `volicord inbox resolve` as the CLI inbox path. After resolution, call `volicord.request_user_action` with nested `request.operation=resume` and this request ID; do not create a second request.",
+        pending.request.user_action_request_id.as_str()
     );
     let structured_text = fallback_state_json(json!({
         "kind": "cli_recovery",
-        "project_id": judgment.project_id.as_str(),
+        "project_id": pending.request.project_id.as_str(),
         "connection_id": adapter.context.connection_internal_id.as_str(),
-        "judgment_id": judgment.judgment_id.as_str(),
-        "command": format!("volicord inbox answer {} --choice <choice>", judgment.judgment_id.as_str()),
-        "prompt_capture_status": prompt_capture_status,
+        "user_action_request_id": pending.request.user_action_request_id.as_str(),
+        "command": format!("volicord inbox resolve {}", pending.request.user_action_request_id.as_str()),
+        "resume": user_action_resume_guidance(pending),
         "local_web_consent": {
             "available": false,
             "reason": local_web_reason
         }
     }));
-    UserJudgmentFallback {
+    UserActionFallback {
         texts: vec![human_text, structured_text],
-        preferred_capture_path: Some(cli_inbox_capture_path_json(judgment)),
-        fallbacks: Vec::new(),
         kind: DiagnosticFallbackKind::CliInbox,
     }
 }
 
-pub(crate) fn prompt_capture_path_json() -> Value {
+fn user_action_resume_guidance(pending: &PendingUserAction) -> Value {
     json!({
-        "kind": "prompt_capture",
-        "label": "Chat command capture",
-        "available": true,
-        "command": null,
-        "url": null,
-        "capture_basis": VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-        "expires_at": null,
-        "detail": "Use the displayed chat command with the current verification code."
-    })
-}
-
-pub(crate) fn local_web_consent_path_json(
-    judgment: &UserJudgment,
-    capture_basis: &str,
-    expires_at: &str,
-    url: &str,
-) -> Value {
-    json!({
-        "kind": "local_web_consent",
-        "label": "Local consent URL",
-        "available": true,
-        "command": null,
-        "url": url,
-        "capture_basis": capture_basis,
-        "expires_at": expires_at,
-        "detail": format!(
-            "Open the local consent URL to answer pending judgment {}.",
-            judgment.judgment_id.as_str()
-        )
-    })
-}
-
-pub(crate) fn cli_inbox_capture_path_json(judgment: &UserJudgment) -> Value {
-    json!({
-        "kind": "cli",
-        "label": "CLI inbox",
-        "available": true,
-        "command": format!("volicord inbox answer {} --choice <choice>", judgment.judgment_id.as_str()),
-        "url": null,
-        "capture_basis": VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        "expires_at": null,
-        "detail": "Answer from the local terminal as the user."
+        "tool_name": REQUEST_USER_ACTION_TOOL_NAME,
+        "arguments": {
+            "project_selector": pending.request.project_id.as_str(),
+            "request": {
+                "operation": "resume",
+                "user_action_request_id": pending.request.user_action_request_id.as_str(),
+            },
+        },
+        "creates_new_request": false,
     })
 }
 
@@ -2958,55 +3114,16 @@ pub(crate) fn hex_digit(value: u8) -> char {
     }
 }
 
-pub(crate) fn chat_option_selector(index: usize, option: &UserJudgmentOption) -> String {
-    match option.machine_action {
-        UserJudgmentOptionAction::Reject => "reject".to_owned(),
-        UserJudgmentOptionAction::Defer => "defer".to_owned(),
-        UserJudgmentOptionAction::Accept => index.to_string(),
-    }
-}
-
-pub(crate) fn elicitation_secret_request_risk(judgment: &UserJudgment) -> Option<&'static str> {
-    let mut text = String::new();
-    text.push_str(&judgment.question);
-    text.push('\n');
-    text.push_str(&judgment.context.summary);
-    for constraint in &judgment.context.constraints {
-        text.push('\n');
-        text.push_str(constraint);
-    }
-    for option in &judgment.options {
-        text.push('\n');
-        text.push_str(&option.label);
-        text.push('\n');
-        text.push_str(&option.description);
-        text.push('\n');
-        text.push_str(&option.consequence);
-    }
-    let normalized = text.to_ascii_lowercase();
-    [
-        "password",
-        "passphrase",
-        "private key",
-        "api key",
-        "secret",
-        "credential",
-        "token",
-    ]
-    .into_iter()
-    .find(|needle| normalized.contains(needle))
-}
-
-pub(crate) fn judgment_kind_value(value: JudgmentKind) -> &'static str {
-    match value {
-        JudgmentKind::ProductDecision => "product_decision",
-        JudgmentKind::TechnicalDecision => "technical_decision",
-        JudgmentKind::ScopeDecision => "scope_decision",
-        JudgmentKind::SensitiveApproval => "sensitive_approval",
-        JudgmentKind::FinalAcceptance => "final_acceptance",
-        JudgmentKind::ResidualRiskAcceptance => "residual_risk_acceptance",
-        JudgmentKind::Cancellation => "cancellation",
-    }
+pub(crate) fn agent_facing_user_action_input_allowed(pending: &PendingUserAction) -> bool {
+    UserActionPresentationPlan::from_form(&pending.inbox_item.form)
+        .and_then(|presentation| {
+            presentation.agent_facing_input_safety(
+                &pending.inbox_item.question,
+                &pending.inbox_item.context_summary,
+            )
+        })
+        .map(UserActionPresentationSafety::allows_agent_facing_input)
+        .unwrap_or(false)
 }
 
 pub(crate) fn next_server_request_id(prefix: &str, next_server_request_id: &mut u64) -> String {
@@ -3017,13 +3134,6 @@ pub(crate) fn next_server_request_id(prefix: &str, next_server_request_id: &mut 
 
 pub(crate) fn concise_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "unserializable JSON value".to_owned())
-}
-
-pub(crate) fn json_object(value: Value) -> JsonObject {
-    match value {
-        Value::Object(object) => object,
-        _ => JsonObject::new(),
-    }
 }
 
 pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
@@ -3231,9 +3341,9 @@ pub(crate) fn write_json_line(
 mod mutation_output_tests {
     use super::*;
     use volicord_test_support::core_fixtures::{
-        CoreFixture, UpdateScopeFixture, UserJudgmentFixture,
+        CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
-    use volicord_types::{ChangeUnitOperation, MAX_OPERATION_RESULT_PAGE_BYTES};
+    use volicord_types::{ChangeUnitOperation, JudgmentKind, MAX_OPERATION_RESULT_PAGE_BYTES};
 
     fn committed_intake_with_receipt(
         prefix: &str,
@@ -3712,7 +3822,7 @@ mod mutation_output_tests {
     }
 
     #[test]
-    fn elicited_record_rejection_preserves_the_initial_pending_judgment_effect(
+    fn superseded_user_action_suppresses_elicitation_and_preserves_the_origin_effect(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-elicited-record-race")?;
         let core = CoreService::new(fixture.runtime_home_path());
@@ -3737,8 +3847,8 @@ mod mutation_output_tests {
             .resolved_task_id
             .clone()
             .expect("intake resolves a Task");
-        let pending_response = core.request_user_judgment(
-            fixture.user_judgment_request(UserJudgmentFixture {
+        let pending_response = core.request_user_action(
+            fixture.user_action_request(UserActionFixture {
                 request_id: "req_mcp_elicited_record_race_pending",
                 idempotency_key: "idem_mcp_elicited_record_race_pending",
                 dry_run: false,
@@ -3749,7 +3859,7 @@ mod mutation_output_tests {
             }),
             workflow_invocation(),
         )?;
-        assert!(pending_judgment_from_response(&pending_response).is_some());
+        assert!(pending_user_action_from_response(&pending_response)?.is_some());
         core.update_scope(
             fixture.update_scope_request(UpdateScopeFixture {
                 request_id: "req_mcp_elicited_record_race_scope",
@@ -3766,35 +3876,29 @@ mod mutation_output_tests {
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
 
-        let elicitation_response = json!({
-            "jsonrpc": "2.0",
-            "id": "elicit_user_judgment_1",
-            "result": {
-                "action": "accept",
-                "content": { "selected_option_id": "accept" }
-            }
-        });
-        let input = format!("{}\n", serde_json::to_string(&elicitation_response)?);
-        let mut lines = io::BufReader::new(io::Cursor::new(input)).lines();
+        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
         let mut elicitation_request = Vec::new();
         let mut request_sequence = 1;
-        let output = user_judgment_tool_output(
+        let output = user_action_tool_output(
             &adapter,
             pending_response,
+            true,
             true,
             &mut request_sequence,
             &mut lines,
             &mut elicitation_request,
         )?;
+        assert_eq!(output.post_effect_failure, None);
         assert_eq!(
-            output.post_effect_failure,
-            Some(McpPostEffectFailureCode::McpPostEffectAdapterFailed)
+            output.structured_content["agent_workflow_result"]["user_action_request"]["status"],
+            "pending"
         );
-        assert!(
-            String::from_utf8(elicitation_request)?.contains("\"method\":\"elicitation/create\"")
-        );
+        assert_eq!(output.structured_content["current_status"], "superseded");
+        assert!(output.structured_content["user_channel_resolution"].is_null());
+        assert_eq!(output.structured_content["derived_refs"], json!([]));
+        assert!(elicitation_request.is_empty());
         let output = finalize_mutation_output_with_refresh(
-            REQUEST_USER_JUDGMENT_TOOL_NAME,
+            REQUEST_USER_ACTION_TOOL_NAME,
             Some(MutationDetailLevel::Summary),
             output,
             |context| {
@@ -3814,22 +3918,142 @@ mod mutation_output_tests {
             },
         )?;
 
+        assert!(!output.is_error);
+        assert!(output.structured_content.get("code").is_none());
         assert_eq!(
-            output.structured_content["code"],
-            "MCP_POST_EFFECT_ADAPTER_FAILED"
+            output.structured_content["operation_result_ref"]["source_method"],
+            REQUEST_USER_ACTION_TOOL_NAME
         );
-        assert_eq!(output.structured_content["retryable"], false);
-        assert_eq!(output.structured_content["committed"], true);
-        assert_eq!(output.structured_content["effect_kind"], "core_committed");
-        assert!(output.structured_content["effect_anchor"]
-            .as_str()
-            .is_some_and(|token| token.starts_with("authority_event:")));
+        assert_eq!(
+            output.structured_content["method_result"]["status"],
+            "superseded"
+        );
+        assert_eq!(
+            output.structured_content["method_result"]["agent_workflow_result_replayed"],
+            false
+        );
+        assert_eq!(
+            output.structured_content["method_result"]["derived_refs"],
+            json!([])
+        );
         assert_eq!(
             output.structured_content["authority_receipt"]["state_version"],
             3
         );
-        assert_eq!(output.structured_content["status_read_required"], true);
-        assert_eq!(output.structured_content["completion_claim_withheld"], true);
+        assert!(output
+            .structured_content
+            .get("completion_claim_withheld")
+            .is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn noncanonical_pending_form_routes_to_closed_post_effect_recovery(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-noncanonical-pending-post-effect")?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let workflow_invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            )
+        };
+        let intake = core.intake(
+            fixture.intake_request(
+                "req_mcp_noncanonical_pending_intake",
+                "idem_mcp_noncanonical_pending_intake",
+                false,
+                Some(0),
+            ),
+            workflow_invocation(),
+        )?;
+        let task_id = intake
+            .resolved_task_id
+            .clone()
+            .expect("committed intake resolves a Task");
+        let mut pending_response = core.request_user_action(
+            fixture.user_action_request(UserActionFixture {
+                request_id: "req_mcp_noncanonical_pending_action",
+                idempotency_key: "idem_mcp_noncanonical_pending_action",
+                dry_run: false,
+                expected_state_version: Some(1),
+                task_id: task_id.as_str(),
+                change_unit_id: None,
+                judgment_kind: JudgmentKind::ProductDecision,
+            }),
+            workflow_invocation(),
+        )?;
+        let before = fixture.counts()?;
+        pending_response.response_value["inbox_item"]["form"]["choices"][0]["label"] =
+            json!("tampered transport label");
+        let context =
+            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+        let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
+        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
+        let mut elicitation_request = Vec::new();
+        let mut request_sequence = 1;
+
+        let error = user_action_tool_output(
+            &adapter,
+            pending_response.clone(),
+            true,
+            true,
+            &mut request_sequence,
+            &mut lines,
+            &mut elicitation_request,
+        )
+        .expect_err("noncanonical post-Core form must fail adapter projection");
+        assert!(matches!(error, McpAdapterError::Protocol(_)));
+        assert!(elicitation_request.is_empty());
+        assert_eq!(request_sequence, 1);
+        assert_eq!(fixture.counts()?, before);
+
+        let output = ToolCallOutput::from_pipeline_response(&pending_response)?
+            .with_post_effect_failure(McpPostEffectFailureCode::McpPostEffectAdapterFailed);
+        let output = finalize_mutation_output_with_refresh(
+            REQUEST_USER_ACTION_TOOL_NAME,
+            Some(MutationDetailLevel::Summary),
+            output,
+            |context| {
+                core.status(
+                    fixture.status_request(
+                        "req_mcp_noncanonical_pending_status",
+                        Some(context.task_id.as_str()),
+                    ),
+                    InvocationContext::new(
+                        context.project_id.clone(),
+                        ActorSource::agent_connection(fixture.connection_id()),
+                        OperationCategory::Read,
+                        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+                    ),
+                )
+                .map_err(McpAdapterError::Core)
+            },
+        )?;
+        let recovery: McpMutationPostEffectFailure =
+            serde_json::from_value(output.structured_content.clone())?;
+        assert_eq!(
+            recovery.code,
+            McpPostEffectFailureCode::McpPostEffectAdapterFailed
+        );
+        assert!(!recovery.retryable);
+        assert!(recovery.reached_core);
+        assert!(recovery.committed);
+        assert!(recovery.effect_applied);
+        assert!(recovery.response_projection_omitted);
+        assert!(recovery.status_read_required);
+        assert!(recovery.completion_claim_withheld);
+        assert_eq!(
+            output.structured_content["method_result"]["user_action_request"]["status"],
+            "pending"
+        );
+        assert!(output
+            .structured_content
+            .get("agent_workflow_result")
+            .is_none());
+        assert_eq!(fixture.counts()?, before);
         Ok(())
     }
 
@@ -4395,6 +4619,102 @@ mod mutation_output_tests {
             Value::Null
         );
         assert_compact_budget(effect_facts_only)?;
+        Ok(())
+    }
+
+    #[test]
+    fn user_action_derived_refs_survive_compact_only_recovery_paths() -> Result<(), Box<dyn Error>>
+    {
+        let (_fixture, _committed, receipt) =
+            committed_intake_with_receipt("mcp-user-action-derived-ref-recovery")?;
+        let derived_ref = json!({
+            "record_kind": "project_continuity_record",
+            "record_id": "continuity_user_action_derived",
+            "project_id": "project_mcp_recovery_order",
+            "task_id": "task_mcp_recovery_order",
+            "produced_at_state_version": 3
+        });
+        let compact = json!({
+            "effect": {
+                "effect_kind": "core_committed",
+                "state_version": 3,
+                "events": []
+            },
+            "agent_workflow_result_replayed": true,
+            "user_action_request_ref": {
+                "record_kind": "user_action_request",
+                "record_id": "user_action_request_recovery",
+                "project_id": "project_mcp_recovery_order",
+                "task_id": "task_mcp_recovery_order",
+                "produced_at_state_version": 2
+            },
+            "user_action_resolution_ref": {
+                "record_kind": "user_action_resolution",
+                "record_id": "user_action_resolution_recovery",
+                "project_id": "project_mcp_recovery_order",
+                "task_id": "task_mcp_recovery_order",
+                "produced_at_state_version": 3
+            },
+            "current_projection_state_version": 4,
+            "current_projection_observed_at": "2026-07-13T12:00:00Z",
+            "status": "resolved",
+            "resolution_summary": {
+                "resolution_type": "choice",
+                "selected_option_id": "accept",
+                "selected_option_label": "Accept",
+                "machine_action": "accept",
+                "resolution_outcome": "accepted"
+            },
+            "derived_refs": [derived_ref.clone()]
+        });
+        let outcome = recovery_outcome(
+            REQUEST_USER_ACTION_TOOL_NAME,
+            MutationDetailLevel::Summary,
+            Some(receipt_with_message_padding(
+                &receipt,
+                MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+            )),
+            Some(json!({
+                "padding": "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES)
+            })),
+            Some(compact),
+        );
+
+        let outputs = [
+            mutation_post_effect_failure_output(
+                &outcome,
+                McpPostEffectFailureCode::McpResponseProjectionFailed,
+            )?,
+            mutation_response_budget_exceeded_output(&outcome)?,
+            authoritative_refresh_failure_output(&outcome)?,
+        ];
+        for output in outputs {
+            assert_eq!(output.structured_content["authority_receipt"], Value::Null);
+            assert_eq!(
+                output.structured_content["method_result"]["derived_refs"][0],
+                derived_ref
+            );
+            assert_eq!(
+                output.structured_content["method_result"]["agent_workflow_result_replayed"],
+                true
+            );
+            assert_eq!(
+                output.structured_content["method_result"]["current_projection_state_version"],
+                4
+            );
+            assert_eq!(
+                output.structured_content["method_result"]["current_projection_observed_at"],
+                "2026-07-13T12:00:00Z"
+            );
+            assert_eq!(
+                output.structured_content["method_result"]["status"],
+                "resolved"
+            );
+            assert!(
+                serde_json::to_vec(&tool_call_result_from_output(output))?.len()
+                    <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+            );
+        }
         Ok(())
     }
 

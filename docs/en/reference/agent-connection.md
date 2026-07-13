@@ -14,7 +14,7 @@ This document owns:
 - current connection context boundaries for MCP-host calls
 - `actor_source` and `operation_category` provenance boundaries
 - User Channel versus Agent Connection boundaries for authority-bearing
-  judgment resolution
+  user-action resolutions
 - repository-root project selection and project availability boundaries at the
   Agent Connection layer
 - agent context transfer rules between owner results and an Agent Connection
@@ -177,7 +177,7 @@ Rules:
   registration path.
 - `connection.mode=workflow` is the default Agent Connection mode. It exposes
   agent workflow operations as well as read/project discovery operations. It
-  does not expose user-only judgment recording.
+  does not expose user-only User Action resolution.
 - `connection.mode=read_only` exposes read/project discovery operations. It is
   not a workflow-write capability.
 - `connection_internal_id`, a `connection_id` process binding, connection mode,
@@ -437,7 +437,7 @@ Connection modes and operation categories:
 
 | Agent Connection mode | Allowed operation categories through MCP | MCP-visible public method tools |
 |---|---|---|
-| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
+| `workflow` | `read`, `agent_workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task` |
 | `read_only` | `read` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close` |
 
 The adapter-owned `volicord.list_projects` utility is visible in both
@@ -470,7 +470,7 @@ the enabled connection, Connection Projects membership, selected project, and
 stored `actor_source` on every page. References and cursors are non-bearer
 locators and never broaden connection access. Agent Connections cannot use the
 tool to retrieve `user_only` results, including an exact
-`volicord.record_user_judgment` response or a private user note. Callers must
+`volicord.resolve_user_action` response or private user text. Callers must
 read `volicord.status` separately before treating historical facts as current.
 The exact method and response contract is owned by
 [`volicord.get_operation_result`](api/method-get-operation-result.md#volicordget_operation_result).
@@ -484,7 +484,7 @@ and readable project state. It must not require creating a `Task`.
 A workflow write-path smoke check uses Agent Connection workflow tools and can
 create Volicord state. A minimal path can include `volicord.intake`,
 `volicord.update_scope`, `volicord.record_run`,
-`volicord.request_user_judgment` when final acceptance is required for close,
+`volicord.request_user_action` when final acceptance is required for close,
 and `volicord.check_close`. The resulting task can remain blocked by
 `missing_final_acceptance` until the user records the required final judgment
 through a supported `User Channel`.
@@ -501,17 +501,13 @@ fallback is actionable recovery but is not counted as a successful native round
 trip. The harness is ignored by default and is not a portable host-conformance
 or security test.
 
-`volicord.record_user_judgment` has `operation_category=user_only`. It is a
-public Core API method for the User Channel path, but it is not exposed by Agent
-Connections. The supported local user path for recording an authority-bearing
-answer is the `volicord inbox` command group owned by
-[Administrative CLI](admin-cli.md#user-channel-commands).
-
-`volicord.record_user_observation` is likewise `user_only` and unavailable to
-Agent Connections. `volicord inbox observe` records target-bound User Channel
-evidence. An Agent Connection cannot substitute an ordinary `record_run`
-claim, staged artifact, tool metadata, or raw guard payload for that user-owned
-producer and relevance record.
+`volicord.resolve_user_action` has `operation_category=user_only`. It is the
+public Core API method for every User Channel resolution, including judgments
+and target-bound evidence observation, but it is not exposed by Agent
+Connections. The supported local fallback is the common `volicord inbox`
+command group owned by [Administrative CLI](admin-cli.md#user-channel-commands).
+An Agent Connection cannot substitute an ordinary `record_run` claim, staged
+artifact, tool metadata, raw guard payload, or relayed text for a resolution.
 
 Internal actor shape, not a public API schema:
 
@@ -524,7 +520,7 @@ InvocationContext:
 ```
 
 Baseline `assurance_level` means cooperative local provenance, not
-cryptographic human identity. Authority-bearing user-judgment resolution
+cryptographic human identity. Authority-bearing user-action resolution
 requires `actor_source=local_user`, `operation_category=user_only`, compatible
 User Channel provenance, and method-owned compatibility. An Agent Connection
 cannot gain user authority by submitting copied user text or generated guidance.
@@ -541,7 +537,7 @@ Conditions:
   adapter rejects the call before Core execution.
 - Nested payloads such as `ArtifactInput` or `StagedArtifactHandle` do not add
   a second invocation context.
-- Authority-provenance fields for resolved authority-bearing judgments come
+- Authority-provenance fields for resolved authority-bearing user actions come
   from the derived `InvocationContext`, not caller text, labels, answer
   payloads, copied refs, generated Markdown, or Product Repository guidance.
 - Protected reads, mutations, and artifact operations can rely on an invocation
@@ -583,46 +579,50 @@ Agent Connections are agent-facing connections. They are not the
 
 Conditions:
 
-- The supported local CLI path for a human user to inspect pending judgments and
-  record a selected Core-generated option is the `volicord inbox` command group
+- The supported local CLI path for a human user to inspect pending user actions
+  and submit the stored action-specific form is the `volicord inbox` command group
   owned by [Administrative CLI](admin-cli.md#user-channel-commands).
 - When the initialized MCP client declares `capabilities.elicitation`,
   `volicord mcp --stdio` may use server-initiated elicitation as a User Channel
-  path for a pending judgment created by `volicord.request_user_judgment`; the
-  wire behavior is owned by [MCP Transport](mcp-transport.md#user-judgment-elicitation).
+  path for a pending request created by `volicord.request_user_action`; the
+  wire behavior is owned by [MCP Transport](mcp-transport.md#user-action-elicitation).
 - When host prompt input is unavailable, MCP fallback text may route the human
   user to chat commands compatible with the prompt-submit hook path when command
   capture is `configured`, `observed`, or `active`.
 - When host prompt input and chat command capture are unavailable, MCP fallback
   text may route the human user to a loopback local consent URL owned by
-  [MCP Transport](mcp-transport.md#user-judgment-elicitation). That local web
+  [MCP Transport](mcp-transport.md#user-action-elicitation). That local web
   answer is still a `local_user` User Channel path, not an Agent Connection
-  answer. The consent page identifies the pending judgment and non-guarantees
-  for the user; it does not create Agent Connection authority to answer the
-  judgment.
+  answer. The consent page identifies the pending request, stored candidates,
+  and non-guarantees; it does not create Agent Connection resolution authority.
 - The fallback text routes the user to the `volicord inbox` CLI inbox path only
   when host prompt input, chat command capture, and local consent URL are not
   available.
-- Status and judgment inbox projections may show User Channel availability for
+- Status and user-action inbox projections may show User Channel availability for
   host prompt input, chat command capture, local consent URL, and CLI inbox
   together. Unavailable host prompt input must not hide another available
   answer path, and the CLI inbox remains visible when it is applicable. These
   projections tell the user where to answer; they do not let an Agent
-  Connection record the judgment.
-- Authority-bearing user-judgment resolution requires `actor_source=local_user`,
+  Connection resolve the action.
+- A rich path is available for a particular action only when its complete,
+  untruncated request-bound presentation fits the transport or host-render
+  budget owned by MCP Transport or Administrative CLI. A presentation-budget
+  failure makes that path unavailable and must continue to the next compatible
+  User Channel path.
+- Every user-action resolution requires `actor_source=local_user`,
   `operation_category=user_only`, and compatible User Channel provenance.
 - `actor_source=agent_connection:<connection_id>` cannot become `local_user`
   provenance by relaying text from a user.
 
 Agent may:
 
-- request a missing user-owned judgment when a method owner supports that path
-- display pending judgment state and Core-generated options returned by owners
+- request a missing user action when a method owner supports that path
+- display pending action state and the Core-generated capture form
 - route the human user to the supported `User Channel`
 
 Agent must not:
 
-- record an authority-bearing user decision from an Agent Connection
+- resolve any user action from an Agent Connection
 - treat Agent Connection tool arguments as MCP elicitation responses
 - treat a natural-language approval, chat reply, generated Markdown status, or
   rendered projection as User Channel provenance
@@ -636,8 +636,8 @@ Owner links:
 - [Core Model](core-model.md) owns the authority meaning of user-owned
   judgments, final acceptance, residual-risk acceptance, evidence, and close
   readiness.
-- [Record-user-judgment method](api/method-record-user-judgment.md) owns public
-  method behavior for resolving one pending judgment.
+- [Resolve-user-action method](api/method-resolve-user-action.md) owns public
+  method behavior for resolving one pending user action.
 - [Projection and template display boundaries](projection-and-templates.md)
   owns generated display and projection authority boundaries.
 
@@ -677,7 +677,7 @@ Conditions:
 Agent may:
 
 - pass compact context containing the current Task summary, current scope,
-  `state_version`, pending user-owned judgments, blockers, next safe action,
+  `state_version`, pending user-owned actions, blockers, next safe action,
   evidence and artifact summaries, close-readiness and residual-risk summaries,
   owner-supported guarantee display, and source or limitation notes
 - retrieve exact owner sections only when the next action needs them

@@ -22,10 +22,10 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 | 표면 | 지원되는 보안 의미 | 보장하지 않는 것 |
 |---|---|---|
 | `Volicord Runtime Home` | 저장소/런타임 담당 문서는 어떤 Volicord 운영 기록이 그 안에 있고 어떻게 검증되는지 정의합니다. | Runtime Home 배치는 OS 샌드박싱, 변조 방지 격리, 호스트 신뢰, 네트워크 격리, 악성코드 검사, 비밀값 검사가 아닙니다. |
-| `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 판단, 쓰기 티켓 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
+| `Product Repository` | 제품 파일은 입력으로 검사될 수 있고, 호환되는 제품 파일 쓰기는 담당 문서가 정의한 Core, 사용자 행동, 쓰기 티켓 경로의 지배를 받을 수 있습니다. | 제품 파일은 Volicord 상태가 아니며, Volicord는 임의 제품 파일 편집 권한, 악성코드 검사, 비밀값 검사, 전역 파일시스템 가로채기를 제공하지 않습니다. |
 | Agent Connection과 호스트 설정 | 현재 호출이 등록된 연결과 맞을 때 Agent Connection은 문서화된 연결 맥락, `actor_source` 출처, 연결 의도, 모드, Connection Projects 허용 목록을 제공합니다. | 연결 설정은 OS 권한, 호스트 신뢰, 사용자 신원, 외부 호스트가 `volicord mcp --stdio`를 로드하거나 노출했다는 증거가 아닙니다. |
-| `volicord mcp --stdio` | 어댑터는 Agent Connection 점검, Runtime Home 상태, Core, Store를 거쳐 MCP 호출을 처리합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한 효력이 있는 사용자 판단을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
-| Local HTTP transport | `volicord serve --transport local-http`는 베어러 토큰과 Origin 검사가 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 `localhost`와 Docker 호스트 루프백에 노출할 수 있습니다. 베어러 토큰은 `volicord serve` 프로세스의 로컬 비밀값입니다. 로컬 웹 동의 경로는 대기 판단 하나를 위한 일회성 토큰이 있는 루프백 User Channel 입력 페이지를 노출할 수 있습니다. | Local HTTP transport와 로컬 웹 동의는 공개 네트워크 API, SaaS 엔드포인트, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 인증·인가 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
+| `volicord mcp --stdio` | 어댑터는 Agent Connection 점검, Runtime Home 상태, Core, Store를 거쳐 MCP 호출을 처리합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한 효력이 있는 사용자 행동 resolution을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
+| Local HTTP transport | `volicord serve --transport local-http`는 베어러 토큰과 Origin 검사가 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 `localhost`와 Docker 호스트 루프백에 노출할 수 있습니다. 베어러 토큰은 `volicord serve` 프로세스의 로컬 비밀값입니다. 로컬 웹 동의 경로는 대기 중인 사용자 행동 하나를 위한 일회성 토큰이 있는 루프백 User Channel 입력 페이지를 노출할 수 있습니다. | Local HTTP transport와 로컬 웹 동의는 공개 네트워크 API, SaaS 엔드포인트, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 인증·인가 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
 | `volicord` CLI | 관리 명령은 설정, 레지스트리 상태, 지원되는 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
 
 ## 지원되는 보안 보장
@@ -43,7 +43,7 @@ Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 �
 
 조건:
 - 호출자, Agent Connection, User Channel, 로컬 관리 경로, 커넥터가 문서화된 Volicord 계약을 따릅니다.
-- 주장이 문서화된 Core, API, 저장소, 런타임, 사용자 판단 경계 안에 머뭅니다.
+- 주장이 문서화된 Core, API, 저장소, 런타임, 사용자 행동 경계 안에 머뭅니다.
 
 주장할 수 있는 것:
 - Volicord 기록, 쓰기 호환성, 증거 요약, 사용자 소유 판단, 닫기 준비 상태 결과는 담당 계약의 지배를 받습니다.
@@ -115,16 +115,24 @@ Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 �
 
 ## 로컬 연결 가정
 
-Volicord 보안 주장은 로컬 행위자가 Volicord 상태, 기록, 아티팩트, 쓰기 호환성, 사용자 소유 판단에 대해 문서화된 Volicord 계약을 사용한다는 가정에 놓입니다.
+Volicord 보안 주장은 로컬 행위자가 Volicord 상태, 기록, 아티팩트, 쓰기 호환성, 사용자 소유 행동에 대해 문서화된 Volicord 계약을 사용한다는 가정에 놓입니다.
 
 주장할 수 있는 것:
-- 로컬 제품 파일은 Volicord 확인이나 사용자 소유 판단의 입력이 될 수 있습니다.
+- 로컬 제품 파일은 Volicord 확인이나 사용자 소유 행동의 입력이 될 수 있습니다.
 - 로컬 런타임 데이터 위치는 저장소/런타임 담당 문서가 정의할 수 있습니다.
 - Agent Connection은 [Agent Connection 참조](agent-connection.md), 메서드 담당 문서, 이 보안 담당 문서가 허용할 때 `actor_source=agent_connection:<connection_id>` 출처를 제공할 수 있습니다. 그 출처 문자열의 `connection_id` 부분은 프로세스 바인딩/출처 표기이지 사용자 대상 권한 토큰이나 저장 필드 이름이 아닙니다.
-- `User Channel`은 Core와 메서드 담당 문서가 요구할 때 권한 효력이 있는 사용자 판단에 대해 `actor_source=local_user` 출처를 제공할 수 있습니다.
+- `User Channel`은 Core와 메서드 담당 문서가 요구할 때 판단과 Evidence 관찰을 포함한 권한 효력이 있는 사용자 행동 resolution에 대해 `actor_source=local_user` 출처를 제공할 수 있습니다.
 - Connection Projects는 Agent Connection에 명시적으로 허용된 `project_internal_id` 목록을 정의합니다. 사용자 대상 명령은 저장소 루트, 프로젝트 이름, 별칭, 또는 Volicord가 반환한 `project_selector`로 프로젝트를 선택합니다.
 - `operation_category`는 작업을 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 분류합니다.
 - 기준 행위자 출처는 협력적 로컬 출처이지 암호학적 인간 신원 증명이 아닙니다.
+
+에이전트 대상 User Channel 경계에서 Volicord는 질문, context summary, 완전하게 렌더링한
+닫힌 폼을 사용자 전용 입력 표면이 필요한 presentation으로 보수적으로 분류할 수
+있습니다. 이 경우 새로운 MCP elicitation이나 풍부한 prompt-capture presentation을 열지
+않고 local web consent 또는 CLI inbox 경로를 유지합니다. 사용자 전용 표면은 완전한
+canonical 폼을 계속 표시하며 변경 불가능한 과거 Agent Connection 결과를 가리거나 다시
+쓰지 않습니다. 이 표면 경로 선택 규칙은 일반 비밀값 검사, 콘텐츠 격리, 악성코드 탐지,
+호스트 강제, 임의의 비밀값을 찾았거나 배제했다는 증명이 아닙니다.
 
 주장하면 안 되는 것:
 - 로컬 파일시스템 접근이 Volicord 권한을 증명한다는 주장.
@@ -186,7 +194,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 주장할 수 있는 것:
 - `connection_internal_id`, 연결 의도, `connection.mode`, Connection Projects, `operation_category`, `actor_source`는 현재 호출이 문서화된 연결 맥락에 맞은 뒤 런타임, Core, 메서드, 보안 담당 문서에 따라 사용할 수 있습니다.
 - `actor_source`는 Core와 메서드 담당 문서가 현재 권한 해결 동작에 대해 그 값을 받아들일 때만 지속되는 출처 정보를 제공할 수 있습니다.
-- 권한 효력이 있는 사용자 판단에는 `User Channel`을 통한 `actor_source=local_user`가 필요합니다.
+- 판단과 Evidence 관찰을 포함한 권한 효력이 있는 사용자 행동 resolution에는 `User Channel`을 통한 `actor_source=local_user`가 필요합니다.
 - Workflow Agent Connection은 현재 evidence-capture intent를 만들 수 있습니다. 등록된
   local source만 이를 fulfillment할 수 있고, receipt를 producer와 observation으로
   finalization할 수 있는 메서드는 `record_run`뿐입니다. MCP receipt-fulfillment
@@ -221,12 +229,12 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 바이트를 노출하면 안 됩니다.
 
 `operation_category=user_only` 결과는 이 Agent Connection 조회 경로에서
-제외합니다. 특히 정확한 `volicord.record_user_judgment` 응답과 사용자의 자유
-형식 `note`를 `volicord.get_operation_result`로 반환하면 안 됩니다. 호스트가
-중개한 Judgment 흐름은 에이전트 소유 요청에 대해 MCP 전송 담당 문서가 정의한
-에이전트용 상태 보기만 노출할 수 있습니다. 간결한 형태는 note를 생략하고 full
-형태는 note를 null로 유지하며, 어느 형태도 user-only 작업 ref나 정확한 응답
-본문을 노출하지 않습니다.
+제외합니다. 특히 정확한 `volicord.resolve_user_action` 응답, 사용자의 자유 형식
+`note`, Evidence 관찰 `summary`를 `volicord.get_operation_result`로 반환하면 안
+됩니다. 호스트가 중개한 사용자 행동 흐름은 에이전트 소유 요청에 대해 MCP 전송
+담당 문서가 정의한 에이전트용 상태 보기만 노출할 수 있습니다. 간결한 형태와 full
+형태는 모두 비공개 `note`와 Evidence 관찰 `summary`를 생략하며, 어느 형태도
+user-only 작업 ref나 정확한 응답 본문을 노출하지 않습니다.
 
 조회한 바이트는 과거 결과를 설명합니다. `AuthorityReceipt`, 현재 상태, 증거,
 쓰기 티켓이 아니며 과거 상태가 여전히 현재라는 증명도 아닙니다. 현재 권한을
@@ -254,7 +262,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 
 주장하면 안 되는 것:
 - 렌더링된 표시, `Projection`, 상태 카드, 템플릿 출력, 대화 메시지, 커넥터 설명, 에이전트 기억이 새로운 권한 원천이라는 주장.
-- 표시된 `ArtifactRef`, `UserJudgment`, 쓰기 티켓, `connection_id` 텍스트가 그 식별자가 가리키는 권한을 만든다는 주장.
+- 표시된 `ArtifactRef`, `UserActionRequest`, `UserActionResolution`, 쓰기 티켓, `connection_id` 텍스트가 그 식별자가 가리키는 권한을 만든다는 주장.
 
 ## 명시적 비보장
 
@@ -334,6 +342,13 @@ Volicord Local HTTP transport는 아래를 보장하지 않습니다.
 베어러 토큰과 Origin 검사는 로컬 HTTP 프로세스에 묶인 전송 검사입니다. 이 검사가
 엔드포인트를 공개 노출에 적합하게 만들지는 않습니다. 엔드포인트는 호스트 루프백 또는
 의도한 Docker 호스트 루프백 노출 경계에 두어야 합니다.
+
+일회성 local-web consent token은 일시적인 bearer secret으로 남습니다. 영속 상태는 원문
+token이 아니라 domain-separated hash와 digest-only submission/replay identity를
+저장합니다. Core는 제출 identity를 정확한 프로젝트, 요청, 예상 Agent Connection,
+폐쇄형 완료 맥락에 결속하고 replay 또는 커밋 전에 다시 검증합니다. 이 점검은 서로 다른
+로컬 credential이나 맥락이 해당 replay를 여는 것을 막지만 사람 신원을 증명하거나
+listener를 인증·인가 서비스로 바꾸지는 않습니다.
 
 ### 포괄적 권한 추론
 

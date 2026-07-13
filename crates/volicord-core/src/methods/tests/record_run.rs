@@ -225,6 +225,296 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn record_run_blocks_only_matching_pending_observation_actions_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    for (required_for, should_block, suffix) in [
+        (
+            volicord_types::UserActionRequiredFor::RecordRun,
+            true,
+            "matching",
+        ),
+        (
+            volicord_types::UserActionRequiredFor::Informational,
+            false,
+            "informational",
+        ),
+        (
+            volicord_types::UserActionRequiredFor::CloseComplete,
+            false,
+            "nonmatching_close",
+        ),
+    ] {
+        let harness = MethodHarness::new()?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("run_pending_observation_{suffix}"))?;
+        let (after_artifact, artifact_ref) = promote_artifact_for_record_run(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            2,
+            &format!("pending_observation_{suffix}"),
+        )?;
+        let mut pending = observation_action_request(
+            &format!("req_run_pending_observation_{suffix}"),
+            &format!("idem_run_pending_observation_{suffix}"),
+            after_artifact,
+            &task_id,
+            &change_unit_id,
+            supplemental_evidence_target("Artifact registered for corruption coverage."),
+            vec![artifact_ref.artifact_id],
+        );
+        pending.required_for = vec![required_for];
+        let requested = harness
+            .service
+            .request_user_action(pending, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(requested.response_value["base"]["response_kind"], "result");
+        let before = harness.counts()?;
+
+        let response = harness.service.record_run(
+            record_run_request(
+                &format!("req_run_pending_observation_record_{suffix}"),
+                &format!("idem_run_pending_observation_record_{suffix}"),
+                false,
+                Some(before.state_version),
+                &task_id,
+                &change_unit_id,
+            ),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+
+        if should_block {
+            assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+            assert_eq!(
+                response.response_value["errors"][0]["code"],
+                "DECISION_UNRESOLVED"
+            );
+            assert_eq!(harness.counts()?, before);
+
+            let dry_run = harness.service.record_run(
+                record_run_request(
+                    &format!("req_run_pending_observation_dry_{suffix}"),
+                    &format!("idem_run_pending_observation_dry_{suffix}"),
+                    true,
+                    Some(before.state_version),
+                    &task_id,
+                    &change_unit_id,
+                ),
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(dry_run.response_value["base"]["response_kind"], "rejected");
+            assert_eq!(
+                dry_run.response_value["errors"][0]["code"],
+                "DECISION_UNRESOLVED"
+            );
+            assert_eq!(harness.counts()?, before);
+        } else {
+            assert_eq!(response.response_value["base"]["response_kind"], "result");
+            let after = harness.counts()?;
+            assert_eq!(after.state_version, before.state_version + 1);
+            assert_eq!(after.runs, before.runs + 1);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
+) -> Result<(), Box<dyn Error>> {
+    for (
+        suffix,
+        action_operation,
+        action_paths,
+        action_categories,
+        run_operation,
+        run_paths,
+        run_categories,
+        mismatched_baseline,
+        should_block,
+    ) in [
+        (
+            "matching",
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            false,
+            true,
+        ),
+        (
+            "no_sensitive_categories",
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &[][..],
+            false,
+            false,
+        ),
+        (
+            "operation_mismatch",
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            "other_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            false,
+            false,
+        ),
+        (
+            "path_mismatch",
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            "local_sensitive_step",
+            &["tests/export.rs"][..],
+            &["network"][..],
+            false,
+            false,
+        ),
+        (
+            "category_mismatch",
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["credential"][..],
+            false,
+            false,
+        ),
+        (
+            "baseline_mismatch",
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            "local_sensitive_step",
+            &["src/export.rs"][..],
+            &["network"][..],
+            true,
+            false,
+        ),
+    ] {
+        let harness = MethodHarness::new()?;
+        enable_record_run_capabilities(&harness)?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("run_pending_sensitive_{suffix}"))?;
+        let mut pending = user_action_request(
+            &format!("req_run_pending_sensitive_{suffix}"),
+            &format!("idem_run_pending_sensitive_{suffix}"),
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::SensitiveApproval,
+        );
+        pending.required_for = vec![volicord_types::UserActionRequiredFor::RecordRun];
+        let volicord_types::UserActionDraft::Choice(choice) = &mut pending.action else {
+            unreachable!("sensitive approval fixture is choice-shaped")
+        };
+        choice.sensitive_action_scope = Some(sensitive_scope(
+            action_operation,
+            action_paths.to_vec(),
+            action_categories.to_vec(),
+        ))
+        .into();
+        let requested = harness
+            .service
+            .request_user_action(pending, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(requested.response_value["base"]["response_kind"], "result");
+        let user_action_request_id =
+            response_record_id(&requested.response_value, "user_action_request_ref");
+        if mismatched_baseline {
+            mutate_user_action_basis_json(&harness, &user_action_request_id, |basis| {
+                basis["coordinates"]["baseline_ref"] = json!("baseline_other");
+            })?;
+        }
+
+        let write_ticket_id = format!("wa_pending_sensitive_{suffix}");
+        insert_active_write_ticket_with_scope(
+            &harness,
+            WriteTicketScopeFixture {
+                task_id: &task_id,
+                change_unit_id: &change_unit_id,
+                write_ticket_id: &write_ticket_id,
+                basis_state_version: 3,
+                created_at: "2999-01-01T00:00:00.000Z",
+                expires_at: "2999-01-01T00:15:00.000Z",
+                intended_operation: run_operation,
+                intended_paths: run_paths,
+                sensitive_categories: run_categories,
+            },
+        )?;
+        let before = harness.counts()?;
+        let mut request = product_write_record_run_request(
+            &format!("req_run_pending_sensitive_record_{suffix}"),
+            &format!("idem_run_pending_sensitive_record_{suffix}"),
+            before.state_version,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            &format!("run_pending_sensitive_{suffix}"),
+        );
+        request.observed_changes.changed_paths =
+            run_paths.iter().map(|path| (*path).to_owned()).collect();
+        request.observed_changes.sensitive_categories = run_categories
+            .iter()
+            .map(|category| (*category).to_owned())
+            .collect();
+        let response = harness
+            .service
+            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+        if should_block {
+            assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+            assert_eq!(
+                response.response_value["errors"][0]["code"],
+                "DECISION_UNRESOLVED"
+            );
+            assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+            assert_eq!(harness.counts()?, before);
+
+            let mut dry_run = product_write_record_run_request(
+                &format!("req_run_pending_sensitive_dry_{suffix}"),
+                &format!("idem_run_pending_sensitive_dry_{suffix}"),
+                before.state_version,
+                &task_id,
+                &change_unit_id,
+                &write_ticket_id,
+                &format!("run_pending_sensitive_dry_{suffix}"),
+            );
+            dry_run.envelope.dry_run = true;
+            dry_run.observed_changes.changed_paths =
+                run_paths.iter().map(|path| (*path).to_owned()).collect();
+            dry_run.observed_changes.sensitive_categories = run_categories
+                .iter()
+                .map(|category| (*category).to_owned())
+                .collect();
+            let dry_run = harness
+                .service
+                .record_run(dry_run, invocation(OperationCategory::AgentWorkflow))?;
+            assert_eq!(dry_run.response_value["base"]["response_kind"], "rejected");
+            assert_eq!(
+                dry_run.response_value["errors"][0]["code"],
+                "DECISION_UNRESOLVED"
+            );
+            assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+            assert_eq!(harness.counts()?, before);
+        } else {
+            assert_eq!(response.response_value["base"]["response_kind"], "result");
+            let after = harness.counts()?;
+            assert_eq!(after.state_version, before.state_version + 1);
+            assert_eq!(after.runs, before.runs + 1);
+            assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn record_run_non_null_close_assessment_creates_current_basis() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -966,7 +1256,7 @@ fn record_run_rejects_unsupported_close_basis_ref_kinds_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let unsupported = [
         (StateRecordKind::WriteTicket, "wa_fabricated"),
-        (StateRecordKind::UserJudgment, "uj_fabricated"),
+        (StateRecordKind::UserActionRequest, "uj_fabricated"),
         (StateRecordKind::Blocker, "blocker_fabricated"),
         (StateRecordKind::TaskEvent, "evt_fabricated"),
         (StateRecordKind::ProjectState, "project_state_fabricated"),
@@ -1193,11 +1483,14 @@ fn record_run_rejects_corrupt_artifact_close_basis_ref_without_effect() -> Resul
 #[test]
 fn record_run_rejects_noncurrent_evidence_summary_close_basis_ref_without_effect(
 ) -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2999-07-13T12:00:00Z");
+    harness.use_clock(clock.clone());
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "noncurrent_evidence")?;
     let first_state =
         record_close_evidence(&harness, &task_id, &change_unit_id, 2, "old_evidence", true)?;
     let old_evidence_summary_id = latest_evidence_summary_id(&harness, &task_id)?;
+    clock.advance(Duration::milliseconds(1));
     let current_state = record_close_evidence(
         &harness,
         &task_id,
@@ -1206,6 +1499,26 @@ fn record_run_rejects_noncurrent_evidence_summary_close_basis_ref_without_effect
         "new_evidence",
         true,
     )?;
+    let current_evidence_summary_id = latest_evidence_summary_id(&harness, &task_id)?;
+    let summaries = {
+        let conn = harness.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT evidence_summary_id, produced_at_state_version
+               FROM evidence_summaries
+              WHERE project_id = ?1 AND task_id = ?2
+              ORDER BY produced_at_state_version DESC",
+        )?;
+        let summaries = stmt
+            .query_map(rusqlite::params![PROJECT_ID, task_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        summaries
+    };
+    assert_ne!(
+        old_evidence_summary_id, current_evidence_summary_id,
+        "second evidence commit must establish a distinct latest summary: {summaries:?}"
+    );
     let before = harness.counts()?;
 
     let mut request = record_run_request(
@@ -1342,8 +1655,8 @@ fn final_acceptance_judgment_basis_uses_canonical_close_basis_refs() -> Result<(
         .current_close_basis
         .expect("current close basis should be stored");
 
-    let response = harness.service.request_user_judgment(
-        user_judgment_request(
+    let response = harness.service.request_user_action(
+        user_action_request(
             "req_canonical_final",
             "idem_canonical_final",
             false,
@@ -1357,7 +1670,7 @@ fn final_acceptance_judgment_basis_uses_canonical_close_basis_refs() -> Result<(
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        response.response_value["user_judgment"]["basis"]["result_refs"],
+        response.response_value["user_action_request"]["basis"]["result_refs"],
         serde_json::to_value(&close_basis.result_refs)?
     );
     assert!(close_basis.result_refs.iter().all(|record_ref| {
@@ -2567,34 +2880,18 @@ fn user_channel_observation_is_strong_and_reuse_revalidates_its_authority_chain(
     let target = EvidenceTarget::AcceptanceCriterion {
         acceptance_criterion_id: criterion_id,
     };
-    let user_response = harness.service.record_user_observation(
-        RecordUserObservationRequest {
-            envelope: envelope(
-                "req_user_evidence_authority",
-                Some("idem_user_evidence_authority"),
-                false,
-                Some(after_artifact),
-                Some(&task_id),
-            ),
-            task_id: TaskId::new(&task_id),
-            change_unit_id: ChangeUnitId::new(&change_unit_id),
+    let (after_user, user_action_resolution_ref) = request_and_resolve_user_observation(
+        &harness,
+        UserObservationFixture {
+            task_id: &task_id,
+            change_unit_id: &change_unit_id,
+            expected_state_version: after_artifact,
+            suffix: "user_evidence_authority",
             target: target.clone(),
+            artifact_ref: &artifact_ref,
             relevance_status: EvidenceRelevanceStatus::Supported,
-            artifact_ids: vec![artifact_ref.artifact_id.clone()],
-            summary: "The user confirms that these exact bytes support the criterion.".to_owned(),
-            observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
         },
-        invocation(OperationCategory::UserOnly),
     )?;
-    assert_eq!(
-        user_response.response_value["base"]["response_kind"],
-        "result"
-    );
-    let after_user = user_response.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("user observation state version");
-    let user_observation_ref: StateRecordRef =
-        serde_json::from_value(user_response.response_value["user_observation_ref"].clone())?;
 
     let mut record = record_run_request(
         "req_record_user_evidence",
@@ -2621,7 +2918,7 @@ fn user_channel_observation_is_strong_and_reuse_revalidates_its_authority_chain(
         tool_name: None.into(),
         tool_invocation_id: None.into(),
         tool_metadata: JsonObject::new(),
-        input_refs: vec![user_observation_ref],
+        input_refs: vec![user_action_resolution_ref.clone()],
         source_refs: Vec::new(),
         output_artifact_refs: vec![artifact_ref.clone()],
         limitations: Vec::new(),
@@ -2691,16 +2988,27 @@ fn user_channel_observation_is_strong_and_reuse_revalidates_its_authority_chain(
         "evidence_provenance_insufficient",
     );
 
-    harness.conn()?.execute(
-        "UPDATE user_evidence_observations
-            SET relevance_status = 'contradicted'
+    let conn = harness.conn()?;
+    let resolution_json: String = conn.query_row(
+        "SELECT resolution_json
+           FROM user_action_resolutions
           WHERE project_id = ?1
-            AND user_evidence_observation_id = ?2",
+            AND user_action_resolution_id = ?2",
+        rusqlite::params![PROJECT_ID, user_action_resolution_ref.record_id.as_str()],
+        |row| row.get(0),
+    )?;
+    let mut resolution_json: serde_json::Value = serde_json::from_str(&resolution_json)?;
+    resolution_json["observation"]["relevance_status"] =
+        serde_json::Value::String("contradicted".to_owned());
+    conn.execute(
+        "UPDATE user_action_resolutions
+            SET resolution_json = ?3
+          WHERE project_id = ?1
+            AND user_action_resolution_id = ?2",
         rusqlite::params![
             PROJECT_ID,
-            user_response.response_value["user_observation_ref"]["record_id"]
-                .as_str()
-                .expect("user observation id")
+            user_action_resolution_ref.record_id.as_str(),
+            serde_json::to_string(&resolution_json)?
         ],
     )?;
     let close = harness.service.check_close(
@@ -2717,6 +3025,546 @@ fn user_channel_observation_is_strong_and_reuse_revalidates_its_authority_chain(
         invocation(OperationCategory::Read),
     )?;
     assert_close_blocker(&close.response_value, "evidence_provenance_insufficient");
+    Ok(())
+}
+
+#[test]
+fn user_channel_observation_preserves_relevance_resolution_time_and_supported_only_reuse(
+) -> Result<(), Box<dyn Error>> {
+    for (suffix, relevance_status, coverage_state, relevance_value, caller_observed_at) in [
+        (
+            "supported",
+            EvidenceRelevanceStatus::Supported,
+            EvidenceCoverageUpdateState::Supported,
+            "supported",
+            "2000-01-01T00:00:00Z",
+        ),
+        (
+            "contradicted",
+            EvidenceRelevanceStatus::Contradicted,
+            EvidenceCoverageUpdateState::Contradicted,
+            "contradicted",
+            "2999-01-01T00:00:00Z",
+        ),
+    ] {
+        let harness = MethodHarness::new()?;
+        enable_record_run_capabilities(&harness)?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("user_relevance_{suffix}"))?;
+        let criterion_id = volicord_types::AcceptanceCriterionId::new(
+            active_acceptance_criterion_id(&harness, &task_id)?,
+        );
+        set_active_acceptance_criterion_requirement(
+            &harness,
+            &task_id,
+            EvidenceRequirement::Required,
+        )?;
+        let (after_artifact, artifact_ref) = promote_artifact_for_record_run(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            2,
+            &format!("user_relevance_{suffix}"),
+        )?;
+        let target = EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: criterion_id,
+        };
+        let (after_resolution, resolution_ref) = request_and_resolve_user_observation(
+            &harness,
+            UserObservationFixture {
+                task_id: &task_id,
+                change_unit_id: &change_unit_id,
+                expected_state_version: after_artifact,
+                suffix: &format!("user_relevance_{suffix}"),
+                target: target.clone(),
+                artifact_ref: &artifact_ref,
+                relevance_status,
+            },
+        )?;
+        let resolved_at: String = harness.conn()?.query_row(
+            "SELECT resolved_at
+               FROM user_action_resolutions
+              WHERE project_id = ?1
+                AND user_action_resolution_id = ?2",
+            rusqlite::params![PROJECT_ID, resolution_ref.record_id.as_str()],
+            |row| row.get(0),
+        )?;
+        assert_ne!(resolved_at, caller_observed_at);
+
+        let mut record = record_run_request(
+            &format!("req_user_relevance_{suffix}"),
+            &format!("idem_user_relevance_{suffix}"),
+            false,
+            Some(after_resolution),
+            &task_id,
+            &change_unit_id,
+        );
+        record.evidence_updates = vec![EvidenceCoverageUpdate {
+            target: target.clone(),
+            coverage_state,
+            provenance: None,
+            supporting_run_refs: Vec::new(),
+            observation_refs: Vec::new(),
+            supporting_artifact_refs: vec![artifact_ref.clone()],
+            gap_refs: Vec::new(),
+        }];
+        record.evidence_observations = vec![EvidenceObservationInput {
+            target: target.clone(),
+            source_kind: EvidenceSourceKind::UserObservation,
+            assurance_level: EvidenceAssuranceLevel::UserObserved,
+            observed_by_actor_source: None.into(),
+            tool_name: None.into(),
+            tool_invocation_id: None.into(),
+            tool_metadata: JsonObject::new(),
+            input_refs: vec![resolution_ref.clone()],
+            source_refs: Vec::new(),
+            output_artifact_refs: vec![artifact_ref.clone()],
+            limitations: Vec::new(),
+            observed_at: volicord_types::UtcTimestamp::parse(caller_observed_at)?,
+        }];
+        record.close_assessment = Some(close_assessment_with_risks(
+            &format!("User-observed {suffix} evidence is preserved."),
+            Vec::new(),
+        ))
+        .into();
+        let replay_request = record.clone();
+        let before_record = harness.counts()?;
+        let recorded = harness
+            .service
+            .record_run(record, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(recorded.response_value["base"]["response_kind"], "result");
+        let observation = &recorded.response_value["evidence_observations"][0];
+        assert_eq!(observation["source_kind"], "user_observation");
+        assert_eq!(observation["assurance_level"], "user_observed");
+        assert_eq!(observation["observed_by_actor_source"], "local_user");
+        assert_eq!(
+            observation["producer_anchor"]["producer_kind"],
+            "user_channel_observation"
+        );
+        assert_eq!(
+            observation["relevance_assessment"]["status"],
+            relevance_value
+        );
+        assert_eq!(
+            observation["relevance_assessment"]["assessed_by_actor_source"],
+            "local_user"
+        );
+        assert_eq!(observation["observed_at"], resolved_at);
+        assert_eq!(
+            recorded.response_value["evidence_summary"]["coverage_items"][0]["coverage_state"],
+            relevance_value
+        );
+        assert_no_close_blocker(
+            &recorded.response_value["state"],
+            "evidence_provenance_insufficient",
+        );
+        let after_record = harness.counts()?;
+        assert_eq!(after_record.runs, before_record.runs + 1);
+        assert_eq!(
+            after_record.evidence_observations,
+            before_record.evidence_observations + 1
+        );
+        let observation_id = observation["observation_id"]
+            .as_str()
+            .expect("committed observation id");
+        let (stored_observed_at, stored_metadata): (String, String) = harness.conn()?.query_row(
+            "SELECT observed_at, metadata_json
+                   FROM evidence_observations
+                  WHERE project_id = ?1
+                    AND evidence_observation_id = ?2",
+            rusqlite::params![PROJECT_ID, observation_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(stored_observed_at, resolved_at);
+        let stored_metadata: Value = serde_json::from_str(&stored_metadata)?;
+        assert_eq!(
+            stored_metadata["relevance_assessment"]["status"],
+            relevance_value
+        );
+        let store =
+            CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        let observation_record = store
+            .evidence_observation_record(observation_id)?
+            .expect("committed user observation should be readable");
+        assert_eq!(
+            super::super::record_run::stored_evidence_observation_provenance_class(
+                &store,
+                &observation_record,
+                &super::super::record_run::StoredEvidenceProvenanceBasis {
+                    project_id: &ProjectId::new(PROJECT_ID),
+                    task_id: &TaskId::new(&task_id),
+                    change_unit_id: &change_unit_id,
+                    scope_revision: 1,
+                    baseline_ref: Some("baseline_test"),
+                    target: &target,
+                    now: &volicord_types::UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
+                },
+            )?,
+            EvidenceProvenanceClass::Strong,
+            "{suffix} must retain strong user-channel producer provenance"
+        );
+        drop(store);
+
+        let before_replay = harness.counts()?;
+        let before_replay_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        let replayed = harness
+            .service
+            .record_run(replay_request, invocation(OperationCategory::AgentWorkflow))?;
+        assert!(replayed.replayed);
+        assert_eq!(replayed.response_json, recorded.response_json);
+        assert_eq!(harness.counts()?, before_replay);
+        let after_replay_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(after_replay_floor, before_replay_floor);
+
+        let observation_ref: StateRecordRef = serde_json::from_value(
+            recorded.response_value["evidence_summary"]["coverage_items"][0]["observation_refs"][0]
+                .clone(),
+        )?;
+        if relevance_status == EvidenceRelevanceStatus::Supported {
+            let original_resolution_json: String = harness.conn()?.query_row(
+                "SELECT resolution_json
+                   FROM user_action_resolutions
+                  WHERE project_id = ?1
+                    AND user_action_resolution_id = ?2",
+                rusqlite::params![PROJECT_ID, resolution_ref.record_id.as_str()],
+                |row| row.get(0),
+            )?;
+            let mut mismatched_resolution: Value = serde_json::from_str(&original_resolution_json)?;
+            mismatched_resolution["observation"]["relevance_status"] =
+                Value::String("contradicted".to_owned());
+            harness.conn()?.execute(
+                "UPDATE user_action_resolutions
+                    SET resolution_json = ?3
+                  WHERE project_id = ?1
+                    AND user_action_resolution_id = ?2",
+                rusqlite::params![
+                    PROJECT_ID,
+                    resolution_ref.record_id.as_str(),
+                    serde_json::to_string(&mismatched_resolution)?
+                ],
+            )?;
+        }
+
+        let committed_state_version = recorded.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("committed record state version");
+        for dry_run in [true, false] {
+            let branch = if dry_run { "dry" } else { "commit" };
+            let mut reuse = record_run_request(
+                &format!("req_user_relevance_reuse_{suffix}_{branch}"),
+                &format!("idem_user_relevance_reuse_{suffix}_{branch}"),
+                dry_run,
+                Some(committed_state_version),
+                &task_id,
+                &change_unit_id,
+            );
+            reuse.evidence_updates = vec![EvidenceCoverageUpdate {
+                target: target.clone(),
+                coverage_state: EvidenceCoverageUpdateState::Supported,
+                provenance: None,
+                supporting_run_refs: Vec::new(),
+                observation_refs: vec![observation_ref.clone()],
+                supporting_artifact_refs: vec![artifact_ref.clone()],
+                gap_refs: Vec::new(),
+            }];
+            let before_rejection = harness.counts()?;
+            let before_rejection_floor: String = harness.conn()?.query_row(
+                "SELECT updated_at FROM project_state WHERE project_id = ?1",
+                [PROJECT_ID],
+                |row| row.get(0),
+            )?;
+            let rejected = harness
+                .service
+                .record_run(reuse, invocation(OperationCategory::AgentWorkflow))?;
+            assert_eq!(
+                rejected.response_value["base"]["response_kind"], "rejected",
+                "case {suffix}, dry_run={dry_run}"
+            );
+            assert_eq!(
+                rejected.response_value["errors"][0]["details"]["field"],
+                "evidence_updates[].observation_refs"
+            );
+            assert_eq!(harness.counts()?, before_rejection);
+            let after_rejection_floor: String = harness.conn()?.query_row(
+                "SELECT updated_at FROM project_state WHERE project_id = ?1",
+                [PROJECT_ID],
+                |row| row.get(0),
+            )?;
+            assert_eq!(after_rejection_floor, before_rejection_floor);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "user_evidence_exact_artifacts")?;
+    let criterion_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
+        &harness, &task_id,
+    )?);
+    set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
+    let (after_first_artifact, first_artifact_ref) = promote_artifact_for_record_run(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "user_evidence_exact_first",
+    )?;
+    let (after_second_artifact, second_artifact_ref) = promote_artifact_for_record_run(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_first_artifact,
+        "user_evidence_exact_second",
+    )?;
+    let target = EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id: criterion_id,
+    };
+    let artifact_refs = vec![first_artifact_ref, second_artifact_ref];
+    let requested = harness.service.request_user_action(
+        volicord_types::RequestUserActionRequest {
+            envelope: envelope(
+                "req_user_action_observation_exact_artifacts",
+                Some("idem_user_action_observation_exact_artifacts"),
+                false,
+                Some(after_second_artifact),
+                Some(&task_id),
+            ),
+            task_id: TaskId::new(&task_id),
+            change_unit_id: Some(ChangeUnitId::new(&change_unit_id)).into(),
+            action: volicord_types::UserActionDraft::EvidenceObservation(
+                volicord_types::UserActionEvidenceObservationDraft {
+                    question: "Do these exact artifacts support the selected target?".to_owned(),
+                    context_summary: "The user must inspect both exact candidate artifacts."
+                        .to_owned(),
+                    target_candidates: vec![target.clone()],
+                    artifact_candidate_ids: artifact_refs
+                        .iter()
+                        .map(|artifact| artifact.artifact_id.clone())
+                        .collect(),
+                },
+            ),
+            required_for: vec![volicord_types::UserActionRequiredFor::RecordRun],
+            expires_at: None.into(),
+        },
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let user_action_request_id =
+        response_record_id(&requested.response_value, "user_action_request_ref");
+    let resolved = harness.service.resolve_user_action(
+        volicord_types::ResolveUserActionRequest {
+            envelope: envelope(
+                "req_user_action_observation_exact_artifacts_resolve",
+                Some("submission_user_action_observation_exact_artifacts"),
+                false,
+                None,
+                Some(&task_id),
+            ),
+            user_action_request_id: volicord_types::UserActionRequestId::new(
+                user_action_request_id,
+            ),
+            channel_submission_id: "submission_user_action_observation_exact_artifacts".to_owned(),
+            resolution: volicord_types::UserActionResolutionInput::EvidenceObservation {
+                target: target.clone(),
+                artifact_ids: artifact_refs
+                    .iter()
+                    .map(|artifact| artifact.artifact_id.clone())
+                    .collect(),
+                relevance_status: EvidenceRelevanceStatus::Supported,
+                summary: "The user assessed both exact candidate artifacts.".to_owned(),
+            },
+        },
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let after_user_action = resolved.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("user-action resolution state version");
+    let resolution_ref: StateRecordRef =
+        serde_json::from_value(resolved.response_value["user_action_resolution_ref"].clone())?;
+
+    let record_request = |suffix: &str, dry_run: bool| {
+        let request_id = format!("req_user_evidence_exact_{suffix}");
+        let idempotency_key = format!("idem_user_evidence_exact_{suffix}");
+        let mut record = record_run_request(
+            &request_id,
+            &idempotency_key,
+            dry_run,
+            Some(after_user_action),
+            &task_id,
+            &change_unit_id,
+        );
+        record.evidence_updates = vec![EvidenceCoverageUpdate {
+            target: target.clone(),
+            coverage_state: EvidenceCoverageUpdateState::Supported,
+            provenance: None,
+            supporting_run_refs: Vec::new(),
+            observation_refs: Vec::new(),
+            supporting_artifact_refs: artifact_refs.clone(),
+            gap_refs: Vec::new(),
+        }];
+        record.evidence_observations = vec![EvidenceObservationInput {
+            target: target.clone(),
+            source_kind: EvidenceSourceKind::UserObservation,
+            assurance_level: EvidenceAssuranceLevel::UserObserved,
+            observed_by_actor_source: None.into(),
+            tool_name: None.into(),
+            tool_invocation_id: None.into(),
+            tool_metadata: JsonObject::new(),
+            input_refs: vec![resolution_ref.clone()],
+            source_refs: Vec::new(),
+            output_artifact_refs: artifact_refs.clone(),
+            limitations: Vec::new(),
+            observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")
+                .expect("fixture timestamp"),
+        }];
+        record
+    };
+
+    let before_control = harness.counts()?;
+    let before_control_floor: String = harness.conn()?.query_row(
+        "SELECT updated_at FROM project_state WHERE project_id = ?1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+    let control = harness.service.record_run(
+        record_request("control", true),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(control.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(harness.counts()?, before_control);
+    let after_control_floor: String = harness.conn()?.query_row(
+        "SELECT updated_at FROM project_state WHERE project_id = ?1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+    assert_eq!(after_control_floor, before_control_floor);
+
+    let conn = harness.conn()?;
+    let original_resolution_json: String = conn.query_row(
+        "SELECT resolution_json
+           FROM user_action_resolutions
+          WHERE project_id = ?1
+            AND user_action_resolution_id = ?2",
+        rusqlite::params![PROJECT_ID, resolution_ref.record_id.as_str()],
+        |row| row.get(0),
+    )?;
+    let original_resolution: Value = serde_json::from_str(&original_resolution_json)?;
+    let mut tampered_resolutions = Vec::new();
+    for (suffix, pointer, replacement) in [
+        (
+            "display_name",
+            "/observation/output_artifact_refs/0/display_name",
+            json!("tampered-display-name.bin"),
+        ),
+        (
+            "content_type",
+            "/observation/output_artifact_refs/0/content_type",
+            json!("application/tampered"),
+        ),
+        (
+            "redaction_state",
+            "/observation/output_artifact_refs/0/redaction_state",
+            json!("redacted"),
+        ),
+        (
+            "producer_identity",
+            "/observation/output_artifact_refs/0/created_by_run_ref/record_id",
+            json!("run_tampered_exact_output"),
+        ),
+        (
+            "producer_presence",
+            "/observation/output_artifact_refs/0/created_by_run_ref",
+            Value::Null,
+        ),
+        (
+            "producer_actor",
+            "/observation/output_artifact_refs/0/created_by_actor_source",
+            json!("local_user"),
+        ),
+        (
+            "storage_ref",
+            "/observation/output_artifact_refs/0/storage_ref",
+            json!("artifact://tampered-storage-ref"),
+        ),
+    ] {
+        let mut tampered = original_resolution.clone();
+        *tampered
+            .pointer_mut(pointer)
+            .unwrap_or_else(|| panic!("fixture pointer should exist: {pointer}")) = replacement;
+        tampered_resolutions.push((suffix, tampered));
+    }
+    let mut duplicate = original_resolution.clone();
+    let duplicated_ref = duplicate["observation"]["output_artifact_refs"][0].clone();
+    duplicate["observation"]["output_artifact_refs"][1] = duplicated_ref;
+    tampered_resolutions.push(("duplicate_artifact_id", duplicate));
+
+    for (suffix, tampered) in tampered_resolutions {
+        conn.execute(
+            "UPDATE user_action_resolutions
+                SET resolution_json = ?3
+              WHERE project_id = ?1
+                AND user_action_resolution_id = ?2",
+            rusqlite::params![
+                PROJECT_ID,
+                resolution_ref.record_id.as_str(),
+                serde_json::to_string(&tampered)?
+            ],
+        )?;
+        for dry_run in [true, false] {
+            let branch = if dry_run { "dry" } else { "commit" };
+            let before = harness.counts()?;
+            let before_floor: String = conn.query_row(
+                "SELECT updated_at FROM project_state WHERE project_id = ?1",
+                [PROJECT_ID],
+                |row| row.get(0),
+            )?;
+            let response = harness.service.record_run(
+                record_request(&format!("{suffix}_{branch}"), dry_run),
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            assert_eq!(
+                response.response_value["base"]["response_kind"], "rejected",
+                "case {suffix}, dry_run={dry_run}"
+            );
+            assert_eq!(
+                harness.counts()?,
+                before,
+                "case {suffix}, dry_run={dry_run}"
+            );
+            let after_floor: String = conn.query_row(
+                "SELECT updated_at FROM project_state WHERE project_id = ?1",
+                [PROJECT_ID],
+                |row| row.get(0),
+            )?;
+            assert_eq!(
+                after_floor, before_floor,
+                "case {suffix}, dry_run={dry_run}"
+            );
+        }
+    }
+    conn.execute(
+        "UPDATE user_action_resolutions
+            SET resolution_json = ?3
+          WHERE project_id = ?1
+            AND user_action_resolution_id = ?2",
+        rusqlite::params![
+            PROJECT_ID,
+            resolution_ref.record_id.as_str(),
+            original_resolution_json
+        ],
+    )?;
     Ok(())
 }
 
@@ -3221,7 +4069,7 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -3740,6 +4588,75 @@ fn record_run_invalid_stored_staged_artifact_expiration_is_corrupt_state(
         artifact_staging_status(&harness, handle.handle_id.as_str())?,
         "staged"
     );
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_future_reversed_and_out_of_range_staging_windows_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    for (suffix, created_at, expires_at) in [
+        (
+            "future_created",
+            "2026-06-18T00:00:01Z",
+            "2026-06-19T00:00:00Z",
+        ),
+        (
+            "reversed_window",
+            "2026-06-19T00:00:00Z",
+            "2026-06-18T00:00:00Z",
+        ),
+        (
+            "out_of_range_created",
+            "9999-12-31T23:59:59-23:59",
+            "9999-12-31T23:59:59Z",
+        ),
+    ] {
+        let mut harness = MethodHarness::new()?;
+        harness.use_clock(ManualClock::at("2026-06-18T00:00:00Z"));
+        enable_record_run_capabilities(&harness)?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("run_stage_{suffix}"))?;
+        let handle = stage_artifact_for_record_run(&harness, &task_id, suffix, 2)?;
+        set_staged_artifact_window(&harness, handle.handle_id.as_str(), created_at, expires_at)?;
+        let before = harness.counts()?;
+        let before_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+
+        let mut request = record_run_request(
+            &format!("req_run_stage_{suffix}"),
+            &format!("idem_run_stage_{suffix}"),
+            false,
+            Some(2),
+            &task_id,
+            &change_unit_id,
+        );
+        request.artifact_inputs = vec![artifact_input_for_handle(
+            &format!("artifact_input_{suffix}"),
+            handle.clone(),
+            None,
+            None,
+        )];
+        let response = harness
+            .service
+            .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(harness.counts()?, before, "case {suffix}");
+        assert_eq!(
+            artifact_staging_status(&harness, handle.handle_id.as_str())?,
+            "staged",
+            "case {suffix}"
+        );
+        let after_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(after_floor, before_floor, "case {suffix}");
+    }
     Ok(())
 }
 

@@ -67,9 +67,8 @@ volicord.prepare_write
 volicord.prepare_evidence_capture
 volicord.stage_artifact
 volicord.record_run
-volicord.request_user_judgment
-volicord.record_user_judgment
-volicord.record_user_observation
+volicord.request_user_action
+volicord.resolve_user_action
 volicord.reconcile_changes
 volicord.close_task
 ```
@@ -80,15 +79,15 @@ Method behavior is owned by method owner documents routed from [API Methods](met
 <a id="actor-values"></a>
 ## Actor source values
 
-Actor provenance fields such as `EvidenceObservation.observed_by_actor_source`, `UserEvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, and `UserJudgmentResolution.resolved_by_actor_source` use the `ActorSource` value set:
+Actor provenance fields such as `EvidenceObservation.observed_by_actor_source`, `EvidenceObservationInput.observed_by_actor_source`, and `UserActionResolution.resolved_by_actor_source` use the `ActorSource` value set:
 
 | Value | Used by | Owner route |
 |---|---|---|
-| `local_user` | User Channel invocation provenance and authority-bearing user-judgment resolution. | Invocation meaning: [Agent Connection](../agent-connection.md); resolution shape owner: [API Judgment Schemas](schema-judgment.md). |
+| `local_user` | User Channel invocation provenance for every user-action resolution. | Invocation meaning: [Agent Connection](../agent-connection.md); resolution shape owner: [API User Action Schemas](schema-user-action.md). |
 | `agent_connection:<connection_id>` | Agent Connection invocation provenance and agent-created or agent-observed state. | Invocation meaning: [Agent Connection](../agent-connection.md); nested shape owners define where the value appears. |
 | `system` | Internal system provenance where an owner explicitly allows it. | Method and storage owners define where the value appears. |
 
-These values classify derived invocation or persisted actor provenance. They do not by themselves create user-owned judgment, approval, scope-decision authority, final acceptance, residual-risk acceptance, or write ticket. Authority-bearing user-judgment resolution requires `resolved_by_actor_source=local_user` with compatible User Channel provenance as defined by [Agent Connection](../agent-connection.md) and the method owner.
+These values classify derived invocation or persisted actor provenance. They do not by themselves create user-owned judgment, evidence relevance, approval, scope-decision authority, final acceptance, residual-risk acceptance, or write ticket. Every user-action resolution requires `resolved_by_actor_source=local_user` with compatible User Channel provenance as defined by [Agent Connection](../agent-connection.md) and the method owner.
 
 <a id="next-action-values"></a>
 ## Next-action values
@@ -108,8 +107,8 @@ These values classify derived invocation or persisted actor provenance. They do 
 | `prepare_write` | `volicord.prepare_write` | `agent_workflow` |
 | `stage_artifact` | `volicord.stage_artifact` | `agent_workflow` |
 | `record_run` | `volicord.record_run` | `agent_workflow` |
-| `request_user_judgment` | `volicord.request_user_judgment` | `agent_workflow` |
-| `record_user_judgment` | `volicord.record_user_judgment` | `user_only` |
+| `request_user_action` | `volicord.request_user_action` | `agent_workflow` |
+| `resolve_user_action` | `volicord.resolve_user_action` | `user_only` |
 | `reconcile_changes` | `volicord.reconcile_changes` | `agent_workflow`, `local_recovery` |
 | `close_task` | `volicord.close_task` | `agent_workflow` |
 
@@ -174,13 +173,13 @@ project_state
 task
 change_unit
 write_ticket
-user_judgment
+user_action_request
+user_action_resolution
 run
 evidence_summary
 evidence_observation
 evidence_capture_intent
 evidence_producer
-user_evidence_observation
 artifact
 blocker
 task_event
@@ -212,7 +211,7 @@ superseded
 closed
 ```
 
-These values classify durable project-level context. They do not by themselves create current Task authority, satisfy pending user judgments, prove evidence, grant write-ticket authority, satisfy close readiness, or accept residual risk for a future close basis.
+These values classify durable project-level context. They do not by themselves create current Task authority, satisfy pending user actions, prove evidence, grant write-ticket authority, satisfy close readiness, or accept residual risk for a future close basis.
 
 <a id="task-lifecycle-values"></a>
 ## Task lifecycle values
@@ -304,12 +303,12 @@ cancelled
 superseded
 ```
 
-Lifecycle meaning for user-owned judgment waiting:
+Lifecycle meaning for user-owned action waiting:
 
-- `waiting_user` means the current non-terminal Task has at least one pending user judgment with current compatible basis state and a non-informational operation target that still requires a user answer. This includes `product_decision` and `technical_decision`; it is not limited to judgment kinds that use Core-created authority options.
-- Informational judgments and pending judgments with stale or superseded basis state do not create or preserve `waiting_user`.
-- Resolving the last such pending judgment restores `ready` when a current Change Unit exists and `shaping` otherwise. Resolving one of several such judgments preserves `waiting_user`.
-- `completed`, `cancelled`, and `superseded` are terminal and are never replaced by judgment lifecycle maintenance.
+- `waiting_user` means the current non-terminal Task has at least one pending `UserActionRequest` with current compatible basis state and a non-informational `required_for` target that still requires a user resolution. This includes choice judgments such as `product_decision` and `technical_decision` and also evidence observations; it is not limited to judgments that use Core-created authority options.
+- Informational requests and pending requests with stale or superseded basis state do not create or preserve `waiting_user`.
+- Resolving the last such pending user action restores `ready` when a current Change Unit exists and `shaping` otherwise. Resolving one of several such actions preserves `waiting_user`.
+- `completed`, `cancelled`, and `superseded` are terminal and are never replaced by user-action lifecycle maintenance.
 
 `CloseTaskResult.close_state` uses:
 
@@ -392,14 +391,14 @@ Method behavior for each operation is owned by [`volicord.update_scope`](method-
 product_file_write
 artifact_registration
 run_recording
-user_judgment_request
+user_action_request
 evidence_update
 sensitive_action
 external_network
 secret_access
 ```
 
-These values classify effects as Core state. They do not by themselves create a runtime sandbox, command interception, network blocking, secret isolation, user judgment, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
+These values classify effects as Core state. They do not by themselves create a runtime sandbox, command interception, network blocking, secret isolation, a user-action request or resolution, sensitive-action approval, evidence, write ticket, final acceptance, close readiness, or residual-risk acceptance.
 
 `volicord.check_close` has no `intent` field. `volicord.close_task.intent` uses:
 
@@ -608,7 +607,7 @@ effective close-readiness health:
 - `guard_observation_status` reports whether the current installation has a matching hook observation.
 - `effective_guard_status` is the close-readiness health used for `detective` paths. `active` requires a `detective` profile, complete required-hook configuration, a non-stale and non-broken installation, a current matching observation, and matching host and policy identity.
 
-`prompt_capture_status` reports whether user-owned judgment chat commands are
+`prompt_capture_status` reports whether user-owned action chat commands are
 available:
 
 - `unsupported_by_host`: the host capability is absent.
@@ -675,7 +674,8 @@ These values classify why an unrecorded Product Repository change finding is res
 | Value | Category family |
 |---|---|
 | `scope` | Scope compatibility or scope-boundary reason. |
-| `user_judgment` | Required user-owned judgment reason. |
+| `workspace` | Product Repository workspace or changed-path compatibility reason. |
+| `user_action` | Required user-owned action reason. |
 | `sensitive_approval` | Required separate sensitive-action approval reason. |
 | `write_compatibility` | Write-compatibility reason. |
 | `baseline` | Baseline compatibility reason. |
@@ -692,8 +692,8 @@ This value set controls `category` only. `WriteDecisionReason.code` is not a glo
 task
 open_run
 scope
-user_judgment
-pending_user_judgment
+user_action
+pending_user_action
 sensitive_approval
 write_compatibility
 baseline
@@ -819,7 +819,8 @@ Source-kind meanings:
   exact output artifact. Direct unanchored requests still downgrade; verified
   artifact bytes alone are insufficient.
 - `user_observation` names an observation backed by a current target-bound
-  `UserEvidenceObservation` from `volicord.record_user_observation`. Direct
+  `evidence_observation` `UserActionResolution` from
+  `volicord.resolve_user_action`. Direct
   unanchored selection downgrades, and the observation is never final acceptance
   or another authority-bearing judgment.
 - `reused_evidence` records Core-validated reuse of a prior strong observation. Direct caller selection is downgraded, and validated reuse is not a new observation by itself.
@@ -844,7 +845,11 @@ Assurance-level meanings:
   canonical output binding, and current bytes. It classifies producer
   provenance only and does not imply supported relevance.
 - `user_observed` requires a current target-scoped User Channel observation,
-  exact outputs, and `relevance_status=supported`.
+  exact outputs, and an exact stored `relevance_status` of `supported` or
+  `contradicted`. It classifies local-user producer provenance and does not
+  turn negative relevance into support. Only `supported` may satisfy evidence
+  coverage or sufficiency or qualify for validated reuse that establishes
+  `supported`.
 - `unverified` records absence of verified observation assurance.
 
 Core downgrades a requested strong pair without its required anchor to
@@ -885,15 +890,18 @@ These values select the registered source family for
 completeness, host identity, or evidence relevance.
 
 `EvidenceRelevanceAssessment.status` and
-`UserEvidenceObservation.relevance_status` use `unassessed`, `supported`, and
-`contradicted`; the User Channel method accepts only `supported` or
+the evidence-observation resolution body use `unassessed`, `supported`, and
+`contradicted`; the User Channel resolution accepts only `supported` or
 `contradicted`. `unassessed` means no independent authority has established
 whether the observation supports its target; a complete matching registered
 capture uses this status. `supported` requires a separate owner-defined
 relevance authority, and validated reuse can only retain it from an already
 supported authority chain. `contradicted` preserves a complete capture failure
-or mismatch and an owner-defined negative relevance assessment. Strong evidence
-requires a separate current `supported` assessment.
+or mismatch and an owner-defined negative relevance assessment. A current User
+Channel observation with `contradicted` relevance retains its
+`user_observation` / `user_observed` producer provenance, but it cannot satisfy
+supported coverage or the supported-reuse gate. Strong evidence requires a
+separate current `supported` assessment.
 
 <a id="source-ref-values"></a>
 ### Source reference values
@@ -948,14 +956,14 @@ detective
 authority_record
 cooperative_host_decision
 detective_observation
-user_judgment_record
+user_action_resolution
 ```
 
 Value meanings:
 - `authority_record` means the result reports Core authority state, response branch metadata, and method-owned result fields within the documented method contract.
 - `cooperative_host_decision` means the result reports a decision returned to a cooperative host hook for an observed host event.
 - `detective_observation` means the result reports local diagnostic, verification, observation, or transport-status facts that Volicord could inspect.
-- `user_judgment_record` means the result records a user-owned judgment received through a supported `User Channel` path.
+- `user_action_resolution` means the result records an immutable user-owned resolution received through a supported `User Channel` path.
 
 `GuaranteeDisclosure.non_guarantees` uses:
 
@@ -1025,7 +1033,20 @@ corrupt
 Artifact storage lifecycle and body-read eligibility are owned by [Artifact Storage](../storage-artifacts.md).
 
 <a id="judgment-values"></a>
-## Judgment values
+## User-action and judgment values
+
+`UserActionRequest.action_kind` uses exactly:
+
+```text
+product_decision
+technical_decision
+scope_decision
+sensitive_approval
+final_acceptance
+residual_risk_acceptance
+cancellation
+evidence_observation
+```
 
 `judgment_kind` uses:
 
@@ -1057,7 +1078,7 @@ close_supersede
 informational
 ```
 
-`UserJudgment.status` uses:
+`UserActionRequest.status` uses:
 
 ```text
 pending
@@ -1067,7 +1088,7 @@ superseded
 expired
 ```
 
-Status values describe the judgment lifecycle. `resolved` means an answer was recorded; it does not by itself mean approval, acceptance, or authorization.
+One Core evaluator derives these effective values from immutable resolution presence, basis compatibility, and current time. `resolved` means a resolution was recorded; it does not by itself mean approval, acceptance, authorization, or supporting evidence.
 
 `JudgmentResolutionOutcome` uses:
 
@@ -1077,7 +1098,7 @@ rejected
 deferred
 ```
 
-`JudgmentBasis.compatibility_status` uses:
+`UserActionBasis.coordinates.compatibility_status` uses:
 
 ```text
 current
@@ -1088,7 +1109,7 @@ superseded
 Meaning:
 - `current` means the basis currently matches the requirement it may satisfy.
 - `stale` means the stored basis no longer matches current state; a resolved row may remain for audit but is ineligible for current requirements.
-- `superseded` means a pending judgment has been replaced by a newer question or basis and cannot be answered successfully.
+- `superseded` means an unanswered action request has been replaced by a newer request or basis and cannot be resolved successfully.
 
 Authority option action values:
 - `accept` maps to `accepted`.
@@ -1101,12 +1122,12 @@ Resolution outcome meaning:
 - `blocked` is used by unrelated blocked-result and blocker value sets elsewhere in the product, but it is not a `JudgmentResolutionOutcome` value and cannot be persisted as a selected-option resolution.
 - Absence of a machine-readable outcome must never be interpreted as `accepted`.
 
-Pending-judgment relevance:
-- A pending judgment blocks an operation only when its current `required_for` target includes that operation, its `judgment_kind` is relevant to that operation, and its Task, Change Unit, affected refs, and basis are compatible.
+Pending-action relevance:
+- A pending choice action blocks an operation only when its current `required_for` target includes that operation, its `judgment_kind` is relevant to that operation, and its Task, Change Unit, affected refs, and basis are compatible.
 - For sensitive approval, the pending question is relevant only when its sensitive-action scope overlaps the current sensitive action requirement.
-- `informational` judgments are audit or display context and do not block write, run, or close operations by themselves.
+- `informational` actions are audit or display context and do not block write, run, or close operations by themselves.
 
-`UserJudgmentOption.option_id` is scoped to the judgment and is not a global value set. Rendered option labels are display text only. Current public `UserJudgmentOption.machine_action` uses the authority option action values above. `UserJudgmentOption.resolution_outcome` uses `JudgmentResolutionOutcome`; option labels and explanatory text must not invert the machine-readable action or outcome.
+`UserActionOption.option_id` is scoped to the request and is not a global value set. Rendered option labels are display text only. Current public `UserActionOption.machine_action` uses the authority option action values above. `UserActionOption.resolution_outcome` uses `JudgmentResolutionOutcome`; option labels and explanatory text must not invert the machine-readable action or outcome.
 
 ## Error detail helper values
 

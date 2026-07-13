@@ -25,7 +25,7 @@ pub(crate) fn project_rule_path(repo_root: &Path) -> PathBuf {
 
 pub(crate) fn project_rule_block(policy_path: &str, command_lines: &[(String, String)]) -> String {
     let mut block = format!(
-        "# Volicord\n\nUse the repository-local `{policy_path}` detective host-hook policy. Do not record user-owned judgments through the Agent Connection.\n\nConfigured local detective host-hook commands:\n"
+        "# Volicord\n\nUse the repository-local `{policy_path}` detective host-hook policy. Do not resolve user-owned actions through the Agent Connection.\n\nConfigured local detective host-hook commands:\n"
     );
     for (phase, command) in command_lines {
         block.push_str(&format!("- `{phase}`: `{command}`\n"));

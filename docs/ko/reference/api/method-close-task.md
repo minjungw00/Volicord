@@ -232,14 +232,14 @@ CloseTaskRequest:
 | 필드 | 결과 필드 의미 |
 |---|---|
 | `base` | 공통 결과 메타데이터입니다. `disclosure`와 `events`를 포함한 `ToolResultBase` 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당합니다. 유효한 `CloseTaskResult` 분기는 `base.response_kind=result`와 `base.disclosure.guarantee_class=authority_record`를 사용합니다. 이 문서는 `volicord.check_close`에는 `base.effect_kind=read_only`를, 성공한 종료 상태 변경에는 `base.effect_kind=core_committed`를, 차단 사유가 있는 상태 변경 `intent`에는 `base.effect_kind=no_effect`를 선택합니다. |
-| `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 판단, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. `summary_card.evidence`는 정확히 `evidence_gate.state`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
+| `summary_card` | 선택된 닫기 또는 닫기 확인 결과에 대한 `SummaryCard`입니다. 닫기 상태, 증거, 대기 사용자 행동, 변경, 전송, 선택된 다음 행동 하나, 보장 줄을 요약하며 구조화된 결과 필드 너머의 권한을 추가하지 않습니다. `summary_card.evidence`는 정확히 `evidence_gate.state`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `close_state` | 요청한 경로에 대한 메서드 결과 닫기 상태입니다. 지원 값은 [API 값 집합](schema-value-sets.md#task-lifecycle-values)이 담당합니다. `close_state=blocked`는 유효한 닫기 또는 종료 경로 평가 뒤의 메서드 결과이지 `ToolRejectedResponse`가 아닙니다. |
 | `state` | 확인, 종료 상태 변경, 또는 응답 전용 차단 평가 뒤 선택된 Task의 `StateSummary`입니다. `close_blockers`를 포함한 중첩 상태 필드는 [API 상태 스키마](schema-state.md)가 담당합니다. |
 | `current_close_basis` | 결과에 선택된 닫기 준비 상태에 사용한 `CurrentCloseBasis | null`입니다. `null`은 이 결과에 사용할 현재 닫기 근거가 없다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `risk_acceptance_coverage` | 닫기 준비 상태 결과에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `continuity_summary` | 이 닫기 결과로 관련성이 생긴 프로젝트 연속성 기록의 `ProjectContinuitySummary[]`입니다. 성공한 `intent=complete`에서는 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계를 Core가 이어 가는 연속성 기록이 여기에 포함됩니다. 빈 배열은 이 결과에 대해 계산이 실행됐고 이어 갈 기록이 없었다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 | `blockers` | 요청한 경로에 닫기 차단 사유 또는 종료 차단 사유가 있을 때 반환되는 `CloseReadinessBlocker[]`입니다. 형태와 중첩은 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하며, `category` 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. |
-| `pending_judgment_inbox_items` | 이 닫기 준비 상태 결과의 현재 `pending_user_judgment` 차단 사유가 선택한 정확한 필수 미답변 대기 판단의 `JudgmentInboxItem[]`입니다. 형태는 [API 판단 스키마](schema-judgment.md#judgmentinboxitem)가 담당합니다. |
+| `pending_user_action_inbox_items` | 이 닫기 준비 상태 결과의 현재 사용자 행동 blocker가 선택한 정확한 필수 유효 대기 요청의 `UserActionInboxItem[]`입니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. |
 | `guard_health` | 닫기 준비 상태 결과에 선택된 호스트 훅 상태 정보의 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `coverage_summary` | 현재 적용 프로필, 호스트 훅과 세션 감시자의 관찰 상태, 추적된 타임스탬프, 미해결 미기록 변경 수, 관찰 범위의 비보장을 담는 `CoverageSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 현재 닫기 근거가 선택된 요약을 참조하면 `evidence_summary.evidence_state`는 `accepted_for_close`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
@@ -248,11 +248,11 @@ CloseTaskRequest:
 
 `CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 `presentation_role=primary`인 차단 사유 행동에서 선택된 단일 표시 다음 행동이며 배열 위치는 선택 계약이 아닙니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 결과 하나의 `blockers[*].next_actions` 전체에는 primary가 정확히 하나 있으며 뒤쪽의 차단 사유 목록에는 additional 행동만 있을 수 있습니다.
 
-다른 작업을 위한 대기 판단과 정보성 전용 대기 판단은 더 넓은
-`state.pending_user_judgment_refs` 상태 보기에 계속 나타날 수 있습니다. 요청한
-닫기 경로의 현재 `pending_user_judgment` 차단 사유가 해당 판단의 정확한
-`UserJudgment` 참조를 선택하지 않으면 이 판단은 최상위
-`pending_judgment_inbox_items` 목록에 들어가지 않습니다.
+다른 작업을 위한 대기 사용자 행동과 정보성 전용 대기 행동은 더 넓은
+`state.pending_user_action_request_refs` 상태 보기에 계속 나타날 수 있습니다. 요청한
+닫기 경로의 현재 `pending_user_action` 차단 사유가 해당 행동의 정확한
+`UserActionRequest` 참조를 선택하지 않으면 이 행동은 최상위
+`pending_user_action_inbox_items` 목록에 들어가지 않습니다.
 
 이 메서드는 자신이 생성하는 메서드 범위의 `CloseReadinessBlocker.code` 값을 담당합니다. 이런 코드는 공개 `ErrorCode` 값이 아니며 전역 값 집합 항목도 아닙니다.
 
@@ -264,9 +264,11 @@ CloseTaskRequest:
 |---|---|---|
 | `task_not_closeable` | `task` | 선택된 `Task` 생명주기나 종료 경로 상태가 요청한 닫기 의도를 받을 수 없습니다. |
 | `missing_active_change_unit` | `scope` | 닫기 경로에 현재 적용 Change Unit이 필요하지만 사용할 수 없습니다. |
-| `pending_user_judgment` | `pending_user_judgment` | 필요한 사용자 소유 판단이 아직 대기 중이거나 해결되지 않았습니다. |
+| `pending_user_action` | `pending_user_action` | 필요한 사용자 소유 행동이 아직 대기 중이거나 해결되지 않았습니다. |
 | `missing_sensitive_approval` | `sensitive_approval` | 필요한 별도 민감 동작 승인이 없습니다. |
-| `missing_cancellation_authority` | `user_judgment` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 사용자 취소 판단이 없습니다. |
+| `missing_cancellation_authority` | `user_action` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 취소 `UserActionResolution`이 없습니다. |
+| `rejected_cancellation_authority` | `user_action` | 현재 로컬 사용자의 취소 `UserActionResolution`이 `intent=cancel`을 명시적으로 거부했습니다. |
+| `stale_cancellation_authority` | `user_action` | 취소 `UserActionResolution`은 있지만 그 `Task`, 범위 리비전, Change Unit 또는 유효 사용자 행동 근거가 더 이상 현재 상태가 아닙니다. |
 | `open_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 열려 있고 아직 해결되지 않았습니다. |
 | `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 해결되지 않은 상태로 만료되었습니다. |
 | `write_ticket_stale` | `write_compatibility` | 닫기 관련 쓰기 티켓이 `STATE_VERSION_CONFLICT`로 처리되지 않는 최신성 사유로 사용할 수 없습니다. |
@@ -289,7 +291,7 @@ CloseTaskRequest:
 | `evidence_provenance_stale` | `evidence_provenance` | 증거 관찰 출처가 있지만 현재 Task 범위, Change Unit, 출처 실행 기록, 닫기 근거 증거 요약에 대해 오래되었습니다. |
 | `evidence_agent_report_only` | `evidence_provenance` | 더 강한 출처가 필요한데 필요한 닫기 증거가 협력적 에이전트 보고만으로 뒷받침됩니다. |
 | `artifact_unavailable` | `artifact_availability` | 닫기 관련 아티팩트가 없거나, 사용할 수 없거나, 사용에 부적합하거나, 무결성에 실패했습니다. |
-| `missing_final_acceptance` | `final_acceptance` | 현재 닫기 근거에 필요한 최종 수락이 없습니다. 표시되는 행동은 Agent Connection의 `volicord.request_user_judgment` 절차와 최종 수락 질문을 식별합니다. |
+| `missing_final_acceptance` | `final_acceptance` | 현재 닫기 근거에 필요한 최종 수락이 없습니다. 표시되는 행동은 Agent Connection의 `volicord.request_user_action` 절차와 최종 수락 질문을 식별합니다. |
 | `stale_final_acceptance` | `final_acceptance` | 최종 수락은 있지만 현재 `Task`, Change Unit, `scope_revision`, `close_basis_revision`, 기준선, 결과 참조와 호환되지 않거나 오래되었습니다. 표시되는 행동은 현재 근거에 묶인 판단을 요청합니다. |
 | `residual_risk_not_visible` | `residual_risk_visibility` | 닫기 관련 잔여 위험이 보이지 않게 남아 있습니다. |
 | `missing_residual_risk_acceptance` | `residual_risk_acceptance` | 현재 잔여 위험 요구사항에 필요한 잔여 위험 수락이 없습니다. |
@@ -298,9 +300,9 @@ CloseTaskRequest:
 
 이 코드는 메서드 로컬 `CloseReadinessBlocker.code` 값입니다. 공개 `ErrorCode` 값, `WriteDecisionReason.code` 값, 전역 값 집합 항목이 아닙니다.
 
-`pending_user_judgment`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 입력 방법을 가리킬 수 있습니다. `pending_judgment_inbox_items`는 사용자가 행동할 수 있는 수신함 항목을 담습니다. 답변 경로에는 사용할 수 있을 때 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 명령 `volicord inbox answer <judgment-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 판단에 답하도록 권한을 부여하지 않습니다.
+`pending_user_action`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 입력 방법을 가리킬 수 있습니다. `pending_user_action_inbox_items`는 사용자가 행동할 수 있는 수신함 항목을 담습니다. 답변 경로에는 사용할 수 있을 때 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 명령 `volicord inbox resolve <user-action-request-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 행동을 해결하도록 권한을 부여하지 않습니다.
 
-대기 중인 최종 수락 판단 없이 `missing_final_acceptance`가 있는 상태는 지원되는 2단계 상태이며 권한 우회가 아닙니다. 읽기 전용 점검이나 차단된 닫기 시도는 판단 기록을 만들지 않습니다. 이 상태의 `request_user_judgment` 행동은 `allowed_operation_categories=[agent_workflow]`이며 Agent Connection이 표시된 질문으로 현재 요청을 만듭니다. 그 커밋 뒤에는 `pending_user_judgment`가 `allowed_operation_categories=[user_only]`인 `record_user_judgment` 행동과 사용할 수 있는 User Channel 경로를 보여 줍니다. Agent Connection은 두 번째 행동을 수행하면 안 됩니다.
+대기 중인 최종 수락 요청 없이 `missing_final_acceptance`가 있는 상태는 지원되는 2단계 상태이며 권한 우회가 아닙니다. 읽기 전용 점검이나 차단된 닫기 시도는 요청이나 해결 기록을 만들지 않습니다. 이 상태의 `request_user_action` 행동은 `allowed_operation_categories=[agent_workflow]`이며 Agent Connection이 표시된 질문으로 현재 요청을 만듭니다. 그 커밋 뒤에는 `pending_user_action`이 `allowed_operation_categories=[user_only]`인 `resolve_user_action` 행동과 사용할 수 있는 User Channel 경로를 보여 줍니다. Agent Connection은 두 번째 행동을 수행하면 안 됩니다.
 
 ## 차단 결과
 
@@ -457,7 +459,7 @@ state:
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
@@ -473,8 +475,8 @@ state:
       related_refs: []
       next_actions:
         - presentation_role: primary
-          action_kind: request_user_judgment
-          owner_method: volicord.request_user_judgment
+          action_kind: request_user_action
+          owner_method: volicord.request_user_action
           allowed_operation_categories: [agent_workflow]
           label: "Agent Connection이 사용자에게 현재 최종 수락 요청을 만들어야 합니다."
           blocking_question: "사용자가 현재 Task 결과와 닫기 근거를 완료된 것으로 수락합니까?"
@@ -495,8 +497,8 @@ blockers:
     related_refs: []
     next_actions:
       - presentation_role: primary
-        action_kind: request_user_judgment
-        owner_method: volicord.request_user_judgment
+        action_kind: request_user_action
+        owner_method: volicord.request_user_action
         allowed_operation_categories: [agent_workflow]
         label: "Agent Connection이 사용자에게 현재 최종 수락 요청을 만들어야 합니다."
         blocking_question: "사용자가 현재 Task 결과와 닫기 근거를 완료된 것으로 수락합니까?"

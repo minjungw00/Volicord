@@ -83,8 +83,9 @@ stdio_out="$workdir/stdio.out"
 grep -q '"protocolVersion":"2025-11-25"' "$stdio_out" || fail "MCP stdio did not negotiate the current protocol"
 grep -q '"name":"volicord.status"' "$stdio_out" || fail "MCP stdio did not list status"
 grep -q '"name":"volicord.close_task"' "$stdio_out" || fail "MCP stdio workflow tools did not list close_task"
-if grep -q '"name":"volicord.record_user_judgment"' "$stdio_out"; then
-    fail "MCP stdio exposed user-only judgment recording"
+grep -q '"name":"volicord.request_user_action"' "$stdio_out" || fail "MCP stdio did not list user-action request creation"
+if grep -q '"name":"volicord.resolve_user_action"' "$stdio_out"; then
+    fail "MCP stdio exposed user-only action resolution"
 fi
 
 if command -v curl >/dev/null 2>&1; then

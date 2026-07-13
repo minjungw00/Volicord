@@ -57,12 +57,12 @@
 | 자연어 접수와 `Task` 생성 | 지원되는 접수 경로로 사용자의 자연어 의도에서 로컬 `Task`를 시작할 수 있습니다. | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
 | 범위 업데이트 | 지원되는 범위 업데이트 경로로 `Task`와 Change Unit 범위를 갱신할 수 있습니다. | [범위 업데이트 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |
 | 상태와 닫기 준비 상태 확인 | 지원되는 읽기 경로로 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다. | [상태 메서드](api/method-status.md), [닫기 메서드](api/method-close-task.md), [API 상태 스키마](api/schema-state.md), [Core 모델](core-model.md) |
-| 정확한 과거 동작 결과 조회 | `volicord.get_operation_result`는 조회할 수 있는 변경 불가능한 `operation_category=agent_workflow` Core 변경 응답을 크기가 제한된 UTF-8 페이지로 읽을 수 있습니다. 접근하려면 원래 호출을 수행한 Agent Connection이 현재 활성 상태이고 선택 프로젝트가 허용되어 있으며 현재 행위자가 저장된 행위자와 같아야 합니다. 결과는 현재 권한이 아닌 과거 기록이며 `operation_category=user_only` 판단 응답은 제외합니다. | [동작 결과 조회 메서드](api/method-get-operation-result.md), [보안](security.md#historical-operation-result-access), [저장소 버전 관리](storage-versioning.md#exact-operation-result-retrieval) |
+| 정확한 과거 동작 결과 조회 | `volicord.get_operation_result`는 조회할 수 있는 변경 불가능한 `operation_category=agent_workflow` Core 변경 응답을 크기가 제한된 UTF-8 페이지로 읽을 수 있습니다. 접근하려면 원래 호출을 수행한 Agent Connection이 현재 활성 상태이고 선택 프로젝트가 허용되어 있으며 현재 행위자가 저장된 행위자와 같아야 합니다. 결과는 현재 권한이 아닌 과거 기록이며 `operation_category=user_only` 사용자 행동 응답은 제외합니다. | [동작 결과 조회 메서드](api/method-get-operation-result.md), [보안](security.md#historical-operation-result-access), [저장소 버전 관리](storage-versioning.md#exact-operation-result-retrieval) |
 | 쓰기 티켓 | `volicord.prepare_write`는 호환되는 제안 제품 파일 변경 하나에 쓰기 티켓을 발급할 수 있습니다. | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
 | Agent Connection 맥락 | 등록된 Agent Connection은 범위 확인에 쓸 기록된 출처, 모드, 명시적인 프로젝트 허용 목록을 제공합니다. | [Agent Connection 참조](agent-connection.md), [보안](security.md) |
 | 아티팩트 스테이징과 호환되는 아티팩트 연결 | 새 아티팩트 바이트는 지원되는 스테이징 경로로 기준 범위에 들어올 수 있고, 호환되는 영속 아티팩트 참조는 아티팩트 담당 문서가 허용할 때 연결할 수 있습니다. | [아티팩트 스테이징 담당 문서](#artifact-staging-owners)를 봅니다. |
 | 실행 및 증거 기록 | 기준 범위 작업에 대해 실행 기록, 간결한 증거 요약, 출처를 가진 대상 단위 증거 관찰을 남길 수 있습니다. | [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
-| 집중된 사용자 소유 판단 기록 | 지원되는 판단 경로로 사용자 소유 판단을 요청하고 기록할 수 있습니다. 이 판단은 Core 소유 상태, 증거, 닫기 준비 상태 규칙을 대체하지 않습니다. | [사용자 소유 판단 담당 문서](#user-judgment-owners)를 봅니다. |
+| 집중된 사용자 소유 행동 캡처 | 지원되는 공통 User Action 경로로 choice 판단과 Evidence 관찰을 요청하고 해결할 수 있습니다. 이 행동은 Core 소유 상태, Evidence, 닫기 준비 상태 규칙을 대체하지 않습니다. | [사용자 행동 담당 문서](#user-action-owners)를 봅니다. |
 | 프로젝트 연속성 기록 | 오래 유지해야 하는 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약을 현재 Core 권한을 대체하지 않는 프로젝트 수준 맥락으로 보존할 수 있습니다. | [Core 모델](core-model.md), [API 상태 스키마](api/schema-state.md), [저장소 기록](storage-records.md), [저장 효과](storage-effects.md) |
 | 권한 번들 내보내기 | `volicord export authority-bundle`로 원본 Runtime Home이나 프로젝트 상태를 변경하지 않고 등록된 프로젝트 하나의 로컬 기록과 현재 사용할 수 있는 영속 아티팩트 본문을 무결성 라벨이 붙은 복사본으로 내보낼 수 있습니다. 문서에 정의된 비보장이 그대로 적용됩니다. | [관리 CLI](admin-cli.md#authority-bundle-export), [저장소 기록](storage-records.md), [보안](security.md) |
 | 닫기 시도 | `volicord.check_close`는 닫기 준비 상태를 읽기 전용으로 평가할 수 있고, `volicord.close_task`는 증거, 최종 수락, 잔여 위험, 대체 불가 경계를 유지하면서 지원되는 닫기 결과를 시도할 수 있습니다. | [닫기 메서드](api/method-close-task.md), [Core 모델](core-model.md), [API 차단 사유 처리 경로](api/blocker-routing.md) |
@@ -75,12 +75,12 @@
 - API 형태: [API 아티팩트 스키마](api/schema-artifacts.md).
 - 생명주기와 저장 효과: [아티팩트 저장소](storage-artifacts.md)와 [저장 효과](storage-effects.md).
 
-<a id="user-judgment-owners"></a>
-사용자 소유 판단 담당 문서:
+<a id="user-action-owners"></a>
+사용자 행동 담당 문서:
 
-- 메서드 동작: [사용자 소유 판단 요청 메서드](api/method-request-user-judgment.md)와 [사용자 소유 판단 기록 메서드](api/method-record-user-judgment.md).
+- 메서드 동작: [사용자 행동 요청 메서드](api/method-request-user-action.md)와 [사용자 행동 해결 메서드](api/method-resolve-user-action.md).
 - 제품 의미: [Core 모델](core-model.md).
-- API 형태와 값: [API 판단 스키마](api/schema-judgment.md)와 [API 값 집합](api/schema-value-sets.md).
+- API 형태와 값: [API 사용자 행동 스키마](api/schema-user-action.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md).
 
 <a id="excluded-from-baseline-scope"></a>
 ## 기준 범위에 포함되지 않는 것

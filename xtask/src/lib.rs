@@ -3648,30 +3648,56 @@ fn validate_inbox_command(args: &[String]) -> std::result::Result<(), String> {
     match args.first().map(String::as_str) {
         None => Ok(()),
         Some("-h" | "--help" | "help") => validate_no_more_args(args, "`volicord inbox` help"),
-        Some("answer") => {
+        Some("resolve") => {
             if is_help_only(&args[1..]) {
                 return Ok(());
             }
-            let parsed = parse_command_args(&args[1..], &["json"], &["repo", "note", "choice"])?;
-            require_positionals(&parsed, 1, 1, "`volicord inbox answer`")?;
-            if !parsed.options.contains("choice") {
-                return Err("`volicord inbox answer` requires --choice".to_string());
+            let parsed = parse_command_args(
+                &args[1..],
+                &["json", "contradicted"],
+                &[
+                    "repo",
+                    "note",
+                    "choice",
+                    "criterion",
+                    "claim",
+                    "artifact",
+                    "summary",
+                ],
+            )?;
+            require_positionals(&parsed, 1, 1, "`volicord inbox resolve`")?;
+            let choice = parsed.options.contains("choice");
+            let criterion = parsed.options.contains("criterion");
+            let claim = parsed.options.contains("claim");
+            let observation = criterion || claim;
+            if choice == observation {
+                return Err(
+                    "`volicord inbox resolve` requires either --choice or exactly one of --criterion/--claim"
+                        .to_string(),
+                );
+            }
+            if criterion && claim {
+                return Err(
+                    "`volicord inbox resolve` observation accepts only one of --criterion/--claim"
+                        .to_string(),
+                );
+            }
+            if observation
+                && (!parsed.options.contains("artifact") || !parsed.options.contains("summary"))
+            {
+                return Err(
+                    "`volicord inbox resolve` observation requires --artifact and --summary"
+                        .to_string(),
+                );
             }
             Ok(())
-        }
-        Some("open") => {
-            if is_help_only(&args[1..]) {
-                return Ok(());
-            }
-            let parsed = parse_command_args(&args[1..], &["json"], &["repo"])?;
-            require_positionals(&parsed, 1, 1, "`volicord inbox open`")
         }
         Some(token) if token.starts_with('-') => {
             let parsed = parse_command_args(args, &["json"], &["repo", "task"])?;
             reject_positionals(&parsed, 0, "`volicord inbox`")
         }
         Some(other) => Err(format!(
-            "unknown `volicord inbox` subcommand `{other}`; use answer or open"
+            "unknown `volicord inbox` subcommand `{other}`; use resolve"
         )),
     }
 }

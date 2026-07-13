@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{cell::RefCell, path::Path};
 
 use volicord_types::ProjectId;
 
@@ -34,6 +34,7 @@ impl CoreProjectStore {
             project,
             conn,
             writable: true,
+            last_clock_sample: RefCell::new(None),
         })
     }
 
@@ -62,6 +63,7 @@ impl CoreProjectStore {
             project,
             conn,
             writable: false,
+            last_clock_sample: RefCell::new(None),
         })
     }
 

@@ -70,6 +70,7 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -85,11 +86,6 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentAnswerConstraints",
-          "JudgmentCapturePath",
-          "JudgmentInboxChoice",
-          "JudgmentInboxItem",
-          "JudgmentRequiredFor",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -135,9 +131,15 @@
           "ToolRejectedResponse",
           "ToolResponse_for_StatusResult",
           "ToolResultBase",
+          "UserActionCapturePath",
+          "UserActionInboxChoice",
+          "UserActionInboxForm",
+          "UserActionInboxItem",
+          "UserActionKind",
+          "UserActionRequiredFor",
+          "UserActionStatus",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
-          "UserJudgmentStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -147,7 +149,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6314bd578bd49bebe059be03f2da3bc445ab573a1c6e6220b198278847b1646a"
+        "sha256": "sha256:511825a50b5efa703f0fcc8220f31da77e5f139c534f72054f9c786cced20a22"
       }
     },
     {
@@ -171,7 +173,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:faf5d18ae626ff2c49af5ddcd6c6f808ad5f32a34048f1d4e292b74e71cf30cb"
+        "sha256": "sha256:10e79fb5e20b7afa791e8fd5aa540a125a4ed447503df0527790566f20ed3bd0"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -208,7 +210,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:87e50aaee441c45283af25e136cbe09be64f40f3837628b3891e9841ecbbb461"
+        "sha256": "sha256:7814fe86fcc57b0ae2bb10065b991d8c42109cd6d71c35118ffc4e802c77ce36"
       }
     },
     {
@@ -263,6 +265,7 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -278,11 +281,6 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentAnswerConstraints",
-          "JudgmentCapturePath",
-          "JudgmentInboxChoice",
-          "JudgmentInboxItem",
-          "JudgmentRequiredFor",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -325,9 +323,15 @@
           "ToolRejectedResponse",
           "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
+          "UserActionCapturePath",
+          "UserActionInboxChoice",
+          "UserActionInboxForm",
+          "UserActionInboxItem",
+          "UserActionKind",
+          "UserActionRequiredFor",
+          "UserActionStatus",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
-          "UserJudgmentStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -337,7 +341,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:41ab5ce85b0165085a3bde68f88d9e0990b29291c48ba3d12da58a467ac23e52"
+        "sha256": "sha256:0416086c24475a6c18fd34df5e853fc0061ab0297bdbf6e8f66c45fae6863fb1"
       }
     },
     {

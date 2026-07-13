@@ -1343,7 +1343,7 @@ volicord connection list --repo /path/to/repo
 volicord connection status codex --repo /path/to/repo
 volicord connection mode codex workflow
 volicord inbox --task active
-volicord inbox answer JUDGMENT_ID --choice accept
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice accept
 ```
 "#;
     write(

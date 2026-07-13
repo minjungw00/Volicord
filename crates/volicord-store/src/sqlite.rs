@@ -1,12 +1,15 @@
 use std::{
-    fs,
+    fs, io,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 
 use rusqlite::{
-    config::DbConfig, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
+    config::DbConfig,
+    functions::{Context, FunctionFlags},
+    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
 };
+use volicord_types::UtcTimestamp;
 
 use crate::{
     schema::{
@@ -39,6 +42,9 @@ static REGISTRY_SCHEMA_INVENTORY: OnceLock<Result<Vec<CanonicalSchemaObject>, St
     OnceLock::new();
 static PROJECT_STATE_SCHEMA_INVENTORY: OnceLock<Result<Vec<CanonicalSchemaObject>, String>> =
     OnceLock::new();
+
+const UTC_SECONDS_SQL_FUNCTION: &str = "volicord_utc_seconds";
+const UTC_SUBSEC_NANOS_SQL_FUNCTION: &str = "volicord_utc_subsec_nanos";
 
 /// Returns the `registry.sqlite` path for a Runtime Home.
 pub fn registry_db_path(runtime_home: impl AsRef<Path>) -> PathBuf {
@@ -120,6 +126,7 @@ pub fn open_read_only_database(path: impl AsRef<Path>) -> StoreResult<Connection
         path.as_ref(),
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
+    register_utc_order_functions(&conn)?;
     conn.set_db_config(DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
     conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
     conn.pragma_update(None, "query_only", "ON")?;
@@ -461,7 +468,8 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "evidence_claims",
             "change_units",
             "evidence_capture_intents",
-            "user_judgments",
+            "user_action_requests",
+            "user_action_resolutions",
             "project_continuity_records",
             "write_tickets",
             "runs",
@@ -472,7 +480,6 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "artifact_links",
             "evidence_summaries",
             "evidence_observations",
-            "user_evidence_observations",
             "evidence_producers",
             "blockers",
             "authority_events",
@@ -484,7 +491,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "unrecorded_changes",
             "session_watch_baselines",
             "session_watch_observations",
-            "local_web_consent_tokens",
+            "user_action_channel_tokens",
         ],
     )?;
     require_views(conn, PROJECT_STATE_DATABASE_KIND, &["task_events"])?;
@@ -505,7 +512,10 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_change_units_task_status",
             "idx_evidence_capture_intents_task_expiry",
             "idx_evidence_capture_intents_connection_expiry",
-            "idx_user_judgments_task_status",
+            "idx_user_action_requests_task_basis_expiry",
+            "idx_user_action_requests_task_kind",
+            "idx_user_action_requests_direct_origin",
+            "idx_user_action_resolutions_request",
             "idx_project_continuity_records_status",
             "idx_project_continuity_records_source_task",
             "idx_write_tickets_task_status",
@@ -519,7 +529,6 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_evidence_summaries_task_status",
             "idx_evidence_observations_task_target",
             "idx_evidence_observations_run",
-            "idx_user_evidence_observations_task_target",
             "idx_evidence_producers_task_run",
             "idx_blockers_task_status",
             "idx_authority_events_task_seq",
@@ -545,9 +554,9 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "idx_session_watch_observations_baseline",
             "idx_session_watch_observations_expected_write",
             "idx_session_watch_observations_unrecorded_change",
-            "idx_local_web_consent_tokens_judgment",
-            "idx_local_web_consent_tokens_connection",
-            "idx_local_web_consent_tokens_expiry",
+            "idx_user_action_channel_tokens_request",
+            "idx_user_action_channel_tokens_connection",
+            "idx_user_action_channel_tokens_expiry",
         ],
     )?;
     require_column(
@@ -631,7 +640,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     require_column_spec(
         conn,
         PROJECT_STATE_DATABASE_KIND,
-        "user_judgments",
+        "user_action_requests",
         ColumnSpec {
             name: "basis_json",
             type_name: "TEXT",
@@ -643,7 +652,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     require_column_spec(
         conn,
         PROJECT_STATE_DATABASE_KIND,
-        "user_judgments",
+        "user_action_requests",
         ColumnSpec {
             name: "basis_status",
             type_name: "TEXT",
@@ -652,55 +661,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             primary_key_position: 0,
         },
     )?;
-    validate_user_judgments_basis_status_constraint(conn)?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "user_judgments",
-        ColumnSpec {
-            name: "status",
-            type_name: "TEXT",
-            not_null: true,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    validate_user_judgments_status_constraint(conn)?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "user_judgments",
-        ColumnSpec {
-            name: "resolution_outcome",
-            type_name: "TEXT",
-            not_null: false,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    validate_user_judgments_resolution_outcome_constraint(conn)?;
-    require_column_spec(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        "user_judgments",
-        ColumnSpec {
-            name: "resolution_machine_action",
-            type_name: "TEXT",
-            not_null: false,
-            default_value: None,
-            primary_key_position: 0,
-        },
-    )?;
-    validate_user_judgments_resolution_machine_action_constraint(conn)?;
-    validate_user_judgments_resolution_group_constraint(conn)?;
-    for column in [
-        "requested_by_actor_source",
-        "resolved_by_actor_source",
-        "resolved_verification_basis",
-        "resolved_assurance_level",
-    ] {
-        require_column(conn, PROJECT_STATE_DATABASE_KIND, "user_judgments", column)?;
-    }
+    validate_user_action_tables(conn)?;
     require_column_spec(
         conn,
         PROJECT_STATE_DATABASE_KIND,
@@ -826,7 +787,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     validate_artifacts_integrity_status_constraint(conn)?;
     validate_artifacts_body_path_constraint(conn)?;
     validate_guard_project_record_tables(conn)?;
-    validate_local_web_consent_tokens(conn)?;
+    validate_user_action_channel_tokens(conn)?;
     validate_project_state_storage_profile(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
     validate_canonical_schema_inventory(
@@ -848,8 +809,44 @@ fn open_sqlite_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     }
 
     let conn = Connection::open(path)?;
+    register_utc_order_functions(&conn)?;
     enable_foreign_keys(&conn)?;
     Ok(conn)
+}
+
+fn register_utc_order_functions(conn: &Connection) -> rusqlite::Result<()> {
+    let flags = FunctionFlags::SQLITE_UTF8
+        | FunctionFlags::SQLITE_DETERMINISTIC
+        | FunctionFlags::SQLITE_INNOCUOUS;
+    conn.create_scalar_function(UTC_SECONDS_SQL_FUNCTION, 1, flags, |context| {
+        Ok(strict_utc_order_timestamp(context)?
+            .as_datetime()
+            .timestamp())
+    })?;
+    conn.create_scalar_function(UTC_SUBSEC_NANOS_SQL_FUNCTION, 1, flags, |context| {
+        Ok(i64::from(
+            strict_utc_order_timestamp(context)?
+                .as_datetime()
+                .timestamp_subsec_nanos(),
+        ))
+    })?;
+    Ok(())
+}
+
+fn strict_utc_order_timestamp(context: &Context<'_>) -> rusqlite::Result<UtcTimestamp> {
+    let raw = context.get::<String>(0)?;
+    let timestamp = UtcTimestamp::parse(&raw).map_err(|_| utc_order_function_error())?;
+    timestamp
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| utc_order_function_error())?;
+    Ok(timestamp)
+}
+
+fn utc_order_function_error() -> rusqlite::Error {
+    rusqlite::Error::UserFunctionError(Box::new(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "timestamp is not a canonical four-digit RFC 3339 UTC instant",
+    )))
 }
 
 fn sqlite_write_probe_denied(error: &rusqlite::Error) -> bool {
@@ -1198,121 +1195,81 @@ fn table_column_names(conn: &Connection, table: &str) -> rusqlite::Result<Vec<St
     Ok(columns.into_iter().map(|(_, name)| name).collect())
 }
 
-fn validate_user_judgments_basis_status_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql: String = conn.query_row(
-        "SELECT sql
-           FROM sqlite_master
-          WHERE type = 'table'
-            AND name = 'user_judgments'",
-        [],
-        |row| row.get(0),
-    )?;
-    let normalized = table_sql
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let has_constraint = normalized.contains("basis_status in ('current', 'stale', 'superseded')")
-        || normalized.contains("basis_status in('current', 'stale', 'superseded')");
-    if has_constraint {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
+fn validate_user_action_tables(conn: &Connection) -> StoreResult<()> {
+    for column in [
+        "project_id",
+        "user_action_request_id",
+        "task_id",
+        "change_unit_id",
+        "action_kind",
+        "request_json",
+        "basis_json",
+        "basis_status",
+        "required_for_json",
+        "requested_by_actor_source",
+        "requested_at",
+        "expires_at",
+        "metadata_json",
+    ] {
+        require_column(
+            conn,
             PROJECT_STATE_DATABASE_KIND,
-            "user_judgments.basis_status constraint is missing or malformed",
-        ))
+            "user_action_requests",
+            column,
+        )?;
     }
-}
+    for column in [
+        "project_id",
+        "user_action_resolution_id",
+        "user_action_request_id",
+        "action_kind",
+        "channel_kind",
+        "channel_submission_id",
+        "resolution_json",
+        "resolved_by_actor_source",
+        "resolved_verification_basis",
+        "resolved_assurance_level",
+        "resolved_at",
+    ] {
+        require_column(
+            conn,
+            PROJECT_STATE_DATABASE_KIND,
+            "user_action_resolutions",
+            column,
+        )?;
+    }
 
-fn validate_user_judgments_status_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql = normalized_table_sql(conn, "user_judgments")?;
-    let has_constraint = table_sql
-        .contains("status in ('pending', 'resolved', 'stale', 'superseded', 'expired')")
-        || table_sql.contains("status in('pending', 'resolved', 'stale', 'superseded', 'expired')");
-    if has_constraint {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "user_judgments.status constraint is missing or malformed",
-        ))
+    let action_kinds = "action_kind in ( 'product_decision', 'technical_decision', 'scope_decision', 'sensitive_approval', 'final_acceptance', 'residual_risk_acceptance', 'cancellation', 'evidence_observation' )";
+    let request_sql = normalized_table_sql(conn, "user_action_requests")?;
+    for fragment in [
+        action_kinds,
+        "basis_status in ('current', 'stale', 'superseded')",
+        "unique (project_id, user_action_request_id, action_kind)",
+    ] {
+        if !request_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                PROJECT_STATE_DATABASE_KIND,
+                "user_action_requests constraints are missing or malformed",
+            ));
+        }
     }
-}
 
-fn validate_user_judgments_resolution_outcome_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql: String = conn.query_row(
-        "SELECT sql
-           FROM sqlite_master
-          WHERE type = 'table'
-            AND name = 'user_judgments'",
-        [],
-        |row| row.get(0),
-    )?;
-    let normalized = table_sql
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let has_constraint = normalized.contains(
-        "resolution_outcome is null or resolution_outcome in ('accepted', 'rejected', 'deferred')",
-    ) || normalized.contains(
-        "resolution_outcome is null or resolution_outcome in('accepted', 'rejected', 'deferred')",
-    );
-    if has_constraint {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "user_judgments.resolution_outcome constraint is missing or malformed",
-        ))
+    let resolution_sql = normalized_table_sql(conn, "user_action_resolutions")?;
+    for fragment in [
+        action_kinds,
+        "channel_kind in ('mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli')",
+        "resolved_by_actor_source = 'local_user'",
+        "unique (project_id, user_action_request_id)",
+        "unique (project_id, channel_kind, channel_submission_id)",
+    ] {
+        if !resolution_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                PROJECT_STATE_DATABASE_KIND,
+                "user_action_resolutions constraints are missing or malformed",
+            ));
+        }
     }
-}
-
-fn validate_user_judgments_resolution_machine_action_constraint(
-    conn: &Connection,
-) -> StoreResult<()> {
-    let table_sql = normalized_table_sql(conn, "user_judgments")?;
-    let has_constraint = table_sql.contains(
-        "resolution_machine_action is null or resolution_machine_action in ('accept', 'reject', 'defer')",
-    ) || table_sql.contains(
-        "resolution_machine_action is null or resolution_machine_action in('accept', 'reject', 'defer')",
-    );
-    if has_constraint {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "user_judgments.resolution_machine_action constraint is missing or malformed",
-        ))
-    }
-}
-
-fn validate_user_judgments_resolution_group_constraint(conn: &Connection) -> StoreResult<()> {
-    let table_sql = normalized_table_sql(conn, "user_judgments")?;
-    let has_resolved_requirement = table_sql.contains("status = 'resolved'")
-        && table_sql.contains("resolution_outcome is not null")
-        && table_sql.contains("resolution_machine_action is not null")
-        && table_sql.contains("resolution_json is not null")
-        && table_sql.contains("resolved_by_actor_source is not null")
-        && table_sql.contains("resolved_verification_basis is not null")
-        && table_sql.contains("resolved_assurance_level is not null")
-        && table_sql.contains("resolved_at is not null");
-    let has_unresolved_requirement = table_sql.contains("status in ('pending', 'expired')")
-        && table_sql.contains("resolution_outcome is null")
-        && table_sql.contains("resolution_machine_action is null")
-        && table_sql.contains("resolution_json is null")
-        && table_sql.contains("resolved_by_actor_source is null")
-        && table_sql.contains("resolved_verification_basis is null")
-        && table_sql.contains("resolved_assurance_level is null")
-        && table_sql.contains("resolved_at is null");
-    if has_resolved_requirement && has_unresolved_requirement {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            PROJECT_STATE_DATABASE_KIND,
-            "user_judgments resolution completeness constraint is missing or malformed",
-        ))
-    }
+    Ok(())
 }
 
 fn validate_project_continuity_records_constraints(conn: &Connection) -> StoreResult<()> {
@@ -1468,12 +1425,13 @@ fn validate_guard_installations_constraints(conn: &Connection) -> StoreResult<()
     Ok(())
 }
 
-fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
+fn validate_user_action_channel_tokens(conn: &Connection) -> StoreResult<()> {
     for (column, not_null) in [
         ("project_id", true),
         ("token_hash", true),
+        ("channel_kind", true),
         ("connection_internal_id", true),
-        ("judgment_id", true),
+        ("user_action_request_id", true),
         ("capture_basis", true),
         ("status", true),
         ("created_at", true),
@@ -1486,7 +1444,7 @@ fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
         require_column_spec(
             conn,
             PROJECT_STATE_DATABASE_KIND,
-            "local_web_consent_tokens",
+            "user_action_channel_tokens",
             ColumnSpec {
                 name: column,
                 type_name: "TEXT",
@@ -1505,9 +1463,10 @@ fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
         )?;
     }
 
-    let table_sql = normalized_table_sql(conn, "local_web_consent_tokens")?;
+    let table_sql = normalized_table_sql(conn, "user_action_channel_tokens")?;
     let required_fragments = [
         "length(token_hash) = 64",
+        "channel_kind = 'local_web_consent'",
         "status in ('pending', 'consumed', 'expired')",
         "status = 'pending'",
         "status = 'consumed'",
@@ -1521,7 +1480,7 @@ fn validate_local_web_consent_tokens(conn: &Connection) -> StoreResult<()> {
         if !table_sql.contains(fragment) {
             return Err(StoreError::schema_invariant(
                 PROJECT_STATE_DATABASE_KIND,
-                "local_web_consent_tokens constraints are missing or malformed",
+                "user_action_channel_tokens constraints are missing or malformed",
             ));
         }
     }
@@ -1906,8 +1865,53 @@ mod tests {
         assert!(!sqlite_object_exists(
             &conn,
             "table",
-            "local_web_consent_tokens"
+            "user_action_channel_tokens"
         )?);
+        Ok(())
+    }
+
+    #[test]
+    fn utc_order_functions_preserve_offsets_and_submillisecond_precision() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("utc-order-functions")?;
+        let conn = open_registry_database(runtime_home.registry_db_path())?;
+        let mut stmt = conn.prepare(
+            "WITH samples(value) AS (VALUES (?1), (?2), (?3))
+             SELECT value
+               FROM samples
+              ORDER BY volicord_utc_seconds(value),
+                       volicord_utc_subsec_nanos(value)",
+        )?;
+        let ordered = stmt
+            .query_map(
+                params![
+                    "2026-07-13T00:00:00.000000501Z",
+                    "2026-07-13T09:00:00.000000500+09:00",
+                    "2026-07-13T00:00:00.000000499Z",
+                ],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        assert_eq!(
+            ordered,
+            vec![
+                "2026-07-13T00:00:00.000000499Z",
+                "2026-07-13T09:00:00.000000500+09:00",
+                "2026-07-13T00:00:00.000000501Z",
+            ]
+        );
+
+        let error = conn
+            .query_row(
+                "SELECT volicord_utc_seconds('9999-12-31T23:59:59-23:59')",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect_err("out-of-range UTC normalization must fail closed");
+        assert!(matches!(
+            error,
+            rusqlite::Error::SqliteFailure(_, Some(message))
+                if message.contains("canonical four-digit RFC 3339 UTC instant")
+        ));
         Ok(())
     }
 
@@ -1941,7 +1945,7 @@ mod tests {
         assert!(sqlite_object_exists(
             &conn,
             "table",
-            "local_web_consent_tokens"
+            "user_action_channel_tokens"
         )?);
         validate_tool_invocations_columns(&conn)?;
         validate_tool_invocations_operation_category_constraint(&conn)?;
@@ -1949,26 +1953,26 @@ mod tests {
     }
 
     #[test]
-    fn previous_v3_project_profile_requires_recreation() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-state-v3-profile")?;
-        let path = project_state_db_path(runtime_home.path(), "PRJ-v3-profile");
+    fn previous_v4_project_profile_requires_recreation() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-state-v4-profile")?;
+        let path = project_state_db_path(runtime_home.path(), "PRJ-v4-profile");
         let conn = open_project_state_database(&path)?;
         conn.execute(
             "INSERT INTO project_state (
                 project_id, storage_profile, created_at, updated_at
-            ) VALUES ('project_v3', 'baseline_sqlite_v3', 't0', 't0')",
+            ) VALUES ('project_v4', 'baseline_sqlite_v4', 't0', 't0')",
             [],
         )?;
 
         let error = validate_project_state_schema(&conn)
-            .expect_err("the previous v3 profile must not open as baseline_sqlite_v4");
+            .expect_err("the previous v4 profile must not open as baseline_sqlite_v5");
         assert!(matches!(
             error,
             StoreError::UnsupportedStorageProfile {
                 actual_storage_profile,
-                expected_storage_profile: "baseline_sqlite_v4",
+                expected_storage_profile: "baseline_sqlite_v5",
                 ..
-            } if actual_storage_profile == "baseline_sqlite_v3"
+            } if actual_storage_profile == "baseline_sqlite_v4"
         ));
         Ok(())
     }

@@ -5,8 +5,8 @@ fn invalid_stored_method_owned_json_routes_to_structured_unavailability(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_method_json")?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_method_json_judgment",
             "idem_bad_method_json_judgment",
             false,
@@ -17,34 +17,33 @@ fn invalid_stored_method_owned_json_routes_to_structured_unavailability(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
     harness.conn()?.execute(
-        "UPDATE user_judgments
-                SET options_json = '{not-json'
+        "UPDATE user_action_requests
+                SET request_json = '{not-json'
               WHERE project_id = ?1
-                AND judgment_id = ?2",
+                AND user_action_request_id = ?2",
         rusqlite::params![PROJECT_ID, judgment_id],
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_bad_method_json_record",
             "idem_bad_method_json_record",
-            Some(3),
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
+        "user_action_requests",
         &judgment_id,
-        "options_json",
+        "request_json",
         &harness.runtime_home_path,
     );
     assert_eq!(harness.counts()?, before);
@@ -130,8 +129,8 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
     )?;
     assert_verified_invocation(&record_run, OperationCategory::AgentWorkflow);
 
-    let request_judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let request_action = harness.service.request_user_action(
+        user_action_request(
             "req_verified_judgment_preview",
             "idem_verified_judgment_preview",
             true,
@@ -142,10 +141,10 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    assert_verified_invocation(&request_judgment, OperationCategory::AgentWorkflow);
+    assert_verified_invocation(&request_action, OperationCategory::AgentWorkflow);
 
-    let pending_judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let pending_judgment = harness.service.request_user_action(
+        user_action_request(
             "req_verified_judgment_pending",
             "idem_verified_judgment_pending",
             false,
@@ -157,21 +156,20 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let pending_judgment_id =
-        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
-    let mut record_judgment = record_judgment_request(
-        "req_verified_record_judgment",
-        "idem_verified_record_judgment",
-        Some(3),
+        response_record_id(&pending_judgment.response_value, "user_action_request_ref");
+    let mut resolve_action = resolve_user_action_request(
+        "req_verified_resolve_user_action",
+        "idem_verified_resolve_user_action",
+        None,
         &task_id,
         &pending_judgment_id,
-        JudgmentKind::ProductDecision,
-        answer_payload(JudgmentKind::ProductDecision),
+        "accept",
     );
-    record_judgment.envelope.dry_run = true;
-    let record_judgment = harness
+    resolve_action.envelope.dry_run = true;
+    let resolved_action = harness
         .service
-        .record_user_judgment(record_judgment, invocation(OperationCategory::UserOnly))?;
-    assert_verified_invocation(&record_judgment, OperationCategory::UserOnly);
+        .resolve_user_action(resolve_action, invocation(OperationCategory::UserOnly))?;
+    assert_verified_invocation(&resolved_action, OperationCategory::UserOnly);
 
     let close_check = harness.service.check_close(
         check_close_request(CloseTaskFixture {

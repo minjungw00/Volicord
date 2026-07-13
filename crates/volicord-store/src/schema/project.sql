@@ -158,96 +158,81 @@ CREATE TABLE evidence_capture_intents (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE user_judgments (
+CREATE TABLE user_action_requests (
   project_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  judgment_kind TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'stale', 'superseded', 'expired')),
-  request_json TEXT NOT NULL DEFAULT '{}',
-  context_json TEXT NOT NULL DEFAULT '{}',
-  options_json TEXT NOT NULL DEFAULT '{"options":[]}',
-  affected_refs_json TEXT NOT NULL DEFAULT '[]',
-  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
-  sensitive_action_scope_json TEXT NOT NULL DEFAULT '{}',
+  action_kind TEXT NOT NULL CHECK (
+    action_kind IN (
+      'product_decision',
+      'technical_decision',
+      'scope_decision',
+      'sensitive_approval',
+      'final_acceptance',
+      'residual_risk_acceptance',
+      'cancellation',
+      'evidence_observation'
+    )
+  ),
+  request_json TEXT NOT NULL,
   basis_json TEXT NOT NULL,
   basis_status TEXT NOT NULL DEFAULT 'current'
     CHECK (basis_status IN ('current', 'stale', 'superseded')),
-  resolution_outcome TEXT
-    CHECK (resolution_outcome IS NULL OR resolution_outcome IN ('accepted', 'rejected', 'deferred')),
-  resolution_machine_action TEXT
-    CHECK (resolution_machine_action IS NULL OR resolution_machine_action IN ('accept', 'reject', 'defer')),
-  resolution_json TEXT,
-  resolution_rationale_json TEXT,
+  required_for_json TEXT NOT NULL,
   requested_by_actor_source TEXT NOT NULL,
-  resolved_by_actor_source TEXT,
-  resolved_verification_basis TEXT,
-  resolved_assurance_level TEXT,
+  source_method TEXT NOT NULL CHECK (
+    source_method IN ('volicord.request_user_action', 'volicord.reconcile_changes')
+  ),
+  source_idempotency_key TEXT NOT NULL CHECK (length(trim(source_idempotency_key)) > 0),
   requested_at TEXT NOT NULL,
-  resolved_at TEXT,
+  expires_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, judgment_id),
-  CHECK (
-    (
-      status IN ('pending', 'expired')
-      AND resolution_outcome IS NULL
-      AND resolution_machine_action IS NULL
-      AND resolution_json IS NULL
-      AND resolution_rationale_json IS NULL
-      AND resolved_by_actor_source IS NULL
-      AND resolved_verification_basis IS NULL
-      AND resolved_assurance_level IS NULL
-      AND resolved_at IS NULL
-    )
-    OR (
-      status = 'resolved'
-      AND resolution_outcome IS NOT NULL
-      AND resolution_machine_action IS NOT NULL
-      AND resolution_json IS NOT NULL
-      AND resolution_rationale_json IS NOT NULL
-      AND resolved_by_actor_source IS NOT NULL
-      AND resolved_verification_basis IS NOT NULL
-      AND resolved_assurance_level IS NOT NULL
-      AND resolved_at IS NOT NULL
-    )
-    OR (
-      status IN ('stale', 'superseded')
-      AND (
-        (
-          resolution_outcome IS NULL
-          AND resolution_machine_action IS NULL
-          AND resolution_json IS NULL
-          AND resolution_rationale_json IS NULL
-          AND resolved_by_actor_source IS NULL
-          AND resolved_verification_basis IS NULL
-          AND resolved_assurance_level IS NULL
-          AND resolved_at IS NULL
-        )
-        OR (
-          resolution_outcome IS NOT NULL
-          AND resolution_machine_action IS NOT NULL
-          AND resolution_json IS NOT NULL
-          AND resolution_rationale_json IS NOT NULL
-          AND resolved_by_actor_source IS NOT NULL
-          AND resolved_verification_basis IS NOT NULL
-          AND resolved_assurance_level IS NOT NULL
-          AND resolved_at IS NOT NULL
-        )
-      )
-    )
-  ),
-  CHECK (
-    resolution_machine_action IS NULL
-    OR (
-      (resolution_machine_action = 'accept' AND resolution_outcome = 'accepted')
-      OR (resolution_machine_action = 'reject' AND resolution_outcome = 'rejected')
-      OR (resolution_machine_action = 'defer' AND resolution_outcome = 'deferred')
-    )
-  ),
+  PRIMARY KEY (project_id, user_action_request_id),
+  UNIQUE (project_id, user_action_request_id, action_kind),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
+);
+
+CREATE TABLE user_action_resolutions (
+  project_id TEXT NOT NULL,
+  user_action_resolution_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
+  action_kind TEXT NOT NULL CHECK (
+    action_kind IN (
+      'product_decision',
+      'technical_decision',
+      'scope_decision',
+      'sensitive_approval',
+      'final_acceptance',
+      'residual_risk_acceptance',
+      'cancellation',
+      'evidence_observation'
+    )
+  ),
+  channel_kind TEXT NOT NULL CHECK (
+    channel_kind IN ('mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli')
+  ),
+  channel_submission_id TEXT NOT NULL CHECK (
+    length(CAST(channel_submission_id AS BLOB)) BETWEEN 1 AND 256
+    AND length(channel_submission_id) = length(CAST(channel_submission_id AS BLOB))
+    AND channel_submission_id NOT GLOB '*[^!-~]*'
+  ),
+  resolution_json TEXT NOT NULL,
+  resolved_by_actor_source TEXT NOT NULL CHECK (resolved_by_actor_source = 'local_user'),
+  resolved_verification_basis TEXT NOT NULL CHECK (length(trim(resolved_verification_basis)) > 0),
+  resolved_assurance_level TEXT NOT NULL CHECK (length(trim(resolved_assurance_level)) > 0),
+  resolved_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_action_resolution_id),
+  UNIQUE (project_id, user_action_request_id),
+  UNIQUE (project_id, channel_kind, channel_submission_id),
+  FOREIGN KEY (project_id, user_action_request_id, action_kind)
+    REFERENCES user_action_requests (
+      project_id,
+      user_action_request_id,
+      action_kind
+    )
 );
 
 CREATE TABLE project_continuity_records (
@@ -285,7 +270,7 @@ CREATE TABLE write_tickets (
   status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'expired', 'stale', 'revoked')),
   attempt_scope_json TEXT NOT NULL DEFAULT '{}',
   created_by_actor_source TEXT NOT NULL,
-  created_by_judgment_id TEXT,
+  created_by_user_action_resolution_id TEXT,
   expires_at TEXT NOT NULL,
   consumed_by_run_id TEXT,
   consumed_at TEXT,
@@ -293,11 +278,12 @@ CREATE TABLE write_tickets (
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, write_ticket_id),
+  UNIQUE (project_id, task_id, basis_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
-  FOREIGN KEY (project_id, created_by_judgment_id)
-    REFERENCES user_judgments (project_id, judgment_id),
+  FOREIGN KEY (project_id, created_by_user_action_resolution_id)
+    REFERENCES user_action_resolutions (project_id, user_action_resolution_id),
   FOREIGN KEY (project_id, consumed_by_run_id)
     REFERENCES runs (project_id, run_id)
     DEFERRABLE INITIALLY DEFERRED
@@ -522,7 +508,7 @@ CREATE TABLE artifact_links (
   artifact_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   owner_record_kind TEXT NOT NULL CHECK (
-    owner_record_kind IN ('task', 'change_unit', 'run', 'user_judgment', 'evidence_summary', 'evidence_observation', 'evidence_producer', 'blocker')
+    owner_record_kind IN ('task', 'change_unit', 'run', 'user_action_request', 'user_action_resolution', 'evidence_summary', 'evidence_observation', 'evidence_producer', 'blocker')
   ),
   owner_record_id TEXT NOT NULL,
   created_by_run_id TEXT,
@@ -539,6 +525,7 @@ CREATE TABLE evidence_summaries (
   evidence_summary_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
+  produced_at_state_version INTEGER NOT NULL CHECK (produced_at_state_version >= 0),
   status TEXT NOT NULL,
   coverage_json TEXT NOT NULL DEFAULT '[]',
   supporting_refs_json TEXT NOT NULL DEFAULT '[]',
@@ -547,6 +534,7 @@ CREATE TABLE evidence_summaries (
   updated_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, evidence_summary_id),
+  UNIQUE (project_id, task_id, produced_at_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
@@ -584,36 +572,6 @@ CREATE TABLE evidence_observations (
   FOREIGN KEY (project_id, run_id)
     REFERENCES runs (project_id, run_id)
     DEFERRABLE INITIALLY DEFERRED,
-  FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
-    REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
-  FOREIGN KEY (project_id, task_id, evidence_claim_id)
-    REFERENCES evidence_claims (project_id, task_id, evidence_claim_id),
-  CHECK (
-    (acceptance_criterion_id IS NOT NULL AND evidence_claim_id IS NULL)
-    OR (acceptance_criterion_id IS NULL AND evidence_claim_id IS NOT NULL)
-  )
-);
-
-CREATE TABLE user_evidence_observations (
-  project_id TEXT NOT NULL,
-  user_evidence_observation_id TEXT NOT NULL,
-  task_id TEXT NOT NULL,
-  change_unit_id TEXT NOT NULL,
-  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
-  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
-  acceptance_criterion_id TEXT,
-  evidence_claim_id TEXT,
-  relevance_status TEXT NOT NULL CHECK (relevance_status IN ('supported', 'contradicted')),
-  output_artifact_refs_json TEXT NOT NULL,
-  summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
-  observed_by_actor_source TEXT NOT NULL CHECK (observed_by_actor_source = 'local_user'),
-  verification_basis TEXT NOT NULL CHECK (length(trim(verification_basis)) > 0),
-  observed_at TEXT NOT NULL,
-  recorded_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, user_evidence_observation_id),
-  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
-  FOREIGN KEY (project_id, task_id, change_unit_id)
-    REFERENCES change_units (project_id, task_id, change_unit_id),
   FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
     REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
   FOREIGN KEY (project_id, task_id, evidence_claim_id)
@@ -781,8 +739,16 @@ CREATE INDEX idx_evidence_capture_intents_connection_expiry
     expires_at
   );
 
-CREATE INDEX idx_user_judgments_task_status
-  ON user_judgments (project_id, task_id, status);
+CREATE INDEX idx_user_action_requests_task_basis_expiry
+  ON user_action_requests (project_id, task_id, basis_status, expires_at);
+CREATE INDEX idx_user_action_requests_task_kind
+  ON user_action_requests (project_id, task_id, action_kind, requested_at);
+CREATE INDEX idx_user_action_resolutions_request
+  ON user_action_resolutions (project_id, user_action_request_id);
+
+CREATE UNIQUE INDEX idx_user_action_requests_direct_origin
+  ON user_action_requests (project_id, source_idempotency_key)
+  WHERE source_method = 'volicord.request_user_action';
 
 CREATE INDEX idx_project_continuity_records_status
   ON project_continuity_records (project_id, status, kind, updated_at);
@@ -832,15 +798,6 @@ CREATE INDEX idx_evidence_observations_task_target
 
 CREATE INDEX idx_evidence_observations_run
   ON evidence_observations (project_id, run_id);
-CREATE INDEX idx_user_evidence_observations_task_target
-  ON user_evidence_observations (
-    project_id,
-    task_id,
-    acceptance_criterion_id,
-    evidence_claim_id,
-    recorded_at
-  );
-
 CREATE INDEX idx_evidence_producers_task_run
   ON evidence_producers (project_id, task_id, run_id);
 
@@ -1082,11 +1039,12 @@ CREATE INDEX idx_session_watch_observations_expected_write
 CREATE INDEX idx_session_watch_observations_unrecorded_change
   ON session_watch_observations (project_id, unrecorded_change_id)
   WHERE unrecorded_change_id IS NOT NULL;
-CREATE TABLE local_web_consent_tokens (
+CREATE TABLE user_action_channel_tokens (
   project_id TEXT NOT NULL,
   token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  channel_kind TEXT NOT NULL CHECK (channel_kind = 'local_web_consent'),
   connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
   capture_basis TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'consumed', 'expired')),
@@ -1098,8 +1056,8 @@ CREATE TABLE local_web_consent_tokens (
   completion_metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, token_hash),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, judgment_id)
-    REFERENCES user_judgments (project_id, judgment_id)
+  FOREIGN KEY (project_id, user_action_request_id)
+    REFERENCES user_action_requests (project_id, user_action_request_id)
     ON DELETE RESTRICT,
   CHECK (
     (
@@ -1120,9 +1078,9 @@ CREATE TABLE local_web_consent_tokens (
   )
 );
 
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (project_id, status, expires_at);
+CREATE INDEX idx_user_action_channel_tokens_request
+  ON user_action_channel_tokens (project_id, user_action_request_id, status);
+CREATE INDEX idx_user_action_channel_tokens_connection
+  ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
+CREATE INDEX idx_user_action_channel_tokens_expiry
+  ON user_action_channel_tokens (project_id, status, expires_at);

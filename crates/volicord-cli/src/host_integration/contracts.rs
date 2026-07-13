@@ -1538,7 +1538,7 @@ mod tests {
                 (
                     HostLifecyclePhase::UserPromptSubmit,
                     include_str!(
-                        "../../tests/fixtures/host_contracts/codex/events/user_prompt_submit_judgment_command.json"
+                        "../../tests/fixtures/host_contracts/codex/events/user_prompt_submit_user_action_command.json"
                     ),
                 ),
                 (
@@ -1590,7 +1590,7 @@ mod tests {
                 (
                     HostLifecyclePhase::UserPromptSubmit,
                     include_str!(
-                        "../../tests/fixtures/host_contracts/claude_code/events/user_prompt_submit_judgment_command.json"
+                        "../../tests/fixtures/host_contracts/claude_code/events/user_prompt_submit_user_action_command.json"
                     ),
                 ),
                 (

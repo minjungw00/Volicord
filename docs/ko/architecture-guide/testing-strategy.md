@@ -26,7 +26,7 @@
 | Guard 명령 테스트 | `volicord-cli` 패키지의 `guard_command` 대상인 [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs). | `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop`의 guard 훅 생명주기, 기록된 관찰, `expected write` 일치, 쓰기 티켓 범위, 호스트 고유 렌더링, 프롬프트 캡처 명령, guard 생명주기 픽스처. | 보안 증명, 사용자 승인 기록, 제품 수락 기록, Core 메서드 테스트 대체물. |
 | MCP 전송 바이너리 테스트 | `volicord-cli` 패키지의 `mcp_transport` 대상인 [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs). | `volicord mcp` 하위 명령, 도움말/버전, `--check`, 표준 입출력 프레이밍, JSON-RPC 동작, 재연결, 응답 래핑. | Core 메서드 의미. |
 | 로컬 HTTP 전송 테스트 | `volicord-cli` 패키지의 `serve_transport` 대상인 [`crates/volicord-cli/tests/serve_transport.rs`](../../../crates/volicord-cli/tests/serve_transport.rs). | `volicord serve --transport local-http` 프로세스 경로, 루프백 리스너 시작, 토큰과 Origin 점검, HTTP 세션, 방어 헤더, 로컬 HTTP 전송을 통한 MCP 요청 처리. | 일반 MCP 메서드 테스트나 보안 증명. |
-| 명시적으로 실행하는 실제 호스트 스모크 테스트 | `volicord-cli` 패키지의 `live_host_smoke` 대상인 [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs). | 해당 호스트에 맞게 준비된 환경에서 설치된 Codex 또는 Claude Code 실행 파일을 명시적으로 점검할 때. 설정 점검은 `VOLICORD_RUN_*_SMOKE=1`, 대화형 판단 왕복은 `VOLICORD_RUN_*_JUDGMENT_SMOKE=1`을 사용하며 모든 실제 점검은 기본적으로 무시됩니다. | 기본 워크스페이스 테스트 신호, 이식 가능한 호스트 적합성, 호스트 신뢰, 자격 증명이나 네트워크 가용성, 보안 증명. |
+| 명시적으로 실행하는 실제 호스트 스모크 테스트 | `volicord-cli` 패키지의 `live_host_smoke` 대상인 [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs). | 해당 호스트에 맞게 준비된 환경에서 설치된 Codex 또는 Claude Code 실행 파일을 명시적으로 점검할 때. 설정 점검은 `VOLICORD_RUN_*_SMOKE=1`, 대화형 사용자 행동 왕복은 `VOLICORD_RUN_*_USER_ACTION_SMOKE=1`을 사용하며 모든 실제 점검은 기본적으로 무시됩니다. | 기본 워크스페이스 테스트 신호, 이식 가능한 호스트 적합성, 호스트 신뢰, 자격 증명이나 네트워크 가용성, 보안 증명. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, 작업 범주 파생, 도구 노출, 재실행 맥락 바인딩, MCP에서 보이는 저장소 효과 없음 분기. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 공개 계약 스냅샷 테스트 | `volicord-integration-tests` 패키지의 `public_contract_snapshots` 대상인 [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs). | 생성된 API 요청 스키마와 MCP 도구 계약 스냅샷이 현재 소스에서 생성한 계약과 어긋나는지 점검합니다. | 생성 스냅샷 직접 편집, 의미 기준 참조 검토, 공개 계약이 올바르다는 증명. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -60,8 +60,8 @@ MCP-to-Core advisor/Stop 준비 상태 회귀 점검은 무시되지 않고 일�
 ```sh
 VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
 VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
-VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 판단 변형은 사람 참여형 점검입니다. 폐기 가능한 Runtime Home과 Product Repository를

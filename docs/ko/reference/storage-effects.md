@@ -42,9 +42,14 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 | 읽기 전용 | 읽기 전용 `MethodResult` | Core 권한 상태 변경은 없습니다. 메서드가 허용한 세션 감시 진단 기록을 제외하면 응답 데이터만 반환합니다. 재실행 행, 권한 이벤트, 아티팩트 효과, 쓰기 티켓 효과, 닫기 상태 변경, `project_state.state_version` 증가는 없습니다. | [읽기 전용 결과](#read-only-result) |
 | 효과 없음 | `ToolRejectedResponse` 또는 `effect_kind=no_effect`인 유효한 `MethodResult` | 요청된 일반 변이가 없고 Core 커밋도 없습니다. 응답이 오류나 차단 사유형 데이터를 담을 수 있지만, 이 분기는 그 값을 지속하지 않습니다. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [효과가 없는 분기](#no-effect-branches) |
 | `dry_run` | 유효한 `ToolDryRunResponse` | 미리보기만 반환합니다. 영속 참조, 재실행 행, 이벤트, 스테이징 핸들, 아티팩트 효과, `project_state.state_version` 증가는 없습니다. | [유효한 `dry_run` 미리보기](#valid-dry-run-preview) |
-| 스테이징 생성 | `effect_kind=staging_created`인 `StageArtifactResult` | 저장소 소유 임시 스테이징만 생성합니다. 일반 Core 커밋 트랜잭션이 아닙니다. | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
-| Core 커밋 | Core 커밋 `MethodResult` | `CoreProjectStore::commit_mutation`을 통해 메서드 담당 효과를 만듭니다. 상태 버전 증가, 권한 이벤트, 선택적 재실행 행, 메서드가 선택한 `CoreStorageMutation` 값이 포함됩니다. | [Core 커밋 결과](#core-committed-result) |
+| 스테이징 생성 | `effect_kind=staging_created`인 `StageArtifactResult` | 저장소 소유 임시 스테이징과 영속 정규 UTC 하한의 원자적이고 감소하지 않는 전진만 만듭니다. 일반 Core 커밋 트랜잭션이 아닙니다. | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
+| Core 커밋 | Core 커밋 `MethodResult` | `CoreProjectStore::commit_mutation`을 통해 메서드 담당 효과를 만듭니다. 상태 버전 증가, 권한 이벤트, 선택적 재실행 행, 메서드가 선택한 `CoreStorageMutation` 값, 정규 커밋 timestamp 하나가 포함됩니다. | [Core 커밋 결과](#core-committed-result) |
 | 커밋된 차단 사유형 결과 | 메서드 담당 문서가 차단 또는 비허용 지속 저장을 허용한 커밋 `MethodResult` | 명시적으로 허용된 이벤트, 재실행, 상태 버전, 차단 사유 상태 효과만 만듭니다. 차단 사유형 응답만으로는 충분하지 않습니다. | [커밋된 차단 결과](#committed-blocked-result) |
+
+정확한 재실행, 거부된 요청, 유효한 dry run, 읽기 전용 결과는 영속 정규 Core UTC
+하한을 갱신하지 않습니다. 저장소 소유 staging, 등록된 evidence-capture receipt 이행,
+로컬 User Channel token 발급은 아래에서 정의하는 하한 전용 예외입니다. 전체 시계
+계약은 [저장소 버전 관리](storage-versioning.md#canonical-core-utc-clock)가 담당합니다.
 
 <a id="read-only-result"></a>
 ### 읽기 전용 결과
@@ -64,6 +69,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 증거 업데이트 또는 증거 관찰
 - 쓰기 티켓 효과
 - `project_state.state_version` 증가
+- 영속 정규 UTC 하한 갱신
 
 <a id="toolrejectedresponse-effect"></a>
 ### `ToolRejectedResponse`
@@ -80,6 +86,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 아티팩트 효과
 - 쓰기 티켓 생성 또는 소비
 - `project_state.state_version` 증가
+- 영속 정규 UTC 하한 갱신
 
 <a id="valid-dry-run-preview"></a>
 ### 유효한 `dry_run` 미리보기
@@ -97,6 +104,7 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - 스테이징 핸들 생성
 - 아티팩트 승격 또는 연결
 - `project_state.state_version` 증가
+- 영속 정규 UTC 하한 갱신
 
 <a id="staging-created-artifact-result"></a>
 ### 스테이징 생성 아티팩트 결과
@@ -104,12 +112,13 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 허용될 수 있는 효과:
 
 - 저장소 소유 임시 스테이징
+- 원자적인 `project_state.updated_at >= artifact_staging.created_at` 하한 갱신
 
 이 분기는 일반 Core 커밋 변이와 별개입니다. 저장소가 관리하는 스테이징 표현이나 핸들을 만들 수 있지만, 그 임시 스테이징 쓰기 자체가 Core 현재 기록 변경, 영속 `ArtifactRef`, 아티팩트 연결, 증거 기록은 아닙니다.
 
 허용되지 않는 효과:
 
-- Core 현재 기록
+- 물리 프로젝트 시각 하한을 제외한 Core 권한 현재 기록
 - 재실행 행
 - 이벤트
 - 영속 `ArtifactRef`
@@ -128,6 +137,15 @@ API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 �
 - `authority_events` 추가
 - 재실행 행 생성
 - `project_state.state_version` 정확히 한 번 증가
+
+커밋은 준비된 동작 시각 샘플보다 이르지 않은 정규 `committed_at` 하나를 선택합니다.
+정확히 같은 값을 `project_state.updated_at`, 추가한 모든
+`authority_events.created_at`, 선택적 재실행 행의 `tool_invocations.created_at`,
+mutation application이 생성하는 적용 가능한 Store transaction metadata인
+`created_at`, `updated_at`, `retired_at`, `promoted_at`에 씁니다. 의미 있는 동작
+시각인 `requested_at`, `resolved_at`, `closed_at`, `recorded_at`, `consumed_at`과
+입력·관찰 담당 사실인 `observed_at`, `started_at`은 담당 문서가 정의한 동작 샘플
+또는 검증된 원천 의미를 유지하며 커밋 timestamp로 바꾸지 않습니다.
 
 아티팩트 승격과 `artifact_links` 생성은 메서드 담당 문서가 그런 아티팩트 효과를 명시적으로 포함하는 커밋 변이 분기를 선택할 때만 일어납니다. 앞선 스테이징만으로 자동 발생하지 않습니다.
 
@@ -304,10 +322,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 | `volicord.prepare_evidence_capture` | 만료되는 불변 capture intent 하나 생성 | [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
 | `volicord.stage_artifact` | 임시 스테이징만 생성 | [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
-| `volicord.request_user_judgment` | 대기 중인 판단 요청 생성 | [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
-| `volicord.record_user_judgment` | 사용자 판단 해결 | [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
-| `volicord.record_user_observation` | 대상 결합 User Channel 증거 기록 | [`volicord.record_user_observation`](#volicordrecord_user_observation) |
-| `volicord.reconcile_changes` | 미기록 변경 해결, 대기 사용자 판단 생성, 선택적 세션 감시 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
+| `volicord.request_user_action` | 대기 사용자 행동 요청과 canonical 캡처 폼 하나 생성 | [`volicord.request_user_action`](#volicordrequest_user_action) |
+| `volicord.resolve_user_action` | 변경 불가능한 User Channel 해결 하나 삽입 | [`volicord.resolve_user_action`](#volicordresolve_user_action) |
+| `volicord.reconcile_changes` | 미기록 변경 해결, 대기 사용자 행동 생성, 선택적 세션 감시 진단 기록 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | 선택적 세션 감시 진단을 포함하는 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | 성공한 `complete` 종료 효과를 영속 저장하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | 성공한 취소 종료 효과를 영속 저장하고 차단된 시도는 효과 없는 결과를 반환 | [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
@@ -355,7 +372,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
   `work_phase=implementation`으로 진행합니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경에 대해 `tasks.scope_revision`을 증가시킵니다.
 - 실질적 범위 변경에 대해 `tasks.close_basis_json`을 무효화하고 `tasks.close_basis_revision`을 증가시킵니다.
-- 담당 문서가 정의한 호환성에 따라 호환되지 않는 판단 근거 행을 오래됨 또는 대체됨으로 표시합니다.
+- 담당 문서가 정의한 호환성에 따라 호환되지 않는 사용자 행동 근거 행을 오래됨 또는 대체됨으로 표시합니다.
 - 메서드 담당 문서가 허용한 차단 사유 또는 오래된 쓰기 티켓 참조를 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
@@ -417,7 +434,7 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 
 - 재실행 행 또는 `tool_invocations.response_json`
 - `authority_events` 또는 Core 현재 행
-- Task, Change Unit, 판단, 차단 사유, 연속성 상태
+- Task, Change Unit, 사용자 행동, 차단 사유, 연속성 상태
 - 스테이징, 아티팩트, 증거, 쓰기 티켓 상태
 - 세션 감시 진단 행
 - `project_state.state_version`
@@ -492,6 +509,9 @@ invocation과 서로 다른 guard event 두 개에 대해 claim 세 개를 만�
 범위 claim key는 정확한 원천 사실이 intent나 producer class를 넘어 재사용되는 것을
 거부합니다.
 Event나 replay 행을 만들지 않고 `project_state.state_version`도 바꾸지 않습니다.
+같은 transaction에서 `project_state.updated_at`을 `receipt.created_at` 이상으로
+전진시킵니다. 다른 동시 writer가 이미 더 늦은 하한을 만들었을 수 있으므로 두 값이
+정확히 같을 필요는 없습니다.
 Source observation은 `intent.created_at <= observed_at < intent.expires_at`을 만족해야
 하고, receipt 생성은 `observed_at <= receipt.created_at < intent.expires_at`을
 만족해야 하며, staging handle은
@@ -516,6 +536,8 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 
 - `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록을 생성합니다.
 - `artifacts/tmp/` 아래에 임시 안전 바이트 또는 알림을 둡니다.
+- staging 행과 원자적으로 `project_state.updated_at`을 그 행의 `created_at` 이상으로
+  전진시킵니다.
 
 이 분기는 저장소 소유 임시 스테이징만 생성합니다. 일반 Core 커밋 변이 분기가 아니며, 임시 스테이징 디렉터리는 프로젝트 등록 시점이 아니라 스테이징이 일어날 때 만들어질 수 있습니다.
 
@@ -527,7 +549,7 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 
 아래 항목은 만들지 않습니다.
 
-- Core 현재 기록.
+- 물리 프로젝트 시각 하한을 제외한 Core 권한 현재 기록.
 - 영속 `ArtifactRef`.
 - 재실행 행.
 - `project_state.state_version` 증가.
@@ -560,7 +582,7 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 - 사용할 수 있는 `artifact_staging`을 소비합니다.
 - `artifacts`를 승격하거나 연결합니다.
 - 새 `Task` 범위 보충 대상에 `evidence_claims` 행을 만들고, 기존 같은 `Task` ID의 불변 문장을 보존합니다.
-- `evidence_summaries`를 갱신하거나, Core 기록 입력 참조와 권한 효력이 없는 출처 참조를 분리해 저장하는 `evidence_observations`를 생성하거나, 허용된 `blockers`를 갱신합니다.
+- `evidence_summaries`를 삽입하거나 갱신하면서 `produced_at_state_version`을 transaction의 결과 `project_state.state_version`으로 설정하거나, Core 기록 입력 참조와 권한 효력이 없는 출처 참조를 분리해 저장하는 `evidence_observations`를 생성하거나, 허용된 `blockers`를 갱신합니다.
 - 유효한 capture-intent 관찰마다 safe receipt staging handle을 소비하고 승격하며,
   승격한 artifact를 새 불변 `evidence_producers` 행에 연결하고, 해당 producer와
   일대일 `evidence_observation`을 만듭니다.
@@ -610,6 +632,9 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 - 그 `CurrentCloseBasis`에 저장되는 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓 호환성 행에서 Core가 파생하며, 동작, 정규화된 경로, 민감 범주, 기준선, Change Unit, 출처 실행 기록 참조, 출처 쓰기 티켓 참조를 닫기까지 보존합니다.
 - 범주만 담은 호출자 입력은 민감 동작 요구사항을 만들거나, 만족하거나, 지울 수 없습니다.
 - `close_assessment=null`은 커밋된 실행 기록이 현재 닫기 근거를 만들지 않음을 기록합니다. 기존 현재 근거는 오래되거나 없어집니다.
+- Evidence Summary 최신성은 `created_at`, `updated_at`, 불투명 record ID가 아니라
+  `produced_at_state_version`으로 결정합니다. 정규 UTC 시계는 권한 커밋 순서를
+  대신하지 않습니다.
 - 실행 기록, 현재 닫기 근거, 증거 요약, 증거 관찰, capture producer, receipt artifact
   승격/연결, 쓰기 티켓 호환성 소비, replay, event, revision 효과는 원자적으로
   커밋됩니다.
@@ -620,17 +645,29 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 - [아티팩트 저장소](storage-artifacts.md)
 - [저장소 기록](storage-records.md)
 
-<a id="volicordrequest_user_judgment"></a>
-### `volicord.request_user_judgment`
+<a id="volicordrequest_user_action"></a>
+### `volicord.request_user_action`
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 대기 중인 `user_judgments` 행을 생성합니다.
-- Core가 파생한 판단 근거에 대해 `basis_json`과 `basis_status='current'`를 저장합니다.
+- `user_action_requests` 행 하나를 생성합니다.
+- 닫힌 요청, canonical 캡처 폼, Core 파생 근거, 현재 근거 상태, required-for 대상, 후보, 만료, 정확한 원천 메서드/idempotency 관계를 저장합니다.
 - 영향받은 차단 사유를 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
+
+`source_method=volicord.request_user_action`이면 직접 원천
+`(project_id, source_idempotency_key)`는 고유합니다. MCP
+`request.operation=resume` 분기는 같은 Agent Connection 접근 범위에서 그 행과 불변 원래
+replay 응답만 읽습니다. Resume은 요청, event, replay 행, token, resolution, prompt,
+blocker 갱신, state version을 만들지 않고 영속 정규 UTC 하한도 갱신하지 않습니다.
+
+MCP가 새로 생성한 대기 요청에 로컬 web fallback을 사용할 때 token 발급은 별도의
+저장소 소유 transaction입니다. Hash-only `user_action_channel_tokens` 행을 삽입하고
+원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다.
+발급은 추가 권한 이벤트나 재실행 행을 만들지 않고 `state_version`도 증가시키지
+않습니다.
 
 효과가 없는 분기:
 
@@ -639,26 +676,27 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 
 유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
 
-- 실제 `user_judgment_ref`.
-- 대기 중인 판단.
+- 실제 `user_action_request_ref`.
+- 대기 사용자 행동.
 - 차단 사유 갱신.
 - 이벤트.
 - 재실행 행.
 - `project_state.state_version` 증가.
+- 영속 정규 UTC 하한 갱신.
 
 담당 문서:
 
-- [`volicord.request_user_judgment` 메서드](api/method-request-user-judgment.md#volicordrequest_user_judgment)
+- [`volicord.request_user_action` 메서드](api/method-request-user-action.md#volicordrequest_user_action)
 - [저장소 기록](storage-records.md)
 
-<a id="volicordrecord_user_judgment"></a>
-### `volicord.record_user_judgment`
+<a id="volicordresolve_user_action"></a>
+### `volicord.resolve_user_action`
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- `user_judgments` 행을 `status='resolved'`로 설정합니다.
-- 선택된 선택지, `resolution_machine_action`, `resolution_outcome`, 파생된 해결 행위자 출처, 답변 본문, 설명용 판단 이유 메타데이터, 근거 상태를 메서드 담당 문서가 허용한 대로 저장합니다.
-- 로컬 웹 동의 캡처 경로로 호출된 경우, 판단 해결과 같은 프로젝트 상태 커밋 안에서 일치하는 `local_web_consent_tokens` 행을 `status='consumed'`로 설정합니다.
+- 변경 불가능한 일대일 `user_action_resolutions` 행 하나를 삽입해 Core 유효 상태 evaluator가 `resolved`를 반환하게 합니다.
+- 일치하는 폐쇄형 resolution 본문, channel kind와 submission ID, 파생 local-user 출처, verification basis, assurance level, Core 캡처 시각을 저장합니다. 본문은 선택지에서 도출한 choice 사실 또는 전체 Evidence 관찰 detail을 담습니다.
+- 로컬 web 캡처에서는 일치하는 `user_action_channel_tokens` 행을 같은 프로젝트 상태 커밋에서 `status='consumed'`로 바꿉니다.
 - 메서드 담당 문서가 선택할 때 수락된 제품, 기술, 범위 결정과 수락된 현재 잔여 위험에 대한 `project_continuity_records`를 생성합니다.
 - 종속 차단 사유 또는 다음 행동을 갱신합니다.
 - 이벤트를 추가합니다.
@@ -670,20 +708,23 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 - 유효한 `dry_run` 미리보기
 - 거절된 시도
 
-검증 실패, 잘못된 바인딩, 만료, 판단 기록 쓰기 실패를 포함한 거절된 로컬 웹 동의 시도는 토큰을 소비하거나 판단을 해결하면 안 됩니다.
+검증 실패, 잘못된 binding, 만료, 상태 race, 해결 쓰기 실패를 포함한 거절된 채널
+시도는 token을 소비하거나 해결을 삽입하면 안 되며 영속 정규 UTC 하한도 갱신하면
+안 됩니다.
 
 유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
 
-- 판단 해결.
+- 사용자 행동 해결 또는 관찰 detail.
 - 프로젝트 연속성 기록.
 - 차단 사유 갱신.
 - 이벤트.
 - 재실행 행.
 - `project_state.state_version` 증가.
+- 영속 정규 UTC 하한 갱신.
 
-사용자 판단 기록은 `tasks.scope_revision`이나 `tasks.close_basis_revision`을 증가시키지 않습니다.
+사용자 행동 해결은 `tasks.scope_revision`이나 `tasks.close_basis_revision`을 증가시키지 않습니다.
 
-`status='resolved'`는 답변이 기록되었다는 뜻이며 그 자체로 수락이 아닙니다. 현재 해결 행에는 완전한 근거, 선택된 동작, `resolution_outcome`, 해결 요청 본문, 해결 타임스탬프, User Channel 행위자 출처, 검증 근거, 보증 수준, 필요한 행위자 출처가 있어야 합니다. 필요한 해결 권한 정보가 빠진 행은 읽을 수 있는 이력 감사 판단이 아니라 유효하지 않은 저장 상태입니다.
+유효 `status=resolved`는 변경 불가능한 해결이 있다는 뜻이며 그 자체로 수락이나 증거 뒷받침이 아닙니다. Choice 해결에는 저장 선택지에서 파생한 action/outcome이 필요하고 관찰 해결에는 요청이 저장한 정확한 artifact ref를 보존하면서 현재 대상/아티팩트 detail을 검증해야 합니다. 종류별 권한 사실이 빠지면 유효하지 않은 담당 상태입니다.
 
 재실행 행은 계속 `operation_category=user_only`입니다. 그 정확한 응답과 자유
 형식 비공개 `note`는 `volicord.get_operation_result`를 통한 Agent Connection
@@ -691,28 +732,8 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 
 담당 문서:
 
-- [`volicord.record_user_judgment` 메서드](api/method-record-user-judgment.md#volicordrecord_user_judgment)
+- [`volicord.resolve_user_action` 메서드](api/method-resolve-user-action.md#volicordresolve_user_action)
 - [저장소 기록](storage-records.md)
-
-<a id="volicordrecord_user_observation"></a>
-### `volicord.record_user_observation`
-
-커밋된 `dry_run=false`는 다음 효과를 만들 수 있습니다.
-
-- 현재 Task, Change Unit, scope revision, baseline, 대상, relevance, 정확한
-  정규 아티팩트 ref, 로컬 사용자 actor, 검증 근거, 요약, 타임스탬프를 담은
-  `user_evidence_observations` 행 하나 삽입
-- `user_evidence_observation_recorded` 이벤트 추가
-- replay 행 생성
-- `project_state.state_version` 한 번 증가
-
-Run, EvidenceSummary, EvidenceObservation, UserJudgment, 승인, 아티팩트를 만들지
-않습니다. Dry run과 거부는 저장 효과가 없습니다.
-
-담당 문서:
-
-- [`volicord.record_user_observation` 메서드](api/method-record-user-observation.md)
-- [저장 레코드](storage-records.md)
 
 <a id="volicordreconcile_changes"></a>
 ### `volicord.reconcile_changes`
@@ -725,9 +746,9 @@ Run, EvidenceSummary, EvidenceObservation, UserJudgment, 승인, 아티팩트를
   `agent_sessions`, `session_watch_baselines`, `session_watch_observations`,
   감시기가 만든 `unrecorded_changes`를 만들거나 갱신할 수 있습니다.
 - 미해결 `unrecorded_changes` 행을 `status='resolved'`로 설정합니다.
-- 해결 근거, 캡처 근거, 해결 메서드, 선택적 연결 사용자 판단 참조를 이름 붙이는 해결 JSON을 저장합니다.
+- 해결 근거, 캡처 근거, 해결 메서드, 선택적 연결 사용자 행동 참조를 이름 붙이는 해결 JSON을 저장합니다.
 - `resolved_at`과 `resolved_by_actor_source`를 저장합니다.
-- 사용자 수락이 필요한 미기록 변경에 대해 대기 `user_judgments` 행을 만듭니다.
+- 사용자 수락이 필요한 미기록 변경에 대해 `source_method=volicord.reconcile_changes`와 reconciliation idempotency key를 담은 대기 `user_action_requests` 행을 만듭니다.
 - 이벤트를 추가합니다.
 - 멱등성 키가 있으면 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -735,7 +756,7 @@ Run, EvidenceSummary, EvidenceObservation, UserJudgment, 승인, 아티팩트를
 읽기 전용 분기:
 
 - 위에서 허용한 세션 감시 진단 효과가 발생한 뒤에도, 계획된 해결이나 대기
-  판단 생성이 없는 유효한 호출은 응답 데이터만 반환하고 조정 효과를 만들지
+  사용자 행동 생성이 없는 유효한 호출은 응답 데이터만 반환하고 조정 효과를 만들지
   않습니다.
 
 효과가 없는 분기:
@@ -743,7 +764,7 @@ Run, EvidenceSummary, EvidenceObservation, UserJudgment, 승인, 아티팩트를
 - 거절된 시도
 - 유효한 `dry_run` 미리보기
 
-이 분기들은 미기록 변경을 해결하거나, 대기 판단을 만들거나, 이벤트를 추가하거나, 재실행 행을 만들거나, `project_state.state_version`을 증가시키지 않습니다.
+이 분기들은 미기록 변경을 해결하거나, 대기 사용자 행동을 만들거나, 이벤트를 추가하거나, 재실행 행을 만들거나, `project_state.state_version`을 증가시키지 않습니다.
 
 조정 효과는 제품 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 미기록 변경이 더 이상 미해결이 아닌 이유를 기록하거나, 남은 수락을 위한 대기 사용자 소유 판단을 만들 뿐입니다.
 

@@ -30,19 +30,20 @@ mod unix {
 
     const CODEX_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_SMOKE";
     const CLAUDE_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_SMOKE";
-    const CODEX_JUDGMENT_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_JUDGMENT_SMOKE";
-    const CLAUDE_JUDGMENT_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE";
+    const CODEX_USER_ACTION_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_USER_ACTION_SMOKE";
+    const CLAUDE_USER_ACTION_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE";
     const LIVE_HOST_RESULT_PATH_ENV: &str = "VOLICORD_LIVE_HOST_RESULT_PATH";
-    const JUDGMENT_ROUTE_ALPHA_OPTION_ID: &str = "route_alpha";
-    const JUDGMENT_ROUTE_BETA_OPTION_ID: &str = "route_beta";
-    const JUDGMENT_ROUTE_ALPHA_RUN_MARKER: &str =
-        "VOLICORD_LIVE_HOST_JUDGMENT_CONSUMED_ROUTE_ALPHA";
-    const JUDGMENT_ROUTE_BETA_RUN_MARKER: &str = "VOLICORD_LIVE_HOST_JUDGMENT_CONSUMED_ROUTE_BETA";
-    const LIVE_HOST_BASELINE_REF: &str = "baseline_live_host_judgment";
+    const USER_ACTION_ROUTE_ALPHA_OPTION_ID: &str = "route_alpha";
+    const USER_ACTION_ROUTE_BETA_OPTION_ID: &str = "route_beta";
+    const USER_ACTION_ROUTE_ALPHA_RUN_MARKER: &str =
+        "VOLICORD_LIVE_HOST_USER_ACTION_CONSUMED_ROUTE_ALPHA";
+    const USER_ACTION_ROUTE_BETA_RUN_MARKER: &str =
+        "VOLICORD_LIVE_HOST_USER_ACTION_CONSUMED_ROUTE_BETA";
+    const LIVE_HOST_BASELINE_REF: &str = "baseline_live_host_user_action";
     const LIVE_INBOX_COMMAND_TEMPLATE: &str =
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
-    const LIVE_INBOX_ANSWER_COMMAND_TEMPLATE: &str = "VOLICORD_HOME=<runtime-home> volicord inbox answer <judgment-id> --choice <option-id> --repo <repo> --json";
-    const LIVE_INBOX_ANSWER_USAGE: &str = "volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]";
+    const LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE: &str = "VOLICORD_HOME=<runtime-home> volicord inbox resolve <user-action-request-id> --choice <option-id> --repo <repo> --json";
+    const LIVE_INBOX_RESOLVE_USAGE: &str = "volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]";
     const MAX_HOST_VERSION_CHARS: usize = 256;
     const MAX_CONNECTION_ID_CHARS: usize = 256;
     const MAX_BUILD_ID_CHARS: usize = 1_024;
@@ -67,7 +68,7 @@ mod unix {
             .expect("running result should identify the validation run")
             .to_owned();
         recorder.record_final(&serde_json::json!({
-            "kind": "live_host_judgment_release_validation",
+            "kind": "live_host_user_action_release_validation",
             "result": "passed",
             "host": { "kind": "codex" }
         }))?;
@@ -111,15 +112,15 @@ mod unix {
     fn operator_choice_confirmation_accepts_only_fixed_native_options() -> Result<(), Box<dyn Error>>
     {
         assert_eq!(
-            parse_native_judgment_choice("choice:route_alpha")?,
-            JUDGMENT_ROUTE_ALPHA_OPTION_ID
+            parse_native_user_action_choice("choice:route_alpha")?,
+            USER_ACTION_ROUTE_ALPHA_OPTION_ID
         );
         assert_eq!(
-            parse_native_judgment_choice("choice:route_beta")?,
-            JUDGMENT_ROUTE_BETA_OPTION_ID
+            parse_native_user_action_choice("choice:route_beta")?,
+            USER_ACTION_ROUTE_BETA_OPTION_ID
         );
-        assert!(parse_native_judgment_choice("route_alpha").is_err());
-        assert!(parse_native_judgment_choice("choice:unrecognized").is_err());
+        assert!(parse_native_user_action_choice("route_alpha").is_err());
+        assert!(parse_native_user_action_choice("choice:unrecognized").is_err());
         Ok(())
     }
 
@@ -177,7 +178,7 @@ mod unix {
                 "baseline_ref": LIVE_HOST_BASELINE_REF,
                 "change_unit": {
                     "operation": "create_current",
-                    "scope_summary": "No-write live-host Judgment validation.",
+                    "scope_summary": "No-write live-host user-action validation.",
                     "affected_paths": []
                 },
                 "related_scope_decision_refs": []
@@ -193,7 +194,7 @@ mod unix {
             .ok_or("update_scope should create the current Change Unit")?
             .to_owned();
 
-        let marker = JUDGMENT_ROUTE_ALPHA_RUN_MARKER;
+        let marker = USER_ACTION_ROUTE_ALPHA_RUN_MARKER;
         let recorded = adapter.call_tool(
             "volicord.record_run",
             serde_json::json!({
@@ -240,7 +241,7 @@ mod unix {
         let state_version = status.response_value["base"]["state_version"]
             .as_u64()
             .ok_or("advisor status should return a state version")?;
-        let observation = LiveJudgmentObservation {
+        let observation = LiveUserActionObservation {
             project_id: fixture.project_id().to_owned(),
             task_id: task_id.clone(),
             lifecycle_phase: status.response_value["active_task"]["lifecycle"]["lifecycle_phase"]
@@ -248,8 +249,8 @@ mod unix {
                 .unwrap_or("unknown")
                 .to_owned(),
             state_version,
-            judgment_id: None,
-            judgment_status: None,
+            user_action_request_id: None,
+            user_action_status: None,
             resolved_by_actor_source: None,
             resolved_verification_basis: None,
             selected_option_id: None,
@@ -499,28 +500,28 @@ mod unix {
     }
 
     #[test]
-    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1"]
-    fn codex_live_judgment_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
-        live_judgment_round_trip(
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1"]
+    fn codex_live_user_action_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_user_action_round_trip(
             "codex",
             "codex",
-            CODEX_JUDGMENT_SMOKE_ENV,
+            CODEX_USER_ACTION_SMOKE_ENV,
             "host_trust_required",
         )
     }
 
     #[test]
-    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1"]
-    fn claude_code_live_judgment_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
-        live_judgment_round_trip(
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1"]
+    fn claude_code_live_user_action_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_user_action_round_trip(
             "claude-code",
             "claude",
-            CLAUDE_JUDGMENT_SMOKE_ENV,
+            CLAUDE_USER_ACTION_SMOKE_ENV,
             "project_approval_required",
         )
     }
 
-    fn live_judgment_round_trip(
+    fn live_user_action_round_trip(
         host: &str,
         executable_name: &str,
         selector_env: &str,
@@ -528,7 +529,7 @@ mod unix {
     ) -> Result<(), Box<dyn Error>> {
         if !smoke_enabled(selector_env) {
             return Err(io::Error::other(format!(
-                "set {selector_env}=1 before running the ignored {host} Judgment smoke test"
+                "set {selector_env}=1 before running the ignored {host} user-action smoke test"
             ))
             .into());
         }
@@ -539,7 +540,7 @@ mod unix {
                 format!("`{executable_name}` was not found on PATH"),
             )
         })?;
-        let fixture = LiveSmokeFixture::new(&format!("{host}-judgment"))?;
+        let fixture = LiveSmokeFixture::new(&format!("{host}-user-action"))?;
         let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
         assert_success(
             &format!("{executable_name} --version"),
@@ -564,7 +565,7 @@ mod unix {
             fixture.runtime_home_arg(),
             "--json",
         ])?;
-        assert_success("volicord init for live Judgment smoke", &init);
+        assert_success("volicord init for live user-action smoke", &init);
         let init_json = json_stdout(&init)?;
         assert_guarded_init_reported_action_required(&init_json, host, expected_host_action);
         let connection_id = bounded_identity(
@@ -589,12 +590,12 @@ mod unix {
         );
 
         let marker = format!(
-            "VOLICORD_LIVE_HOST_JUDGMENT_ROUND_TRIP_{}",
+            "VOLICORD_LIVE_HOST_USER_ACTION_ROUND_TRIP_{}",
             host.replace('-', "_").to_ascii_uppercase()
         );
-        let prompt = live_judgment_prompt(&marker);
+        let prompt = live_user_action_prompt(&marker);
         println!(
-            "\n=== Volicord live {host} Judgment smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native Judgment selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
+            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
         );
         let status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
         smoke_note(
@@ -609,21 +610,21 @@ mod unix {
             .into());
         }
 
-        let observation = inspect_live_judgment(&fixture, &marker)?;
+        let observation = inspect_live_user_action(&fixture, &marker)?;
         let Some(observation) = observation else {
             return Err(io::Error::other(format!(
                 "the live host did not create the marker Task `{marker}`; rerun the smoke, approve the generated Volicord MCP connection, and let the host complete the instructed intake call"
             ))
             .into());
         };
-        if observation.judgment_id.is_none() {
+        if observation.user_action_request_id.is_none() {
             return Err(io::Error::other(format!(
-                "Task `{}` was created but no product-decision Judgment was created; rerun the smoke and let the host complete `volicord.request_user_judgment`",
+                "Task `{}` was created but no product-decision user action was created; rerun the smoke and let the host complete `volicord.request_user_action`",
                 observation.task_id
             ))
             .into());
         }
-        if observation.judgment_status.as_deref() != Some("resolved") {
+        if observation.user_action_status.as_deref() != Some("resolved") {
             let fallback = verify_ephemeral_inbox_fallback_shape(&fixture, &observation)?;
             result_recorder.record_final(&live_host_fallback_summary(
                 &identity,
@@ -631,8 +632,8 @@ mod unix {
                 &fallback,
             ))?;
             return Err(io::Error::other(format!(
-                "host-native MCP elicitation was unavailable, so Judgment `{}` remains pending; CLI fallback command shape was verified only inside the disposable fixture",
-                observation.judgment_id.as_deref().unwrap_or("unknown")
+                "host-native MCP elicitation was unavailable, so user action `{}` remains pending; CLI fallback command shape was verified only inside the disposable fixture",
+                observation.user_action_request_id.as_deref().unwrap_or("unknown")
             ))
             .into());
         }
@@ -640,7 +641,7 @@ mod unix {
         assert_eq!(
             observation.resolved_by_actor_source.as_deref(),
             Some("local_user"),
-            "resolved Judgment must be owned by the local user"
+            "resolved user action must be owned by the local user"
         );
         assert_eq!(
             observation.resolved_verification_basis.as_deref(),
@@ -650,27 +651,27 @@ mod unix {
         assert_eq!(
             observation.option_ids.len(),
             2,
-            "the live Judgment must preserve exactly the two requested route options"
+            "the live user action must preserve exactly the two requested route options"
         );
         assert!(
             observation
                 .option_ids
                 .iter()
-                .any(|option_id| option_id == JUDGMENT_ROUTE_ALPHA_OPTION_ID),
-            "the live Judgment is missing the alpha route option"
+                .any(|option_id| option_id == USER_ACTION_ROUTE_ALPHA_OPTION_ID),
+            "the live user action is missing the alpha route option"
         );
         assert!(
             observation
                 .option_ids
                 .iter()
-                .any(|option_id| option_id == JUDGMENT_ROUTE_BETA_OPTION_ID),
-            "the live Judgment is missing the beta route option"
+                .any(|option_id| option_id == USER_ACTION_ROUTE_BETA_OPTION_ID),
+            "the live user action is missing the beta route option"
         );
-        let operator_choice_id = confirm_native_judgment_choice(host)?;
+        let operator_choice_id = confirm_native_user_action_choice(host)?;
         let selected_option_id = observation
             .selected_option_id
             .as_deref()
-            .expect("a resolved live Judgment must store selected_option_id");
+            .expect("a resolved live user action must store selected_option_id");
         if operator_choice_id != selected_option_id {
             result_recorder.record_final(&live_host_choice_mismatch_summary(
                 &identity,
@@ -684,7 +685,7 @@ mod unix {
             .into());
         }
         let expected_run_marker = run_marker_for_selected_option(selected_option_id)
-            .unwrap_or_else(|| panic!("unexpected live Judgment option {selected_option_id:?}"));
+            .unwrap_or_else(|| panic!("unexpected live user-action option {selected_option_id:?}"));
 
         let status_output = fixture.run_volicord([
             "status",
@@ -694,7 +695,7 @@ mod unix {
             &observation.task_id,
             "--json",
         ])?;
-        assert_success("volicord status after live Judgment", &status_output);
+        assert_success("volicord status after live user action", &status_output);
         let status_json = json_stdout(&status_output)?;
         let receipt =
             verify_fresh_authority_receipt(status_json, &observation, expected_run_marker)?;
@@ -718,11 +719,11 @@ mod unix {
         );
         assert!(
             observation.state_version >= 5,
-            "intake, Change Unit creation, Judgment creation, User Channel recording, and the choice-consumption Run must advance Task state"
+            "intake, Change Unit creation, user-action creation, User Channel resolution, and the choice-consumption Run must advance Task state"
         );
         assert_ne!(
             observation.lifecycle_phase, "waiting_user",
-            "a resolved sole Judgment must leave the Task out of waiting_user"
+            "a resolved sole user action must leave the Task out of waiting_user"
         );
         let stop_observation = verify_live_stop_guard_event(
             &fixture.runtime_home_path,
@@ -769,8 +770,8 @@ mod unix {
         smoke_note(
             host,
             format!(
-                "verified Judgment {}, selected option {}, consumed marker {}, User Channel basis {}, Task phase {}, state_version {}, Stop systemMessage receipt UI confirmed",
-                observation.judgment_id.as_deref().unwrap_or("unknown"),
+                "verified user action {}, selected option {}, consumed marker {}, User Channel basis {}, Task phase {}, state_version {}, Stop systemMessage receipt UI confirmed",
+                observation.user_action_request_id.as_deref().unwrap_or("unknown"),
                 selected_option_id,
                 expected_run_marker,
                 VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
@@ -781,34 +782,34 @@ mod unix {
         Ok(())
     }
 
-    fn live_judgment_prompt(marker: &str) -> String {
+    fn live_user_action_prompt(marker: &str) -> String {
         format!(
             concat!(
                 "Run a human-in-the-loop Volicord connection smoke using the MCP server named `volicord`. ",
                 "Do not edit files, run shell commands, prepare a write, or answer on the user's behalf.\n\n",
                 "1. Call `volicord.intake` with `detail=full`, `requested_mode=advisor`, `acceptance_policy=null`, and create-new resume behavior. The plain-language request must be exactly `{task_marker}`. Use a narrow no-write initial scope and exactly one acceptance criterion whose `evidence_requirement=not_required`. Retain the returned Task ID.\n",
-                "2. For that Task, call `volicord.update_scope` with `detail=full`, `baseline_ref={baseline_ref}`, and a `change_unit` whose `operation=create_current`, `scope_summary` describes this no-write live-host Judgment validation, and `affected_paths=[]`. Retain `state.active_change_unit_ref.record_id` and `state.baseline_ref`. Do not continue unless both are present.\n",
-                "3. Call `volicord.request_user_judgment` for a `product_decision` and omit `detail` so the default compact projection is exercised. Ask which live-smoke route the agent must consume, make it required for `close_complete`, and provide exactly these two caller-authored options in this order:\n",
+                "2. For that Task, call `volicord.update_scope` with `detail=full`, `baseline_ref={baseline_ref}`, and a `change_unit` whose `operation=create_current`, `scope_summary` describes this no-write live-host user-action validation, and `affected_paths=[]`. Retain `state.active_change_unit_ref.record_id` and `state.baseline_ref`. Do not continue unless both are present.\n",
+                "3. Call `volicord.request_user_action` with `request.operation=create`, `request.action.action_type=choice`, `request.action.judgment_kind=product_decision`, and omit `detail` so the default compact projection is exercised. Ask which live-smoke route the agent must consume, make it required for `close_complete`, and provide exactly these two caller-authored options in this order:\n",
                 "   - `option_id={alpha_option_id}`, label `Route alpha`, description `Select the alpha live-smoke route.`, consequence `The agent records the alpha choice-consumption Run marker.`, `is_default=false`.\n",
                 "   - `option_id={beta_option_id}`, label `Route beta`, description `Select the beta live-smoke route.`, consequence `The agent records the beta choice-consumption Run marker.`, `is_default=false`.\n",
                 "4. Wait for the host's native MCP elicitation/User Channel UI. The human running this smoke will choose the answer. Never infer, fabricate, or submit that answer yourself.\n",
-                "5. After Volicord reports the Judgment resolved, consume `structuredContent.method_result.selected_option_id` from that default result. If it is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, call `volicord.record_run` with summary exactly `{beta_run_marker}`. Use the retained Task ID, Change Unit ID, and baseline ref; set `kind=shaping_update`, `run_id=null`, `write_ticket_id=null`, `artifact_inputs=[]`, `evidence_updates=[]`, and `evidence_observations=[]`; report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`. Supply a non-null `close_assessment` whose `result_summary` is exactly the selected Run marker and whose `result_refs`, `residual_risks`, `sensitive_categories`, and `recovery_constraints` are all empty arrays. Do not record a Run if the selected option is absent or unrecognized.\n",
+                "5. After Volicord reports the user action resolved, consume `structuredContent.method_result.resolution_summary.selected_option_id` from that default compact result. If it is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, call `volicord.record_run` with summary exactly `{beta_run_marker}`. Use the retained Task ID, Change Unit ID, and baseline ref; set `kind=shaping_update`, `run_id=null`, `write_ticket_id=null`, `artifact_inputs=[]`, `evidence_updates=[]`, and `evidence_observations=[]`; report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`. Supply a non-null `close_assessment` whose `result_summary` is exactly the selected Run marker and whose `result_refs`, `residual_risks`, `sensitive_categories`, and `recovery_constraints` are all empty arrays. Do not record a Run if the selected option is absent or unrecognized.\n",
                 "6. After that Run is recorded, call `volicord.status` for the Task and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop.\n\n",
-                "If a native prompt does not appear and Volicord returns a pending inbox item, do not simulate an answer or execute a fallback command. Report that the pending CLI inbox fallback is required and stop so the disposable harness can verify inbox visibility and the answer-command shape."
+                "If a native prompt does not appear and Volicord returns a pending inbox item, do not simulate a resolution or execute a fallback command. Report that the pending CLI inbox fallback is required and stop so the disposable harness can verify inbox visibility and the resolve-command shape."
             ),
             task_marker = marker,
             baseline_ref = LIVE_HOST_BASELINE_REF,
-            alpha_option_id = JUDGMENT_ROUTE_ALPHA_OPTION_ID,
-            beta_option_id = JUDGMENT_ROUTE_BETA_OPTION_ID,
-            alpha_run_marker = JUDGMENT_ROUTE_ALPHA_RUN_MARKER,
-            beta_run_marker = JUDGMENT_ROUTE_BETA_RUN_MARKER,
+            alpha_option_id = USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+            beta_option_id = USER_ACTION_ROUTE_BETA_OPTION_ID,
+            alpha_run_marker = USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+            beta_run_marker = USER_ACTION_ROUTE_BETA_RUN_MARKER,
         )
     }
 
     fn run_marker_for_selected_option(selected_option_id: &str) -> Option<&'static str> {
         match selected_option_id {
-            JUDGMENT_ROUTE_ALPHA_OPTION_ID => Some(JUDGMENT_ROUTE_ALPHA_RUN_MARKER),
-            JUDGMENT_ROUTE_BETA_OPTION_ID => Some(JUDGMENT_ROUTE_BETA_RUN_MARKER),
+            USER_ACTION_ROUTE_ALPHA_OPTION_ID => Some(USER_ACTION_ROUTE_ALPHA_RUN_MARKER),
+            USER_ACTION_ROUTE_BETA_OPTION_ID => Some(USER_ACTION_ROUTE_BETA_RUN_MARKER),
             _ => None,
         }
     }
@@ -823,23 +824,23 @@ mod unix {
     }
 
     #[derive(Debug)]
-    struct LiveJudgmentObservation {
+    struct LiveUserActionObservation {
         project_id: String,
         task_id: String,
         lifecycle_phase: String,
         state_version: u64,
-        judgment_id: Option<String>,
-        judgment_status: Option<String>,
+        user_action_request_id: Option<String>,
+        user_action_status: Option<String>,
         resolved_by_actor_source: Option<String>,
         resolved_verification_basis: Option<String>,
         selected_option_id: Option<String>,
         option_ids: Vec<String>,
     }
 
-    fn inspect_live_judgment(
+    fn inspect_live_user_action(
         fixture: &LiveSmokeFixture,
         marker: &str,
-    ) -> Result<Option<LiveJudgmentObservation>, Box<dyn Error>> {
+    ) -> Result<Option<LiveUserActionObservation>, Box<dyn Error>> {
         let projects = list_projects(&fixture.runtime_home_path)?;
         let project = projects
             .iter()
@@ -849,17 +850,27 @@ mod unix {
         let row = conn
             .query_row(
                 "SELECT t.task_id, t.lifecycle_phase, ps.state_version,
-                        j.judgment_id, j.status, j.resolved_by_actor_source,
-                        j.resolved_verification_basis, j.options_json,
-                        j.resolution_json
+                        r.user_action_request_id,
+                        CASE
+                          WHEN s.user_action_resolution_id IS NOT NULL THEN 'resolved'
+                          WHEN r.basis_status = 'stale' THEN 'stale'
+                          WHEN r.basis_status = 'superseded' THEN 'superseded'
+                          ELSE 'pending'
+                        END,
+                        s.resolved_by_actor_source,
+                        s.resolved_verification_basis, r.request_json,
+                        s.resolution_json
                    FROM tasks t
                    JOIN project_state ps ON ps.project_id = t.project_id
-              LEFT JOIN user_judgments j
-                     ON j.project_id = t.project_id
-                    AND j.task_id = t.task_id
-                    AND j.judgment_kind = 'product_decision'
+              LEFT JOIN user_action_requests r
+                     ON r.project_id = t.project_id
+                    AND r.task_id = t.task_id
+                    AND r.action_kind = 'product_decision'
+              LEFT JOIN user_action_resolutions s
+                     ON s.project_id = r.project_id
+                    AND s.user_action_request_id = r.user_action_request_id
                   WHERE t.project_id = ?1 AND t.summary = ?2
-                  ORDER BY j.requested_at DESC
+                  ORDER BY r.requested_at DESC
                   LIMIT 1",
                 rusqlite::params![project.project_id, marker],
                 |row| {
@@ -881,8 +892,8 @@ mod unix {
             task_id,
             lifecycle_phase,
             state_version,
-            judgment_id,
-            judgment_status,
+            user_action_request_id,
+            user_action_status,
             resolved_by_actor_source,
             resolved_verification_basis,
             options_json,
@@ -896,19 +907,24 @@ mod unix {
         let option_ids = options_json
             .as_deref()
             .and_then(|text| serde_json::from_str::<Value>(text).ok())
-            .and_then(|value| value.get("options").and_then(Value::as_array).cloned())
+            .and_then(|value| {
+                value
+                    .pointer("/body/options")
+                    .and_then(Value::as_array)
+                    .cloned()
+            })
             .unwrap_or_default()
             .iter()
             .filter_map(|option| option.get("option_id").and_then(Value::as_str))
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        Ok(Some(LiveJudgmentObservation {
+        Ok(Some(LiveUserActionObservation {
             project_id: project.project_id.clone(),
             task_id,
             lifecycle_phase,
             state_version,
-            judgment_id,
-            judgment_status,
+            user_action_request_id,
+            user_action_status,
             resolved_by_actor_source,
             resolved_verification_basis,
             selected_option_id,
@@ -926,7 +942,9 @@ mod unix {
         let selected_option_id = value
             .get("selected_option_id")
             .and_then(Value::as_str)
-            .ok_or_else(|| io::Error::other("resolved live Judgment has no selected_option_id"))?;
+            .ok_or_else(|| {
+                io::Error::other("resolved live user action has no selected_option_id")
+            })?;
         Ok(Some(selected_option_id.to_owned()))
     }
 
@@ -971,14 +989,14 @@ mod unix {
 
     #[derive(Debug)]
     struct AuthorityEventOrder {
-        user_judgment_requested_event_seq: u64,
-        user_judgment_recorded_event_seq: u64,
+        user_action_requested_event_seq: u64,
+        user_action_resolved_event_seq: u64,
         run_recorded_event_seq: u64,
     }
 
     fn inspect_live_choice_consumption(
         fixture: &LiveSmokeFixture,
-        observation: &LiveJudgmentObservation,
+        observation: &LiveUserActionObservation,
         run_id: &str,
     ) -> Result<(LiveRunObservation, AuthorityEventOrder), Box<dyn Error>> {
         let projects = list_projects(&fixture.runtime_home_path)?;
@@ -1020,22 +1038,18 @@ mod unix {
         let run =
             live_run_observation(&stored_run_id, &kind, &summary_json, &observed_changes_json)?;
 
-        let judgment_id = observation
-            .judgment_id
+        let user_action_request_id = observation
+            .user_action_request_id
             .as_deref()
-            .ok_or_else(|| io::Error::other("resolved live Judgment id is missing"))?;
-        let selected_option_id = observation
-            .selected_option_id
-            .as_deref()
-            .ok_or_else(|| io::Error::other("resolved live Judgment selection is missing"))?;
+            .ok_or_else(|| io::Error::other("resolved live user-action request id is missing"))?;
         let mut statement = conn.prepare(
             "SELECT event_seq, event_type, payload_json
                FROM authority_events
               WHERE project_id = ?1
                 AND task_id = ?2
                 AND event_type IN (
-                    'user_judgment_requested',
-                    'user_judgment_recorded',
+                    'user_action_requested',
+                    'user_action_resolved',
                     'run_recorded'
                 )
               ORDER BY event_seq",
@@ -1061,22 +1075,20 @@ mod unix {
                 continue;
             }
             match event_type.as_str() {
-                "user_judgment_requested"
-                    if payload.get("judgment_id").and_then(Value::as_str) == Some(judgment_id) =>
+                "user_action_requested"
+                    if payload
+                        .get("user_action_request_id")
+                        .and_then(Value::as_str)
+                        == Some(user_action_request_id) =>
                 {
                     requested.push(event_seq);
                 }
-                "user_judgment_recorded"
-                    if payload.get("judgment_id").and_then(Value::as_str) == Some(judgment_id) =>
+                "user_action_resolved"
+                    if payload
+                        .get("user_action_request_id")
+                        .and_then(Value::as_str)
+                        == Some(user_action_request_id) =>
                 {
-                    if payload.get("selected_option_id").and_then(Value::as_str)
-                        != Some(selected_option_id)
-                    {
-                        return Err(io::Error::other(
-                            "matching user_judgment_recorded event does not preserve the stored selected_option_id",
-                        )
-                        .into());
-                    }
                     recorded.push(event_seq);
                 }
                 "run_recorded" if payload.get("run_id").and_then(Value::as_str) == Some(run_id) => {
@@ -1097,9 +1109,9 @@ mod unix {
             }
         }
         let requested_event_seq =
-            exactly_one_event_seq("matching user_judgment_requested", requested.as_slice())?;
+            exactly_one_event_seq("matching user_action_requested", requested.as_slice())?;
         let recorded_event_seq =
-            exactly_one_event_seq("matching user_judgment_recorded", recorded.as_slice())?;
+            exactly_one_event_seq("matching user_action_resolved", recorded.as_slice())?;
         let run_event_seq = exactly_one_event_seq("matching run_recorded", runs.as_slice())?;
         if !(requested_event_seq < recorded_event_seq && recorded_event_seq < run_event_seq) {
             return Err(io::Error::other(format!(
@@ -1110,8 +1122,8 @@ mod unix {
         Ok((
             run,
             AuthorityEventOrder {
-                user_judgment_requested_event_seq: requested_event_seq,
-                user_judgment_recorded_event_seq: recorded_event_seq,
+                user_action_requested_event_seq: requested_event_seq,
+                user_action_resolved_event_seq: recorded_event_seq,
                 run_recorded_event_seq: run_event_seq,
             },
         ))
@@ -1130,7 +1142,7 @@ mod unix {
 
     struct LiveInboxFallback {
         inbox_command_template: &'static str,
-        answer_command_template: &'static str,
+        resolve_command_template: &'static str,
     }
 
     struct LiveHostIdentity {
@@ -1142,14 +1154,14 @@ mod unix {
 
     fn verify_ephemeral_inbox_fallback_shape(
         fixture: &LiveSmokeFixture,
-        observation: &LiveJudgmentObservation,
+        observation: &LiveUserActionObservation,
     ) -> Result<LiveInboxFallback, Box<dyn Error>> {
-        let judgment_id = observation
-            .judgment_id
+        let user_action_request_id = observation
+            .user_action_request_id
             .as_deref()
-            .ok_or_else(|| io::Error::other("pending Judgment id is missing"))?;
+            .ok_or_else(|| io::Error::other("pending user-action request id is missing"))?;
         if observation.option_ids.is_empty() {
-            return Err(io::Error::other("pending Judgment has no fallback choices").into());
+            return Err(io::Error::other("pending user action has no fallback choices").into());
         }
         let inbox = fixture.run_volicord([
             "inbox",
@@ -1162,16 +1174,16 @@ mod unix {
         assert_success("volicord inbox live fallback", &inbox);
         let inbox_text = stdout(&inbox);
         assert!(
-            inbox_text.contains(judgment_id),
-            "CLI inbox did not include pending Judgment {judgment_id}: {inbox_text}"
+            inbox_text.contains(user_action_request_id),
+            "CLI inbox did not include pending user action {user_action_request_id}: {inbox_text}"
         );
-        let answer_help = fixture.run_volicord(["inbox", "answer", "--help"])?;
-        assert_success("volicord inbox answer --help", &answer_help);
+        let answer_help = fixture.run_volicord(["inbox", "resolve", "--help"])?;
+        assert_success("volicord inbox resolve --help", &answer_help);
         assert!(
             stdout(&answer_help)
                 .lines()
-                .any(|line| line.trim() == LIVE_INBOX_ANSWER_USAGE),
-            "CLI inbox answer help no longer matches the verified fallback command shape: {}",
+                .any(|line| line.trim() == LIVE_INBOX_RESOLVE_USAGE),
+            "CLI inbox resolve help no longer matches the verified fallback command shape: {}",
             stdout(&answer_help)
         );
         println!(
@@ -1181,11 +1193,11 @@ mod unix {
                 "  {}\n",
                 "  {}\n"
             ),
-            LIVE_INBOX_COMMAND_TEMPLATE, LIVE_INBOX_ANSWER_COMMAND_TEMPLATE,
+            LIVE_INBOX_COMMAND_TEMPLATE, LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE,
         );
         Ok(LiveInboxFallback {
             inbox_command_template: LIVE_INBOX_COMMAND_TEMPLATE,
-            answer_command_template: LIVE_INBOX_ANSWER_COMMAND_TEMPLATE,
+            resolve_command_template: LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE,
         })
     }
 
@@ -1201,7 +1213,7 @@ mod unix {
 
     fn verify_fresh_authority_receipt(
         status_json: Value,
-        observation: &LiveJudgmentObservation,
+        observation: &LiveUserActionObservation,
         expected_result_summary: &str,
     ) -> Result<VerifiedLiveReceipt, Box<dyn Error>> {
         let status: StatusResult = serde_json::from_value(status_json)?;
@@ -1288,28 +1300,28 @@ mod unix {
         })
     }
 
-    fn confirm_native_judgment_choice(host: &str) -> Result<String, Box<dyn Error>> {
+    fn confirm_native_user_action_choice(host: &str) -> Result<String, Box<dyn Error>> {
         print!(
-            "\nConfirm the option you personally selected in the {host} native Judgment UI. Type `choice:{JUDGMENT_ROUTE_ALPHA_OPTION_ID}` or `choice:{JUDGMENT_ROUTE_BETA_OPTION_ID}`: "
+            "\nConfirm the option you personally selected in the {host} native user-action UI. Type `choice:{USER_ACTION_ROUTE_ALPHA_OPTION_ID}` or `choice:{USER_ACTION_ROUTE_BETA_OPTION_ID}`: "
         );
         io::stdout().flush()?;
         let mut confirmation = String::new();
         if io::stdin().read_line(&mut confirmation)? == 0 {
             return Err(io::Error::other(
-                "no operator confirmation was received for the native Judgment selection",
+                "no operator confirmation was received for the native user-action selection",
             )
             .into());
         }
-        parse_native_judgment_choice(confirmation.trim())
+        parse_native_user_action_choice(confirmation.trim())
     }
 
-    fn parse_native_judgment_choice(confirmation: &str) -> Result<String, Box<dyn Error>> {
+    fn parse_native_user_action_choice(confirmation: &str) -> Result<String, Box<dyn Error>> {
         let selected = confirmation
             .strip_prefix("choice:")
             .and_then(|option_id| run_marker_for_selected_option(option_id).map(|_| option_id))
             .ok_or_else(|| {
                 io::Error::other(format!(
-                    "operator selection confirmation must be `choice:{JUDGMENT_ROUTE_ALPHA_OPTION_ID}` or `choice:{JUDGMENT_ROUTE_BETA_OPTION_ID}`"
+                    "operator selection confirmation must be `choice:{USER_ACTION_ROUTE_ALPHA_OPTION_ID}` or `choice:{USER_ACTION_ROUTE_BETA_OPTION_ID}`"
                 ))
             })?;
         Ok(selected.to_owned())
@@ -1327,7 +1339,7 @@ mod unix {
     fn verify_live_stop_guard_event(
         runtime_home: &Path,
         connection_id: &str,
-        observation: &LiveJudgmentObservation,
+        observation: &LiveUserActionObservation,
         receipt: &VerifiedLiveReceipt,
     ) -> Result<VerifiedStopObservation, Box<dyn Error>> {
         let projects = list_projects(runtime_home)?;
@@ -1448,7 +1460,7 @@ mod unix {
     struct LiveCompletedSummaryInput<'a> {
         result: &'a str,
         identity: &'a LiveHostIdentity,
-        observation: &'a LiveJudgmentObservation,
+        observation: &'a LiveUserActionObservation,
         operator_choice_id: &'a str,
         selected_option_id: &'a str,
         latest_run: &'a LiveRunObservation,
@@ -1472,7 +1484,7 @@ mod unix {
             stop_receipt_ui_confirmed,
         } = input;
         serde_json::json!({
-            "kind": "live_host_judgment_release_validation",
+            "kind": "live_host_user_action_release_validation",
             "result": result,
             "host": {
                 "kind": identity.host,
@@ -1490,8 +1502,8 @@ mod unix {
                 "lifecycle_phase": observation.lifecycle_phase,
                 "state_version": observation.state_version
             },
-            "judgment": {
-                "judgment_id": observation.judgment_id,
+            "user_action": {
+                "user_action_request_id": observation.user_action_request_id,
                 "selected_option_id": selected_option_id,
                 "operator_confirmed_option_id": operator_choice_id,
                 "stored_choice_matches_operator": operator_choice_id == selected_option_id,
@@ -1505,16 +1517,16 @@ mod unix {
                 "changed_path_count": latest_run.changed_paths.len()
             },
             "authority_events": {
-                "user_judgment_requested_event_seq": authority_event_order.user_judgment_requested_event_seq,
-                "user_judgment_recorded_event_seq": authority_event_order.user_judgment_recorded_event_seq,
+                "user_action_requested_event_seq": authority_event_order.user_action_requested_event_seq,
+                "user_action_resolved_event_seq": authority_event_order.user_action_resolved_event_seq,
                 "run_recorded_event_seq": authority_event_order.run_recorded_event_seq,
-                "ordered": authority_event_order.user_judgment_requested_event_seq
-                    < authority_event_order.user_judgment_recorded_event_seq
-                    && authority_event_order.user_judgment_recorded_event_seq
+                "ordered": authority_event_order.user_action_requested_event_seq
+                    < authority_event_order.user_action_resolved_event_seq
+                    && authority_event_order.user_action_resolved_event_seq
                         < authority_event_order.run_recorded_event_seq
             },
             "native_ui": {
-                "judgment_selector_confirmed": true,
+                "user_action_selector_confirmed": true,
                 "operator_choice_confirmed": true,
                 "stop_system_message_authority_receipt_confirmed": stop_receipt_ui_confirmed
             },
@@ -1543,12 +1555,12 @@ mod unix {
 
     fn live_host_choice_mismatch_summary(
         identity: &LiveHostIdentity,
-        observation: &LiveJudgmentObservation,
+        observation: &LiveUserActionObservation,
         operator_choice_id: &str,
         selected_option_id: &str,
     ) -> Value {
         serde_json::json!({
-            "kind": "live_host_judgment_release_validation",
+            "kind": "live_host_user_action_release_validation",
             "result": "failed_choice_mismatch",
             "host": {
                 "kind": identity.host,
@@ -1566,15 +1578,15 @@ mod unix {
                 "lifecycle_phase": observation.lifecycle_phase,
                 "state_version": observation.state_version
             },
-            "judgment": {
-                "judgment_id": observation.judgment_id,
+            "user_action": {
+                "user_action_request_id": observation.user_action_request_id,
                 "selected_option_id": selected_option_id,
                 "operator_confirmed_option_id": operator_choice_id,
                 "stored_choice_matches_operator": false,
                 "user_channel_basis": observation.resolved_verification_basis
             },
             "native_ui": {
-                "judgment_selector_confirmed": true,
+                "user_action_selector_confirmed": true,
                 "operator_choice_confirmed": true,
                 "stop_system_message_authority_receipt_confirmed": false
             },
@@ -1588,11 +1600,11 @@ mod unix {
 
     fn live_host_fallback_summary(
         identity: &LiveHostIdentity,
-        observation: &LiveJudgmentObservation,
+        observation: &LiveUserActionObservation,
         fallback: &LiveInboxFallback,
     ) -> Value {
         serde_json::json!({
-            "kind": "live_host_judgment_release_validation",
+            "kind": "live_host_user_action_release_validation",
             "result": "failed_native_elicitation",
             "host": {
                 "kind": identity.host,
@@ -1610,12 +1622,12 @@ mod unix {
                 "lifecycle_phase": observation.lifecycle_phase,
                 "state_version": observation.state_version
             },
-            "judgment": {
-                "judgment_id": observation.judgment_id,
-                "status": observation.judgment_status
+            "user_action": {
+                "user_action_request_id": observation.user_action_request_id,
+                "status": observation.user_action_status
             },
             "native_ui": {
-                "judgment_selector_confirmed": false,
+                "user_action_selector_confirmed": false,
                 "operator_choice_confirmed": false,
                 "stop_system_message_authority_receipt_confirmed": false
             },
@@ -1626,7 +1638,7 @@ mod unix {
                 "fixture_is_ephemeral": true,
                 "commands_are_runnable_after_test": false,
                 "inbox_command_template": fallback.inbox_command_template,
-                "answer_command_template": fallback.answer_command_template
+                "resolve_command_template": fallback.resolve_command_template
             }
         })
     }
@@ -1672,7 +1684,7 @@ mod unix {
             if recorder.result_path.is_some() {
                 recorder.write_external_summary(
                     &serde_json::json!({
-                        "kind": "live_host_judgment_release_validation",
+                        "kind": "live_host_user_action_release_validation",
                         "result": "running",
                         "host": { "kind": host }
                     }),
@@ -1735,7 +1747,7 @@ mod unix {
             }
             let _ = self.write_external_summary(
                 &serde_json::json!({
-                    "kind": "live_host_judgment_release_validation",
+                    "kind": "live_host_user_action_release_validation",
                     "result": "failed_before_completion",
                     "host": { "kind": self.host }
                 }),
@@ -1950,7 +1962,7 @@ mod unix {
                    JOIN diagnostic_sessions s ON s.session_id = e.session_id
                   WHERE s.connection_id = ?1
                     AND s.project_id = ?2
-                    AND e.tool_name = 'volicord.request_user_judgment'
+                    AND e.tool_name = 'volicord.request_user_action'
                     AND e.user_channel_kind = 'mcp_elicitation'",
             [connection_id, project_id],
             |row| row.get::<_, u64>(0),

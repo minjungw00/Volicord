@@ -6,7 +6,7 @@ use std::{
     time::SystemTime,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -15,7 +15,7 @@ use volicord_store::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
         CoreStorageMutation, MutationCommitOutcome, PendingTaskEvent, ProjectStateHeader,
     },
-    StoreError, StoreFailureRoute,
+    StoreError, StoreFailureRoute, StoreResult,
 };
 use volicord_types::{
     canonical_request_hash, ActorSource, ChangeUnitId, DryRunSummary, DurableIdError,
@@ -23,7 +23,7 @@ use volicord_types::{
     GuaranteeDisclosure, IdempotencyKey, JsonObject, MethodName, OperationCategory,
     OperationResultRef, ProjectId, RandomDurableIdGenerator, RequestHash, ResponseKind, TaskId,
     ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase,
-    DURABLE_ID_RETRY_LIMIT,
+    UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::policy::{
@@ -151,7 +151,7 @@ impl InvocationContext {
         self
     }
 
-    /// Marks whether this invocation can use host prompt elicitation for user judgments.
+    /// Marks whether this invocation can use host prompt elicitation for user actions.
     pub fn with_host_elicitation_available(mut self, available: bool) -> Self {
         self.host_elicitation_available = available;
         self
@@ -245,6 +245,7 @@ pub(crate) struct MethodPolicy {
     pub(crate) replay: ReplayPolicy,
     pub(crate) freshness: FreshnessPolicy,
     pub(crate) effect: MethodEffectPolicy,
+    pub(crate) current_state_default: bool,
 }
 
 impl MethodPolicy {
@@ -261,7 +262,15 @@ impl MethodPolicy {
             replay,
             freshness,
             effect,
+            current_state_default: false,
         }
+    }
+
+    /// Allows an owner-defined mutation to pin the current project state when
+    /// its public request deliberately omits `expected_state_version`.
+    pub(crate) fn with_current_state_default(mut self) -> Self {
+        self.current_state_default = true;
+        self
     }
 
     #[cfg(test)]
@@ -364,6 +373,7 @@ pub(crate) struct PreparedRequest {
     pub request_hash: RequestHash,
     pub store: CoreProjectStore,
     pub context: VerifiedRequestContext,
+    pub operation_now: UtcTimestamp,
 }
 
 /// Preflight may either prepare a request or return an authoritative response.
@@ -442,8 +452,32 @@ impl CoreService {
         }
     }
 
-    pub(crate) fn now(&self) -> DateTime<Utc> {
-        self.clock.now()
+    pub(crate) fn project_now(&self, store: &CoreProjectStore) -> CoreResult<UtcTimestamp> {
+        self.canonical_project_now(store)
+            .map_err(CorePipelineError::from)
+    }
+
+    pub(crate) fn project_store_now(&self, store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
+        self.canonical_project_now(store)
+    }
+
+    fn canonical_project_now(&self, store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
+        let sampled = self.clock.project_now(store)?;
+        sampled
+            .ensure_canonical_rfc3339_representable()
+            .map_err(|_| StoreError::InvalidInput {
+                detail:
+                    "Core clock sample must have a canonical four-digit RFC 3339 representation"
+                        .to_owned(),
+            })?;
+        let floor = store.current_clock_floor()?;
+        let canonical = std::cmp::max(sampled, floor);
+        store.remember_clock_sample(&canonical);
+        Ok(canonical)
+    }
+
+    pub(crate) fn runtime_home(&self) -> &Path {
+        &self.runtime_home
     }
 
     pub(crate) fn allocate_generated_id(
@@ -630,11 +664,33 @@ impl CoreService {
         }
 
         let verified_actor = VerifiedActorContext::from_verified_invocation(&verified_invocation);
+        let mut prepared_envelope = request.envelope;
+        if request.policy.current_state_default
+            && !prepared_envelope.dry_run
+            && prepared_envelope.expected_state_version.is_none()
+        {
+            prepared_envelope.expected_state_version = Some(project_state.state_version).into();
+        }
 
+        let operation_now = match self.project_now(&store) {
+            Ok(operation_now) => operation_now,
+            Err(CorePipelineError::Store(error)) => {
+                return response_outcome_from_rejected(
+                    rejected_response(
+                        prepared_envelope.dry_run,
+                        Some(project_state.state_version),
+                        vec![store_failure_error(error)],
+                    ),
+                    Some(verified_invocation),
+                    resolved_task_id,
+                )
+            }
+            Err(error) => return Err(error),
+        };
         Ok(PipelinePreflightOutcome::Prepared(Box::new(
             PreparedRequest {
                 method_name: request.method_name,
-                envelope: request.envelope,
+                envelope: prepared_envelope,
                 request_hash,
                 store,
                 context: VerifiedRequestContext {
@@ -643,6 +699,7 @@ impl CoreService {
                     verified_actor,
                     resolved_task_id,
                 },
+                operation_now,
             },
         )))
     }
@@ -748,6 +805,8 @@ impl CoreService {
                         storage_mutations,
                         task_id: &task_id,
                         verified_invocation: verified_invocation.clone(),
+                        clock_floor: &prepared.operation_now,
+                        include_live_storage_time: self.clock.include_live_storage_time_at_commit(),
                     },
                 ) {
                     Ok(response) => Ok(response),
@@ -783,6 +842,17 @@ fn open_store_for_policy(
 pub trait Clock: fmt::Debug + Send + Sync {
     /// Returns the current UTC timestamp.
     fn now(&self) -> DateTime<Utc>;
+
+    /// Samples the current UTC timestamp for one opened project Store.
+    fn project_now(&self, _store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
+        Ok(UtcTimestamp::from_datetime(self.now()))
+    }
+
+    /// Whether mutation commit must also include SQLite's live UTC candidate.
+    /// Injected clocks replace that source unless they explicitly opt in.
+    fn include_live_storage_time_at_commit(&self) -> bool {
+        false
+    }
 }
 
 /// Production UTC clock backed by the system clock.
@@ -791,8 +861,30 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> DateTime<Utc> {
-        DateTime::<Utc>::from(SystemTime::now())
+        canonical_core_utc_timestamp(DateTime::<Utc>::from(SystemTime::now()))
     }
+
+    fn project_now(&self, store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
+        let timestamp = store.current_timestamp()?;
+        UtcTimestamp::parse(&timestamp).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "project_state",
+                &store.project_record().project_id,
+                "updated_at",
+            )
+        })
+    }
+
+    fn include_live_storage_time_at_commit(&self) -> bool {
+        true
+    }
+}
+
+fn canonical_core_utc_timestamp(timestamp: DateTime<Utc>) -> DateTime<Utc> {
+    let millisecond_nanos = timestamp.timestamp_subsec_millis() * 1_000_000;
+    timestamp
+        .with_nanosecond(millisecond_nanos)
+        .expect("millisecond precision is always a valid UTC nanosecond")
 }
 
 /// Builds a common method-result base.
@@ -928,7 +1020,7 @@ fn validate_committed_effect_envelope(
             "committed mutations require idempotency_key",
         )];
     }
-    if envelope.expected_state_version.is_none() {
+    if envelope.expected_state_version.is_none() && !policy.current_state_default {
         return vec![validation_error(
             "expected_state_version",
             "committed mutations require expected_state_version",
@@ -1160,6 +1252,8 @@ struct CommitPipelineArgs<'a> {
     storage_mutations: Vec<CoreStorageMutation>,
     task_id: &'a TaskId,
     verified_invocation: VerifiedInvocationContext,
+    clock_floor: &'a UtcTimestamp,
+    include_live_storage_time: bool,
 }
 
 fn commit_mutation(
@@ -1178,10 +1272,12 @@ fn commit_mutation(
         storage_mutations,
         task_id,
         verified_invocation,
+        clock_floor,
+        include_live_storage_time,
     } = args;
 
     let replay_context = replay_context_from_verified_invocation(&verified_invocation)?;
-    let input = commit_input(
+    let mut input = commit_input(
         &envelope.project_id,
         method_name,
         envelope.idempotency_key.as_ref(),
@@ -1196,6 +1292,8 @@ fn commit_mutation(
             event_payload_json: serde_json::to_string(&Value::Object(event_payload))?,
         }],
     );
+    input.clock_floor = Some(clock_floor.to_string());
+    input.include_live_storage_time = include_live_storage_time;
 
     let outcome = store.commit_mutation(
         input,
@@ -1303,7 +1401,7 @@ fn commit_mutation(
     }
 }
 
-fn operation_result_ref(
+pub(crate) fn operation_result_ref(
     response_json: &str,
     project_id: &ProjectId,
     source_method: MethodName,
@@ -1640,6 +1738,21 @@ mod tests {
     const PROJECT_ID: &str = "project_a";
     const TASK_ID: &str = "task_a";
     const CONNECTION_ID: &str = "connection_main";
+
+    #[test]
+    fn system_clock_creation_is_not_after_a_same_millisecond_core_utc_read() {
+        let system_sample = DateTime::parse_from_rfc3339("2026-07-13T12:34:56.123456789Z")
+            .expect("test timestamp should be RFC3339")
+            .with_timezone(&Utc);
+        let sqlite_core_read = DateTime::parse_from_rfc3339("2026-07-13T12:34:56.123Z")
+            .expect("test timestamp should be RFC3339")
+            .with_timezone(&Utc);
+
+        let created_at = canonical_core_utc_timestamp(system_sample);
+
+        assert_eq!(created_at, sqlite_core_read);
+        assert!(created_at <= sqlite_core_read);
+    }
 
     #[test]
     fn operation_result_unavailable_uses_public_error_precedence() {
@@ -1991,6 +2104,52 @@ mod tests {
         assert_eq!(after.task_events, before.task_events + 1);
         assert_eq!(after.tool_invocations, before.tool_invocations + 1);
         assert_eq!(after.tasks, before.tasks);
+        Ok(())
+    }
+
+    #[test]
+    fn owner_current_state_default_is_pinned_by_core_preflight() -> Result<(), Box<dyn Error>> {
+        let harness = PipelineHarness::new()?;
+        let envelope = envelope(
+            "req_current_state_default",
+            Some("idem_current_state_default"),
+            false,
+            None,
+            Some(TASK_ID),
+        );
+        let request_json = request_json(
+            MethodName::ResolveUserAction,
+            &envelope,
+            "current-state-default",
+        );
+        let prepared = match harness.service.prepare_request(PipelinePreflightRequest {
+            method_name: MethodName::ResolveUserAction,
+            envelope,
+            request_json,
+            invocation: invocation_with_actor(ActorSource::LocalUser, OperationCategory::UserOnly),
+            policy: MethodPolicy::exact(
+                OperationCategory::UserOnly,
+                TaskRequirement::Required,
+                ReplayPolicy::Committed,
+                FreshnessPolicy::IfPresent,
+                MethodEffectPolicy::CoreMutation,
+            )
+            .with_current_state_default(),
+        })? {
+            PipelinePreflightOutcome::Prepared(prepared) => *prepared,
+            PipelinePreflightOutcome::Response(response) => {
+                panic!(
+                    "current-state default unexpectedly rejected: {}",
+                    response.response_json
+                )
+            }
+        };
+
+        assert_eq!(prepared.envelope.expected_state_version.as_ref(), Some(&0));
+        let response = harness
+            .service
+            .execute_prepared_request(prepared, commit_branch("current-state-default"))?;
+        assert_eq!(response.response_value["base"]["state_version"], 1);
         Ok(())
     }
 

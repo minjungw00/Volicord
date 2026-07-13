@@ -1,5 +1,6 @@
 use std::fs;
 
+use chrono::Duration;
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -8,7 +9,7 @@ use volicord_types::{
     validate_evidence_capture_limitations, validate_evidence_capture_observed_outcome,
     AgentSessionId, ConnectionObservationSourceKind, EvidenceCaptureSpec, EvidenceProducerKind,
     JsonObject, PersistedEvidenceCaptureReceiptBody, RedactionState, RequiredNullable,
-    UtcTimestamp,
+    UtcTimestamp, EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
 };
 
 use crate::{
@@ -16,13 +17,42 @@ use crate::{
         insert_artifact_staging_tx, validate_insert as validate_staging_insert,
         ArtifactStagingInsert, StagedPayloadKind,
     },
-    core_pipeline::CoreProjectStore,
+    core_pipeline::{advance_project_utc_floor_tx, CoreProjectStore},
     sqlite::{begin_immediate_transaction, ARTIFACTS_DIR, ARTIFACTS_TMP_DIR},
     StoreError, StoreResult,
 };
 
 /// Maximum serialized safe receipt body accepted by the source-fulfillment path.
 pub const MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES: usize = 24 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EvidenceCaptureIntentWindowError {
+    CreatedAt,
+    ExpiresAt,
+}
+
+pub(crate) fn validate_evidence_capture_intent_window(
+    created_at: &str,
+    expires_at: &str,
+) -> Result<(UtcTimestamp, UtcTimestamp), EvidenceCaptureIntentWindowError> {
+    let created_at =
+        UtcTimestamp::parse(created_at).map_err(|_| EvidenceCaptureIntentWindowError::CreatedAt)?;
+    created_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| EvidenceCaptureIntentWindowError::CreatedAt)?;
+    let expires_at =
+        UtcTimestamp::parse(expires_at).map_err(|_| EvidenceCaptureIntentWindowError::ExpiresAt)?;
+    expires_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| EvidenceCaptureIntentWindowError::ExpiresAt)?;
+    let expected_expires_at = created_at
+        .checked_add(Duration::minutes(EVIDENCE_CAPTURE_INTENT_TTL_MINUTES))
+        .map_err(|_| EvidenceCaptureIntentWindowError::ExpiresAt)?;
+    if expires_at != expected_expires_at {
+        return Err(EvidenceCaptureIntentWindowError::ExpiresAt);
+    }
+    Ok((created_at, expires_at))
+}
 
 /// Storage input for inserting one immutable evidence-capture intent in a Core commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,6 +363,10 @@ impl CoreProjectStore {
                 id: input.evidence_capture_intent_id.clone(),
             })?;
         let source_claims = validate_receipt_against_intent(&input, &intent)?;
+        let created_at =
+            UtcTimestamp::parse(&input.created_at).map_err(|_| StoreError::InvalidInput {
+                detail: "created_at must be a valid RFC 3339 timestamp".to_owned(),
+            })?;
 
         let safe_bytes = input.safe_receipt_json.as_bytes().to_vec();
         let safe_receipt_sha256 = sha256_hex(&safe_bytes);
@@ -364,6 +398,7 @@ impl CoreProjectStore {
             .join(ARTIFACTS_TMP_DIR);
         fs::create_dir_all(&tmp_dir)?;
         let tx = begin_immediate_transaction(&mut self.conn)?;
+        let clock_floor = advance_project_utc_floor_tx(&tx, &self.project.project_id, &created_at)?;
         let (_, write_path) =
             insert_artifact_staging_tx(&tx, &self.project.project_id, &tmp_dir, staging)?;
 
@@ -451,6 +486,7 @@ impl CoreProjectStore {
             let _ = fs::remove_file(&write_path);
             return Err(StoreError::from(error));
         }
+        self.remember_clock_sample(&clock_floor);
 
         self.evidence_capture_receipt_record(&input.evidence_capture_receipt_id)?
             .ok_or_else(|| {
@@ -467,8 +503,9 @@ fn read_intent(
     project_id: &str,
     intent_id: &str,
 ) -> StoreResult<Option<EvidenceCaptureIntentRecord>> {
-    conn.query_row(
-        "SELECT project_id, evidence_capture_intent_id, task_id, change_unit_id,
+    let record = conn
+        .query_row(
+            "SELECT project_id, evidence_capture_intent_id, task_id, change_unit_id,
                 scope_revision, baseline_ref, target_json, capture_kind,
                 capture_spec_json, input_sha256, expected_outcome_json,
                 requested_by_actor_source, requesting_connection_internal_id,
@@ -476,33 +513,52 @@ fn read_intent(
                 metadata_json
            FROM evidence_capture_intents
           WHERE project_id = ?1 AND evidence_capture_intent_id = ?2",
-        params![project_id, intent_id],
-        |row| {
-            let scope_revision = row.get::<_, i64>(4)?;
-            Ok(EvidenceCaptureIntentRecord {
-                project_id: row.get(0)?,
-                evidence_capture_intent_id: row.get(1)?,
-                task_id: row.get(2)?,
-                change_unit_id: row.get(3)?,
-                scope_revision: nonnegative(scope_revision, 4)?,
-                baseline_ref: row.get(5)?,
-                target_json: row.get(6)?,
-                capture_kind: row.get(7)?,
-                capture_spec_json: row.get(8)?,
-                input_sha256: row.get(9)?,
-                expected_outcome_json: row.get(10)?,
-                requested_by_actor_source: row.get(11)?,
-                requesting_connection_internal_id: row.get(12)?,
-                session_context_json: row.get(13)?,
-                workspace_context_json: row.get(14)?,
-                created_at: row.get(15)?,
-                expires_at: row.get(16)?,
-                metadata_json: row.get(17)?,
-            })
+            params![project_id, intent_id],
+            |row| {
+                let scope_revision = row.get::<_, i64>(4)?;
+                Ok(EvidenceCaptureIntentRecord {
+                    project_id: row.get(0)?,
+                    evidence_capture_intent_id: row.get(1)?,
+                    task_id: row.get(2)?,
+                    change_unit_id: row.get(3)?,
+                    scope_revision: nonnegative(scope_revision, 4)?,
+                    baseline_ref: row.get(5)?,
+                    target_json: row.get(6)?,
+                    capture_kind: row.get(7)?,
+                    capture_spec_json: row.get(8)?,
+                    input_sha256: row.get(9)?,
+                    expected_outcome_json: row.get(10)?,
+                    requested_by_actor_source: row.get(11)?,
+                    requesting_connection_internal_id: row.get(12)?,
+                    session_context_json: row.get(13)?,
+                    workspace_context_json: row.get(14)?,
+                    created_at: row.get(15)?,
+                    expires_at: row.get(16)?,
+                    metadata_json: row.get(17)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(StoreError::from)?;
+    record.map(validate_intent_record).transpose()
+}
+
+fn validate_intent_record(
+    record: EvidenceCaptureIntentRecord,
+) -> StoreResult<EvidenceCaptureIntentRecord> {
+    validate_evidence_capture_intent_window(&record.created_at, &record.expires_at).map_err(
+        |field| {
+            StoreError::corrupt_owner_state_value(
+                "evidence_capture_intents",
+                record.evidence_capture_intent_id.clone(),
+                match field {
+                    EvidenceCaptureIntentWindowError::CreatedAt => "created_at",
+                    EvidenceCaptureIntentWindowError::ExpiresAt => "expires_at",
+                },
+            )
         },
-    )
-    .optional()
-    .map_err(StoreError::from)
+    )?;
+    Ok(record)
 }
 
 fn read_receipt(
@@ -736,9 +792,15 @@ fn validate_receipt_input(input: &EvidenceCaptureReceiptInsert) -> StoreResult<(
         ("created_at", input.created_at.as_str()),
         ("staging_expires_at", input.staging_expires_at.as_str()),
     ] {
-        UtcTimestamp::parse(value).map_err(|_| StoreError::InvalidInput {
-            detail: format!("{field} must be a valid RFC 3339 timestamp"),
-        })?;
+        UtcTimestamp::parse(value)
+            .and_then(|timestamp| {
+                timestamp
+                    .ensure_canonical_rfc3339_representable()
+                    .map_err(|_| volicord_types::UtcTimestampParseError)
+            })
+            .map_err(|_| StoreError::InvalidInput {
+                detail: format!("{field} must be a canonical four-digit RFC 3339 timestamp"),
+            })?;
     }
     if input.safe_receipt_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES {
         return Err(StoreError::InvalidInput {
@@ -910,20 +972,29 @@ fn validate_receipt_against_intent(
         UtcTimestamp::parse(&input.created_at).map_err(|_| StoreError::InvalidInput {
             detail: "created_at must be a valid RFC 3339 timestamp".to_owned(),
         })?;
-    let intent_created_at = UtcTimestamp::parse(&intent.created_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "evidence_capture_intents",
-            intent.evidence_capture_intent_id.clone(),
-            "created_at",
-        )
-    })?;
-    let expires_at = UtcTimestamp::parse(&intent.expires_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "evidence_capture_intents",
-            intent.evidence_capture_intent_id.clone(),
-            "expires_at",
-        )
-    })?;
+    observed_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "observed_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
+        })?;
+    created_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "created_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
+        })?;
+    let (intent_created_at, expires_at) =
+        validate_evidence_capture_intent_window(&intent.created_at, &intent.expires_at).map_err(
+            |field| {
+                StoreError::corrupt_owner_state_value(
+                    "evidence_capture_intents",
+                    intent.evidence_capture_intent_id.clone(),
+                    match field {
+                        EvidenceCaptureIntentWindowError::CreatedAt => "created_at",
+                        EvidenceCaptureIntentWindowError::ExpiresAt => "expires_at",
+                    },
+                )
+            },
+        )?;
     if observed_at < intent_created_at || observed_at >= expires_at {
         return Err(StoreError::Conflict {
             entity: "evidence_capture_intent",
@@ -1186,10 +1257,75 @@ mod tests {
     }
 
     #[test]
+    fn intent_read_rejects_noncanonical_or_nonfixed_time_windows_without_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        for (variant, created_at, expires_at, expected_column) in [
+            (
+                "unrepresentable_created_at",
+                "9999-12-31T23:59:59-23:59",
+                "2026-07-13T00:15:00Z",
+                "created_at",
+            ),
+            (
+                "unrepresentable_expires_at",
+                "2026-07-13T00:00:00Z",
+                "9999-12-31T23:59:59-23:59",
+                "expires_at",
+            ),
+            (
+                "reversed",
+                "2026-07-13T00:15:00Z",
+                "2026-07-13T00:00:00Z",
+                "expires_at",
+            ),
+            (
+                "extended_ttl",
+                "2026-07-13T00:00:00Z",
+                "2026-07-13T00:16:00Z",
+                "expires_at",
+            ),
+        ] {
+            let harness = CaptureHarness::new()?;
+            let store = harness.store()?;
+            seed_intent(&store)?;
+            store.conn.execute(
+                "UPDATE evidence_capture_intents
+                    SET created_at = ?3,
+                        expires_at = ?4
+                  WHERE project_id = ?1
+                    AND evidence_capture_intent_id = ?2",
+                rusqlite::params!["project_capture", "intent_capture", created_at, expires_at],
+            )?;
+            let before = store.effect_counts()?;
+            let error = store
+                .evidence_capture_intent_record("intent_capture")
+                .expect_err("corrupt intent window should fail closed");
+            assert!(
+                matches!(
+                    &error,
+                    StoreError::CorruptOwnerStateValue {
+                        table: "evidence_capture_intents",
+                        logical_column,
+                        ..
+                    } if *logical_column == expected_column
+                ),
+                "variant {variant} returned {error}"
+            );
+            assert_eq!(store.effect_counts()?, before, "variant {variant}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn source_fulfillment_is_atomic_bounded_and_one_per_intent() -> Result<(), Box<dyn Error>> {
         let harness = CaptureHarness::new()?;
         let mut store = harness.store()?;
         seed_intent(&store)?;
+        store.conn.execute(
+            "UPDATE project_state SET updated_at = '2026-01-01T00:00:00Z'
+              WHERE project_id = 'project_capture'",
+            [],
+        )?;
         let before = store.effect_counts()?;
 
         let first = store
@@ -1212,6 +1348,12 @@ mod tests {
         assert_eq!(
             after_first.evidence_capture_source_claims,
             before.evidence_capture_source_claims + 1
+        );
+        let state = store.project_state()?;
+        assert_eq!(state.updated_at, first.created_at);
+        assert!(
+            UtcTimestamp::parse(&store.current_timestamp()?)?
+                >= UtcTimestamp::parse(&first.created_at)?
         );
         let claims = store.evidence_capture_source_claims_for_receipt("receipt_capture")?;
         assert_eq!(claims.len(), 1);

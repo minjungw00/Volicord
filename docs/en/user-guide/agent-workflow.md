@@ -142,7 +142,7 @@ Channel path. The stable CLI fallback is:
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 Exact input methods and command behavior belong to

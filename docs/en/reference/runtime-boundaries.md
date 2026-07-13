@@ -29,9 +29,9 @@ Volicord keeps product, implementation, executable-role, MCP host term, and auth
 | Volicord installation | The deployed subset of Volicord executables and required runtime resources. | It does not imply that documentation, tests, source files, or repository metadata are present in every installation. |
 | `volicord` administrative process | The administrative CLI executable/process within Volicord implementation. | It is not a synonym for Volicord or for all of Volicord implementation. |
 | `volicord mcp --stdio` MCP adapter process | The local stdio MCP adapter executable/process within Volicord implementation. | It is not separate from Volicord implementation and not the whole Volicord implementation by itself. |
-| `Agent Connection` | The local MCP host connection unit stored with `connection_internal_id`, a connection intent, host scope, and `connection.mode` of `workflow` or `read_only`. | It is not an OS sandbox, filesystem ACL, network policy, secret-isolation mechanism, user-facing identifier requirement, or user-judgment path. |
+| `Agent Connection` | The local MCP host connection unit stored with `connection_internal_id`, a connection intent, host scope, and `connection.mode` of `workflow` or `read_only`. | It is not an OS sandbox, filesystem ACL, network policy, secret-isolation mechanism, user-facing identifier requirement, or user-action resolution path. |
 | `Connection Projects` | The explicit allowlist of `project_internal_id` values an Agent Connection may address after user-facing repository-root selection. | It does not include every registered project by default and does not prove Product Repository authority. |
-| `User Channel` | The local user path for recording authority-bearing user judgments. | It is not an Agent Connection, MCP host, generated display, or Product Repository file. |
+| `User Channel` | The local user path for recording authority-bearing user actions, including judgments and evidence observations. | It is not an Agent Connection, MCP host, generated display, or Product Repository file. |
 | MCP server | An ordinary MCP protocol or host-configuration term that may name a server entry or process exposed to an MCP host, including a local stdio adapter process such as `volicord mcp --stdio` when the host uses that label. | It does not make Volicord as a product/system, Volicord implementation, `volicord`, or `volicord mcp --stdio` a TCP or HTTP network server, and it is not a product label for Volicord. |
 
 When a behavior is performed by one executable role, name that role. Bare Volicord implementation should be reserved for the implementation set or for statements that apply to the set as a whole.
@@ -53,7 +53,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **`Volicord Runtime Home`**
 
-- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel judgments, artifacts, and session-watch records. The separate diagnostics database stores only bounded local operability aggregates.
+- **Contains:** `registry.sqlite`; the lazily created non-authority `diagnostics.sqlite`; per-project `projects/{project_internal_id}/state.sqlite`; and project artifact storage such as `projects/{project_internal_id}/artifacts/` when artifact storage is used. The registry stores Runtime Home identity and paths, installation profiles, repository-root-based project registrations, project aliases, Agent Connections, Connection Projects membership, host-hook installations, and `managed host configuration state`. Project state can store tasks, change units, write tickets, evidence metadata, User Channel user-action resolutions, artifacts, and session-watch records. The separate diagnostics database stores only bounded local operability aggregates.
 - **Used by:** `volicord init`, project, connection, inbox, changes, doctor, diagnostics, and hidden internal hook commands through their owner-defined paths. `volicord doctor --privacy-footprint` reports storage categories and counts without printing row bodies. `volicord diagnostics session` reads only the bounded diagnostics store after normal setup checks. `volicord mcp --stdio`, Core, and Store use Runtime Home state for startup, project routing, Core state, artifacts, and best-effort operability aggregation.
 - **Boundary:** It is not a Product Repository, external host configuration, or installation directory. It does not provide or prove OS sandboxing, network isolation, scanning, host trust, actor attribution, write prevention, tamper-proof audit, full filesystem monitoring, correctness, test sufficiency, review completion, final acceptance, or residual-risk acceptance.
 
@@ -85,7 +85,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 - **Handles:** One local stdio child process bound to one Agent Connection, either by an explicit local ID or by a unique local repository-discovery result. It resolves Runtime Home, validates connection state, exposes tools by `connection.mode`, selects allowed projects, derives adapter-owned invocation facts, and routes public method calls through Core and Store. Repository discovery canonicalizes the current Git worktree and narrows the process to the one registered project selected in the local Runtime Home.
 - **Started by:** An MCP host, which communicates through stdin/stdout.
-- **Boundary:** It does not grant arbitrary product-file edit authority or authority to record user judgments. It does not enforce host trust, provide sandboxing, or open an MCP network transport listener. Unless disabled, the process may separately bind an ephemeral loopback-only HTTP listener for local User Channel consent; that listener is not the MCP transport.
+- **Boundary:** It does not grant arbitrary product-file edit authority or authority to record user-action resolutions. It does not enforce host trust, provide sandboxing, or open an MCP network transport listener. Unless disabled, the process may separately bind an ephemeral loopback-only HTTP listener for local User Channel consent; that listener is not the MCP transport.
 
 <a id="runtime-location-product-repository"></a>
 ### `Product Repository`
@@ -278,7 +278,7 @@ Exact executable behavior, environment variables, framing, startup validation or
 
 An Agent Connection is the local MCP host connection unit for `volicord mcp --stdio`. The connection has `connection_internal_id`, a connection intent of `personal`, `shared`, or `global`, host scope, `connection.mode=workflow` or `connection.mode=read_only`, and can address only the explicitly allowed `project_internal_id` values in its Connection Projects allowlist. User-facing administrative commands select the connection by host, intent, and repository root rather than requiring internal identities. MCP-visible project selection uses a `project_selector` returned by Volicord.
 
-An Agent Connection can request user judgments through supported API paths, but it cannot record authority-bearing user judgments. Those judgments are recorded through the `User Channel` with `actor_source=local_user`.
+An Agent Connection can request user actions through supported API paths, but it cannot record authority-bearing user-action resolutions. Those resolutions are recorded through the `User Channel` with `actor_source=local_user`.
 
 Must not infer:
 - A copied `connection_id` process-binding value proves authority, user identity, OS permission, host trust, or capability.
@@ -379,7 +379,7 @@ This document only keeps the locations and non-inference rules distinct.
 
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): storage record layout, effects, artifacts, schema initialization, versioning, and runtime data details.
 - [API Methods](api/methods.md) and method owner documents: method routing and method behavior.
-- [Core Model](core-model.md): Core authority, User Channel judgment boundaries, `actor_source`, write ticket, acceptance, and residual risk.
+- [Core Model](core-model.md): Core authority, User Channel user-action boundaries, `actor_source`, write ticket, acceptance, and residual risk.
 - [Security](security.md): security claims, non-claims, trust boundaries, guarantee levels, `operation_category`, and Agent Connection authority non-inference.
 - [Projection Authority Reference](projection-and-templates.md): projection authority and freshness boundaries.
 - [Template Bodies](template-bodies.md): rendered template body contracts.

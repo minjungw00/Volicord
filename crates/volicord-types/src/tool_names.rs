@@ -24,11 +24,11 @@ pub const STAGE_ARTIFACT_TOOL_NAME: &str = MethodName::StageArtifact.as_str();
 /// MCP-visible tool name for `volicord.record_run`.
 pub const RECORD_RUN_TOOL_NAME: &str = MethodName::RecordRun.as_str();
 
-/// MCP-visible tool name for `volicord.request_user_judgment`.
-pub const REQUEST_USER_JUDGMENT_TOOL_NAME: &str = MethodName::RequestUserJudgment.as_str();
+/// MCP-visible tool name for `volicord.request_user_action`.
+pub const REQUEST_USER_ACTION_TOOL_NAME: &str = MethodName::RequestUserAction.as_str();
 
 /// Public User Channel method name not exposed through Agent Connection MCP tool lists.
-pub const RECORD_USER_JUDGMENT_TOOL_NAME: &str = MethodName::RecordUserJudgment.as_str();
+pub const RESOLVE_USER_ACTION_TOOL_NAME: &str = MethodName::ResolveUserAction.as_str();
 
 /// MCP-visible tool name for `volicord.reconcile_changes`.
 pub const RECONCILE_CHANGES_TOOL_NAME: &str = MethodName::ReconcileChanges.as_str();
@@ -52,7 +52,7 @@ pub const WORKFLOW_METHOD_TOOL_NAMES: [&str; 12] = [
     PREPARE_WRITE_TOOL_NAME,
     STAGE_ARTIFACT_TOOL_NAME,
     RECORD_RUN_TOOL_NAME,
-    REQUEST_USER_JUDGMENT_TOOL_NAME,
+    REQUEST_USER_ACTION_TOOL_NAME,
     RECONCILE_CHANGES_TOOL_NAME,
     CHECK_CLOSE_TOOL_NAME,
     CLOSE_TASK_TOOL_NAME,

@@ -60,7 +60,14 @@ exists, `keep_current` rejects a Task `baseline_ref` change; the caller must use
 - Optional `change_unit.effect_contract` when creating or replacing the current Change Unit. When present, the object uses `ChangeUnitEffectContract`; when absent, the Change Unit has no extra effect contract.
 - `related_scope_decision_refs` when the update applies a resolved `judgment_kind=scope_decision`.
 
-When a scope update applies a `scope_decision`, each referenced judgment must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, `basis.compatibility_status=current`, `required_for` that includes scope update, and a basis compatible with the current Task, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, stale, superseded, expired, invalid-basis, resolution-incomplete, or agent-recorded scope decisions do not authorize a scope transition.
+When a scope update applies a `scope_decision`, each referenced judgment must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, `basis.coordinates.compatibility_status=current`, `required_for` that includes scope update, and a basis compatible with the current Task, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, stale, superseded, expired, invalid-basis, resolution-incomplete, or agent-recorded scope decisions do not authorize a scope transition.
+
+Before applying any scope or Change Unit effect, Core rejects with
+`DECISION_UNRESOLVED` when a current pending user-action request includes
+`scope_update` in `required_for` and its action kind, Task, current Change Unit,
+`scope_revision`, basis, and affected refs match this operation. Informational,
+resolved, stale, superseded, expired, non-matching, and action-kind-incompatible
+requests do not block the update.
 
 ## Request schema
 
@@ -316,7 +323,7 @@ state:
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

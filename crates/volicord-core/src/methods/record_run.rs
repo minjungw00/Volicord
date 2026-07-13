@@ -39,6 +39,7 @@ impl CoreService {
             &prepared.context.project_state,
             request.clone(),
             &prepared.context.verified_invocation,
+            &prepared.operation_now,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -309,6 +310,7 @@ fn plan_record_run(
     project_state: &ProjectStateHeader,
     mut request: RecordRunRequest,
     verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan, PlanError> {
     if request.summary.trim().is_empty() {
         validation_plan_error(
@@ -489,7 +491,121 @@ fn plan_record_run(
         validate_record_run_evidence_targets(store, project_state, &request)?;
 
     let planned_state_version = project_state.state_version + 1;
-    let plan_now = utc_timestamp(service.now());
+    let plan_now = operation_now.clone();
+    let normalized_observed_changes = ObservedChanges {
+        changed_paths: normalized_changed_paths.clone(),
+        product_file_write_observed: request.observed_changes.product_file_write_observed,
+        sensitive_categories: normalized_string_set(&request.observed_changes.sensitive_categories),
+        baseline_ref: Some(request.baseline_ref.clone()).into(),
+    };
+    let write_ticket_scope = if request.observed_changes.product_file_write_observed {
+        let Some(write_ticket_id) = request.write_ticket_id.as_ref() else {
+            return Err(PlanError::Response(Box::new(
+                write_ticket_required_response(
+                    &request.envelope,
+                    Some(project_state.state_version),
+                ),
+            )));
+        };
+        let record = store
+            .write_ticket_record(write_ticket_id.as_str())
+            .map_err(|error| {
+                PlanError::Response(Box::new(store_error_response(
+                    &request.envelope,
+                    project_state,
+                    error,
+                )))
+            })?
+            .ok_or_else(|| {
+                PlanError::Response(Box::new(write_ticket_invalid_response(
+                    &request.envelope,
+                    Some(project_state.state_version),
+                    "missing",
+                    "write_ticket_id does not identify a write ticket",
+                )))
+            })?;
+        let scope = validate_write_ticket_for_run(
+            &record,
+            WriteTicketRunValidationContext {
+                store,
+                project_state,
+                request: &request,
+                change_unit: &change_unit,
+                verified_invocation,
+                observed_changes: &normalized_observed_changes,
+                now: *plan_now.as_datetime(),
+            },
+        )?;
+        Some((record, scope))
+    } else {
+        if request.write_ticket_id.is_some() {
+            return Err(PlanError::Response(Box::new(
+                write_ticket_invalid_response(
+                    &request.envelope,
+                    Some(project_state.state_version),
+                    "incompatible",
+                    "write_ticket_id is only consumed for observed product-file writes",
+                ),
+            )));
+        }
+        None
+    };
+
+    let operation_refs = vec![
+        state_ref(
+            StateRecordKind::Task,
+            request.task_id.as_str(),
+            &request.envelope.project_id,
+            Some(&request.task_id),
+            Some(project_state.state_version),
+        ),
+        change_unit_ref(
+            &request.envelope.project_id,
+            &request.task_id,
+            &change_unit,
+            project_state.state_version,
+        ),
+    ];
+    let sensitive_approval = write_ticket_scope
+        .as_ref()
+        .filter(|_| !normalized_observed_changes.sensitive_categories.is_empty())
+        .map(|(_, scope)| SensitiveApprovalRequirement {
+            task_id: &request.task_id,
+            change_unit_id: &request.change_unit_id,
+            scope_revision: task.scope_revision,
+            operation: &scope.intended_operation,
+            normalized_paths: &normalized_changed_paths,
+            sensitive_categories: &normalized_observed_changes.sensitive_categories,
+            baseline_ref: Some(&request.baseline_ref),
+            required_for: UserActionRequiredFor::RecordRun,
+            now: &plan_now,
+            repo_root: &store.project_record().repo_root,
+        });
+    let operation_context = UserActionOperationContext {
+        operation: UserActionOperation::RecordRun,
+        task_id: &request.task_id,
+        change_unit_id: Some(&request.change_unit_id),
+        scope_revision: task.scope_revision,
+        close_basis: None,
+        operation_refs: &operation_refs,
+        sensitive_approval: sensitive_approval.as_ref(),
+    };
+    if !pending_user_action_refs_for_operation(
+        store,
+        project_state,
+        &request.envelope,
+        &plan_now,
+        &operation_context,
+    )?
+    .is_empty()
+    {
+        return Err(PlanError::Response(Box::new(decision_rejected_response(
+            &request.envelope,
+            Some(project_state.state_version),
+            "a current pending user action must be resolved before this Run can be recorded",
+        ))));
+    }
+
     let run_id = match request.run_id.clone().into_option() {
         Some(run_id) => run_id,
         None => allocate_run_id(service, store).map_err(PlanError::Core)?,
@@ -519,12 +635,6 @@ fn plan_record_run(
         Some(&request.task_id),
         Some(planned_state_version),
     );
-    let normalized_observed_changes = ObservedChanges {
-        changed_paths: normalized_changed_paths.clone(),
-        product_file_write_observed: request.observed_changes.product_file_write_observed,
-        sensitive_categories: normalized_string_set(&request.observed_changes.sensitive_categories),
-        baseline_ref: Some(request.baseline_ref.clone()).into(),
-    };
 
     let artifact_context = RecordRunArtifactContext {
         store,
@@ -580,59 +690,6 @@ fn plan_record_run(
         .filter_map(|plan| plan.producer.clone())
         .collect::<Vec<_>>();
     let observation_refs_by_target = observation_refs_by_target(&observation_plans);
-
-    let write_ticket_scope = if request.observed_changes.product_file_write_observed {
-        let Some(write_ticket_id) = request.write_ticket_id.as_ref() else {
-            return Err(PlanError::Response(Box::new(
-                write_ticket_required_response(
-                    &request.envelope,
-                    Some(project_state.state_version),
-                ),
-            )));
-        };
-        let record = store
-            .write_ticket_record(write_ticket_id.as_str())
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?
-            .ok_or_else(|| {
-                PlanError::Response(Box::new(write_ticket_invalid_response(
-                    &request.envelope,
-                    Some(project_state.state_version),
-                    "missing",
-                    "write_ticket_id does not identify a write ticket",
-                )))
-            })?;
-        let scope = validate_write_ticket_for_run(
-            &record,
-            WriteTicketRunValidationContext {
-                store,
-                project_state,
-                request: &request,
-                change_unit: &change_unit,
-                verified_invocation,
-                observed_changes: &normalized_observed_changes,
-                now: *plan_now.as_datetime(),
-            },
-        )?;
-        Some((record, scope))
-    } else {
-        if request.write_ticket_id.is_some() {
-            return Err(PlanError::Response(Box::new(
-                write_ticket_invalid_response(
-                    &request.envelope,
-                    Some(project_state.state_version),
-                    "incompatible",
-                    "write_ticket_id is only consumed for observed product-file writes",
-                ),
-            )));
-        }
-        None
-    };
 
     let acceptance_criteria = active_acceptance_criteria_for_task(store, &request.task_id)?;
     let mut recorded_evidence_summary = build_record_run_evidence_summary(
@@ -706,27 +763,29 @@ fn plan_record_run(
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
-    let pending_user_judgment_refs = pending_refs_after_record_run_invalidation(
+    let pending_user_action_refs = pending_refs_after_record_run_invalidation(
         store,
         project_state,
         &request,
         planned_state_version,
+        &plan_now,
     )?;
-    let pending_authorities = pending_judgment_authorities_for_plan(
+    let pending_authorities = pending_user_action_authorities_for_plan(
         store,
         project_state,
         &request.envelope,
         &request.task_id,
+        &plan_now,
     )?
     .into_iter()
     .filter(|authority| {
         !matches!(
-            authority.judgment_kind,
-            JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance
+            authority.action_kind,
+            UserActionKind::FinalAcceptance | UserActionKind::ResidualRiskAcceptance
         )
     })
     .collect::<Vec<_>>();
-    let lifecycle_phase = projected_judgment_lifecycle_phase(
+    let lifecycle_phase = projected_user_action_lifecycle_phase(
         project_state,
         &task,
         Some(&change_unit),
@@ -786,9 +845,10 @@ fn plan_record_run(
                         projected_task.clone(),
                         Some(change_unit.clone()),
                         current_close_basis.clone(),
-                        pending_user_judgment_refs.clone(),
+                        pending_user_action_refs.clone(),
                         blocker_refs.clone(),
                         projected_close_evidence_summary,
+                        plan_now.clone(),
                     ),
                     run_ref.clone(),
                     evidence_observations.clone(),
@@ -806,7 +866,7 @@ fn plan_record_run(
         task: &projected_task,
         current_change_unit: Some(&change_unit),
         acceptance_criteria,
-        pending_user_judgment_refs,
+        pending_user_action_refs,
         blocker_refs: blocker_refs.clone(),
         write_ticket_summary,
         evidence_summary: projected_state_evidence_summary,
@@ -868,12 +928,12 @@ fn plan_record_run(
             close_basis_json,
         },
     ));
-    storage_mutations.push(CoreStorageMutation::MarkUserJudgmentsSupersededOrStale(
-        UserJudgmentInvalidation {
+    storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
+        UserActionInvalidation {
             task_id: request.task_id.as_str().to_owned(),
-            judgment_kinds: vec![
-                storage_value(JudgmentKind::FinalAcceptance)?,
-                storage_value(JudgmentKind::ResidualRiskAcceptance)?,
+            action_kinds: vec![
+                UserActionKind::FinalAcceptance,
+                UserActionKind::ResidualRiskAcceptance,
             ],
         },
     ));
@@ -1020,14 +1080,15 @@ fn pending_refs_after_record_run_invalidation(
     project_state: &ProjectStateHeader,
     request: &RecordRunRequest,
     planned_state_version: u64,
+    now: &UtcTimestamp,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
-    let invalidated_kinds = BTreeSet::from([
-        storage_value(JudgmentKind::FinalAcceptance)?,
-        storage_value(JudgmentKind::ResidualRiskAcceptance)?,
-    ]);
+    let invalidated_kinds = [
+        UserActionKind::FinalAcceptance,
+        UserActionKind::ResidualRiskAcceptance,
+    ];
     let mut refs = Vec::new();
     for record_ref in store
-        .pending_user_judgment_refs(&request.task_id, planned_state_version)
+        .pending_user_action_refs(&request.task_id, planned_state_version, now)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &request.envelope,
@@ -1037,7 +1098,7 @@ fn pending_refs_after_record_run_invalidation(
         })?
     {
         let record = store
-            .user_judgment_record(&record_ref.record_id)
+            .user_action_record(&record_ref.record_id, now)
             .map_err(|error| {
                 PlanError::Response(Box::new(store_error_response(
                     &request.envelope,
@@ -1047,7 +1108,7 @@ fn pending_refs_after_record_run_invalidation(
             })?;
         if record
             .as_ref()
-            .is_some_and(|record| invalidated_kinds.contains(&record.judgment_kind))
+            .is_some_and(|record| invalidated_kinds.contains(&record.request.action_kind))
         {
             continue;
         }
@@ -1372,6 +1433,18 @@ fn decode_capture_intent_record(
         .map_err(|_| corrupt("workspace_context_json"))?;
     let created_at = UtcTimestamp::parse(&record.created_at).map_err(|_| corrupt("created_at"))?;
     let expires_at = UtcTimestamp::parse(&record.expires_at).map_err(|_| corrupt("expires_at"))?;
+    created_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| corrupt("created_at"))?;
+    expires_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| corrupt("expires_at"))?;
+    let expected_expires_at = created_at
+        .checked_add(Duration::minutes(EVIDENCE_CAPTURE_INTENT_TTL_MINUTES))
+        .map_err(|_| corrupt("expires_at"))?;
+    if expires_at != expected_expires_at {
+        return Err(corrupt("expires_at"));
+    }
     Ok(EvidenceCaptureIntent {
         capture_intent_id: EvidenceCaptureIntentId::new(&record.evidence_capture_intent_id),
         project_id: ProjectId::new(&record.project_id),
@@ -1484,6 +1557,12 @@ fn validate_capture_receipt_record(
         .map_err(|_| corrupt("source_refs_json"))?;
     let receipt_created_at =
         UtcTimestamp::parse(&receipt.created_at).map_err(|_| corrupt("created_at"))?;
+    receipt_created_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| corrupt("created_at"))?;
+    body.observed_at
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| corrupt("observed_at"))?;
     let producer_kind = parse_owner_storage_value::<EvidenceProducerKind>(
         "evidence_capture_receipts",
         receipt.evidence_capture_receipt_id.clone(),
@@ -1890,7 +1969,10 @@ fn plan_record_run_observation(
         source_refs,
         output_artifact_refs,
         limitations,
-        observed_at: input.observed_at.clone(),
+        observed_at: authority
+            .observed_at
+            .clone()
+            .unwrap_or_else(|| input.observed_at.clone()),
         recorded_at: context.now.clone(),
     };
     let mutation = CoreStorageMutation::InsertEvidenceObservation(EvidenceObservationInsert {
@@ -2009,7 +2091,13 @@ struct DerivedObservationAuthority {
     observed_by_actor_source: Option<ActorSource>,
     producer_anchor: EvidenceProducerAnchor,
     relevance_assessment: EvidenceRelevanceAssessment,
+    observed_at: Option<UtcTimestamp>,
     producer_id: Option<EvidenceProducerId>,
+}
+
+struct UserActionObservationResolutionAuthority {
+    relevance_status: EvidenceRelevanceStatus,
+    resolved_at: UtcTimestamp,
 }
 
 fn derive_record_run_observation_authority(
@@ -2037,6 +2125,7 @@ fn derive_record_run_observation_authority(
                 assessment_ref: producer_ref.into(),
                 assessed_by_actor_source: None.into(),
             },
+            observed_at: None,
             producer_id: None,
         });
     }
@@ -2075,6 +2164,7 @@ fn derive_record_run_observation_authority(
                 assessment_ref: Some(capture.intent_ref.clone()).into(),
                 assessed_by_actor_source: None.into(),
             },
+            observed_at: None,
             producer_id: Some(producer_id),
         });
     }
@@ -2116,6 +2206,7 @@ fn derive_record_run_observation_authority(
             assessment_ref: None.into(),
             assessed_by_actor_source: None.into(),
         },
+        observed_at: None,
         producer_id: None,
     })
 }
@@ -2126,21 +2217,29 @@ fn derive_user_observation_authority(
     output_artifact_refs: &[ArtifactRef],
 ) -> CoreResult<Option<DerivedObservationAuthority>> {
     for input_ref in &input.input_refs {
-        if input_ref.record_kind != StateRecordKind::UserEvidenceObservation
+        if input_ref.record_kind != StateRecordKind::UserActionResolution
             || input_ref.project_id != context.request.envelope.project_id
             || input_ref.task_id.as_ref() != Some(&context.request.task_id)
         {
             continue;
         }
-        let Some(record) = context
+        let Some(resolution_record) = context
             .store
-            .user_evidence_observation_record(input_ref.record_id.as_str())
+            .user_action_resolution_record(input_ref.record_id.as_str())
             .map_err(CorePipelineError::from)?
         else {
             continue;
         };
-        if !user_evidence_observation_record_supports(
-            &record,
+        let Some(action_record) = context
+            .store
+            .user_action_record(&resolution_record.user_action_request_id, context.now)
+            .map_err(CorePipelineError::from)?
+        else {
+            continue;
+        };
+        let Some(resolution_authority) = user_action_observation_resolution_authority(
+            &action_record,
+            &resolution_record,
             &context.request.envelope.project_id,
             &context.request.task_id,
             context.request.change_unit_id.as_str(),
@@ -2148,12 +2247,13 @@ fn derive_user_observation_authority(
             Some(context.request.baseline_ref.as_str()),
             &input.target,
             output_artifact_refs,
-        )? {
+        )?
+        else {
             continue;
-        }
+        };
         let producer_ref = state_ref(
-            StateRecordKind::UserEvidenceObservation,
-            &record.user_evidence_observation_id,
+            StateRecordKind::UserActionResolution,
+            &resolution_record.user_action_resolution_id,
             &context.request.envelope.project_id,
             Some(&context.request.task_id),
             Some(context.project_state.state_version),
@@ -2166,13 +2266,14 @@ fn derive_user_observation_authority(
                 producer_kind: EvidenceProducerKind::UserChannelObservation,
                 producer_ref: Some(producer_ref.clone()).into(),
                 output_artifact_refs: output_artifact_refs.to_vec(),
-                verification_basis: Some(record.verification_basis).into(),
+                verification_basis: Some(resolution_record.resolved_verification_basis).into(),
             },
             relevance_assessment: EvidenceRelevanceAssessment {
-                status: EvidenceRelevanceStatus::Supported,
+                status: resolution_authority.relevance_status,
                 assessment_ref: Some(producer_ref).into(),
                 assessed_by_actor_source: Some(ActorSource::LocalUser).into(),
             },
+            observed_at: Some(resolution_authority.resolved_at),
             producer_id: None,
         }));
     }
@@ -2180,8 +2281,9 @@ fn derive_user_observation_authority(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn user_evidence_observation_record_supports(
-    record: &UserEvidenceObservationRecord,
+fn user_action_observation_resolution_authority(
+    action_record: &EffectiveUserActionRecord,
+    resolution_record: &UserActionResolutionRecord,
     project_id: &ProjectId,
     task_id: &TaskId,
     change_unit_id: &str,
@@ -2189,77 +2291,121 @@ fn user_evidence_observation_record_supports(
     baseline_ref: Option<&str>,
     target: &EvidenceTarget,
     output_artifact_refs: &[ArtifactRef],
-) -> CoreResult<bool> {
-    let relevance_status: EvidenceRelevanceStatus = parse_owner_storage_value(
-        "user_evidence_observations",
-        record.user_evidence_observation_id.clone(),
-        "relevance_status",
-        &record.relevance_status,
+) -> CoreResult<Option<UserActionObservationResolutionAuthority>> {
+    let request: PersistedUserActionRequest = decode_required_json(
+        "user_action_requests",
+        action_record.request.user_action_request_id.clone(),
+        "request_json",
+        Some(&action_record.request.request_json),
+    )?;
+    let basis: UserActionBasis = decode_required_json(
+        "user_action_requests",
+        action_record.request.user_action_request_id.clone(),
+        "basis_json",
+        Some(&action_record.request.basis_json),
+    )?;
+    let resolution: PersistedUserActionResolution = decode_required_json(
+        "user_action_resolutions",
+        resolution_record.user_action_resolution_id.clone(),
+        "resolution_json",
+        Some(&resolution_record.resolution_json),
     )?;
     let observed_by_actor_source: ActorSource = parse_owner_storage_value(
-        "user_evidence_observations",
-        record.user_evidence_observation_id.clone(),
+        "user_action_resolutions",
+        resolution_record.user_action_resolution_id.clone(),
         "observed_by_actor_source",
-        &record.observed_by_actor_source,
+        &resolution_record.resolved_by_actor_source,
     )?;
-    let recorded_outputs: Vec<ArtifactRef> = decode_required_json(
-        "user_evidence_observations",
-        record.user_evidence_observation_id.clone(),
-        "output_artifact_refs_json",
-        Some(&record.output_artifact_refs_json),
-    )?;
-    Ok(record.project_id == project_id.as_str()
-        && record.task_id == task_id.as_str()
-        && record.change_unit_id == change_unit_id
-        && record.scope_revision == scope_revision
-        && baseline_ref == Some(record.baseline_ref.as_str())
-        && relevance_status == EvidenceRelevanceStatus::Supported
-        && observed_by_actor_source == ActorSource::LocalUser
-        && !record.verification_basis.trim().is_empty()
-        && user_evidence_observation_record_matches_target(record, target)
-        && exact_artifact_ref_sets_match(&recorded_outputs, output_artifact_refs))
-}
-
-fn user_evidence_observation_record_matches_target(
-    record: &UserEvidenceObservationRecord,
-    target: &EvidenceTarget,
-) -> bool {
-    match target {
-        EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id,
-        } => {
-            record.acceptance_criterion_id.as_deref() == Some(acceptance_criterion_id.as_str())
-                && record.evidence_claim_id.is_none()
-        }
-        EvidenceTarget::SupplementalClaim {
-            evidence_claim_id, ..
-        } => {
-            record.evidence_claim_id.as_deref() == Some(evidence_claim_id.as_str())
-                && record.acceptance_criterion_id.is_none()
-        }
+    let UserActionResolutionBody::EvidenceObservation { observation } = resolution else {
+        return Ok(None);
+    };
+    let coordinates = basis.coordinates();
+    if action_record.status != UserActionStatus::Resolved
+        || action_record.request.action_kind != UserActionKind::EvidenceObservation
+        || request.body.action_kind() != UserActionKind::EvidenceObservation
+        || action_record.request.project_id != project_id.as_str()
+        || action_record.request.task_id != task_id.as_str()
+        || coordinates
+            .change_unit_id
+            .as_ref()
+            .map(ChangeUnitId::as_str)
+            != Some(change_unit_id)
+        || coordinates.scope_revision != scope_revision
+        || coordinates.baseline_ref.as_ref().map(BaselineRef::as_str) != baseline_ref
+        || !matches!(
+            observation.relevance_status,
+            EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
+        )
+        || observed_by_actor_source != ActorSource::LocalUser
+        || resolution_record
+            .resolved_verification_basis
+            .trim()
+            .is_empty()
+        || observation.target != *target
+        || !exact_artifact_ref_sets_match(&observation.output_artifact_refs, output_artifact_refs)
+    {
+        return Ok(None);
     }
+    let resolved_at = UtcTimestamp::parse(&resolution_record.resolved_at).map_err(|_| {
+        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            resolution_record.user_action_resolution_id.clone(),
+            "resolved_at",
+        ))
+    })?;
+    Ok(Some(UserActionObservationResolutionAuthority {
+        relevance_status: observation.relevance_status,
+        resolved_at,
+    }))
 }
 
 fn exact_artifact_ref_sets_match(left: &[ArtifactRef], right: &[ArtifactRef]) -> bool {
-    !left.is_empty()
-        && left.len() == right.len()
-        && left.iter().all(|left_ref| {
-            right
-                .iter()
-                .any(|right_ref| exact_artifact_identity_matches(left_ref, right_ref))
-        })
+    if left.is_empty() || left.len() != right.len() {
+        return false;
+    }
+    let mut historical = left.iter().collect::<Vec<_>>();
+    let mut current = right.iter().collect::<Vec<_>>();
+    historical.sort_by(|left, right| left.artifact_id.cmp(&right.artifact_id));
+    current.sort_by(|left, right| left.artifact_id.cmp(&right.artifact_id));
+    if historical
+        .windows(2)
+        .any(|refs| refs[0].artifact_id == refs[1].artifact_id)
+        || current
+            .windows(2)
+            .any(|refs| refs[0].artifact_id == refs[1].artifact_id)
+    {
+        return false;
+    }
+    historical
+        .into_iter()
+        .zip(current)
+        .all(|(historical, current)| exact_artifact_identity_matches(historical, current))
 }
 
-fn exact_artifact_identity_matches(left: &ArtifactRef, right: &ArtifactRef) -> bool {
-    left.artifact_id == right.artifact_id
-        && left.project_id == right.project_id
-        && left.task_id == right.task_id
-        && left.sha256 == right.sha256
-        && left.size_bytes == right.size_bytes
-        && left.integrity_status == ArtifactIntegrityStatus::Verified
-        && right.integrity_status == ArtifactIntegrityStatus::Verified
-        && left.availability == ArtifactAvailability::Available
-        && right.availability == ArtifactAvailability::Available
+fn exact_artifact_identity_matches(historical: &ArtifactRef, current: &ArtifactRef) -> bool {
+    if historical.integrity_status != ArtifactIntegrityStatus::Verified
+        || current.integrity_status != ArtifactIntegrityStatus::Verified
+        || historical.availability != ArtifactAvailability::Available
+        || current.availability != ArtifactAvailability::Available
+    {
+        return false;
+    }
+    let mut normalized_current = current.clone();
+    match (
+        historical.created_by_run_ref.as_ref(),
+        normalized_current.created_by_run_ref.as_mut(),
+    ) {
+        (Some(historical_run), Some(current_run)) => {
+            current_run.produced_at_state_version = historical_run
+                .produced_at_state_version
+                .as_ref()
+                .copied()
+                .into();
+        }
+        (None, None) => {}
+        _ => return false,
+    }
+    historical == &normalized_current
 }
 
 fn validate_record_run_evidence_update(
@@ -2517,6 +2663,7 @@ fn validate_evidence_update_observation_refs(
                     scope_revision: context.current_scope_revision,
                     baseline_ref: Some(context.request.baseline_ref.as_str()),
                     target,
+                    now: context.now,
                 },
             )? != EvidenceProvenanceClass::Strong
                 || !stored_evidence_observation_has_supported_relevance(&record)?)
@@ -2609,6 +2756,7 @@ pub(super) struct StoredEvidenceProvenanceBasis<'a> {
     pub(super) scope_revision: u64,
     pub(super) baseline_ref: Option<&'a str>,
     pub(super) target: &'a EvidenceTarget,
+    pub(super) now: &'a UtcTimestamp,
 }
 
 pub(super) fn stored_evidence_observation_provenance_class(
@@ -2723,11 +2871,14 @@ pub(super) fn projected_evidence_observation_provenance_class(
             user_channel_authority_is_current(
                 store,
                 basis,
-                &observation.input_refs,
-                &observation.output_artifact_refs,
-                observation.observed_by_actor_source.as_ref(),
-                &observation.producer_anchor,
-                &observation.relevance_assessment,
+                &UserChannelObservationAuthorityView {
+                    input_refs: &observation.input_refs,
+                    output_artifact_refs: &observation.output_artifact_refs,
+                    observed_by_actor_source: observation.observed_by_actor_source.as_ref(),
+                    producer_anchor: &observation.producer_anchor,
+                    relevance_assessment: &observation.relevance_assessment,
+                    observed_at: &observation.observed_at,
+                },
             )?
         }
         (EvidenceSourceKind::ReusedEvidence, assurance_level) => {
@@ -2817,6 +2968,13 @@ fn stored_evidence_observation_anchored_assurance(
             )
         })
         .transpose()?;
+    let observed_at = UtcTimestamp::parse(&record.observed_at).map_err(|_| {
+        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
+            "evidence_observations",
+            record.evidence_observation_id.clone(),
+            "observed_at",
+        ))
+    })?;
     if !stored_observation_artifacts_are_current(store, record, basis, &output_artifact_refs)?
         || !authority_output_binding_is_exact(&authority.producer_anchor, &output_artifact_refs)
     {
@@ -2828,11 +2986,14 @@ fn stored_evidence_observation_anchored_assurance(
             Ok(user_channel_authority_is_current(
                 store,
                 basis,
-                &input_refs,
-                &output_artifact_refs,
-                observed_by_actor_source.as_ref(),
-                &authority.producer_anchor,
-                &authority.relevance_assessment,
+                &UserChannelObservationAuthorityView {
+                    input_refs: &input_refs,
+                    output_artifact_refs: &output_artifact_refs,
+                    observed_by_actor_source: observed_by_actor_source.as_ref(),
+                    producer_anchor: &authority.producer_anchor,
+                    relevance_assessment: &authority.relevance_assessment,
+                    observed_at: &observed_at,
+                },
             )?
             .then_some(assurance_level))
         }
@@ -2878,7 +3039,9 @@ fn stored_evidence_observation_anchored_assurance(
                 "output_artifact_refs_json",
                 Some(&source_record.output_artifact_refs_json),
             )?;
-            if !exact_artifact_ref_sets_match(&source_outputs, &output_artifact_refs) {
+            if !exact_artifact_ref_sets_match(&source_outputs, &output_artifact_refs)
+                || !stored_evidence_observation_has_supported_relevance(&source_record)?
+            {
                 return Ok(None);
             }
             let inherited = stored_evidence_observation_anchored_assurance(
@@ -3227,24 +3390,40 @@ fn authority_ref_matches(
     })
 }
 
+struct UserChannelObservationAuthorityView<'a> {
+    input_refs: &'a [StateRecordRef],
+    output_artifact_refs: &'a [ArtifactRef],
+    observed_by_actor_source: Option<&'a ActorSource>,
+    producer_anchor: &'a EvidenceProducerAnchor,
+    relevance_assessment: &'a EvidenceRelevanceAssessment,
+    observed_at: &'a UtcTimestamp,
+}
+
 fn user_channel_authority_is_current(
     store: &CoreProjectStore,
     basis: &StoredEvidenceProvenanceBasis<'_>,
-    input_refs: &[StateRecordRef],
-    output_artifact_refs: &[ArtifactRef],
-    observed_by_actor_source: Option<&ActorSource>,
-    producer_anchor: &EvidenceProducerAnchor,
-    relevance_assessment: &EvidenceRelevanceAssessment,
+    authority: &UserChannelObservationAuthorityView<'_>,
 ) -> CoreResult<bool> {
+    let UserChannelObservationAuthorityView {
+        input_refs,
+        output_artifact_refs,
+        observed_by_actor_source,
+        producer_anchor,
+        relevance_assessment,
+        observed_at,
+    } = authority;
     let Some(producer_ref) = producer_anchor.producer_ref.as_ref() else {
         return Ok(false);
     };
     if producer_anchor.producer_kind != EvidenceProducerKind::UserChannelObservation
-        || producer_ref.record_kind != StateRecordKind::UserEvidenceObservation
+        || producer_ref.record_kind != StateRecordKind::UserActionResolution
         || producer_ref.project_id != *basis.project_id
         || producer_ref.task_id.as_ref() != Some(basis.task_id)
-        || observed_by_actor_source != Some(&ActorSource::LocalUser)
-        || relevance_assessment.status != EvidenceRelevanceStatus::Supported
+        || *observed_by_actor_source != Some(&ActorSource::LocalUser)
+        || !matches!(
+            relevance_assessment.status,
+            EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
+        )
         || relevance_assessment.assessed_by_actor_source.as_ref() != Some(&ActorSource::LocalUser)
         || !authority_ref_matches(relevance_assessment.assessment_ref.as_ref(), producer_ref)
         || !input_refs
@@ -3253,25 +3432,36 @@ fn user_channel_authority_is_current(
     {
         return Ok(false);
     }
-    let Some(record) = store
-        .user_evidence_observation_record(producer_ref.record_id.as_str())
+    let Some(resolution_record) = store
+        .user_action_resolution_record(producer_ref.record_id.as_str())
         .map_err(CorePipelineError::from)?
     else {
         return Ok(false);
     };
-    Ok(
-        producer_anchor.verification_basis.as_deref() == Some(record.verification_basis.as_str())
-            && user_evidence_observation_record_supports(
-                &record,
-                basis.project_id,
-                basis.task_id,
-                basis.change_unit_id,
-                basis.scope_revision,
-                basis.baseline_ref,
-                basis.target,
-                output_artifact_refs,
-            )?,
-    )
+    let Some(action_record) = store
+        .user_action_record(&resolution_record.user_action_request_id, basis.now)
+        .map_err(CorePipelineError::from)?
+    else {
+        return Ok(false);
+    };
+    let Some(resolution_authority) = user_action_observation_resolution_authority(
+        &action_record,
+        &resolution_record,
+        basis.project_id,
+        basis.task_id,
+        basis.change_unit_id,
+        basis.scope_revision,
+        basis.baseline_ref,
+        basis.target,
+        output_artifact_refs,
+    )?
+    else {
+        return Ok(false);
+    };
+    Ok(producer_anchor.verification_basis.as_deref()
+        == Some(resolution_record.resolved_verification_basis.as_str())
+        && relevance_assessment.status == resolution_authority.relevance_status
+        && **observed_at == resolution_authority.resolved_at)
 }
 
 fn stored_observation_artifacts_are_current(
@@ -3402,7 +3592,9 @@ fn projected_reuse_authority_is_current(
         "output_artifact_refs_json",
         Some(&source_record.output_artifact_refs_json),
     )?;
-    if !exact_artifact_ref_sets_match(&source_outputs, &observation.output_artifact_refs) {
+    if !exact_artifact_ref_sets_match(&source_outputs, &observation.output_artifact_refs)
+        || !stored_evidence_observation_has_supported_relevance(&source_record)?
+    {
         return Ok(false);
     }
     Ok(
@@ -4174,7 +4366,7 @@ fn resolve_close_basis_evidence_summary_ref(
         request,
         StateRecordKind::EvidenceSummary,
         &record.evidence_summary_id,
-        context.snapshot_state_version,
+        record.produced_at_state_version,
     ))
 }
 
@@ -4418,7 +4610,7 @@ fn plan_staged_artifact_input(
                 "staged artifact handle cannot be found",
             )))
         })?;
-    let stored_expires_at = validate_staged_artifact_record(
+    validate_staged_artifact_record(
         project_state,
         request,
         verified_invocation,
@@ -4487,7 +4679,8 @@ fn plan_staged_artifact_input(
             expected_sha256: sha256,
             expected_size_bytes: size_bytes,
             expected_redaction_state: record.redaction_state.clone(),
-            expected_expires_at: stored_expires_at.to_string(),
+            expected_created_at: record.created_at.clone(),
+            expected_expires_at: record.expires_at.clone(),
             uri,
             retention_json: "{}".to_owned(),
             producer_json: serde_json::to_string(&json!({
@@ -4528,7 +4721,7 @@ fn validate_staged_artifact_record(
     handle: &StagedArtifactHandle,
     record: &StoredArtifactStagingRecord,
     now: &UtcTimestamp,
-) -> Result<UtcTimestamp, PlanError> {
+) -> Result<(), PlanError> {
     if record.project_id != request.envelope.project_id.as_str() {
         return artifact_input_validation_plan_error(
             request,
@@ -4568,12 +4761,36 @@ fn validate_staged_artifact_record(
             "staged artifact handle is already consumed",
         );
     }
+    let stored_created_at: UtcTimestamp = parse_owner_storage_value(
+        "artifact_staging",
+        record.handle_id.clone(),
+        "created_at",
+        &record.created_at,
+    )?;
     let stored_expires_at: UtcTimestamp = parse_owner_storage_value(
         "artifact_staging",
         record.handle_id.clone(),
         "expires_at",
         &record.expires_at,
     )?;
+    if stored_expires_at <= stored_created_at {
+        return Err(PlanError::Core(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "artifact_staging",
+                record.handle_id.clone(),
+                "expires_at",
+            ),
+        )));
+    }
+    if now < &stored_created_at {
+        return Err(PlanError::Core(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "artifact_staging",
+                record.handle_id.clone(),
+                "created_at",
+            ),
+        )));
+    }
     if record.status == "expired" || now >= &stored_expires_at {
         return artifact_input_validation_plan_error(
             request,
@@ -4651,7 +4868,7 @@ fn validate_staged_artifact_record(
             "staged artifact content_type does not match the submitted handle",
         );
     }
-    Ok(stored_expires_at)
+    Ok(())
 }
 
 fn plan_existing_artifact_input(

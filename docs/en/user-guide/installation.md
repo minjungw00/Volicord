@@ -77,7 +77,7 @@ install a specific tag, use the tag-specific release asset base URL:
 
 ```sh
 repo=OWNER/REPO
-version=v0.7.0
+version=v0.8.0
 base="https://github.com/$repo/releases/download/$version"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
@@ -88,7 +88,7 @@ For a non-GitHub release mirror, provide the directory that contains the
 installer asset, target-named tarball, and checksum:
 
 ```sh
-base="https://example.invalid/releases/v0.7.0"
+base="https://example.invalid/releases/v0.8.0"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
 VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
@@ -128,7 +128,7 @@ To install a specific tag:
 
 ```powershell
 $repo = "OWNER/REPO"
-$version = "v0.7.0"
+$version = "v0.8.0"
 $base = "https://github.com/$repo/releases/download/$version"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
@@ -138,7 +138,7 @@ Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 For a non-GitHub release mirror:
 
 ```powershell
-$base = "https://example.invalid/releases/v0.7.0"
+$base = "https://example.invalid/releases/v0.8.0"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 & $tmp -ReleaseBaseUrl $base -RequireChecksum

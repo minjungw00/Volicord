@@ -17,16 +17,17 @@ use volicord_types::{
 
 use super::{
     args::GuardInput,
-    envelope::{event_time_or_now, GuardEnvelope},
+    core_current_timestamp,
+    envelope::GuardEnvelope,
     json_error,
     prompt_capture::{
-        pending_chat_judgment_summaries, prompt_capture_availability_for_event,
-        GuardPendingJudgmentSummary,
+        pending_chat_user_action_summaries, prompt_capture_availability_for_event,
+        GuardPendingUserActionSummary,
     },
     GuardCommandError,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct GuardStateSummary {
     pub(super) project_id: String,
     pub(super) project_name: String,
@@ -39,8 +40,8 @@ pub(super) struct GuardStateSummary {
     pub(super) current_write_ticket_ids: Vec<String>,
     pub(super) stale_write_ticket_ids: Vec<String>,
     pub(super) active_write_tickets: Vec<ActiveWriteTicketSummary>,
-    pub(super) pending_user_judgment_count: usize,
-    pub(super) pending_user_judgments: Vec<GuardPendingJudgmentSummary>,
+    pub(super) pending_user_action_count: usize,
+    pub(super) pending_user_actions: Vec<GuardPendingUserActionSummary>,
     pub(super) active_blocker_count: usize,
     pub(super) unresolved_unrecorded_change_count: usize,
     pub(super) session_watch_scan_summary: Option<SessionWatchScanSummary>,
@@ -69,14 +70,13 @@ pub(super) fn guard_state_summary(
 ) -> Result<GuardStateSummary, GuardCommandError> {
     let store = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))?;
     let project_state = store.project_state()?;
-    let now = event_time_or_now(&envelope.occurred_at);
-    let now_timestamp = UtcTimestamp::from_datetime(now);
+    let now_timestamp = core_current_timestamp(&store)?;
     let mut current_write_ticket_ids = Vec::new();
     let mut stale_write_ticket_ids = Vec::new();
     let mut active_write_tickets = Vec::new();
     let mut active_change_unit_id = None;
-    let mut pending_user_judgment_count = 0;
-    let mut pending_user_judgments = Vec::new();
+    let mut pending_user_action_count = 0;
+    let mut pending_user_actions = Vec::new();
     let mut active_blocker_count = 0;
     let prompt_capture_availability =
         prompt_capture_availability_for_event(runtime_home, project, envelope)?;
@@ -109,9 +109,17 @@ pub(super) fn guard_state_summary(
                 stale_write_ticket_ids.push(record.write_ticket_id);
             }
         }
-        pending_user_judgment_count = store.pending_user_judgment_records(&task_id)?.len();
+        pending_user_action_count = store
+            .pending_user_action_records(&task_id, &now_timestamp)?
+            .len();
         if prompt_capture_enabled {
-            pending_user_judgments = pending_chat_judgment_summaries(&store, &task_id, envelope)?;
+            pending_user_actions = pending_chat_user_action_summaries(
+                runtime_home,
+                &store,
+                &task_id,
+                envelope,
+                &now_timestamp,
+            )?;
         }
         active_blocker_count = store
             .active_blocker_refs(&task_id, project_state.state_version)?
@@ -138,8 +146,8 @@ pub(super) fn guard_state_summary(
         current_write_ticket_ids,
         stale_write_ticket_ids,
         active_write_tickets,
-        pending_user_judgment_count,
-        pending_user_judgments,
+        pending_user_action_count,
+        pending_user_actions,
         active_blocker_count,
         unresolved_unrecorded_change_count,
         session_watch_scan_summary,

@@ -87,6 +87,29 @@ Volicord는 Volicord 기록을 다룹니다.
 - 사용자 소유 판단 기록은 어느 리비전도 증가시키지 않습니다.
 - 호출자는 이 리비전을 선택하지 않으며, 리비전 값 자체가 권한이 아닙니다.
 
+프로젝트 시각은 Core가 소유합니다.
+
+- 정규 Core UTC 시계는 프로젝트 범위이며 감소하지 않습니다. 시간 권한 확인에서
+  호스트 시계, 호출자 timestamp, 관찰 timestamp를 이 시계 대신 사용하면 안 됩니다.
+- 공통 preflight 뒤 준비된 Core 동작 하나는 현재 프로젝트 시각을 정확히 한 번
+  샘플링하고 모든 현재 시각 판단과 담당 문서가 정의한 의미 있는 동작 timestamp에
+  같은 `operation_now`를 다시 사용합니다. 이렇게 해야 확인 사이에 시각이 흘렀다는
+  이유만으로 한 동작의 의미가 달라지지 않습니다.
+- 정규 UTC 시계와 `project_state.state_version`은 서로 다릅니다.
+  `state_version`은 권한 상태 전이 순서를 정하고 충돌 좌표를 제공하며, 프로젝트 시각은
+  시간 권한 순서를 제공합니다. 어느 쪽도 다른 쪽을 대신하지 않습니다.
+- 담당자가 검증한 `occurred_at`, `observed_at`, `started_at` 같은 값은 원천 관찰
+  사실을 보존할 수 있습니다. Core가 이 값을 기록했다는 이유만으로 정규 시계를
+  되감거나 그 입력이 되지는 않습니다.
+- Custom 또는 주입 Clock은 실시간 시각 원천을 대신할 수 있지만 영속 프로젝트 하한이나
+  같은 Store handle이 이미 받아들인 더 늦은 샘플을 우회할 수 없습니다. Core service
+  경계가 이 하한을 보존합니다.
+- 파생 deadline에는 checked 덧셈과 표현 가능한 정규 UTC timestamp가 필요합니다.
+  Overflow는 무한 또는 wrap된 deadline이 아니라 거부된 동작입니다.
+
+영속 하한, 커밋 시각, bootstrap, 효과 없음 규칙은
+[저장소 버전 관리](storage-versioning.md#canonical-core-utc-clock)가 담당합니다.
+
 ### 개념 관계 지도
 
 이 지도는 어떤 Core 개념이 서로 의존하거나, 서로를 한정하거나, 분리되어 남는지를
@@ -105,8 +128,11 @@ flowchart TD
     WriteTicket --> Run["실행 기록<br/>실행 또는 관찰"]
     Run --> Evidence["증거<br/>대상 단위 뒷받침"]
     ArtifactRef["ArtifactRef"] -. "뒷받침으로 기록될 때만 쓸 수 있음" .-> Evidence
-    AgentConnection["Agent Connection"] -. "요청할 수 있지만 기록하지 않음" .-> Judgment["사용자 소유 판단"]
-    UserChannel["User Channel"] --> Judgment
+    AgentConnection["Agent Connection"] -. "요청할 수 있지만 해결하지 않음" .-> UserAction["UserActionRequest"]
+    UserChannel["User Channel"] --> Resolution["UserActionResolution"]
+    UserAction --> Resolution
+    Resolution --> Judgment["사용자 소유 판단"]
+    Resolution -. "증거 관찰 종류" .-> Evidence
     Judgment -. "필요한 결정 요구를 만족할 수 있음" .-> Scope
     Judgment -. "근거에 묶임" .-> CloseBasis["CurrentCloseBasis"]
     Evidence --> CloseBasis
@@ -120,8 +146,9 @@ flowchart TD
 ```
 
 위의 담당 경계와 함께 이 지도를 읽어야 합니다. 아티팩트는 관련 담당 문서가 그
-사용을 허용하고 기록할 때만 증거가 됩니다. 최종 수락과 잔여 위험 수락은 사용자 소유
-판단이며, 닫기 준비 상태는 정확성 증명이 아니라 판단을 돕는 개념으로 남습니다.
+사용을 허용하고 기록할 때만 증거가 됩니다. 최종 수락과 잔여 위험 수락은 판단 형태의
+사용자 행동 해결이고 증거 관찰은 구분되며, 닫기 준비 상태는 정확성 증명이 아니라
+판단을 돕는 개념으로 남습니다.
 
 ## 3. Core 개념
 
@@ -286,9 +313,15 @@ product-file-write 사실, Evidence gate, 전체 close blocker, 다음 actor/act
 상태 보기 출력, 템플릿 출력, 상태 카드, 요약, 보고서는 파생 표시입니다. 독자가 Core 상태를 볼 수 있게 도울 수는 있지만 Core 권한, 증거, 수락, 잔여 위험 수락이 되지는 않습니다.
 
 <a id="4-user-owned-judgment"></a>
-## 4. 사용자 소유 판단
+## 4. 사용자 행동과 사용자 소유 판단
 
 Core는 에이전트가 정할 수 있는 것과 사용자가 결정해야 하는 것의 경계를 보존합니다.
+
+지원되는 모든 사용자 소유 행동은 Core 소유 `UserActionRequest` 하나와 최대 하나의
+변경 불가능한 `UserActionResolution`을 사용합니다. 닫힌 종류는 아래의 일곱 판단
+종류와 `evidence_observation`입니다. 공통 생명주기가 의미를 합치지는 않습니다. 판단
+선택지는 결정 권한을 지닐 수 있지만 증거 관찰 해결은 정확한 저장 아티팩트와 현재
+근거에 대한 대상 relevance만 지닙니다.
 
 사용자에게 보이는 제품 결과, 중요한 기술 방향, 현재 적용 범위, 이름 붙은 민감 단계, 최종 수락, 잔여 위험, 취소를 바꾸거나 받아들이는 판단은 사용자 소유입니다.
 
@@ -318,9 +351,9 @@ Core는 에이전트가 정할 수 있는 것과 사용자가 결정해야 하�
 `User Channel` 출처가 빠져 있으면 담당 계약상 유효하지 않은 상태입니다. 이런
 상태는 현재 권한 요구사항을 만족할 수 없습니다.
 
-Agent Connection은 지원되는 요청 경로로 사용자 판단을 요청할 수 있습니다.
-그러나 권한 효력이 있는 사용자 판단을 기록하면 안 됩니다. 그런 판단을 기록하는
-유일한 권한 경로는 `User Channel`입니다.
+Agent Connection은 `volicord.request_user_action`으로 사용자 행동 요청을 만들 수
+있지만 어떤 사용자 행동도 해결할 수 없습니다. `volicord.resolve_user_action`이
+유일한 해결 전이이며 `User Channel`을 통한 검증된 `local_user` 출처가 필요합니다.
 
 권한 효력이 필요한 판단 프롬프트에서 호출자는 보이는 라벨과 기계 결과 사이의
 매핑을 정의하지 않습니다. Core가 기준 권한 선택지를 만듭니다.
@@ -334,9 +367,20 @@ Core는 현지화된 라벨과 결과 설명도 만듭니다. 라벨, 설명 문
 답변 본문은 표시 전용입니다. 선택된 선택지의 기계 판독 가능 동작이나 결과를
 뒤집으면 안 됩니다.
 
-Core는 저장되는 각 판단의 근거 스냅샷을 현재 상태에서 만듭니다. 그 근거는 판단을 현재 `Task`, 해당될 때의 Change Unit, `scope_revision`, 해당될 때의 닫기 근거 리비전, 기준선, 결과 참조, 이름 붙은 잔여 위험 ID, 해당될 때의 민감 동작 범위, 생성 시점 상태 버전에 묶습니다. 호출자는 범위 리비전이나 닫기 근거 리비전을 제출하지 않습니다.
+Core는 저장되는 각 사용자 행동 요청에 현재 상태에서 근거 스냅샷 하나와 닫힌 캡처
+폼 하나를 만듭니다. 선택 근거는 요청을 현재 `Task`, 해당될 때의 Change Unit,
+`scope_revision`, 해당될 때의 닫기 근거 리비전, baseline, 결과 참조, 이름 붙은 잔여
+위험 ID, 해당될 때의 민감 동작 범위, 생성 시점 상태 버전에 묶습니다. 증거 관찰
+근거는 현재 대상 후보와 정확한 canonical 아티팩트 후보도 결속합니다. 호출자는
+revision, canonical 근거 좌표, 캡처 시각을 제출하지 않습니다.
 
-판단 호환성:
+하나의 canonical evaluator가 변경 불가능한 해결 존재 여부, 근거 호환성, 동작에서
+한 번 샘플링한 정규 Core 시각에서 유효 요청 상태를 파생합니다. 답하지 않은 비호환 요청은 `superseded`, 해결된
+요청의 근거가 더 이상 일치하지 않으면 `stale`, 그 밖에 pending인 요청만
+`expired`가 됩니다. 조회가 시간 기반 만료를 관찰하기 위해 상태 변경을 저장하지는
+않습니다.
+
+사용자 행동 호환성:
 
 - 최종 수락은 현재 `Task`, 현재 적용 Change Unit, `scope_revision`, `close_basis_revision`, 기준선, 결과 참조와 일치해야 합니다.
 - 잔여 위험 수락은 현재 `close_basis_revision`과 정확한 현재 `risk_id` 값에 일치해야 합니다.
@@ -344,21 +388,29 @@ Core는 저장되는 각 판단의 근거 스냅샷을 현재 상태에서 만�
 - 범위 갱신에 쓰이는 범위 결정 권한은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, 현재 근거, scope update를 포함하는 `required_for`, `User Channel`의 `actor_source=local_user`, 호환되는 `Task`, Change Unit, `scope_revision`, 영향받는 참조가 필요합니다. 거절, 연기, 오래됨, 대체됨, 만료됨, 근거 상태가 유효하지 않은 판단, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
 - 취소 권한은 `machine_action=accept`, `resolution_outcome=accepted`를 가지며 현재 `Task`, 현재 범위 리비전, 현재 적용 Change Unit, `User Channel`의 `actor_source=local_user`와 일치해야 합니다. 거절, 연기, 오래됨, 대체됨, 근거 상태가 유효하지 않은 판단, 에이전트가 기록한 취소 판단은 취소를 허용하지 않습니다.
 - 범위 결정은 사용자의 결정을 기록하지만 그 자체로 현재 적용 범위를 변경하지 않습니다.
-- 오래된 대기 판단에는 성공적으로 답할 수 없습니다.
-- 범위 변경과 실행 기록 변경은 이력 판단을 삭제하지 않습니다. 다만 호환되지 않는 판단은 현재 닫기, 쓰기, 민감 승인 요구사항에 사용할 수 없게 됩니다.
+- stale, superseded, expired 요청은 성공적으로 해결할 수 없습니다.
+- 범위 변경과 실행 기록 변경은 이력 요청이나 해결을 삭제하지 않습니다. 다만 호환되지
+  않는 해결은 현재 닫기, 쓰기, 증거, 민감 승인 요구사항에 사용할 수 없습니다.
 
-저장된 근거가 없는 판단은 담당 계약상 유효하지 않은 상태입니다. 대기 판단은
-`superseded`가 될 수 있으며, 해결된 판단도 저장된 채 `stale`이 될 수 있습니다.
+저장된 근거나 닫힌 캡처 폼이 없는 요청은 담당 계약상 유효하지 않은 상태입니다.
+요청 하나에는 변경 불가능한 해결이 최대 하나만 있을 수 있으며 replay나 동시 제출이
+그 결과를 갈라놓을 수 없습니다.
 
-대기 판단 관련성:
+`evidence_observation`에서 사용자는 저장 대상 후보 하나, 저장 아티팩트 후보의 비어
+있지 않은 부분집합, `supported` 또는 `contradicted`를 선택합니다. Core가 현재 캡처
+시각을 기록합니다. 이 해결은 Run을 만들거나 증거 coverage를 갱신하거나 아티팩트
+origin을 증명하거나 최종 수락이 되지 않습니다. 이후 `record_run`이 정확한 해결 ref와
+선택 아티팩트를 참조해야 합니다.
 
-- 대기 판단은 현재 대기 상태이고, `required_for` 작업 대상이 해당 작업을 포함하며, 판단 종류가 그 작업과 관련 있고, `Task`, Change Unit, 영향받는 참조, 근거가 호환될 때만 작업을 차단합니다.
+대기 사용자 행동 관련성:
+
+- 보류 중인 사용자 행동 요청은 현재 보류 상태이고, `required_for` 작업 대상이 해당 작업을 포함하며, 행동 종류가 그 작업과 관련 있고, `Task`, Change Unit, 영향받는 참조, 근거가 호환될 때만 작업을 차단합니다.
 - 민감 승인 질문은 현재 민감 동작 요구사항과 겹칠 때만 차단합니다.
-- 정보성 판단은 그 자체로 쓰기, 실행 기록, 닫기를 차단하지 않습니다.
-- 현재 종료되지 않은 `Task`에 현재 호환되는 근거와 정보성이 아닌 `required_for` 대상이 하나 이상 있고 사용자 답변이 아직 필요한 대기 사용자 판단이 있으면 `Task`는 `waiting_user` 생명주기 단계를 사용합니다. 이 규칙은 현재 `Task`가 아닌 `Task`를 `waiting_user`로 바꾸지 않습니다.
-- 이 대기 규칙은 위의 권한 선택지 분류와 별개입니다. `product_decision`과 `technical_decision`도 대기 판단에 현재 호환되는 근거와 정보성이 아닌 `required_for` 대상이 있으면 `Task`를 기다리게 합니다.
-- 정보성 판단과 근거 상태가 `stale` 또는 `superseded`인 판단은 `Task`를 `waiting_user`로 만들거나 유지하지 않습니다. 판단이 거절이나 연기 결과를 포함해 해결되면 더 이상 `Task`를 기다리게 하지 않으며, 이 대기 규칙을 만족하는 현재 호환되는 다른 사용자 판단이 있으면 그 판단은 계속 대기 상태를 유지합니다.
-- 현재 `Task`를 기다리게 하는 마지막 판단이 해결되거나 현재 상태가 아니게 되면 현재 적용 Change Unit이 있을 때 생명주기는 `ready`로, 없을 때는 `shaping`으로 돌아갑니다. 종료 생명주기 단계가 우선하며 판단 생명주기 유지 작업으로 다시 열리지 않습니다.
+- 정보 제공용 요청은 그 자체로 쓰기, 실행 기록, 닫기를 차단하지 않습니다.
+- 현재 종료되지 않은 `Task`에 현재 호환되는 근거와 정보성이 아닌 `required_for` 대상이 하나 이상 있고 사용자 입력이 아직 필요한 유효 대기 사용자 행동 요청이 있으면 `Task`는 `waiting_user` 생명주기 단계를 사용합니다. 이 규칙은 현재 `Task`가 아닌 `Task`를 `waiting_user`로 바꾸지 않습니다.
+- 이 대기 규칙은 위의 권한 선택지 분류와 별개입니다. `product_decision`과 `technical_decision` 요청도 현재 호환되는 근거와 정보성이 아닌 `required_for` 대상이 있으면 `Task`를 기다리게 합니다.
+- 정보성 요청과 유효 상태가 stale, superseded, expired, resolved인 요청은 `Task`를 `waiting_user`로 만들거나 유지하지 않습니다. 이 규칙을 만족하는 현재 호환 대기 요청이 있으면 그 요청은 계속 기다리게 합니다.
+- 현재 `Task`를 기다리게 하는 마지막 요청이 해결되거나 현재 상태가 아니게 되면 현재 적용 Change Unit이 있을 때 생명주기는 `ready`로, 없을 때는 `shaping`으로 돌아갑니다. 종료 생명주기 단계가 우선하며 사용자 행동 생명주기 유지 작업으로 다시 열리지 않습니다.
 
 에이전트 재량:
 
@@ -420,7 +472,7 @@ Change Unit 효과 계약은 권한 기록을 대신하지 않습니다.
 | Lineage와 carry-forward | 새 Task는 predecessor 하나를 지정하고 호환 material을 명시적으로 선택할 수 있습니다. 적용 material은 새 입력으로 검증하며 reference-only 맥락은 이전 권한을 되살리지 않습니다. |
 | 범위 업데이트 | 받아들인 범위나 Change Unit 변경은 범위 담당 문서가 정의한 전이를 통해서만 현재 적용 상태가 됩니다. 판단 기록만으로 현재 적용 범위가 바뀌지 않습니다. |
 | 실행과 관찰 | 실행 기록은 행동과 관찰을 기록합니다. 제품 파일 쓰기는 현재 적용 범위와 쓰기 티켓에 호환되어야 하며, 읽기 전용 작업은 이후 쓰기에 대한 호환성을 만들지 않습니다. |
-| 대기 또는 차단 | 현재 종료되지 않은 `Task`에 사용자 답변이 필요한, 현재 호환되는 정보성 외 작업 대상의 대기 사용자 판단이 있으면 `Task`는 `waiting_user`입니다. 마지막 해당 판단이 해결되거나 현재 상태가 아니게 되면 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다. 그 밖에 필요한 권한 데이터가 없거나, 오래됐거나, 호환되지 않거나, 우회하기 안전하지 않으면 Core는 공백을 숨기지 않고 담당 문서가 정의한 차단 상태로 드러냅니다. |
+| 대기 또는 차단 | 현재 종료되지 않은 `Task`에 사용자 답변이 필요한, 현재 호환되는 정보성 외 작업 대상의 보류 중인 사용자 행동 요청이 있으면 `Task`는 `waiting_user`입니다. 마지막 해당 요청이 해결되거나 현재 상태가 아니게 되면 현재 적용 Change Unit이 있을 때 `ready`로, 없을 때 `shaping`으로 돌아갑니다. 그 밖에 필요한 권한 데이터가 없거나, 오래됐거나, 호환되지 않거나, 우회하기 안전하지 않으면 Core는 공백을 숨기지 않고 담당 문서가 정의한 차단 상태로 드러냅니다. |
 | 닫기 시도 | Core는 현재 상태를 정직하게 닫을 수 있는지 평가합니다. 마지막 대화 요약이나 생성된 보고서만으로는 충분하지 않습니다. |
 | 종료 결과 | 완료, 취소, 대체는 `Task` 경로를 끝냅니다. 취소와 대체는 종료이지만 성공 완료가 아니며, 완료에 필요한 증거, 수락, 위험 요구를 만족하지 않습니다. |
 
@@ -534,10 +586,11 @@ flowchart LR
   대상 identity, claim relevance를 서로 다른 축으로 평가합니다. Strong
   evidence에는 적용되는 모든 축이 필요하며 아티팩트 무결성만으로 producer나
   relevance를 증명할 수 없습니다.
-- 기준 구현은 별도의 `user_only` `volicord.record_user_observation` 전이를
-  제공합니다. 그 `UserEvidenceObservation`은 로컬 사용자 provenance와
-  supported 또는 contradicted relevance를 정확한 현재 아티팩트 및 근거에
-  결합합니다. 이는 Evidence이지 `UserJudgment`나 최종 수락이 아닙니다.
+- 공통 `user_only` `volicord.resolve_user_action` 전이는 Core가 도출한 대기 캡처
+  양식에 대해서만 불변 `evidence_observation` `UserActionResolution`을 기록합니다.
+  이 resolution은 로컬 사용자 provenance와 supported 또는 contradicted relevance를
+  사용자가 선택한 정확한 현재 아티팩트 및 근거에 결합합니다. 이는 Evidence이지 판단
+  resolution이나 최종 수락이 아닙니다.
 - Verified command, tool, 등록 connection Evidence는 하나의 권한 체인을
   사용합니다. `volicord.prepare_evidence_capture`가 현재 근거에 결합되고 만료되는
   `EvidenceCaptureIntent`를 만들고, 등록된 source만 불변 영속 source-fact receipt와 transient staged bytes를
@@ -603,7 +656,7 @@ flowchart LR
 
 - 호출자가 제공한 닫기 근거 결과와 위험 참조는 담당 문서가 허용한 결과/증거 종류에서만 받아들일 수 있으며, 존재하고 같은 프로젝트와 `Task`에 속해야 하고 Core가 정규화해야 합니다.
 - 기준 범위에서 허용되는 호출자 제공 결과/증거 종류는 담당 문서가 명시적으로 다른 종류를 추가하지 않는 한 Run, Artifact, EvidenceSummary, ChangeUnit입니다.
-- ProjectState, 쓰기 티켓, UserJudgment, Blocker, TaskEvent, AgentConnection, Task는 담당 문서가 명시적으로 추가하지 않는 한 호출자 제공 결과 참조가 아닙니다.
+- ProjectState, 쓰기 티켓, UserActionRequest, UserActionResolution, Blocker, TaskEvent, AgentConnection, Task는 담당 문서가 명시적으로 추가하지 않는 한 호출자 제공 결과 참조가 아닙니다.
 - 닫기 증거에 쓰이는 아티팩트 참조는 `Task`에 연결되어 있고 사용 시점의 현재 바이트 무결성이 `verified`여야 합니다. 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선에 맞는 기록된 현재 실행 기록을 식별해야 합니다. 이력 실행 기록은 현재 실행 기록이 그 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 기록하지 않는 한 감사 기록입니다.
 - 닫기 증거에 쓰이는 증거 관찰 참조는 필요한 `AcceptanceCriterionId`와
   일치해야 하며 `Task`, Change Unit, 출처 실행 기록, 닫기 근거 증거 요약에
@@ -616,7 +669,7 @@ flowchart LR
 
 - 커밋된 `record_run`은 `close_basis_revision`을 증가시키고, 그 닫기 평가에서 새 현재 닫기 근거를 만들거나 현재 닫기 근거가 없음을 기록합니다.
 - 실질적 범위 변경이나 현재 적용 Change Unit 변경은 `scope_revision`을 증가시키고, 현재 닫기 근거를 무효화하며, `close_basis_revision`을 증가시킵니다.
-- 사용자 소유 판단 기록은 요구사항을 만족, 오래됨, 거절 상태로 만들 수 있지만 `scope_revision`이나 `close_basis_revision`을 증가시키지 않습니다.
+- 사용자 소유 해결 기록은 요구사항을 만족, 오래됨, 거절 상태로 만들 수 있지만 `scope_revision`이나 `close_basis_revision`을 증가시키지 않습니다.
 
 닫기 준비 상태의 잔여 위험 식별성은 현재 닫기 근거의 불투명 `risk_id` 값을 사용합니다. 위험 요약이나 결과 문구는 사용자에게 위험을 설명할 수 있지만 텍스트 일치는 권한이 아닙니다.
 
@@ -677,7 +730,7 @@ flowchart LR
 | 사용자 판단 스키마 형태, `SensitiveActionScope`, 수락된 위험 입력 형태 | [API 판단 스키마](api/schema-judgment.md) |
 | 아티팩트 참조, 아티팩트 입력 형태, 스테이징 핸들, 아티팩트 스키마 규칙 | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | 공개 오류 코드 의미, 오류 처리 경로, 오류 우선순위 | [API 오류 코드](api/error-codes.md), [API 오류 처리 경로](api/error-routing.md), [API 오류 우선순위](api/error-precedence.md) |
-| 저장소 기록, 저장 효과, 상태 버전 효과, 지속 저장 배치 | [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [저장소 버전 관리](storage-versioning.md) |
+| 저장소 기록, 저장 효과, 상태 버전 및 정규 시각 효과, 지속 저장 배치 | [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [저장소 버전 관리](storage-versioning.md) |
 | 아티팩트 저장소 생명주기와 본문 읽기 규칙 | [아티팩트 저장소](storage-artifacts.md) |
 | 상태 보기 권한과 파생 표시 경계 | [상태 보기 권한 참조](projection-and-templates.md) |
 | 템플릿 본문과 렌더링된 표시 문구 | [템플릿 본문](template-bodies.md) |

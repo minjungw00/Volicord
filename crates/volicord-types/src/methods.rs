@@ -3,33 +3,33 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{
-    ArtifactId, BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RunId, TaskId,
-    UnrecordedChangeId, UserJudgmentId, UserJudgmentOptionId, WriteTicketId,
+    BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RunId, TaskId, UnrecordedChangeId,
+    UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use crate::schema::{
-    AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
-    ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EventRef,
-    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary,
-    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceSummary,
-    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject,
-    JudgmentInboxItem, JudgmentRationale, NextActionSummary, ObservedChanges,
-    ProjectContinuitySummary, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage,
-    RunSummary, SensitiveActionScope, SourceRef, StagedArtifactHandle, StateRecordRef,
-    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse, ToolEnvelope,
-    ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserChannelAvailability, UserEvidenceObservation,
-    UserJudgment, UserJudgmentCandidate, UserJudgmentContext, UserJudgmentOptionInput,
-    WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
+    AcceptanceCriterionInput, AcceptanceCriterionReplacement, ArtifactInput, ArtifactRef,
+    AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput, CloseReadinessBlocker,
+    ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis, EventRef, EvidenceCaptureIntent,
+    EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation,
+    EvidenceObservationInput, EvidenceProducer, EvidenceSummary, EvidenceTarget,
+    EvidenceUpdateProvenance, GuaranteeDisplay, GuardHealthSummary, JsonObject, NextActionSummary,
+    ObservedChanges, ProjectContinuitySummary, RequiredNullable, RiskAcceptanceCoverage,
+    RunSummary, SourceRef, StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard,
+    TaskFlowItem, TaskLineageInput, ToolDryRunResponse, ToolEnvelope, ToolRejectedResponse,
+    ToolResponse, ToolResultBase, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
+    UserActionDraft, UserActionInboxItem, UserActionRequest, UserActionResolution,
+    UserActionResolutionInput, UserChannelAvailability, WriteDecisionReason, WriteTicket,
+    WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
     CloseState, ConnectionObservationSourceKind, EffectKind, ErrorCode, EvidenceAssuranceLevel,
     EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind,
-    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
-    MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState, RequestedMode,
-    ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel, UnrecordedChangeResolutionBasis,
-    UserJudgmentStatus, UtcTimestamp, WriteTicketEffect,
+    JudgmentResolutionOutcome, MethodName, MutationDetailLevel, OperationCategory,
+    PrepareWriteDecision, RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
+    StatusDetailLevel, UnrecordedChangeResolutionBasis, UserActionChannelKind, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -68,14 +68,11 @@ pub type StageArtifactResponse = ToolResponse<StageArtifactResult>;
 /// Response branch type for `volicord.record_run`.
 pub type RecordRunResponse = ToolResponse<RecordRunResult>;
 
-/// Response branch type for `volicord.request_user_judgment`.
-pub type RequestUserJudgmentResponse = ToolResponse<RequestUserJudgmentResult>;
+/// Response branch type for `volicord.request_user_action`.
+pub type RequestUserActionResponse = ToolResponse<RequestUserActionResult>;
 
-/// Response branch type for `volicord.record_user_judgment`.
-pub type RecordUserJudgmentResponse = ToolResponse<RecordUserJudgmentResult>;
-
-/// Response branch type for `volicord.record_user_observation`.
-pub type RecordUserObservationResponse = ToolResponse<RecordUserObservationResult>;
+/// Response branch type for `volicord.resolve_user_action`.
+pub type ResolveUserActionResponse = ToolResponse<ResolveUserActionResult>;
 
 /// Response branch type for `volicord.reconcile_changes`.
 pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
@@ -83,16 +80,34 @@ pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
 /// Response branch type for `volicord.close_task`.
 pub type CloseTaskResponse = ToolResponse<CloseTaskResult>;
 
-/// MCP response branches for `volicord.request_user_judgment`.
-///
-/// Host elicitation may resolve the newly pending judgment before the original
-/// MCP tool call returns, so the tool surface can return either public method
-/// response without weakening either public API method's own response type.
+/// Compound MCP projection that keeps the agent-workflow transaction distinct
+/// from any later immutable user-channel resolution observed by the adapter.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum McpRequestUserJudgmentResponse {
-    Pending(Box<RequestUserJudgmentResponse>),
-    Recorded(Box<RecordUserJudgmentResponse>),
+#[serde(deny_unknown_fields)]
+pub struct McpRequestUserActionResponse {
+    pub agent_workflow_result: RequestUserActionResponse,
+    pub agent_workflow_result_replayed: bool,
+    pub current_projection_state_version: u64,
+    pub current_projection_observed_at: UtcTimestamp,
+    pub current_status: UserActionStatus,
+    pub user_channel_resolution_ref: RequiredNullable<StateRecordRef>,
+    pub user_channel_resolution: RequiredNullable<AgentSafeUserActionResolution>,
+    pub derived_refs: Vec<StateRecordRef>,
+}
+
+/// Agent-safe projection of a verified user-channel resolution.
+///
+/// User-authored notes and evidence-observation summaries intentionally remain
+/// outside the MCP-visible compound response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSafeUserActionResolution {
+    pub user_action_resolution_id: UserActionResolutionId,
+    pub user_action_request_id: UserActionRequestId,
+    pub action_kind: UserActionKind,
+    pub channel_kind: UserActionChannelKind,
+    pub resolved_at: UtcTimestamp,
+    pub resolution_summary: McpUserActionResolutionSummary,
 }
 
 /// Stable top-level error code for a known MCP tool failure before Core entry.
@@ -208,7 +223,7 @@ pub struct McpPrepareWriteCompactResult {
     pub allowed_path_patterns: Vec<String>,
     pub denied_path_patterns: Vec<String>,
     pub write_decision_reasons: Vec<WriteDecisionReason>,
-    pub user_judgment_candidate: Option<UserJudgmentCandidate>,
+    pub user_action_draft: Option<UserActionDraft>,
 }
 
 /// Compact `volicord.prepare_evidence_capture` outcome needed by the source and Run steps.
@@ -253,16 +268,40 @@ pub struct McpRecordRunCompactResult {
     pub close_basis_anchor: RequiredNullable<McpRecordRunCloseBasisAnchor>,
 }
 
-/// Compact host-native Judgment outcome safe for ordinary agent consumption.
+/// Compact host-native user-action outcome safe for ordinary agent consumption.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpRequestUserJudgmentCompactResult {
+pub struct McpRequestUserActionCompactResult {
     pub effect: McpMutationEffectSummary,
-    pub judgment_ref: StateRecordRef,
-    pub status: UserJudgmentStatus,
-    pub selected_option_id: RequiredNullable<UserJudgmentOptionId>,
-    pub selected_option_label: RequiredNullable<String>,
-    pub resolution_outcome: RequiredNullable<JudgmentResolutionOutcome>,
+    pub agent_workflow_result_replayed: bool,
+    pub user_action_request_ref: StateRecordRef,
+    pub current_projection_state_version: u64,
+    pub current_projection_observed_at: UtcTimestamp,
+    pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
+    pub status: UserActionStatus,
+    pub resolution_summary: RequiredNullable<McpUserActionResolutionSummary>,
+    pub derived_refs: Vec<StateRecordRef>,
+}
+
+/// Closed compact resolution summary preserving choice and observation semantics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "resolution_type",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum McpUserActionResolutionSummary {
+    Choice {
+        selected_option_id: crate::ids::UserActionOptionId,
+        selected_option_label: String,
+        machine_action: UserActionOptionAction,
+        resolution_outcome: JudgmentResolutionOutcome,
+    },
+    EvidenceObservation {
+        target: EvidenceTarget,
+        artifact_refs: Vec<ArtifactRef>,
+        relevance_status: EvidenceRelevanceStatus,
+    },
 }
 
 /// Compact per-finding `volicord.reconcile_changes` outcome.
@@ -272,7 +311,7 @@ pub struct McpReconcileChangesCompactResult {
     pub effect: McpMutationEffectSummary,
     pub unresolved_changes: Vec<UnrecordedChangeFinding>,
     pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
-    pub pending_user_judgment_refs: Vec<StateRecordRef>,
+    pub pending_user_action_refs: Vec<StateRecordRef>,
     pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
 }
 
@@ -586,7 +625,7 @@ impl StatusDetailLevel {
         match self {
             Self::Summary => StatusInclude {
                 task: true,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -595,7 +634,7 @@ impl StatusDetailLevel {
             },
             Self::Workflow => StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: true,
                 evidence: true,
                 close: true,
@@ -604,7 +643,7 @@ impl StatusDetailLevel {
             },
             Self::Full => StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: true,
                 evidence: true,
                 close: true,
@@ -620,7 +659,7 @@ impl StatusDetailLevel {
 #[serde(deny_unknown_fields)]
 pub struct StatusInclude {
     pub task: bool,
-    pub pending_user_judgments: bool,
+    pub pending_user_actions: bool,
     pub write_ticket: bool,
     pub evidence: bool,
     pub close: bool,
@@ -636,8 +675,8 @@ pub struct StatusResult {
     pub active_task: Option<StateSummary>,
     pub status_summary: String,
     pub next_actions: Vec<NextActionSummary>,
-    pub pending_user_judgments: Vec<StateRecordRef>,
-    pub pending_judgment_inbox_items: Vec<JudgmentInboxItem>,
+    pub pending_user_actions: Vec<StateRecordRef>,
+    pub pending_user_action_inbox_items: Vec<UserActionInboxItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_channel_availability: Option<UserChannelAvailability>,
     pub blocker_refs: Vec<StateRecordRef>,
@@ -874,9 +913,9 @@ pub struct PrepareWriteResult {
     pub allowed_path_patterns: Vec<String>,
     pub denied_path_patterns: Vec<String>,
     pub control_surface: Option<ControlSurfaceSummary>,
-    pub active_user_judgment_refs: Vec<StateRecordRef>,
+    pub active_user_action_refs: Vec<StateRecordRef>,
     pub write_decision_reasons: Vec<WriteDecisionReason>,
-    pub user_judgment_candidate: Option<UserJudgmentCandidate>,
+    pub user_action_draft: Option<UserActionDraft>,
     pub guarantee_display: Option<GuaranteeDisplay>,
 }
 
@@ -1083,29 +1122,21 @@ pub struct RecordRunResult {
     pub state: StateSummary,
 }
 
-/// `volicord.request_user_judgment` request params.
+/// `volicord.request_user_action` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct RequestUserJudgmentRequest {
+pub struct RequestUserActionRequest {
     pub envelope: ToolEnvelope,
     pub task_id: TaskId,
     pub change_unit_id: RequiredNullable<ChangeUnitId>,
-    #[serde(default)]
-    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
-    pub judgment_kind: JudgmentKind,
-    pub presentation: JudgmentPresentation,
-    pub question: String,
-    #[serde(default)]
-    pub options: RequiredNullable<Vec<UserJudgmentOptionInput>>,
-    pub context: UserJudgmentContext,
-    pub affected_refs: Vec<StateRecordRef>,
-    pub required_for: Vec<JudgmentRequiredFor>,
+    pub action: UserActionDraft,
+    pub required_for: Vec<UserActionRequiredFor>,
     pub expires_at: RequiredNullable<UtcTimestamp>,
 }
 
-impl MethodOperationCategory for RequestUserJudgmentRequest {
+impl MethodOperationCategory for RequestUserActionRequest {
     fn method_name(&self) -> MethodName {
-        MethodName::RequestUserJudgment
+        MethodName::RequestUserAction
     }
 
     fn operation_category(&self) -> OperationCategory {
@@ -1113,60 +1144,63 @@ impl MethodOperationCategory for RequestUserJudgmentRequest {
     }
 }
 
-/// MCP-visible `volicord.request_user_judgment` arguments.
+/// MCP-visible `volicord.request_user_action` arguments.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct McpRequestUserJudgmentArguments {
+pub struct McpRequestUserActionArguments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_selector: Option<String>,
     #[serde(default)]
     pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    #[serde(default)]
-    pub change_unit_id: RequiredNullable<ChangeUnitId>,
-    #[serde(default)]
-    pub sensitive_action_scope: RequiredNullable<SensitiveActionScope>,
-    pub judgment_kind: JudgmentKind,
-    pub presentation: JudgmentPresentation,
-    pub question: String,
-    #[serde(default)]
-    pub options: RequiredNullable<Vec<UserJudgmentOptionInput>>,
-    pub context: UserJudgmentContext,
-    #[serde(default)]
-    pub affected_refs: Vec<StateRecordRef>,
-    pub required_for: Vec<JudgmentRequiredFor>,
-    #[serde(default)]
-    pub expires_at: RequiredNullable<UtcTimestamp>,
+    pub request: McpRequestUserActionOperation,
 }
 
-/// `volicord.request_user_judgment` method result branch.
+/// Create-or-resume operation selected for the MCP user-action tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct RequestUserJudgmentResult {
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum McpRequestUserActionOperation {
+    Create {
+        task_id: TaskId,
+        #[serde(default)]
+        change_unit_id: RequiredNullable<ChangeUnitId>,
+        action: UserActionDraft,
+        required_for: Vec<UserActionRequiredFor>,
+        #[serde(default)]
+        expires_at: RequiredNullable<UtcTimestamp>,
+    },
+    Resume {
+        user_action_request_id: UserActionRequestId,
+    },
+}
+
+/// `volicord.request_user_action` method result branch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RequestUserActionResult {
     pub base: ToolResultBase,
-    pub user_judgment_ref: StateRecordRef,
-    pub user_judgment: UserJudgment,
-    pub inbox_item: JudgmentInboxItem,
+    pub user_action_request_ref: StateRecordRef,
+    pub user_action_request: UserActionRequest,
+    pub inbox_item: UserActionInboxItem,
     pub blocker_refs: Vec<StateRecordRef>,
     pub state: StateSummary,
 }
 
-/// `volicord.record_user_judgment` request params.
+/// `volicord.resolve_user_action` request params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct RecordUserJudgmentRequest {
+pub struct ResolveUserActionRequest {
     pub envelope: ToolEnvelope,
-    pub user_judgment_id: UserJudgmentId,
-    pub judgment_kind: JudgmentKind,
-    pub selected_option_id: UserJudgmentOptionId,
-    pub answer: RecordUserJudgmentPayload,
-    pub rationale: JudgmentRationale,
-    pub note: RequiredNullable<String>,
-    pub accepted_risks: Vec<AcceptedRiskInput>,
+    pub user_action_request_id: UserActionRequestId,
+    #[schemars(
+        length(min = 1, max = "CHANNEL_SUBMISSION_ID_MAX_BYTES"),
+        regex(pattern = "^[!-~]+$")
+    )]
+    pub channel_submission_id: String,
+    pub resolution: UserActionResolutionInput,
 }
 
-impl MethodOperationCategory for RecordUserJudgmentRequest {
+impl MethodOperationCategory for ResolveUserActionRequest {
     fn method_name(&self) -> MethodName {
-        MethodName::RecordUserJudgment
+        MethodName::ResolveUserAction
     }
 
     fn operation_category(&self) -> OperationCategory {
@@ -1174,47 +1208,17 @@ impl MethodOperationCategory for RecordUserJudgmentRequest {
     }
 }
 
-/// `volicord.record_user_judgment` method result branch.
+/// `volicord.resolve_user_action` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct RecordUserJudgmentResult {
+pub struct ResolveUserActionResult {
     pub base: ToolResultBase,
-    pub user_judgment_ref: StateRecordRef,
-    pub user_judgment: UserJudgment,
-    pub updated_refs: Vec<StateRecordRef>,
+    pub user_action_request_ref: StateRecordRef,
+    pub user_action_resolution_ref: StateRecordRef,
+    pub user_action_request: UserActionRequest,
+    pub user_action_resolution: UserActionResolution,
+    pub derived_refs: Vec<StateRecordRef>,
     pub state: StateSummary,
     pub next_actions: Vec<NextActionSummary>,
-}
-
-/// `volicord.record_user_observation` request params.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RecordUserObservationRequest {
-    pub envelope: ToolEnvelope,
-    pub task_id: TaskId,
-    pub change_unit_id: ChangeUnitId,
-    pub target: EvidenceTarget,
-    pub relevance_status: EvidenceRelevanceStatus,
-    pub artifact_ids: Vec<ArtifactId>,
-    pub summary: String,
-    pub observed_at: UtcTimestamp,
-}
-
-impl MethodOperationCategory for RecordUserObservationRequest {
-    fn method_name(&self) -> MethodName {
-        MethodName::RecordUserObservation
-    }
-
-    fn operation_category(&self) -> OperationCategory {
-        OperationCategory::UserOnly
-    }
-}
-
-/// `volicord.record_user_observation` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct RecordUserObservationResult {
-    pub base: ToolResultBase,
-    pub user_observation_ref: StateRecordRef,
-    pub user_observation: UserEvidenceObservation,
 }
 
 /// `volicord.reconcile_changes` request params.
@@ -1257,7 +1261,7 @@ pub struct UnrecordedChangeResolutionRequest {
     pub unrecorded_change_id: UnrecordedChangeId,
     pub basis: UnrecordedChangeResolutionBasis,
     #[serde(default)]
-    pub user_judgment_id: RequiredNullable<UserJudgmentId>,
+    pub user_action_resolution_id: RequiredNullable<UserActionResolutionId>,
 }
 
 /// `volicord.reconcile_changes` method result branch.
@@ -1268,7 +1272,7 @@ pub struct ReconcileChangesResult {
     pub task_ref: StateRecordRef,
     pub unresolved_changes: Vec<UnrecordedChangeFinding>,
     pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
-    pub pending_user_judgment_refs: Vec<StateRecordRef>,
+    pub pending_user_action_refs: Vec<StateRecordRef>,
     pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
     pub state: StateSummary,
     pub close_blockers: Vec<CloseReadinessBlocker>,
@@ -1364,7 +1368,7 @@ pub struct CloseTaskResult {
     pub continuity_summary: Vec<ProjectContinuitySummary>,
     pub state: StateSummary,
     pub blockers: Vec<CloseReadinessBlocker>,
-    pub pending_judgment_inbox_items: Vec<JudgmentInboxItem>,
+    pub pending_user_action_inbox_items: Vec<UserActionInboxItem>,
     pub guard_health: Option<GuardHealthSummary>,
     pub coverage_summary: Option<CoverageSummary>,
     pub evidence_summary: Option<EvidenceSummary>,
@@ -1386,11 +1390,8 @@ pub fn public_request_schema(method_name: &str) -> Option<Value> {
         "volicord.prepare_write" => Some(request_schema::<PrepareWriteRequest>()),
         "volicord.stage_artifact" => Some(request_schema::<StageArtifactRequest>()),
         "volicord.record_run" => Some(request_schema::<RecordRunRequest>()),
-        "volicord.request_user_judgment" => Some(request_schema::<RequestUserJudgmentRequest>()),
-        "volicord.record_user_judgment" => Some(request_schema::<RecordUserJudgmentRequest>()),
-        "volicord.record_user_observation" => {
-            Some(request_schema::<RecordUserObservationRequest>())
-        }
+        "volicord.request_user_action" => Some(request_schema::<RequestUserActionRequest>()),
+        "volicord.resolve_user_action" => Some(request_schema::<ResolveUserActionRequest>()),
         "volicord.reconcile_changes" => Some(request_schema::<ReconcileChangesRequest>()),
         "volicord.close_task" => Some(request_schema::<CloseTaskRequest>()),
         _ => None,
@@ -1414,11 +1415,8 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
         "volicord.prepare_write" => Some(response_schema::<PrepareWriteResponse>()),
         "volicord.stage_artifact" => Some(response_schema::<StageArtifactResponse>()),
         "volicord.record_run" => Some(response_schema::<RecordRunResponse>()),
-        "volicord.request_user_judgment" => Some(response_schema::<RequestUserJudgmentResponse>()),
-        "volicord.record_user_judgment" => Some(response_schema::<RecordUserJudgmentResponse>()),
-        "volicord.record_user_observation" => {
-            Some(response_schema::<RecordUserObservationResponse>())
-        }
+        "volicord.request_user_action" => Some(response_schema::<RequestUserActionResponse>()),
+        "volicord.resolve_user_action" => Some(response_schema::<ResolveUserActionResponse>()),
         "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResponse>()),
         "volicord.close_task" => Some(response_schema::<CloseTaskResponse>()),
         _ => None,
@@ -1438,9 +1436,7 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
         "volicord.prepare_write" => Some(request_schema::<McpPrepareWriteArguments>()),
         "volicord.stage_artifact" => Some(request_schema::<McpStageArtifactArguments>()),
         "volicord.record_run" => Some(request_schema::<McpRecordRunArguments>()),
-        "volicord.request_user_judgment" => {
-            Some(request_schema::<McpRequestUserJudgmentArguments>())
-        }
+        "volicord.request_user_action" => Some(request_schema::<McpRequestUserActionArguments>()),
         "volicord.reconcile_changes" => Some(request_schema::<McpReconcileChangesArguments>()),
         "volicord.check_close" => Some(request_schema::<McpCheckCloseArguments>()),
         "volicord.close_task" => Some(request_schema::<McpCloseTaskArguments>()),
@@ -1451,10 +1447,10 @@ pub fn mcp_request_schema(tool_name: &str) -> Option<Value> {
 /// Returns the generated JSON Schema for one MCP-visible public method result.
 pub fn mcp_response_schema(tool_name: &str) -> Option<Value> {
     match tool_name {
-        "volicord.request_user_judgment" => Some(response_schema::<
+        "volicord.request_user_action" => Some(response_schema::<
             McpMutationStructuredContent<
-                McpRequestUserJudgmentResponse,
-                McpRequestUserJudgmentCompactResult,
+                McpRequestUserActionResponse,
+                McpRequestUserActionCompactResult,
             >,
         >()),
         "volicord.intake" => Some(response_schema::<

@@ -93,8 +93,8 @@ fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(),
     assert_ne!(first_write_id, second_write_id);
     assert_ne!(first_write_event_id, second_write_event_id);
 
-    let first_judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let first_judgment = harness.service.request_user_action(
+        user_action_request(
             request_id,
             "idem_reused_judgment_1",
             false,
@@ -105,11 +105,12 @@ fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(),
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let first_judgment_id = response_record_id(&first_judgment.response_value, "user_judgment_ref");
+    let first_judgment_id =
+        response_record_id(&first_judgment.response_value, "user_action_request_ref");
     let first_judgment_event_id = response_event_id(&first_judgment.response_value);
 
-    let second_judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let second_judgment = harness.service.request_user_action(
+        user_action_request(
             request_id,
             "idem_reused_judgment_2",
             false,
@@ -121,7 +122,7 @@ fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let second_judgment_id =
-        response_record_id(&second_judgment.response_value, "user_judgment_ref");
+        response_record_id(&second_judgment.response_value, "user_action_request_ref");
     let second_judgment_event_id = response_event_id(&second_judgment.response_value);
     assert_ne!(first_judgment_id, second_judgment_id);
     assert_ne!(first_judgment_event_id, second_judgment_event_id);

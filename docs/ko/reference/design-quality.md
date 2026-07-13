@@ -23,7 +23,7 @@
 | Core 대체 금지, 닫기 준비 상태, 면제, 수락된 위험, 잔여 위험의 의미 | [Core 모델 참조](core-model.md) |
 | 판단 형태와 값 | [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
 | 차단 사유 형태와 범주 값 | [API 상태 스키마](api/schema-state.md), [API 값 집합](api/schema-value-sets.md) |
-| 사용자 소유 판단 요청과 기록 동작 | [사용자 소유 판단 요청 메서드](api/method-request-user-judgment.md), [사용자 소유 판단 기록 메서드](api/method-record-user-judgment.md) |
+| 사용자 소유 판단 요청과 기록 동작 | [사용자 소유 판단 요청 메서드](api/method-request-user-action.md), [사용자 소유 판단 기록 메서드](api/method-resolve-user-action.md) |
 | 상태와 닫기 동작 | [상태 메서드](api/method-status.md), [Task 닫기 메서드](api/method-close-task.md) |
 | Agent Connection 역량과 공개 역량 오류 | [Agent Connection](agent-connection.md), [API 오류 코드](api/error-codes.md) |
 | 메서드별 저장 효과 | [저장 효과](storage-effects.md) |
@@ -46,8 +46,8 @@
 
 | 우려 | 담당 문서가 정의한 처리 경로 | 닫기 영향 |
 |---|---|---|
-| <a id="design-quality-product-decision-needed"></a><a id="design-quality-route-product-direction"></a>제품 동작, UX, 문구, 릴리스 약속, 사용자 가치에 판단이 필요합니다. | `judgment_kind=product_decision`을 사용합니다. | 적용되는 닫기 준비 상태 계약이 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다. |
-| <a id="design-quality-technical-decision-needed"></a><a id="design-quality-route-technical-direction"></a>아키텍처, 의존성, 마이그레이션, 공개 인터페이스, 호환성, 보안·개인정보 또는 중요한 기술 방향에 판단이 필요합니다. | `judgment_kind=technical_decision`을 사용합니다. | 적용되는 닫기 준비 상태 계약이 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다. |
+| <a id="design-quality-product-decision-needed"></a><a id="design-quality-route-product-direction"></a>제품 동작, UX, 문구, 릴리스 약속, 사용자 가치에 판단이 필요합니다. | `judgment_kind=product_decision`인 choice `UserActionDraft`를 사용합니다. | 적용되는 닫기 준비 상태 계약이 그 행동을 요구할 때만 `CloseReadinessBlocker.category=user_action`을 사용합니다. |
+| <a id="design-quality-technical-decision-needed"></a><a id="design-quality-route-technical-direction"></a>아키텍처, 의존성, 마이그레이션, 공개 인터페이스, 호환성, 보안·개인정보 또는 중요한 기술 방향에 판단이 필요합니다. | `judgment_kind=technical_decision`인 choice `UserActionDraft`를 사용합니다. | 적용되는 닫기 준비 상태 계약이 그 행동을 요구할 때만 `CloseReadinessBlocker.category=user_action`을 사용합니다. |
 | <a id="design-quality-scope-boundary-change"></a><a id="design-quality-route-scope-boundary"></a>범위 확장, 비목표 제거, Change Unit 경계, Autonomy Boundary를 바꿔야 합니다. | 영향을 받는 범위 또는 판단 계약에 따라 `judgment_kind=scope_decision`이나 `CloseReadinessBlocker.category=scope`를 사용합니다. | 해당 계약이 의존성을 정의할 때만 닫기에 영향을 줍니다. |
 | <a id="design-quality-missing-close-relevant-support"></a><a id="design-quality-route-evidence"></a>닫기 관련 주장에 필요한 뒷받침이 없습니다. | Core 증거 권한에 따라 증거를 요청합니다. 증거와 닫기 준비 상태 담당 문서가 허용할 때만 `CloseReadinessBlocker.category=evidence_claim`, `CloseReadinessBlocker.category=evidence_provenance`, `CloseReadinessBlocker.category=artifact_availability`를 사용합니다. | 담당 문서가 요구할 때만 증거 부족으로 닫기를 차단합니다. |
 | <a id="design-quality-residual-risk-visibility"></a><a id="design-quality-route-residual-risk"></a>알려진 한계, 확인하지 못한 조건, 절충점이 닫기에 중요합니다. | 위험을 보이게 합니다. 적용되는 담당 문서에 따라 `CloseReadinessBlocker.category=residual_risk_visibility`를 사용하고, 수락이 필요하면 `CloseReadinessBlocker.category=residual_risk_acceptance`를 사용합니다. | 적용되는 잔여 위험 계약을 통해서만 닫기에 영향을 줍니다. |
@@ -107,7 +107,7 @@
 |---|---|
 | <a id="design-quality-route-final-acceptance"></a>`final_acceptance` | 닫기 근거가 보인 뒤 사용자의 결과 판단을 기록합니다. 증거, 잔여 위험 수락, QA, 검증, 차단 사유 우회가 아닙니다. |
 | <a id="design-quality-route-residual-risk-acceptance"></a>`residual_risk_acceptance` | 요청한 닫기에 대해 이름 붙은 보이는 위험 하나의 수락을 기록합니다. 잔여 위험 담당 문서를 통해서만 닫기에 영향을 주며 정확성 증명, 증거 충분성, 최종 수락, 무위험 결과가 아닙니다. |
-| <a id="design-quality-route-supported-user-judgment-values"></a>지원되는 `UserJudgment.judgment_kind` 값 | 집중된 사용자 소유 판단을 기록합니다. 값은 [API 값 집합](api/schema-value-sets.md)이 담당합니다. 관련 계약이 특정 질문을 했을 때만 포괄적 승인을 그 판단으로 볼 수 있습니다. |
+| <a id="design-quality-route-supported-user-action-values"></a>지원되는 choice `UserActionDraft.judgment_kind` 값 | 집중된 사용자 소유 판단을 요청합니다. 값은 [API 값 집합](api/schema-value-sets.md)이 담당합니다. 관련 계약이 특정 질문을 했을 때만 포괄적 승인을 그 판단으로 볼 수 있습니다. |
 
 <a id="6-evidence-routing-boundary"></a>
 ## 5. 증거 경계

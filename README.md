@@ -84,12 +84,12 @@ Add idempotency-key support for payment creation, update the tests, and tell me 
 The agent should keep the task, scope, evidence, pending user decisions, and
 Close Status current. You do not need to drive the workflow from the terminal.
 
-When Volicord needs a recorded user decision, use the answer path it shows. The
+When Volicord needs a recorded user action, use the resolution path it shows. The
 stable manual path is the CLI inbox:
 
 ```sh
 volicord inbox --repo /path/to/your-product-repo
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo /path/to/your-product-repo
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo /path/to/your-product-repo
 ```
 
 Before treating the work as finished, ask the agent for the current Close
@@ -143,7 +143,7 @@ flowchart LR
   record -. checks work boundaries .-> repo
 ```
 
-The normal work loop keeps agent action and user judgment separate. This is a
+The normal work loop keeps agent action and User Channel resolution separate. This is a
 guide-level handoff, not an exact API sequence.
 
 ```mermaid
@@ -151,9 +151,9 @@ flowchart TD
   request["User requests work"]
   boundary["Agent shows task, scope,<br/>and next safe action"]
   action["Agent inspects or acts"]
-  status["Agent reports evidence,<br/>blockers, and pending judgment"]
-  judgment{"User decision needed?"}
-  answer["User answers through<br/>a User Channel"]
+  status["Agent reports evidence,<br/>blockers, and pending user actions"]
+  judgment{"User action needed?"}
+  answer["User resolves it through<br/>a User Channel"]
   close{"Close blocker remains?"}
   continue["Agent addresses the<br/>next blocker"]
   finish["User decides the<br/>terminal outcome"]

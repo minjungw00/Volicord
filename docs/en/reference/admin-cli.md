@@ -58,7 +58,7 @@ Labels follow the canonical vocabulary in
 `volicord` is a local administrative/bootstrap executable. It is not a general
 long-running server. The explicit `volicord serve` command is limited to the
 local MCP transport process described in [MCP Transport](mcp-transport.md). The
-`volicord inbox` command group is the user-facing `Judgment Inbox` and local
+`volicord inbox` command group is the user-facing user-action inbox and local
 `User Channel` CLI adapter over selected Core methods; its command names remain
 administrative CLI commands, not public Volicord API methods.
 
@@ -90,9 +90,8 @@ volicord serve --transport local-http [--listen 127.0.0.1:8765 | --container-lis
 volicord export authority-bundle --output PATH [--repo PATH] [--json]
 volicord changes reconcile [--repo PATH] [--task active|ID] [--dry-run] [--json]
 volicord inbox [--repo PATH] [--task active|ID] [--json]
-volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
-volicord inbox open <judgment-id> [--repo PATH] [--json]
-volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
+volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]
+volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
 ```
 
 Supported `HOST` values are `codex` and `claude-code`. When `HOST` is omitted,
@@ -163,7 +162,7 @@ Not supported:
   connection status and verification, change reconciliation, and the inbox.
   When a command uses the common summary-card text renderer, its labels are
   `Task lifecycle`, `Volicord record effect for this command`, `Profile`,
-  `Write Ticket`, `Evidence`, `Pending user judgments`, `Unrecorded Product
+  `Write Ticket`, `Evidence`, `Pending user actions`, `Unrecorded Product
   Repository changes`, `Close readiness`, `Transport`, and `Primary next
   action`.
 - `Volicord record effect for this command` describes only whether the current
@@ -173,7 +172,7 @@ Not supported:
   `recorded`. The parenthetical explicitly says this does not describe
   product-file writes or Runtime Home write capability. Human text likewise
   renders `not_selected` as `not shown in this view` and a zero
-  pending-judgment count as `pending (0)`.
+  pending-user-action count as `pending (0)`.
 - `Primary next action` names the compact card's immediate action when known and
   may include a follow-up verification command. It uses `none` only when the
   selected view has no known next action. Status and change-reconciliation text
@@ -1024,6 +1023,12 @@ Rules:
 - The authority bundle export reads the selected Runtime Home and project state
   without creating, registering, migrating, repairing, or updating Runtime Home
   records.
+- `tool_invocations` rows retain their replay and audit metadata, but an
+  `operation_category=user_only` row is exported with `response_json=null`.
+  This export-only redaction does not mutate the source replay row. Private
+  user text remains represented only by its canonical owner record when that
+  record is part of the bundle; the duplicate exact user-only response is not
+  an export projection of that text.
 - The checksum manifest labels the exported copy. It is not proof that the
   Runtime Home was never modified before export.
 - The bundle is not tamper-proof storage, cryptographic signing, an external
@@ -1151,6 +1156,16 @@ and changed paths, and preserves unknown fields in the stored host-hook event's
 redacted subject. Prompt-like fields are hashed or omitted by default. Prompt
 capture records store the prompt hash and omit prompt text.
 
+A host-reported `occurred_at` is observation metadata only. Volicord preserves
+it as the owner-verified source fact when accepted; it is never an input to, or
+an advance of, the persisted canonical Core UTC floor. It is not the authority
+clock for current Task, write-ticket expiry, or UserAction effective-status
+evaluation. Guard context, pending-action display, and prompt-command resolution
+eligibility use the [canonical Core UTC clock](storage-versioning.md#canonical-core-utc-clock).
+A delayed, replayed, future-dated, or clock-skewed host event cannot move those
+current boundaries backward or forward. Store-generated transaction metadata
+for recording the observation remains separate from the preserved host fact.
+
 Lifecycle behavior:
 
 - `session-start` records or reuses the Agent Session and returns
@@ -1185,25 +1200,54 @@ Lifecycle behavior:
   product correctness, actor identity, or write prevention. It does not execute
   untrusted commands to discover changes.
 - `prompt-capture` records prompt-capture metadata and recognizes strict
-  chat judgment commands only when prompt-capture availability for the current
+  chat user-action commands only when prompt-capture availability for the current
   host, project, and connection is `configured`, `observed`, or `active`, and
-  the prompt contains an explicit line such as `Volicord: answer J-3 1 #AB7K`,
-  `Volicord: answer J-3 reject #AB7K`, `Volicord: answer J-3 defer #AB7K`, or
-  `Volicord: note J-3 "text" #AB7K`. Unsupported, unconfigured, reload-needed,
+  the prompt contains exactly one explicit stored-form line. A choice form uses
+  `Volicord: resolve A-3 --request USER_ACTION_REQUEST_ID --choice accept
+  [--note "text"] #AB7K`. An Evidence observation form uses `Volicord: resolve
+  A-4 --request USER_ACTION_REQUEST_ID (--criterion ID | --claim ID) --artifact
+  ID [--artifact ID ...] --summary "text" [--contradicted] #AB7K`. The durable
+  request ID is required; `A-N` remains a displayed task-local binding and is
+  checked against the stored request's Task even when another Task later becomes
+  active.
+  For an agent-facing-input-eligible presentation, session-start host-native
+  context shows the request-bound `A-N`, current verification code, command
+  template, and complete Core-derived closed form.
+  The complete UTF-8 host-native hook-output JSON object plus its trailing LF
+  must be at most 32 KiB. If it does not fit, prompt capture is unavailable for
+  that presentation, no partial form is shown, and another available User
+  Channel path remains visible.
+  The same conservative presentation-safety classification used by the MCP
+  adapter evaluates the question, context summary, and complete rendered form.
+  When it requires user-only input, session-start and other guard context
+  contain only generic local-consent or `volicord inbox` guidance and omit the
+  question, context, form, verification code, and command template. A direct
+  chat resolve command revalidates the persisted request question, context, and
+  complete form with that classification; a user-only presentation returns
+  `deny` and records no resolution. The terminal `volicord inbox` path remains
+  user-only and displays the complete canonical form. This routing check is not
+  a general secret scanner or an OS security boundary.
+  Unsupported, unconfigured, reload-needed,
   or degraded prompt capture returns structured non-recording output such as
   `prompt_capture_unsupported`, `prompt_capture_not_configured`, or
   `prompt_capture_reload_required`, with one next action. Non-command prompts
   proceed normally only when prompt capture is available. Malformed, ambiguous,
-  unknown, missing-code, wrong-code, stale, duplicate, wrong-project, or
-  wrong-connection judgment commands return `deny` without recording a judgment.
-  A valid command records the addressed pending judgment through the local
+  unknown, missing-code, wrong-code, unresolved-stale, conflicting-duplicate,
+  wrong-project, or wrong-connection user-action commands return `deny` without
+  recording a resolution. An exact retry with the same request, connection,
+  channel submission identity, and canonical resolution returns the original
+  committed response without effects, including after a later basis change
+  makes the resolved request effectively `stale`.
+  A valid command resolves the addressed pending user action through the local
   `User Channel` with `actor_source=local_user` and
   `resolved_verification_basis=user_prompt_submit_hook`,
   omits the full prompt text from prompt-capture storage, and returns
   model-visible recorded-context output instead of treating the command as
-  ordinary agent instruction. The recognized-command object reports
-  `replayed=true` only when the same durable judgment recording was returned
-  from idempotent replay. Local diagnostics count every successful recognized
+  ordinary agent instruction. The `recognized_user_action_command` object
+  reports the stored action type, safe selected identifiers, whether private
+  `note` or Evidence-observation `summary` text was omitted, and
+  `replayed=true` only when the same durable resolution was returned from
+  idempotent replay. Local diagnostics count every successful recognized
   command as Core-reached, but count only a non-replay as Core-committed.
 - `stop` checks whether the active task can safely be treated as complete.
   Before it can return `allow` for an active task, it obtains a current Core
@@ -1261,7 +1305,7 @@ Selection and dispatch:
 - The command calls `volicord.reconcile_changes` with
   `actor_source=local_user` and `operation_category=local_recovery`.
 - Output includes the compact summary card and counts for resolved changes,
-  pending judgments, unresolved changes, all top-level close blockers, and all
+  pending user actions, unresolved changes, all top-level close blockers, and all
   top-level next actions. The counts and array order do not assign presentation
   roles; the structured `presentation_role` field does. Rejected Core responses
   remain rejected CLI results.
@@ -1277,74 +1321,79 @@ Without `--dry-run`, the command may resolve deterministic changes or create
 pending user-owned judgments. It does not answer a judgment, accept a change for
 the user, prove identity, intent, correctness, review or test sufficiency, or
 complete close readiness. When it creates a pending judgment, the user answers
-through the `Judgment Inbox` and reruns the command.
+  through the user-action inbox and reruns the command.
 
 ## User Channel commands
 
 <a id="user-channel-commands"></a>
 <a id="user-interaction-commands"></a>
 
-`volicord inbox` commands provide the local CLI path for a human user to list and
-answer pending user judgments or record target-bound evidence observations
-through the `User Channel`. They
-do not create an Agent Connection, install MCP host configuration, or make an
-Agent Connection eligible to act as the user.
+`volicord inbox` commands provide the local CLI path for a human user to list
+and resolve pending `UserActionRequest` records through the `User Channel`.
+They do not create an Agent Connection, install MCP host configuration, or make
+an Agent Connection eligible to act as the user.
 
 When the initialized MCP client declares host prompt support, host prompt input
-is the preferred User Channel input method for pending judgments created through
-`volicord.request_user_judgment`. If host prompt input is unavailable and
-chat command capture is `configured`, `observed`, or `active`, fallback guidance
-may show exact chat commands such as `Volicord: answer J-3 1 #AB7K`
-with the current verification code. If both host prompt input and chat command capture are
+is the preferred User Channel input method for a compatible pending action
+created through `volicord.request_user_action`. If host prompt input is
+unavailable and chat command capture is `configured`, `observed`, or `active`,
+fallback guidance may show an exact request-bound chat command and current
+verification code. If both host prompt input and chat command capture are
 unavailable and the adapter can safely expose a local consent URL, fallback
 guidance may show a loopback consent URL backed by a short-lived one-time token.
 The terminal `volicord inbox` commands remain the CLI inbox input method and
-manual-inspection path when host prompt input, chat command capture, or local consent URL is
-unavailable, disabled, degraded, or inappropriate for the workflow.
+manual-inspection path when another capture path is unavailable, disabled,
+degraded, or inappropriate for the action form.
+When the complete presentation requires user-only input, rich host prompt and
+chat-command presentation are inappropriate for that form; local web consent
+when advertised and the terminal inbox remain the complete-form surfaces.
 
 Project selection uses `--repo PATH` or the current working directory's
 repository root. Task selection uses the active task by default; `--task active`
 is explicit and `--task ID` selects a named task.
 
-The ordinary text-mode judgment flow centers on stable judgment identifiers and
-choice identifiers printed by `volicord inbox`. Stored judgment references and
-additional capture-path details remain available in JSON output.
+The ordinary text-mode flow centers on the stable action-request identifier and
+the Core-derived capture form printed by `volicord inbox`. Stored request refs,
+candidate refs, and additional capture-path details remain available in JSON
+output.
 
 Commands:
 
-- `volicord inbox` lists pending `JudgmentInboxItem` entries for the selected
-  task, including the judgment id, question, choices or answer constraints,
-  required/optional status, preferred capture path, and fallbacks such as local
-  web consent or the CLI answer command when available.
-- `volicord inbox answer <judgment-id> --choice <choice>` records one selected
-  Core-generated option through `volicord.record_user_judgment` with
-  `actor_source=local_user`, `operation_category=user_only`, compatible User
-  Channel provenance, and the selected option's stored machine action and
-  outcome. `--note` is stored only as a note.
-- `volicord inbox open <judgment-id>` validates that the selected judgment is
-  still pending, then reports `action_required` because this CLI process does
-  not own a local consent URL. It directs the user to a URL already shown in an
-  MCP Judgment Inbox item when available, or to the CLI answer command.
-- `volicord inbox observe` invokes
-  `volicord.record_user_observation` through the direct local-user User Channel.
-  It resolves each `--artifact` ID to current verified bytes and records either
-  supported relevance (default) or `--contradicted` relevance for exactly one
-  `--criterion` or existing `--claim`. It is evidence provenance, not a
-  judgment or final acceptance.
+- `volicord inbox` lists pending `UserActionInboxItem` entries for the selected
+  task. Each item includes the request ID, action kind, question, Core-derived
+  capture form, required/optional status, preferred capture path, and available
+  fallbacks.
+- `volicord inbox resolve <user-action-request-id> --choice <choice>` resolves a
+  judgment-form request through `volicord.resolve_user_action`. It sends only
+  the selected stored option ID and optional `--note`; Core derives the machine
+  action, outcome, and kind-specific authority facts from the stored request,
+  option, and current compatible basis.
+- `volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID)
+  --artifact ID [--artifact ID ...] --summary TEXT [--contradicted]` resolves an
+  evidence-observation form. The target and every artifact must be selected
+  from the stored capture form, `--artifact` must select a non-empty unique
+  subset, and relevance defaults to `supported`. The resulting resolution is
+  evidence provenance, not a judgment or final acceptance.
+Each `resolve` call submits only the variant represented by the stored closed
+capture form. The CLI derives `actor_source=local_user` and
+`operation_category=user_only`, omits `expected_state_version` so Core can pin
+the preflight version, and generates a request-bound `channel_submission_id`
+for replay. It cannot use judgment flags for an observation form, observation
+flags for a judgment form, caller-supplied options or candidates, or a
+free-form direct observation without a pending request.
 
-Recording one judgment records only the addressed judgment. Final acceptance and
-residual-risk acceptance remain separate judgment kinds and actions; this
-command must not collapse one into the other.
+Resolving one action records only the addressed action. Final acceptance and
+residual-risk acceptance remain separate action kinds, and an
+`evidence_observation` resolution never substitutes for either.
 
 Status and inbox list output expose selected owner state for the user's next
 action, including a compact `summary_card` when the view can compute one.
-When pending judgments are present, text output also summarizes available
-answer paths so unavailable host prompt input does not hide chat capture, local
-consent, or CLI inbox paths. They do not create evidence, final acceptance,
-residual-risk acceptance, or close readiness. Only
-`volicord inbox answer` mutates only the addressed pending judgment through the
-selected Core-generated option. `volicord inbox observe` separately creates one
-User Channel evidence observation and never resolves a judgment.
+When pending actions are present, text output also summarizes available capture
+paths so unavailable host prompt input does not hide chat capture, local
+consent, or CLI inbox paths. Listing and opening do not create evidence, final
+acceptance, residual-risk acceptance, or close readiness. Only
+`volicord inbox resolve` inserts the immutable resolution for the addressed
+pending request through its stored capture form.
 
 <a id="dry-run"></a>
 ## Dry run and JSON output
@@ -1456,7 +1505,8 @@ and supported guard-hook observations. Diagnostic persistence is best effort:
 failure, corruption, or write denial in `diagnostics.sqlite` must not change an
 MCP result, guard decision, User Channel result, Core commit, or CLI authority
 result. The command is observational and must not change `state_version`,
-evidence or assurance, close readiness, a UserJudgment, or any authority row.
+evidence or assurance, close readiness, a `UserActionRequest` or
+`UserActionResolution`, or any authority row.
 
 JSON output has these top-level fields:
 
@@ -1479,10 +1529,11 @@ report observed product-file-write count and authoritative-refresh failures.
 These are local diagnostic observations, not evidence, actor attribution,
 write authority, host conformance, or a correctness claim. A fallback count
 means that path was selected for a pending answer; it does not mean the user
-resolved the judgment through that path.
+  resolved the user action through that path.
 
 The default store accepts no prompt body, Product Repository path or file
-content, error body, secret text, Judgment question, answer, rationale, or note.
+content, error body, secret text, user-action question or capture form,
+choice note, or Evidence-observation summary.
 It stores only allowlisted identifiers and categorical outcomes plus counters,
 byte sizes, latency, and build identity. Content-bearing or detailed trace mode
 is not supported. Any future detailed trace must be a separately documented,

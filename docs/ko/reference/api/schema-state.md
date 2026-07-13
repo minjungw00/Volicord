@@ -152,7 +152,7 @@ StateSummary:
   baseline_ref: string | null
   workspace_context: WorkspaceContext | null
   shaping_readiness: ShapingReadiness | null
-  pending_user_judgment_refs: StateRecordRef[]
+  pending_user_action_request_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
@@ -179,7 +179,7 @@ StateSummary:
 - `workspace_context`는 현재 Change Unit 기준선에 결합한 선택적 검증 Git
   좌표입니다. 그 경로와 해시는 로컬 권한 사실이며 portable repository
   identity나 보안 보장이 아닙니다.
-- `pending_user_judgment_refs`는 응답 보기에 관련된 현재 대기 판단을 나열합니다. 대기 판단은 `required_for` 대상, 판단 종류, `Task`, Change Unit, 영향받는 참조, 근거가 해당 작업과 호환될 때만 작업을 차단합니다.
+- `pending_user_action_request_refs`는 응답 보기에 관련된 현재 대기 사용자 행동을 나열합니다. 대기 행동은 `required_for` 대상, 행동 종류, `Task`, Change Unit, 영향받는 참조, 근거가 해당 작업과 호환될 때만 작업을 차단합니다.
 
 의미하지 않는 것:
 - `StateSummary` 필드가 있다는 사실만으로 메서드 커밋 여부가 정의되지 않습니다.
@@ -411,7 +411,7 @@ UnrecordedChangeResolutionSummary:
   resolution_basis: string
   resolved_by_actor_source: string
   capture_basis: string
-  user_judgment_ref: StateRecordRef | null
+  user_action_resolution_ref: StateRecordRef | null
   resolved_at: string
 ```
 
@@ -424,7 +424,7 @@ UnrecordedChangeResolutionSummary:
 - `can_resolve_in_chat`은 메서드 담당 문서가 선택한 채팅 매개 사용자 경로로 진행할 수 있는지를 나타냅니다.
 - `resolution_basis`는 미기록 변경이 해결된 이유를 분류합니다.
 - `resolved_by_actor_source=system`은 Core가 결정적 basis를 검증했다는 뜻입니다. `resolved_by_actor_source=local_user`는 호환 User Channel 판단이 권한을 제공했다는 뜻입니다.
-- `user_judgment_ref`는 사용자 소유 수락 해결일 때만 null이 아닙니다.
+- `user_action_resolution_ref`는 사용자 소유 수락 해결일 때만 null이 아닙니다.
 
 이 형태들은 제품 정확성, 테스트 충분성, 리뷰 완료, 최종 수락, 잔여 위험 수락, 보안을 증명하지 않습니다. 해결 동작과 호출자 제한은 [`volicord.reconcile_changes`](method-reconcile-changes.md)가 담당합니다.
 
@@ -535,7 +535,7 @@ TaskLifecycleState:
 ## `ShapingReadiness`
 
 의미:
-- `ShapingReadiness`는 `Task`, Change Unit, 대기 중인 판단, 증거 요약, 차단 사유, 다음 행동 필드를 포괄하는 API 보기 형태입니다.
+- `ShapingReadiness`는 `Task`, Change Unit, 대기 중인 사용자 행동, 증거 요약, 차단 사유, 다음 행동 필드를 포괄하는 API 보기 형태입니다.
 - boolean 필드와 `gaps` 배열은 현재 상태의 준비 상태 형태 데이터를 드러냅니다.
 
 ```yaml
@@ -555,11 +555,12 @@ ShapingGap:
   gap_kind: string
   message: string
   blocker_ref: StateRecordRef | null
-  user_judgment_candidate_ref: StateRecordRef | null
+  user_action_request_candidate_ref: StateRecordRef | null
 ```
 
 의미:
-- `ShapingGap`은 차단 사유나 사용자 판단 후보를 형태상 참조할 수 있습니다.
+- `ShapingGap`은 형태에 따라 blocker 또는 담당자가 제안한 사용자 행동 요청 후보를
+  참조할 수 있습니다. 후보 ref 자체는 resolution이 아닙니다.
 - `user_owned_blocker_kind`와 `ShapingGap.gap_kind`는 불투명 준비 상태 분류 문자열입니다. 영향받는 담당 문서가 더 좁은 값을 공개하지 않는 한 빠짐없는 공개 값 집합이 아닙니다.
 - `ShapingGap.message`는 자유 형식 표시 문자열입니다.
 
@@ -576,7 +577,7 @@ SummaryCard:
   profile: string
   write_ticket: string
   evidence: string
-  user_judgment: string
+  user_action: string
   changes: string
   close_status: string
   transport: string
@@ -914,22 +915,6 @@ EvidenceRelevanceAssessment:
   assessment_ref: StateRecordRef | null
   assessed_by_actor_source: string | null
 
-UserEvidenceObservation:
-  observation_id: string
-  project_id: string
-  task_id: string
-  change_unit_id: string
-  scope_revision: integer
-  baseline_ref: string
-  target: EvidenceTarget
-  relevance_status: string
-  output_artifact_refs: ArtifactRef[]
-  summary: string
-  observed_by_actor_source: string
-  verification_basis: string
-  observed_at: string
-  recorded_at: string
-
 EvidenceObservationInput:
   target: EvidenceTarget
   source_kind: string
@@ -1013,10 +998,16 @@ ObservedChanges:
   식별하고, `relevance_assessment`는 권한 출처가 해당 출력과 대상의 관련성을
   평가했는지 별도로 식별합니다. 바이트 무결성, producer provenance, 근거
   freshness, 대상 identity, claim relevance는 서로 다른 검사입니다.
-- `UserEvidenceObservation`은 `volicord.record_user_observation`이 만드는 User
-  Channel 소유의 대상 및 근거 결합 레코드입니다. 정확한 정규 아티팩트 ref를
-  결합하며 relevance가 `supported`일 때 user-observed provenance를 설정할 수
-  있습니다. `UserJudgment`나 최종 수락은 아닙니다.
+- `evidence_observation` `UserActionResolution`은 User Channel 소유의 대상 및 근거
+  결합 relevance 레코드입니다. 닫힌 중첩 관찰 본문이 정확한 정규 아티팩트 ref를
+  결합합니다. 저장된 정확한 relevance가 `supported` 또는 `contradicted`이면
+  user-observed producer provenance를 설정하면서 그 상태를 분리된 relevance 평가에
+  그대로 보존합니다. 커밋된 관찰은 호출자의 `EvidenceObservationInput.observed_at`이
+  아니라 바깥 resolution의 `resolved_at`을 `observed_at`으로 사용합니다.
+  `contradicted` 관찰은 부정적 relevance이며 supported coverage, 증거 충분성,
+  `supported`를 세우는 검증된 재사용을 만족할 수 없습니다. 판단 resolution이나 최종
+  수락은 아닙니다. 공개 형태는 [API 사용자 행동 스키마](schema-user-action.md)가
+  담당합니다.
 - `source_refs`는 `SourceRef`를 사용합니다. `input_refs`는 별도 `StateRecordRef[]`로 유지되며 출처 참조는 Core 상태 참조나 닫기 근거 결과 참조가 되지 않습니다.
 - `EvidenceObservationInput`은 `volicord.record_run`이 받는 요청 측 형태입니다. Core는 커밋할 때 `observation_id`, 프로젝트와 `Task` 좌표, `run_ref`, `recorded_at`, 관찰자 행위자 출처를 채웁니다. 요청 측 출처와 보장 수준 값은 출처 주장이지 호출자가 부여하는 보장이 아닙니다.
 - `evidence_requirement=required`인 현재 기준의 범위만 닫기 권한에 참여합니다.
@@ -1031,9 +1022,12 @@ ObservedChanges:
   connection-observation producer를 설정할 수 있습니다. 해당 앵커가 없는 직접
   `external_tool` 또는 `connection_observation` 입력은 아티팩트 바이트가
   검증되어도 협력적으로 남습니다.
-- `user_observation`은 현재 `UserEvidenceObservation`, 정확한 출력 일치,
-  `relevance_status=supported`, 검증된 로컬 사용자 provenance, 일치하는 Task,
-  Change Unit, scope, baseline, 대상을 요구합니다.
+- `user_observation`은 현재 `evidence_observation` `UserActionResolution`, 정확한 출력
+  일치, 저장된 정확한 `relevance_status`인 `supported` 또는 `contradicted`, 검증된
+  로컬 사용자 provenance, 일치하는 Task, Change Unit, scope, baseline, 대상을
+  요구합니다. Core는 그 정확한 상태를 `relevance_assessment`에 보존하고 resolution의
+  `resolved_at`에서 `observed_at`을 파생합니다. `supported`만 coverage나 충분성을
+  만족하거나 `supported`를 세우는 검증된 재사용 자격을 얻을 수 있습니다.
 - `reused_evidence`는 각 재귀 관찰의 엄격한 저장 producer/relevance
   메타데이터, 정확한 출력, 대상, 현재 근거, 출처 Run, 승계 보장을 다시 검증한
   뒤에만 Core가 파생합니다.
@@ -1089,7 +1083,7 @@ ResidualRisk:
 RiskAcceptanceCoverage:
   risk_id: string
   accepted: boolean
-  accepted_by_judgment_refs: StateRecordRef[]
+  accepted_by_user_action_resolution_refs: StateRecordRef[]
   missing_reason: string | null
 
 CloseReadinessBlocker:
@@ -1124,11 +1118,11 @@ GuaranteeDisclosure:
 - `CurrentCloseBasis`는 닫기 준비 상태 응답이 사용하는 현재 결과와 잔여 위험 상태입니다. 종료 닫기 요약이 아닙니다.
 - `close_basis_revision`과 `scope_revision`은 호환성 확인을 위해 드러나는 내부 현재 상태 좌표입니다. 호출자가 선택하는 권한이 아닙니다.
 - `ResidualRisk.risk_id`는 Core가 생성한 불투명 식별자입니다. `ResidualRisk.summary`와 `ResidualRisk.consequence`는 표시 문자열이며 텍스트 일치를 권한으로 만들지 않습니다.
-- `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, `accepted_by_judgment_refs`는 `StateRecordRef`를 사용합니다.
+- `result_refs`, `source_run_ref`, `source_refs`, `evidence_summary_ref`, `accepted_by_user_action_resolution_refs`는 `StateRecordRef`를 사용합니다.
 - `sensitive_categories`는 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 범주 분류 문자열입니다.
 - `sensitive_action_requirements`는 커밋된 실행 기록과 소비된 쓰기 티켓에서 Core가 파생한 닫기 요구사항입니다. 범주만 담은 호출자 입력은 이 요구사항을 만들거나 지울 수 없습니다.
 - `recovery_constraints`와 `RiskAcceptanceCoverage.missing_reason`은 표시 문자열입니다. 현재 닫기 준비 상태 결과는 필요한 수락이 없으면 `acceptance_required`를 사용하고, 현재 잔여 위험 `risk_id` 값을 덮지 못하는 오래된 잔여 위험 수락이 있으면 `stale_acceptance`를 사용할 수 있습니다.
-- `RiskAcceptanceCoverage`는 현재 잔여 위험 요구사항이 호환되는 판단으로 덮였는지를 보고합니다. 증거 충분성이나 최종 수락을 보고하지 않습니다.
+- `RiskAcceptanceCoverage`는 현재 잔여 위험 요구사항이 호환되는 사용자 작업 resolution으로 덮였는지를 보고합니다. 증거 충분성이나 최종 수락을 보고하지 않습니다.
 - `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.
 - `CloseReadinessBlocker.category`는 제어 값 문자열입니다.
 - `CloseReadinessBlocker.code`는 담당 문서가 정의하는 차단 사유 코드입니다. 차단 사유 또는 메서드 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 전역 공개 enum이 아닙니다.
@@ -1147,7 +1141,7 @@ GuaranteeDisclosure:
 
 닫기 근거 참조 규칙:
 - `CurrentCloseBasis.result_refs`나 `ResidualRisk.source_refs`로 받아들일 수 있는 호출자 제공 닫기 평가 참조는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 결과/증거 기록 종류인 `run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
-- 담당 문서가 명시적으로 추가하지 않는 한 `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, `task`는 호출자 제공 결과 참조가 아닙니다.
+- 담당 문서가 명시적으로 추가하지 않는 한 `project_state`, `write_ticket`, `user_action_request`, `user_action_resolution`, `blocker`, `task_event`, `task`는 호출자 제공 결과 참조가 아닙니다.
 - 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 하며 Core가 정규화해야 합니다. Core는 호출자가 보낸 `produced_at_state_version` 메타데이터를 권한이나 동시성 입력으로 취급하지 않습니다.
 - 닫기 증거에 쓰이는 아티팩트 참조는 `Task`에 연결되어 있고 `integrity_status=verified`여야 하며 [아티팩트 저장소](../storage-artifacts.md)에 따라 사용 시점의 현재 바이트 검증을 통과해야 합니다.
 - 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 현재 닫기 근거 결과 참조로 쓰이는 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선, 기록된 상태와 호환되는 기록된 현재 실행 기록을 식별해야 합니다. 이력 실행 기록은 현재 실행 기록이 그 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 기록하지 않는 한 감사 기록입니다.
@@ -1175,5 +1169,5 @@ GuaranteeDisclosure:
 - [API 값 집합](schema-value-sets.md#state-and-blocker-values): 차단 사유 범주 값(`CloseReadinessBlocker.category`)과 인접 상태 값.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 스키마를 반환하는 메서드.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.
-- [API 판단 스키마](schema-judgment.md): `UserJudgmentCandidate`.
+- [API 사용자 행동 스키마](schema-user-action.md): 영속 행동 요청과 캡처 양식.
 - [저장 효과](../storage-effects.md): 지속 저장과 상태 효과.

@@ -39,10 +39,10 @@ The lookup keeps these implementation boundaries:
   `volicord.status` for current authority rather than treating an old method
   response as current state.
 - MCP retains the original agent-owned
-  `volicord.request_user_judgment` result reference when a host-mediated User
+  `volicord.request_user_action` result reference when a host-mediated User
   Channel answer completes the call. It pairs that reference with the safe
   compact selected outcome and never exposes the user-only
-  `volicord.record_user_judgment` result or free-form note to the Agent
+  `volicord.resolve_user_action` result or free-form note to the Agent
   Connection.
 - `volicord.stage_artifact` remains outside the replay-row path. Before staging
   creates bytes or a handle, it must serialize and bound the complete result;

@@ -330,7 +330,7 @@ An artifact is evidence-eligible only when storage has:
 - a `redaction_state`
 - producer and retention facts
 - an availability `status`
-- an owner link to an existing owner record such as `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, or `blocker`
+- an owner link to an existing owner record such as `task`, `change_unit`, `run`, `user_action_request`, `user_action_resolution`, `evidence_summary`, `evidence_observation`, `evidence_producer`, or `blocker`
 
 Evidence eligibility, artifact availability, and evidence sufficiency remain separate. Artifact owner relation integrity is required even though `artifact_links` is a polymorphic owner table.
 
@@ -341,6 +341,24 @@ part of a cooperative agent report; Strong evidence additionally requires an
 authority-owned producer anchor, exact output binding, current Task/scope/
 baseline and target, and a supported relevance assessment.
 
+Before an existing artifact or inherited output can carry authority, the
+consuming owner must reconstruct its current canonical typed `ArtifactRef` from
+storage-owned facts, strict-decode the stored artifact, producer, and storage
+metadata, and reverify the current body or safe notice. The current stored
+`content_type`, `redaction_state`, producer metadata, storage reference,
+availability, integrity facts, owner relation, size, SHA-256, and bytes must
+remain compatible with the exact output binding required by that owner.
+Historical projection-freshness normalization does not permit any of those
+facts to be ignored or replaced.
+
+A metadata mismatch, corrupt stored value, missing or invalid owner relation,
+duplicate `artifact_id` in an authority-bearing output set, or current-byte
+verification failure fails closed. It must not be deduplicated, partially
+matched, or retained as strong provenance. When validation fails before commit,
+the consuming transaction commits none of its planned artifact lifecycle,
+linking, or evidence-provenance effects. Broader method no-effect behavior
+remains owned by [Storage Effects](storage-effects.md) and the consuming method.
+
 Allowed:
 
 - An `artifacts.status=available` row with `integrity_status=verified` and a valid owner link can support a coverage item.
@@ -348,7 +366,7 @@ Allowed:
 
 Required validation:
 
-- `owner_record_kind` is one of `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, or `blocker`.
+- `owner_record_kind` is one of `task`, `change_unit`, `run`, `user_action_request`, `user_action_resolution`, `evidence_summary`, `evidence_observation`, `evidence_producer`, or `blocker`.
 - `owner_record_id` exists in the matching owner table.
 - The owner belongs to the same `project_id` and `task_id`.
 - The relation is compatible with the way the artifact is used.

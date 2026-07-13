@@ -1,218 +1,49 @@
 # API judgment schemas
 
-This document owns API schemas for user-owned judgment in the baseline scope. The schemas define judgment-shaped API data; they do not record user decisions by themselves.
-
-## Owns / Does not own
-
-This document owns:
-
-- `UserJudgment`
-- `JudgmentInboxItem`
-- `UserChannelAvailability`
-- `UserJudgmentCandidate`
-- `UserJudgmentOptionInput`
-- `UserJudgmentOption`
-- `UserJudgmentContext`
-- `JudgmentBasis`
-- `UserJudgmentResolution`
-- `JudgmentRationale`
-- `JudgmentResolutionOutcome`
-- `RecordUserJudgmentPayload`
-- `SensitiveActionScope`
-- `AcceptedRiskInput`
-- user-owned judgment schema fields and nesting
-
-This document does not own:
-
-- the product meaning and non-substitution rules for user-owned judgment; see [Core Model](../core-model.md)
-- method behavior for requesting judgment; see [Request-user-judgment method](method-request-user-judgment.md)
-- method behavior for recording judgment; see [Record-user-judgment method](method-record-user-judgment.md)
-- supported judgment-kind values, status values, presentation values, required-for values, and resolution-outcome values; see [API Value Sets](schema-value-sets.md)
-- final acceptance or residual-risk close effects; see [Core Model](../core-model.md) and [Close-task method](method-close-task.md)
-- public error semantics for missing, unresolved, denied, or expired judgment; see [API error codes](error-codes.md)
+This document owns the choice-judgment payloads nested inside the common
+user-action schemas. It does not own a separate durable judgment lifecycle.
+Request identity, effective status, basis, capture form, expiry, channel paths,
+and immutable resolution identity belong to [API User Action
+Schemas](schema-user-action.md).
 
 ## Boundary
 
-Judgment schemas preserve the field structure of a user-owned choice. They are not behavior contracts for product decisions, technical decisions, scope decisions, sensitive-action approval, final acceptance, residual-risk acceptance, cancellation, or unsupported judgment categories; those meanings stay with the Core and method owners.
+The seven `judgment_kind` values are `product_decision`,
+`technical_decision`, `scope_decision`, `sensitive_approval`,
+`final_acceptance`, `residual_risk_acceptance`, and `cancellation`. They appear
+only inside `action_type=choice`. `evidence_observation` is the other user-action
+family and is not a judgment.
 
-`UserJudgmentCandidate` is not a pending judgment.
-
-`UserJudgment` and `UserJudgmentCandidate` are distinct shapes. Method owners define when each shape appears in a response.
-
-`UserJudgmentOptionInput` and `UserJudgmentOption` are distinct shapes. `UserJudgmentOptionInput` is caller request input only where a method allows caller-authored options; `UserJudgmentOption` is Core-owned state or output.
-
-A `RecordUserJudgmentPayload` is not the schema for current scope, evidence, write ticket, a close result, or a broad approval.
-
-`JudgmentRationale` is descriptive metadata. It preserves the user's visible reason and review context, but it is not an authority source and cannot override the selected option, outcome, actor provenance, or basis compatibility.
-
-<a id="userjudgment"></a>
-## `UserJudgment`
+## Choice request payload
 
 ```yaml
-UserJudgment:
-  judgment_id: string
-  project_id: string
-  task_id: string
-  change_unit_id: string | null
+UserActionDraft:
+  action_type: choice
   judgment_kind: string
-  status: string
-  presentation: string
+  presentation: short
   question: string
-  options: UserJudgmentOption[]
-  context: UserJudgmentContext
+  options: UserActionOptionInput[] | null
+  context: UserActionContext
   affected_refs: StateRecordRef[]
-  basis: JudgmentBasis
-  required_for: string[]
-  resolution: UserJudgmentResolution | null
-  expires_at: string | null
-  created_at: string
-  resolved_at: string | null
-```
-
-`judgment_kind`, `status`, `presentation`, `required_for`, `machine_action`, and `resolution_outcome` values are owned by [judgment values](schema-value-sets.md#judgment-values). Product meaning is owned by [Core Model user-owned judgment](../core-model.md#4-user-owned-judgment).
-
-`status=resolved` means an answer was recorded. It does not by itself mean approval, acceptance, authorization, scope-decision authority, final acceptance, residual-risk acceptance, sensitive approval, or cancellation authority. Only the stored `resolution.machine_action` and `resolution.resolution_outcome` from the selected option can carry a machine-readable authority result.
-
-`judgment_id`, `project_id`, `task_id`, and `change_unit_id` are opaque identifiers. `question` is a free-form display string.
-
-`basis` is required for stored and returned judgments. A stored judgment without a basis is invalid owner state.
-
-<a id="judgmentinboxitem"></a>
-## `JudgmentInboxItem`
-
-`JudgmentInboxItem` is the user-facing projection for a pending judgment that needs user action. It does not record an answer and does not replace the durable `UserJudgment`.
-
-```yaml
-JudgmentInboxItem:
-  judgment_id: string
-  judgment_ref: StateRecordRef
-  project_id: string
-  task_id: string
-  change_unit_id: string | null
-  question: string
-  context_summary: string
-  choices: JudgmentInboxChoice[]
-  answer_constraints:
-    choice_required: boolean
-    note_allowed: boolean
-    note_max_chars: integer
-  required: boolean
-  requirement_status: "required" | "optional"
-  required_for: string[]
-  status: string
-  answer_path_availability: UserChannelAvailability
-  preferred_capture_path: JudgmentCapturePath | null
-  fallbacks: JudgmentCapturePath[]
-  expires_at: string | null
-
-JudgmentInboxChoice:
-  choice_id: string
-  label: string
-  description: string
-  consequence: string
-  is_default: boolean
-
-JudgmentCapturePath:
-  kind: string
-  label: string
-  available: boolean
-  command: string | null
-  url: string | null
-  capture_basis: string | null
-  expires_at: string | null
-  detail: string | null
-
-UserChannelAvailability:
-  paths: UserChannelPathAvailability[]
-  recommended_path_kind: string | null
-  recommended_path_label: string | null
-  recommendation: string | null
-
-UserChannelPathAvailability:
-  kind: string
-  label: string
-  available: boolean
-  status: string
-  capture_basis: string | null
-  detail: string | null
-```
-
-`required=true` and `requirement_status=required` mean that `required_for`
-contains at least one non-`informational` operation target. An
-`informational`-only item uses `required=false` and
-`requirement_status=optional`; its pending status or current compatible basis
-does not make it required or operation-blocking. If `required_for` contains
-both `informational` and a non-informational operation target, the item is
-required for that operation target.
-
-`choices` exposes user-facing choice identifiers and labels, not the internal `machine_action` or `resolution_outcome` fields. Machine action and outcome remain on the durable `UserJudgmentOption` and the recorded resolution.
-
-`answer_path_availability` reports the current availability of supported User Channel paths for this pending judgment. It can include unavailable paths so the user can see that one unavailable path, such as host prompt input, did not hide another available path. Current path kinds include `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`.
-
-`preferred_capture_path` names the best available User Channel capture path for the current adapter context. Current path kinds include `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`. `fallbacks` lists other available paths, including the local `volicord inbox answer <judgment-id> --choice <choice>` command when available.
-
-`recommended_path_kind`, `recommended_path_label`, and `recommendation` name the preferred answer method when the current projection has enough information. They are guidance for where the user can answer; they do not record an answer.
-
-## `JudgmentBasis`
-
-`JudgmentBasis` is the Core-derived state snapshot used to decide whether a judgment can satisfy a current requirement.
-
-```yaml
-JudgmentBasis:
-  task_id: string
-  change_unit_id: string | null
-  scope_revision: integer
-  close_basis_revision: integer | null
-  baseline_ref: string | null
-  result_refs: StateRecordRef[]
-  residual_risk_ids: string[]
   sensitive_action_scope: SensitiveActionScope | null
-  created_at_state_version: integer
-  compatibility_status: string
-```
 
-Core creates `JudgmentBasis` from current state when it creates the judgment. `JudgmentBasis` is server-derived persisted state, not a public request field. Callers do not submit `basis`, `scope_revision`, `close_basis_revision`, current close-basis data, or session-binding data.
-
-`compatibility_status` values are owned by [judgment values](schema-value-sets.md#judgment-values). `stale` and `superseded` judgments remain stored when needed for audit but are not eligible to satisfy current close, write, or sensitive-approval requirements.
-
-<a id="userjudgmentcandidate"></a>
-## `UserJudgmentCandidate`
-
-`UserJudgmentCandidate` is the candidate shape for a proposed focused question. It has no `judgment_id`, `status`, `resolution`, `created_at`, or `resolved_at` field.
-
-```yaml
-UserJudgmentCandidate:
-  judgment_kind: string
-  presentation: string
-  question: string
-  options: UserJudgmentOption[]
-  context: UserJudgmentContext
-  affected_refs: StateRecordRef[]
-  required_for: string[]
-  expires_at: string | null
-```
-
-<a id="userjudgmentoptioninput"></a>
-## Option and context shapes
-
-```yaml
-UserJudgmentOptionInput:
+UserActionOptionInput:
   option_id: string
   label: string
   description: string
   consequence: string
   is_default: boolean
 
-UserJudgmentOption:
+UserActionOption:
   option_id: string
   label: string
   description: string
   consequence: string
-  machine_action: string
-  resolution_outcome: string
+  machine_action: accept | reject | defer
+  resolution_outcome: accepted | rejected | deferred
   is_default: boolean
 
-UserJudgmentContext:
+UserActionContext:
   summary: string
   related_refs: StateRecordRef[]
   artifact_refs: ArtifactRef[]
@@ -220,78 +51,50 @@ UserJudgmentContext:
   constraints: string[]
 ```
 
-`option_id` is scoped to the judgment. `label`, `description`, `consequence`, `summary`, and `constraints` entries are free-form display strings. Rendered labels are display text, not canonical schema values.
+Caller-authored options are accepted only for `product_decision` and
+`technical_decision` and contain no machine action or outcome. For
+authority-bearing kinds Core creates the options and mapping. `accept` maps only
+to `accepted`, `reject` only to `rejected`, and `defer` only to `deferred`.
+Labels and free text cannot invert that mapping or grant authority.
 
-`UserJudgmentOptionInput` is the caller request shape for custom options where the method owner allows caller-authored options. It does not contain `machine_action` or `resolution_outcome`; public requests that include those fields inside `options` are invalid.
+The common choice `UserActionBasis` carries current close-basis revision,
+result refs, residual-risk IDs, and sensitive-action scope. Those coordinates
+are Core-derived and are not resolution input.
 
-`UserJudgmentOption` is the current Core-owned option state/output shape. Current public options include non-null `machine_action` and non-null `resolution_outcome`. `machine_action=accept` maps to `resolution_outcome=accepted`; `machine_action=reject` maps to `resolution_outcome=rejected`; `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a `JudgmentResolutionOutcome` value.
-
-For authority-bearing judgment kinds, callers do not author visible-label-to-machine-outcome mappings in request input. Core creates the authority option actions, outcomes, localized labels, and consequences. Option labels or explanatory text must not invert the machine-readable action or outcome. Persisted option state uses the current structured option object with explicit action and outcome fields.
-
-## Resolution and answer payload
+## Choice resolution payload
 
 ```yaml
-UserJudgmentResolution:
+UserActionResolutionInput:
+  resolution_type: choice
   selected_option_id: string
-  machine_action: string
-  resolution_outcome: string
-  answer: RecordUserJudgmentPayload
-  rationale: JudgmentRationale
   note: string | null
-  accepted_risks: AcceptedRiskInput[]
-  resolved_by_actor_source: string
 
-RecordUserJudgmentPayload:
-  product_decision: object | null
-  technical_decision: object | null
-  scope_decision: object | null
-  sensitive_action_scope: SensitiveActionScope | null
-  final_acceptance: object | null
-  residual_risk_acceptance: object | null
-  cancellation: object | null
-
-JudgmentRationale:
-  summary: string
-  selected_reason: string | null
-  considered_alternatives: string[]
-  rejected_alternatives: string[]
-  assumptions: string[]
-  tradeoffs: string[]
-  uncertainties: string[]
-  review_triggers: string[]
-  related_refs: StateRecordRef[]
-  artifact_refs: ArtifactRef[]
+UserActionResolutionBody:
+  resolution_type: choice
+  selected_option_id: string
+  machine_action: accept | reject | defer
+  resolution_outcome: accepted | rejected | deferred
+  note: string | null
+  accepted_risk_ids: string[]
 ```
 
-`selected_option_id`, `rationale`, and `note` are request-level and resolution-level fields. `selected_option_id` is scoped to the judgment option set. `note` is a free-form display string.
+The user submits only a stored option ID and an optional note of at most 1,000
+Unicode scalar values. Core copies the machine action and outcome from the
+stored option and derives the current accepted residual-risk IDs from the
+stored request and compatible basis. `judgment_kind` and durable `action_kind`
+come from the request. Sensitive scope and other authority coordinates remain
+in the request basis rather than being duplicated in the resolution.
 
-`JudgmentRationale.summary` is required and must be concise but non-empty. `selected_reason`, alternatives, assumptions, tradeoffs, uncertainties, review triggers, related refs, and artifact refs preserve user-visible intent and review context. For accepted product decisions, technical decisions, scope decisions, final acceptance, cancellation, sensitive approval, and residual-risk acceptance, Core requires a non-empty `selected_reason` plus at least one `tradeoffs` and `review_triggers` entry. Rejected or deferred judgments may use a concise rationale when the method owner does not require more detail.
+The caller cannot submit or override machine action, outcome, risk objects,
+accepted-risk IDs, an answer branch, sensitive scope, or rationale. Core does
+not invent an uncaptured rationale or synthetic user answer.
 
-`machine_action` and `resolution_outcome` are copied from the selected `UserJudgmentOption`. The selected option's stored action and outcome are authoritative and must match the action/outcome mapping. Any outcome, decision, or acceptance field inside `answer` must agree with the selected option; free-form answer text cannot grant authority.
-
-Rationale text cannot grant authority, create write approval, satisfy evidence requirements, establish final acceptance, accept residual risk, make stale judgments current, or change which option was selected.
-
-`resolved_by_actor_source` uses the `ActorSource` value set; see [actor source values](schema-value-sets.md#actor-source-values). It records derived provenance, not free-form caller attribution. Authority-bearing user-judgment resolution requires `resolved_by_actor_source=local_user` with compatible User Channel provenance.
-
-Authority-bearing resolution rule:
-- `judgment_kind=scope_decision`, `final_acceptance`, `residual_risk_acceptance`, `sensitive_approval`, or `cancellation` requires a selected Core-created authority option, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a compatible current basis before it can satisfy an authority requirement.
-- `resolution_outcome=rejected` or `deferred` remains a durable user decision but does not approve, accept, authorize, waive, or close anything. `blocked` is not a judgment resolution outcome and cannot satisfy an authority requirement.
-- A resolved judgment without machine-readable action/outcome or required User Channel provenance is invalid owner state and cannot satisfy current authority requirements.
-
-Shape rule:
-- Exactly one decision-specific payload branch is populated for the selected `judgment_kind`.
-
-Owner exception:
-- A method owner may explicitly define a narrower payload structure.
-
-String fields inside a decision-specific payload object are local to that payload structure unless the method owner explicitly defines a narrower local code list or value list. They are not global API value sets.
-
-Not allowed:
-- `RecordUserJudgmentPayload` does not contain `selected_option_id`, `rationale`, or `note`.
+An accepted choice satisfies its kind-specific requirement only when the basis
+remains current and the immutable resolution has compatible `local_user` User
+Channel provenance. Rejected and deferred choices remain durable user choices
+but do not approve, accept, authorize, waive, or close anything.
 
 ## `SensitiveActionScope`
-
-`SensitiveActionScope` is the schema shape for a named sensitive-action approval context. It is not `WriteTicketAttemptScope`, not write ticket, and not security authority; see [Security](../security.md).
 
 ```yaml
 SensitiveActionScope:
@@ -306,16 +109,11 @@ SensitiveActionScope:
   expires_at: string | null
 ```
 
-The presence of `SensitiveActionScope` does not define where sensitive-action approval is required. Method owners define where this shape appears, and it does not replace the `volicord.prepare_write` path for product-file writes.
-
-`SensitiveActionScope.action_kind` and `sensitive_categories[]` are opaque sensitive-action classification strings unless an affected method or profile owner publishes a narrower local list. `description`, `command_or_tool_summary`, `network_or_host_summary`, `secret_or_credential_summary`, and `capability_claim` are display or claim strings; they are not canonical value sets or security authority.
-
-In `volicord.request_user_judgment`, `sensitive_action_scope` is an optional-nullable public request field whose non-null requirement is owned by the method owner for `judgment_kind=sensitive_approval`. When `SensitiveActionScope` appears inside `JudgmentBasis`, it is server-derived persisted state, not caller-submitted basis data.
+This is bounded sensitive-action context, not a write ticket, OS permission,
+security boundary, final acceptance, or evidence.
 
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`
-
-`AcceptedRiskInput` is the shape for naming a visible residual risk inside a judgment payload.
 
 ```yaml
 AcceptedRiskInput:
@@ -326,16 +124,13 @@ AcceptedRiskInput:
   accepted_for_close: boolean
 ```
 
-This shape is not verification, evidence sufficiency, QA, final acceptance, or proof that the result has no risk. Residual-risk meaning is owned by [Core Model](../core-model.md).
-
-`risk_id` is the exact opaque risk identifier from the current close basis. It is required when accepting residual risk for close. `summary`, `consequence`, and `related_refs` are context for the user and audit trail; they do not authorize text matching.
+Visible risks belong to the request context and basis. The choice resolution
+stores only the exact current IDs Core derived; it does not duplicate these
+objects. Residual-risk acceptance does not prove that no risk remains.
 
 ## Related owners
 
-- [Core Model](../core-model.md) for user-owned judgment meaning and non-substitution rules.
-- [Request-user-judgment method](method-request-user-judgment.md) for `volicord.request_user_judgment`.
-- [Record-user-judgment method](method-record-user-judgment.md) for `volicord.record_user_judgment`.
-- [API Value Sets](schema-value-sets.md) for `judgment_kind`, `presentation`, `required_for`, status, actor values, and option display boundaries.
-- [API State Schemas](schema-state.md) for `StateRecordRef`.
-- [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.
-- [Scope Reference](../scope.md) for reserved judgment routes and baseline-boundary checks.
+- [API User Action Schemas](schema-user-action.md).
+- [`volicord.request_user_action`](method-request-user-action.md).
+- [`volicord.resolve_user_action`](method-resolve-user-action.md).
+- [Core Model](../core-model.md) for judgment and non-substitution meaning.

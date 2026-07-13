@@ -108,6 +108,13 @@ method execution is available:
 This keeps local administrative preparation separate from Core method
 semantics. Exact CLI behavior is owned by [Administrative CLI](../reference/admin-cli.md).
 
+For a new project, bootstrap initializes `project_state.created_at` and
+`project_state.updated_at` from SQLite current UTC. Re-registering an existing
+project validates and preserves its exact `updated_at` canonical-clock floor;
+the registration upsert changes only owner-allowed registration data. A
+malformed existing floor fails before a write, and a future-valued valid floor
+is never reset to live or host time.
+
 ## Read and planning flow
 
 Normal public method execution has two implementation phases before persistence:
@@ -119,6 +126,25 @@ Normal public method execution has two implementation phases before persistence:
    eligibility, Task requirement, freshness, and operation category.
 2. The method module in [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
    performs method-specific planning and returns an `OwnerPipelineBranch`.
+
+After common preflight, a request that reaches planning obtains exactly one
+`operation_now` from the project-scoped canonical Core UTC clock. For
+`SystemClock`, Store samples that clock as the maximum of live SQLite UTC,
+persisted `project_state.updated_at`, and any later accepted sample held by the
+Store handle. Method planning reuses `operation_now` for all current-time
+decisions and semantic operation timestamps.
+
+`SystemClock` obtains its live candidate from SQLite. An injected Clock can
+replace that candidate, but the `CoreService` boundary still takes the maximum
+with the persisted floor and same-handle sample. This composition does not
+rewrite stored owner timestamps. A future-valued row fails closed only where
+its owner defines that value as invalid. TTL derivation uses checked addition
+and canonical RFC 3339 UTC representability before a branch can commit. The
+same configured candidate choice applies at commit: `SystemClock` samples
+SQLite current UTC inside the transaction, while an injected Clock supplies
+its live candidate instead of, not in addition to, that SQLite candidate. Exact
+selection belongs to
+[Storage Versioning](../reference/storage-versioning.md#canonical-core-utc-clock).
 
 Read-only methods and dry runs can return without a Core mutation commit.
 Committed branches provide result fields, event data, and a list of
@@ -132,12 +158,14 @@ and [Storage Effects](../reference/storage-effects.md).
 
 | Effect path | Store boundary |
 |---|---|
-| Rejected before planning or commit | Returns without calling `CoreProjectStore::commit_mutation`; no Store transaction for a Core mutation starts. |
-| Read-only result | Uses Store reads and returns without a Core mutation commit. |
-| No-effect result | Returns a valid method result without calling the normal Core mutation commit path. |
-| Dry-run preview | Builds preview data without persisting generated refs, authority events, replay rows, staged handles, artifacts, or state-version changes. |
-| Normal committed Core mutation | Runs `CoreProjectStore::commit_mutation`, which applies method-provided `CoreStorageMutation` values and pending events inside one transaction. |
-| Transient artifact staging | Uses artifact staging helpers instead of the normal Core mutation commit path. It has its own storage and cleanup boundary. |
+| Rejected before planning or commit | Returns without calling `CoreProjectStore::commit_mutation`; no Store transaction for a Core mutation starts and no later clock floor is persisted. |
+| Read-only result | Uses Store reads and returns without a Core mutation commit. A current project-time sample is not persisted merely because it was read. |
+| No-effect result | Returns a valid method result without calling the normal Core mutation commit path or advancing the persisted floor. |
+| Dry-run preview | Builds preview data without persisting generated refs, authority events, replay rows, staged handles, artifacts, state-version changes, or a later clock floor. |
+| Normal committed Core mutation | Runs `CoreProjectStore::commit_mutation`, which applies method-provided `CoreStorageMutation` values and pending events with one canonical commit timestamp inside one transaction. |
+| Transient artifact staging | Uses artifact staging helpers instead of the normal Core mutation commit path. Its transaction advances the project-time floor to at least staging `created_at` without changing `state_version`. |
+| Registered evidence-capture fulfillment | Creates the receipt, transient staging, and source claims together, and advances the floor to at least receipt `created_at`; no Core event, replay row, or state-version increment. |
+| Local User Channel token issuance | Inserts the request-bound token and advances the floor to at least token `created_at`; no Core event, replay row, or state-version increment. |
 
 ## Mutation values
 
@@ -157,7 +185,8 @@ This structure gives the implementation a clear split:
 
 For normal committed Core mutations, Core builds `CommitMutationInput` with the
 project ID, method name, optional idempotency key, canonical request hash,
-verified replay context, optional expected state version, and pending events.
+verified replay context, optional expected state version, pending events, and
+the prepared `operation_now` as the commit clock floor.
 
 `CoreProjectStore::commit_mutation` in
 [`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs)
@@ -168,13 +197,31 @@ is the atomic Store boundary. It:
 3. reads current project state inside the transaction;
 4. handles eligible replay, replay-context mismatch, idempotency conflict, and
    stale expected-state outcomes before applying a new mutation;
-5. advances `project_state.state_version` for a new committed mutation;
-6. applies method-provided `CoreStorageMutation` values through
+5. chooses one canonical `committed_at` using the configured Clock branch:
+   - for production `SystemClock`, the maximum of `operation_now`, SQLite
+     current UTC sampled inside the transaction, the persisted project-time
+     floor, and any later same-handle accepted sample;
+   - for an injected or custom Clock, the maximum of `operation_now`, its
+     injected live-time candidate, the persisted floor, and any later
+     same-handle accepted sample; the injected candidate replaces rather than
+     supplements SQLite current UTC;
+6. advances `project_state.state_version` for a new committed mutation;
+7. applies method-provided `CoreStorageMutation` values through
    `ProjectMutation`;
-7. appends authority events;
-8. builds and validates response JSON;
-9. stores an idempotency replay row when the committed call is idempotent;
-10. commits the transaction, or rolls back the whole attempt on error.
+8. writes `project_state.updated_at=committed_at` and appends authority events
+   with `created_at=committed_at`;
+9. builds and validates response JSON;
+10. stores an idempotency replay row with `created_at=committed_at` when the
+    committed call is idempotent;
+11. commits the transaction, or rolls back the whole attempt on error.
+
+Store transaction metadata that mutation application generates, including
+applicable `created_at`, `updated_at`, `retired_at`, and `promoted_at`, uses the
+same exact `committed_at`. Owner-defined semantic times such as `requested_at`,
+`resolved_at`, `closed_at`, `recorded_at`, and `consumed_at`, plus observation
+facts such as `observed_at` and `started_at`, retain the prepared operation
+sample or verified source time. The commit timestamp can be later than
+`operation_now`; it does not rewrite those semantic facts.
 
 The implementation tests that protect this boundary include
 `transaction_replay_returns_stored_response_before_stale_expected_state`,
@@ -191,6 +238,12 @@ mutation and stores the corresponding `authority_events` row or owner-defined
 event batch with that resulting state version. Replay returns the stored
 original response for an eligible idempotent call instead of applying another
 mutation.
+
+`state_version` and the persisted UTC floor are independent coordinates. The
+first orders authority-state transitions; the second prevents later temporal
+checks from observing an earlier project time. A replay, conflict, rejection,
+dry run, or read-only result neither increments `state_version` nor persists a
+later floor. Multiple state versions may share one non-decreasing UTC value.
 
 The request hash used for replay comes from `canonical_request_hash` in
 [`crates/volicord-types/src/canonical.rs`](../../../crates/volicord-types/src/canonical.rs)
@@ -212,7 +265,9 @@ commit path:
   staged bytes.
 - It does not use `CoreProjectStore::commit_mutation`, increment
   `project_state.state_version`, append `authority_events`, create replay rows,
-  or insert persistent artifact rows.
+  or insert persistent artifact rows. Its own transaction advances
+  `project_state.updated_at` to at least the staging row's `created_at`; equality
+  is not required if another writer already established a later floor.
 
 Persistent artifact promotion happens through method-planned Core mutations,
 such as `record_run`, when the applicable owner-defined behavior allows it.
@@ -226,16 +281,36 @@ Relevant tests include
 and `artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones`
 in [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs).
 
+## Other storage-owned clock-floor writers
+
+Registered evidence-capture fulfillment and local-web User Channel token
+issuance also run outside the normal Core mutation commit:
+
+- Receipt fulfillment atomically inserts one receipt, its transient staging
+  row and bytes, and all source claims, while advancing the floor to at least
+  receipt `created_at`.
+- Token issuance samples canonical current project time for token `created_at`,
+  derives `expires_at`, inserts the hash-only token, and advances the floor to
+  at least `created_at` in one transaction. Validation accepts only
+  `created_at <= now < expires_at`.
+
+Neither path increments `state_version` or creates authority events or replay
+rows. A failed transaction rolls back both the owned rows and its floor update.
+
 ## Failure boundaries
 
 The implementation separates failure boundaries by effect path:
 
 - Preflight and validation rejections return without a Core commit.
+- Clock or TTL overflow and unrepresentable derived timestamps reject before
+  commit and leave no row or floor effect; Store also revalidates timestamp
+  columns at its write boundary.
 - Read-only, no-effect, and dry-run branches do not call
   `CoreProjectStore::commit_mutation`.
 - Store commit outcomes distinguish committed, replayed, replay-context
   mismatch, idempotency conflict, and stale expected-state cases.
-- Errors during the Store transaction roll back the commit attempt.
+- Errors during the Store transaction roll back the commit attempt, including
+  its state-version and canonical-floor changes.
 - Artifact staging has its own transaction and file cleanup boundary.
 - Direct Product Repository file writes are outside the public Volicord API path.
 

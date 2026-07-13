@@ -29,7 +29,7 @@
 
 | 표면 | 안정성 | 비고 |
 |---|---|---|
-| 기준 SQLite DDL, 기준 SQL 블록, 테이블 제약, 인덱스, 외래 키, 공개 기준 상태 시계인 `project_state.state_version` | `stable` | 현재 기준 프로필을 위한 구현 가능한 저장소 DDL 계약입니다. |
+| 기준 SQLite DDL, 기준 SQL 블록, 테이블 제약, 인덱스, 외래 키, 공개 기준 상태 시계인 `project_state.state_version`, 물리 정규 UTC 하한인 `project_state.updated_at` | `stable` | 현재 기준 프로필을 위한 구현 가능한 저장소 DDL 계약입니다. UTC 하한은 두 번째 공개 상태 버전 필드가 아닙니다. |
 | 물리 테이블 이름, 열 이름, 내부 ID, 생성된 호스트 관찰 행, `_json` 표현 열 | `internal` | 저장소 배치를 구현 가능하게 하는 세부사항입니다. 다른 집중 담당 문서가 노출하지 않는 한 일반 사용자 대상 선택자나 공개 API 인자가 아닙니다. |
 | 테이블, 기록 참조, 논리 열, 손상 범주를 식별하는 안전한 저장소 또는 손상 진단 | `diagnostic` | 진단은 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하면 안 됩니다. |
 
@@ -41,13 +41,18 @@ SQLite 외래 키는 이 DDL 계약의 일부입니다. 이 데이터베이스�
 PRAGMA foreign_keys = ON;
 ```
 
-상태 변경 커밋을 위해 최신성, 쓰기 티켓 호환성 행, 스테이징, 재실행 행을 읽는 변경 트랜잭션은 `BEGIN IMMEDIATE` 또는 동등한 직렬화된 쓰기 경계를 사용해야 합니다.
+상태 변경 커밋을 위해 최신성, 쓰기 티켓 호환성 행, 스테이징, 재실행 행, 영속
+정규 UTC 하한을 읽는 변경 트랜잭션은 `BEGIN IMMEDIATE` 또는 동등한 직렬화된 쓰기
+경계를 사용해야 합니다.
 
 담당 저장소 계약이 복구나 보존 경로를 정의하지 않는 한 권한 효력이 있는 행은 계속 주소 지정 가능해야 합니다. 레지스트리는 프로젝트 등록을 삭제할 때 그 등록이 소유한 비권한 별칭 행을 연쇄 삭제할 수 있습니다. 이 별칭 정리가 프로젝트별 Core 권한 기록 삭제를 뜻하면 안 됩니다.
 
 `_json`으로 끝나는 SQLite `TEXT` 열은 JSON을 저장하는 표현 선택입니다. 권한, 생명주기, 범위, 증거, 완료, 닫기 준비 상태, 쓰기 호환성에 쓰이는 JSON은 타입이 지정된 담당 상태입니다. 타입을 아는 Core 코드는 커밋 전에 해당 API 스키마 담당 문서, 저장소 담당 문서, 또는 아티팩트 담당 문서에 맞게 이 열을 파싱하고 검증해야 합니다. 타입이 지정된 담당 상태를 디코드하지 못하는 경우는 손상이며 빈 객체, 빈 배열, `false` 값, 기본 열거형 값, 또는 "요구사항 없음" 해석으로 바꾸면 안 됩니다. SQL `NULL`은 담당 스키마가 그 필드를 명시적으로 선택 필드라고 표시할 때만 부재를 뜻할 수 있습니다. 선택 열의 형식이 잘못된 JSON도 부재가 아니라 손상입니다. 열린 표시 메타데이터는 권한이나 닫기 판단에 쓰이지 않을 때만 타입을 지정하지 않은 채로 둘 수 있습니다. 안전한 진단은 테이블, 기록 참조, 논리 열, 손상 범주를 식별할 수 있지만 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하면 안 됩니다. `'{}'`, `'[]'` 같은 SQLite 기본값은 API 필드를 선택 필드로 만들지 않습니다.
 
-`project_state.state_version`은 기준 범위의 유일한 공개 상태 시계입니다. 기준 SQLite DDL은 `tasks.state_version`, 저장소 `schema_version` 열, 마이그레이션 이력 테이블을 만들면 안 됩니다.
+`project_state.state_version`은 기준 범위의 유일한 공개 상태 시계입니다.
+`project_state.updated_at`은 정규 Core UTC 시계를 위한 별도의 물리 하한이며 공개 충돌
+버전이나 스키마 버전이 아닙니다. 기준 SQLite DDL은 `tasks.state_version`, 저장소
+`schema_version` 열, 마이그레이션 이력 테이블을 만들면 안 됩니다.
 
 물리 `write_tickets` 테이블은 제품 파일 쓰기 시도에 대한 쓰기 티켓 권한 기록을 저장합니다. 이 행은 Volicord 안에서 권한 있는 쓰기 의도와 호환성 상태를 기록합니다. OS 권한, 파일시스템 ACL, 샌드박싱, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 
@@ -413,96 +418,81 @@ CREATE TABLE evidence_capture_intents (
     REFERENCES change_units (project_id, task_id, change_unit_id)
 );
 
-CREATE TABLE user_judgments (
+CREATE TABLE user_action_requests (
   project_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
-  judgment_kind TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'stale', 'superseded', 'expired')),
-  request_json TEXT NOT NULL DEFAULT '{}',
-  context_json TEXT NOT NULL DEFAULT '{}',
-  options_json TEXT NOT NULL DEFAULT '{"options":[]}',
-  affected_refs_json TEXT NOT NULL DEFAULT '[]',
-  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
-  sensitive_action_scope_json TEXT NOT NULL DEFAULT '{}',
+  action_kind TEXT NOT NULL CHECK (
+    action_kind IN (
+      'product_decision',
+      'technical_decision',
+      'scope_decision',
+      'sensitive_approval',
+      'final_acceptance',
+      'residual_risk_acceptance',
+      'cancellation',
+      'evidence_observation'
+    )
+  ),
+  request_json TEXT NOT NULL,
   basis_json TEXT NOT NULL,
   basis_status TEXT NOT NULL DEFAULT 'current'
     CHECK (basis_status IN ('current', 'stale', 'superseded')),
-  resolution_outcome TEXT
-    CHECK (resolution_outcome IS NULL OR resolution_outcome IN ('accepted', 'rejected', 'deferred')),
-  resolution_machine_action TEXT
-    CHECK (resolution_machine_action IS NULL OR resolution_machine_action IN ('accept', 'reject', 'defer')),
-  resolution_json TEXT,
-  resolution_rationale_json TEXT,
+  required_for_json TEXT NOT NULL,
   requested_by_actor_source TEXT NOT NULL,
-  resolved_by_actor_source TEXT,
-  resolved_verification_basis TEXT,
-  resolved_assurance_level TEXT,
+  source_method TEXT NOT NULL CHECK (
+    source_method IN ('volicord.request_user_action', 'volicord.reconcile_changes')
+  ),
+  source_idempotency_key TEXT NOT NULL CHECK (length(trim(source_idempotency_key)) > 0),
   requested_at TEXT NOT NULL,
-  resolved_at TEXT,
+  expires_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
-  PRIMARY KEY (project_id, judgment_id),
-  CHECK (
-    (
-      status IN ('pending', 'expired')
-      AND resolution_outcome IS NULL
-      AND resolution_machine_action IS NULL
-      AND resolution_json IS NULL
-      AND resolution_rationale_json IS NULL
-      AND resolved_by_actor_source IS NULL
-      AND resolved_verification_basis IS NULL
-      AND resolved_assurance_level IS NULL
-      AND resolved_at IS NULL
-    )
-    OR (
-      status = 'resolved'
-      AND resolution_outcome IS NOT NULL
-      AND resolution_machine_action IS NOT NULL
-      AND resolution_json IS NOT NULL
-      AND resolution_rationale_json IS NOT NULL
-      AND resolved_by_actor_source IS NOT NULL
-      AND resolved_verification_basis IS NOT NULL
-      AND resolved_assurance_level IS NOT NULL
-      AND resolved_at IS NOT NULL
-    )
-    OR (
-      status IN ('stale', 'superseded')
-      AND (
-        (
-          resolution_outcome IS NULL
-          AND resolution_machine_action IS NULL
-          AND resolution_json IS NULL
-          AND resolution_rationale_json IS NULL
-          AND resolved_by_actor_source IS NULL
-          AND resolved_verification_basis IS NULL
-          AND resolved_assurance_level IS NULL
-          AND resolved_at IS NULL
-        )
-        OR (
-          resolution_outcome IS NOT NULL
-          AND resolution_machine_action IS NOT NULL
-          AND resolution_json IS NOT NULL
-          AND resolution_rationale_json IS NOT NULL
-          AND resolved_by_actor_source IS NOT NULL
-          AND resolved_verification_basis IS NOT NULL
-          AND resolved_assurance_level IS NOT NULL
-          AND resolved_at IS NOT NULL
-        )
-      )
-    )
-  ),
-  CHECK (
-    resolution_machine_action IS NULL
-    OR (
-      (resolution_machine_action = 'accept' AND resolution_outcome = 'accepted')
-      OR (resolution_machine_action = 'reject' AND resolution_outcome = 'rejected')
-      OR (resolution_machine_action = 'defer' AND resolution_outcome = 'deferred')
-    )
-  ),
+  PRIMARY KEY (project_id, user_action_request_id),
+  UNIQUE (project_id, user_action_request_id, action_kind),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
+);
+
+CREATE TABLE user_action_resolutions (
+  project_id TEXT NOT NULL,
+  user_action_resolution_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
+  action_kind TEXT NOT NULL CHECK (
+    action_kind IN (
+      'product_decision',
+      'technical_decision',
+      'scope_decision',
+      'sensitive_approval',
+      'final_acceptance',
+      'residual_risk_acceptance',
+      'cancellation',
+      'evidence_observation'
+    )
+  ),
+  channel_kind TEXT NOT NULL CHECK (
+    channel_kind IN ('mcp_elicitation', 'prompt_capture', 'local_web_consent', 'cli')
+  ),
+  channel_submission_id TEXT NOT NULL CHECK (
+    length(CAST(channel_submission_id AS BLOB)) BETWEEN 1 AND 256
+    AND length(channel_submission_id) = length(CAST(channel_submission_id AS BLOB))
+    AND channel_submission_id NOT GLOB '*[^!-~]*'
+  ),
+  resolution_json TEXT NOT NULL,
+  resolved_by_actor_source TEXT NOT NULL CHECK (resolved_by_actor_source = 'local_user'),
+  resolved_verification_basis TEXT NOT NULL CHECK (length(trim(resolved_verification_basis)) > 0),
+  resolved_assurance_level TEXT NOT NULL CHECK (length(trim(resolved_assurance_level)) > 0),
+  resolved_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_action_resolution_id),
+  UNIQUE (project_id, user_action_request_id),
+  UNIQUE (project_id, channel_kind, channel_submission_id),
+  FOREIGN KEY (project_id, user_action_request_id, action_kind)
+    REFERENCES user_action_requests (
+      project_id,
+      user_action_request_id,
+      action_kind
+    )
 );
 
 CREATE TABLE project_continuity_records (
@@ -540,7 +530,7 @@ CREATE TABLE write_tickets (
   status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'expired', 'stale', 'revoked')),
   attempt_scope_json TEXT NOT NULL DEFAULT '{}',
   created_by_actor_source TEXT NOT NULL,
-  created_by_judgment_id TEXT,
+  created_by_user_action_resolution_id TEXT,
   expires_at TEXT NOT NULL,
   consumed_by_run_id TEXT,
   consumed_at TEXT,
@@ -548,11 +538,12 @@ CREATE TABLE write_tickets (
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, write_ticket_id),
+  UNIQUE (project_id, task_id, basis_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
-  FOREIGN KEY (project_id, created_by_judgment_id)
-    REFERENCES user_judgments (project_id, judgment_id),
+  FOREIGN KEY (project_id, created_by_user_action_resolution_id)
+    REFERENCES user_action_resolutions (project_id, user_action_resolution_id),
   FOREIGN KEY (project_id, consumed_by_run_id)
     REFERENCES runs (project_id, run_id)
     DEFERRABLE INITIALLY DEFERRED
@@ -777,7 +768,7 @@ CREATE TABLE artifact_links (
   artifact_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   owner_record_kind TEXT NOT NULL CHECK (
-    owner_record_kind IN ('task', 'change_unit', 'run', 'user_judgment', 'evidence_summary', 'evidence_observation', 'evidence_producer', 'blocker')
+    owner_record_kind IN ('task', 'change_unit', 'run', 'user_action_request', 'user_action_resolution', 'evidence_summary', 'evidence_observation', 'evidence_producer', 'blocker')
   ),
   owner_record_id TEXT NOT NULL,
   created_by_run_id TEXT,
@@ -794,6 +785,7 @@ CREATE TABLE evidence_summaries (
   evidence_summary_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
+  produced_at_state_version INTEGER NOT NULL CHECK (produced_at_state_version >= 0),
   status TEXT NOT NULL,
   coverage_json TEXT NOT NULL DEFAULT '[]',
   supporting_refs_json TEXT NOT NULL DEFAULT '[]',
@@ -802,6 +794,7 @@ CREATE TABLE evidence_summaries (
   updated_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, evidence_summary_id),
+  UNIQUE (project_id, task_id, produced_at_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id)
@@ -839,36 +832,6 @@ CREATE TABLE evidence_observations (
   FOREIGN KEY (project_id, run_id)
     REFERENCES runs (project_id, run_id)
     DEFERRABLE INITIALLY DEFERRED,
-  FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
-    REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
-  FOREIGN KEY (project_id, task_id, evidence_claim_id)
-    REFERENCES evidence_claims (project_id, task_id, evidence_claim_id),
-  CHECK (
-    (acceptance_criterion_id IS NOT NULL AND evidence_claim_id IS NULL)
-    OR (acceptance_criterion_id IS NULL AND evidence_claim_id IS NOT NULL)
-  )
-);
-
-CREATE TABLE user_evidence_observations (
-  project_id TEXT NOT NULL,
-  user_evidence_observation_id TEXT NOT NULL,
-  task_id TEXT NOT NULL,
-  change_unit_id TEXT NOT NULL,
-  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
-  baseline_ref TEXT NOT NULL CHECK (length(trim(baseline_ref)) > 0),
-  acceptance_criterion_id TEXT,
-  evidence_claim_id TEXT,
-  relevance_status TEXT NOT NULL CHECK (relevance_status IN ('supported', 'contradicted')),
-  output_artifact_refs_json TEXT NOT NULL,
-  summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
-  observed_by_actor_source TEXT NOT NULL CHECK (observed_by_actor_source = 'local_user'),
-  verification_basis TEXT NOT NULL CHECK (length(trim(verification_basis)) > 0),
-  observed_at TEXT NOT NULL,
-  recorded_at TEXT NOT NULL,
-  PRIMARY KEY (project_id, user_evidence_observation_id),
-  FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
-  FOREIGN KEY (project_id, task_id, change_unit_id)
-    REFERENCES change_units (project_id, task_id, change_unit_id),
   FOREIGN KEY (project_id, task_id, acceptance_criterion_id)
     REFERENCES acceptance_criteria (project_id, task_id, acceptance_criterion_id),
   FOREIGN KEY (project_id, task_id, evidence_claim_id)
@@ -1036,8 +999,16 @@ CREATE INDEX idx_evidence_capture_intents_connection_expiry
     expires_at
   );
 
-CREATE INDEX idx_user_judgments_task_status
-  ON user_judgments (project_id, task_id, status);
+CREATE INDEX idx_user_action_requests_task_basis_expiry
+  ON user_action_requests (project_id, task_id, basis_status, expires_at);
+CREATE INDEX idx_user_action_requests_task_kind
+  ON user_action_requests (project_id, task_id, action_kind, requested_at);
+CREATE INDEX idx_user_action_resolutions_request
+  ON user_action_resolutions (project_id, user_action_request_id);
+
+CREATE UNIQUE INDEX idx_user_action_requests_direct_origin
+  ON user_action_requests (project_id, source_idempotency_key)
+  WHERE source_method = 'volicord.request_user_action';
 
 CREATE INDEX idx_project_continuity_records_status
   ON project_continuity_records (project_id, status, kind, updated_at);
@@ -1087,15 +1058,6 @@ CREATE INDEX idx_evidence_observations_task_target
 
 CREATE INDEX idx_evidence_observations_run
   ON evidence_observations (project_id, run_id);
-CREATE INDEX idx_user_evidence_observations_task_target
-  ON user_evidence_observations (
-    project_id,
-    task_id,
-    acceptance_criterion_id,
-    evidence_claim_id,
-    recorded_at
-  );
-
 CREATE INDEX idx_evidence_producers_task_run
   ON evidence_producers (project_id, task_id, run_id);
 
@@ -1337,11 +1299,12 @@ CREATE INDEX idx_session_watch_observations_expected_write
 CREATE INDEX idx_session_watch_observations_unrecorded_change
   ON session_watch_observations (project_id, unrecorded_change_id)
   WHERE unrecorded_change_id IS NOT NULL;
-CREATE TABLE local_web_consent_tokens (
+CREATE TABLE user_action_channel_tokens (
   project_id TEXT NOT NULL,
   token_hash TEXT NOT NULL CHECK (length(token_hash) = 64),
+  channel_kind TEXT NOT NULL CHECK (channel_kind = 'local_web_consent'),
   connection_internal_id TEXT NOT NULL,
-  judgment_id TEXT NOT NULL,
+  user_action_request_id TEXT NOT NULL,
   capture_basis TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'consumed', 'expired')),
@@ -1353,8 +1316,8 @@ CREATE TABLE local_web_consent_tokens (
   completion_metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, token_hash),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, judgment_id)
-    REFERENCES user_judgments (project_id, judgment_id)
+  FOREIGN KEY (project_id, user_action_request_id)
+    REFERENCES user_action_requests (project_id, user_action_request_id)
     ON DELETE RESTRICT,
   CHECK (
     (
@@ -1375,18 +1338,41 @@ CREATE TABLE local_web_consent_tokens (
   )
 );
 
-CREATE INDEX idx_local_web_consent_tokens_judgment
-  ON local_web_consent_tokens (project_id, judgment_id, status);
-CREATE INDEX idx_local_web_consent_tokens_connection
-  ON local_web_consent_tokens (project_id, connection_internal_id, status, expires_at);
-CREATE INDEX idx_local_web_consent_tokens_expiry
-  ON local_web_consent_tokens (project_id, status, expires_at);
+CREATE INDEX idx_user_action_channel_tokens_request
+  ON user_action_channel_tokens (project_id, user_action_request_id, status);
+CREATE INDEX idx_user_action_channel_tokens_connection
+  ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
+CREATE INDEX idx_user_action_channel_tokens_expiry
+  ON user_action_channel_tokens (project_id, status, expires_at);
 ```
 <!-- canonical-storage-sql: project end -->
 
 프로젝트 상태 제약:
 
 - `project_state.state_version`은 기준 범위의 유일한 공개 상태 시계이며 [저장소 버전 관리](storage-versioning.md)에 따라 단조롭게 진행해야 합니다. 이것은 Core 상태 시계이지 스키마 버전이 아닙니다.
+- `project_state.updated_at`은 정규 Core UTC 시계의 감소하지 않는 영속 하한입니다.
+  Store application validation은 이 값을 정규 UTC 담당 상태로 strict parse하고 형식이
+  잘못되면 닫힌 상태로 실패해야 합니다. 일반 Core 커밋은 정확히 하나의
+  `committed_at` 값을 이 열, 이벤트 묶음의 모든 `authority_events.created_at`, 선택적
+  재실행 행의 `tool_invocations.created_at`에 씁니다. Mutation application이 생성하는
+  적용 가능한 Store transaction metadata인 `created_at`, `updated_at`, `retired_at`,
+  `promoted_at`도 정확히 같은 값을 사용합니다. 의미 있는 동작 시각인
+  `requested_at`, `resolved_at`, `closed_at`, `recorded_at`, `consumed_at`과 별도 담당
+  사실인 `observed_at`, `started_at`은 담당 문서가 정의한 동작 샘플 또는 검증된 원천
+  시각을 보존합니다. 이러한 교차 행 및 단조 제약은 transaction 요구사항이며
+  table-local `CHECK` 제약만으로 표현되지 않습니다.
+- Store application validation은 timestamp 열에 쓰는 모든 값을 정규 RFC 3339 UTC 담당
+  상태로 strict validation합니다. TTL 파생 값은 checked 덧셈과 표현 가능성을 요구하며
+  overflow 또는 표현 불가능한 값은 행, 하한, event, replay, state-version 효과 전에
+  거부합니다.
+- 최신 Agent Session, guard event, session-watch baseline, session-watch observation을
+  도출하는 Store 조회는 적용되는 RFC 3339 timestamp를 strict parse하고 정규화한 뒤 UTC
+  instant를 nanosecond 정밀도로 비교합니다. SQLite `julianday()`, timestamp 텍스트 순서,
+  행 순서, 불투명 ID가 권한 순서를 정하면 안 됩니다. 같은 최대 instant는 함께 최신인
+  집합입니다. 닫기 및 보안 관련 guard issue predicate는 함께 최신인 모든 guard event의
+  보수적 합집합입니다. 조회가 session 또는 watch record 하나를 요구하는데 서로 다른
+  후보 여러 개가 함께 최신이면 ID를 tie-breaker로 사용하지 않고 사용할 수 없는 담당
+  상태로 닫힌 상태에서 실패합니다.
 - `tasks.work_phase`와 `tasks.acceptance_policy`는 필수 제어 값이고 policy
   reason은 비어 있지 않습니다. Predecessor ID, lineage relation, 비어 있지
   않은 lineage reason은 모두 null이거나 모두 존재하고 외래 키로 같은
@@ -1395,12 +1381,18 @@ CREATE INDEX idx_local_web_consent_tokens_expiry
   저장합니다. 저장되어 있다는 사실만으로 predecessor 행, 판단, Evidence 집합,
   baseline, 쓰기 티켓을 현재 상태로 만들지 않습니다.
 - `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다.
-- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_judgments.requested_by_actor_source`, `user_judgments.resolved_by_actor_source`, `evidence_capture_intents.requested_by_actor_source`, `evidence_capture_receipts.observed_by_actor_source`, `user_evidence_observations.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
+- `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_action_requests.requested_by_actor_source`, `user_action_resolutions.resolved_by_actor_source`, `evidence_capture_intents.requested_by_actor_source`, `evidence_capture_receipts.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
-- 사용자 판단 행은 권한 효력이 있는 판단 해결에 대한 User Channel 출처를 저장합니다. `status='resolved'`는 답변이 존재한다는 사실을 기록할 뿐이며, 승인 의미는 저장된 기계 동작, 결과, 근거, 출처, 메서드 담당 문서에서 나옵니다.
-- `local_web_consent_tokens`는 대기 사용자 판단을 위한 해시된 일회성 로컬 웹 동의 토큰을 저장합니다. 원문 토큰은 저장하지 않습니다. 토큰 소비는 대응하는 사용자 판단 해결과 같은 프로젝트 상태 트랜잭션에서 커밋해야 합니다. 이 행은 임시 User Channel 캡처 메타데이터이며 그 자체로 Core 판단 권한이 아닙니다.
-- `write_tickets`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `write_tickets.consumed_by_run_id`와 `runs.write_ticket_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
+- `user_action_requests`는 합성 lifecycle 상태를 저장하지 않습니다. Core가 resolution 존재 여부, `basis_status`, expiry, 현재 시각에서 유효한 `pending`, `resolved`, `stale`, `superseded`, `expired`를 파생합니다. `user_action_resolutions`는 변경 불가능하고 요청과 일대일입니다. 폐쇄형 `resolution_json`은 저장 선택지에서 파생한 choice action/outcome 또는 Core가 도출한 전체 Evidence 관찰 본문 중 하나를 담으며, 권한 의미에는 현재 근거, provenance, 메서드 담당자도 필요합니다.
+- `user_action_resolutions.channel_submission_id`는 visible ASCII
+  `0x21..=0x7e` 1~256 bytes로 제한됩니다. BLOB 길이가 byte 상한을 제공하고, 같은
+  TEXT/BLOB 길이가 non-ASCII와 내장 NUL 형태를 거부하며, `GLOB` 검사가 visible 범위 밖의
+  모든 byte를 거부합니다. Core도 replay 조회나 mutation 계획 전에 같은 상한을
+  적용합니다.
+- Store application validation은 요청, 근거, resolution JSON을 strict decode하고 저장 요청에서 캡처 폼을 도출하며 폐쇄형 tag와 파생 `action_kind` 일치를 요구합니다. 대상과 아티팩트 후보는 각각 32개, note 성격 텍스트는 Unicode scalar value 1,000개, 관찰 summary는 4,000개, canonical 직렬화 폼은 32 KiB로 제한하며 초과 값을 자르지 않고 거부합니다.
+- `user_action_channel_tokens`는 대기 사용자 행동의 해시된 일회성 로컬 웹 User Channel token을 저장합니다. raw token은 저장하지 않습니다. 발급 창을 도출하고 검증하는 네 저장 timestamp인 `user_action_requests.requested_at`, 선택적 `user_action_requests.expires_at`, token `created_at`, token `expires_at`은 각 instant의 canonical RFC 3339 UTC 문자열이어야 합니다. Store application validation은 token `created_at >= user_action_requests.requested_at`을 요구합니다. 요청에 expiry가 있으면 token `expires_at`은 정확히 `min(user_action_requests.expires_at, created_at + 600 seconds)`여야 하고, 요청 expiry가 없으면 정확히 `created_at + 600 seconds`여야 합니다. Token은 반열린 구간 `created_at <= now < expires_at`에서만 유효합니다. Noncanonical 발급 창 timestamp, 더 이르거나 늦은 token expiry, 그 밖의 창 불일치는 손상된 저장 상태입니다. 이때 token 검증, 로컬 웹 GET·POST, expiry 정리, token 소비는 닫힌 상태로 실패하며 token status, 프로젝트 상태나 UTC 하한, 사용자 행동 resolution 상태를 변경하지 않습니다. 발급은 token 삽입과 원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다. token 소비와 변경 불가능한 resolution 삽입은 함께 커밋합니다. 이 행은 일시적인 캡처 metadata이며 그 자체로 Core 사용자 권한이 아닙니다.
+- `write_tickets`는 단일 사용 쓰기 티켓 호환성을 기록합니다. `(project_id, task_id, basis_state_version)` 고유 제약은 Task 안에서 상태 버전 정렬 키를 고유하게 만듭니다. `write_tickets.consumed_by_run_id`와 `runs.write_ticket_id`의 고유 인덱스는 쓰기 티켓 소비 하나가 여러 실행으로 갈라지는 것을 막습니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거, source input,
   connection/actor, workspace fact에 결합합니다. `evidence_capture_receipts`는 intent당
@@ -1426,11 +1418,25 @@ CREATE INDEX idx_local_web_consent_tokens_expiry
   뒤이면서 intent expiry 전인 receipt 생성, intent expiry와 정확히 같은 receipt
   staging expiry를 강제합니다. 이런 cross-row 시간 관계는 table-local check만으로
   표현할 수 없습니다.
+- Store application validation은 일반 staging을 만드는 transaction에서
+  `project_state.updated_at`을 `artifact_staging.created_at` 이상으로 전진시킵니다.
+  등록된 evidence-capture fulfillment도 receipt, staging 행, source claim을 만드는
+  transaction에서 receipt `created_at`을 기준으로 같은 효과를 적용합니다. 이러한 하한
+  전용 효과는 `state_version`을 증가시키거나 이벤트 또는 재실행 행을 만들지 않습니다.
+- `evidence_summaries.produced_at_state_version`은 삽입 또는 가장 최근 갱신의 결과
+  권한 상태 버전을 저장합니다. 고유한
+  `(project_id, task_id, produced_at_state_version)` 제약은 같은 `Task`의 요약 두 개가
+  하나의 권한 순서 위치를 주장하지 못하게 합니다. 현재 요약 선택은 이 열만 사용하며
+  timestamp와 불투명 ID는 권한 순서 tie-breaker가 아닙니다.
 - `evidence_observations.source_kind`와 `assurance_level`은 협력적 에이전트 보고, 등록된 연결 관찰, 외부 도구 결과, 사용자 관찰, 재사용 증거, 미확인 주장을 구분합니다.
 - `evidence_observations.metadata_json`은 엄격한 Core 파생 producer 앵커 및
-  relevance 평가 JSON입니다. `user_evidence_observations`는 별도의 로컬 사용자
-  relevance 레코드와 정확한 현재 근거 좌표를 저장합니다.
-- `tool_invocations`는 행위자 출처, 작업 범주, 선택적 정규 `git_workspace_context_json`을 포함해 재실행 행을 저장합니다. 재실행 행은 호출자 권한이 아니며 현재 연결, Git 작업 공간, User Channel 요구사항을 우회하지 않습니다.
+  relevance 평가 JSON입니다. 사용자 행동의 로컬 사용자 relevance detail과 정확한
+  현재 근거 좌표는 폐쇄형 `user_action_resolutions.resolution_json` Evidence 관찰
+  본문에 남습니다.
+- `tool_invocations`는 정확한 검증된 행위자 출처, 작업 범주, 선택적 검증 근거,
+  선택적 정규 `git_workspace_context_json`을 포함해 재실행 행을 저장합니다. 재실행
+  행은 호출자 권한이 아니며 현재 연결, Git 작업 공간, User Channel 요구사항을
+  우회하지 않습니다.
 - `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, `session_watch_observations`는 프로젝트별 호스트 관찰 및 세션 감시 기록입니다. 연결 범위를 위해 `connection_internal_id`를 반복해 저장하고, 프로젝트별 키를 사용해 기록이 프로젝트 사이로 새지 않게 합니다.
 - `guard_events.decision`은 `allow`, `deny`, `warn`, `inject_context`로 제한됩니다. 이 값은 로컬 호스트 판단 요청을 기록하며 OS 수준 집행 증명이 아닙니다.
 - `expected_writes.status`는 `pending` 또는 `matched`로 제한되고, `path_policy`는 `exact_paths`로 제한됩니다. 일치한 행은 일치한 도구 실행 후 호스트 훅 이벤트, 일치 경로 JSON, `matched_at`을 가져야 하고, 대기 행은 이 일치 필드를 가지면 안 됩니다.
@@ -1442,6 +1448,8 @@ CREATE INDEX idx_local_web_consent_tokens_expiry
 
 - [저장소 기록](storage-records.md): 영속 기록 계열, 배치, 관계 배치, 저장소 소유 값, JSON 배치를 정의합니다.
 - [저장 효과](storage-effects.md): 어떤 메서드 분기가 기록을 만들거나, 바꾸거나, 관찰하거나, 건드리지 않는지 정의합니다.
-- [저장소 버전 관리](storage-versioning.md): `project_state.state_version` 시계, 멱등성, 재실행, 이벤트, 잠금, 호환되지 않는 저장소 처리를 정의합니다.
+- [저장소 버전 관리](storage-versioning.md): `project_state.state_version` 시계, 정규
+  Core UTC 시계와 영속 하한, 멱등성, 재실행, 이벤트, 잠금, 호환되지 않는 저장소
+  처리를 정의합니다.
 - [Agent Connection](agent-connection.md): Agent Connection, Connection Projects, 현재 연결 맥락, 모드 제한, Agent Connection과 User Channel의 경계를 정의합니다.
 - [보안](security.md): 보안 경계와 보장 수준을 정의합니다.

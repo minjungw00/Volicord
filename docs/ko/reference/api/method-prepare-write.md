@@ -84,7 +84,7 @@ PrepareWriteRequest:
 - 필요한 경우 `accepted` 결과의 별도 민감 동작 승인(`sensitive_approval`)
 - 에이전트 워크플로 호출에 호환되는 `actor_source`
 
-별도 민감 동작 승인은 그 판단이 현재 상태이고, `resolved_by_actor_source=local_user`와 호환 User Channel 출처로 해결되었으며, `resolution_outcome=accepted`인 선택지를 골랐고, 그 `JudgmentBasis`가 현재 `scope_revision`, 현재 Change Unit, 의도한 동작, 정규화된 `intended_paths`, 민감 범주, `baseline_ref`와 계속 호환될 때만 이 메서드를 만족합니다. 근거 상태가 유효하지 않거나 오래됨, 대체됨, 만료됨, 거절, 연기, 필요한 해결 권한 정보 누락, 비호환인 판단은 민감 동작 승인을 만족할 수 없습니다. 호출자는 승인을 호환되게 만들기 위한 리비전 필드를 제출하지 않습니다.
+별도 민감 동작 승인은 그 사용자 행동이 현재 상태이고, `resolved_by_actor_source=local_user`와 호환 User Channel 출처로 해결되었으며, `resolution_outcome=accepted`인 선택지를 골랐고, 그 `UserActionBasis`가 현재 `scope_revision`, 현재 Change Unit, 의도한 동작, 정규화된 `intended_paths`, 민감 범주, `baseline_ref`와 계속 호환될 때만 이 메서드를 만족합니다. 근거 상태가 유효하지 않거나 오래됨, 대체됨, 만료됨, 거절, 연기, 필요한 해결 권한 정보 누락, 비호환인 사용자 행동은 민감 동작 승인을 만족할 수 없습니다. 호출자는 승인을 호환되게 만들기 위한 리비전 필드를 제출하지 않습니다.
 
 ## 상태 버전 동작
 
@@ -116,12 +116,12 @@ PrepareWriteRequest:
 | `allowed_path_patterns` | 티켓 결정에서 허용으로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 허용 결과에서는 티켓의 허용 경로 패턴 목록입니다. |
 | `denied_path_patterns` | 티켓 결정에서 거부로 포착한 정규화된 `Product Repository` 경로 패턴입니다. 경로 수준 거부가 없으면 `[]`입니다. |
 | `control_surface` | 현재 Volicord 제어 표면을 공개하는 `ControlSurfaceSummary | null`입니다. `os_enforced=false`는 티켓이 OS 수준 집행이 아니라는 뜻입니다. |
-| `active_user_judgment_refs` | 쓰기 준비 결정에 적용된 현재 `accepted` 결과의 사용자 소유 판단에 대한 `StateRecordRef[]`입니다. 일치하는 `sensitive_approval` 판단이 있으면 그 판단도 포함합니다. |
+| `active_user_action_refs` | 쓰기 준비 결정에 적용된 현재 `accepted` 결과의 사용자 소유 판단에 대한 `StateRecordRef[]`입니다. 일치하는 `sensitive_approval` 판단이 있으면 그 판단도 포함합니다. |
 | `write_decision_reasons` | 비허용 결정을 설명하는 `WriteDecisionReason[]`입니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
-| `user_judgment_candidate` | 메서드가 쓰기 티켓을 발급하지 않고 집중된 사용자 소유 판단을 제안할 때의 `UserJudgmentCandidate | null`입니다. 그 밖의 경우에는 `null`입니다. 형태는 [API 판단 스키마](schema-judgment.md#userjudgmentcandidate)가 담당합니다. |
+| `user_action_draft` | 메서드가 쓰기 티켓을 발급하지 않고 집중된 choice 행동을 제안할 때의 `UserActionDraft | null`입니다. 그 밖의 경우에는 `null`입니다. 이후 `volicord.request_user_action` 호출을 위한 제안이지 영속 요청은 아닙니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md)가 담당합니다. |
 | `guarantee_display` | 메서드의 호환성 표시를 위한 `GuaranteeDisplay | null`입니다. 표시 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하고, 보안 보장 의미는 [보안](../security.md)이 담당합니다. |
 
-중첩된 `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `ControlSurfaceSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, `GuaranteeDisplay` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다.
+중첩된 `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `ControlSurfaceSummary`, `WriteDecisionReason`, `UserActionDraft`, `GuaranteeDisplay` 필드 본문은 위에 연결된 스키마 담당 문서에 둡니다.
 
 ## 성공 결과
 
@@ -143,7 +143,7 @@ PrepareWriteRequest:
 - 멱등 재실행은 저장된 원래 커밋 `PrepareWriteResult`를 그대로 반환합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않으며, 쓰기 티켓을 새로 만들거나 저장 효과를 반복하지 않습니다.
 - 재실행을 사용하려면 현재 검증된 호출이 원래 재실행 행에 포착된 선택적 Git 작업 공간 맥락을 정확히 유지해야 합니다. 맥락이 달라지거나 새로 없어지거나 생기면 저장된 허용 응답이나 그 쓰기 티켓을 노출하지 않고 `INVOCATION_CONTEXT_MISMATCH`를 반환합니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.
-- `active_user_judgment_refs`는 별도 `sensitive_approval`을 포함해 쓰기 선행조건을 만족하는 현재 `accepted` 결과의 사용자 소유 판단을 가리킬 수 있습니다.
+- `active_user_action_refs`는 별도 `sensitive_approval`을 포함해 쓰기 선행조건을 만족하는 현재 `accepted` 결과의 사용자 소유 판단을 가리킬 수 있습니다.
 
 ## 차단 결과
 
@@ -176,7 +176,7 @@ PrepareWriteRequest:
 | `scope_not_current` | `scope` | 현재 적용 범위가 요청한 `Task`, Change Unit, 또는 의도한 쓰기 기준과 호환되지 않습니다. |
 | `path_out_of_scope` | `scope` | `intended_paths` 중 하나 이상이 현재 적용 범위를 벗어납니다. |
 | `sensitive_approval_missing` | `sensitive_approval` | 필요한 별도 `sensitive_approval` 사용자 판단이 없습니다. |
-| `user_judgment_unresolved` | `user_judgment` | 쓰기 선행조건에 필요한 사용자 소유 판단이 아직 해결되지 않았습니다. |
+| `user_action_unresolved` | `user_action` | 쓰기 선행조건에 필요한 사용자 소유 행동이 아직 해결되지 않았습니다. |
 | `baseline_mismatch` | `baseline` | `baseline_ref`가 쓰기 호환성 기준과 맞지 않습니다. |
 | `workspace_context_mismatch` | `workspace` | 현재 Git 공통 디렉터리, worktree 식별 정보, 브랜치 또는 detached HEAD 상태, HEAD SHA, 작업 공간 지문 가운데 하나가 Change Unit 기준선 맥락과 다릅니다. `update_scope`가 명시적 현재 기준선으로 Change Unit을 교체할 때까지 티켓을 발급하지 않습니다. |
 | `effect_contract_forbids_product_file_write` | `effect_contract` | 현재 적용 Change Unit 효과 계약이 제품 파일 쓰기를 명시적으로 금지합니다. |
@@ -310,7 +310,7 @@ state:
     produced_at_state_version: 20
   baseline_ref: baseline_pref_001
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary:
     status: active
@@ -394,14 +394,14 @@ control_surface:
   unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
-active_user_judgment_refs:
-  - record_kind: user_judgment
+active_user_action_refs:
+  - record_kind: user_action_resolution
     record_id: uj_sensitive_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
     produced_at_state_version: 20
 write_decision_reasons: []
-user_judgment_candidate: null
+user_action_draft: null
 guarantee_display:
   level: cooperative
   basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."
@@ -444,8 +444,8 @@ write_decision_reasons:
     code: sensitive_approval_missing
     message: "프로필 환경설정을 갱신하려면 쓰기 티켓 발급 전에 별도의 민감 동작 승인이 필요합니다."
     related_refs: []
-active_user_judgment_refs: []
-user_judgment_candidate: null
+active_user_action_refs: []
+user_action_draft: null
 guarantee_display:
   level: cooperative
   basis: "쓰기 티켓은 OS 권한이 아니라 Volicord 권한 기록입니다."

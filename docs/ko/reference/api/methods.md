@@ -26,9 +26,8 @@
 <a id="volicordprepare_write"></a>
 <a id="volicordstage_artifact"></a>
 <a id="volicordrecord_run"></a>
-<a id="volicordrequest_user_judgment"></a>
-<a id="volicordrecord_user_judgment"></a>
-<a id="volicordrecord_user_observation"></a>
+<a id="volicordrequest_user_action"></a>
+<a id="volicordresolve_user_action"></a>
 <a id="volicordreconcile_changes"></a>
 <a id="volicordcheck_close"></a>
 <a id="volicordclose_task"></a>
@@ -43,9 +42,8 @@
 | `volicord.prepare_write` | [쓰기 준비 메서드 담당 문서](method-prepare-write.md) |
 | `volicord.stage_artifact` | [아티팩트 스테이징 메서드 담당 문서](method-stage-artifact.md) |
 | `volicord.record_run` | [실행 기록 메서드 담당 문서](method-record-run.md) |
-| `volicord.request_user_judgment` | [사용자 소유 판단 요청 메서드 담당 문서](method-request-user-judgment.md#volicordrequest_user_judgment) |
-| `volicord.record_user_judgment` | [사용자 소유 판단 기록 메서드 담당 문서](method-record-user-judgment.md#volicordrecord_user_judgment) |
-| `volicord.record_user_observation` | [사용자 Evidence 관찰 기록 메서드 담당 문서](method-record-user-observation.md#volicordrecord_user_observation) |
+| `volicord.request_user_action` | [사용자 행동 요청 메서드 담당 문서](method-request-user-action.md#volicordrequest_user_action) |
+| `volicord.resolve_user_action` | [사용자 행동 해결 메서드 담당 문서](method-resolve-user-action.md#volicordresolve_user_action) |
 | `volicord.reconcile_changes` | [변경 조정 메서드 담당 문서](method-reconcile-changes.md#volicordreconcile_changes) |
 | `volicord.check_close` | [닫기 메서드 담당 문서](method-close-task.md#volicordcheck_close) |
 | `volicord.close_task` | [닫기 메서드 담당 문서](method-close-task.md#volicordclose_task) |

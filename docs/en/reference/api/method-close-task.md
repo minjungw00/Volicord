@@ -232,14 +232,14 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close`, `base.effect_kind=core_committed` for a successful terminal mutation, and `base.effect_kind=no_effect` for a blocked mutating intent. |
-| `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending judgment, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. `summary_card.evidence` is exactly `evidence_gate.state`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
+| `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending user actions, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. `summary_card.evidence` is exactly `evidence_gate.state`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
 | `state` | `StateSummary` for the selected Task after the check, terminal mutation, or response-only blocked evaluation. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
 | `current_close_basis` | `CurrentCloseBasis | null` used for close readiness when selected into the result. `null` means no current close basis is available for this result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `blockers` | `CloseReadinessBlocker[]` returned when the requested path has close or terminal blockers. Shape and nesting are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); `category` values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
-| `pending_judgment_inbox_items` | `JudgmentInboxItem[]` for the exact required unanswered pending judgments selected by current `pending_user_judgment` blockers in this close-readiness result. Shape is owned by [API Judgment Schemas](schema-judgment.md#judgmentinboxitem). |
+| `pending_user_action_inbox_items` | `UserActionInboxItem[]` for the exact required effectively pending requests selected by current user-action blockers in this close-readiness result. Shape is owned by [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). |
 | `guard_health` | `GuardHealthSummary | null` for hook-state facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `coverage_summary` | `CoverageSummary | null` for the derived active profile, host-hook coverage state, session-watcher coverage state, tracked timestamps, unresolved unrecorded-change count, and coverage non-guarantees. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. When the current close basis references the selected summary, `evidence_summary.evidence_state` is `accepted_for_close`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
@@ -248,11 +248,11 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 
 `CloseTaskResult` does not have a top-level `next_actions` list. `summary_card.next` is the single display next action selected from the `presentation_role=primary` blocker action; array position is not the selection contract. Next actions for close blockers remain inside `CloseReadinessBlocker.next_actions` and use the canonical `NextActionSummary` shape from [API State Schemas](schema-state.md#current-position-display-shapes). Across `blockers[*].next_actions` in one result, exactly one action is primary; later blocker-local lists can contain only additional actions.
 
-Pending judgments for another operation and informational-only pending
-judgments may remain visible through the broader
-`state.pending_user_judgment_refs` projection. They do not enter the top-level
-`pending_judgment_inbox_items` list unless a current
-`pending_user_judgment` blocker selects their exact `UserJudgment` ref for the
+Pending user actions for another operation and informational-only pending
+actions may remain visible through the broader
+`state.pending_user_action_request_refs` projection. They do not enter the top-level
+`pending_user_action_inbox_items` list unless a current
+`pending_user_action` blocker selects its exact `UserActionRequest` ref for the
 requested close path.
 
 This method owns the method-scoped `CloseReadinessBlocker.code` values it produces. Those codes are not public `ErrorCode` values and are not global value-set entries.
@@ -265,9 +265,11 @@ The production meanings below apply only after the method reaches close-readines
 |---|---|---|
 | `task_not_closeable` | `task` | The selected Task lifecycle or terminal-path state cannot take the requested close intent. |
 | `missing_active_change_unit` | `scope` | A close path requires a current Change Unit, but none is available. |
-| `pending_user_judgment` | `pending_user_judgment` | A required user-owned judgment remains pending or unresolved. |
+| `pending_user_action` | `pending_user_action` | A required user-owned action remains pending or unresolved. |
 | `missing_sensitive_approval` | `sensitive_approval` | A required separate sensitive-action approval is absent. |
-| `missing_cancellation_authority` | `user_judgment` | `intent=cancel` lacks a current accepted user cancellation judgment with `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the current Task, scope revision, and Change Unit. |
+| `missing_cancellation_authority` | `user_action` | `intent=cancel` lacks a current accepted cancellation `UserActionResolution` with `resolved_by_actor_source=local_user`, compatible User Channel provenance, and a basis bound to the current Task, scope revision, and Change Unit. |
+| `rejected_cancellation_authority` | `user_action` | A current local-user cancellation `UserActionResolution` explicitly rejects `intent=cancel`. |
+| `stale_cancellation_authority` | `user_action` | A cancellation `UserActionResolution` exists, but its Task, scope revision, Change Unit, or effective user-action basis is no longer current. |
 | `open_write_ticket` | `write_compatibility` | A write ticket for the selected Task remains open and unresolved. |
 | `expired_write_ticket` | `write_compatibility` | A write ticket for the selected Task expired while still unresolved. |
 | `write_ticket_stale` | `write_compatibility` | A close-relevant write ticket is unusable for a freshness reason that is not routed as `STATE_VERSION_CONFLICT`. |
@@ -290,7 +292,7 @@ The production meanings below apply only after the method reaches close-readines
 | `evidence_provenance_stale` | `evidence_provenance` | Evidence observation provenance exists but is stale for the current Task scope, Change Unit, source Run, or close-basis evidence summary. |
 | `evidence_agent_report_only` | `evidence_provenance` | Required close evidence is supported only by cooperative agent reports when stronger provenance is required. |
 | `artifact_unavailable` | `artifact_availability` | A close-relevant artifact is missing, unavailable, unusable, or integrity-failed. |
-| `missing_final_acceptance` | `final_acceptance` | Required final acceptance is absent for the current close basis. The surfaced action identifies the Agent Connection `volicord.request_user_judgment` procedure and the final-acceptance question. |
+| `missing_final_acceptance` | `final_acceptance` | Required final acceptance is absent for the current close basis. The surfaced action identifies the Agent Connection `volicord.request_user_action` procedure and the final-acceptance question. |
 | `stale_final_acceptance` | `final_acceptance` | A final acceptance exists but is stale or incompatible with the current Task, Change Unit, `scope_revision`, `close_basis_revision`, baseline, or result refs. The surfaced action requests a judgment bound to the current basis. |
 | `residual_risk_not_visible` | `residual_risk_visibility` | Close-relevant residual risk has not been made visible. |
 | `missing_residual_risk_acceptance` | `residual_risk_acceptance` | Required residual-risk acceptance is absent for the current residual-risk requirements. |
@@ -299,9 +301,9 @@ The production meanings below apply only after the method reaches close-readines
 
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
-For `pending_user_judgment`, blocker next actions may point to available User Channel input methods, and `pending_judgment_inbox_items` carries the actionable inbox item shape. Capture paths can include host prompt input, chat command capture, local consent URL, or the CLI inbox command `volicord inbox answer <judgment-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to answer the user-owned judgment.
+For `pending_user_action`, blocker next actions may point to available User Channel input methods, and `pending_user_action_inbox_items` carries the actionable inbox item shape. Capture paths can include host prompt input, chat command capture, local consent URL, or the CLI inbox command `volicord inbox resolve <user-action-request-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to resolve the user-owned action.
 
-`missing_final_acceptance` with no pending final-acceptance judgment is a supported two-step state, not an authority shortcut. A read-only check or a blocked close attempt does not create a judgment record. Its `request_user_judgment` action has `allowed_operation_categories=[agent_workflow]`; the Agent Connection creates the current request using the displayed question. After that commit, `pending_user_judgment` exposes a `record_user_judgment` action with `allowed_operation_categories=[user_only]` and the available User Channel paths. The Agent Connection must not perform the second action.
+`missing_final_acceptance` with no pending final-acceptance request is a supported two-step state, not an authority shortcut. A read-only check or a blocked close attempt does not create a request or resolution record. Its `request_user_action` action has `allowed_operation_categories=[agent_workflow]`; the Agent Connection creates the current request using the displayed question. After that commit, `pending_user_action` exposes a `resolve_user_action` action with `allowed_operation_categories=[user_only]` and the available User Channel paths. The Agent Connection must not perform the second action.
 
 ## Blocked result
 
@@ -458,7 +460,7 @@ state:
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
@@ -474,8 +476,8 @@ state:
       related_refs: []
       next_actions:
         - presentation_role: primary
-          action_kind: request_user_judgment
-          owner_method: volicord.request_user_judgment
+          action_kind: request_user_action
+          owner_method: volicord.request_user_action
           allowed_operation_categories: [agent_workflow]
           label: "The Agent Connection must create a current final-acceptance request for the user."
           blocking_question: "Does the user accept the current Task result and close basis as complete?"
@@ -496,8 +498,8 @@ blockers:
     related_refs: []
     next_actions:
       - presentation_role: primary
-        action_kind: request_user_judgment
-        owner_method: volicord.request_user_judgment
+        action_kind: request_user_action
+        owner_method: volicord.request_user_action
         allowed_operation_categories: [agent_workflow]
         label: "The Agent Connection must create a current final-acceptance request for the user."
         blocking_question: "Does the user accept the current Task result and close basis as complete?"

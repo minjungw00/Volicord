@@ -25,7 +25,8 @@ use crate::host_integration::{
 
 use super::mcp_process::{run_connection_preflight, ConnectionProcess, McpLaunch, McpVerification};
 use super::{
-    codex_environment, max_optional_text, parse_host_kind, parse_host_scope, ConnectionCommandError,
+    codex_environment, max_optional_observation_timestamp, parse_host_kind, parse_host_scope,
+    ConnectionCommandError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -641,20 +642,27 @@ impl ManagedHostLifecycleEvidence {
             self.observe_storage(event, lifecycle_event, timestamp.clone());
             match lifecycle_event {
                 "managed_host_startup" => {
-                    self.managed_host_startup =
-                        max_optional_text(self.managed_host_startup.take(), timestamp.clone());
+                    self.managed_host_startup = max_optional_observation_timestamp(
+                        self.managed_host_startup.take(),
+                        timestamp.clone(),
+                    );
                 }
                 "managed_host_tools_list" => {
-                    self.managed_host_tools_list =
-                        max_optional_text(self.managed_host_tools_list.take(), timestamp.clone());
+                    self.managed_host_tools_list = max_optional_observation_timestamp(
+                        self.managed_host_tools_list.take(),
+                        timestamp.clone(),
+                    );
                 }
                 "managed_host_tool_call" | "managed_host_tool_call_completed" => {
-                    self.managed_host_tool_call =
-                        max_optional_text(self.managed_host_tool_call.take(), timestamp.clone());
+                    self.managed_host_tool_call = max_optional_observation_timestamp(
+                        self.managed_host_tool_call.take(),
+                        timestamp.clone(),
+                    );
                 }
                 _ => {}
             }
-            self.last_observed_at = max_optional_text(self.last_observed_at.take(), timestamp);
+            self.last_observed_at =
+                max_optional_observation_timestamp(self.last_observed_at.take(), timestamp);
         }
     }
 

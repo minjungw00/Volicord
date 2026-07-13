@@ -154,9 +154,10 @@ After the pipeline, read one method module from
 - `status.rs` shows a read-only branch.
 - `intake.rs` shows a planned committed mutation branch.
 - `prepare_write.rs` shows policy-heavy planning and write-ticket decisions.
-- `record_run.rs`, `judgment.rs`, `reconcile_changes.rs`, and
-  `close_task.rs` show how later workflow facts are planned without moving
-  exact method contracts into Core prose.
+- `record_run.rs`, `user_action.rs`, `reconcile_changes.rs`, and
+  `close_task.rs` show how later workflow facts, including unified UserAction
+  request and resolution facts, are planned without moving exact method
+  contracts into Core prose.
 
 The reusable policy helpers under
 [`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/)

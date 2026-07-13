@@ -11,19 +11,21 @@ use volicord_store::{
     },
 };
 use volicord_test_support::core_fixtures::{
-    answer_payload, artifact_input_for_handle, supported_evidence_update,
-    unsupported_evidence_update, ArtifactOwnerJsonColumn, ChangeUnitOwnerJsonColumn,
-    CloseTaskFixture, CoreFixture, EvidenceSummaryOwnerJsonColumn, RecordJudgmentFixture,
-    TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
+    artifact_input_for_handle, choice_user_action_resolution, observation_user_action_resolution,
+    supported_evidence_update, unsupported_evidence_update, ArtifactOwnerJsonColumn,
+    ChangeUnitOwnerJsonColumn, CloseTaskFixture, CoreFixture, EvidenceSummaryOwnerJsonColumn,
+    ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
+    UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
 };
 use volicord_types::{
     AcceptanceCriterionId, ActorSource, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind,
-    ArtifactRef, ChangeUnitId, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason,
-    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceObservationInput,
+    ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind,
+    ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceObservationInput,
     EvidenceRelevanceStatus, EvidenceSourceKind, EvidenceTarget, JsonObject, JudgmentKind,
-    OperationCategory, ProjectId, RecordUserObservationRequest, ResidualRiskInput, ResponseKind,
-    RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, TaskId,
-    UtcTimestamp, WriteTicketId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    OperationCategory, ProjectId, ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle,
+    StateRecordKind, StateRecordRef, StatusRequest, UserActionRequiredFor,
+    UserActionResolutionBody, UtcTimestamp, WriteTicketId,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 #[test]
@@ -627,16 +629,16 @@ fn artifact_lifecycle_promotes_valid_handles_and_rolls_back_invalid_ones(
 }
 
 #[test]
-fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("judgment")?;
+fn user_action_kinds_remain_separate_from_scope_and_write_tickets() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("user_action")?;
     let service = core(&fixture);
-    let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, "judgment")?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "user_action")?;
     let original_scope = fixture.current_change_unit_scope(&task_id)?;
     let original_current = fixture.current_change_unit_id(&task_id)?;
 
-    let scope_judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let scope_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: "req_scope_decision",
             idempotency_key: "idem_scope_decision",
             dry_run: false,
@@ -647,22 +649,20 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
         }),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let scope_judgment_id = scope_judgment.response_value["user_judgment_ref"]["record_id"]
+    let scope_user_action_request_id = scope_action.response_value["user_action_request_ref"]
+        ["record_id"]
         .as_str()
-        .expect("scope judgment id should be present")
+        .expect("scope user-action request id should be present")
         .to_owned();
     let before_scope_record = fixture.counts()?;
-    let scope_recorded = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_scope_decision_record",
-            idempotency_key: "idem_scope_decision_record",
-            expected_state_version: Some(3),
-            task_id: &task_id,
-            user_judgment_id: &scope_judgment_id,
-            judgment_kind: JudgmentKind::ScopeDecision,
-            answer: answer_payload(JudgmentKind::ScopeDecision),
-        }),
-        invocation(&fixture, OperationCategory::UserOnly),
+    let scope_recorded = resolve_choice_user_action(
+        &fixture,
+        &service,
+        &task_id,
+        &scope_user_action_request_id,
+        "req_scope_decision_record",
+        "submission_scope_decision_record",
+        "accept",
     )?;
     assert_eq!(
         scope_recorded.response_value["base"]["response_kind"],
@@ -675,8 +675,8 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
         before_scope_record.change_units
     );
 
-    let sensitive_judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let sensitive_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: "req_sensitive_only",
             idempotency_key: "idem_sensitive_only",
             dry_run: false,
@@ -687,22 +687,20 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
         }),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let sensitive_judgment_id = sensitive_judgment.response_value["user_judgment_ref"]["record_id"]
+    let sensitive_user_action_request_id = sensitive_action.response_value
+        ["user_action_request_ref"]["record_id"]
         .as_str()
-        .expect("sensitive judgment id should be present")
+        .expect("sensitive user-action request id should be present")
         .to_owned();
     let before_sensitive = fixture.counts()?;
-    let sensitive = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_sensitive_only_record",
-            idempotency_key: "idem_sensitive_only_record",
-            expected_state_version: Some(5),
-            task_id: &task_id,
-            user_judgment_id: &sensitive_judgment_id,
-            judgment_kind: JudgmentKind::SensitiveApproval,
-            answer: answer_payload(JudgmentKind::SensitiveApproval),
-        }),
-        invocation(&fixture, OperationCategory::UserOnly),
+    let sensitive = resolve_choice_user_action(
+        &fixture,
+        &service,
+        &task_id,
+        &sensitive_user_action_request_id,
+        "req_sensitive_only_record",
+        "submission_sensitive_only_record",
+        "accept",
     )?;
     assert_eq!(sensitive.response_value["base"]["response_kind"], "result");
     assert_eq!(
@@ -711,8 +709,8 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
     );
 
     let mut risk_basis = fixture.record_run_request(
-        "req_risk_judgment_basis",
-        "idem_risk_judgment_basis",
+        "req_risk_action_basis",
+        "idem_risk_action_basis",
         false,
         Some(6),
         &task_id,
@@ -740,10 +738,10 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
         .as_u64()
         .expect("risk basis state version should be present");
 
-    let risk_judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
-            request_id: "req_risk_judgment",
-            idempotency_key: "idem_risk_judgment",
+    let risk_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
+            request_id: "req_risk_action",
+            idempotency_key: "idem_risk_action",
             dry_run: false,
             expected_state_version: Some(after_risk_basis),
             task_id: &task_id,
@@ -752,26 +750,27 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_tickets() -> Result<
         }),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let risk_judgment_id = risk_judgment.response_value["user_judgment_ref"]["record_id"]
+    let risk_user_action_request_id = risk_action.response_value["user_action_request_ref"]
+        ["record_id"]
         .as_str()
-        .expect("risk judgment id should be present")
+        .expect("risk user-action request id should be present")
         .to_owned();
     let before_wrong_kind = fixture.counts()?;
-    let wrong_kind = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_risk_wrong_answer",
-            idempotency_key: "idem_risk_wrong_answer",
-            expected_state_version: Some(after_risk_basis + 1),
-            task_id: &task_id,
-            user_judgment_id: &risk_judgment_id,
-            judgment_kind: JudgmentKind::ResidualRiskAcceptance,
-            answer: answer_payload(JudgmentKind::FinalAcceptance),
-        }),
-        invocation(&fixture, OperationCategory::UserOnly),
+    let wrong_kind = resolve_choice_user_action(
+        &fixture,
+        &service,
+        &task_id,
+        &risk_user_action_request_id,
+        "req_risk_wrong_answer",
+        "submission_risk_wrong_answer",
+        "final_accept",
     )?;
     assert_rejected_code(&wrong_kind.response_value, "VALIDATION_FAILED");
     assert_eq!(fixture.counts()?, before_wrong_kind);
-    assert_eq!(fixture.user_judgment_status(&risk_judgment_id)?, "pending");
+    assert_eq!(
+        fixture.user_action_status(&risk_user_action_request_id)?,
+        "pending"
+    );
     Ok(())
 }
 
@@ -1277,11 +1276,11 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
         after_basis,
         "required_resolution_null",
     )?;
-    let final_judgment_id = latest_judgment_id(&null_fixture)?;
+    let final_user_action_request_id = latest_user_action_request_id(&null_fixture)?;
     let before = null_fixture.counts()?;
     let error = null_fixture
-        .set_user_judgment_resolution_raw(&final_judgment_id, None)
-        .expect_err("resolved judgment rows require resolution_json");
+        .set_user_action_resolution_raw(&final_user_action_request_id, None)
+        .expect_err("user-action resolution rows require resolution_json");
     assert!(
         format!("{error:?}").contains("ConstraintViolation"),
         "expected SQLite constraint error, got {error:?}"
@@ -1308,8 +1307,8 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
         after_basis,
         "optional_bad",
     )?;
-    let final_judgment_id = latest_judgment_id(&malformed_fixture)?;
-    malformed_fixture.set_user_judgment_resolution_raw(&final_judgment_id, Some("{"))?;
+    let final_user_action_request_id = latest_user_action_request_id(&malformed_fixture)?;
+    malformed_fixture.set_user_action_resolution_raw(&final_user_action_request_id, Some("{"))?;
     let before = malformed_fixture.counts()?;
     let check = malformed_service.check_close(
         malformed_fixture.check_close_request(CloseTaskFixture {
@@ -1324,18 +1323,23 @@ fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
         }),
         invocation(&malformed_fixture, OperationCategory::Read),
     )?;
-    assert_owner_state_unavailable(&check.response_value, "user_judgments", "resolution_json");
+    assert_owner_state_unavailable(
+        &check.response_value,
+        "user_action_resolutions",
+        "resolution_json",
+    );
     assert_eq!(malformed_fixture.counts()?, before);
     Ok(())
 }
 
 #[test]
 fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dyn Error>> {
-    let t0 = fixed_time("2026-01-01T00:00:00Z")?;
+    let preferred_t0 = fixed_time("2026-01-01T00:00:00Z")?;
 
-    let usable = prepared_write_fixture("auth_usable", t0)?;
+    let usable = prepared_write_fixture("auth_usable", preferred_t0)?;
+    let usable_t0 = usable.operation_time;
     let before_usable = usable.fixture.counts()?;
-    let usable_response = service_at(&usable.fixture, t0 + Duration::seconds(14 * 60 + 59))
+    let usable_response = service_at(&usable.fixture, usable_t0 + Duration::seconds(14 * 60 + 59))
         .record_run(
             product_write_run(
                 &usable.fixture,
@@ -1359,20 +1363,22 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
         "consumed"
     );
 
-    let expired = prepared_write_fixture("auth_expired_exact", t0)?;
+    let expired = prepared_write_fixture("auth_expired_exact", preferred_t0)?;
+    let expired_t0 = expired.operation_time;
     let before_expired = expired.fixture.counts()?;
-    let expired_response = service_at(&expired.fixture, t0 + Duration::minutes(15)).record_run(
-        product_write_run(
-            &expired.fixture,
-            "req_auth_expired_run",
-            "idem_auth_expired_run",
-            before_expired.state_version,
-            &expired.task_id,
-            &expired.change_unit_id,
-            &expired.write_ticket_id,
-        ),
-        invocation(&expired.fixture, OperationCategory::AgentWorkflow),
-    )?;
+    let expired_response = service_at(&expired.fixture, expired_t0 + Duration::minutes(15))
+        .record_run(
+            product_write_run(
+                &expired.fixture,
+                "req_auth_expired_run",
+                "idem_auth_expired_run",
+                before_expired.state_version,
+                &expired.task_id,
+                &expired.change_unit_id,
+                &expired.write_ticket_id,
+            ),
+            invocation(&expired.fixture, OperationCategory::AgentWorkflow),
+        )?;
     assert_rejected_code(&expired_response.response_value, "WRITE_TICKET_INVALID");
     assert_eq!(
         expired_response.response_value["errors"][0]["details"]["write_ticket_reason"],
@@ -1386,30 +1392,33 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
         "active"
     );
 
-    let capped = prepared_write_fixture("auth_capped", t0)?;
+    let capped = prepared_write_fixture("auth_capped", preferred_t0)?;
+    let capped_t0 = capped.operation_time;
     capped.fixture.set_write_ticket_timestamps(
         &capped.write_ticket_id,
-        &format_time(t0),
-        &format_time(t0 + Duration::days(1)),
+        &format_time(capped_t0),
+        &format_time(capped_t0 + Duration::days(1)),
     )?;
     let before_capped = capped.fixture.counts()?;
-    let capped_response = service_at(&capped.fixture, t0 + Duration::minutes(15)).record_run(
-        product_write_run(
-            &capped.fixture,
-            "req_auth_capped_run",
-            "idem_auth_capped_run",
-            before_capped.state_version,
-            &capped.task_id,
-            &capped.change_unit_id,
-            &capped.write_ticket_id,
-        ),
-        invocation(&capped.fixture, OperationCategory::AgentWorkflow),
-    )?;
+    let capped_response = service_at(&capped.fixture, capped_t0 + Duration::minutes(15))
+        .record_run(
+            product_write_run(
+                &capped.fixture,
+                "req_auth_capped_run",
+                "idem_auth_capped_run",
+                before_capped.state_version,
+                &capped.task_id,
+                &capped.change_unit_id,
+                &capped.write_ticket_id,
+            ),
+            invocation(&capped.fixture, OperationCategory::AgentWorkflow),
+        )?;
     assert_rejected_code(&capped_response.response_value, "WRITE_TICKET_INVALID");
     assert_eq!(capped.fixture.counts()?, before_capped);
 
-    let stale = prepared_write_fixture("auth_stale_precedence", t0)?;
-    service_at(&stale.fixture, t0).update_scope(
+    let stale = prepared_write_fixture("auth_stale_precedence", preferred_t0)?;
+    let stale_t0 = stale.operation_time;
+    service_at(&stale.fixture, stale_t0).update_scope(
         stale.fixture.update_scope_request(UpdateScopeFixture {
             request_id: "req_auth_stale_scope",
             idempotency_key: "idem_auth_stale_scope",
@@ -1426,7 +1435,7 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
         .current_change_unit_id(&stale.task_id)?
         .expect("replacement Change Unit should be current");
     let before_stale = stale.fixture.counts()?;
-    let stale_response = service_at(&stale.fixture, t0 + Duration::minutes(16)).record_run(
+    let stale_response = service_at(&stale.fixture, stale_t0 + Duration::minutes(16)).record_run(
         product_write_run(
             &stale.fixture,
             "req_auth_stale_run",
@@ -1662,8 +1671,8 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
     )?;
     assert!(status.response_value["current_close_basis"].is_null());
     let before_final = empty_fixture.counts()?;
-    let final_without_basis = empty_service.request_user_judgment(
-        empty_fixture.user_judgment_request(UserJudgmentFixture {
+    let final_without_basis = empty_service.request_user_action(
+        empty_fixture.user_action_request(UserActionFixture {
             request_id: "req_basis_public_final_without_basis",
             idempotency_key: "idem_basis_public_final_without_basis",
             dry_run: false,
@@ -1714,8 +1723,8 @@ fn current_close_basis_lifecycle_is_publicly_observable() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<(), Box<dyn Error>>
-{
+fn user_action_compatibility_is_exact_for_close_and_write_requirements(
+) -> Result<(), Box<dyn Error>> {
     let scope_fixture = CoreFixture::new("compat_scope_final")?;
     let scope_service = core(&scope_fixture);
     let (task_id, change_unit_id) =
@@ -1748,11 +1757,8 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         }),
         invocation(&scope_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(scope_fixture.user_judgment_status(&final_id)?, "stale");
-    assert_eq!(
-        scope_fixture.user_judgment_basis_status(&final_id)?,
-        "stale"
-    );
+    assert_eq!(scope_fixture.user_action_status(&final_id)?, "stale");
+    assert_eq!(scope_fixture.user_action_basis_status(&final_id)?, "stale");
 
     let run_fixture = CoreFixture::new("compat_run_final")?;
     let run_service = core(&run_fixture);
@@ -1782,7 +1788,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         after_final,
         true,
     )?;
-    assert_eq!(run_fixture.user_judgment_status(&final_id)?, "stale");
+    assert_eq!(run_fixture.user_action_status(&final_id)?, "stale");
 
     let partial_fixture = CoreFixture::new("compat_risk_partial")?;
     let partial_service = core(&partial_fixture);
@@ -1800,8 +1806,8 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             residual_risk_input("Risk B needs exact acceptance."),
         ],
     )?;
-    let risk_judgment = partial_service.request_user_judgment(
-        partial_fixture.user_judgment_request(UserJudgmentFixture {
+    let risk_action = partial_service.request_user_action(
+        partial_fixture.user_action_request(UserActionFixture {
             request_id: "req_compat_risk_partial",
             idempotency_key: "idem_compat_risk_partial",
             dry_run: false,
@@ -1812,22 +1818,55 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         }),
         invocation(&partial_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let risk_judgment_id = response_record_id(&risk_judgment.response_value, "user_judgment_ref");
-    let partial = partial_service.record_user_judgment(
-        partial_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_compat_risk_partial_record",
-            idempotency_key: "idem_compat_risk_partial_record",
-            expected_state_version: Some(after_basis + 1),
-            task_id: &task_id,
-            user_judgment_id: &risk_judgment_id,
-            judgment_kind: JudgmentKind::ResidualRiskAcceptance,
-            answer: residual_risk_acceptance_payload(&[risk_ids[0].clone()]),
-        }),
-        invocation(&partial_fixture, OperationCategory::UserOnly),
+    let risk_user_action_request_id =
+        response_record_id(&risk_action.response_value, "user_action_request_ref");
+    let partial = resolve_choice_user_action(
+        &partial_fixture,
+        &partial_service,
+        &task_id,
+        &risk_user_action_request_id,
+        "req_compat_risk_partial_record",
+        "submission_compat_risk_partial_record",
+        "accept",
     )?;
+    let mut expected_risk_ids = risk_ids.clone();
+    expected_risk_ids.sort();
+    let mut accepted_risk_ids = partial.response_value["user_action_resolution"]["body"]
+        ["accepted_risk_ids"]
+        .as_array()
+        .expect("accepted risk ids should be present")
+        .iter()
+        .map(|risk_id| risk_id.as_str().expect("risk id").to_owned())
+        .collect::<Vec<_>>();
+    accepted_risk_ids.sort();
+    assert_eq!(
+        accepted_risk_ids, expected_risk_ids,
+        "Core must derive acceptance for every risk in the exact current close basis",
+    );
+    let risk_resolution_id = partial.response_value["user_action_resolution_ref"]["record_id"]
+        .as_str()
+        .expect("residual-risk resolution ref should be present");
     let after_partial = partial.response_value["base"]["state_version"]
         .as_u64()
         .expect("state version");
+    let risk_status = partial_service.status(
+        partial_fixture.status_request("req_compat_risk_coverage", Some(&task_id)),
+        invocation(&partial_fixture, OperationCategory::Read),
+    )?;
+    for coverage in risk_status.response_value["risk_acceptance_coverage"]
+        .as_array()
+        .expect("risk coverage should be present")
+    {
+        assert_eq!(coverage["accepted"], true);
+        assert!(coverage["accepted_by_user_action_resolution_refs"]
+            .as_array()
+            .expect("resolution refs should be present")
+            .iter()
+            .any(|record_ref| {
+                record_ref["record_kind"] == "user_action_resolution"
+                    && record_ref["record_id"] == risk_resolution_id
+            }));
+    }
     let after_final = record_final_acceptance(
         &partial_fixture,
         &partial_service,
@@ -1849,7 +1888,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         }),
         invocation(&partial_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_close_blocker(&close.response_value, "missing_residual_risk_acceptance");
+    assert_eq!(close.response_value["close_state"], "closed");
 
     let text_fixture = CoreFixture::new("compat_risk_text")?;
     let text_service = core(&text_fixture);
@@ -1864,47 +1903,49 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         "compat_risk_text_old",
         vec![residual_risk_input("Same visible risk text.")],
     )?;
-    let (after_current, current_ids) = record_close_basis_with_risks(
-        &text_fixture,
-        &text_service,
-        &task_id,
-        &change_unit_id,
-        after_old,
-        "compat_risk_text_current",
-        vec![residual_risk_input("Same visible risk text.")],
-    )?;
-    assert_ne!(old_ids[0], current_ids[0]);
-    let risk_judgment = text_service.request_user_judgment(
-        text_fixture.user_judgment_request(UserJudgmentFixture {
+    let risk_action = text_service.request_user_action(
+        text_fixture.user_action_request(UserActionFixture {
             request_id: "req_compat_risk_text",
             idempotency_key: "idem_compat_risk_text",
             dry_run: false,
-            expected_state_version: Some(after_current),
+            expected_state_version: Some(after_old),
             task_id: &task_id,
             change_unit_id: Some(&change_unit_id),
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
         }),
         invocation(&text_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let risk_judgment_id = response_record_id(&risk_judgment.response_value, "user_judgment_ref");
-    let before_wrong = text_fixture.counts()?;
-    let wrong_risk = text_service.record_user_judgment(
-        text_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_compat_risk_text_record",
-            idempotency_key: "idem_compat_risk_text_record",
-            expected_state_version: Some(after_current + 1),
-            task_id: &task_id,
-            user_judgment_id: &risk_judgment_id,
-            judgment_kind: JudgmentKind::ResidualRiskAcceptance,
-            answer: residual_risk_acceptance_payload(&old_ids),
-        }),
-        invocation(&text_fixture, OperationCategory::UserOnly),
+    let risk_user_action_request_id =
+        response_record_id(&risk_action.response_value, "user_action_request_ref");
+    let (_after_current, current_ids) = record_close_basis_with_risks(
+        &text_fixture,
+        &text_service,
+        &task_id,
+        &change_unit_id,
+        after_old + 1,
+        "compat_risk_text_current",
+        vec![residual_risk_input("Same visible risk text.")],
     )?;
-    assert_rejected_code(&wrong_risk.response_value, "VALIDATION_FAILED");
+    assert_ne!(old_ids[0], current_ids[0]);
+    assert_eq!(
+        text_fixture.user_action_status(&risk_user_action_request_id)?,
+        "superseded"
+    );
+    let before_wrong = text_fixture.counts()?;
+    let wrong_risk = resolve_choice_user_action(
+        &text_fixture,
+        &text_service,
+        &task_id,
+        &risk_user_action_request_id,
+        "req_compat_risk_text_record",
+        "submission_compat_risk_text_record",
+        "accept",
+    )?;
+    assert_rejected_code(&wrong_risk.response_value, "DECISION_UNRESOLVED");
     assert_eq!(text_fixture.counts()?, before_wrong);
     assert_eq!(
-        text_fixture.user_judgment_status(&risk_judgment_id)?,
-        "pending"
+        text_fixture.user_action_status(&risk_user_action_request_id)?,
+        "superseded"
     );
 
     assert_sensitive_approval_mismatch("path", |request| {
@@ -1922,8 +1963,8 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         &pending_service,
         "compat_pending_superseded",
     )?;
-    let pending = pending_service.request_user_judgment(
-        pending_fixture.user_judgment_request(UserJudgmentFixture {
+    let pending = pending_service.request_user_action(
+        pending_fixture.user_action_request(UserActionFixture {
             request_id: "req_compat_pending",
             idempotency_key: "idem_compat_pending",
             dry_run: false,
@@ -1934,7 +1975,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
         }),
         invocation(&pending_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let pending_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    let pending_id = response_record_id(&pending.response_value, "user_action_request_ref");
     pending_service.update_scope(
         pending_fixture.update_scope_request(UpdateScopeFixture {
             request_id: "req_compat_pending_scope",
@@ -1943,22 +1984,19 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
             expected_state_version: Some(3),
             task_id: &task_id,
             operation: ChangeUnitOperation::KeepCurrent,
-            scope_summary: "Scope change supersedes pending judgment.",
+            scope_summary: "Scope change supersedes the pending user action.",
         }),
         invocation(&pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     let before_answer = pending_fixture.counts()?;
-    let stale_answer = pending_service.record_user_judgment(
-        pending_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_compat_pending_answer",
-            idempotency_key: "idem_compat_pending_answer",
-            expected_state_version: Some(4),
-            task_id: &task_id,
-            user_judgment_id: &pending_id,
-            judgment_kind: JudgmentKind::ProductDecision,
-            answer: answer_payload(JudgmentKind::ProductDecision),
-        }),
-        invocation(&pending_fixture, OperationCategory::UserOnly),
+    let stale_answer = resolve_choice_user_action(
+        &pending_fixture,
+        &pending_service,
+        &task_id,
+        &pending_id,
+        "req_compat_pending_answer",
+        "submission_compat_pending_answer",
+        "accept",
     )?;
     assert_rejected_code(&stale_answer.response_value, "DECISION_UNRESOLVED");
     assert_eq!(pending_fixture.counts()?, before_answer);
@@ -1967,7 +2005,7 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
 }
 
 #[test]
-fn basisless_user_judgments_are_rejected_by_storage_constraints() -> Result<(), Box<dyn Error>> {
+fn basisless_user_actions_are_rejected_by_storage_constraints() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("basis_required")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) =
@@ -1985,8 +2023,8 @@ fn basisless_user_judgments_are_rejected_by_storage_constraints() -> Result<(), 
     let before = fixture.counts()?;
 
     let error = fixture
-        .clear_user_judgment_basis(&final_id)
-        .expect_err("basis_json is required for stored judgments");
+        .clear_user_action_basis(&final_id)
+        .expect_err("basis_json is required for stored user actions");
     assert_constraint_error(error);
     assert_eq!(fixture.counts()?, before);
     Ok(())
@@ -2040,10 +2078,14 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
     );
     assert_eq!(fixture.counts()?, before);
 
-    let t0 = fixed_time("2026-06-18T00:00:00Z")?;
-    let expired = prepared_write_fixture("status_expired_projection", t0)?;
+    let preferred_t0 = fixed_time("2026-06-18T00:00:00Z")?;
+    let expired = prepared_write_fixture("status_expired_projection", preferred_t0)?;
     let before_status = expired.fixture.counts()?;
-    let expired_status = service_at(&expired.fixture, t0 + Duration::minutes(15)).status(
+    let expired_status = service_at(
+        &expired.fixture,
+        expired.operation_time + Duration::minutes(15),
+    )
+    .status(
         expired
             .fixture
             .status_request("req_status_expired_projection", Some(&expired.task_id)),
@@ -2120,7 +2162,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         2,
         true,
     )?;
-    let (after_final, judgment_id) = record_authority_judgment_with_option(
+    let (after_final, user_action_request_id) = record_authority_user_action_with_option(
         &rejected_fixture,
         &rejected_service,
         &task_id,
@@ -2129,7 +2171,6 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         "negative_final_rejected",
         JudgmentKind::FinalAcceptance,
         "reject",
-        rejected_authority_answer_payload(JudgmentKind::FinalAcceptance, &[]),
     )?;
     let response = rejected_service.close_task(
         rejected_fixture.close_task_request(CloseTaskFixture {
@@ -2147,7 +2188,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
     assert_eq!(
-        rejected_fixture.user_judgment_resolution_outcome(&judgment_id)?,
+        rejected_fixture.user_action_resolution_outcome(&user_action_request_id)?,
         Some("rejected".to_owned())
     );
 
@@ -2163,8 +2204,8 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         2,
         true,
     )?;
-    let judgment = actor_service.request_user_judgment(
-        actor_fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = actor_service.request_user_action(
+        actor_fixture.user_action_request(UserActionFixture {
             request_id: "req_negative_actor_final",
             idempotency_key: "idem_negative_actor_final",
             dry_run: false,
@@ -2175,19 +2216,18 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         }),
         invocation(&actor_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_current_authority_options(&judgment.response_value);
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let agent_record = actor_fixture.record_judgment_request(RecordJudgmentFixture {
+    assert_current_authority_options(&requested_action.response_value);
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let agent_record = actor_fixture.resolve_user_action_request(ResolveUserActionFixture {
         request_id: "req_negative_actor_final_record",
-        idempotency_key: "idem_negative_actor_final_record",
-        expected_state_version: Some(after_basis + 1),
         task_id: &task_id,
-        user_judgment_id: &judgment_id,
-        judgment_kind: JudgmentKind::FinalAcceptance,
-        answer: answer_payload(JudgmentKind::FinalAcceptance),
+        user_action_request_id: &user_action_request_id,
+        channel_submission_id: "submission_negative_actor_final_record",
+        resolution: choice_user_action_resolution("accept"),
     });
     let before_agent_record = actor_fixture.counts()?;
-    let agent_rejected = actor_service.record_user_judgment(
+    let agent_rejected = actor_service.resolve_user_action(
         agent_record,
         invocation(&actor_fixture, OperationCategory::AgentWorkflow),
     )?;
@@ -2196,7 +2236,10 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         "INVOCATION_CONTEXT_MISMATCH",
     );
     assert_eq!(actor_fixture.counts()?, before_agent_record);
-    assert_eq!(actor_fixture.user_judgment_status(&judgment_id)?, "pending");
+    assert_eq!(
+        actor_fixture.user_action_status(&user_action_request_id)?,
+        "pending"
+    );
     let actor_blocked = actor_service.close_task(
         actor_fixture.close_task_request(CloseTaskFixture {
             request_id: "req_negative_actor_close",
@@ -2217,7 +2260,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     let service = core(&fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&fixture, &service, "negative_risk_rejected")?;
-    let (after_basis, risk_ids) = record_close_basis_with_risks(
+    let (after_basis, _risk_ids) = record_close_basis_with_risks(
         &fixture,
         &service,
         &task_id,
@@ -2228,7 +2271,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
             "Risk needs exact accepted user coverage.",
         )],
     )?;
-    let (after_record, judgment_id) = record_authority_judgment_with_option(
+    let (after_record, user_action_request_id) = record_authority_user_action_with_option(
         &fixture,
         &service,
         &task_id,
@@ -2237,7 +2280,6 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         "negative_risk_rejected",
         JudgmentKind::ResidualRiskAcceptance,
         "reject",
-        rejected_authority_answer_payload(JudgmentKind::ResidualRiskAcceptance, &risk_ids),
     )?;
     let status = service.status(
         fixture.status_request("req_negative_risk_status_rejected", Some(&task_id)),
@@ -2245,7 +2287,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     )?;
     assert_eq!(status.response_value["base"]["state_version"], after_record);
     assert_eq!(
-        fixture.user_judgment_resolution_outcome(&judgment_id)?,
+        fixture.user_action_resolution_outcome(&user_action_request_id)?,
         Some("rejected".to_owned())
     );
     assert_eq!(
@@ -2253,7 +2295,8 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         false
     );
     assert_eq!(
-        status.response_value["risk_acceptance_coverage"][0]["accepted_by_judgment_refs"],
+        status.response_value["risk_acceptance_coverage"][0]
+            ["accepted_by_user_action_resolution_refs"],
         json!([])
     );
     assert_close_blocker(&status.response_value, "missing_residual_risk_acceptance");
@@ -2265,7 +2308,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         &sensitive_service,
         "negative_sensitive_accepted",
     )?;
-    let (after_approval, judgment_id) = record_sensitive_approval(
+    let (after_approval, user_action_resolution_id) = record_sensitive_approval(
         &sensitive_fixture,
         &sensitive_service,
         &task_id,
@@ -2288,15 +2331,19 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     )?;
     assert_eq!(allowed.response_value["decision"], "allowed");
     assert_eq!(
-        allowed.response_value["active_user_judgment_refs"][0]["record_id"],
-        judgment_id
+        allowed.response_value["active_user_action_refs"][0]["record_kind"],
+        "user_action_resolution"
+    );
+    assert_eq!(
+        allowed.response_value["active_user_action_refs"][0]["record_id"],
+        user_action_resolution_id
     );
 
     let fixture = CoreFixture::new("negative_sensitive_rejected")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&fixture, &service, "negative_sensitive_rejected")?;
-    let (after_approval, judgment_id) = record_authority_judgment_with_option(
+    let (after_approval, user_action_request_id) = record_authority_user_action_with_option(
         &fixture,
         &service,
         &task_id,
@@ -2305,7 +2352,6 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         "negative_sensitive_rejected",
         JudgmentKind::SensitiveApproval,
         "reject",
-        rejected_authority_answer_payload(JudgmentKind::SensitiveApproval, &[]),
     )?;
     let mut prepare = fixture.prepare_write_request(
         "req_negative_sensitive_prepare_rejected",
@@ -2321,7 +2367,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
-        fixture.user_judgment_resolution_outcome(&judgment_id)?,
+        fixture.user_action_resolution_outcome(&user_action_request_id)?,
         Some("rejected".to_owned())
     );
     assert_eq!(response.response_value["decision"], "approval_required");
@@ -2332,8 +2378,8 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
     let conflict_service = core(&conflict_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&conflict_fixture, &conflict_service, "answer_conflict")?;
-    let judgment = conflict_service.request_user_judgment(
-        conflict_fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = conflict_service.request_user_action(
+        conflict_fixture.user_action_request(UserActionFixture {
             request_id: "req_negative_answer_conflict",
             idempotency_key: "idem_negative_answer_conflict",
             dry_run: false,
@@ -2344,48 +2390,76 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         }),
         invocation(&conflict_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let mut request = conflict_fixture.record_judgment_request(RecordJudgmentFixture {
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let request = conflict_fixture.resolve_user_action_request(ResolveUserActionFixture {
         request_id: "req_negative_answer_conflict_record",
-        idempotency_key: "idem_negative_answer_conflict_record",
-        expected_state_version: Some(3),
         task_id: &task_id,
-        user_judgment_id: &judgment_id,
-        judgment_kind: JudgmentKind::ScopeDecision,
-        answer: answer_payload(JudgmentKind::ScopeDecision),
+        user_action_request_id: &user_action_request_id,
+        channel_submission_id: "submission_negative_answer_conflict_record",
+        resolution: choice_user_action_resolution("not-an-option"),
     });
-    request.selected_option_id = volicord_types::UserJudgmentOptionId::new("reject");
     let before = conflict_fixture.counts()?;
-    let rejected = conflict_service.record_user_judgment(
+    let rejected = conflict_service.resolve_user_action(
         request,
         invocation(&conflict_fixture, OperationCategory::UserOnly),
     )?;
     assert_rejected_code(&rejected.response_value, "VALIDATION_FAILED");
     assert_eq!(conflict_fixture.counts()?, before);
     assert_eq!(
-        conflict_fixture.user_judgment_status(&judgment_id)?,
+        conflict_fixture.user_action_status(&user_action_request_id)?,
         "pending"
     );
 
-    let mut missing_selected = serde_json::to_value(conflict_fixture.record_judgment_request(
-        RecordJudgmentFixture {
+    let mut missing_selected = serde_json::to_value(conflict_fixture.resolve_user_action_request(
+        ResolveUserActionFixture {
             request_id: "req_negative_missing_option",
-            idempotency_key: "idem_negative_missing_option",
-            expected_state_version: Some(3),
             task_id: &task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::FinalAcceptance,
-            answer: answer_payload(JudgmentKind::FinalAcceptance),
+            user_action_request_id: &user_action_request_id,
+            channel_submission_id: "submission_negative_missing_option",
+            resolution: choice_user_action_resolution("accept"),
         },
     ))?;
     missing_selected
-        .as_object_mut()
-        .expect("record judgment request should be an object")
+        .get_mut("resolution")
+        .and_then(Value::as_object_mut)
+        .expect("resolve user action resolution should be an object")
         .remove("selected_option_id");
     assert!(
-        serde_json::from_value::<volicord_types::RecordUserJudgmentRequest>(missing_selected)
+        serde_json::from_value::<volicord_types::ResolveUserActionRequest>(missing_selected)
             .is_err()
     );
+
+    let committed_request =
+        conflict_fixture.resolve_user_action_request(ResolveUserActionFixture {
+            request_id: "req_negative_answer_committed",
+            task_id: &task_id,
+            user_action_request_id: &user_action_request_id,
+            channel_submission_id: "submission_negative_answer_committed",
+            resolution: choice_user_action_resolution("accept"),
+        });
+    let committed = conflict_service.resolve_user_action(
+        committed_request.clone(),
+        invocation(&conflict_fixture, OperationCategory::UserOnly),
+    )?;
+    assert_eq!(committed.response_value["base"]["response_kind"], "result");
+    let after_committed = conflict_fixture.counts()?;
+    let replay = conflict_service.resolve_user_action(
+        committed_request.clone(),
+        invocation(&conflict_fixture, OperationCategory::UserOnly),
+    )?;
+    assert!(replay.replayed);
+    assert_eq!(replay.response_json, committed.response_json);
+    assert_eq!(conflict_fixture.counts()?, after_committed);
+
+    let mut conflicting_replay = committed_request;
+    conflicting_replay.resolution = choice_user_action_resolution("reject");
+    let conflict = conflict_service.resolve_user_action(
+        conflicting_replay,
+        invocation(&conflict_fixture, OperationCategory::UserOnly),
+    )?;
+    assert_rejected_code(&conflict.response_value, "STATE_VERSION_CONFLICT");
+    assert_eq!(conflict_fixture.counts()?, after_committed);
     Ok(())
 }
 
@@ -2526,7 +2600,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
     let service = core(&fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&fixture, &service, "cancel_negative_rejected")?;
-    let (after_authority, judgment_id) = record_authority_judgment_with_option(
+    let (after_authority, user_action_request_id) = record_authority_user_action_with_option(
         &fixture,
         &service,
         &task_id,
@@ -2535,7 +2609,6 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         "cancel_negative_rejected",
         JudgmentKind::Cancellation,
         "reject",
-        rejected_authority_answer_payload(JudgmentKind::Cancellation, &[]),
     )?;
     let response = service.close_task(
         fixture.close_task_request(CloseTaskFixture {
@@ -2551,11 +2624,11 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
-        fixture.user_judgment_resolution_outcome(&judgment_id)?,
+        fixture.user_action_resolution_outcome(&user_action_request_id)?,
         Some("rejected".to_owned())
     );
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "cancellation_rejected");
+    assert_close_blocker(&response.response_value, "rejected_cancellation_authority");
 
     let stale_fixture = CoreFixture::new("cancel_scope_stale")?;
     let stale_service = core(&stale_fixture);
@@ -2598,7 +2671,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         invocation(&stale_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(stale.response_value["close_state"], "blocked");
-    assert_close_blocker(&stale.response_value, "cancellation_judgment_stale");
+    assert_close_blocker(&stale.response_value, "stale_cancellation_authority");
 
     let final_pending_fixture = CoreFixture::new("cancel_ignores_pending_final")?;
     let final_pending_service = core(&final_pending_fixture);
@@ -2615,8 +2688,8 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         2,
         true,
     )?;
-    final_pending_service.request_user_judgment(
-        final_pending_fixture.user_judgment_request(UserJudgmentFixture {
+    final_pending_service.request_user_action(
+        final_pending_fixture.user_action_request(UserActionFixture {
             request_id: "req_cancel_pending_final",
             idempotency_key: "idem_cancel_pending_final",
             dry_run: false,
@@ -2660,8 +2733,8 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
             expected_version =
                 record_close_evidence(&fixture, &service, &task_id, &change_unit_id, 2, true)?;
         }
-        service.request_user_judgment(
-            fixture.user_judgment_request(UserJudgmentFixture {
+        service.request_user_action(
+            fixture.user_action_request(UserActionFixture {
                 request_id: &format!("req_pending_prepare_{kind:?}"),
                 idempotency_key: &format!("idem_pending_prepare_{kind:?}"),
                 dry_run: false,
@@ -2692,8 +2765,8 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         &sensitive_pending_service,
         "pending_sensitive",
     )?;
-    sensitive_pending_service.request_user_judgment(
-        sensitive_pending_fixture.user_judgment_request(UserJudgmentFixture {
+    sensitive_pending_service.request_user_action(
+        sensitive_pending_fixture.user_action_request(UserActionFixture {
             request_id: "req_pending_sensitive_prepare",
             idempotency_key: "idem_pending_sensitive_prepare",
             dry_run: false,
@@ -2735,8 +2808,8 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         2,
         true,
     )?;
-    close_pending_service.request_user_judgment(
-        close_pending_fixture.user_judgment_request(UserJudgmentFixture {
+    close_pending_service.request_user_action(
+        close_pending_fixture.user_action_request(UserActionFixture {
             request_id: "req_pending_close_final",
             idempotency_key: "idem_pending_close_final",
             dry_run: false,
@@ -2761,13 +2834,13 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         invocation(&close_pending_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(close.response_value["close_state"], "blocked");
-    assert_close_blocker(&close.response_value, "pending_user_judgment");
+    assert_close_blocker(&close.response_value, "pending_user_action");
 
     let info_fixture = CoreFixture::new("pending_info_close")?;
     let info_service = core(&info_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&info_fixture, &info_service, "pending_info")?;
-    let mut info_request = info_fixture.user_judgment_request(UserJudgmentFixture {
+    let mut info_request = info_fixture.user_action_request(UserActionFixture {
         request_id: "req_pending_info",
         idempotency_key: "idem_pending_info",
         dry_run: false,
@@ -2776,8 +2849,8 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         change_unit_id: Some(&change_unit_id),
         judgment_kind: JudgmentKind::TechnicalDecision,
     });
-    info_request.required_for = vec![volicord_types::JudgmentRequiredFor::Informational];
-    info_service.request_user_judgment(
+    info_request.required_for = vec![UserActionRequiredFor::Informational];
+    info_service.request_user_action(
         info_request,
         invocation(&info_fixture, OperationCategory::AgentWorkflow),
     )?;
@@ -2822,7 +2895,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
 fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), Box<dyn Error>> {
     for (index, (record_kind, record_id)) in [
         (StateRecordKind::WriteTicket, "wa_fabricated"),
-        (StateRecordKind::UserJudgment, "uj_fabricated"),
+        (StateRecordKind::UserActionRequest, "uar_fabricated"),
         (StateRecordKind::Blocker, "blocker_fabricated"),
         (StateRecordKind::TaskEvent, "evt_fabricated"),
     ]
@@ -3025,8 +3098,8 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         3
     );
 
-    let final_judgment = canonical_service.request_user_judgment(
-        canonical_fixture.user_judgment_request(UserJudgmentFixture {
+    let final_action = canonical_service.request_user_action(
+        canonical_fixture.user_action_request(UserActionFixture {
             request_id: "req_canonical_final_basis",
             idempotency_key: "idem_canonical_final_basis",
             dry_run: false,
@@ -3038,7 +3111,7 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         invocation(&canonical_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_eq!(
-        final_judgment.response_value["user_judgment"]["basis"]["result_refs"],
+        final_action.response_value["user_action_request"]["basis"]["result_refs"],
         basis["result_refs"]
     );
 
@@ -3202,8 +3275,8 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     let request_service = core(&request_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&request_fixture, &request_service, "corrupt_public_request")?;
-    let judgment = request_service.request_user_judgment(
-        request_fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = request_service.request_user_action(
+        request_fixture.user_action_request(UserActionFixture {
             request_id: "req_corrupt_public_request",
             idempotency_key: "idem_corrupt_public_request",
             dry_run: false,
@@ -3214,25 +3287,27 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         }),
         invocation(&request_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    request_fixture.set_user_judgment_request_raw(
-        &judgment_id,
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    request_fixture.set_user_action_request_raw(
+        &user_action_request_id,
         r#"{"presentation":17,"question":"must not leak secret-request-path","required_for":["close_complete"],"expires_at":null}"#,
     )?;
     let before = request_fixture.counts()?;
-    let response = request_service.record_user_judgment(
-        request_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_corrupt_public_request_record",
-            idempotency_key: "idem_corrupt_public_request_record",
-            expected_state_version: Some(3),
-            task_id: &task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::ProductDecision,
-            answer: answer_payload(JudgmentKind::ProductDecision),
-        }),
-        invocation(&request_fixture, OperationCategory::UserOnly),
+    let response = resolve_choice_user_action(
+        &request_fixture,
+        &request_service,
+        &task_id,
+        &user_action_request_id,
+        "req_corrupt_public_request_record",
+        "submission_corrupt_public_request_record",
+        "accept",
     )?;
-    assert_owner_state_unavailable(&response.response_value, "user_judgments", "request_json");
+    assert_owner_state_unavailable(
+        &response.response_value,
+        "user_action_requests",
+        "request_json",
+    );
     assert_eq!(request_fixture.counts()?, before);
 
     let resolution_fixture = CoreFixture::new("corrupt_public_resolution")?;
@@ -3258,8 +3333,8 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         after_basis,
         "corrupt_public_resolution",
     )?;
-    let judgment_id = latest_judgment_id(&resolution_fixture)?;
-    resolution_fixture.set_user_judgment_resolution_raw(&judgment_id, Some("{"))?;
+    let user_action_request_id = latest_user_action_request_id(&resolution_fixture)?;
+    resolution_fixture.set_user_action_resolution_raw(&user_action_request_id, Some("{"))?;
     let before = resolution_fixture.counts()?;
     let response = resolution_service.check_close(
         resolution_fixture.check_close_request(CloseTaskFixture {
@@ -3276,7 +3351,7 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     )?;
     assert_owner_state_unavailable(
         &response.response_value,
-        "user_judgments",
+        "user_action_resolutions",
         "resolution_json",
     );
     assert_eq!(resolution_fixture.counts()?, before);
@@ -3285,8 +3360,8 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
     let basis_service = core(&basis_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&basis_fixture, &basis_service, "corrupt_public_basis")?;
-    let judgment = basis_service.request_user_judgment(
-        basis_fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = basis_service.request_user_action(
+        basis_fixture.user_action_request(UserActionFixture {
             request_id: "req_corrupt_public_basis",
             idempotency_key: "idem_corrupt_public_basis",
             dry_run: false,
@@ -3297,25 +3372,27 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
         }),
         invocation(&basis_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    basis_fixture.set_user_judgment_basis_raw(
-        &judgment_id,
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    basis_fixture.set_user_action_basis_raw(
+        &user_action_request_id,
         r#"{"scope_revision":"bad","compatibility_status":"current"}"#,
     )?;
     let before = basis_fixture.counts()?;
-    let response = basis_service.record_user_judgment(
-        basis_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_corrupt_public_basis_record",
-            idempotency_key: "idem_corrupt_public_basis_record",
-            expected_state_version: Some(3),
-            task_id: &task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::ProductDecision,
-            answer: answer_payload(JudgmentKind::ProductDecision),
-        }),
-        invocation(&basis_fixture, OperationCategory::UserOnly),
+    let response = resolve_choice_user_action(
+        &basis_fixture,
+        &basis_service,
+        &task_id,
+        &user_action_request_id,
+        "req_corrupt_public_basis_record",
+        "submission_corrupt_public_basis_record",
+        "accept",
     )?;
-    assert_owner_state_unavailable(&response.response_value, "user_judgments", "basis_json");
+    assert_owner_state_unavailable(
+        &response.response_value,
+        "user_action_requests",
+        "basis_json",
+    );
     assert_eq!(basis_fixture.counts()?, before);
 
     let artifact_fixture = CoreFixture::new("corrupt_public_artifact")?;
@@ -3460,13 +3537,14 @@ fn persisted_state_corruption_public_entries_fail_closed_without_effects(
 
 #[test]
 fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dyn Error>> {
-    let t0 = fixed_time("2026-06-18T00:00:00Z")?;
+    let preferred_t0 = fixed_time("2026-06-18T00:00:00Z")?;
 
-    let invalid_fixture = CoreFixture::new("timestamp_invalid_judgment")?;
+    let invalid_fixture = CoreFixture::new("timestamp_invalid_user_action")?;
+    let t0 = test_time_at_or_after_project_floor(&invalid_fixture, preferred_t0)?;
     let invalid_service = service_at(&invalid_fixture, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&invalid_fixture, &invalid_service, "timestamp_invalid")?;
-    let mut request = invalid_fixture.user_judgment_request(UserJudgmentFixture {
+    let mut request = invalid_fixture.user_action_request(UserActionFixture {
         request_id: "req_timestamp_invalid",
         idempotency_key: "idem_timestamp_invalid",
         dry_run: false,
@@ -3475,20 +3553,21 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         change_unit_id: Some(&change_unit_id),
         judgment_kind: JudgmentKind::ProductDecision,
     });
-    request.expires_at = Some(UtcTimestamp::parse("2026-06-18T00:00:00Z")?).into();
+    request.expires_at = Some(UtcTimestamp::from_datetime(t0)).into();
     let before = invalid_fixture.counts()?;
-    let response = invalid_service.request_user_judgment(
+    let response = invalid_service.request_user_action(
         request,
         invocation(&invalid_fixture, OperationCategory::AgentWorkflow),
     )?;
     assert_rejected_code(&response.response_value, "VALIDATION_FAILED");
     assert_eq!(invalid_fixture.counts()?, before);
 
-    let offset_fixture = CoreFixture::new("timestamp_offset_judgment")?;
+    let offset_fixture = CoreFixture::new("timestamp_offset_user_action")?;
+    let t0 = test_time_at_or_after_project_floor(&offset_fixture, preferred_t0)?;
     let offset_service = service_at(&offset_fixture, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&offset_fixture, &offset_service, "timestamp_offset")?;
-    let mut request = offset_fixture.user_judgment_request(UserJudgmentFixture {
+    let mut request = offset_fixture.user_action_request(UserActionFixture {
         request_id: "req_timestamp_offset",
         idempotency_key: "idem_timestamp_offset",
         dry_run: false,
@@ -3497,31 +3576,33 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         change_unit_id: Some(&change_unit_id),
         judgment_kind: JudgmentKind::ProductDecision,
     });
-    request.expires_at = Some(UtcTimestamp::parse("2026-06-18T09:00:01+09:00")?).into();
-    let judgment = offset_service.request_user_judgment(
+    let offset_expiry = (t0 + Duration::seconds(1))
+        .with_timezone(&chrono::FixedOffset::east_opt(9 * 60 * 60).expect("valid UTC offset"))
+        .to_rfc3339();
+    request.expires_at = Some(UtcTimestamp::parse(&offset_expiry)?).into();
+    let requested_action = offset_service.request_user_action(
         request,
         invocation(&offset_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let recorded = offset_service.record_user_judgment(
-        offset_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_timestamp_offset_record",
-            idempotency_key: "idem_timestamp_offset_record",
-            expected_state_version: Some(3),
-            task_id: &task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::ProductDecision,
-            answer: answer_payload(JudgmentKind::ProductDecision),
-        }),
-        invocation(&offset_fixture, OperationCategory::UserOnly),
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let recorded = resolve_choice_user_action(
+        &offset_fixture,
+        &offset_service,
+        &task_id,
+        &user_action_request_id,
+        "req_timestamp_offset_record",
+        "submission_timestamp_offset_record",
+        "accept",
     )?;
     assert_eq!(recorded.response_value["base"]["response_kind"], "result");
 
-    let boundary_fixture = CoreFixture::new("timestamp_judgment_boundary")?;
+    let boundary_fixture = CoreFixture::new("timestamp_user_action_boundary")?;
+    let t0 = test_time_at_or_after_project_floor(&boundary_fixture, preferred_t0)?;
     let boundary_service = service_at(&boundary_fixture, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&boundary_fixture, &boundary_service, "timestamp_boundary")?;
-    let mut request = boundary_fixture.user_judgment_request(UserJudgmentFixture {
+    let mut request = boundary_fixture.user_action_request(UserActionFixture {
         request_id: "req_timestamp_boundary",
         idempotency_key: "idem_timestamp_boundary",
         dry_run: false,
@@ -3530,34 +3611,37 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
         change_unit_id: Some(&change_unit_id),
         judgment_kind: JudgmentKind::ProductDecision,
     });
-    request.expires_at = Some(UtcTimestamp::parse("2026-06-18T00:00:01Z")?).into();
-    let judgment = boundary_service.request_user_judgment(
+    request.expires_at = Some(UtcTimestamp::from_datetime(t0 + Duration::seconds(1))).into();
+    let requested_action = boundary_service.request_user_action(
         request,
         invocation(&boundary_fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
     let before = boundary_fixture.counts()?;
-    let expired = service_at(&boundary_fixture, t0 + Duration::seconds(1)).record_user_judgment(
-        boundary_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_timestamp_boundary_record",
-            idempotency_key: "idem_timestamp_boundary_record",
-            expected_state_version: Some(3),
-            task_id: &task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::ProductDecision,
-            answer: answer_payload(JudgmentKind::ProductDecision),
-        }),
-        invocation(&boundary_fixture, OperationCategory::UserOnly),
+    let expired_service = service_at(&boundary_fixture, t0 + Duration::seconds(1));
+    let expired = resolve_choice_user_action(
+        &boundary_fixture,
+        &expired_service,
+        &task_id,
+        &user_action_request_id,
+        "req_timestamp_boundary_record",
+        "submission_timestamp_boundary_record",
+        "accept",
     )?;
     assert_rejected_code(&expired.response_value, "DECISION_UNRESOLVED");
     assert_eq!(boundary_fixture.counts()?, before);
 
     let stage_before = CoreFixture::new("timestamp_stage_before")?;
+    let t0 = test_time_at_or_after_project_floor(&stage_before, preferred_t0)?;
     let stage_service = service_at(&stage_before, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&stage_before, &stage_service, "timestamp_stage_before")?;
     let mut handle = stage_artifact_for_record_run(&stage_before, &stage_service, &task_id, 2)?;
-    handle.expires_at = UtcTimestamp::parse("2026-06-19T09:00:00+09:00")?;
+    let offset_expiry = (t0 + Duration::hours(24))
+        .with_timezone(&chrono::FixedOffset::east_opt(9 * 60 * 60).expect("valid UTC offset"))
+        .to_rfc3339();
+    handle.expires_at = UtcTimestamp::parse(&offset_expiry)?;
     let mut run = stage_before.record_run_request(
         "req_timestamp_stage_before_run",
         "idem_timestamp_stage_before_run",
@@ -3585,6 +3669,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     assert_eq!(stage_before.counts()?.runs, before.runs + 1);
 
     let stage_exact = CoreFixture::new("timestamp_stage_exact")?;
+    let t0 = test_time_at_or_after_project_floor(&stage_exact, preferred_t0)?;
     let stage_service = service_at(&stage_exact, t0);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&stage_exact, &stage_service, "timestamp_stage_exact")?;
@@ -3616,6 +3701,7 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     assert_eq!(stage_exact.counts()?, before);
 
     let corrupt_fixture = CoreFixture::new("timestamp_stage_corrupt")?;
+    let t0 = test_time_at_or_after_project_floor(&corrupt_fixture, preferred_t0)?;
     let corrupt_service = service_at(&corrupt_fixture, t0);
     let (task_id, change_unit_id) = create_task_with_change_unit(
         &corrupt_fixture,
@@ -3679,11 +3765,16 @@ fn invocation_with_actor(
     actor_source: ActorSource,
     operation_category: OperationCategory,
 ) -> InvocationContext {
+    let verification_basis = if operation_category == OperationCategory::UserOnly {
+        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+    } else {
+        VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+    };
     InvocationContext::new(
         ProjectId::new(fixture.project_id()),
         actor_source,
         operation_category,
-        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        verification_basis,
     )
 }
 
@@ -3856,6 +3947,7 @@ struct PreparedWriteFixture {
     task_id: String,
     change_unit_id: String,
     write_ticket_id: String,
+    operation_time: DateTime<Utc>,
 }
 
 fn fixed_time(value: &str) -> Result<DateTime<Utc>, Box<dyn Error>> {
@@ -3870,11 +3962,20 @@ fn service_at(fixture: &CoreFixture, now: DateTime<Utc>) -> CoreService {
     CoreService::with_clock(fixture.runtime_home_path(), FixedClock { now })
 }
 
+fn test_time_at_or_after_project_floor(
+    fixture: &CoreFixture,
+    preferred: DateTime<Utc>,
+) -> Result<DateTime<Utc>, Box<dyn Error>> {
+    let floor = fixture.store()?.current_clock_floor()?.into_datetime();
+    Ok(std::cmp::max(preferred, floor))
+}
+
 fn prepared_write_fixture(
     suffix: &str,
     now: DateTime<Utc>,
 ) -> Result<PreparedWriteFixture, Box<dyn Error>> {
     let fixture = CoreFixture::new(suffix)?;
+    let now = test_time_at_or_after_project_floor(&fixture, now)?;
     let service = service_at(&fixture, now);
     let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, suffix)?;
     let response = service.prepare_write(
@@ -3897,6 +3998,7 @@ fn prepared_write_fixture(
         task_id,
         change_unit_id,
         write_ticket_id,
+        operation_time: now,
     })
 }
 
@@ -3997,34 +4099,79 @@ fn record_close_evidence(
         let artifact_ref: ArtifactRef =
             serde_json::from_value(promoted.response_value["registered_artifacts"][0].clone())?;
 
-        let observed_at = UtcTimestamp::parse("2026-06-18T00:00:00Z")?;
-        let user_observation = service.record_user_observation(
-            RecordUserObservationRequest {
-                envelope: fixture.envelope(
-                    &format!("req_user_observation_close_evidence_{expected_state_version}"),
-                    Some(&format!(
-                        "idem_user_observation_close_evidence_{expected_state_version}"
-                    )),
-                    false,
-                    Some(current_state_version),
-                    Some(task_id),
+        let requested = service.request_user_action(
+            fixture.observation_user_action_request(ObservationUserActionFixture {
+                request_id: &format!(
+                    "req_user_action_observation_close_evidence_{expected_state_version}"
                 ),
-                task_id: TaskId::new(task_id),
-                change_unit_id: ChangeUnitId::new(change_unit_id),
-                target: evidence_update.target.clone(),
-                relevance_status: EvidenceRelevanceStatus::Supported,
-                artifact_ids: vec![artifact_ref.artifact_id.clone()],
-                summary: "The user confirms that these exact bytes support the target.".to_owned(),
-                observed_at: observed_at.clone(),
-            },
+                idempotency_key: &format!(
+                    "idem_user_action_observation_close_evidence_{expected_state_version}"
+                ),
+                dry_run: false,
+                expected_state_version: Some(current_state_version),
+                task_id,
+                change_unit_id,
+                target_candidates: vec![evidence_update.target.clone()],
+                artifact_candidate_ids: vec![artifact_ref.artifact_id.clone()],
+            }),
+            invocation(fixture, OperationCategory::AgentWorkflow),
+        )?;
+        assert_eq!(
+            requested.response_value["base"]["response_kind"], "result",
+            "user observation request failed: {}",
+            requested.response_value,
+        );
+        let user_action_request_id =
+            response_record_id(&requested.response_value, "user_action_request_ref");
+        let resolved = service.resolve_user_action(
+            fixture.resolve_user_action_request(ResolveUserActionFixture {
+                request_id: &format!(
+                    "req_user_action_observation_resolve_close_evidence_{expected_state_version}"
+                ),
+                task_id,
+                user_action_request_id: &user_action_request_id,
+                channel_submission_id: &format!(
+                    "submission_user_action_observation_close_evidence_{expected_state_version}"
+                ),
+                resolution: observation_user_action_resolution(
+                    evidence_update.target.clone(),
+                    vec![artifact_ref.artifact_id.clone()],
+                    EvidenceRelevanceStatus::Supported,
+                    "The user confirms that these exact bytes support the target.",
+                ),
+            }),
             invocation(fixture, OperationCategory::UserOnly),
         )?;
-        current_state_version = user_observation.response_value["base"]["state_version"]
+        assert_eq!(
+            resolved.response_value["base"]["response_kind"], "result",
+            "user observation resolution failed: {}",
+            resolved.response_value,
+        );
+        current_state_version = resolved.response_value["base"]["state_version"]
             .as_u64()
             .expect("user observation state version should be present");
-        let user_observation_ref: StateRecordRef = serde_json::from_value(
-            user_observation.response_value["user_observation_ref"].clone(),
+        let user_action_resolution_ref: StateRecordRef =
+            serde_json::from_value(resolved.response_value["user_action_resolution_ref"].clone())?;
+        let observed_at: UtcTimestamp = serde_json::from_value(
+            resolved.response_value["user_action_resolution"]["resolved_at"].clone(),
         )?;
+        let stored_resolution = fixture.user_action_resolution(&user_action_request_id)?;
+        let stored_action_kind: String = fixture.conn()?.query_row(
+            "SELECT action_kind
+               FROM user_action_resolutions
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            [fixture.project_id(), user_action_request_id.as_str()],
+            |row| row.get(0),
+        )?;
+        assert_eq!(stored_action_kind, "evidence_observation");
+        assert_eq!(
+            resolved.response_value["user_action_resolution"]["body"], stored_resolution,
+            "committed observation resolution must equal the immediate authoritative reread",
+        );
+        serde_json::from_value::<UserActionResolutionBody>(stored_resolution.clone())?
+            .validate()
+            .map_err(|error| format!("stored observation resolution is invalid: {error}"))?;
         evidence_observations.push(EvidenceObservationInput {
             target: evidence_update.target.clone(),
             source_kind: EvidenceSourceKind::UserObservation,
@@ -4033,7 +4180,7 @@ fn record_close_evidence(
             tool_name: None.into(),
             tool_invocation_id: None.into(),
             tool_metadata: JsonObject::new(),
-            input_refs: vec![user_observation_ref],
+            input_refs: vec![user_action_resolution_ref],
             source_refs: Vec::new(),
             output_artifact_refs: vec![artifact_ref],
             limitations: Vec::new(),
@@ -4064,6 +4211,11 @@ fn record_close_evidence(
         request,
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
+    assert_eq!(
+        response.response_value["base"]["response_kind"], "result",
+        "close evidence record failed: {}",
+        response.response_value,
+    );
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
         .expect("state version should be present"))
@@ -4101,6 +4253,39 @@ fn require_active_acceptance_criterion(
     Ok(AcceptanceCriterionId::new(acceptance_criterion_id))
 }
 
+fn resolve_choice_user_action(
+    fixture: &CoreFixture,
+    service: &CoreService,
+    task_id: &str,
+    user_action_request_id: &str,
+    request_id: &str,
+    channel_submission_id: &str,
+    selected_option_id: &str,
+) -> Result<volicord_core::PipelineResponse, Box<dyn Error>> {
+    let response = service.resolve_user_action(
+        fixture.resolve_user_action_request(ResolveUserActionFixture {
+            request_id,
+            task_id,
+            user_action_request_id,
+            channel_submission_id,
+            resolution: choice_user_action_resolution(selected_option_id),
+        }),
+        invocation(fixture, OperationCategory::UserOnly),
+    )?;
+    if response.response_value["base"]["response_kind"] == "result" {
+        assert_eq!(
+            response.response_value["user_action_resolution"]["body"],
+            fixture.user_action_resolution(user_action_request_id)?,
+            "committed choice resolution must equal the immediate authoritative reread",
+        );
+        assert_eq!(
+            fixture.user_action_status(user_action_request_id)?,
+            "resolved",
+        );
+    }
+    Ok(response)
+}
+
 fn record_final_acceptance(
     fixture: &CoreFixture,
     service: &CoreService,
@@ -4109,8 +4294,8 @@ fn record_final_acceptance(
     expected_state_version: u64,
     suffix: &str,
 ) -> Result<u64, Box<dyn Error>> {
-    let judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: &format!("req_final_{suffix}"),
             idempotency_key: &format!("idem_final_{suffix}"),
             dry_run: false,
@@ -4121,21 +4306,19 @@ fn record_final_acceptance(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = judgment.response_value["user_judgment_ref"]["record_id"]
+    let user_action_request_id = requested_action.response_value["user_action_request_ref"]
+        ["record_id"]
         .as_str()
-        .expect("final acceptance judgment id should be present")
+        .expect("final-acceptance user-action request id should be present")
         .to_owned();
-    let response = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: &format!("req_final_record_{suffix}"),
-            idempotency_key: &format!("idem_final_record_{suffix}"),
-            expected_state_version: Some(expected_state_version + 1),
-            task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::FinalAcceptance,
-            answer: answer_payload(JudgmentKind::FinalAcceptance),
-        }),
-        invocation(fixture, OperationCategory::UserOnly),
+    let response = resolve_choice_user_action(
+        fixture,
+        service,
+        task_id,
+        &user_action_request_id,
+        &format!("req_final_record_{suffix}"),
+        &format!("submission_final_record_{suffix}"),
+        "accept",
     )?;
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
@@ -4150,8 +4333,8 @@ fn record_cancellation_authority(
     expected_state_version: u64,
     suffix: &str,
 ) -> Result<u64, Box<dyn Error>> {
-    let judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: &format!("req_cancel_auth_{suffix}"),
             idempotency_key: &format!("idem_cancel_auth_{suffix}"),
             dry_run: false,
@@ -4162,18 +4345,16 @@ fn record_cancellation_authority(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let response = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: &format!("req_cancel_auth_record_{suffix}"),
-            idempotency_key: &format!("idem_cancel_auth_record_{suffix}"),
-            expected_state_version: Some(expected_state_version + 1),
-            task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::Cancellation,
-            answer: answer_payload(JudgmentKind::Cancellation),
-        }),
-        invocation(fixture, OperationCategory::UserOnly),
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let response = resolve_choice_user_action(
+        fixture,
+        service,
+        task_id,
+        &user_action_request_id,
+        &format!("req_cancel_auth_record_{suffix}"),
+        &format!("submission_cancel_auth_record_{suffix}"),
+        "accept",
     )?;
     Ok(response.response_value["base"]["state_version"]
         .as_u64()
@@ -4188,8 +4369,8 @@ fn record_final_acceptance_with_id(
     expected_state_version: u64,
     suffix: &str,
 ) -> Result<(u64, String), Box<dyn Error>> {
-    let judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: &format!("req_final_id_{suffix}"),
             idempotency_key: &format!("idem_final_id_{suffix}"),
             dry_run: false,
@@ -4200,29 +4381,27 @@ fn record_final_acceptance_with_id(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let response = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: &format!("req_final_id_record_{suffix}"),
-            idempotency_key: &format!("idem_final_id_record_{suffix}"),
-            expected_state_version: Some(expected_state_version + 1),
-            task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::FinalAcceptance,
-            answer: answer_payload(JudgmentKind::FinalAcceptance),
-        }),
-        invocation(fixture, OperationCategory::UserOnly),
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let response = resolve_choice_user_action(
+        fixture,
+        service,
+        task_id,
+        &user_action_request_id,
+        &format!("req_final_id_record_{suffix}"),
+        &format!("submission_final_id_record_{suffix}"),
+        "accept",
     )?;
     Ok((
         response.response_value["base"]["state_version"]
             .as_u64()
             .expect("state version should be present"),
-        judgment_id,
+        user_action_request_id,
     ))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn record_authority_judgment_with_option(
+fn record_authority_user_action_with_option(
     fixture: &CoreFixture,
     service: &CoreService,
     task_id: &str,
@@ -4231,10 +4410,9 @@ fn record_authority_judgment_with_option(
     suffix: &str,
     judgment_kind: JudgmentKind,
     selected_option_id: &str,
-    answer: volicord_types::RecordUserJudgmentPayload,
 ) -> Result<(u64, String), Box<dyn Error>> {
-    let judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: &format!("req_authority_{suffix}"),
             idempotency_key: &format!("idem_authority_{suffix}"),
             dry_run: false,
@@ -4245,27 +4423,25 @@ fn record_authority_judgment_with_option(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_current_authority_options(&judgment.response_value);
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let mut request = fixture.record_judgment_request(RecordJudgmentFixture {
-        request_id: &format!("req_authority_record_{suffix}"),
-        idempotency_key: &format!("idem_authority_record_{suffix}"),
-        expected_state_version: Some(expected_state_version + 1),
+    assert_current_authority_options(&requested_action.response_value);
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let response = resolve_choice_user_action(
+        fixture,
+        service,
         task_id,
-        user_judgment_id: &judgment_id,
-        judgment_kind,
-        answer,
-    });
-    request.selected_option_id = volicord_types::UserJudgmentOptionId::new(selected_option_id);
-    let response =
-        service.record_user_judgment(request, invocation(fixture, OperationCategory::UserOnly))?;
+        &user_action_request_id,
+        &format!("req_authority_record_{suffix}"),
+        &format!("submission_authority_record_{suffix}"),
+        selected_option_id,
+    )?;
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        response.response_value["user_judgment"]["resolution"]["selected_option_id"],
+        response.response_value["user_action_resolution"]["body"]["selected_option_id"],
         selected_option_id
     );
     assert_eq!(
-        response.response_value["user_judgment"]["resolution"]["machine_action"],
+        response.response_value["user_action_resolution"]["body"]["machine_action"],
         selected_option_id
     );
     let expected_outcome = match selected_option_id {
@@ -4275,14 +4451,14 @@ fn record_authority_judgment_with_option(
         _ => panic!("unexpected authority option id {selected_option_id}"),
     };
     assert_eq!(
-        response.response_value["user_judgment"]["resolution"]["resolution_outcome"],
+        response.response_value["user_action_resolution"]["body"]["resolution_outcome"],
         expected_outcome
     );
     Ok((
         response.response_value["base"]["state_version"]
             .as_u64()
             .expect("state version should be present"),
-        judgment_id,
+        user_action_request_id,
     ))
 }
 
@@ -4342,58 +4518,6 @@ fn residual_risk_input(summary: &str) -> ResidualRiskInput {
         acceptance_required: true,
         source_refs: Vec::new(),
     }
-}
-
-fn residual_risk_acceptance_payload(
-    risk_ids: &[String],
-) -> volicord_types::RecordUserJudgmentPayload {
-    let mut payload = answer_payload(JudgmentKind::ResidualRiskAcceptance);
-    payload.residual_risk_acceptance = Some(json_object(json!({ "risk_ids": risk_ids }))).into();
-    payload
-}
-
-fn rejected_authority_answer_payload(
-    judgment_kind: JudgmentKind,
-    risk_ids: &[String],
-) -> volicord_types::RecordUserJudgmentPayload {
-    let mut payload = answer_payload(judgment_kind);
-    match judgment_kind {
-        JudgmentKind::ScopeDecision => {
-            payload.scope_decision = Some(json_object(json!({
-                "requested_scope_summary": "Expanded scope that must not apply silently.",
-                "decision": "rejected"
-            })))
-            .into();
-        }
-        JudgmentKind::SensitiveApproval => {}
-        JudgmentKind::FinalAcceptance => {
-            payload.final_acceptance = Some(json_object(json!({
-                "judgment": {
-                    "decision": "rejected",
-                    "basis": "The visible close basis is not accepted."
-                }
-            })))
-            .into();
-        }
-        JudgmentKind::ResidualRiskAcceptance => {
-            payload.residual_risk_acceptance = Some(json_object(json!({
-                "risk_ids": risk_ids,
-                "decision": "rejected"
-            })))
-            .into();
-        }
-        JudgmentKind::Cancellation => {
-            payload.cancellation = Some(json_object(json!({
-                "decision": "rejected",
-                "reason": "The user rejected cancellation."
-            })))
-            .into();
-        }
-        JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision => {
-            panic!("non-authority judgment kind does not use rejected authority payloads")
-        }
-    }
-    payload
 }
 
 fn assert_sensitive_approval_mismatch<F>(suffix: &str, mutate: F) -> Result<(), Box<dyn Error>>
@@ -4482,8 +4606,8 @@ fn record_sensitive_approval(
     expected_state_version: u64,
     suffix: &str,
 ) -> Result<(u64, String), Box<dyn Error>> {
-    let judgment = service.request_user_judgment(
-        fixture.user_judgment_request(UserJudgmentFixture {
+    let requested_action = service.request_user_action(
+        fixture.user_action_request(UserActionFixture {
             request_id: &format!("req_sensitive_approval_{suffix}"),
             idempotency_key: &format!("idem_sensitive_approval_{suffix}"),
             dry_run: false,
@@ -4494,24 +4618,27 @@ fn record_sensitive_approval(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    let response = service.record_user_judgment(
-        fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: &format!("req_sensitive_approval_record_{suffix}"),
-            idempotency_key: &format!("idem_sensitive_approval_record_{suffix}"),
-            expected_state_version: Some(expected_state_version + 1),
-            task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::SensitiveApproval,
-            answer: answer_payload(JudgmentKind::SensitiveApproval),
-        }),
-        invocation(fixture, OperationCategory::UserOnly),
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
+    let response = resolve_choice_user_action(
+        fixture,
+        service,
+        task_id,
+        &user_action_request_id,
+        &format!("req_sensitive_approval_record_{suffix}"),
+        &format!("submission_sensitive_approval_record_{suffix}"),
+        "accept",
     )?;
+    let user_action_resolution_id = response.response_value["user_action_resolution_ref"]
+        ["record_id"]
+        .as_str()
+        .expect("sensitive-approval resolution id should be present")
+        .to_owned();
     Ok((
         response.response_value["base"]["state_version"]
             .as_u64()
             .expect("state version should be present"),
-        judgment_id,
+        user_action_resolution_id,
     ))
 }
 
@@ -4630,9 +4757,9 @@ fn response_record_id(response_value: &Value, field: &str) -> String {
 }
 
 fn assert_current_authority_options(response_value: &Value) {
-    let options = response_value["user_judgment"]["options"]
+    let options = response_value["user_action_request"]["body"]["options"]
         .as_array()
-        .expect("authority judgment options should be present");
+        .expect("authority user-action options should be present");
     let option_ids = options
         .iter()
         .map(|option| option["option_id"].as_str().expect("option id"))
@@ -4657,13 +4784,6 @@ fn assert_current_authority_options(response_value: &Value) {
             }
             other => panic!("unexpected authority option id {other}"),
         }
-    }
-}
-
-fn json_object(value: Value) -> serde_json::Map<String, Value> {
-    match value {
-        Value::Object(object) => object,
-        _ => panic!("expected JSON object"),
     }
 }
 
@@ -4722,7 +4842,10 @@ fn assert_close_blocker(response_value: &Value, code: &str) {
 
 fn assert_rejected_code(response_value: &Value, code: &str) {
     assert_eq!(response_value["base"]["response_kind"], "rejected");
-    assert_eq!(response_value["errors"][0]["code"], code);
+    assert_eq!(
+        response_value["errors"][0]["code"], code,
+        "unexpected rejection response: {response_value}",
+    );
 }
 
 fn assert_owner_state_unavailable(response_value: &Value, table: &str, logical_column: &str) {
@@ -4747,12 +4870,12 @@ fn assert_constraint_error(error: impl std::fmt::Debug) {
     );
 }
 
-fn latest_judgment_id(fixture: &CoreFixture) -> Result<String, Box<dyn Error>> {
+fn latest_user_action_request_id(fixture: &CoreFixture) -> Result<String, Box<dyn Error>> {
     Ok(fixture.conn()?.query_row(
-        "SELECT judgment_id
-           FROM user_judgments
+        "SELECT user_action_request_id
+           FROM user_action_requests
           WHERE project_id = ?1
-          ORDER BY requested_at DESC, judgment_id DESC
+          ORDER BY requested_at DESC, user_action_request_id DESC
           LIMIT 1",
         [fixture.project_id()],
         |row| row.get(0),

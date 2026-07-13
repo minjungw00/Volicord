@@ -18,7 +18,7 @@ pub(super) fn connection_diagnostic_summary_card(
         profile: guard_state.selected_profile().to_owned(),
         write_ticket: "not_selected".to_owned(),
         evidence: "not_selected".to_owned(),
-        user_judgment: "not_selected".to_owned(),
+        user_action: "not_selected".to_owned(),
         changes: "not_selected".to_owned(),
         close_status: "not_selected".to_owned(),
         transport: "Agent Connection".to_owned(),

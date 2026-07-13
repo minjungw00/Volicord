@@ -3,9 +3,10 @@ use std::{ffi::OsString, fmt, fs, path::Path, time::Instant};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use volicord_core::CorePipelineError;
+use volicord_core::{Clock, CorePipelineError, SystemClock};
 use volicord_store::{
     bootstrap::{project_record_for_execution, ProjectRecord},
+    core_pipeline::CoreProjectStore,
     diagnostics::{
         record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
         DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
@@ -17,10 +18,11 @@ use volicord_store::{
         GuardInstallationObservation,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    StoreError,
+    StoreError, StoreResult,
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, IntegrationProfile,
+    UtcTimestamp,
 };
 
 use crate::disclosure::cooperative_host_decision_disclosure_json;
@@ -98,6 +100,10 @@ impl From<CorePipelineError> for GuardCommandError {
     fn from(error: CorePipelineError) -> Self {
         Self::Runtime(error.to_string())
     }
+}
+
+fn core_current_timestamp(store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
+    SystemClock.project_now(store)
 }
 
 pub fn run_guard_command<F>(
@@ -230,11 +236,11 @@ fn record_guard_diagnostic_best_effort(
         });
     let prompt_capture_recorded = phase == GuardPhase::PromptCapture
         && result
-            .get("recognized_judgment_command")
+            .get("recognized_user_action_command")
             .is_some_and(|value| !value.is_null());
     let prompt_capture_replayed = prompt_capture_recorded
         && result
-            .pointer("/recognized_judgment_command/replayed")
+            .pointer("/recognized_user_action_command/replayed")
             .and_then(Value::as_bool)
             .unwrap_or(false);
     let product_file_write_count = (phase == GuardPhase::PostTool

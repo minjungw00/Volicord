@@ -11,9 +11,9 @@ flowchart TD
   ask["평소 말로 작업 요청"]
   boundary["에이전트가 작업, 범위,<br/>모르는 점, 다음 안전한 행동 표시"]
   action["에이전트가 확인하거나 행동"]
-  status["증거, 차단 사유,<br/>대기 판단 검토"]
-  judgment{"사용자 판단이 대기 중?"}
-  answer["사용자 채널로 답변"]
+  status["증거, 차단 사유,<br/>대기 사용자 행동 검토"]
+  judgment{"사용자 행동이 대기 중?"}
+  answer["사용자 채널로 해결"]
   changes{"미기록 변경이<br/>해결되지 않음?"}
   reconcile["에이전트에게 조정 요청"]
   close{"닫기 차단 사유가 남음?"}
@@ -29,7 +29,7 @@ flowchart TD
   close -- 아니오 --> finish
 ```
 
-큰 쓰기 전, 의미 있는 변경 뒤, 닫기 전에는 상태를 묻습니다. 대기 중인 사용자 판단,
+큰 쓰기 전, 의미 있는 변경 뒤, 닫기 전에는 상태를 묻습니다. 대기 중인 사용자 행동,
 미기록 변경, 닫기 차단 사유는 요약의 배경 문구가 아니라 이름 붙은 다음 행동으로
 다룹니다.
 
@@ -50,7 +50,7 @@ API 이름이나 내부 모드를 알 필요는 없습니다. 원하는 결과, 
 
 - 현재 목표, 현재 적용 범위, 범위 밖 항목
 - 확인한 사실과 중요한 미확인 사항
-- 대기 중인 사용자 소유 판단
+- 대기 중인 사용자 소유 행동
 - 다음 안전한 행동
 
 넓은 도움 요청은 범위 확장, 관련 없는 파일 쓰기, 제품 동작 추론, 최종 수락 추론을
@@ -78,7 +78,7 @@ API 이름이나 내부 모드를 알 필요는 없습니다. 원하는 결과, 
 - 현재 작업 경계와 현재 적용 범위
 - 확인한 사실과 중요한 미확인 사항
 - 가장 중요한 차단 사유
-- 대기 중인 사용자 판단이나 승인
+- 대기 중인 사용자 행동이나 승인
 - 관련 증거와 그 한계
 - 보이는 잔여 위험
 - 다음 안전한 행동 하나
@@ -116,7 +116,7 @@ API 이름이나 내부 모드를 알 필요는 없습니다. 원하는 결과, 
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 대기 판단에 표시된 선택지만 고릅니다. 답변 하나는 그 판단 하나만 해결합니다.
@@ -140,6 +140,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 쓰기 승인과 쓰기 티켓은 전체 계획 승인, 최종 수락, 잔여 위험 수락, OS 권한,
 쓰기가 실제로 일어났다는 증명이 아닙니다.
 
+<a id="use-evidence-without-replacing-judgment"></a>
 ## 증거를 판단 대신 쓰지 않기
 
 의미 있는 작업 뒤에는 에이전트가 무엇이 일어났고 어떤 증거가 각 주요 주장을
@@ -149,6 +150,29 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 증거는 사용자 판단이 아닙니다. 테스트 통과, 화면 캡처, 로그 경로, 첨부, 생성 요약은
 실제로 보여 주는 주장만 뒷받침합니다. 근거가 부족하면 증거를 더 요구하거나 주장을
 좁힙니다. 에이전트에게 비밀값, 토큰, 전체 민감 로그를 노출하게 하면 안 됩니다.
+
+Volicord는 저장된 수락 기준 또는 보충 주장 하나에 대해 집중된 Evidence 관찰 기록을
+요청할 수 있습니다. 호스트 프롬프트, 검증된 채팅 명령, 로컬 consent 페이지, CLI
+받은편지함은 모두 저장된 동일 대상 후보와 아티팩트 후보를 사용합니다. 그 양식에 표시된
+후보만 선택합니다. 안정적인 CLI 대체 경로는 다음과 같습니다.
+
+```sh
+volicord inbox --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID \
+  --criterion CRITERION_ID \
+  --artifact ARTIFACT_ID \
+  --summary "선택한 아티팩트가 보여 주는 내용" \
+  --repo "<repo>"
+```
+
+표시된 대상이 보충 주장이면 `--criterion CRITERION_ID` 대신
+`--claim CLAIM_ID`를 사용합니다. 표시된 아티팩트를 더 선택하려면
+`--artifact ARTIFACT_ID`를 반복하고, 관찰이 대상을 반박하면 `--contradicted`를
+추가합니다.
+
+이 명령은 사용자 소유 관찰 하나를 기록할 뿐 증거 충분성, 최종 수락, 닫기 준비 상태를
+그 자체로 증명하지 않습니다. 자유 형식 summary는 User Channel resolution에 비공개로
+남고 에이전트용 상태 보기에는 안전한 선택 식별자와 파생 ref만 나타납니다.
 
 정확한 증거 의미는 [Core 모델](../reference/core-model.md)에 있습니다.
 
@@ -177,7 +201,7 @@ volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
 
 - 현재 적용 범위와 결과
 - 점검과 증거
-- 대기 중인 필수 판단
+- 대기 중인 필수 사용자 행동
 - 미해결 미기록 변경
 - 보이는 잔여 위험
 - 남은 닫기 차단 사유

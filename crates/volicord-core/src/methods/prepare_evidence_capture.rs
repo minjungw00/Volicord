@@ -1,6 +1,5 @@
 use super::*;
 
-const EVIDENCE_CAPTURE_INTENT_TTL_MINUTES: i64 = 15;
 const MAX_CAPTURE_LABEL_BYTES: usize = 256;
 const MAX_CAPTURE_TOOL_NAME_BYTES: usize = 256;
 
@@ -43,6 +42,7 @@ impl CoreService {
             &prepared.context.project_state,
             request.clone(),
             &prepared.context.verified_invocation,
+            &prepared.operation_now,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -88,6 +88,7 @@ fn plan_prepare_evidence_capture(
     project_state: &ProjectStateHeader,
     mut request: PrepareEvidenceCaptureRequest,
     verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan, PlanError> {
     let connection_id = verified_invocation
         .actor_source
@@ -206,10 +207,14 @@ fn plan_prepare_evidence_capture(
 
     let capture_intent_id =
         allocate_evidence_capture_intent_id(service, store).map_err(PlanError::Core)?;
-    let created_at = utc_timestamp(service.now());
-    let expires_at = UtcTimestamp::from_datetime(
-        *created_at.as_datetime() + Duration::minutes(EVIDENCE_CAPTURE_INTENT_TTL_MINUTES),
-    );
+    let created_at = operation_now.clone();
+    let expires_at = checked_derived_expiration(
+        &created_at,
+        Duration::minutes(EVIDENCE_CAPTURE_INTENT_TTL_MINUTES),
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        "expires_at",
+    )?;
     let planned_state_version = project_state.state_version + 1;
     let capture_intent_ref = state_ref(
         StateRecordKind::EvidenceCaptureIntent,

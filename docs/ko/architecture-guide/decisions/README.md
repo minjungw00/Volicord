@@ -15,7 +15,9 @@ Core 권한 의미, 제품 수락, 닫기 준비 상태, 적합성 결과를 정
 | [Core와 어댑터 의존 경계](core-adapter-boundary.md) | 왜 Core가 MCP나 CLI 어댑터에 의존하지 않는지, 그리고 어댑터 코드가 Core 호출 전에 무엇을 할 수 있는지 확인합니다. |
 | [오래 유지되는 작업 결과 조회](operation-result-retrieval.md) | 정확한 과거 변경 응답이 변경 불가능한 재실행 행과 접근을 확인하는 제한된 페이지 조회를 재사용하는 이유를 설명합니다. |
 | [Evidence capture intent와 producer 최종화](evidence-capture-producer-finalization.md) | Source-owned receipt를 만료되는 intent에 결합하고 `record_run` 안에서만 producer 권한으로 만드는 이유를 설명합니다. |
+| [통합 사용자 행동 요청과 해결](unified-user-action-request-resolution.md) | 판단과 사용자 증거 관찰이 하나의 대기 요청, 변경 불가능한 해결, 채널 어댑터 생명주기를 공유하는 이유를 설명합니다. |
 | [원자적 변이 커밋 전 계획](plan-and-atomic-commit.md) | 왜 메서드가 Store 커밋 전에 효과를 계획하고, 왜 Store가 원자적 트랜잭션 경계를 소유하는지 확인합니다. |
+| [정규 Core UTC 시계](canonical-core-utc-clock.md) | 프로젝트 시각이 `state_version`과 구분되는 감소하지 않는 영속 하한, 준비된 동작 샘플 하나, 정규 Core 커밋 timestamp 하나를 갖는 이유를 설명합니다. |
 | [Runtime Home과 Product Repository 분리](runtime-home-and-product-repository.md) | 런타임 상태와 제품 파일이 왜 별도 위치에 남아야 하는지, 구현 코드가 그 분리를 어떻게 반영하는지 확인합니다. |
 
 [구현 아키텍처](../architecture.md)는 워크스페이스 아키텍처 개요, 의존 경계

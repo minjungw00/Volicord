@@ -20,7 +20,7 @@ use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
     ActorSource, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME, INTAKE_TOOL_NAME,
     PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME, RECORD_RUN_TOOL_NAME,
-    RECORD_USER_JUDGMENT_TOOL_NAME, REQUEST_USER_JUDGMENT_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
+    REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME, UPDATE_SCOPE_TOOL_NAME,
     VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
@@ -280,7 +280,8 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
         .collect::<Vec<_>>();
     let expected_tools = expected_workflow_tools();
     assert_eq!(tool_names, expected_tools);
-    assert!(!tool_names.contains(&RECORD_USER_JUDGMENT_TOOL_NAME));
+    assert!(tool_names.contains(&"volicord.request_user_action"));
+    assert!(!tool_names.contains(&"volicord.resolve_user_action"));
     assert_eq!(
         tool_names.iter().copied().collect::<BTreeSet<_>>().len(),
         expected_tools.len()
@@ -383,7 +384,8 @@ fn volicord_mcp_subcommand_stdio_uses_line_delimited_json_and_reconnects_state(
 }
 
 #[test]
-fn volicord_mcp_subcommand_stdio_records_judgment_with_elicitation() -> Result<(), Box<dyn Error>> {
+fn volicord_mcp_subcommand_stdio_resolves_user_action_with_elicitation(
+) -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-elicitation")?;
     let (task_id, state_version) = fixture.create_task("elicitation")?;
     let messages = json_lines(&[
@@ -391,12 +393,12 @@ fn volicord_mcp_subcommand_stdio_records_judgment_with_elicitation() -> Result<(
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            default_request_user_judgment_arguments(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            request_user_action_arguments(&fixture, &task_id, state_version),
         ),
         json!({
             "jsonrpc": "2.0",
-            "id": "elicit_user_judgment_1",
+            "id": "elicit_user_action_1",
             "result": {
                 "action": "accept",
                 "content": {
@@ -416,21 +418,48 @@ fn volicord_mcp_subcommand_stdio_records_judgment_with_elicitation() -> Result<(
     let values = json_rpc_values(&output.stdout)?;
     assert_eq!(values.len(), 3);
     assert_eq!(values[1]["method"], "elicitation/create");
-    assert_eq!(values[1]["id"], "elicit_user_judgment_1");
+    assert_eq!(values[1]["id"], "elicit_user_action_1");
     let projection = volicord_response(&values[2])?;
     let response = &projection["method_result"];
-    assert_eq!(response["status"], "resolved");
-    assert_eq!(response["selected_option_id"], "keep");
-    assert_eq!(response["selected_option_label"], "Keep focused behavior");
-    assert_eq!(response["resolution_outcome"], "accepted");
-    assert!(response.get("note").is_none());
-    let record = fixture.stored_judgment(&task_id, response)?;
     assert_eq!(
-        record.resolved_by_actor_source.as_deref(),
+        response["agent_workflow_result"]["user_action_request"]["status"],
+        "pending"
+    );
+    assert!(response["user_channel_resolution_ref"].is_object());
+    let resolution = &response["user_channel_resolution"];
+    assert_eq!(resolution["action_kind"], "product_decision");
+    assert_eq!(resolution["channel_kind"], "mcp_elicitation");
+    assert_eq!(
+        resolution["resolution_summary"]["resolution_type"],
+        "choice"
+    );
+    assert_eq!(
+        resolution["resolution_summary"]["selected_option_id"],
+        "keep"
+    );
+    assert_eq!(
+        resolution["resolution_summary"]["selected_option_label"],
+        "Keep focused behavior"
+    );
+    assert_eq!(
+        resolution["resolution_summary"]["resolution_outcome"],
+        "accepted"
+    );
+    assert!(resolution.get("note").is_none());
+    assert!(resolution["resolution_summary"].get("summary").is_none());
+    let record = fixture.stored_user_action(&task_id, response)?;
+    assert_eq!(
+        record
+            .resolution
+            .as_ref()
+            .map(|resolution| resolution.resolved_by_actor_source.as_str()),
         Some("local_user")
     );
     assert_eq!(
-        record.resolved_verification_basis.as_deref(),
+        record
+            .resolution
+            .as_ref()
+            .map(|resolution| resolution.resolved_verification_basis.as_str()),
         Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL)
     );
     Ok(())
@@ -446,8 +475,8 @@ fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallba
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            request_user_judgment_arguments(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            request_user_action_arguments(&fixture, &task_id, state_version),
         ),
     ])?;
 
@@ -460,20 +489,25 @@ fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallba
     assert_eq!(captured_stderr(&output), "");
     let responses = responses_by_id(&output.stdout)?;
     assert_eq!(responses.len(), 2);
-    let response = volicord_response(&responses[&2])?;
-    assert_eq!(response["user_judgment"]["status"], "pending");
+    let projection = volicord_response(&responses[&2])?;
+    let response = &projection["method_result"];
+    assert_eq!(
+        response["agent_workflow_result"]["user_action_request"]["status"],
+        "pending"
+    );
+    assert!(response["user_channel_resolution_ref"].is_null());
+    assert!(response["user_channel_resolution"].is_null());
     let fallback = responses[&2]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text should be present");
     assert!(fallback.contains("Host prompt input is unavailable"));
-    assert!(fallback.contains("prompt_capture_status=unavailable"));
     assert!(fallback.contains("CLI inbox path"));
-    assert!(!fallback.contains("Volicord: answer J-1 1 #"));
-    assert!(!fallback.contains("Volicord: note J-1 \"text\" #"));
+    assert!(fallback.contains("volicord inbox resolve"));
+    assert!(!fallback.contains("Volicord: resolve A-1"));
 
-    let record = fixture.stored_judgment(&task_id, &response)?;
-    assert_eq!(record.status, "pending");
-    assert!(record.resolved_by_actor_source.is_none());
+    let record = fixture.stored_user_action(&task_id, response)?;
+    assert_eq!(record.status, volicord_types::UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
     Ok(())
 }
 
@@ -510,7 +544,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     for mutation_tool in [
         INTAKE_TOOL_NAME,
         PREPARE_WRITE_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_ACTION_TOOL_NAME,
         RECONCILE_CHANGES_TOOL_NAME,
         CLOSE_TASK_TOOL_NAME,
     ] {
@@ -668,25 +702,31 @@ impl McpFixture {
         Ok((task_id, state_version))
     }
 
-    fn stored_judgment(
+    fn stored_user_action(
         &self,
         task_id: &str,
         response: &Value,
-    ) -> Result<volicord_store::core_pipeline::UserJudgmentRecord, Box<dyn Error>> {
-        let judgment_id = response
-            .pointer("/user_judgment_ref/record_id")
-            .or_else(|| response.pointer("/judgment_ref/record_id"))
+    ) -> Result<volicord_store::core_pipeline::EffectiveUserActionRecord, Box<dyn Error>> {
+        let user_action_request_id = response
+            .pointer("/user_action_request_ref/record_id")
+            .or_else(|| {
+                response.pointer("/agent_workflow_result/user_action_request_ref/record_id")
+            })
+            .or_else(|| response.pointer("/request_ref/record_id"))
             .and_then(Value::as_str)
-            .ok_or("response should include user_judgment_ref.record_id")?;
+            .ok_or("response should include user_action_request_ref.record_id")?;
         let store = volicord_store::core_pipeline::CoreProjectStore::open(
             self.runtime_home_path(),
             &ProjectId::new(self.project_id()),
         )?;
         let record = store
-            .user_judgment_records_for_task(&volicord_types::TaskId::new(task_id))?
+            .user_action_records_for_task(
+                &volicord_types::TaskId::new(task_id),
+                &volicord_types::UtcTimestamp::parse("2026-12-01T00:00:00Z")?,
+            )?
             .into_iter()
-            .find(|record| record.judgment_id == judgment_id)
-            .ok_or("stored judgment record should exist")?;
+            .find(|record| record.request.user_action_request_id == user_action_request_id)
+            .ok_or("stored user-action record should exist")?;
         Ok(record)
     }
 }
@@ -734,66 +774,57 @@ fn status_arguments_with_connection_id(
     arguments
 }
 
-fn request_user_judgment_arguments(
-    fixture: &McpFixture,
-    task_id: &str,
-    state_version: u64,
-) -> Value {
+fn request_user_action_arguments(fixture: &McpFixture, task_id: &str, state_version: u64) -> Value {
     json!({
         "detail": "full",
-        "task_id": task_id,
-        "change_unit_id": null,
-        "judgment_kind": "product_decision",
-        "presentation": "short",
-        "question": "Choose the focused User Channel outcome.",
-        "options": [
-            {
-                "option_id": "keep",
-                "label": "Keep focused behavior",
-                "description": "Record the user-owned product decision to keep the behavior.",
-                "consequence": "Only this focused judgment is resolved.",
-                "is_default": true
+        "project_selector": fixture.project_id(),
+        "request": {
+            "operation": "create",
+            "task_id": task_id,
+            "change_unit_id": null,
+            "action": {
+                "action_type": "choice",
+                "judgment_kind": "product_decision",
+                "presentation": "short",
+                "question": "Choose the focused User Channel outcome.",
+                "options": [
+                    {
+                        "option_id": "keep",
+                        "label": "Keep focused behavior",
+                        "description": "Record the user-owned product decision to keep the behavior.",
+                        "consequence": "Only this focused user action is resolved.",
+                        "is_default": true
+                    },
+                    {
+                        "option_id": "change",
+                        "label": "Change focused behavior",
+                        "description": "Record the user-owned product decision to change the behavior.",
+                        "consequence": "Only this focused user action is resolved with the alternate option.",
+                        "is_default": false
+                    }
+                ],
+                "context": {
+                    "summary": "A compiled MCP process test user action needs a user-owned resolution.",
+                    "related_refs": [],
+                    "artifact_refs": [],
+                    "visible_risks": [],
+                    "constraints": ["The resolution covers only this pending user action."]
+                },
+                "affected_refs": [
+                    {
+                        "record_kind": "task",
+                        "record_id": task_id,
+                        "project_id": fixture.project_id(),
+                        "task_id": task_id,
+                        "produced_at_state_version": state_version
+                    }
+                ],
+                "sensitive_action_scope": null
             },
-            {
-                "option_id": "change",
-                "label": "Change focused behavior",
-                "description": "Record the user-owned product decision to change the behavior.",
-                "consequence": "Only this focused judgment is resolved with the alternate option.",
-                "is_default": false
-            }
-        ],
-        "context": {
-            "summary": "A compiled MCP process test judgment needs a user-owned answer.",
-            "related_refs": [],
-            "artifact_refs": [],
-            "visible_risks": [],
-            "constraints": ["The answer covers only this pending judgment."]
-        },
-        "affected_refs": [
-            {
-                "record_kind": "task",
-                "record_id": task_id,
-                "project_id": fixture.project_id(),
-                "task_id": task_id,
-                "produced_at_state_version": state_version
-            }
-        ],
-        "required_for": ["close_complete"],
-        "expires_at": null
+            "required_for": ["close_complete"],
+            "expires_at": null
+        }
     })
-}
-
-fn default_request_user_judgment_arguments(
-    fixture: &McpFixture,
-    task_id: &str,
-    state_version: u64,
-) -> Value {
-    let mut arguments = request_user_judgment_arguments(fixture, task_id, state_version);
-    arguments
-        .as_object_mut()
-        .expect("judgment arguments should be an object")
-        .remove("detail");
-    arguments
 }
 
 fn tools_from_response(response: &Value) -> &[Value] {
@@ -844,7 +875,8 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
             INTAKE_TOOL_NAME
                 | UPDATE_SCOPE_TOOL_NAME
                 | RECORD_RUN_TOOL_NAME
-                | REQUEST_USER_JUDGMENT_TOOL_NAME
+                | REQUEST_USER_ACTION_TOOL_NAME
+                | RESOLVE_USER_ACTION_TOOL_NAME
                 | RECONCILE_CHANGES_TOOL_NAME
                 | CLOSE_TASK_TOOL_NAME
         );

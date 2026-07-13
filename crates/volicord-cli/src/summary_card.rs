@@ -10,17 +10,17 @@ pub(crate) const DIAGNOSTIC_SUMMARY_GUARANTEE: &str =
     "Local diagnostic observation; not OS enforcement, write prevention, actor attribution proof, correctness proof, test sufficiency proof, or review completion.";
 
 pub(crate) const USER_CHANNEL_SUMMARY_GUARANTEE: &str =
-    "Local User Channel view; listing does not record a judgment or prove close readiness.";
+    "Local User Channel view; listing does not resolve a user action or prove close readiness.";
 
 pub(crate) fn render_summary_card_text(card: &SummaryCard) -> String {
     let mut output = format!(
-        "Task lifecycle: {}\nVolicord record effect for this command: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nPending user judgments: {}\nUnrecorded Product Repository changes: {}\nClose readiness: {}\nTransport: {}\n",
+        "Task lifecycle: {}\nVolicord record effect for this command: {}\nProfile: {}\nWrite Ticket: {}\nEvidence: {}\nPending user actions: {}\nUnrecorded Product Repository changes: {}\nClose readiness: {}\nTransport: {}\n",
         summary_value_text(&card.task),
         authority_record_effect_text(&card.recording),
         summary_value_text(&card.profile),
         summary_value_text(&card.write_ticket),
         summary_value_text(&card.evidence),
-        pending_user_judgments_text(&card.user_judgment),
+        pending_user_actions_text(&card.user_action),
         summary_value_text(&card.changes),
         summary_value_text(&card.close_status),
         summary_value_text(&card.transport),
@@ -48,7 +48,7 @@ fn authority_record_effect_text(value: &str) -> String {
     format!("{effect} (does not describe product-file writes or Runtime Home write capability)")
 }
 
-fn pending_user_judgments_text(value: &str) -> &str {
+fn pending_user_actions_text(value: &str) -> &str {
     match value {
         "none" => "pending (0)",
         value => summary_value_text(value),
@@ -276,12 +276,11 @@ mod tests {
             profile: "record".to_owned(),
             write_ticket: "none".to_owned(),
             evidence: "none".to_owned(),
-            user_judgment: "pending (1)".to_owned(),
+            user_action: "pending (1)".to_owned(),
             changes: "none".to_owned(),
             close_status: "blocked".to_owned(),
             transport: "local CLI".to_owned(),
-            next: "Use `volicord inbox` to list and answer pending user-owned judgments."
-                .to_owned(),
+            next: "Use `volicord inbox` to list and resolve pending user actions.".to_owned(),
             next_action: None,
             guarantee: USER_CHANNEL_SUMMARY_GUARANTEE.to_owned(),
         };
@@ -292,11 +291,11 @@ mod tests {
         assert!(text.contains(
             "Volicord record effect for this command: none (does not describe product-file writes or Runtime Home write capability)"
         ));
-        assert!(text.contains("Pending user judgments: pending (1)"));
+        assert!(text.contains("Pending user actions: pending (1)"));
         assert!(text.contains("Unrecorded Product Repository changes: none"));
         assert!(text.contains("Close readiness: blocked"));
         assert!(text.contains(
-            "Primary next action: Use the CLI inbox to list and answer pending user-owned judgments."
+            "Primary next action: Use the CLI inbox to list and resolve pending user actions."
         ));
         assert!(text.contains("  Run:\n    volicord inbox\n"));
         assert!(!text.contains("Primary next action: Use `volicord inbox`"));
@@ -311,7 +310,7 @@ mod tests {
             profile: "not_selected".to_owned(),
             write_ticket: "not_selected".to_owned(),
             evidence: "not_selected".to_owned(),
-            user_judgment: "none".to_owned(),
+            user_action: "none".to_owned(),
             changes: "not_selected".to_owned(),
             close_status: "not_selected".to_owned(),
             transport: "local CLI".to_owned(),
@@ -327,7 +326,7 @@ mod tests {
             "Volicord record effect for this command: local diagnostic observation only (does not describe product-file writes or Runtime Home write capability)"
         ));
         assert!(text.contains("Profile: not shown in this view"));
-        assert!(text.contains("Pending user judgments: pending (0)"));
+        assert!(text.contains("Pending user actions: pending (0)"));
         assert!(text.contains("Close readiness: not shown in this view"));
         assert!(text.contains("Primary next action: none"));
         assert!(!text.contains("not_selected"));
@@ -350,7 +349,7 @@ mod tests {
                 profile: "record".to_owned(),
                 write_ticket: "none".to_owned(),
                 evidence: state.to_owned(),
-                user_judgment: "none".to_owned(),
+                user_action: "none".to_owned(),
                 changes: "none".to_owned(),
                 close_status: "blocked".to_owned(),
                 transport: "local CLI".to_owned(),

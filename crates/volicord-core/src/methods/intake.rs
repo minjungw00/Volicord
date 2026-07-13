@@ -43,6 +43,7 @@ impl CoreService {
             project_state,
             request.clone(),
             &prepared.context.verified_invocation,
+            &prepared.operation_now,
         ) {
             Ok(plan) => plan,
             Err(error) => return plan_error_response(&request.envelope, project_state, error),
@@ -82,7 +83,10 @@ fn plan_intake(
     project_state: &ProjectStateHeader,
     mut request: volicord_types::IntakeRequest,
     verified_invocation: &VerifiedInvocationContext,
+    operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan, PlanError> {
+    let plan_now = *operation_now.as_datetime();
+    let user_action_now = operation_now.clone();
     let planned_state_version = project_state.state_version + 1;
     let mode = resolve_requested_mode(request.requested_mode);
     let active_task = store
@@ -353,7 +357,12 @@ fn plan_intake(
     let pending_refs = if create_new {
         Vec::new()
     } else {
-        projected_pending_user_judgment_refs(store, &task_id, planned_state_version)?
+        projected_pending_user_action_refs(
+            store,
+            &task_id,
+            planned_state_version,
+            &user_action_now,
+        )?
     };
     let blocker_refs = if create_new {
         Vec::new()
@@ -396,10 +405,11 @@ fn plan_intake(
                 pending_refs.clone(),
                 blocker_refs.clone(),
                 evidence_summary.clone(),
+                user_action_now.clone(),
             ),
             &acceptance_criteria,
         ),
-        service.now(),
+        plan_now,
     )?;
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;
@@ -410,7 +420,7 @@ fn plan_intake(
             store,
             &task_id,
             planned_state_version,
-            service.now(),
+            plan_now,
             Some(guarantee_display.clone()),
         )?
     };
@@ -420,7 +430,7 @@ fn plan_intake(
         task: &task_record,
         current_change_unit: current_change_unit.as_ref(),
         acceptance_criteria,
-        pending_user_judgment_refs: pending_refs,
+        pending_user_action_refs: pending_refs,
         blocker_refs,
         write_ticket_summary,
         evidence_summary,

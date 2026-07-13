@@ -407,8 +407,7 @@ fn status_read_only_rejects_corrupt_owner_state_without_effect() -> Result<(), B
 }
 
 #[test]
-fn resolved_judgment_null_resolution_json_is_owner_state_corruption() -> Result<(), Box<dyn Error>>
-{
+fn stored_resolution_json_null_value_is_owner_state_corruption() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "null_resolution")?;
     let after_basis = record_close_evidence(
@@ -419,8 +418,8 @@ fn resolved_judgment_null_resolution_json_is_owner_state_corruption() -> Result<
         "null_resolution",
         true,
     )?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_null_resolution_judgment",
             "idem_null_resolution_judgment",
             false,
@@ -431,8 +430,8 @@ fn resolved_judgment_null_resolution_json_is_owner_state_corruption() -> Result<
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    set_user_judgment_resolution_json(&harness, &judgment_id, None)?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    let resolution_id = set_user_action_resolution_json(&harness, &judgment_id, Some("null"))?;
     let before = harness.counts()?;
 
     let response = harness.service.check_close(
@@ -451,8 +450,8 @@ fn resolved_judgment_null_resolution_json_is_owner_state_corruption() -> Result<
 
     assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
-        &judgment_id,
+        "user_action_resolutions",
+        &resolution_id,
         "resolution_json",
         &harness.runtime_home_path,
     );
@@ -472,8 +471,8 @@ fn malformed_optional_resolution_json_rejects_close_readiness() -> Result<(), Bo
         "bad_resolution",
         true,
     )?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_resolution_judgment",
             "idem_bad_resolution_judgment",
             false,
@@ -484,8 +483,9 @@ fn malformed_optional_resolution_json_rejects_close_readiness() -> Result<(), Bo
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    set_user_judgment_resolution_json(&harness, &judgment_id, Some(corrupt_owner_json()))?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    let resolution_id =
+        set_user_action_resolution_json(&harness, &judgment_id, Some(corrupt_owner_json()))?;
     let before = harness.counts()?;
 
     let response = harness.service.check_close(
@@ -502,10 +502,10 @@ fn malformed_optional_resolution_json_rejects_close_readiness() -> Result<(), Bo
         invocation(OperationCategory::Read),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
-        &judgment_id,
+        "user_action_resolutions",
+        &resolution_id,
         "resolution_json",
         &harness.runtime_home_path,
     );
@@ -518,8 +518,8 @@ fn stored_judgment_request_wrong_field_type_rejects_record_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_request_type")?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_request_type",
             "idem_bad_request_type",
             false,
@@ -530,9 +530,9 @@ fn stored_judgment_request_wrong_field_type_rejects_record_without_effect(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
     let corrupt_request_json = r#"{"presentation":17,"question":"must not leak secret-request-path","required_for":["close_complete"],"expires_at":null}"#;
-    set_user_judgment_owner_json(
+    set_user_action_owner_json(
         &harness,
         &judgment_id,
         "request_json",
@@ -540,41 +540,40 @@ fn stored_judgment_request_wrong_field_type_rejects_record_without_effect(
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_record_bad_request_type",
             "idem_record_bad_request_type",
-            Some(3),
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
+        "user_action_requests",
         &judgment_id,
         "request_json",
         &harness.runtime_home_path,
     );
     assert_public_response_omits(&response, "secret-request-path");
     assert_eq!(harness.counts()?, before);
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "pending");
     Ok(())
 }
 
 #[test]
-fn request_user_judgment_rejects_expiration_at_clock_boundary() -> Result<(), Box<dyn Error>> {
+fn request_user_action_rejects_expiration_at_clock_boundary() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_clock(clock);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "judgment_expiry_request_exact")?;
     let before = harness.counts()?;
-    let mut request = user_judgment_request(
+    let mut request = user_action_request(
         "req_judgment_expiry_request_exact",
         "idem_judgment_expiry_request_exact",
         false,
@@ -587,7 +586,7 @@ fn request_user_judgment_rejects_expiration_at_clock_boundary() -> Result<(), Bo
 
     let response = harness
         .service
-        .request_user_judgment(request, invocation(OperationCategory::AgentWorkflow))?;
+        .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
@@ -603,13 +602,13 @@ fn request_user_judgment_rejects_expiration_at_clock_boundary() -> Result<(), Bo
 }
 
 #[test]
-fn record_user_judgment_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Error>> {
+fn resolve_user_action_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_clock(clock);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "judgment_expiry_before")?;
-    let mut request = user_judgment_request(
+    let mut request = user_action_request(
         "req_judgment_expiry_before",
         "idem_judgment_expiry_before",
         false,
@@ -624,30 +623,29 @@ fn record_user_judgment_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Er
     .into();
     let judgment = harness
         .service
-        .request_user_judgment(request, invocation(OperationCategory::AgentWorkflow))?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+        .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
-            "req_record_judgment_expiry_before",
-            "idem_record_judgment_expiry_before",
-            Some(3),
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_resolve_user_action_expiry_before",
+            "idem_resolve_user_action_expiry_before",
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
     assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "resolved");
 
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_clock(clock.clone());
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "judgment_expiry_exact")?;
-    let mut request = user_judgment_request(
+    let mut request = user_action_request(
         "req_judgment_expiry_exact",
         "idem_judgment_expiry_exact",
         false,
@@ -659,20 +657,19 @@ fn record_user_judgment_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Er
     request.expires_at = Some(volicord_types::UtcTimestamp::parse("2026-06-18T00:00:01Z")?).into();
     let judgment = harness
         .service
-        .request_user_judgment(request, invocation(OperationCategory::AgentWorkflow))?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+        .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
     clock.advance(Duration::seconds(1));
     let before = harness.counts()?;
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
-            "req_record_judgment_expiry_exact",
-            "idem_record_judgment_expiry_exact",
-            Some(3),
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_resolve_user_action_expiry_exact",
+            "idem_resolve_user_action_expiry_exact",
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
@@ -683,7 +680,7 @@ fn record_user_judgment_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Er
         "DECISION_UNRESOLVED"
     );
     assert_eq!(harness.counts()?, before);
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "expired");
     Ok(())
 }
 
@@ -693,8 +690,8 @@ fn stored_judgment_request_invalid_expiration_rejects_record_without_effect(
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "bad_request_expiration")?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_request_expiration",
             "idem_bad_request_expiration",
             false,
@@ -705,9 +702,9 @@ fn stored_judgment_request_invalid_expiration_rejects_record_without_effect(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
     let corrupt_request_json = r#"{"presentation":"short","question":"must not leak secret-expiry-path","required_for":["close_complete"],"expires_at":"tomorrow"}"#;
-    set_user_judgment_owner_json(
+    set_user_action_owner_json(
         &harness,
         &judgment_id,
         "request_json",
@@ -715,29 +712,28 @@ fn stored_judgment_request_invalid_expiration_rejects_record_without_effect(
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_record_bad_request_expiration",
             "idem_record_bad_request_expiration",
-            Some(3),
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
+        "user_action_requests",
         &judgment_id,
         "request_json",
         &harness.runtime_home_path,
     );
     assert_public_response_omits(&response, "secret-expiry-path");
     assert_eq!(harness.counts()?, before);
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "pending");
     Ok(())
 }
 
@@ -746,8 +742,8 @@ fn stored_judgment_request_missing_required_field_rejects_record_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_request_missing")?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_request_missing",
             "idem_bad_request_missing",
             false,
@@ -758,10 +754,10 @@ fn stored_judgment_request_missing_required_field_rejects_record_without_effect(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
     let corrupt_request_json =
         r#"{"presentation":"short","required_for":["close_complete"],"expires_at":null}"#;
-    set_user_judgment_owner_json(
+    set_user_action_owner_json(
         &harness,
         &judgment_id,
         "request_json",
@@ -769,29 +765,28 @@ fn stored_judgment_request_missing_required_field_rejects_record_without_effect(
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_record_bad_request_missing",
             "idem_record_bad_request_missing",
-            Some(3),
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
+        "user_action_requests",
         &judgment_id,
         "request_json",
         &harness.runtime_home_path,
     );
     assert_public_response_omits(&response, corrupt_request_json);
     assert_eq!(harness.counts()?, before);
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "pending");
     Ok(())
 }
 
@@ -809,8 +804,8 @@ fn stored_judgment_resolution_incompatible_branches_rejects_close_without_effect
         "bad_resolution_branch",
         true,
     )?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_resolution_branch_judgment",
             "idem_bad_resolution_branch_judgment",
             false,
@@ -821,8 +816,8 @@ fn stored_judgment_resolution_incompatible_branches_rejects_close_without_effect
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    set_user_judgment_resolution_json(
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    let resolution_id = set_user_action_resolution_json(
         &harness,
         &judgment_id,
         Some(
@@ -861,10 +856,10 @@ fn stored_judgment_resolution_incompatible_branches_rejects_close_without_effect
         invocation(OperationCategory::Read),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
-        &judgment_id,
+        "user_action_resolutions",
+        &resolution_id,
         "resolution_json",
         &harness.runtime_home_path,
     );
@@ -877,8 +872,8 @@ fn stored_judgment_basis_invalid_revision_type_rejects_record_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_basis_revision")?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_basis_revision",
             "idem_bad_basis_revision",
             false,
@@ -889,8 +884,8 @@ fn stored_judgment_basis_invalid_revision_type_rejects_record_without_effect(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    set_user_judgment_owner_json(
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    set_user_action_owner_json(
         &harness,
         &judgment_id,
         "basis_json",
@@ -912,28 +907,27 @@ fn stored_judgment_basis_invalid_revision_type_rejects_record_without_effect(
     )?;
     let before = harness.counts()?;
 
-    let response = harness.service.record_user_judgment(
-        record_judgment_request(
+    let response = harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_record_bad_basis_revision",
             "idem_record_bad_basis_revision",
-            Some(3),
+            None,
             &task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
+        "user_action_requests",
         &judgment_id,
         "basis_json",
         &harness.runtime_home_path,
     );
     assert_eq!(harness.counts()?, before);
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "pending");
     Ok(())
 }
 
@@ -950,8 +944,8 @@ fn stored_accepted_risk_missing_risk_id_rejects_close_without_effect() -> Result
         "bad_accepted_risk",
         vec![residual_risk_input("Risk requiring explicit acceptance.")],
     )?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_accepted_risk_judgment",
             "idem_bad_accepted_risk_judgment",
             false,
@@ -962,8 +956,8 @@ fn stored_accepted_risk_missing_risk_id_rejects_close_without_effect() -> Result
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    set_user_judgment_resolution_json(
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    let resolution_id = set_user_action_resolution_json(
         &harness,
         &judgment_id,
         Some(
@@ -1008,10 +1002,10 @@ fn stored_accepted_risk_missing_risk_id_rejects_close_without_effect() -> Result
         invocation(OperationCategory::Read),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
-        &judgment_id,
+        "user_action_resolutions",
+        &resolution_id,
         "resolution_json",
         &harness.runtime_home_path,
     );
@@ -1343,8 +1337,8 @@ fn close_task_complete_blocks_missing_final_acceptance() -> Result<(), Box<dyn E
     let blocker = close_blocker_by_code(&response.response_value, "missing_final_acceptance");
     let action = &blocker["next_actions"][0];
     assert_eq!(action["presentation_role"], "primary");
-    assert_eq!(action["action_kind"], "request_user_judgment");
-    assert_eq!(action["owner_method"], "volicord.request_user_judgment");
+    assert_eq!(action["action_kind"], "request_user_action");
+    assert_eq!(action["owner_method"], "volicord.request_user_action");
     assert_eq!(
         action["allowed_operation_categories"],
         json!(["agent_workflow"])
@@ -1358,11 +1352,11 @@ fn close_task_complete_blocks_missing_final_acceptance() -> Result<(), Box<dyn E
         .expect("final-acceptance action label should be text")
         .contains("Agent Connection"));
     assert_eq!(
-        response.response_value["state"]["pending_user_judgment_refs"],
+        response.response_value["state"]["pending_user_action_refs"],
         json!([])
     );
     assert_eq!(
-        response.response_value["pending_judgment_inbox_items"],
+        response.response_value["pending_user_action_inbox_items"],
         json!([])
     );
     assert_eq!(
@@ -1379,7 +1373,7 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "close_pending_kind")?;
     let after_evidence =
         record_close_evidence(&harness, &task_id, &change_unit_id, 2, "pending_kind", true)?;
-    let mut product_request = user_judgment_request(
+    let mut product_request = user_action_request(
         "req_close_product_pending",
         "idem_close_product_pending",
         false,
@@ -1388,18 +1382,19 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    product_request.required_for = vec![volicord_types::JudgmentRequiredFor::CloseComplete];
-    let requested = harness.service.request_user_judgment(
+    product_request.required_for = vec![volicord_types::UserActionRequiredFor::CloseComplete];
+    let requested = harness.service.request_user_action(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let requested_judgment_id = response_record_id(&requested.response_value, "user_judgment_ref");
+    let requested_judgment_id =
+        response_record_id(&requested.response_value, "user_action_request_ref");
     assert_eq!(
-        requested.response_value["inbox_item"]["judgment_id"],
+        requested.response_value["inbox_item"]["user_action_request_id"],
         requested_judgment_id.as_str()
     );
     assert_eq!(
-        requested.response_value["inbox_item"]["choices"][0]["choice_id"],
+        requested.response_value["inbox_item"]["form"]["choices"][0]["choice_id"],
         "accept"
     );
     assert_eq!(
@@ -1428,7 +1423,7 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         .as_array()
         .expect("fallbacks should be an array")
         .is_empty());
-    let mut prepare_write_request = user_judgment_request(
+    let mut prepare_write_request = user_action_request(
         "req_close_prepare_write_pending",
         "idem_close_prepare_write_pending",
         false,
@@ -1437,13 +1432,15 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         Some(&change_unit_id),
         JudgmentKind::TechnicalDecision,
     );
-    prepare_write_request.required_for = vec![volicord_types::JudgmentRequiredFor::PrepareWrite];
-    let prepare_write_requested = harness.service.request_user_judgment(
+    prepare_write_request.required_for = vec![volicord_types::UserActionRequiredFor::PrepareWrite];
+    let prepare_write_requested = harness.service.request_user_action(
         prepare_write_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let prepare_write_judgment_id =
-        response_record_id(&prepare_write_requested.response_value, "user_judgment_ref");
+    let prepare_write_judgment_id = response_record_id(
+        &prepare_write_requested.response_value,
+        "user_action_request_ref",
+    );
     let after_final = record_final_acceptance(
         &harness,
         &task_id,
@@ -1468,25 +1465,28 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "pending_user_judgment");
+    assert_close_blocker(&response.response_value, "pending_user_action");
     assert_close_blocker_category(
         &response.response_value,
-        "pending_user_judgment",
-        "pending_user_judgment",
+        "pending_user_action",
+        "pending_user_action",
     );
-    let close_inbox = response.response_value["pending_judgment_inbox_items"]
+    let close_inbox = response.response_value["pending_user_action_inbox_items"]
         .as_array()
         .expect("close pending judgment inbox should be an array");
     assert_eq!(close_inbox.len(), 1);
-    assert_eq!(close_inbox[0]["judgment_id"], requested_judgment_id);
+    assert_eq!(
+        close_inbox[0]["user_action_request_id"],
+        requested_judgment_id
+    );
     assert!(
         close_inbox
             .iter()
-            .all(|item| item["judgment_id"] != prepare_write_judgment_id),
+            .all(|item| item["user_action_request_id"] != prepare_write_judgment_id),
         "prepare-write-only judgments must not enter the close inbox: {close_inbox:?}"
     );
     assert_eq!(
-        response.response_value["state"]["pending_user_judgment_refs"]
+        response.response_value["state"]["pending_user_action_refs"]
             .as_array()
             .expect("state pending judgment refs should be an array")
             .len(),
@@ -1508,8 +1508,8 @@ fn close_complete_ignores_pending_cancellation_authority() -> Result<(), Box<dyn
         "ignore_cancel",
         true,
     )?;
-    harness.service.request_user_judgment(
-        user_judgment_request(
+    harness.service.request_user_action(
+        user_action_request(
             "req_close_cancel_pending",
             "idem_close_cancel_pending",
             false,
@@ -1543,7 +1543,7 @@ fn close_complete_ignores_pending_cancellation_authority() -> Result<(), Box<dyn
     )?;
 
     assert_eq!(response.response_value["close_state"], "closed");
-    assert_no_close_blocker(&response.response_value, "pending_user_judgment");
+    assert_no_close_blocker(&response.response_value, "pending_user_action");
     Ok(())
 }
 
@@ -2461,7 +2461,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -2606,7 +2606,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -3033,7 +3033,7 @@ fn guarded_close_blocks_configured_guard_before_observation() -> Result<(), Box<
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -3679,6 +3679,101 @@ fn guarded_close_blocks_write_ticket_issue_from_guard_event() -> Result<(), Box<
 }
 
 #[test]
+fn guarded_close_uses_exact_latest_instant_and_unions_co_latest_events(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let guard_installation_id = record_guard_installation(
+        &harness,
+        "guarded_exact_latest",
+        "detective",
+        "active",
+        "{}",
+    )?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_exact_latest")?;
+    let after_evidence = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "guarded_exact_latest",
+        true,
+    )?;
+    record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_evidence,
+        "guarded_exact_latest",
+    )?;
+
+    for (guard_event_id, result_json, occurred_at) in [
+        (
+            "guard_event_zzzz_submillisecond_earlier",
+            r#"{}"#,
+            "2026-06-30T00:06:00.000000499Z",
+        ),
+        (
+            "guard_event_aaaa_submillisecond_later_issue",
+            r#"{"reasons":[{"code":"write_ticket_missing"}]}"#,
+            "2026-06-30T00:06:00.000000501Z",
+        ),
+        (
+            "guard_event_zzzz_co_latest_clean",
+            r#"{}"#,
+            "2026-06-30T00:06:00.000000501Z",
+        ),
+    ] {
+        insert_guard_event(
+            &harness.runtime_home_path,
+            PROJECT_ID,
+            GuardEventInsert {
+                guard_event_id: guard_event_id.to_owned(),
+                session_id: None,
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                guard_installation_id: Some(guard_installation_id.clone()),
+                event_kind: "prepare_write".to_owned(),
+                decision: "allow".to_owned(),
+                subject_json: "{}".to_owned(),
+                result_json: result_json.to_owned(),
+                occurred_at: occurred_at.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+    }
+    let before = harness.counts()?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_guarded_exact_latest",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(
+        &response.response_value,
+        "guard_write_ticket_missing_or_stale",
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["missing_or_stale_write_ticket"],
+        true
+    );
+    assert_eq!(
+        response.response_value["guard_health"]["last_guard_event_at"],
+        "2026-06-30T00:06:00.000000501Z"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn guarded_close_blocks_write_ticket_path_scope_guard_event() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
@@ -3797,7 +3892,8 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn Error>> {
+fn guarded_pending_user_action_displays_paths_and_prefers_available_cli(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     record_guard_installation(&harness, "guarded_pending", "detective", "active", "{}")?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "guarded_pending")?;
@@ -3809,7 +3905,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         "guarded_pending",
         true,
     )?;
-    let mut product_request = user_judgment_request(
+    let mut product_request = user_action_request(
         "req_guarded_pending_judgment",
         "idem_guarded_pending_judgment",
         false,
@@ -3818,29 +3914,31 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    product_request.required_for = vec![volicord_types::JudgmentRequiredFor::CloseComplete];
-    let requested = harness.service.request_user_judgment(
+    product_request.required_for = vec![volicord_types::UserActionRequiredFor::CloseComplete];
+    let requested = harness.service.request_user_action(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let requested_judgment_id = response_record_id(&requested.response_value, "user_judgment_ref");
+    let requested_judgment_id =
+        response_record_id(&requested.response_value, "user_action_request_ref");
     assert_eq!(
-        requested.response_value["inbox_item"]["judgment_id"],
+        requested.response_value["inbox_item"]["user_action_request_id"],
         requested_judgment_id.as_str()
     );
     assert_eq!(
-        requested.response_value["inbox_item"]["choices"][0]["choice_id"],
+        requested.response_value["inbox_item"]["form"]["choices"][0]["choice_id"],
         "accept"
     );
     assert_eq!(
         requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
-        "prompt_capture"
+        "cli"
     );
-    assert!(requested.response_value["inbox_item"]["fallbacks"]
-        .as_array()
-        .expect("fallbacks should be an array")
-        .iter()
-        .any(|fallback| fallback["kind"] == "cli"));
+    let availability = &requested.response_value["inbox_item"]["answer_path_availability"];
+    assert_eq!(channel_path(availability, "cli")["available"], true);
+    assert_eq!(
+        channel_path(availability, "prompt_capture")["available"],
+        false
+    );
     let after_final = record_final_acceptance(
         &harness,
         &task_id,
@@ -3865,16 +3963,16 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "pending_user_judgment");
+    assert_close_blocker(&response.response_value, "pending_user_action");
     assert_eq!(
-        response.response_value["pending_judgment_inbox_items"][0]["judgment_id"],
+        response.response_value["pending_user_action_inbox_items"][0]["user_action_request_id"],
         requested_judgment_id.as_str()
     );
     assert_eq!(
-        response.response_value["pending_judgment_inbox_items"][0]["requirement_status"],
+        response.response_value["pending_user_action_inbox_items"][0]["requirement_status"],
         "required"
     );
-    let close_item = &response.response_value["pending_judgment_inbox_items"][0];
+    let close_item = &response.response_value["pending_user_action_inbox_items"][0];
     assert_eq!(
         close_item["preferred_capture_path"]["kind"],
         "prompt_capture"
@@ -3891,7 +3989,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
     );
     assert_eq!(
         channel_path(close_availability, "prompt_capture")["status"],
-        "observed"
+        "available"
     );
     assert_eq!(
         channel_path(close_availability, "local_web_consent")["available"],
@@ -3902,11 +4000,11 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         .as_array()
         .expect("blockers should be an array")
         .iter()
-        .find(|blocker| blocker["code"] == "pending_user_judgment")
+        .find(|blocker| blocker["code"] == "pending_user_action")
         .expect("pending judgment blocker should be present");
     assert_eq!(
         pending["next_actions"][0]["owner_method"],
-        "volicord.record_user_judgment"
+        "volicord.resolve_user_action"
     );
     assert!(pending["next_actions"][0]["expected_state_version"].is_null());
     let guidance = pending["next_actions"][0]["blocking_question"]
@@ -3931,7 +4029,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -3956,7 +4054,8 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
     );
     assert_eq!(channel_path(status_availability, "cli")["available"], true);
     assert_eq!(
-        status.response_value["pending_judgment_inbox_items"][0]["preferred_capture_path"]["kind"],
+        status.response_value["pending_user_action_inbox_items"][0]["preferred_capture_path"]
+            ["kind"],
         "prompt_capture"
     );
 
@@ -3971,7 +4070,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -3987,7 +4086,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         true
     );
     assert!(
-        local_web_status.response_value["pending_judgment_inbox_items"][0]["fallbacks"]
+        local_web_status.response_value["pending_user_action_inbox_items"][0]["fallbacks"]
             .as_array()
             .expect("local web fallbacks should be an array")
             .iter()
@@ -4005,7 +4104,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -4023,7 +4122,7 @@ fn guarded_pending_judgment_displays_user_answer_paths() -> Result<(), Box<dyn E
         true
     );
     assert_eq!(
-        host_elicitation_status.response_value["pending_judgment_inbox_items"][0]
+        host_elicitation_status.response_value["pending_user_action_inbox_items"][0]
             ["preferred_capture_path"]["kind"],
         "mcp_elicitation"
     );
@@ -4053,7 +4152,7 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
         "guarded_pending_prompt_capture",
         true,
     )?;
-    let mut product_request = user_judgment_request(
+    let mut product_request = user_action_request(
         "req_guarded_pending_prompt_capture_judgment",
         "idem_guarded_pending_prompt_capture_judgment",
         false,
@@ -4062,8 +4161,8 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    product_request.required_for = vec![volicord_types::JudgmentRequiredFor::CloseComplete];
-    harness.service.request_user_judgment(
+    product_request.required_for = vec![volicord_types::UserActionRequiredFor::CloseComplete];
+    harness.service.request_user_action(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -4086,7 +4185,7 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -4099,11 +4198,12 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
     assert_eq!(status.response_value["close_state"], "blocked");
     assert_pending_judgment_prompt_capture_guidance(&status.response_value);
     assert_eq!(
-        status.response_value["pending_judgment_inbox_items"][0]["preferred_capture_path"]["kind"],
+        status.response_value["pending_user_action_inbox_items"][0]["preferred_capture_path"]
+            ["kind"],
         "prompt_capture"
     );
     assert!(
-        status.response_value["pending_judgment_inbox_items"][0]["fallbacks"]
+        status.response_value["pending_user_action_inbox_items"][0]["fallbacks"]
             .as_array()
             .expect("status inbox fallbacks should be an array")
             .iter()
@@ -4126,7 +4226,8 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
     assert_eq!(check.response_value["close_state"], "blocked");
     assert_pending_judgment_prompt_capture_guidance(&check.response_value);
     assert_eq!(
-        check.response_value["pending_judgment_inbox_items"][0]["preferred_capture_path"]["kind"],
+        check.response_value["pending_user_action_inbox_items"][0]["preferred_capture_path"]
+            ["kind"],
         "prompt_capture"
     );
     assert_eq!(
@@ -4472,7 +4573,7 @@ fn guarded_watcher_links_deterministic_active_write_ticket() -> Result<(), Box<d
         "SELECT metadata_json
            FROM session_watch_observations
           WHERE project_id = ?1
-          ORDER BY observed_at DESC, watch_observation_id DESC
+          ORDER BY julianday(observed_at) DESC, watch_observation_id DESC
           LIMIT 1",
         [PROJECT_ID],
         |row| row.get(0),
@@ -4759,11 +4860,11 @@ fn rejected_cancellation_authority_does_not_cancel_task() -> Result<(), Box<dyn 
     )?;
 
     assert_eq!(
-        user_judgment_resolution_outcome(&harness, &judgment_id)?,
+        user_action_resolution_outcome(&harness, &judgment_id)?,
         Some("rejected".to_owned())
     );
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "cancellation_rejected");
+    assert_close_blocker(&response.response_value, "rejected_cancellation_authority");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -4789,8 +4890,8 @@ fn scope_change_stales_cancellation_authority() -> Result<(), Box<dyn Error>> {
     let after_scope = scope.response_value["base"]["state_version"]
         .as_u64()
         .expect("state_version should be present");
-    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "stale");
-    assert_eq!(user_judgment_basis_status(&harness, &judgment_id)?, "stale");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "stale");
+    assert_eq!(user_action_basis_status(&harness, &judgment_id)?, "stale");
     let before = harness.counts()?;
 
     let response = harness.service.close_task(
@@ -4808,7 +4909,7 @@ fn scope_change_stales_cancellation_authority() -> Result<(), Box<dyn Error>> {
     )?;
 
     assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "cancellation_judgment_stale");
+    assert_close_blocker(&response.response_value, "stale_cancellation_authority");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }

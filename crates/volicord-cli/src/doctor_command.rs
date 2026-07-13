@@ -429,7 +429,7 @@ fn privacy_stores() -> Vec<&'static str> {
         "Runtime Home identity, registry path, storage profile, installation profile, command paths, and setup metadata",
         "Product Repository registrations, project home paths, project state database paths, and Agent Connection records",
         "detective host-hook installation records, capability metadata, policy hashes, hook observation timestamps, and prompt-capture availability state",
-        "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel judgments, and artifacts when those features are used",
+        "project state records for tasks, change units, write tickets, evidence metadata, close-readiness records, User Channel actions, and artifacts when those features are used",
         "session-watch baselines and observations with relative paths, file hashes, file sizes, skip reasons, scan summaries, timestamps, and observation links",
         "bounded diagnostics.sqlite session, connection, project, transport, host, build, tool, categorical outcome, counter, byte-size, and latency observations when diagnostics are present",
     ]
@@ -439,7 +439,7 @@ fn privacy_does_not_store() -> Vec<&'static str> {
     vec![
         "session-watch snapshots do not store Product Repository file contents",
         "prompt-capture availability and verification-code records do not include raw prompt text by default",
-        "diagnostics.sqlite does not store prompt bodies, Product Repository paths or file contents, error bodies, secrets, or Judgment question, answer, rationale, or note text",
+        "diagnostics.sqlite does not store prompt bodies, Product Repository paths or file contents, error bodies, secrets, or user-action question, choice, rationale, note, or observation-summary text",
         "doctor --privacy-footprint reports categories and counts, not stored row bodies",
     ]
 }
@@ -3225,7 +3225,7 @@ fn doctor_summary_card(
         profile: doctor_selected_profile_from_checks(checks),
         write_ticket: "not_selected".to_owned(),
         evidence: "not_selected".to_owned(),
-        user_judgment: "not_selected".to_owned(),
+        user_action: "not_selected".to_owned(),
         changes: "not_selected".to_owned(),
         close_status: "not_selected".to_owned(),
         transport: "local CLI".to_owned(),

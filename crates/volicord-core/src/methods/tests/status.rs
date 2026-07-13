@@ -81,6 +81,130 @@ fn status_renders_effective_write_ticket_expiration_without_mutating_row(
 }
 
 #[test]
+fn status_rejects_unrepresentable_stored_write_ticket_expiry_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "status_write_ticket_clock_range")?;
+    let write_ticket_id = "wa_status_clock_range";
+    insert_active_write_ticket_with_timestamps(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        write_ticket_id,
+        2,
+        "2026-06-18T00:00:00Z",
+        "2026-06-18T00:15:00Z",
+    )?;
+    harness.conn()?.execute(
+        "UPDATE write_tickets
+            SET expires_at = '9999-12-31T23:59:59-23:59'
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
+    )?;
+    let before = harness.counts()?;
+    let before_floor: String = harness.conn()?.query_row(
+        "SELECT updated_at FROM project_state WHERE project_id = ?1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+
+    let response = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_write_ticket_clock_range",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_owner_state_value_rejection(
+        &response,
+        "write_tickets",
+        write_ticket_id,
+        "expires_at",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    let after_floor: String = harness.conn()?.query_row(
+        "SELECT updated_at FROM project_state WHERE project_id = ?1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+    assert_eq!(after_floor, before_floor);
+    Ok(())
+}
+
+#[test]
+fn status_selects_latest_write_ticket_by_basis_state_version_when_ids_disagree(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "status_write_ticket_authority_order")?;
+    let requested = harness.service.request_user_action(
+        user_action_request(
+            "req_status_write_ticket_authority_order",
+            "idem_status_write_ticket_authority_order",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(requested.response_value["base"]["state_version"], 3);
+    for (write_ticket_id, basis_state_version) in [("wa_z_old", 1), ("wa_a_new", 2)] {
+        insert_active_write_ticket_with_timestamps(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            write_ticket_id,
+            basis_state_version,
+            "2026-06-18T00:00:00.000000500Z",
+            "2999-01-01T00:00:00Z",
+        )?;
+    }
+    harness.use_clock(ManualClock::at("2026-06-18T00:00:01Z"));
+    let before = harness.counts()?;
+
+    let response = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_write_ticket_authority_order_read",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(
+        response.response_value["write_ticket_summary"]["status"],
+        "stale"
+    );
+    assert_eq!(
+        response.response_value["write_ticket_summary"]["basis_state_version"],
+        2
+    );
+    assert_eq!(
+        response.response_value["write_ticket_summary"]["write_ticket_ref"]["record_id"],
+        "wa_a_new"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_evidence")?;
@@ -99,7 +223,7 @@ fn status_include_evidence_returns_current_coverage() -> Result<(), Box<dyn Erro
             envelope: envelope("req_status_evidence", None, false, None, Some(&task_id)),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: true,
                 close: false,
@@ -280,7 +404,7 @@ fn status_close_include_matches_check_close_blockers() -> Result<(), Box<dyn Err
             envelope: envelope("req_status_close", None, false, None, Some(&task_id)),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -416,7 +540,7 @@ fn next_action_dedup_ignores_presentation_role_and_selection_uses_primary_role()
         MethodName::PrepareWrite,
         MethodName::StageArtifact,
         MethodName::RecordRun,
-        MethodName::RequestUserJudgment,
+        MethodName::RequestUserAction,
         MethodName::CloseTask,
     ] {
         assert_eq!(
@@ -425,7 +549,7 @@ fn next_action_dedup_ignores_presentation_role_and_selection_uses_primary_role()
         );
     }
     assert_eq!(
-        allowed_operation_categories(Some(MethodName::RecordUserJudgment)),
+        allowed_operation_categories(Some(MethodName::ResolveUserAction)),
         vec![OperationCategory::UserOnly]
     );
     assert_eq!(
@@ -485,7 +609,7 @@ fn next_action_dedup_ignores_presentation_role_and_selection_uses_primary_role()
     assert_eq!(deduplicated_refs[0].required_refs, vec![newer_ref]);
 
     let mut user_only_action = NextActionSummary {
-        owner_method: Some(MethodName::RecordUserJudgment),
+        owner_method: Some(MethodName::ResolveUserAction),
         expected_state_version: RequiredNullable::some(99),
         ..primary.clone()
     };
@@ -575,7 +699,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             envelope: envelope("req_status_flags_none", None, false, None, Some(&task_id)),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -618,7 +742,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             ),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: true,
                 close: false,
@@ -644,7 +768,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             envelope: envelope("req_status_flags_close", None, false, None, Some(&task_id)),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: true,
@@ -671,7 +795,7 @@ fn status_include_false_omits_optional_sections_without_effect() -> Result<(), B
             ),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -717,7 +841,7 @@ fn status_receipt_fails_closed_on_corrupt_close_basis_for_every_include_shape(
             ),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -748,7 +872,7 @@ fn status_receipt_fails_closed_on_corrupt_close_basis_for_every_include_shape(
             ),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: true,
@@ -810,7 +934,7 @@ fn status_guarantee_include_false_does_not_read_corrupt_profile() -> Result<(), 
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: true,
@@ -837,7 +961,7 @@ fn status_guarantee_include_false_does_not_read_corrupt_profile() -> Result<(), 
             ),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -879,7 +1003,7 @@ fn status_guarantee_include_true_rejects_unsupported_profile_state() -> Result<(
             envelope: envelope("req_status_profile_detective", None, false, None, None),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -920,7 +1044,7 @@ fn status_guarantee_include_true_rejects_missing_profile_fields() -> Result<(), 
             envelope: envelope("req_status_profile_missing", None, false, None, None),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -953,7 +1077,7 @@ fn guarantee_display_uses_verified_invocation_without_profile_elevation(
             envelope: envelope("req_status_guarantee_invocation", None, false, None, None),
             include: StatusInclude {
                 task: false,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: false,
                 close: false,
@@ -1079,7 +1203,7 @@ fn status_close_shows_stale_final_acceptance_blocker_context() -> Result<(), Box
         invocation(OperationCategory::Read),
     )?;
 
-    assert_eq!(user_judgment_status(&harness, &final_judgment_id)?, "stale");
+    assert_eq!(user_action_status(&harness, &final_judgment_id)?, "stale");
     assert_close_blocker(&response.response_value, "stale_final_acceptance");
     let final_blocker = response.response_value["close_blockers"]
         .as_array()

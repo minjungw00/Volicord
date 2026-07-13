@@ -1,6 +1,6 @@
 use std::{error::Error, fmt, str::FromStr};
 
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Datelike, Duration, SecondsFormat, Utc};
 use schemars::{
     gen::SchemaGenerator,
     schema::{InstanceType, Schema, SchemaObject, SingleOrVec},
@@ -41,6 +41,33 @@ impl UtcTimestamp {
     /// Returns the deterministic RFC 3339 UTC wire representation.
     pub fn to_canonical_string(&self) -> String {
         self.0.to_rfc3339_opts(SecondsFormat::AutoSi, true)
+    }
+
+    /// Confirms this instant has a canonical RFC 3339 UTC representation with
+    /// the four-digit year shape used by public and durable timestamps.
+    pub fn ensure_canonical_rfc3339_representable(&self) -> Result<(), UtcTimestampRangeError> {
+        if !(0..=9999).contains(&self.0.year()) {
+            return Err(UtcTimestampRangeError);
+        }
+        let canonical = self.to_canonical_string();
+        let reparsed = Self::parse(&canonical).map_err(|_| UtcTimestampRangeError)?;
+        if reparsed == *self && reparsed.to_canonical_string() == canonical {
+            Ok(())
+        } else {
+            Err(UtcTimestampRangeError)
+        }
+    }
+
+    /// Adds a signed duration without overflowing Chrono or leaving the
+    /// canonical four-digit RFC 3339 timestamp range.
+    pub fn checked_add(&self, duration: Duration) -> Result<Self, UtcTimestampRangeError> {
+        let timestamp = self
+            .0
+            .checked_add_signed(duration)
+            .map(Self::from_datetime)
+            .ok_or(UtcTimestampRangeError)?;
+        timestamp.ensure_canonical_rfc3339_representable()?;
+        Ok(timestamp)
     }
 }
 
@@ -109,6 +136,21 @@ impl fmt::Display for UtcTimestampParseError {
 
 impl Error for UtcTimestampParseError {}
 
+/// Error returned when timestamp arithmetic cannot produce the canonical
+/// four-digit RFC 3339 representation required by public and durable values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtcTimestampRangeError;
+
+impl fmt::Display for UtcTimestampRangeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            "timestamp must be representable as canonical RFC 3339 UTC with a four-digit year",
+        )
+    }
+}
+
+impl Error for UtcTimestampRangeError {}
+
 /// Supported public Volicord method names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum MethodName {
@@ -130,12 +172,10 @@ pub enum MethodName {
     StageArtifact,
     #[serde(rename = "volicord.record_run")]
     RecordRun,
-    #[serde(rename = "volicord.request_user_judgment")]
-    RequestUserJudgment,
-    #[serde(rename = "volicord.record_user_judgment")]
-    RecordUserJudgment,
-    #[serde(rename = "volicord.record_user_observation")]
-    RecordUserObservation,
+    #[serde(rename = "volicord.request_user_action")]
+    RequestUserAction,
+    #[serde(rename = "volicord.resolve_user_action")]
+    ResolveUserAction,
     #[serde(rename = "volicord.reconcile_changes")]
     ReconcileChanges,
     #[serde(rename = "volicord.close_task")]
@@ -155,9 +195,8 @@ impl MethodName {
             Self::PrepareWrite => "volicord.prepare_write",
             Self::StageArtifact => "volicord.stage_artifact",
             Self::RecordRun => "volicord.record_run",
-            Self::RequestUserJudgment => "volicord.request_user_judgment",
-            Self::RecordUserJudgment => "volicord.record_user_judgment",
-            Self::RecordUserObservation => "volicord.record_user_observation",
+            Self::RequestUserAction => "volicord.request_user_action",
+            Self::ResolveUserAction => "volicord.resolve_user_action",
             Self::ReconcileChanges => "volicord.reconcile_changes",
             Self::CloseTask => "volicord.close_task",
         }
@@ -278,8 +317,8 @@ pub enum NextActionKind {
     PrepareWrite,
     StageArtifact,
     RecordRun,
-    RequestUserJudgment,
-    RecordUserJudgment,
+    RequestUserAction,
+    ResolveUserAction,
     ReconcileChanges,
     CloseTask,
 }
@@ -408,11 +447,11 @@ pub const VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB: &str = "local_user_local_web"
 /// Controlled binding basis value for repository tests and fixtures.
 pub const VERIFICATION_BASIS_TEST_FIXTURE_BINDING: &str = "test_fixture_binding";
 
-/// Builds the copy-paste chat verification code for one pending judgment and connection.
-pub fn chat_judgment_verification_code(
+/// Builds the copy-paste chat verification code for one pending user action and connection.
+pub fn chat_user_action_verification_code(
     project_id: &str,
     task_id: &str,
-    judgment_id: &str,
+    user_action_request_id: &str,
     requested_at: &str,
     connection_id: &str,
 ) -> String {
@@ -420,10 +459,10 @@ pub fn chat_judgment_verification_code(
 
     let mut hasher = Sha256::new();
     for part in [
-        "chat_judgment_verification_code",
+        "chat_user_action_verification_code",
         project_id,
         task_id,
-        judgment_id,
+        user_action_request_id,
         requested_at,
         connection_id,
     ] {
@@ -795,8 +834,8 @@ impl PromptCaptureStatus {
         }
     }
 
-    /// Returns true when chat judgment commands may be presented or recorded.
-    pub const fn allows_chat_judgment_commands(self) -> bool {
+    /// Returns true when chat user-action commands may be presented or recorded.
+    pub const fn allows_chat_user_action_commands(self) -> bool {
         matches!(self, Self::Configured | Self::Observed | Self::Active)
     }
 }
@@ -855,13 +894,13 @@ pub enum StateRecordKind {
     Task,
     ChangeUnit,
     WriteTicket,
-    UserJudgment,
+    UserActionRequest,
+    UserActionResolution,
     Run,
     EvidenceSummary,
     EvidenceObservation,
     EvidenceCaptureIntent,
     EvidenceProducer,
-    UserEvidenceObservation,
     Artifact,
     Blocker,
     TaskEvent,
@@ -1073,7 +1112,7 @@ pub enum ChangeUnitEffectKind {
     ProductFileWrite,
     ArtifactRegistration,
     RunRecording,
-    UserJudgmentRequest,
+    UserActionRequest,
     EvidenceUpdate,
     SensitiveAction,
     ExternalNetwork,
@@ -1174,7 +1213,7 @@ pub enum PlannedBlockerSourceKind {
 pub enum WriteDecisionCategory {
     Scope,
     Workspace,
-    UserJudgment,
+    UserAction,
     SensitiveApproval,
     WriteCompatibility,
     Baseline,
@@ -1189,8 +1228,8 @@ pub enum CloseReadinessBlockerCategory {
     Task,
     OpenRun,
     Scope,
-    UserJudgment,
-    PendingUserJudgment,
+    UserAction,
+    PendingUserAction,
     SensitiveApproval,
     WriteCompatibility,
     Baseline,
@@ -1368,7 +1407,7 @@ pub enum GuaranteeClass {
     AuthorityRecord,
     CooperativeHostDecision,
     DetectiveObservation,
-    UserJudgmentRecord,
+    UserActionResolution,
 }
 
 /// Stable public non-guarantee values for result interpretation.
@@ -1457,6 +1496,97 @@ pub enum JudgmentKind {
     Cancellation,
 }
 
+/// Canonical user-action family values derived from the closed action draft.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UserActionKind {
+    ProductDecision,
+    TechnicalDecision,
+    ScopeDecision,
+    SensitiveApproval,
+    FinalAcceptance,
+    ResidualRiskAcceptance,
+    Cancellation,
+    EvidenceObservation,
+}
+
+impl From<JudgmentKind> for UserActionKind {
+    fn from(value: JudgmentKind) -> Self {
+        match value {
+            JudgmentKind::ProductDecision => Self::ProductDecision,
+            JudgmentKind::TechnicalDecision => Self::TechnicalDecision,
+            JudgmentKind::ScopeDecision => Self::ScopeDecision,
+            JudgmentKind::SensitiveApproval => Self::SensitiveApproval,
+            JudgmentKind::FinalAcceptance => Self::FinalAcceptance,
+            JudgmentKind::ResidualRiskAcceptance => Self::ResidualRiskAcceptance,
+            JudgmentKind::Cancellation => Self::Cancellation,
+        }
+    }
+}
+
+impl UserActionKind {
+    /// Returns the choice judgment kind, or `None` for evidence observation.
+    pub const fn judgment_kind(self) -> Option<JudgmentKind> {
+        match self {
+            Self::ProductDecision => Some(JudgmentKind::ProductDecision),
+            Self::TechnicalDecision => Some(JudgmentKind::TechnicalDecision),
+            Self::ScopeDecision => Some(JudgmentKind::ScopeDecision),
+            Self::SensitiveApproval => Some(JudgmentKind::SensitiveApproval),
+            Self::FinalAcceptance => Some(JudgmentKind::FinalAcceptance),
+            Self::ResidualRiskAcceptance => Some(JudgmentKind::ResidualRiskAcceptance),
+            Self::Cancellation => Some(JudgmentKind::Cancellation),
+            Self::EvidenceObservation => None,
+        }
+    }
+
+    /// Returns whether this action kind may declare the required operation target.
+    pub const fn is_compatible_with_required_for(
+        self,
+        required_for: UserActionRequiredFor,
+    ) -> bool {
+        match required_for {
+            UserActionRequiredFor::ScopeUpdate => matches!(
+                self,
+                Self::ProductDecision | Self::TechnicalDecision | Self::ScopeDecision
+            ),
+            UserActionRequiredFor::PrepareWrite => matches!(
+                self,
+                Self::ProductDecision
+                    | Self::TechnicalDecision
+                    | Self::ScopeDecision
+                    | Self::SensitiveApproval
+            ),
+            UserActionRequiredFor::RecordRun => matches!(
+                self,
+                Self::ProductDecision
+                    | Self::TechnicalDecision
+                    | Self::ScopeDecision
+                    | Self::SensitiveApproval
+                    | Self::EvidenceObservation
+            ),
+            UserActionRequiredFor::CloseComplete => matches!(
+                self,
+                Self::ProductDecision
+                    | Self::TechnicalDecision
+                    | Self::ScopeDecision
+                    | Self::SensitiveApproval
+                    | Self::FinalAcceptance
+                    | Self::ResidualRiskAcceptance
+                    | Self::EvidenceObservation
+            ),
+            UserActionRequiredFor::CloseCancel => matches!(self, Self::Cancellation),
+            UserActionRequiredFor::CloseSupersede => matches!(
+                self,
+                Self::ProductDecision
+                    | Self::TechnicalDecision
+                    | Self::ScopeDecision
+                    | Self::SensitiveApproval
+            ),
+            UserActionRequiredFor::Informational => true,
+        }
+    }
+}
+
 /// Judgment presentation values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1467,7 +1597,7 @@ pub enum JudgmentPresentation {
 /// Judgment required-for values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum JudgmentRequiredFor {
+pub enum UserActionRequiredFor {
     ScopeUpdate,
     PrepareWrite,
     RecordRun,
@@ -1477,10 +1607,10 @@ pub enum JudgmentRequiredFor {
     Informational,
 }
 
-/// User judgment status values.
+/// Effective user-action lifecycle values derived by the canonical evaluator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum UserJudgmentStatus {
+pub enum UserActionStatus {
     Pending,
     Resolved,
     Stale,
@@ -1488,7 +1618,7 @@ pub enum UserJudgmentStatus {
     Expired,
 }
 
-/// User judgment resolution outcome values.
+/// Choice action resolution outcome values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JudgmentResolutionOutcome {
@@ -1497,16 +1627,16 @@ pub enum JudgmentResolutionOutcome {
     Deferred,
 }
 
-/// Core-owned machine action for current user judgment options.
+/// Core-owned machine action for current user-action options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum UserJudgmentOptionAction {
+pub enum UserActionOptionAction {
     Accept,
     Reject,
     Defer,
 }
 
-impl UserJudgmentOptionAction {
+impl UserActionOptionAction {
     /// Returns the resolution outcome owned by this option action.
     pub const fn resolution_outcome(self) -> JudgmentResolutionOutcome {
         match self {
@@ -1520,10 +1650,43 @@ impl UserJudgmentOptionAction {
 /// Judgment-basis compatibility status values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum JudgmentBasisCompatibilityStatus {
+pub enum UserActionBasisStatus {
     Current,
     Stale,
     Superseded,
+}
+
+/// Verified User Channel kinds that can resolve one pending user action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UserActionChannelKind {
+    McpElicitation,
+    PromptCapture,
+    LocalWebConsent,
+    Cli,
+}
+
+impl UserActionChannelKind {
+    /// Returns the single verified invocation basis owned by this User Channel.
+    pub const fn verification_basis(self) -> &'static str {
+        match self {
+            Self::McpElicitation => VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+            Self::PromptCapture => VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+            Self::LocalWebConsent => VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+            Self::Cli => VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        }
+    }
+
+    /// Resolves one controlled verification basis to its owning User Channel.
+    pub fn from_verification_basis(verification_basis: &str) -> Option<Self> {
+        match verification_basis {
+            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL => Some(Self::McpElicitation),
+            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK => Some(Self::PromptCapture),
+            VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB => Some(Self::LocalWebConsent),
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL => Some(Self::Cli),
+            _ => None,
+        }
+    }
 }
 
 /// Public API error code values.
@@ -1555,4 +1718,32 @@ pub enum ErrorCode {
     ArtifactMissing,
     ValidatorFailed,
     OperationResultUnavailable,
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Duration, Utc};
+
+    use super::UtcTimestamp;
+
+    #[test]
+    fn utc_timestamp_checked_add_enforces_canonical_four_digit_range() {
+        let ordinary = UtcTimestamp::parse("2026-07-13T00:00:00Z").expect("ordinary timestamp");
+        assert_eq!(
+            ordinary
+                .checked_add(Duration::minutes(15))
+                .expect("ordinary TTL should fit")
+                .to_string(),
+            "2026-07-13T00:15:00Z"
+        );
+
+        let near_upper =
+            UtcTimestamp::parse("9999-12-31T23:50:00Z").expect("four-digit upper timestamp");
+        assert!(near_upper.checked_add(Duration::minutes(15)).is_err());
+        assert!(near_upper.ensure_canonical_rfc3339_representable().is_ok());
+
+        let chrono_max = UtcTimestamp::from_datetime(DateTime::<Utc>::MAX_UTC);
+        assert!(chrono_max.ensure_canonical_rfc3339_representable().is_err());
+        assert!(chrono_max.checked_add(Duration::zero()).is_err());
+    }
 }

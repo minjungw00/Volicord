@@ -29,8 +29,9 @@ const PROJECT_STATE_EXPORT_TABLES: &[&str] = &[
     "tasks",
     "change_units",
     "evidence_capture_intents",
-    "user_judgments",
-    "local_web_consent_tokens",
+    "user_action_requests",
+    "user_action_resolutions",
+    "user_action_channel_tokens",
     "project_continuity_records",
     "write_tickets",
     "runs",
@@ -41,7 +42,6 @@ const PROJECT_STATE_EXPORT_TABLES: &[&str] = &[
     "artifact_links",
     "evidence_summaries",
     "evidence_observations",
-    "user_evidence_observations",
     "evidence_producers",
     "blockers",
     "authority_events",
@@ -202,13 +202,25 @@ fn export_table_records(
 
     let mut records = Vec::new();
     for row in rows {
+        let row = row.map_err(StoreError::from)?;
         records.push(AuthorityBundleRecord {
             database: PROJECT_STATE_DATABASE_KIND,
             table: table.to_owned(),
-            row: row.map_err(StoreError::from)?,
+            row: authority_bundle_row_projection(table, row),
         });
     }
     Ok(records)
+}
+
+fn authority_bundle_row_projection(table: &str, mut row: Value) -> Value {
+    if table == "tool_invocations"
+        && row.get("operation_category").and_then(Value::as_str) == Some("user_only")
+    {
+        row.as_object_mut()
+            .expect("table rows are serialized as JSON objects")
+            .insert("response_json".to_owned(), Value::Null);
+    }
+    row
 }
 
 fn export_artifact_records(

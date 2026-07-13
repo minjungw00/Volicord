@@ -22,7 +22,7 @@ This document owns:
 - stdio JSON-RPC framing, message validation, and supported MCP methods
 - local HTTP JSON-RPC request handling for the loopback-only serve transport
 - server-initiated MCP elicitation at the stdio transport boundary
-- local loopback web consent fallback for pending user judgments
+- local loopback web consent fallback for pending user actions
 - MCP startup validation for one internal Agent Connection binding
 - MCP `tools/list` and `tools/call` behavior at the transport boundary
 - MCP-visible input/output tool-schema projection that hides internal envelopes
@@ -66,7 +66,7 @@ Labels follow the canonical vocabulary in
 `volicord` executable. An MCP host starts it as a child process and communicates
 through stdin/stdout. It is not an MCP TCP listener, HTTP MCP listener,
 Unix-domain socket listener, or other MCP network listener. It may start a
-separate loopback-only local web consent listener for pending user judgments
+separate loopback-only local web consent listener for pending user actions
 when host prompt input and chat command capture are unavailable.
 
 `volicord serve --transport local-http` is a separate explicit process mode
@@ -246,7 +246,7 @@ HTTP serve request behavior:
   local web consent is available. They are not MCP endpoints and do not use the
   MCP bearer token. They are a loopback User Channel capture path that requires
   a valid one-time consent token tied to the project, connection, and pending
-  judgment.
+  user action.
 - There are no unauthenticated arbitrary resource endpoints.
 - Browser-facing requests are identified by the presence of an `Origin` header.
   MCP endpoint requests with `Origin` must match an exact `--allow-origin`
@@ -757,7 +757,7 @@ Supported MCP request methods:
 
 When the initialized client declared `capabilities.elicitation`, the server may
 send one nested `elicitation/create` request while processing
-`volicord.request_user_judgment`. That request is server-initiated MCP
+`volicord.request_user_action`. That request is server-initiated MCP
 protocol traffic, not an Agent Connection tool. The client response to that
 server request is validated before any User Channel recording attempt.
 
@@ -772,16 +772,18 @@ capability of the selected allowed projects:
 
 | Mode and storage capability | MCP-visible tools |
 |---|---|
-| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow` with readable but non-writable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
+| `workflow` with writable project state | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| `workflow` with readable but non-writable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action` (resume only), `volicord.check_close`, `volicord.list_projects` |
 | `read_only` with readable project state | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | No readable allowed project state | `volicord.list_projects` |
 
 The MCP adapter may inspect project state read-only during startup and
 discovery. If project state is readable but not writable in the current MCP
 host environment, read-compatible method tools remain visible and workflow
-mutation tools are withheld even when the stored Agent Connection mode is
-`workflow`. If no allowed project state can be read, the adapter keeps only
+mutation branches are withheld even when the stored Agent Connection mode is
+`workflow`. The mixed `volicord.request_user_action` tool remains visible so
+its explicit resume branch can read an existing request; its create branch
+returns `MCP_UNAVAILABLE`. If no allowed project state can be read, the adapter keeps only
 `volicord.list_projects` visible so the caller can inspect project
 availability.
 
@@ -813,9 +815,8 @@ Core mutation method and is not listed for `read_only` connections.
 `volicord.get_operation_result` maps to the read-only Core method for bounded
 retrieval of one exact historical mutation response and is listed for both
 connection modes when project state is readable.
-`volicord.record_user_judgment` and `volicord.record_user_observation` are
-public Core API methods for User Channel paths, but neither is exposed as an
-Agent Connection MCP tool; see
+`volicord.resolve_user_action` is the public Core API method for every User
+Channel resolution, but it is not exposed as an Agent Connection MCP tool; see
 [API Methods](api/methods.md) for the public method
 owner table.
 
@@ -865,9 +866,12 @@ array:
   `tool_name=null`, `tool_invocation_id=null`, `tool_metadata={}`,
   `input_refs=[]`, `source_refs=[]`, `output_artifact_refs=[]`, and
   `limitations=[]`
-- `volicord.request_user_judgment`: `change_unit_id=null`,
-  `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`, and
-  `expires_at=null`
+- `volicord.request_user_action`: under `request.operation=create`,
+  `request.change_unit_id=null`,
+  `request.action.sensitive_action_scope=null`,
+  `request.action.options=null`, `request.action.affected_refs=[]`, and
+  `request.expires_at=null` for judgment variants; the observation variant has
+  no caller expiry default; `request.operation=resume` has no create defaults
 
 Every MCP-visible mutation tool also accepts `detail=summary|workflow|full`.
 Omitted `detail` defaults to `summary`. This is an adapter response-projection
@@ -877,9 +881,11 @@ request member.
 These defaults belong only to the MCP-visible argument DTO. After decoding, the
 adapter constructs the complete Core request shape. They do not change the
 public Core API present-member contract owned by the focused method references.
-For `volicord.request_user_judgment`, `task_id`, `judgment_kind`,
-`presentation`, `question`, `context`, and `required_for` remain required MCP
-arguments. For `volicord.record_run`, `target` and `coverage_state` remain
+For `volicord.request_user_action`, the nested `request.operation` discriminator
+is required. Its create variant requires `request.task_id` and the complete
+closed `request.action`; its resume variant requires only
+`request.user_action_request_id` and rejects create fields. For
+`volicord.record_run`, `target` and `coverage_state` remain
 required inside each `evidence_updates` item, while `target`, `source_kind`,
 `assurance_level`, and `observed_at` remain required inside each
 `evidence_observations` item. Each `target` is the strict tagged
@@ -898,7 +904,7 @@ including intake create/resume/supersede/reject, update-scope
 keep/create/replace, all three status detail levels, first-page operation-result
 retrieval, prepare-write, all three prepare-evidence-capture variants,
 stage-artifact, an advisor `shaping_update` with no Product Repository write, an
-evidence-bearing work `implementation`, request-judgment, reconcile,
+evidence-bearing work `implementation`, request-user-action create and resume, reconcile,
 check-close, and close complete/cancel/supersede branches. Each advertised
 example conforms to the same `inputSchema` and MCP argument DTO used for calls.
 Examples illustrate supported argument branches only; they do not assert
@@ -910,10 +916,11 @@ their public method response branches. Mutation tools additionally advertise
 summary and workflow wrappers that pair a fresh `AuthorityReceipt` with the
 method result needed for the next step, a full wrapper that pairs the same
 fresh receipt with the exact public method response, and bounded post-effect
-recovery branches. The
-`volicord.request_user_judgment` full branch also covers the User Channel
-response returned when host elicitation records the pending judgment before the
-original tool call completes. `volicord.list_projects` uses its exact
+recovery branches. `volicord.request_user_action` instead uses the compound
+`agent_workflow_result`, replay marker, snapshot-anchored current status, and
+nullable `user_channel_resolution` shape; a user-only resolution never
+replaces the exact request result.
+`volicord.list_projects` uses its exact
 adapter-utility result schema. A server result that includes
 `structuredContent` must conform to the advertised schema.
 
@@ -923,7 +930,7 @@ adapter-utility result schema. A server result that includes
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
 | `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
-| `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
+| `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
 For the non-destructive mutation row, `destructiveHint=false` means the tool's
 committed storage updates are additive rather than replacing, invalidating, or
@@ -934,15 +941,25 @@ or that a later distinct MCP call is replay-safe.
 compatible write ticket or staged input, update evidence and blockers,
 increment `close_basis_revision`, invalidate current judgments, and replace the
 current close basis or leave a previous basis stale. A committed
-`volicord.request_user_judgment` may also change the Task lifecycle while it
-creates the pending judgment. The method and storage-effect owners define the
+`volicord.request_user_action` may also change the Task lifecycle while it
+creates the pending user action. The method and storage-effect owners define the
 exact effects; the annotation conservatively tells MCP clients that these tools
 can alter existing authority state.
 
-All mutation tools have `idempotentHint=false` because each distinct
-MCP-visible call receives fresh adapter-managed request identity. Core replay
-handling for one generated identity does not promise that a later visible MCP
-call has the same result or no additional effects.
+The one annotation covers both `volicord.request_user_action` operations and is
+therefore conservative. `request.operation=create` can have the documented
+destructive mutation effects. `request.operation=resume` is a read-only exact
+historical replay plus a current projection and creates no effect, even though
+the tool-level annotation remains `readOnlyHint=false`,
+`destructiveHint=true`, and `idempotentHint=false`.
+
+Mutation-capable tools have `idempotentHint=false` because a distinct create or
+mutation call ordinarily receives fresh adapter-managed request identity. Core
+replay handling for one generated identity does not promise that a later
+visible mutation call has the same result or no additional effects. The
+explicit `request_user_action` resume branch is the exception in behavior: it
+names the already committed request and never generates a replacement
+idempotency key or mutation.
 
 These values are client hints, not trusted authorization facts. They do not
 grant Agent Connection authority, bypass host trust or approval, suppress a
@@ -969,11 +986,14 @@ timestamps and basis are `null`, and the warning states that coverage has not
 started. After explicit project selection creates a baseline, later
 `volicord.list_projects` output reports the stored coverage start and basis.
 
-The MCP adapter generates the Core envelope before dispatch. It supplies
+For mutation and create branches, the MCP adapter generates the Core envelope before dispatch. It supplies
 `request_id`, `idempotency_key` for workflow effects, `expected_state_version`
 from the selected project's current state where Core freshness requires it,
 `dry_run=false`, the default locale, the selected internal project, and the
 derived invocation context. Public MCP arguments cannot override those facts.
+The request-user-action resume branch instead derives read-only access context
+and looks up the stored origin; it does not generate a mutation envelope,
+idempotency key, or expected state version.
 
 `volicord.status` uses a compact public `detail` argument instead of exposing
 the Core include matrix. Supported values are `summary`, `workflow`, and
@@ -994,13 +1014,17 @@ intent, and expiry for `volicord.prepare_evidence_capture`, the staged handle an
 for `volicord.stage_artifact`, the exact Run ref, registered `ArtifactRef`
 values, newly recorded evidence-observation refs, and nullable
 `close_basis_anchor` for `volicord.record_run`, per-finding results for
-`volicord.reconcile_changes`, and the pending or resolved outcome for
-`volicord.request_user_judgment`. `close_basis_anchor` contains
+`volicord.reconcile_changes`, and the exact request result, replay marker,
+current-projection state version/time, separate safe resolution facts, and
+resolution-derived refs for `volicord.request_user_action`. `close_basis_anchor` contains
 `close_basis_revision`, `scope_revision`, `source_run_ref`, and nullable
 `evidence_summary_ref`. It is a typed coordinate for the close basis stored on
 the Task, not a `StateRecordRef` and not a separate close-basis record. A
-resolved compact Judgment outcome contains the Judgment ref, status, selected
-option ID and label, and resolution outcome; it omits the free-form user note.
+resolved compact user-action outcome contains the request ref, exact historical
+resolution ref, snapshot-anchored status, selected option ID and label or
+evidence-observation summary, resolution outcome where applicable, and any
+public resolution-derived refs; it omits the free-form user note and evidence
+observation summary text.
 `detail=full` is for callers that need fields beyond those next-step results,
 not for recovering a required handle, ticket, Run or evidence ref, finding
 result, or host-native selection.
@@ -1164,7 +1188,7 @@ If Core has already returned an applied result and later adapter work cannot
 produce the normal wrapper, the adapter first performs the same validated
 authority refresh and returns another `isError=false`, `retryable=false`
 post-effect branch. `code=MCP_POST_EFFECT_ADAPTER_FAILED` identifies a failed
-host User Channel adapter after the pending judgment was created;
+host User Channel adapter after the pending user action was created;
 `code=MCP_RESPONSE_PROJECTION_FAILED` identifies a failure while building the
 normal response projection. Both branches include the method `tool_name`,
 `requested_detail`, effect facts, nullable `effect_anchor`, nullable
@@ -1205,107 +1229,153 @@ Core/domain rejected mutation responses do not enter this success-projection
 path. They retain the existing public response object and `isError=false`, with
 a short compatibility text directing the client to `structuredContent`.
 
-<a id="user-judgment-elicitation"></a>
-### User Judgment Elicitation
+<a id="user-action-elicitation"></a>
+### User Action Elicitation
 
-`volicord.request_user_judgment` remains the only Agent Connection tool for
-asking Core to create a focused pending `UserJudgment`. The MCP adapter does
-not expose `volicord.record_user_judgment` as an Agent Connection tool and does
-not accept agent-supplied answer fields as substitutes for user input.
+`volicord.request_user_action` is the only Agent Connection tool that creates a
+pending `UserActionRequest`, through the strict nested
+`request.operation=create` variant. Its sibling
+`request.operation=resume` variant names a directly created request and performs
+read-only continuation. `volicord.resolve_user_action` is never exposed as an
+MCP tool, and agent arguments cannot become a User Channel resolution.
 
-When a `workflow` connection calls `volicord.request_user_judgment` and Core
-commits a pending judgment:
+After a `request.operation=create` commit, the adapter consumes the Core-owned
+`UserActionInboxForm`. A judgment form requests only a stored
+`selected_option_id` and optional note. An evidence-observation form requests
+one stored target selector, a non-empty subset of stored artifact IDs,
+`supported` or `contradicted`, and a bounded summary. Labels, descriptions,
+consequences, and default markers are display-only. The complete stored
+`EvidenceTarget` metadata and complete exact `ArtifactRef` metadata are also
+display-only, including target statements and the `ArtifactRef` fields
+`display_name`, `content_type`, `sha256`, `size_bytes`, `integrity_status`,
+`redaction_state`, `availability`, `created_by_run_ref`,
+`created_by_actor_source`, and `storage_ref`. Only the selected target selector and artifact IDs
+are submitted; display metadata is not submitted as candidate authority. MCP
+elicitation may be used only when the complete, untruncated
+`elicitation/create` JSON-RPC request object encoded as UTF-8 JSON plus its one
+trailing LF byte is at most 32 KiB. Otherwise that path is reported unavailable
+and the adapter uses prompt capture, local web consent, or CLI in the advertised
+order. Forms and submissions are never truncated.
 
-- If the initialized client declared `capabilities.elicitation`, the adapter
-  may send `elicitation/create` before returning the original `tools/call`
-  response. The requested schema is a flat object with required
-  `selected_option_id` drawn from the Core-created option IDs and optional
-  `note`. It does not request secrets, credentials, tokens, private keys, or
-  other private secret material.
-- If the elicitation response is `action=accept`, the adapter validates
-  `content.selected_option_id` against the pending judgment options. A valid
-  response is recorded through Core's User Channel method with
-  `actor_source=local_user`, `operation_category=user_only`, and
-  `resolved_verification_basis=mcp_elicitation_user_channel`. The adapter then
-  applies the selected mutation `detail` projection to the fresh Task status.
-- If the elicitation response is `action=decline` and the pending judgment has
-  a Core reject option, the adapter records that reject option through the same
-  User Channel path. If no reject option exists, the judgment remains pending.
-- If the elicitation response is `action=cancel`, invalid, malformed, or cannot
-  be matched to the pending judgment, the adapter records no answer and the
-  pending judgment remains pending.
-- If host prompt input is unavailable because the client did not declare the
-  capability, the adapter records no answer and returns the pending
-  `RequestUserJudgmentResult` plus additional text content. When chat command
-  capture availability is `configured`, `observed`, or `active`, that text may
-  include exact verification-code chat commands compatible with the
-  prompt-submit hook path and the current verification code.
-- If chat command capture is unavailable and a local consent URL is available,
-  the adapter creates a short-lived one-time token and returns a loopback
-  consent URL plus structured fallback JSON. The URL contains only the project
-  selector and token. It does not include the Runtime Home path, repository
-  path, prompt body, answer, or arbitrary API parameters.
-- If the local consent URL path is disabled, cannot bind safely, or cannot
-  create a token, the fallback text points to the `volicord inbox` CLI inbox
-  path.
+Before opening a new agent-facing user-input surface, adapters apply one
+conservative presentation-safety classification to the question, context
+summary, and complete rendered closed form, including every displayed
+`EvidenceTarget` and `ArtifactRef` metadata value. When that complete
+presentation indicates secret or credential material and requires a user-only
+channel, the adapter sends no `elicitation/create` request and emits no rich
+prompt-capture question, context, form, verification code, or resolve-command
+template. It falls through to local web consent when available and otherwise
+to the CLI inbox. Those user-only local web and CLI surfaces continue to render
+the complete canonical form. This classification is conservative adapter
+routing, not a general secret scanner, redaction service, isolation boundary,
+or guarantee that arbitrary secret material is detected.
 
-For all successful branches, `result.structuredContent` follows the selected
-mutation `detail` projection. When host elicitation resolves the judgment, every
-projection preserves the original agent-owned
-`volicord.request_user_judgment` `operation_result_ref`; it never substitutes a
-reference to the user-only recording operation. `detail=full` pairs an
-agent-safe recorded public response projection with the fresh authority
-receipt. The projection retains the selected outcome but sets or keeps the
-free-form user note null. The exact user-only response remains stored for its
-owner and is not retrievable through the Agent Connection. The default
-`summary` pairs that receipt with a compact Judgment result containing the Judgment ref,
-status, and, after resolution, the selected option ID and label plus resolution
-outcome. The compact result does not include the free-form note.
-`result.content[0].text` remains a short compatibility summary, not a JSON
-duplicate. Additional `content[]` text, when present, is adapter guidance
-such as fallback instructions or an explanation that elicitation was cancelled
-or invalid. The additional text is not part of `structuredContent`, not Core
-authority, not a public API response field, and not a user judgment record.
+Accepting a valid elicitation causes the adapter to invoke the user-only
+resolution path with derived `local_user` provenance, a recognized verification
+basis, a unique `channel_submission_id`, and
+`expected_state_version=null`. Core pins current state during preflight.
+Every adapter-generated submission identity is 1 through 256 bytes of visible
+ASCII `0x21..=0x7e`; the adapter never truncates or normalizes an invalid value
+into that shape.
+Decline maps to a stored reject option only for a judgment form that has one.
+Cancel, malformed content, an unknown or mixed candidate, a stale form, or a
+state conflict records no resolution and leaves the request effectively pending
+when it remains current and unexpired.
+
+The MCP result is a compound projection. `agent_workflow_result` is always the
+byte-exact request response committed by the original Agent Connection call,
+and its `operation_result_ref` addresses only that result.
+Presentation-safety routing does not redact or rewrite that immutable
+historical result, even when its original request or form contains a value that
+requires user-only input for every newly opened presentation surface.
+`agent_workflow_result_replayed` distinguishes create from explicit resume.
+Resume requires the same enabled workflow Agent Connection actor scope and an
+allowed project, does not compare later Git workspace coordinates, and is
+unavailable for another connection or a reconciliation-created request. It
+creates no request, replay row, event, token, prompt, resolution, or state
+version and does not update the persisted canonical-UTC floor.
+
+A separate nullable `user_channel_resolution` carries an agent-safe structured
+projection of the immutable resolution and current compact facts. Core reads
+that resolution, `current_status`, and exact historical `derived_refs` in one
+SQLite snapshot identified by `current_projection_state_version` and
+`current_projection_observed_at`. The later generic authority refresh may have
+a greater state version and does not relabel the projection. Immediate host
+resolution must not replace `agent_workflow_result` with the user-only method
+result. Free-form note and observation summary remain excluded. The resolution
+ref and derived refs retain their original `produced_at_state_version` after
+unrelated later commits.
+
+The adapter sends `elicitation/create` only while handling
+`request.operation=create` and only after its post-commit reread says the
+request is still `pending`. A resume returns the exact historical
+`agent_workflow_result` plus the current safe projection without sending
+`elicitation/create` or running prompt-capture, local-web, or CLI fallback,
+even when the current status is `pending`. For create, a resolved, stale,
+superseded, or expired request returns the current safe projection without
+another prompt. Cancelled, declined, or invalid host input during create that
+leaves the request pending includes exact nested resume guidance and creates no
+second request.
+
+Fallback guidance stays outside Core authority. Unavailable host prompt input
+does not hide another available path. Chat capture uses the same request ID,
+stored candidates, verification code, expiry, and form digest. If rich prompt
+capture is unavailable, a short-lived local web token is bound to the exact
+request, form digest, project, and connection. Otherwise the adapter points to
+`volicord inbox`. Each pending fallback includes structured continuation
+arguments with `request.operation=resume`, the same request ID, and
+`creates_new_request=false`; after User Channel completion the agent uses that
+branch rather than issuing another create.
 
 <a id="local-web-consent-fallback"></a>
-The local web consent listener binds to `127.0.0.1` by default and must fail
-closed if it cannot bind safely. In stdio mode it uses an ephemeral loopback
-port. In `volicord serve --transport local-http`, the consent route is served
-only by the same loopback-only local HTTP listener.
+The local web consent listener remains loopback-only and fails closed. `GET
+/consent` validates the one-time token and renders the exact canonical form;
+`POST /consent` accepts only form fields for that form. Origin, project,
+connection, request, form digest, expiry, candidate membership, and token state
+are revalidated. Successful insertion of the closed resolution body and token
+consumption are atomic.
 
-Local web consent endpoint behavior:
+For POST resolution, the adapter uses the Core-owned derivation for the only
+accepted digest-only `local_web:<sha256>` submission identity. The derivation
+binds the exact project, user-action request, raw bearer-token credential,
+expected Agent Connection, and typed canonical completion metadata. Core
+recomputes that identity at its token-bearing entry point and also binds a
+domain-separated token digest, the connection, and the same closed metadata
+into mutation replay identity. Only a duplicate with that entire binding and
+the canonical resolution returns the original safe completion. A hand-crafted
+identity or a changed token, connection, metadata, or resolution does not open
+the replay and creates no second effect. The raw token remains transient: the
+token table stores its domain-separated hash, while resolution and replay
+storage and responses contain only derived digests or hashes. The endpoint
+serves no Runtime Home or Product Repository files, static assets, MCP methods,
+or arbitrary APIs.
 
-- `GET /consent?project=<project_id>&token=<token>` validates the one-time token
-  against the current project and connection, rejects expired, consumed,
-  invalid, wrong-project, and wrong-connection tokens with a safe HTML error
-  page, and otherwise renders a minimal HTML page with the judgment text,
-  available options and their meanings, project name or identifier, registered
-  repository path when available, connection identifier, judgment id, token
-  expiry, fallback CLI command, and a form. The page states that the user is
-  recording a user-owned judgment, that the agent cannot record it on the
-  user's behalf, and that the judgment does not prove correctness, test
-  sufficiency, deployment success, review completion, security enforcement, or
-  close readiness.
-- `POST /consent` accepts only
-  `application/x-www-form-urlencoded` form submissions with the token, selected
-  Core option ID, and optional note. If an `Origin` header is present, it must
-  match the consent endpoint origin. A validation failure, including an unknown
-  option ID, does not consume the token.
-- A successful post records the answer through Core with
-  `actor_source=local_user`, `operation_category=user_only`, and
-  `resolved_verification_basis=local_user_local_web`, and marks the token
-  `consumed` in the same project-state transaction or an equivalent atomic
-  operation.
-- Expiration, wrong project, wrong connection, wrong judgment binding, and
-  consumed token reuse are rejected before recording another answer. A duplicate
-  submit after a successful post returns the consumed-token result
-  deterministically and does not change the recorded judgment. A write failure
-  while recording the judgment leaves the token pending until it expires, as
-  long as the pending judgment remains current.
-- Local web consent captures a human user's answer. It must not be used to let
-  an Agent Connection answer user-owned judgments.
-- The endpoint serves no Runtime Home files, product repository files, static
-  assets, MCP methods, or arbitrary APIs.
+Token issuance uses the project's canonical Core UTC clock in a separate
+storage transaction. It stores token `created_at`, derives `expires_at` as
+exactly the earlier of the request expiry when present and `created_at + 600
+seconds` (or exactly `created_at + 600 seconds` when the request has no
+expiry), and
+atomically advances the persisted project-time floor to at least `created_at`;
+it creates no authority event or replay row and does not increment
+`state_version`. GET and POST validation use canonical current project time. A
+token is valid only in the half-open interval
+`created_at <= now < expires_at`. `now < created_at` is invalid and must not
+consume the token; `now >= expires_at` is expired and must not create or consume
+a resolution. Persisting an already-derived `expired` token status does not
+advance the project-time floor. The full floor contract belongs to
+[Storage Versioning](storage-versioning.md#canonical-core-utc-clock).
+The token TTL uses checked timestamp addition and must produce canonical RFC
+3339 UTC stored strings. Stored `created_at` must not precede the request's
+stored `requested_at`. A noncanonical string or any stored expiry other than
+the exact derived value is corruption and fails validation, GET, POST, expiry
+cleanup, and consumption without effects. Overflow or an unrepresentable
+expiry fails before token or floor insertion.
+
+The token's stored creation metadata is the closed object
+`{fallback_kind="local_web_consent", endpoint="/consent", form_digest}`.
+Missing, extra, malformed, wrong-typed, or mismatched members fail before the
+form is rendered or a resolution is attempted. That failure neither consumes
+the token nor creates a User Channel effect.
 
 For known public Volicord method-tool calls that reach Volicord, `tools/call`
 wraps the Volicord response JSON inside the MCP result:

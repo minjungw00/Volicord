@@ -134,8 +134,11 @@ try {
     if ($stdio.Stdout -notmatch '"name":"volicord.close_task"') {
         Fail "MCP stdio workflow tools did not list close_task"
     }
-    if ($stdio.Stdout -match '"name":"volicord.record_user_judgment"') {
-        Fail "MCP stdio exposed user-only judgment recording"
+    if ($stdio.Stdout -notmatch '"name":"volicord.request_user_action"') {
+        Fail "MCP stdio did not list user-action request creation"
+    }
+    if ($stdio.Stdout -match '"name":"volicord.resolve_user_action"') {
+        Fail "MCP stdio exposed user-only action resolution"
     }
 
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue

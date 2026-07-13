@@ -187,8 +187,10 @@ identifier_preservation:
     - "active_task_id"
     - "scope"
     - "scope_decision"
-    - "UserJudgment"
-    - "user_judgment"
+    - "UserActionRequest"
+    - "UserActionResolution"
+    - "user_action_request"
+    - "user_action_resolution"
     - "judgment_kind"
     - "CloseReadinessBlocker"
     - "CloseReadinessBlocker.category"
@@ -280,8 +282,8 @@ identifier_preservation:
     - "volicord.prepare_write"
     - "volicord.stage_artifact"
     - "volicord.record_run"
-    - "volicord.request_user_judgment"
-    - "volicord.record_user_judgment"
+    - "volicord.request_user_action"
+    - "volicord.resolve_user_action"
     - "volicord.reconcile_changes"
     - "volicord.check_close"
     - "volicord.close_task"
@@ -1195,13 +1197,13 @@ terms:
     ko_reference: "사용자 소유 판단"
     ko_user: "사용자 판단"
     preserve_as_identifier:
-      - "user_judgment"
-      - "UserJudgment"
       - "judgment_kind"
     primary_owner:
       en: "docs/en/reference/core-model.md"
       ko: "docs/ko/reference/core-model.md"
     related_references:
+      - en: "docs/en/reference/api/schema-user-action.md"
+        ko: "docs/ko/reference/api/schema-user-action.md"
       - en: "docs/en/reference/api/schema-judgment.md"
         ko: "docs/ko/reference/api/schema-judgment.md"
     notes:
@@ -1230,29 +1232,32 @@ terms:
       - "Use 권한 효력이 있는 판단 or 권한 효력이 필요한 판단 in Korean reference prose according to context."
       - "Use 판단을 권한 근거로 사용 when the sentence describes use rather than a judgment kind."
       - "Do not translate authority-bearing literally as 권한을 지니는."
-  user_judgment_schema:
+  user_action_schema:
     category: "identifier"
-    en: "UserJudgment"
+    en: "UserActionRequest"
     preserve_identifier: true
-    ko_reference: "`UserJudgment`"
-    ko_user: "사용자 소유 판단"
-    ko_explanation: "사용자 소유 판단 스키마"
+    ko_reference: "`UserActionRequest`"
+    ko_user: "사용자 행동 요청"
+    ko_explanation: "사용자 행동 요청 스키마"
     preserve_as_identifier:
-      - "UserJudgment"
-      - "user_judgment"
-      - "judgment_kind"
+      - "UserActionRequest"
+      - "UserActionResolution"
+      - "user_action_request"
+      - "user_action_resolution"
     primary_owner:
-      en: "docs/en/reference/api/schema-judgment.md"
-      ko: "docs/ko/reference/api/schema-judgment.md"
+      en: "docs/en/reference/api/schema-user-action.md"
+      ko: "docs/ko/reference/api/schema-user-action.md"
     related_references:
       - en: "docs/en/reference/core-model.md"
         ko: "docs/ko/reference/core-model.md"
-      - en: "docs/en/reference/api/method-request-user-judgment.md"
-        ko: "docs/ko/reference/api/method-request-user-judgment.md"
-      - en: "docs/en/reference/api/method-record-user-judgment.md"
-        ko: "docs/ko/reference/api/method-record-user-judgment.md"
+      - en: "docs/en/reference/api/schema-judgment.md"
+        ko: "docs/ko/reference/api/schema-judgment.md"
+      - en: "docs/en/reference/api/method-request-user-action.md"
+        ko: "docs/ko/reference/api/method-request-user-action.md"
+      - en: "docs/en/reference/api/method-resolve-user-action.md"
+        ko: "docs/ko/reference/api/method-resolve-user-action.md"
     notes:
-      - "Use the prose term for the concept and the schema identifier for the schema."
+      - "Use the common identifiers for durable request and immutable resolution records; judgment payload identifiers remain nested variants."
   final_acceptance:
     category: "product_concept"
     en: "final acceptance"
@@ -1264,10 +1269,10 @@ terms:
     related_references:
       - en: "docs/en/reference/api/schema-judgment.md"
         ko: "docs/ko/reference/api/schema-judgment.md"
-      - en: "docs/en/reference/api/method-request-user-judgment.md"
-        ko: "docs/ko/reference/api/method-request-user-judgment.md"
-      - en: "docs/en/reference/api/method-record-user-judgment.md"
-        ko: "docs/ko/reference/api/method-record-user-judgment.md"
+      - en: "docs/en/reference/api/method-request-user-action.md"
+        ko: "docs/ko/reference/api/method-request-user-action.md"
+      - en: "docs/en/reference/api/method-resolve-user-action.md"
+        ko: "docs/ko/reference/api/method-resolve-user-action.md"
       - en: "docs/en/reference/api/method-close-task.md"
         ko: "docs/ko/reference/api/method-close-task.md"
     notes:
@@ -1284,10 +1289,10 @@ terms:
     related_references:
       - en: "docs/en/reference/api/schema-judgment.md"
         ko: "docs/ko/reference/api/schema-judgment.md"
-      - en: "docs/en/reference/api/method-request-user-judgment.md"
-        ko: "docs/ko/reference/api/method-request-user-judgment.md"
-      - en: "docs/en/reference/api/method-record-user-judgment.md"
-        ko: "docs/ko/reference/api/method-record-user-judgment.md"
+      - en: "docs/en/reference/api/method-request-user-action.md"
+        ko: "docs/ko/reference/api/method-request-user-action.md"
+      - en: "docs/en/reference/api/method-resolve-user-action.md"
+        ko: "docs/ko/reference/api/method-resolve-user-action.md"
       - en: "docs/en/reference/api/method-close-task.md"
         ko: "docs/ko/reference/api/method-close-task.md"
     notes:
@@ -2333,15 +2338,17 @@ terms:
       en: "docs/en/reference/core-model.md"
       ko: "docs/ko/reference/core-model.md"
     related_references:
+      - en: "docs/en/reference/api/schema-user-action.md"
+        ko: "docs/ko/reference/api/schema-user-action.md"
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
       - en: "docs/en/reference/admin-cli.md"
         ko: "docs/ko/reference/admin-cli.md"
     notes:
-      - "Use for the local user path that records authority-bearing user judgments."
-      - "Agent Connections may request user judgments but must not record authority-bearing user judgments."
-      - "User Channel records user judgments with `actor_source=local_user`."
-      - "Use User Channel input method for host prompt input, chat command capture, local consent URL, and CLI inbox when grouping user answer paths."
+      - "Use for the local user path that resolves judgment and evidence-observation user actions."
+      - "Agent Connections may request user actions but must never resolve them."
+      - "Every User Channel resolution records `actor_source=local_user`; the action kind retains its distinct authority meaning."
+      - "Use User Channel input method for MCP elicitation, host prompt input, chat command capture, local consent URL, and CLI inbox when grouping resolution paths."
   unrecorded_change:
     category: "product_concept"
     en: "Unrecorded Change"
@@ -2409,7 +2416,7 @@ terms:
     notes:
       - "`actor_source` is durable provenance, not user identity or authority proof."
       - "Supported provenance values are `agent_connection:<connection_id>`, `local_user`, and `system`."
-      - "Only User Channel provenance can satisfy authority-bearing user-judgment requirements."
+      - "Only compatible User Channel provenance can satisfy a user-action resolution requirement; the resolved action kind determines its authority meaning."
   operation_category:
     category: "identifier"
     en: "operation_category"
@@ -2494,6 +2501,28 @@ terms:
     notes:
       - "Use for the Runtime Home registry storage record that stores setup-time command paths, default connection mode, metadata, and timestamps."
       - "Do not describe `installation_profile` as host trust, user authority, or public API state."
+  canonical_core_utc_clock:
+    category: "technical_concept"
+    en: "canonical Core UTC clock"
+    ko_reference: "정규 Core UTC 시계"
+    ko_user: "정규 Core UTC 시계"
+    preserve_as_identifier:
+      - "Core"
+      - "UTC"
+    primary_owner:
+      en: "docs/en/reference/storage-versioning.md"
+      ko: "docs/ko/reference/storage-versioning.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
+      - en: "docs/en/architecture-guide/decisions/canonical-core-utc-clock.md"
+        ko: "docs/ko/architecture-guide/decisions/canonical-core-utc-clock.md"
+    notes:
+      - "Use for the project-scoped non-decreasing UTC clock used by Core temporal-authority decisions."
+      - "Its persisted floor is `project_state.updated_at`; it is distinct from `state_version` and from host or observation timestamps."
+      - "Use the English and Korean reference forms consistently; do not shorten the contract term to a generic host or system clock."
   state_version:
     category: "identifier"
     en: "state_version"
@@ -2557,10 +2586,10 @@ terms:
     related_references:
       - en: "docs/en/reference/api/schema-judgment.md"
         ko: "docs/ko/reference/api/schema-judgment.md"
-      - en: "docs/en/reference/api/method-request-user-judgment.md"
-        ko: "docs/ko/reference/api/method-request-user-judgment.md"
-      - en: "docs/en/reference/api/method-record-user-judgment.md"
-        ko: "docs/ko/reference/api/method-record-user-judgment.md"
+      - en: "docs/en/reference/api/method-request-user-action.md"
+        ko: "docs/ko/reference/api/method-request-user-action.md"
+      - en: "docs/en/reference/api/method-resolve-user-action.md"
+        ko: "docs/ko/reference/api/method-resolve-user-action.md"
       - en: "docs/en/reference/api/method-prepare-write.md"
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:

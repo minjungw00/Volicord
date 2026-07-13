@@ -68,7 +68,7 @@
 | `crates/volicord-store/src/artifacts.rs` | 일시적 아티팩트 스테이징과 영속 아티팩트 본문 검증 도우미. |
 | `crates/volicord-store/src/guards.rs` | `guard` 설치와 이벤트, 프롬프트 캡처, 예상 쓰기, 미기록 변경 관찰을 저장하는 도우미. |
 | `crates/volicord-store/src/session_watch.rs` | 세션 단위 Product Repository 감시 스냅샷, 관찰, 미해결 변경 저장 도우미. |
-| `crates/volicord-store/src/local_consent.rs` | 로컬 웹 동의 토큰 생성, 검증, 완료 저장 도우미. |
+| `crates/volicord-store/src/user_action_channel.rs` | 요청 결속 로컬 User Channel token 생성, 검증, 만료, transaction 범위 소비 도우미. |
 | `crates/volicord-store/src/diagnostics.rs` | 독립된 bounded 로컬 diagnostics session/event 저장소, retention, redaction 검증, aggregate 읽기. |
 | `crates/volicord-store/src/inspection.rs` | Runtime Home, 레지스트리, 프로젝트, Agent Connection, 설정 상태의 읽기 전용 검사 스냅샷. |
 | `crates/volicord-store/src/export.rs` | 프로젝트 기록과 아티팩트 메타데이터를 담는 읽기 전용 권한 번들 스냅샷 조립. |
@@ -86,13 +86,12 @@
 | `crates/volicord-core/src/methods/update_scope.rs` | `volicord.update_scope` 계획과 범위 변이 준비. |
 | `crates/volicord-core/src/methods/prepare_write.rs` | `volicord.prepare_write` 계획, 호환성 점검, 쓰기 티켓 변이 준비. |
 | `crates/volicord-core/src/methods/record_run.rs` | 실행과 증거 관련 변이를 위한 `volicord.record_run` 계획. |
-| `crates/volicord-core/src/methods/user_observation.rs` | User Channel 소유 `volicord.record_user_observation` 검증과 정확한 대상/artifact/basis mutation 계획. |
+| `crates/volicord-core/src/methods/user_action.rs` | Agent workflow `volicord.request_user_action` 및 User Channel 소유 `volicord.resolve_user_action` 검증, 정규 요청 구성, 정확한 대상/artifact/basis mutation 계획. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | 해결되지 않은 Product Repository 관찰을 위한 `volicord.reconcile_changes` 계획. |
-| `crates/volicord-core/src/methods/judgment.rs` | 사용자 판단 요청과 기록 메서드 계획. |
 | `crates/volicord-core/src/methods/close_task.rs` | `volicord.close_task` 계획과 닫기 준비 상태 결과 처리. |
 | `crates/volicord-core/src/methods/session_watch.rs` | 세션 감시 메서드 계획과 관찰 조율. |
 | `crates/volicord-core/src/methods/stage_artifact.rs` | 일시적 아티팩트 스테이징 메서드 처리. |
-| `crates/volicord-core/src/policy/` | 접근 점검, 재실행 맥락, Product Repository 경로 정규화, 쓰기 티켓 호환성, 증거 상태, 판단 관련성, 연속성, 근거, 효과 계약, 닫기 준비 상태 계산을 위한 재사용 Core 정책 도우미. |
+| `crates/volicord-core/src/policy/` | 접근 점검, 재실행 맥락, Product Repository 경로 정규화, 쓰기 티켓 호환성, 증거 상태, 사용자 행동 관련성, 연속성, 효과 계약, 닫기 준비 상태 계산을 위한 재사용 Core 정책 도우미. |
 | `crates/volicord-core/src/methods/tests/` | 메서드 계획기 가까이에 있는 Core 메서드와 파이프라인 테스트. |
 
 ## CLI
@@ -103,7 +102,7 @@
 | `crates/volicord-cli/src/lib.rs` | 재사용 명령 모듈을 위한 공유 관리 CLI 크레이트 표면. |
 | `crates/volicord-cli/src/setup_command.rs`와 `crates/volicord-cli/src/setup_command/` | 설정 명령 진입점, 설정 작업 흐름 실행, 실행 파일 탐색, 명령 링크와 셸 시작 계획, 대화형 선택, 설정 결과 표시. |
 | `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`의 파싱, 구성, 선택, 검증, MCP 프로세스 점검, 결과 표시. `connection_command/service.rs`는 Store 부트스트랩과 Agent Connection 도우미를 통해 프로젝트와 Agent Connection 구성을 조율합니다. |
-| `crates/volicord-cli/src/guard_command.rs`와 `crates/volicord-cli/src/guard_command/` | `guard` 훅 명령 디스패치, 인수 파싱, 호스트 이벤트 정규화, 도구 관찰 추출, 변경 분류, 단계 처리, 프롬프트 캡처와 판단 명령, 쓰기 티켓 점검, 훅 결과 표시. |
+| `crates/volicord-cli/src/guard_command.rs`와 `crates/volicord-cli/src/guard_command/` | `guard` 훅 명령 디스패치, 인수 파싱, 호스트 이벤트 정규화, 도구 관찰 추출, 변경 분류, 단계 처리, 프롬프트 캡처와 사용자 행동 명령, 쓰기 티켓 점검, 훅 결과 표시. |
 | `crates/volicord-cli/src/guard_integration/` | `guard` 통합 계획, 생성 파일 적용, 역량 메타데이터와 정책 도우미, 호스트별 훅 계획, 연결 상태와 진단에 쓰는 사실 감사 도우미. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` | 호스트 역량, 프로필, 프로젝트, 런타임 사실을 바탕으로 `guard` 통합 계획 조립. |
 | `crates/volicord-cli/src/guard_integration/files.rs` | 생성된 `guard` 파일과 관리 정책 파일 계획, 고정된 Product Repository 경로 순회, 대상 스냅샷, 조건부 동일 디렉터리 교체, 연산 후 복구 검사. |

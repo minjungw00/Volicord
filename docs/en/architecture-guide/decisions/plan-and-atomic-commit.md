@@ -15,6 +15,13 @@ payloads, and `CoreStorageMutation` values. The shared Core pipeline builds
 `CommitMutationInput`, then `CoreProjectStore::commit_mutation` applies the
 normal committed mutation inside one immediate Store transaction.
 
+The prepared operation contributes one `operation_now` clock floor. Store
+selects one canonical transaction `committed_at` no earlier than that floor and
+uses it consistently for the persisted project-time floor, event and optional
+replay creation, and Store-generated transaction metadata. Semantic operation
+and observation times remain planner- or owner-provided facts. The rationale is
+recorded in [Canonical Core UTC clock](canonical-core-utc-clock.md).
+
 Transient artifact staging is a separate storage-owned effect path and does
 not use the normal Core mutation commit.
 
@@ -24,6 +31,8 @@ not use the normal Core mutation commit.
   paths remain distinguishable in code and tests.
 - Store can enforce replay, stale-state, event append, response storage, and
   rollback behavior at one commit boundary.
+- Store can select the commit timestamp under the same serialized boundary that
+  checks replay, freshness, and the persisted project-time floor.
 - Method code can express intended effects without embedding raw storage
   mechanics.
 - Changes to committed method effects usually touch a method planner, Store
@@ -64,3 +73,4 @@ not use the normal Core mutation commit.
 - [Storage Effects](../../reference/storage-effects.md),
   [Storage Versioning](../../reference/storage-versioning.md), and the linked
   public method owner from [API Methods](../../reference/api/methods.md).
+- [Canonical Core UTC clock](canonical-core-utc-clock.md).

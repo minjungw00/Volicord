@@ -86,13 +86,13 @@ CLI 검증은 점검 환경에서 MCP 프로세스를 시작하고 통신할 수
 현재 인증 흐름을 확인하고 요청한 잠금 안내 문구를 추가해줘. 집중 점검도 실행하고 아직 닫기를 막는 것을 알려줘.
 ```
 
-에이전트는 현재 작업, 범위, 증거, 대기 중인 사용자 판단, 닫기 상태를 보이게 유지해야
-합니다. 사용자 소유 판단을 기록해야 하면 Volicord가 보여 주는 사용자 채널 경로를
+에이전트는 현재 작업, 범위, 증거, 대기 중인 사용자 행동, 닫기 상태를 보이게 유지해야
+합니다. 사용자 소유 행동을 기록해야 하면 Volicord가 보여 주는 사용자 채널 경로를
 사용합니다. 안정적인 CLI 대체 경로는 아래와 같습니다.
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 ## 빠른 경로로 충분하지 않을 때

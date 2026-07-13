@@ -9,6 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_types::UtcTimestamp;
 pub use volicord_types::WATCH_SNAPSHOT_ALGORITHM;
 
 use crate::{
@@ -848,10 +849,8 @@ pub fn latest_watch_baseline_for_session(
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
         return Ok(None);
     };
-    project
-        .conn
-        .query_row(
-            "SELECT
+    let mut stmt = project.conn.prepare(
+        "SELECT
                 project_id,
                 watch_baseline_id,
                 session_id,
@@ -871,13 +870,18 @@ pub fn latest_watch_baseline_for_session(
              FROM session_watch_baselines
             WHERE project_id = ?1
               AND session_id = ?2
-            ORDER BY updated_at DESC, watch_baseline_id DESC
-            LIMIT 1",
-            params![project.project.project_id, session_id],
-            watch_baseline_from_row,
-        )
-        .optional()
-        .map_err(StoreError::from)
+            ORDER BY volicord_utc_seconds(updated_at) DESC,
+                     volicord_utc_subsec_nanos(updated_at) DESC,
+                     watch_baseline_id DESC
+            LIMIT 2",
+    )?;
+    let rows = stmt.query_map(
+        params![project.project.project_id, session_id],
+        watch_baseline_from_row,
+    )?;
+    let records = collect_rows(rows)?;
+    reject_ambiguous_co_latest_baselines(&records, &format!("session {session_id}"))?;
+    Ok(records.into_iter().next())
 }
 
 /// Reads the most recent watch baseline for one project Agent Connection.
@@ -891,10 +895,8 @@ pub fn latest_watch_baseline_for_connection(
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
         return Ok(None);
     };
-    project
-        .conn
-        .query_row(
-            "SELECT
+    let mut stmt = project.conn.prepare(
+        "SELECT
                 project_id,
                 watch_baseline_id,
                 session_id,
@@ -914,13 +916,21 @@ pub fn latest_watch_baseline_for_connection(
              FROM session_watch_baselines
             WHERE project_id = ?1
               AND connection_internal_id = ?2
-            ORDER BY updated_at DESC, watch_baseline_id DESC
-            LIMIT 1",
-            params![project.project.project_id, connection_internal_id],
-            watch_baseline_from_row,
-        )
-        .optional()
-        .map_err(StoreError::from)
+            ORDER BY volicord_utc_seconds(updated_at) DESC,
+                     volicord_utc_subsec_nanos(updated_at) DESC,
+                     watch_baseline_id DESC
+            LIMIT 2",
+    )?;
+    let rows = stmt.query_map(
+        params![project.project.project_id, connection_internal_id],
+        watch_baseline_from_row,
+    )?;
+    let records = collect_rows(rows)?;
+    reject_ambiguous_co_latest_baselines(
+        &records,
+        &format!("connection {connection_internal_id}"),
+    )?;
+    Ok(records.into_iter().next())
 }
 
 /// Reads watch baselines for one project Agent Connection, newest first.
@@ -955,7 +965,9 @@ pub fn watch_baselines_for_connection(
          FROM session_watch_baselines
         WHERE project_id = ?1
           AND connection_internal_id = ?2
-        ORDER BY updated_at DESC, watch_baseline_id DESC",
+        ORDER BY volicord_utc_seconds(updated_at) DESC,
+                 volicord_utc_subsec_nanos(updated_at) DESC,
+                 watch_baseline_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1132,10 +1144,8 @@ pub fn watch_observation_for_baseline_digest(
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
         return Ok(None);
     };
-    project
-        .conn
-        .query_row(
-            "SELECT
+    let mut stmt = project.conn.prepare(
+        "SELECT
                 project_id,
                 watch_observation_id,
                 watch_baseline_id,
@@ -1156,17 +1166,25 @@ pub fn watch_observation_for_baseline_digest(
             WHERE project_id = ?1
               AND watch_baseline_id = ?2
               AND snapshot_digest = ?3
-            ORDER BY observed_at DESC, watch_observation_id DESC
-            LIMIT 1",
-            params![
-                project.project.project_id,
-                watch_baseline_id,
-                snapshot_digest
-            ],
-            watch_observation_from_row,
-        )
-        .optional()
-        .map_err(StoreError::from)
+            ORDER BY volicord_utc_seconds(observed_at) DESC,
+                     volicord_utc_subsec_nanos(observed_at) DESC,
+                     watch_observation_id DESC
+            LIMIT 2",
+    )?;
+    let rows = stmt.query_map(
+        params![
+            project.project.project_id,
+            watch_baseline_id,
+            snapshot_digest
+        ],
+        watch_observation_from_row,
+    )?;
+    let records = collect_rows(rows)?;
+    reject_ambiguous_co_latest_observations(
+        &records,
+        &format!("baseline {watch_baseline_id} and snapshot {snapshot_digest}"),
+    )?;
+    Ok(records.into_iter().next())
 }
 
 /// Lists watch observations linked to one unrecorded-change row.
@@ -1201,7 +1219,9 @@ pub fn watch_observations_for_unrecorded_change(
          FROM session_watch_observations
         WHERE project_id = ?1
           AND unrecorded_change_id = ?2
-        ORDER BY observed_at DESC, watch_observation_id DESC",
+        ORDER BY volicord_utc_seconds(observed_at) DESC,
+                 volicord_utc_subsec_nanos(observed_at) DESC,
+                 watch_observation_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, unrecorded_change_id],
@@ -1243,7 +1263,9 @@ pub fn list_unresolved_watch_observations(
         WHERE project_id = ?1
           AND session_id = ?2
           AND observation_status = 'unresolved'
-        ORDER BY observed_at, watch_observation_id",
+        ORDER BY volicord_utc_seconds(observed_at),
+                 volicord_utc_subsec_nanos(observed_at),
+                 watch_observation_id",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, session_id],
@@ -1998,7 +2020,18 @@ fn validate_text(field: &'static str, value: &str) -> StoreResult<()> {
 }
 
 fn validate_timestamp_text(field: &'static str, value: &str) -> StoreResult<()> {
-    validate_identifier(field, value)
+    validate_identifier(field, value)?;
+    UtcTimestamp::parse(value)
+        .and_then(|timestamp| {
+            timestamp
+                .ensure_canonical_rfc3339_representable()
+                .map_err(|_| volicord_types::UtcTimestampParseError)
+        })
+        .map_err(|_| StoreError::InvalidInput {
+            detail: format!(
+                "{field} must be a canonical four-digit RFC 3339 timestamp with an explicit offset"
+            ),
+        })
 }
 
 fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
@@ -2181,6 +2214,76 @@ fn watch_observation_from_row(row: &Row<'_>) -> rusqlite::Result<WatchObservatio
         linked_at: row.get(14)?,
         metadata_json: row.get(15)?,
     })
+}
+
+fn reject_ambiguous_co_latest_baselines(
+    records: &[WatchBaselineRecord],
+    coordinate: &str,
+) -> StoreResult<()> {
+    let [first, second, ..] = records else {
+        return Ok(());
+    };
+    let first_timestamp = strict_watch_timestamp(
+        "session_watch_baselines",
+        &first.watch_baseline_id,
+        "updated_at",
+        &first.updated_at,
+    )?;
+    let second_timestamp = strict_watch_timestamp(
+        "session_watch_baselines",
+        &second.watch_baseline_id,
+        "updated_at",
+        &second.updated_at,
+    )?;
+    if first_timestamp == second_timestamp {
+        return Err(StoreError::schema_invariant(
+            "project_state",
+            format!("ambiguous co-latest session_watch_baselines for {coordinate}"),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_ambiguous_co_latest_observations(
+    records: &[WatchObservationRecord],
+    coordinate: &str,
+) -> StoreResult<()> {
+    let [first, second, ..] = records else {
+        return Ok(());
+    };
+    let first_timestamp = strict_watch_timestamp(
+        "session_watch_observations",
+        &first.watch_observation_id,
+        "observed_at",
+        &first.observed_at,
+    )?;
+    let second_timestamp = strict_watch_timestamp(
+        "session_watch_observations",
+        &second.watch_observation_id,
+        "observed_at",
+        &second.observed_at,
+    )?;
+    if first_timestamp == second_timestamp {
+        return Err(StoreError::schema_invariant(
+            "project_state",
+            format!("ambiguous co-latest session_watch_observations for {coordinate}"),
+        ));
+    }
+    Ok(())
+}
+
+fn strict_watch_timestamp(
+    table: &'static str,
+    record_ref: &str,
+    field: &'static str,
+    value: &str,
+) -> StoreResult<UtcTimestamp> {
+    let timestamp = UtcTimestamp::parse(value)
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, field))?;
+    timestamp
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, field))?;
+    Ok(timestamp)
 }
 
 fn collect_rows<T, F>(rows: rusqlite::MappedRows<'_, F>) -> StoreResult<Vec<T>>
@@ -2678,6 +2781,111 @@ mod tests {
             "watch_observation_scope_a",
         )?
         .is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn latest_watch_baseline_rejects_distinct_co_latest_records() -> Result<(), Box<dyn Error>> {
+        let fixture = WatchFixture::new("watch-baseline-tie")?;
+        let repo = fixture.add_project_connection("project_watch_a", "conn_watch_a", "repo-a")?;
+        fixture.insert_session("project_watch_a", "conn_watch_a", "session_watch_a")?;
+        let snapshot =
+            snapshot_product_repository(fixture.runtime_home.path(), &repo, Default::default())?;
+
+        for watch_baseline_id in ["watch_baseline_a", "watch_baseline_b"] {
+            create_watch_baseline(
+                fixture.runtime_home.path(),
+                "project_watch_a",
+                WatchBaselineCreate {
+                    watch_baseline_id: watch_baseline_id.to_owned(),
+                    session_id: "session_watch_a".to_owned(),
+                    connection_internal_id: "conn_watch_a".to_owned(),
+                    guard_installation_id: None,
+                    status: SessionWatchStatus::Active,
+                    snapshot: snapshot.clone(),
+                    created_at: "2026-07-01T02:00:00.000000001Z".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+        }
+
+        for error in [
+            latest_watch_baseline_for_session(
+                fixture.runtime_home.path(),
+                "project_watch_a",
+                "session_watch_a",
+            )
+            .expect_err("session lookup must reject distinct co-latest baselines"),
+            latest_watch_baseline_for_connection(
+                fixture.runtime_home.path(),
+                "project_watch_a",
+                "conn_watch_a",
+            )
+            .expect_err("connection lookup must reject distinct co-latest baselines"),
+        ] {
+            assert!(matches!(
+                error,
+                StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail,
+                } if detail.contains("ambiguous co-latest session_watch_baselines")
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn watch_observation_lookup_rejects_distinct_co_latest_records() -> Result<(), Box<dyn Error>> {
+        let fixture = WatchFixture::new("watch-observation-tie")?;
+        let repo = fixture.add_project_connection("project_watch_a", "conn_watch_a", "repo-a")?;
+        fixture.insert_session("project_watch_a", "conn_watch_a", "session_watch_a")?;
+        let snapshot =
+            snapshot_product_repository(fixture.runtime_home.path(), &repo, Default::default())?;
+        create_watch_baseline(
+            fixture.runtime_home.path(),
+            "project_watch_a",
+            WatchBaselineCreate {
+                watch_baseline_id: "watch_baseline_a".to_owned(),
+                session_id: "session_watch_a".to_owned(),
+                connection_internal_id: "conn_watch_a".to_owned(),
+                guard_installation_id: None,
+                status: SessionWatchStatus::Active,
+                snapshot: snapshot.clone(),
+                created_at: "2026-07-01T03:00:00Z".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        let diff = compare_watch_snapshots(&snapshot, &snapshot);
+        for watch_observation_id in ["watch_observation_a", "watch_observation_b"] {
+            record_watch_observation(
+                fixture.runtime_home.path(),
+                "project_watch_a",
+                WatchObservationInsert {
+                    watch_observation_id: watch_observation_id.to_owned(),
+                    watch_baseline_id: "watch_baseline_a".to_owned(),
+                    expected_write_id: None,
+                    snapshot: snapshot.clone(),
+                    diff: diff.clone(),
+                    observed_at: "2026-07-01T03:00:01.000000001Z".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+        }
+
+        let error = watch_observation_for_baseline_digest(
+            fixture.runtime_home.path(),
+            "project_watch_a",
+            "watch_baseline_a",
+            &snapshot.digest,
+        )
+        .expect_err("distinct co-latest observations must not be selected by opaque id order");
+        assert!(matches!(
+            error,
+            StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail,
+            } if detail.contains("ambiguous co-latest session_watch_observations")
+        ));
         Ok(())
     }
 

@@ -13,6 +13,7 @@ impl ToolInvocationRecord {
     pub fn matches_verified_replay_context(&self, context: &VerifiedReplayContext) -> bool {
         self.actor_source == context.actor_source.as_str()
             && self.operation_category == context.operation_category.as_str()
+            && self.verification_basis == context.verification_basis
             && self.git_workspace_context_json == context.git_workspace_context_json
     }
 }

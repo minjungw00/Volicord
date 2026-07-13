@@ -73,7 +73,7 @@
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:80f09c42fa4cf593100b6cbe1c4f67d04e07656588b90fccfe34db3a430549f3"
+        "sha256": "sha256:920970a2887c8eb64df080b15b36c1eaf911d078835769a042a694aad0f86b99"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -177,7 +177,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a657c2dd9568aa4395b44d278e1b375213100281805ad349aa66955bcee3ae9f"
+        "sha256": "sha256:3ae5bec66b534f2f7d6802081e96c01c08e5a7721fbb0f60e7fc1b6891c2cdaf"
       }
     },
     {
@@ -219,7 +219,7 @@
           "change_unit",
           "task_id"
         ],
-        "sha256": "sha256:8e978cfc80cb4996aea1193f81deeef1b0bb8c9e28a4b1caa1f902510631448d"
+        "sha256": "sha256:17cd5490da9575810fb96cc472ce44c883e8fe666642ecacaac17dc987d0fa88"
       },
       "name": "volicord.update_scope",
       "output_schema": {
@@ -323,7 +323,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:057d1ee3b2cb8c5923a9749946f81cb3aac24be9d8174e3759c3b68c159ad564"
+        "sha256": "sha256:bbf885ffe904af33c8199577a8fabcf8c9907e71961cb9cef550b854240d7feb"
       }
     },
     {
@@ -380,6 +380,7 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -395,11 +396,6 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentAnswerConstraints",
-          "JudgmentCapturePath",
-          "JudgmentInboxChoice",
-          "JudgmentInboxItem",
-          "JudgmentRequiredFor",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -445,9 +441,15 @@
           "ToolRejectedResponse",
           "ToolResponse_for_StatusResult",
           "ToolResultBase",
+          "UserActionCapturePath",
+          "UserActionInboxChoice",
+          "UserActionInboxForm",
+          "UserActionInboxItem",
+          "UserActionKind",
+          "UserActionRequiredFor",
+          "UserActionStatus",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
-          "UserJudgmentStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -457,7 +459,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6314bd578bd49bebe059be03f2da3bc445ab573a1c6e6220b198278847b1646a"
+        "sha256": "sha256:511825a50b5efa703f0fcc8220f31da77e5f139c534f72054f9c786cced20a22"
       }
     },
     {
@@ -481,7 +483,7 @@
         "root_required": [
           "operation_result_ref"
         ],
-        "sha256": "sha256:faf5d18ae626ff2c49af5ddcd6c6f808ad5f32a34048f1d4e292b74e71cf30cb"
+        "sha256": "sha256:10e79fb5e20b7afa791e8fd5aa540a125a4ed447503df0527790566f20ed3bd0"
       },
       "name": "volicord.get_operation_result",
       "output_schema": {
@@ -518,7 +520,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:87e50aaee441c45283af25e136cbe09be64f40f3837628b3891e9841ecbbb461"
+        "sha256": "sha256:7814fe86fcc57b0ae2bb10065b991d8c42109cd6d71c35118ffc4e802c77ce36"
       }
     },
     {
@@ -615,7 +617,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:03a66c7171322998b1c94d4493f68e08b71ca7d052c477529bb933576452a27f"
+        "sha256": "sha256:04a313d0414bf583a3f6dbac663cc16c083c5b071df05d5a28891500009e2421"
       }
     },
     {
@@ -697,8 +699,6 @@
           "IntegrationProfile",
           "JudgmentKind",
           "JudgmentPresentation",
-          "JudgmentRequiredFor",
-          "JudgmentResolutionOutcome",
           "McpAuthoritativeRefreshFailure_for_McpPrepareWriteCompactResult",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_PrepareWriteResult",
@@ -729,6 +729,7 @@
           "PromptCaptureStatus",
           "RedactionState",
           "ResponseKind",
+          "SensitiveActionScope",
           "SessionWatchCoverageBasis",
           "SessionWatchScanSummary",
           "SessionWatchStatus",
@@ -749,10 +750,9 @@
           "ToolRejectedResponse",
           "ToolResponse_for_PrepareWriteResult",
           "ToolResultBase",
-          "UserJudgmentCandidate",
-          "UserJudgmentContext",
-          "UserJudgmentOption",
-          "UserJudgmentOptionAction",
+          "UserActionContext",
+          "UserActionDraft",
+          "UserActionOptionInput",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -769,7 +769,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e9f724babca00505e4dbd0170ecf8f9c66b61e186775025a91aac1741523b4ac"
+        "sha256": "sha256:1d6fbcd3b5427d9424a9c06acbd6a8dd8e2456a5fc07b3d76dae21842cfe9877"
       }
     },
     {
@@ -866,7 +866,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ece1fb59744c079964824787c16c8c428b7d09239f34dc1bc04225566467d820"
+        "sha256": "sha256:026204b11cc79259f2efb249fe427dd36fa12bc5cd9209a2a58a2abf6a3490ad"
       }
     },
     {
@@ -935,7 +935,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:5188ff10cccb009774e71060fec4a020d5f8da04cffbbc4b7442921ad55b87bb"
+        "sha256": "sha256:45eed868693f37f1351e1a1a3d1b65197f7f7032ba9b36215a2db20e34e9b217"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -1063,7 +1063,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a8ac18100bd0458583468b596ec33d906cb9714b2269e71d21d06b8bd838ca5a"
+        "sha256": "sha256:1193be278a7ba5310bdf21022014c610fb6e4fa5209fa5121e3668acad1f1c12"
       }
     },
     {
@@ -1073,7 +1073,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create one focused user-owned judgment. The default result reports the pending or selected outcome without the user's free-form note.",
+      "description": "Create one focused user action, or resume its original result by request ID, and capture only a still-pending action through an available verified User Channel.",
       "input_schema": {
         "definitions": [
           "AcceptedRiskInput",
@@ -1081,50 +1081,39 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "EvidenceTarget",
           "JudgmentKind",
           "JudgmentPresentation",
-          "JudgmentRequiredFor",
+          "McpRequestUserActionOperation",
           "MutationDetailLevel",
           "RedactionState",
           "SensitiveActionScope",
           "StateRecordKind",
           "StateRecordRef",
-          "UserJudgmentContext",
-          "UserJudgmentOptionInput",
+          "UserActionContext",
+          "UserActionDraft",
+          "UserActionOptionInput",
+          "UserActionRequiredFor",
           "UtcTimestamp"
         ],
         "root_properties": [
-          "affected_refs",
-          "change_unit_id",
-          "context",
           "detail",
-          "expires_at",
-          "judgment_kind",
-          "options",
-          "presentation",
           "project_selector",
-          "question",
-          "required_for",
-          "sensitive_action_scope",
-          "task_id"
+          "request"
         ],
         "root_required": [
-          "context",
-          "judgment_kind",
-          "presentation",
-          "question",
-          "required_for",
-          "task_id"
+          "request"
         ],
-        "sha256": "sha256:b1a5c54bed8ff2042f32a789c66081f700e64d5a1603ca14fe89f30df5c9183d"
+        "sha256": "sha256:963b343ca1692b251803e1ad69d942a9a86fd5c432949901762b0670f6a7ec91"
       },
-      "name": "volicord.request_user_judgment",
+      "name": "volicord.request_user_action",
       "output_schema": {
         "definitions": [
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "AcceptedRiskInput",
           "ActorSource",
+          "AgentSafeUserActionResolution",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -1149,6 +1138,7 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -1164,32 +1154,25 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentAnswerConstraints",
-          "JudgmentBasis",
-          "JudgmentBasisCompatibilityStatus",
-          "JudgmentCapturePath",
-          "JudgmentInboxChoice",
-          "JudgmentInboxItem",
           "JudgmentKind",
           "JudgmentPresentation",
-          "JudgmentRationale",
-          "JudgmentRequiredFor",
           "JudgmentResolutionOutcome",
-          "McpAuthoritativeRefreshFailure_for_McpRequestUserJudgmentCompactResult",
+          "McpAuthoritativeRefreshFailure_for_McpRequestUserActionCompactResult",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_McpRequestUserJudgmentResponse",
+          "McpMutationFullResponse_for_McpRequestUserActionResponse",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
-          "McpMutationResponseBudgetExceeded_for_McpRequestUserJudgmentCompactResult",
-          "McpMutationSummaryResponse_for_McpRequestUserJudgmentCompactResult",
-          "McpMutationWorkflowResponse_for_McpRequestUserJudgmentCompactResult",
+          "McpMutationResponseBudgetExceeded_for_McpRequestUserActionCompactResult",
+          "McpMutationSummaryResponse_for_McpRequestUserActionCompactResult",
+          "McpMutationWorkflowResponse_for_McpRequestUserActionCompactResult",
           "McpPostEffectFailureCode",
-          "McpRequestUserJudgmentCompactResult",
-          "McpRequestUserJudgmentResponse",
+          "McpRequestUserActionCompactResult",
+          "McpRequestUserActionResponse",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserActionResolutionSummary",
           "MethodName",
           "MutationDetailLevel",
           "NextActionKind",
@@ -1202,10 +1185,8 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "PromptCaptureStatus",
-          "RecordUserJudgmentPayload",
-          "RecordUserJudgmentResult",
           "RedactionState",
-          "RequestUserJudgmentResult",
+          "RequestUserActionResult",
           "ResponseKind",
           "SensitiveActionScope",
           "SessionWatchCoverageBasis",
@@ -1226,17 +1207,26 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_RecordUserJudgmentResult",
-          "ToolResponse_for_RequestUserJudgmentResult",
+          "ToolResponse_for_RequestUserActionResult",
           "ToolResultBase",
+          "UserActionBasis",
+          "UserActionBasisCoordinates",
+          "UserActionBasisStatus",
+          "UserActionCapturePath",
+          "UserActionChannelKind",
+          "UserActionContext",
+          "UserActionInboxChoice",
+          "UserActionInboxForm",
+          "UserActionInboxItem",
+          "UserActionKind",
+          "UserActionOption",
+          "UserActionOptionAction",
+          "UserActionRequest",
+          "UserActionRequestBody",
+          "UserActionRequiredFor",
+          "UserActionStatus",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
-          "UserJudgment",
-          "UserJudgmentContext",
-          "UserJudgmentOption",
-          "UserJudgmentOptionAction",
-          "UserJudgmentResolution",
-          "UserJudgmentStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1246,7 +1236,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:87d1e75f1ef9c8a42ec45c5366badd151355b589fe3e59cf15786c1f41712341"
+        "sha256": "sha256:b84bff0af7891b6eb993688a6ef0d581540bcb0e16d21d0aae1eaee495250f20"
       }
     },
     {
@@ -1272,7 +1262,7 @@
         "root_required": [
           "task_id"
         ],
-        "sha256": "sha256:49a25ff6a65d09c05d20b3cf9f631a6ec780e0e3e1b6d7d4516f96566253aecd"
+        "sha256": "sha256:b4f4e22b4c93382c155177890a0f9b8d33a716e04a8e0ab136bf55c7f8a0d9af"
       },
       "name": "volicord.reconcile_changes",
       "output_schema": {
@@ -1383,7 +1373,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e6702b4318e4c7ce9a7c5dca219aca721244e605f864625fa91a8456140f9a14"
+        "sha256": "sha256:6688ef6d190195e8b18b969b9a89c7105e5d3af4185bdcb98ea26cb5811dc155"
       }
     },
     {
@@ -1438,6 +1428,7 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -1453,11 +1444,6 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentAnswerConstraints",
-          "JudgmentCapturePath",
-          "JudgmentInboxChoice",
-          "JudgmentInboxItem",
-          "JudgmentRequiredFor",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -1500,9 +1486,15 @@
           "ToolRejectedResponse",
           "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
+          "UserActionCapturePath",
+          "UserActionInboxChoice",
+          "UserActionInboxForm",
+          "UserActionInboxItem",
+          "UserActionKind",
+          "UserActionRequiredFor",
+          "UserActionStatus",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
-          "UserJudgmentStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1512,7 +1504,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:41ab5ce85b0165085a3bde68f88d9e0990b29291c48ba3d12da58a467ac23e52"
+        "sha256": "sha256:0416086c24475a6c18fd34df5e853fc0061ab0297bdbf6e8f66c45fae6863fb1"
       }
     },
     {
@@ -1579,6 +1571,7 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
+          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -1594,11 +1587,6 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentAnswerConstraints",
-          "JudgmentCapturePath",
-          "JudgmentInboxChoice",
-          "JudgmentInboxItem",
-          "JudgmentRequiredFor",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_ToolResponse_for_CloseTaskResult",
@@ -1653,9 +1641,15 @@
           "ToolRejectedResponse",
           "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
+          "UserActionCapturePath",
+          "UserActionInboxChoice",
+          "UserActionInboxForm",
+          "UserActionInboxItem",
+          "UserActionKind",
+          "UserActionRequiredFor",
+          "UserActionStatus",
           "UserChannelAvailability",
           "UserChannelPathAvailability",
-          "UserJudgmentStatus",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1665,7 +1659,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1223a902716109f0dee35c08f33608140985bb543a91897716d9e151c4778201"
+        "sha256": "sha256:1490e8c78aca7ede888e7dcab8b33807758227f9c8a648f8e5bc40c6527e95d3"
       }
     },
     {

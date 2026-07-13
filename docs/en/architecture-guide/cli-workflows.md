@@ -164,9 +164,14 @@ Phase handlers have distinct architecture responsibilities:
   writes or current write-ticket facts, and can record unresolved observed
   Product Repository changes.
 - `prompt-capture` handles prompt metadata and strict chat command handling for
-  User Channel judgment answers when prompt capture is available.
+  User Channel action resolutions when prompt capture is available.
 - `stop` checks close-related facts and renders the host-native allow or deny
   result for session completion.
+
+The event timestamp remains observation metadata for guard recording and
+correlation. Current Task, write-ticket, pending UserAction, and prompt-command
+eligibility reads use the project/Core current clock rather than host-reported
+time, so delayed or clock-skewed events cannot rewrite current authority.
 
 After phase handling, the CLI attaches the cooperative disclosure, persists the
 guard event when it has not already been recorded, persists expected-write facts

@@ -277,8 +277,8 @@ Run both ignored Judgment tests separately. Give each test a different absolute
 result path in the approved external location:
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-judgment.json VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-judgment.json VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 For each host, confirm all of these observations against the release candidate:
@@ -294,10 +294,10 @@ For each host, confirm all of these observations against the release candidate:
 3. Fresh status reports `close_state=ready`, no close blockers, and an
    `AuthorityReceipt.latest_run_ref`. The harness reads exactly that Run rather
    than choosing a row by timestamp or ID ordering.
-4. The matching `user_judgment_requested`, `user_judgment_recorded`, and
-   `run_recorded` authority-event payloads preserve the Judgment, selected
-   option, Run, kind, and no-write fact, and their event sequences prove that
-   the selected answer was recorded before that Run.
+4. The matching `user_action_requested`, `user_action_resolved`, and
+   `run_recorded` authority-event payloads preserve the request, resolution,
+   selected option, Run, kind, and no-write fact, and their event sequences prove
+   that the selected resolution was recorded before that Run.
 5. The persisted final Stop guard event for the exact Agent Connection returned
    by `init`, the same Task, and a non-null host session has `decision=allow`, no
    reasons or close blockers, and an `AuthorityReceipt` exactly equal to the
@@ -319,7 +319,7 @@ For each host, confirm all of these observations against the release candidate:
    partially written final JSON object.
 
 If native elicitation is unavailable, the test must verify that the pending item
-is visible in `volicord inbox` and that the current `volicord inbox answer`
+is visible in `volicord inbox` and that the current `volicord inbox resolve`
 command shape is available. It emits bounded command templates without the
 fixture's temporary paths or IDs, writes `result=failed_native_elicitation`, and
 fails. The disposable Runtime Home is deleted after the test, so those templates

@@ -79,15 +79,15 @@ volicord connection verify codex --shared --repo /path/to/your-product-repo
 결제 생성에 멱등성 키 지원을 추가하고 테스트를 갱신해줘. 아직 닫기를 막는 것도 알려줘.
 ```
 
-에이전트는 작업, 범위, 증거, 대기 중인 사용자 판단, 닫기 상태를 최신으로 유지해야
+에이전트는 작업, 범위, 증거, 대기 중인 사용자 행동, 닫기 상태를 최신으로 유지해야
 합니다. 사용자가 터미널에서 작업 흐름을 직접 조작할 필요는 없습니다.
 
-사용자 판단을 기록해야 하면 Volicord가 보여 주는 답변 경로를 사용합니다. 안정적인
+사용자 행동을 기록해야 하면 Volicord가 보여 주는 해결 경로를 사용합니다. 안정적인
 수동 경로는 CLI inbox입니다.
 
 ```sh
 volicord inbox --repo /path/to/your-product-repo
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo /path/to/your-product-repo
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo /path/to/your-product-repo
 ```
 
 작업을 끝났다고 보기 전에는 에이전트에게 현재 닫기 상태를 요청합니다. 로컬 요약도
@@ -139,7 +139,7 @@ flowchart LR
   record -. 작업 경계 확인 .-> repo
 ```
 
-일반 작업 흐름에서는 에이전트 행동과 사용자 판단을 분리합니다. 아래 그림은 가이드
+일반 작업 흐름에서는 에이전트 행동과 User Channel resolution을 분리합니다. 아래 그림은 가이드
 수준의 전달 흐름이며 정확한 API 호출 순서가 아닙니다.
 
 ```mermaid
@@ -147,9 +147,9 @@ flowchart TD
   request["사용자가 작업 요청"]
   boundary["에이전트가 작업, 범위,<br/>다음 안전한 행동 표시"]
   action["에이전트가 확인하거나 행동"]
-  status["에이전트가 증거, 차단 사유,<br/>대기 판단 보고"]
-  judgment{"사용자 판단이 필요함?"}
-  answer["사용자 채널로<br/>사용자가 답변"]
+  status["에이전트가 증거, 차단 사유,<br/>대기 사용자 행동 보고"]
+  judgment{"사용자 행동이 필요함?"}
+  answer["사용자 채널로<br/>사용자가 해결"]
   close{"닫기 차단 사유가 남음?"}
   continue["에이전트가 다음<br/>차단 사유 처리"]
   finish["사용자가 작업의<br/>마지막 결과 결정"]

@@ -145,9 +145,9 @@ Rust 값, 불투명 식별자, MCP 노출 도구 이름, 정규화된 요청 해
 - `status.rs`는 읽기 전용 분기를 보여 줍니다.
 - `intake.rs`는 계획된 커밋 변이 분기를 보여 줍니다.
 - `prepare_write.rs`는 정책이 많은 계획과 쓰기 티켓 결정을 보여 줍니다.
-- `record_run.rs`, `judgment.rs`, `reconcile_changes.rs`, `close_task.rs`는
-  정확한 메서드 계약을 Core 산문으로 옮기지 않으면서 뒤쪽 작업 흐름 사실이
-  어떻게 계획되는지 보여 줍니다.
+- `record_run.rs`, `user_action.rs`, `reconcile_changes.rs`, `close_task.rs`는
+  정확한 메서드 계약을 Core 산문으로 옮기지 않으면서 통합 UserAction 요청과 해결
+  사실을 포함한 뒤쪽 작업 흐름 사실이 어떻게 계획되는지 보여 줍니다.
 
 [`crates/volicord-core/src/policy/`](../../../crates/volicord-core/src/policy/)
 아래의 재사용 정책 도우미는 메서드 하나를 이해한 뒤 읽으면 좋습니다. 반복

@@ -206,10 +206,10 @@ existing `reused_evidence` chain rather than consuming the intent again.
 
 ## Compatibility and external validation
 
-This additive stable public method and the new intent/receipt/producer records
-require storage profile `baseline_sqlite_v4`. There is no v3-to-v4 conversion;
-an incompatible v3 Runtime Home fails clearly and must be recreated. The
-recommended release version is `0.7.0`.
+This stable public method and its intent/receipt/producer records are retained
+in the current `baseline_sqlite_v5` profile. There is no conversion from an
+incompatible v3 or v4 Runtime Home; incompatible state fails clearly and must
+be recreated. The current recommended release version is `0.8.0`.
 
 Checked-in host fixtures validate adapters only. A supported claim about real
 Codex or Claude Code invocation identity, output completeness, retry, resume,

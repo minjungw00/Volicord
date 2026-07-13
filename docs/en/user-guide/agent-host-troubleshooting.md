@@ -220,9 +220,9 @@ Do not treat `action_required` as a fatal failure. Durable Volicord-side state
 may already exist.
 
 Other actionable `Next` lines stay local to the selected workflow. If output
-names `volicord inbox`, inspect or answer the pending user judgment from the
+names `volicord inbox`, inspect or resolve the pending user action from the
 terminal. If output says no local consent URL is available, use the shown CLI
-answer command or the URL already shown by the MCP Judgment Inbox item. If the
+resolution command or the URL already shown by the MCP user-action inbox item. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 

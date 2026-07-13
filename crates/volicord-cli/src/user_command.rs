@@ -1,30 +1,29 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Value};
-use volicord_core::{CorePipelineError, CoreService, InvocationContext, PipelineResponse};
+use sha2::{Digest, Sha256};
+use volicord_core::{
+    Clock, CorePipelineError, CoreService, InvocationContext, PipelineResponse, SystemClock,
+};
 use volicord_store::{
-    core_pipeline::{CoreProjectStore, UserJudgmentRecord},
+    core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
 use volicord_types::{
-    ActorSource, ArtifactId, EvidenceClaimId, EvidenceRelevanceStatus, EvidenceTarget,
-    IdempotencyKey, JudgmentKind, JudgmentRationale, JudgmentResolutionOutcome, OperationCategory,
-    PersistedUserJudgmentOptions, ProjectId, RecordUserJudgmentPayload, RecordUserJudgmentRequest,
-    RecordUserObservationRequest, RequestId, SensitiveActionScope, StatusInclude, StatusRequest,
-    SummaryCard, TaskId, ToolEnvelope, UserJudgmentContext, UserJudgmentId, UserJudgmentOption,
-    UtcTimestamp, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    ActorSource, ArtifactId, EvidenceRelevanceStatus, EvidenceTarget, IdempotencyKey,
+    OperationCategory, PersistedUserActionRequest, ProjectId, RequestId, ResolveUserActionRequest,
+    StatusInclude, StatusRequest, SummaryCard, TaskId, ToolEnvelope, UserActionInboxForm,
+    UserActionInboxItem, UserActionPresentationForm, UserActionPresentationPlan,
+    UserActionRequestId, UserActionResolutionInput, UserActionStatus,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
-use crate::disclosure::USER_CHANNEL_NON_GUARANTEE_TEXT;
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -92,26 +91,37 @@ struct ParsedStatusOptions {
     output: OutputFormat,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct ParsedInboxOptions {
     repo: Option<PathBuf>,
     task: TaskSelector,
     choice: Option<String>,
     note: Option<String>,
+    acceptance_criterion_id: Option<String>,
+    evidence_claim_id: Option<String>,
+    artifact_ids: Vec<String>,
+    summary: Option<String>,
+    relevance_status: EvidenceRelevanceStatus,
     output: OutputFormat,
     positionals: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
-struct ParsedUserObservationOptions {
-    repo: Option<PathBuf>,
-    task: TaskSelector,
-    acceptance_criterion_id: Option<String>,
-    evidence_claim_id: Option<String>,
-    artifact_ids: Vec<String>,
-    summary: String,
-    relevance_status: EvidenceRelevanceStatus,
-    output: OutputFormat,
+impl Default for ParsedInboxOptions {
+    fn default() -> Self {
+        Self {
+            repo: None,
+            task: TaskSelector::Active,
+            choice: None,
+            note: None,
+            acceptance_criterion_id: None,
+            evidence_claim_id: None,
+            artifact_ids: Vec::new(),
+            summary: None,
+            relevance_status: EvidenceRelevanceStatus::Supported,
+            output: OutputFormat::Text,
+            positionals: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -127,17 +137,14 @@ struct ResolvedUserProject {
     project_id: String,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct JudgmentRecordingInput<'a> {
+pub(crate) struct UserActionResolutionRecordingInput<'a> {
     pub runtime_home: &'a Path,
     pub project_id: &'a str,
-    pub expected_state_version: Option<u64>,
-    pub record: &'a UserJudgmentRecord,
-    pub selected_option: &'a UserJudgmentOption,
-    pub note: Option<String>,
+    pub record: &'a EffectiveUserActionRecord,
+    pub resolution: UserActionResolutionInput,
     pub verification_basis: &'a str,
     pub request_id: Option<String>,
-    pub idempotency_key: Option<String>,
+    pub channel_submission_id: Option<String>,
 }
 
 pub fn status_usage() -> String {
@@ -147,9 +154,8 @@ pub fn status_usage() -> String {
 pub fn inbox_usage() -> String {
     concat!(
         "volicord inbox [--repo PATH] [--task active|ID] [--json]\n",
-        "volicord inbox answer <judgment-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]\n",
-        "volicord inbox open <judgment-id> [--repo PATH] [--json]\n",
-        "volicord inbox observe [--task active|ID] (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]\n"
+        "volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]\n",
+        "volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]\n"
     )
     .to_owned()
 }
@@ -198,199 +204,29 @@ where
                 )))
             }
         }
-        Some("answer") => command_inbox_answer(&args[1..], env_var, current_dir),
-        Some("open") => command_inbox_open(&args[1..], env_var, current_dir),
-        Some("observe") => command_inbox_observe(&args[1..], env_var, current_dir),
+        Some("resolve")
+            if matches!(
+                args.get(1).map(String::as_str),
+                Some("-h" | "--help" | "help")
+            ) =>
+        {
+            if args.len() == 2 {
+                Ok(inbox_usage())
+            } else {
+                Err(UserCommandError::Usage(format!(
+                    "unexpected argument: {}\n\n{}",
+                    args[2],
+                    inbox_usage()
+                )))
+            }
+        }
+        Some("resolve") => command_inbox_resolve(&args[1..], env_var, current_dir),
         Some(token) if !token.starts_with('-') => Err(UserCommandError::Usage(format!(
             "unknown inbox command: {token}\n\n{}",
             inbox_usage()
         ))),
         _ => command_inbox_list(args, env_var, current_dir),
     }
-}
-
-fn command_inbox_observe<F>(
-    args: &[String],
-    env_var: F,
-    current_dir: &Path,
-) -> Result<String, UserCommandError>
-where
-    F: Fn(&str) -> Option<std::ffi::OsString>,
-{
-    let parsed = parse_user_observation_options(args, current_dir)?;
-    let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
-    let store = CoreProjectStore::open(
-        &resolved.runtime_home,
-        &ProjectId::new(&resolved.project_id),
-    )?;
-    let project_state = store.project_state()?;
-    let task_id = selected_or_active_task_id(&store, &parsed.task)?
-        .ok_or_else(|| UserCommandError::Runtime("no active Task is available".to_owned()))?;
-    let task = store
-        .task_record(&TaskId::new(&task_id))?
-        .ok_or_else(|| UserCommandError::Runtime("selected Task was not found".to_owned()))?;
-    let change_unit_id = task.current_change_unit_id.ok_or_else(|| {
-        UserCommandError::Runtime("selected Task has no current Change Unit".to_owned())
-    })?;
-    let target = if let Some(criterion_id) = parsed.acceptance_criterion_id {
-        EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(criterion_id),
-        }
-    } else {
-        let claim_id = parsed
-            .evidence_claim_id
-            .expect("parser requires one evidence target");
-        let claim = store
-            .evidence_claim_record(&TaskId::new(&task_id), &claim_id)?
-            .ok_or_else(|| {
-                UserCommandError::Runtime(
-                    "selected supplemental evidence claim was not found".to_owned(),
-                )
-            })?;
-        EvidenceTarget::SupplementalClaim {
-            evidence_claim_id: EvidenceClaimId::new(claim_id),
-            statement: claim.statement,
-        }
-    };
-    let now = DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
-    let response = CoreService::new(&resolved.runtime_home).record_user_observation(
-        RecordUserObservationRequest {
-            envelope: envelope(
-                &resolved.project_id,
-                Some(&task_id),
-                generated_id("req_user_evidence_observation"),
-                Some(generated_id("idem_user_evidence_observation")),
-                Some(project_state.state_version),
-            ),
-            task_id: TaskId::new(task_id),
-            change_unit_id: volicord_types::ChangeUnitId::new(change_unit_id),
-            target,
-            relevance_status: parsed.relevance_status,
-            artifact_ids: parsed
-                .artifact_ids
-                .into_iter()
-                .map(ArtifactId::new)
-                .collect(),
-            summary: parsed.summary,
-            observed_at: UtcTimestamp::parse(&now).map_err(|error| {
-                UserCommandError::Runtime(format!("failed to build observation timestamp: {error}"))
-            })?,
-        },
-        invocation_with_basis(
-            &resolved.project_id,
-            OperationCategory::UserOnly,
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        ),
-    )?;
-    if parsed.output == OutputFormat::Json {
-        pretty_response(&response)
-    } else if response_kind(&response) == Some("result") {
-        Ok(format!(
-            "User evidence observation recorded\nobservation: {}\nrelevance: {}\n",
-            response.response_value["user_observation_ref"]["record_id"]
-                .as_str()
-                .unwrap_or("unknown"),
-            response.response_value["user_observation"]["relevance_status"]
-                .as_str()
-                .unwrap_or("unknown")
-        ))
-    } else {
-        render_rejected_or_json(&response)
-    }
-}
-
-fn parse_user_observation_options(
-    args: &[String],
-    current_dir: &Path,
-) -> Result<ParsedUserObservationOptions, UserCommandError> {
-    let mut repo = None;
-    let mut task = TaskSelector::Active;
-    let mut criterion = None;
-    let mut claim = None;
-    let mut artifacts = Vec::new();
-    let mut summary = None;
-    let mut relevance_status = EvidenceRelevanceStatus::Supported;
-    let mut output = OutputFormat::Text;
-    let mut index = 0;
-    while index < args.len() {
-        let token = &args[index];
-        if matches!(token.as_str(), "-h" | "--help" | "help") {
-            return Err(UserCommandError::Usage(inbox_usage()));
-        }
-        let mut next_value = |name: &str| -> Result<String, UserCommandError> {
-            index += 1;
-            args.get(index)
-                .cloned()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| UserCommandError::Usage(format!("missing value for --{name}")))
-        };
-        match token.as_str() {
-            "--repo" => repo = Some(PathBuf::from(next_value("repo")?)),
-            "--task" => {
-                let value = next_value("task")?;
-                task = if value == "active" {
-                    TaskSelector::Active
-                } else {
-                    TaskSelector::Id(value)
-                };
-            }
-            "--criterion" => criterion = Some(next_value("criterion")?),
-            "--claim" => claim = Some(next_value("claim")?),
-            "--artifact" => artifacts.push(next_value("artifact")?),
-            "--summary" => summary = Some(next_value("summary")?),
-            "--contradicted" => relevance_status = EvidenceRelevanceStatus::Contradicted,
-            "--json" => output = OutputFormat::Json,
-            value if value.starts_with("--repo=") => {
-                repo = Some(PathBuf::from(&value[7..]));
-            }
-            value if value.starts_with("--task=") => {
-                let value = &value[7..];
-                task = if value == "active" {
-                    TaskSelector::Active
-                } else {
-                    TaskSelector::Id(value.to_owned())
-                };
-            }
-            value if value.starts_with("--criterion=") => {
-                criterion = Some(value[12..].to_owned());
-            }
-            value if value.starts_with("--claim=") => claim = Some(value[8..].to_owned()),
-            value if value.starts_with("--artifact=") => artifacts.push(value[11..].to_owned()),
-            value if value.starts_with("--summary=") => summary = Some(value[10..].to_owned()),
-            value if value.starts_with("--") => {
-                return Err(UserCommandError::Usage(format!("unknown option: {value}")));
-            }
-            value => {
-                return Err(UserCommandError::Usage(format!(
-                    "unexpected argument: {value}"
-                )));
-            }
-        }
-        index += 1;
-    }
-    if criterion.is_some() == claim.is_some() {
-        return Err(UserCommandError::Usage(
-            "exactly one of --criterion or --claim is required".to_owned(),
-        ));
-    }
-    if artifacts.is_empty() || artifacts.iter().any(|value| value.trim().is_empty()) {
-        return Err(UserCommandError::Usage(
-            "at least one non-empty --artifact is required".to_owned(),
-        ));
-    }
-    let summary = summary
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| UserCommandError::Usage("a non-empty --summary is required".to_owned()))?;
-    Ok(ParsedUserObservationOptions {
-        repo: repo.map(|path| absolute_path(current_dir, path)),
-        task,
-        acceptance_criterion_id: criterion,
-        evidence_claim_id: claim,
-        artifact_ids: artifacts,
-        summary,
-        relevance_status,
-        output,
-    })
 }
 
 fn command_status<F>(
@@ -408,27 +244,7 @@ where
         &ProjectId::new(&resolved.project_id),
     )?;
     let task_id = selected_or_active_task_id(&store, &parsed.task)?;
-    let response = CoreService::new(&resolved.runtime_home).status(
-        StatusRequest {
-            envelope: envelope(
-                &resolved.project_id,
-                task_id.as_deref(),
-                generated_id("req_user_status"),
-                None,
-                None,
-            ),
-            include: StatusInclude {
-                task: true,
-                pending_user_judgments: true,
-                write_ticket: true,
-                evidence: true,
-                close: true,
-                guarantees: true,
-                continuity: true,
-            },
-        },
-        invocation(&resolved.project_id, OperationCategory::Read),
-    )?;
+    let response = status_response(&resolved, task_id.as_deref())?;
     render_status_response(&response, parsed.output)
 }
 
@@ -440,23 +256,90 @@ fn command_inbox_list<F>(
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let parsed = parse_inbox_options(args, true, false, false, 0, current_dir)?;
+    let parsed = parse_inbox_options(args, true, 0, current_dir)?;
+    reject_resolution_flags_for_list(&parsed)?;
     let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
     let store = CoreProjectStore::open(
         &resolved.runtime_home,
         &ProjectId::new(&resolved.project_id),
     )?;
-    let selected_task_id = selected_or_active_task_id(&store, &parsed.task)?;
-    let has_selected_task = selected_task_id.is_some();
-    let records = if let Some(task_id) = selected_task_id {
-        store.pending_user_judgment_records(&TaskId::new(task_id))?
-    } else {
-        Vec::new()
-    };
-    render_inbox_items(&records, parsed.output, has_selected_task)
+    let task_id = selected_or_active_task_id(&store, &parsed.task)?;
+    let response = status_response(&resolved, task_id.as_deref())?;
+    render_inbox_response(&response, parsed.output, task_id.is_some())
 }
 
-fn command_inbox_answer<F>(
+fn status_response(
+    resolved: &ResolvedUserProject,
+    task_id: Option<&str>,
+) -> Result<PipelineResponse, UserCommandError> {
+    CoreService::new(&resolved.runtime_home)
+        .status(
+            StatusRequest {
+                envelope: envelope(
+                    &resolved.project_id,
+                    task_id,
+                    generated_id("req_user_status"),
+                    None,
+                ),
+                include: StatusInclude {
+                    task: true,
+                    pending_user_actions: true,
+                    write_ticket: true,
+                    evidence: true,
+                    close: true,
+                    guarantees: true,
+                    continuity: true,
+                },
+            },
+            invocation(&resolved.project_id, OperationCategory::Read),
+        )
+        .map_err(Into::into)
+}
+
+pub(crate) fn canonical_user_action_inbox_items(
+    runtime_home: &Path,
+    project_id: &str,
+    task_id: &str,
+    actor_source: ActorSource,
+    verification_basis: &str,
+) -> Result<Vec<UserActionInboxItem>, UserCommandError> {
+    let response = CoreService::new(runtime_home).status(
+        StatusRequest {
+            envelope: envelope(
+                project_id,
+                Some(task_id),
+                generated_id("req_user_action_form_projection"),
+                None,
+            ),
+            include: StatusInclude {
+                task: false,
+                pending_user_actions: true,
+                write_ticket: false,
+                evidence: false,
+                close: false,
+                guarantees: false,
+                continuity: false,
+            },
+        },
+        InvocationContext::new(
+            ProjectId::new(project_id),
+            actor_source,
+            OperationCategory::Read,
+            verification_basis,
+        ),
+    )?;
+    if response_kind(&response) != Some("result") {
+        return Err(UserCommandError::Runtime(
+            "Core rejected the canonical user-action form projection".to_owned(),
+        ));
+    }
+    serde_json::from_value(response.response_value["pending_user_action_inbox_items"].clone())
+        .map_err(|error| {
+            UserCommandError::Runtime(format!("failed to decode canonical inbox items: {error}"))
+        })
+}
+
+fn command_inbox_resolve<F>(
     args: &[String],
     env_var: F,
     current_dir: &Path,
@@ -464,88 +347,287 @@ fn command_inbox_answer<F>(
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    let parsed = parse_inbox_options(args, false, true, true, 1, current_dir)?;
-    let judgment_id = required_inbox_positional(&parsed, 0, "judgment-id")?;
-    let choice = parsed
-        .choice
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| UserCommandError::Usage("missing required option: --choice".to_owned()))?;
+    let parsed = parse_inbox_options(args, false, 1, current_dir)?;
+    let request_id = required_inbox_positional(&parsed, 0, "user-action-request-id")?;
     let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
     let store = CoreProjectStore::open(
         &resolved.runtime_home,
         &ProjectId::new(&resolved.project_id),
     )?;
-    let state_version = store.project_state()?.state_version;
-    let record = store
-        .user_judgment_record(judgment_id)?
-        .ok_or_else(|| UserCommandError::Runtime("selected judgment was not found".to_owned()))?;
-    if record.status != "pending" {
-        return Err(UserCommandError::Runtime(format!(
-            "selected judgment is not pending (status: {}); refresh `volicord inbox`",
-            record.status
-        )));
-    }
-    let options = decode_options(&record)?;
-    let selected_option = select_option(&options, choice)?;
-    let response = record_user_judgment_from_record(JudgmentRecordingInput {
+    let now = SystemClock.project_now(&store)?;
+    let record = store.user_action_record(request_id, &now)?.ok_or_else(|| {
+        UserCommandError::Runtime("selected user action was not found".to_owned())
+    })?;
+    let resolution = match record.status {
+        UserActionStatus::Pending => {
+            let status = status_response(&resolved, Some(&record.request.task_id))?;
+            let item = canonical_inbox_item(&status, request_id)?;
+            resolution_from_form(&item.form, &parsed)?
+        }
+        _ if record.resolution.is_some() => resolution_from_immutable_request(&record, &parsed)?,
+        status => {
+            return Err(UserCommandError::Runtime(format!(
+                "selected user action is not pending (status: {}); refresh `volicord inbox`",
+                enum_text(status)
+            )));
+        }
+    };
+    let (stable_request_id, channel_submission_id) = stable_cli_resolution_ids(request_id);
+    let response = resolve_user_action_from_record(UserActionResolutionRecordingInput {
         runtime_home: &resolved.runtime_home,
         project_id: &resolved.project_id,
-        expected_state_version: Some(state_version),
         record: &record,
-        selected_option: &selected_option,
-        note: parsed.note,
+        resolution,
         verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        request_id: None,
-        idempotency_key: None,
+        request_id: Some(stable_request_id),
+        channel_submission_id: Some(channel_submission_id),
     })?;
-    render_inbox_record_response(&response, parsed.output, &selected_option)
+    render_resolve_response(&response, parsed.output)
 }
 
-fn command_inbox_open<F>(
-    args: &[String],
-    env_var: F,
-    current_dir: &Path,
-) -> Result<String, UserCommandError>
-where
-    F: Fn(&str) -> Option<std::ffi::OsString>,
-{
-    let parsed = parse_inbox_options(args, false, false, false, 1, current_dir)?;
-    let judgment_id = required_inbox_positional(&parsed, 0, "judgment-id")?;
-    let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
-    let store = CoreProjectStore::open(
-        &resolved.runtime_home,
-        &ProjectId::new(&resolved.project_id),
-    )?;
-    let record = store
-        .user_judgment_record(judgment_id)?
-        .ok_or_else(|| UserCommandError::Runtime("selected judgment was not found".to_owned()))?;
-    if record.status != "pending" {
-        return Err(UserCommandError::Runtime(format!(
-            "selected judgment is not pending (status: {}); refresh `volicord inbox`",
-            record.status
-        )));
+fn resolution_from_immutable_request(
+    record: &EffectiveUserActionRecord,
+    parsed: &ParsedInboxOptions,
+) -> Result<UserActionResolutionInput, UserCommandError> {
+    let request: PersistedUserActionRequest = serde_json::from_str(&record.request.request_json)
+        .map_err(|error| {
+            UserCommandError::Runtime(format!(
+                "failed to decode user_action_requests.request_json for replay: {error}"
+            ))
+        })?;
+    let form = request.body.capture_form().map_err(|error| {
+        UserCommandError::Runtime(format!(
+            "invalid immutable user-action request for replay: {error}"
+        ))
+    })?;
+    resolution_from_form(&form, parsed)
+}
+
+fn resolution_from_form(
+    form: &UserActionInboxForm,
+    parsed: &ParsedInboxOptions,
+) -> Result<UserActionResolutionInput, UserCommandError> {
+    match form {
+        UserActionInboxForm::Choice { choices, .. } => {
+            reject_observation_flags(parsed)?;
+            let selector = parsed
+                .choice
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    UserCommandError::Usage("missing required option: --choice".to_owned())
+                })?;
+            let selected = select_inbox_choice(choices, selector)?;
+            Ok(UserActionResolutionInput::Choice {
+                selected_option_id: selected.choice_id,
+                note: parsed.note.clone().into(),
+            })
+        }
+        UserActionInboxForm::EvidenceObservation {
+            target_candidates,
+            artifact_candidates,
+            ..
+        } => {
+            if parsed.choice.is_some() || parsed.note.is_some() {
+                return Err(UserCommandError::Usage(
+                    "--choice and --note are valid only for a choice user action".to_owned(),
+                ));
+            }
+            if parsed.acceptance_criterion_id.is_some() == parsed.evidence_claim_id.is_some() {
+                return Err(UserCommandError::Usage(
+                    "exactly one of --criterion or --claim is required".to_owned(),
+                ));
+            }
+            if parsed.artifact_ids.is_empty() {
+                return Err(UserCommandError::Usage(
+                    "at least one non-empty --artifact is required".to_owned(),
+                ));
+            }
+            let summary = parsed
+                .summary
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+                .cloned()
+                .ok_or_else(|| {
+                    UserCommandError::Usage("a non-empty --summary is required".to_owned())
+                })?;
+            let target = selected_target(parsed, target_candidates)?;
+            validate_artifact_selection(&parsed.artifact_ids, artifact_candidates)?;
+            Ok(UserActionResolutionInput::EvidenceObservation {
+                target,
+                artifact_ids: parsed.artifact_ids.iter().map(ArtifactId::new).collect(),
+                relevance_status: parsed.relevance_status,
+                summary,
+            })
+        }
     }
-    if parsed.output == OutputFormat::Json {
-        return serde_json::to_string_pretty(&json!({
-            "opened": false,
-            "judgment_id": judgment_id,
-            "reason": "local_web_consent_url_unavailable",
-            "fallback_command": format!("volicord inbox answer {judgment_id} --choice <choice>")
-        }))
-        .map(|text| format!("{text}\n"))
-        .map_err(|error| UserCommandError::Runtime(error.to_string()));
+}
+
+fn canonical_inbox_item(
+    response: &PipelineResponse,
+    request_id: &str,
+) -> Result<UserActionInboxItem, UserCommandError> {
+    if response_kind(response) != Some("result") {
+        return Err(UserCommandError::Runtime(
+            "Core could not project the selected user-action form".to_owned(),
+        ));
     }
-    Ok(format!(
-        "Judgment Inbox open action_required\n\nSummary:\n  No local consent URL is available from this CLI process.\n\nNext:\n  1. Use the URL shown in the MCP Judgment Inbox item when one is available.\n  2. Run:\n     volicord inbox answer {judgment_id} --choice <choice>\n\nLimits:\n  This does not prove {USER_CHANNEL_NON_GUARANTEE_TEXT}.\n"
-    ))
+    let items: Vec<UserActionInboxItem> =
+        serde_json::from_value(response.response_value["pending_user_action_inbox_items"].clone())
+            .map_err(|error| {
+                UserCommandError::Runtime(format!(
+                    "failed to decode canonical inbox items: {error}"
+                ))
+            })?;
+    items
+        .into_iter()
+        .find(|item| item.user_action_request_id.as_str() == request_id)
+        .ok_or_else(|| {
+            UserCommandError::Runtime(
+                "selected user action is no longer in the canonical pending inbox; refresh `volicord inbox`"
+                    .to_owned(),
+            )
+        })
+}
+
+pub(crate) fn select_inbox_choice(
+    choices: &[volicord_types::UserActionInboxChoice],
+    selector: &str,
+) -> Result<volicord_types::UserActionInboxChoice, UserCommandError> {
+    if let Some(index) = parse_positive_index(selector)? {
+        let choice = choices.get(index - 1).cloned().ok_or_else(|| {
+            UserCommandError::Usage(format!(
+                "option number {index} is out of range for the selected user action"
+            ))
+        })?;
+        if let Some(by_id) = choices
+            .iter()
+            .find(|candidate| candidate.choice_id.as_str() == selector)
+        {
+            if by_id.choice_id != choice.choice_id {
+                return Err(UserCommandError::Usage(format!(
+                    "option selector `{selector}` is ambiguous: it matches an option number and an explicit option id"
+                )));
+            }
+        }
+        return Ok(choice);
+    }
+    choices
+        .iter()
+        .find(|choice| choice.choice_id.as_str() == selector)
+        .cloned()
+        .ok_or_else(|| {
+            UserCommandError::Usage(format!(
+                "option selector `{selector}` does not match a numbered option or option id"
+            ))
+        })
+}
+
+fn selected_target(
+    parsed: &ParsedInboxOptions,
+    candidates: &[EvidenceTarget],
+) -> Result<EvidenceTarget, UserCommandError> {
+    if let Some(criterion_id) = parsed.acceptance_criterion_id.as_deref() {
+        return candidates
+            .iter()
+            .find(|target| {
+                matches!(
+                    target,
+                    EvidenceTarget::AcceptanceCriterion { acceptance_criterion_id }
+                        if acceptance_criterion_id.as_str() == criterion_id
+                )
+            })
+            .cloned()
+            .ok_or_else(|| {
+                UserCommandError::Usage(format!(
+                    "criterion `{criterion_id}` is not a candidate for the selected user action"
+                ))
+            });
+    }
+    let claim_id = parsed
+        .evidence_claim_id
+        .as_deref()
+        .expect("caller checked exactly one target selector");
+    candidates
+        .iter()
+        .find(|target| {
+            matches!(
+                target,
+                EvidenceTarget::SupplementalClaim { evidence_claim_id, .. }
+                    if evidence_claim_id.as_str() == claim_id
+            )
+        })
+        .cloned()
+        .ok_or_else(|| {
+            UserCommandError::Usage(format!(
+                "claim `{claim_id}` is not a candidate for the selected user action"
+            ))
+        })
+}
+
+fn validate_artifact_selection(
+    artifact_ids: &[String],
+    candidates: &[volicord_types::ArtifactRef],
+) -> Result<(), UserCommandError> {
+    let mut seen = BTreeSet::new();
+    for artifact_id in artifact_ids {
+        if artifact_id.trim().is_empty() {
+            return Err(UserCommandError::Usage(
+                "--artifact must not be empty".to_owned(),
+            ));
+        }
+        if !seen.insert(artifact_id) {
+            return Err(UserCommandError::Usage(format!(
+                "artifact `{artifact_id}` was selected more than once"
+            )));
+        }
+        if !candidates
+            .iter()
+            .any(|candidate| candidate.artifact_id.as_str() == artifact_id)
+        {
+            return Err(UserCommandError::Usage(format!(
+                "artifact `{artifact_id}` is not a candidate for the selected user action"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_observation_flags(parsed: &ParsedInboxOptions) -> Result<(), UserCommandError> {
+    if parsed.acceptance_criterion_id.is_some()
+        || parsed.evidence_claim_id.is_some()
+        || !parsed.artifact_ids.is_empty()
+        || parsed.summary.is_some()
+        || parsed.relevance_status == EvidenceRelevanceStatus::Contradicted
+    {
+        return Err(UserCommandError::Usage(
+            "observation flags are valid only for an evidence-observation user action".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_resolution_flags_for_list(parsed: &ParsedInboxOptions) -> Result<(), UserCommandError> {
+    if parsed.choice.is_some()
+        || parsed.note.is_some()
+        || parsed.acceptance_criterion_id.is_some()
+        || parsed.evidence_claim_id.is_some()
+        || !parsed.artifact_ids.is_empty()
+        || parsed.summary.is_some()
+        || parsed.relevance_status == EvidenceRelevanceStatus::Contradicted
+    {
+        return Err(UserCommandError::Usage(
+            "resolution flags require `volicord inbox resolve <user-action-request-id>`".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_status_options(
     args: &[String],
     current_dir: &Path,
 ) -> Result<ParsedStatusOptions, UserCommandError> {
-    let options = parse_status_raw_options(args)?;
+    let options = parse_raw_options(args, true, false)?;
     if !options.positionals.is_empty() {
         return Err(UserCommandError::Usage(format!(
             "unexpected argument: {}",
@@ -557,145 +639,47 @@ fn parse_status_options(
             .value("repo")
             .map(PathBuf::from)
             .map(|path| absolute_path(current_dir, path)),
-        task: match options.value("task").as_deref() {
-            None | Some("active") => TaskSelector::Active,
-            Some(value) if value.trim().is_empty() => {
-                return Err(UserCommandError::Usage(
-                    "--task must not be empty".to_owned(),
-                ));
-            }
-            Some(value) => TaskSelector::Id(value.to_owned()),
-        },
-        output: if options.value("json").is_some() {
-            OutputFormat::Json
-        } else {
-            OutputFormat::Text
-        },
+        task: parse_task_selector(options.value("task"))?,
+        output: output_format(&options),
     })
 }
 
 fn parse_inbox_options(
     args: &[String],
     allow_task: bool,
-    allow_note: bool,
-    allow_choice: bool,
     max_positionals: usize,
     current_dir: &Path,
 ) -> Result<ParsedInboxOptions, UserCommandError> {
-    let mut parsed = ParsedRawOptions::default();
-    let mut index = 0;
-    while index < args.len() {
-        let token = &args[index];
-        if token == "-h" || token == "--help" || token == "help" {
-            return Err(UserCommandError::Usage(inbox_usage()));
-        }
-        if token == "--json" {
-            set_option(&mut parsed.values, "json", "true".to_owned())?;
-        } else if token.starts_with("--json=") {
-            return Err(UserCommandError::Usage(
-                "--json does not accept a value".to_owned(),
-            ));
-        } else if token == "--repo" {
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(UserCommandError::Usage(
-                    "missing value for --repo".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut parsed.values, "repo", value)?;
-        } else if let Some(value) = token.strip_prefix("--repo=") {
-            set_nonempty_option(&mut parsed.values, "repo", value)?;
-        } else if token == "--task" {
-            if !allow_task {
-                return Err(UserCommandError::Usage("unknown option: --task".to_owned()));
-            }
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(UserCommandError::Usage(
-                    "missing value for --task".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut parsed.values, "task", value)?;
-        } else if let Some(value) = token.strip_prefix("--task=") {
-            if !allow_task {
-                return Err(UserCommandError::Usage("unknown option: --task".to_owned()));
-            }
-            set_nonempty_option(&mut parsed.values, "task", value)?;
-        } else if token == "--choice" {
-            if !allow_choice {
-                return Err(UserCommandError::Usage(
-                    "unknown option: --choice".to_owned(),
-                ));
-            }
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(UserCommandError::Usage(
-                    "missing value for --choice".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut parsed.values, "choice", value)?;
-        } else if let Some(value) = token.strip_prefix("--choice=") {
-            if !allow_choice {
-                return Err(UserCommandError::Usage(
-                    "unknown option: --choice".to_owned(),
-                ));
-            }
-            set_nonempty_option(&mut parsed.values, "choice", value)?;
-        } else if token == "--note" {
-            if !allow_note {
-                return Err(UserCommandError::Usage("unknown option: --note".to_owned()));
-            }
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(UserCommandError::Usage(
-                    "missing value for --note".to_owned(),
-                ));
-            };
-            set_option(&mut parsed.values, "note", value.clone())?;
-        } else if let Some(value) = token.strip_prefix("--note=") {
-            if !allow_note {
-                return Err(UserCommandError::Usage("unknown option: --note".to_owned()));
-            }
-            set_option(&mut parsed.values, "note", value.to_owned())?;
-        } else if token.starts_with("--") {
-            return Err(UserCommandError::Usage(format!("unknown option: {token}")));
-        } else {
-            parsed.positionals.push(token.clone());
-        }
-        index += 1;
-    }
-    if parsed.positionals.len() > max_positionals {
+    let options = parse_raw_options(args, allow_task, true)?;
+    if options.positionals.len() > max_positionals {
         return Err(UserCommandError::Usage(format!(
             "unexpected argument: {}",
-            parsed.positionals[max_positionals]
+            options.positionals[max_positionals]
         )));
     }
     Ok(ParsedInboxOptions {
-        repo: parsed
+        repo: options
             .value("repo")
             .map(PathBuf::from)
             .map(|path| absolute_path(current_dir, path)),
-        task: match parsed.value("task").as_deref() {
-            None | Some("active") => TaskSelector::Active,
-            Some(value) if value.trim().is_empty() => {
-                return Err(UserCommandError::Usage(
-                    "--task must not be empty".to_owned(),
-                ));
-            }
-            Some(value) => TaskSelector::Id(value.to_owned()),
-        },
-        choice: parsed.value("choice"),
-        note: parsed.value("note"),
-        output: if parsed.value("json").is_some() {
-            OutputFormat::Json
+        task: parse_task_selector(options.value("task"))?,
+        choice: options.value("choice"),
+        note: options.value("note"),
+        acceptance_criterion_id: options.value("criterion"),
+        evidence_claim_id: options.value("claim"),
+        artifact_ids: options.values("artifact"),
+        summary: options.value("summary"),
+        relevance_status: if options.has("contradicted") {
+            EvidenceRelevanceStatus::Contradicted
         } else {
-            OutputFormat::Text
+            EvidenceRelevanceStatus::Supported
         },
-        positionals: parsed.positionals,
+        output: output_format(&options),
+        positionals: options.positionals,
     })
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 struct ParsedRawOptions {
     values: UserOptions,
     positionals: Vec<String>,
@@ -708,44 +692,51 @@ impl ParsedRawOptions {
             .and_then(|values| values.first())
             .cloned()
     }
+
+    fn values(&self, name: &str) -> Vec<String> {
+        self.values.get(name).cloned().unwrap_or_default()
+    }
+
+    fn has(&self, name: &str) -> bool {
+        self.values.contains_key(name)
+    }
 }
 
-fn parse_status_raw_options(args: &[String]) -> Result<ParsedRawOptions, UserCommandError> {
+fn parse_raw_options(
+    args: &[String],
+    allow_task: bool,
+    allow_resolution: bool,
+) -> Result<ParsedRawOptions, UserCommandError> {
     let mut parsed = ParsedRawOptions::default();
     let mut index = 0;
     while index < args.len() {
         let token = &args[index];
-        if token == "-h" || token == "--help" || token == "help" {
-            return Err(UserCommandError::Usage(status_usage()));
+        if matches!(token.as_str(), "-h" | "--help" | "help") {
+            return Err(UserCommandError::Usage(if allow_resolution {
+                inbox_usage()
+            } else {
+                status_usage()
+            }));
         }
-        if token == "--json" {
-            set_option(&mut parsed.values, "json", "true".to_owned())?;
-        } else if token.starts_with("--json=") {
-            return Err(UserCommandError::Usage(
-                "--json does not accept a value".to_owned(),
-            ));
-        } else if token == "--repo" {
+        if token == "--json" || token == "--contradicted" {
+            let name = &token[2..];
+            if name == "contradicted" && !allow_resolution {
+                return Err(UserCommandError::Usage(format!("unknown option: {token}")));
+            }
+            set_option(&mut parsed.values, name, "true".to_owned(), false)?;
+        } else if let Some((name, value)) =
+            token.strip_prefix("--").and_then(|raw| raw.split_once('='))
+        {
+            parse_named_value(&mut parsed, name, value, allow_task, allow_resolution)?;
+        } else if let Some(name) = token.strip_prefix("--") {
+            if matches!(name, "json" | "contradicted") {
+                unreachable!("boolean options handled above");
+            }
             index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(UserCommandError::Usage(
-                    "missing value for --repo".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut parsed.values, "repo", value)?;
-        } else if let Some(value) = token.strip_prefix("--repo=") {
-            set_nonempty_option(&mut parsed.values, "repo", value)?;
-        } else if token == "--task" {
-            index += 1;
-            let Some(value) = args.get(index) else {
-                return Err(UserCommandError::Usage(
-                    "missing value for --task".to_owned(),
-                ));
-            };
-            set_nonempty_option(&mut parsed.values, "task", value)?;
-        } else if let Some(value) = token.strip_prefix("--task=") {
-            set_nonempty_option(&mut parsed.values, "task", value)?;
-        } else if token.starts_with("--") {
-            return Err(UserCommandError::Usage(format!("unknown option: {token}")));
+            let value = args
+                .get(index)
+                .ok_or_else(|| UserCommandError::Usage(format!("missing value for --{name}")))?;
+            parse_named_value(&mut parsed, name, value, allow_task, allow_resolution)?;
         } else {
             parsed.positionals.push(token.clone());
         }
@@ -754,30 +745,69 @@ fn parse_status_raw_options(args: &[String]) -> Result<ParsedRawOptions, UserCom
     Ok(parsed)
 }
 
-fn set_nonempty_option(
-    options: &mut UserOptions,
-    name: &'static str,
+fn parse_named_value(
+    parsed: &mut ParsedRawOptions,
+    name: &str,
     value: &str,
+    allow_task: bool,
+    allow_resolution: bool,
 ) -> Result<(), UserCommandError> {
+    let allowed = match name {
+        "repo" => true,
+        "task" => allow_task,
+        "choice" | "note" | "criterion" | "claim" | "artifact" | "summary" => allow_resolution,
+        _ => false,
+    };
+    if !allowed {
+        return Err(UserCommandError::Usage(format!("unknown option: --{name}")));
+    }
     if value.trim().is_empty() {
         return Err(UserCommandError::Usage(format!(
             "--{name} must not be empty"
         )));
     }
-    set_option(options, name, value.to_owned())
+    set_option(
+        &mut parsed.values,
+        name,
+        value.to_owned(),
+        name == "artifact",
+    )
 }
 
 fn set_option(
     options: &mut UserOptions,
-    name: &'static str,
+    name: &str,
     value: String,
+    repeated: bool,
 ) -> Result<(), UserCommandError> {
+    if repeated {
+        options.entry(name.to_owned()).or_default().push(value);
+        return Ok(());
+    }
     if options.insert(name.to_owned(), vec![value]).is_some() {
         return Err(UserCommandError::Usage(format!(
-            "duplicate option: --{name}"
+            "option --{name} may be specified only once"
         )));
     }
     Ok(())
+}
+
+fn parse_task_selector(value: Option<String>) -> Result<TaskSelector, UserCommandError> {
+    match value.as_deref() {
+        None | Some("active") => Ok(TaskSelector::Active),
+        Some(value) if value.trim().is_empty() => Err(UserCommandError::Usage(
+            "--task must not be empty".to_owned(),
+        )),
+        Some(value) => Ok(TaskSelector::Id(value.to_owned())),
+    }
+}
+
+fn output_format(options: &ParsedRawOptions) -> OutputFormat {
+    if options.has("json") {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Text
+    }
 }
 
 fn resolve_user_project<F>(
@@ -793,7 +823,7 @@ where
     let project = registered_project_for_repo(&runtime_home, &repo_root)?;
     Ok(ResolvedUserProject {
         runtime_home,
-        project_id: project.project_internal_id.clone(),
+        project_id: project.project_internal_id,
     })
 }
 
@@ -805,40 +835,6 @@ fn selected_or_active_task_id(
         TaskSelector::Active => Ok(store.project_state()?.active_task_id),
         TaskSelector::Id(task_id) => Ok(Some(task_id.clone())),
     }
-}
-
-pub(crate) fn select_option(
-    options: &[UserJudgmentOption],
-    selector: &str,
-) -> Result<UserJudgmentOption, UserCommandError> {
-    if let Some(index) = parse_positive_index(selector)? {
-        let Some(option) = options.get(index - 1).cloned() else {
-            return Err(UserCommandError::Usage(format!(
-                "option number {index} is out of range for the selected judgment"
-            )));
-        };
-        if let Some(by_id) = options
-            .iter()
-            .find(|option| option.option_id.as_str() == selector)
-        {
-            if by_id.option_id != option.option_id {
-                return Err(UserCommandError::Usage(format!(
-                    "option selector `{selector}` is ambiguous: it matches an option number and an explicit option id"
-                )));
-            }
-        }
-        return Ok(option);
-    }
-
-    options
-        .iter()
-        .find(|option| option.option_id.as_str() == selector)
-        .cloned()
-        .ok_or_else(|| {
-            UserCommandError::Usage(format!(
-                "option selector `{selector}` does not match a numbered option or option id"
-            ))
-        })
 }
 
 fn parse_positive_index(selector: &str) -> Result<Option<usize>, UserCommandError> {
@@ -856,19 +852,57 @@ fn parse_positive_index(selector: &str) -> Result<Option<usize>, UserCommandErro
     Ok(Some(index))
 }
 
+pub(crate) fn resolve_user_action_from_record(
+    input: UserActionResolutionRecordingInput<'_>,
+) -> Result<PipelineResponse, UserCommandError> {
+    if input.record.status != UserActionStatus::Pending && input.channel_submission_id.is_none() {
+        return Err(UserCommandError::Runtime(format!(
+            "selected user action is not pending (status: {}); refresh `volicord inbox`",
+            enum_text(input.record.status)
+        )));
+    }
+    let request_id = input
+        .request_id
+        .unwrap_or_else(|| generated_id("req_user_action_resolve"));
+    let channel_submission_id = input
+        .channel_submission_id
+        .unwrap_or_else(|| generated_id("submission_user_action"));
+    CoreService::new(input.runtime_home)
+        .resolve_user_action(
+            ResolveUserActionRequest {
+                envelope: envelope(
+                    input.project_id,
+                    Some(&input.record.request.task_id),
+                    request_id,
+                    Some(channel_submission_id.clone()),
+                ),
+                user_action_request_id: UserActionRequestId::new(
+                    &input.record.request.user_action_request_id,
+                ),
+                channel_submission_id,
+                resolution: input.resolution,
+            },
+            invocation_with_basis(
+                input.project_id,
+                OperationCategory::UserOnly,
+                input.verification_basis,
+            ),
+        )
+        .map_err(Into::into)
+}
+
 fn envelope(
     project_id: &str,
     task_id: Option<&str>,
     request_id: String,
     idempotency_key: Option<String>,
-    expected_state_version: Option<u64>,
 ) -> ToolEnvelope {
     ToolEnvelope {
         project_id: ProjectId::new(project_id),
         task_id: task_id.map(TaskId::new).into(),
         request_id: RequestId::new(request_id),
         idempotency_key: idempotency_key.map(IdempotencyKey::new).into(),
-        expected_state_version: expected_state_version.into(),
+        expected_state_version: None.into(),
         dry_run: false,
         locale: None.into(),
     }
@@ -895,205 +929,6 @@ fn invocation_with_basis(
     )
 }
 
-pub(crate) fn decode_options(
-    record: &UserJudgmentRecord,
-) -> Result<Vec<UserJudgmentOption>, UserCommandError> {
-    decode_json::<PersistedUserJudgmentOptions>("options_json", &record.options_json)?
-        .into_current_options()
-        .map_err(|error| UserCommandError::Runtime(error.to_string()))
-}
-
-pub(crate) fn record_user_judgment_from_record(
-    input: JudgmentRecordingInput<'_>,
-) -> Result<PipelineResponse, UserCommandError> {
-    if input.record.status != "pending" && input.idempotency_key.is_none() {
-        return Err(UserCommandError::Runtime(format!(
-            "selected judgment is not pending (status: {}); refresh `volicord inbox`",
-            input.record.status
-        )));
-    }
-    let judgment_kind = parse_judgment_kind(&input.record.judgment_kind)?;
-    let context = decode_json::<UserJudgmentContext>("context_json", &input.record.context_json)?;
-    let request_id = input
-        .request_id
-        .unwrap_or_else(|| generated_id("req_user_judgment_record"));
-    let idempotency_key = input
-        .idempotency_key
-        .unwrap_or_else(|| generated_id("idem_user_judgment_record"));
-    CoreService::new(input.runtime_home)
-        .record_user_judgment(
-            RecordUserJudgmentRequest {
-                envelope: envelope(
-                    input.project_id,
-                    Some(&input.record.task_id),
-                    request_id,
-                    Some(idempotency_key),
-                    input.expected_state_version,
-                ),
-                user_judgment_id: UserJudgmentId::new(&input.record.judgment_id),
-                judgment_kind,
-                selected_option_id: input.selected_option.option_id.clone(),
-                answer: answer_payload_for_record(
-                    judgment_kind,
-                    input.selected_option,
-                    input.record,
-                    &context,
-                )?,
-                rationale: rationale_for_selected_option(judgment_kind, input.selected_option),
-                note: input.note.into(),
-                accepted_risks: accepted_risks_for_record(
-                    judgment_kind,
-                    input.selected_option,
-                    &context,
-                ),
-            },
-            invocation_with_basis(
-                input.project_id,
-                OperationCategory::UserOnly,
-                input.verification_basis,
-            ),
-        )
-        .map_err(Into::into)
-}
-
-fn decode_json<T>(field: &'static str, text: &str) -> Result<T, UserCommandError>
-where
-    T: serde::de::DeserializeOwned,
-{
-    serde_json::from_str(text).map_err(|error| {
-        UserCommandError::Runtime(format!("failed to decode user_judgments.{field}: {error}"))
-    })
-}
-
-fn parse_judgment_kind(raw: &str) -> Result<JudgmentKind, UserCommandError> {
-    serde_json::from_value(Value::String(raw.to_owned())).map_err(|_| {
-        UserCommandError::Runtime(format!(
-            "stored user_judgments.judgment_kind is not supported: {raw}"
-        ))
-    })
-}
-
-fn answer_payload_for_record(
-    judgment_kind: JudgmentKind,
-    selected_option: &UserJudgmentOption,
-    record: &UserJudgmentRecord,
-    context: &UserJudgmentContext,
-) -> Result<RecordUserJudgmentPayload, UserCommandError> {
-    let mut payload = empty_answer_payload();
-    let branch = json_object(json!({
-        "summary": format!("User selected option {}", selected_option.option_id),
-        "selected_option": selected_option.option_id.as_str(),
-        "selected_option_label": selected_option.label,
-        "selected_option_consequence": selected_option.consequence,
-    }));
-    match judgment_kind {
-        JudgmentKind::ProductDecision => payload.product_decision = Some(branch).into(),
-        JudgmentKind::TechnicalDecision => payload.technical_decision = Some(branch).into(),
-        JudgmentKind::ScopeDecision => payload.scope_decision = Some(branch).into(),
-        JudgmentKind::SensitiveApproval => {
-            payload.sensitive_action_scope =
-                Some(sensitive_action_scope_for_record(record)?).into();
-        }
-        JudgmentKind::FinalAcceptance => payload.final_acceptance = Some(branch).into(),
-        JudgmentKind::ResidualRiskAcceptance => {
-            payload.residual_risk_acceptance = Some(json_object(json!({
-                "summary": format!("User selected option {}", selected_option.option_id),
-                "selected_option": selected_option.option_id.as_str(),
-                "risk_ids": accepted_risk_ids(selected_option, context),
-            })))
-            .into();
-        }
-        JudgmentKind::Cancellation => payload.cancellation = Some(branch).into(),
-    }
-    Ok(payload)
-}
-
-fn empty_answer_payload() -> RecordUserJudgmentPayload {
-    RecordUserJudgmentPayload {
-        product_decision: None.into(),
-        technical_decision: None.into(),
-        scope_decision: None.into(),
-        sensitive_action_scope: None.into(),
-        final_acceptance: None.into(),
-        residual_risk_acceptance: None.into(),
-        cancellation: None.into(),
-    }
-}
-
-fn sensitive_action_scope_for_record(
-    record: &UserJudgmentRecord,
-) -> Result<SensitiveActionScope, UserCommandError> {
-    serde_json::from_str(&record.sensitive_action_scope_json).map_err(|error| {
-        UserCommandError::Runtime(format!(
-            "pending sensitive approval is missing a valid sensitive action scope: {error}"
-        ))
-    })
-}
-
-fn rationale_for_selected_option(
-    judgment_kind: JudgmentKind,
-    selected_option: &UserJudgmentOption,
-) -> JudgmentRationale {
-    let accepted = selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted;
-    JudgmentRationale {
-        summary: format!(
-            "User selected `{}` for `{}` through the User Channel.",
-            selected_option.option_id,
-            judgment_kind_value(judgment_kind)
-        ),
-        selected_reason: Some(format!(
-            "{} {}",
-            selected_option.description, selected_option.consequence
-        ))
-        .into(),
-        considered_alternatives: Vec::new(),
-        rejected_alternatives: Vec::new(),
-        assumptions: vec!["The answer covers only the addressed Core UserJudgment.".to_owned()],
-        tradeoffs: if accepted {
-            vec![selected_option.consequence.clone()]
-        } else {
-            Vec::new()
-        },
-        uncertainties: Vec::new(),
-        review_triggers: if accepted {
-            vec!["Revisit if the captured judgment basis becomes stale or superseded.".to_owned()]
-        } else {
-            Vec::new()
-        },
-        related_refs: Vec::new(),
-        artifact_refs: Vec::new(),
-    }
-}
-
-fn accepted_risks_for_record(
-    judgment_kind: JudgmentKind,
-    selected_option: &UserJudgmentOption,
-    context: &UserJudgmentContext,
-) -> Vec<volicord_types::AcceptedRiskInput> {
-    if judgment_kind == JudgmentKind::ResidualRiskAcceptance
-        && selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted
-    {
-        context.visible_risks.clone()
-    } else {
-        Vec::new()
-    }
-}
-
-fn accepted_risk_ids(
-    selected_option: &UserJudgmentOption,
-    context: &UserJudgmentContext,
-) -> Vec<String> {
-    if selected_option.resolution_outcome == JudgmentResolutionOutcome::Accepted {
-        context
-            .visible_risks
-            .iter()
-            .map(|risk| risk.risk_id.as_str().to_owned())
-            .collect()
-    } else {
-        Vec::new()
-    }
-}
-
 fn render_status_response(
     response: &PipelineResponse,
     output: OutputFormat,
@@ -1113,7 +948,7 @@ fn render_status_response(
     ));
     if response
         .response_value
-        .get("pending_judgment_inbox_items")
+        .get("pending_user_action_inbox_items")
         .and_then(Value::as_array)
         .is_some_and(|items| !items.is_empty())
     {
@@ -1129,98 +964,151 @@ fn render_status_response(
     Ok(output)
 }
 
-fn render_inbox_items(
-    records: &[UserJudgmentRecord],
+fn render_inbox_response(
+    response: &PipelineResponse,
     output: OutputFormat,
     has_selected_task: bool,
 ) -> Result<String, UserCommandError> {
-    let summary_card = inbox_summary_card(records, has_selected_task);
-    let user_channel_availability = cli_only_user_channel_availability();
+    if response_kind(response) != Some("result") {
+        return if output == OutputFormat::Json {
+            pretty_response(response)
+        } else {
+            render_rejected_or_json(response)
+        };
+    }
+    let items: Vec<UserActionInboxItem> =
+        serde_json::from_value(response.response_value["pending_user_action_inbox_items"].clone())
+            .map_err(|error| {
+                UserCommandError::Runtime(format!(
+                    "failed to decode canonical inbox items: {error}"
+                ))
+            })?;
+    let availability = response
+        .response_value
+        .get("user_channel_availability")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let summary_card = inbox_summary_card(&items, has_selected_task);
     if output == OutputFormat::Json {
-        let values = records
-            .iter()
-            .map(inbox_item_json)
-            .collect::<Result<Vec<_>, _>>()?;
         return serde_json::to_string_pretty(&json!({
             "summary_card": summary_card,
-            "user_channel_availability": user_channel_availability,
-            "pending_judgment_inbox_items": values,
+            "user_channel_availability": availability,
+            "pending_user_action_inbox_items": items,
         }))
         .map(|text| format!("{text}\n"))
         .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
-
-    let mut text = String::from("Judgment Inbox\n");
+    let mut text = String::from("User Action Inbox\n");
     text.push_str(&render_summary_card_text(&summary_card));
-    if records.is_empty() {
-        text.push_str("No pending judgments.\n");
+    if items.is_empty() {
+        text.push_str("No pending user actions.\n");
         return Ok(text);
     }
-    if let Some(line) = render_user_channel_availability_text(Some(&user_channel_availability)) {
+    if let Some(line) = render_user_channel_availability_text(Some(&availability)) {
         text.push_str(&line);
     }
-
-    for (index, record) in records.iter().enumerate() {
-        let request: volicord_types::PersistedUserJudgmentRequest =
-            decode_json("request_json", &record.request_json)?;
-        let context: UserJudgmentContext = decode_json("context_json", &record.context_json)?;
-        let options = decode_options(record)?;
-        let requirement = if request.required_for.is_empty() {
-            "optional"
-        } else {
-            "required"
-        };
-        text.push_str(&format!("{}. {}\n", index + 1, request.question));
-        text.push_str(&format!("   id: {}\n", record.judgment_id));
-        text.push_str(&format!("   status: {requirement}\n"));
-        if !context.summary.trim().is_empty() {
-            text.push_str(&format!("   context: {}\n", context.summary));
+    for (index, item) in items.iter().enumerate() {
+        text.push_str(&format!("{}. {}\n", index + 1, item.question));
+        text.push_str(&format!("   id: {}\n", item.user_action_request_id));
+        text.push_str(&format!("   kind: {}\n", enum_text(item.action_kind)));
+        if !item.context_summary.trim().is_empty() {
+            text.push_str(&format!("   context: {}\n", item.context_summary));
         }
-        text.push_str("   choices:\n");
-        for option in &options {
-            text.push_str(&format!(
-                "   - {}: {} - {}\n",
-                option.option_id.as_str(),
-                option.label,
-                option.description
-            ));
+        let presentation = UserActionPresentationPlan::from_form(&item.form)
+            .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
+        match &presentation.form {
+            UserActionPresentationForm::Choice {
+                choices,
+                note_allowed,
+                note_max_chars,
+            } => {
+                text.push_str("   choices:\n");
+                for choice in choices {
+                    text.push_str(&format!(
+                        "   - {}: {} - {}\n     consequence: {}\n     default: {}\n",
+                        choice.choice_id,
+                        choice.label,
+                        choice.description,
+                        choice.consequence,
+                        choice.is_default
+                    ));
+                }
+                text.push_str(&format!(
+                    "   note allowed: {note_allowed}; max characters: {note_max_chars}\n"
+                ));
+                text.push_str(&format!(
+                    "   resolve:\n     volicord inbox resolve {} --choice <choice>\n",
+                    item.user_action_request_id
+                ));
+            }
+            UserActionPresentationForm::EvidenceObservation {
+                targets,
+                artifacts,
+                relevance_options,
+                summary_max_chars,
+            } => {
+                text.push_str("   target candidates:\n");
+                for target in targets {
+                    text.push_str(&format!(
+                        "   - {}: {}\n     metadata: {}\n",
+                        target.selector, target.display_name, target.metadata_json
+                    ));
+                }
+                text.push_str("   artifact candidates:\n");
+                for artifact in artifacts {
+                    text.push_str(&format!(
+                        "   - {}: {}\n     metadata: {}\n",
+                        artifact.artifact_id, artifact.display_name, artifact.metadata_json
+                    ));
+                }
+                text.push_str(&format!(
+                    "   relevance options: {}\n   summary max characters: {}\n",
+                    relevance_options.join(", "),
+                    summary_max_chars
+                ));
+                text.push_str(&format!(
+                    "   resolve:\n     volicord inbox resolve {} (--criterion ID | --claim ID) --artifact ID --summary TEXT\n",
+                    item.user_action_request_id
+                ));
+            }
         }
-        text.push_str(&format!(
-            "   answer:\n     volicord inbox answer {} --choice <choice>\n",
-            record.judgment_id
-        ));
     }
     Ok(text)
 }
 
-fn inbox_summary_card(records: &[UserJudgmentRecord], has_selected_task: bool) -> SummaryCard {
+fn inbox_summary_card(items: &[UserActionInboxItem], has_selected_task: bool) -> SummaryCard {
     SummaryCard {
         task: if has_selected_task {
-            "selected".to_owned()
+            "selected"
         } else {
-            "none".to_owned()
-        },
+            "none"
+        }
+        .to_owned(),
         recording: "read_only".to_owned(),
         profile: "not_selected".to_owned(),
         write_ticket: "not_selected".to_owned(),
         evidence: "not_selected".to_owned(),
-        user_judgment: count_state_text("pending", records.len()),
+        user_action: count_state_text("pending", items.len()),
         changes: "not_selected".to_owned(),
         close_status: "not_selected".to_owned(),
         transport: "User Channel".to_owned(),
-        next: records
+        next: items
             .first()
-            .map(|record| format!("answer pending judgment {}", record.judgment_id))
+            .map(|item| {
+                format!(
+                    "resolve pending user action {}",
+                    item.user_action_request_id
+                )
+            })
             .unwrap_or_else(|| "none".to_owned()),
         next_action: None,
         guarantee: USER_CHANNEL_SUMMARY_GUARANTEE.to_owned(),
     }
 }
 
-fn render_inbox_record_response(
+fn render_resolve_response(
     response: &PipelineResponse,
     output: OutputFormat,
-    selected_option: &UserJudgmentOption,
 ) -> Result<String, UserCommandError> {
     if output == OutputFormat::Json {
         return pretty_response(response);
@@ -1228,107 +1116,17 @@ fn render_inbox_record_response(
     if response_kind(response) != Some("result") {
         return render_rejected_or_json(response);
     }
-    let mut text = String::from("Judgment Inbox answer recorded\n");
-    text.push_str(&format!("selected: {}\n", selected_option.label));
-    Ok(text)
-}
-
-fn inbox_item_json(record: &UserJudgmentRecord) -> Result<Value, UserCommandError> {
-    let request: volicord_types::PersistedUserJudgmentRequest =
-        decode_json("request_json", &record.request_json)?;
-    let context: UserJudgmentContext = decode_json("context_json", &record.context_json)?;
-    let options = decode_options(record)?;
-    let requirement_status = if request.required_for.is_empty() {
-        "optional"
-    } else {
-        "required"
-    };
-    Ok(json!({
-        "judgment_id": &record.judgment_id,
-        "project_id": &record.project_id,
-        "task_id": &record.task_id,
-        "change_unit_id": &record.change_unit_id,
-        "question": request.question,
-        "context_summary": context.summary,
-        "choices": options
-            .iter()
-            .map(inbox_choice_json)
-            .collect::<Vec<_>>(),
-        "answer_constraints": {
-            "choice_required": true,
-            "note_allowed": true,
-            "note_max_chars": 4000
-        },
-        "required": !request.required_for.is_empty(),
-        "requirement_status": requirement_status,
-        "required_for": request.required_for,
-        "status": &record.status,
-        "answer_path_availability": cli_only_user_channel_availability(),
-        "preferred_capture_path": {
-            "kind": "cli",
-            "label": "CLI inbox",
-            "available": true,
-            "command": format!("volicord inbox answer {} --choice <choice>", record.judgment_id),
-            "url": null,
-            "capture_basis": VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-            "expires_at": null,
-            "detail": "Answer from the local terminal as the user."
-        },
-        "fallbacks": [],
-        "expires_at": request.expires_at
-    }))
-}
-
-fn cli_only_user_channel_availability() -> Value {
-    json!({
-        "paths": [
-            {
-                "kind": "mcp_elicitation",
-                "label": "Host prompt input",
-                "available": false,
-                "status": "unavailable",
-                "capture_basis": VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
-                "detail": "Host prompt input is unavailable from this CLI process."
-            },
-            {
-                "kind": "prompt_capture",
-                "label": "Chat command capture",
-                "available": false,
-                "status": "unavailable",
-                "capture_basis": VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-                "detail": "Chat command capture is unavailable from this CLI process."
-            },
-            {
-                "kind": "local_web_consent",
-                "label": "Local consent URL",
-                "available": false,
-                "status": "unavailable",
-                "capture_basis": VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-                "detail": "No local consent URL is available from this CLI process."
-            },
-            {
-                "kind": "cli",
-                "label": "CLI inbox",
-                "available": true,
-                "status": "available",
-                "capture_basis": VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-                "detail": "Answer from the local terminal as the user."
-            }
-        ],
-        "recommended_path_kind": "cli",
-        "recommended_path_label": "CLI inbox",
-        "recommendation": "Use CLI inbox to answer pending judgments."
-    })
+    Ok("User action resolved\n".to_owned())
 }
 
 fn render_user_channel_availability_text(availability: Option<&Value>) -> Option<String> {
     let paths = availability?.get("paths")?.as_array()?;
     let mut fragments = Vec::new();
-    for kind in [
-        "mcp_elicitation",
-        "prompt_capture",
-        "local_web_consent",
-        "cli",
+    for (kind, label) in [
+        ("mcp_elicitation", "host prompt"),
+        ("prompt_capture", "chat capture"),
+        ("local_web_consent", "local consent"),
+        ("cli", "CLI inbox"),
     ] {
         let Some(path) = paths
             .iter()
@@ -1336,61 +1134,16 @@ fn render_user_channel_availability_text(availability: Option<&Value>) -> Option
         else {
             continue;
         };
-        let available = path["available"].as_bool().unwrap_or(false);
-        let status = path["status"].as_str().unwrap_or("unavailable");
-        let fragment = match kind {
-            "mcp_elicitation" => {
-                format!(
-                    "host prompt {}",
-                    if available {
-                        "available"
-                    } else {
-                        "unavailable"
-                    }
-                )
+        fragments.push(format!(
+            "{label} {}",
+            if path["available"].as_bool().unwrap_or(false) {
+                "available"
+            } else {
+                "unavailable"
             }
-            "prompt_capture" => {
-                if available {
-                    format!("chat capture {status}")
-                } else {
-                    "chat capture unavailable".to_owned()
-                }
-            }
-            "local_web_consent" => {
-                format!(
-                    "local consent {}",
-                    if available {
-                        "available"
-                    } else {
-                        "unavailable"
-                    }
-                )
-            }
-            "cli" => {
-                format!(
-                    "CLI inbox {}",
-                    if available {
-                        "available"
-                    } else {
-                        "unavailable"
-                    }
-                )
-            }
-            _ => continue,
-        };
-        fragments.push(fragment);
+        ));
     }
-    (!fragments.is_empty()).then(|| format!("Available answer paths: {}\n", fragments.join("; ")))
-}
-
-fn inbox_choice_json(option: &UserJudgmentOption) -> Value {
-    json!({
-        "choice_id": option.option_id.as_str(),
-        "label": &option.label,
-        "description": &option.description,
-        "consequence": &option.consequence,
-        "is_default": option.is_default,
-    })
+    (!fragments.is_empty()).then(|| format!("Available resolve paths: {}\n", fragments.join("; ")))
 }
 
 fn pretty_response(response: &PipelineResponse) -> Result<String, UserCommandError> {
@@ -1400,12 +1153,9 @@ fn pretty_response(response: &PipelineResponse) -> Result<String, UserCommandErr
 }
 
 fn render_rejected_or_json(response: &PipelineResponse) -> Result<String, UserCommandError> {
-    if response.response_value["errors"].is_array() {
+    if let Some(errors) = response.response_value["errors"].as_array() {
         let mut output = String::from("Core request rejected\n");
-        for error in response.response_value["errors"]
-            .as_array()
-            .unwrap_or(&Vec::new())
-        {
+        for error in errors {
             output.push_str(&format!(
                 "{}: {}\n",
                 error["code"].as_str().unwrap_or("ERROR"),
@@ -1451,50 +1201,54 @@ fn generated_id(prefix: &str) -> String {
     format!("{prefix}_{nanos}")
 }
 
-fn judgment_kind_value(value: JudgmentKind) -> &'static str {
-    match value {
-        JudgmentKind::ProductDecision => "product_decision",
-        JudgmentKind::TechnicalDecision => "technical_decision",
-        JudgmentKind::ScopeDecision => "scope_decision",
-        JudgmentKind::SensitiveApproval => "sensitive_approval",
-        JudgmentKind::FinalAcceptance => "final_acceptance",
-        JudgmentKind::ResidualRiskAcceptance => "residual_risk_acceptance",
-        JudgmentKind::Cancellation => "cancellation",
+fn stable_cli_resolution_ids(user_action_request_id: &str) -> (String, String) {
+    let mut hasher = Sha256::new();
+    for part in [
+        "cli_direct_user_channel",
+        "resolve_user_action",
+        user_action_request_id,
+    ] {
+        hasher.update(part.as_bytes());
+        hasher.update([0]);
     }
+    let digest = format!("{:x}", hasher.finalize());
+    let short = &digest[..24];
+    (
+        format!("req_cli_user_action_{short}"),
+        format!("submission_cli_user_action_{short}"),
+    )
 }
 
-fn json_object(value: Value) -> serde_json::Map<String, Value> {
-    match value {
-        Value::Object(object) => object,
-        _ => serde_json::Map::new(),
-    }
+fn enum_text<T: serde::Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 #[cfg(test)]
-mod user_observation_tests {
+mod tests {
     use super::*;
 
     #[test]
-    fn observe_cli_requires_one_target_and_preserves_repeated_artifact_ids() {
-        let parsed = parse_user_observation_options(
+    fn resolve_parser_preserves_observation_candidates() {
+        let parsed = parse_inbox_options(
             &[
-                "--criterion".to_owned(),
-                "criterion_1".to_owned(),
+                "ua_1".to_owned(),
+                "--criterion=criterion_1".to_owned(),
+                "--artifact=artifact_1".to_owned(),
                 "--artifact".to_owned(),
-                "artifact_1".to_owned(),
-                "--artifact=artifact_2".to_owned(),
-                "--summary".to_owned(),
-                "User checked the exact outputs.".to_owned(),
+                "artifact_2".to_owned(),
+                "--summary=Checked".to_owned(),
                 "--contradicted".to_owned(),
             ],
+            false,
+            1,
             Path::new("/repo"),
         )
-        .expect("valid observe options");
+        .expect("valid observation form");
 
-        assert_eq!(
-            parsed.acceptance_criterion_id.as_deref(),
-            Some("criterion_1")
-        );
+        assert_eq!(parsed.positionals, ["ua_1"]);
         assert_eq!(parsed.artifact_ids, ["artifact_1", "artifact_2"]);
         assert_eq!(
             parsed.relevance_status,
@@ -1503,17 +1257,29 @@ mod user_observation_tests {
     }
 
     #[test]
-    fn observe_cli_rejects_ambiguous_target() {
-        let error = parse_user_observation_options(
-            &[
-                "--criterion=criterion_1".to_owned(),
-                "--claim=claim_1".to_owned(),
-                "--artifact=artifact_1".to_owned(),
-                "--summary=Checked".to_owned(),
-            ],
-            Path::new("/repo"),
-        )
-        .expect_err("ambiguous evidence target must fail");
-        assert!(error.to_string().contains("exactly one"));
+    fn old_inbox_subcommands_have_no_compatibility_alias() {
+        for old in ["answer", "open", "observe"] {
+            let error = run_inbox_command(&[old.to_owned()], |_| None, Path::new("/repo"))
+                .expect_err("old command must be rejected before runtime lookup");
+            assert!(error.to_string().contains("unknown inbox command"));
+        }
+    }
+
+    #[test]
+    fn selector_rejects_zero() {
+        let error = select_inbox_choice(&[], "0").expect_err("zero is not a list number");
+        assert!(error.to_string().contains("start at 1"));
+    }
+
+    #[test]
+    fn cli_retry_identity_is_stable_and_resolution_independent() {
+        let first = stable_cli_resolution_ids("ua_1");
+        let retry = stable_cli_resolution_ids("ua_1");
+        let other_request = stable_cli_resolution_ids("ua_2");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, other_request);
+        assert_ne!(first.0, first.1);
+        assert!(!first.0.contains("Approved locally"));
     }
 }

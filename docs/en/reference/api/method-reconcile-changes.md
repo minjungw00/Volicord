@@ -9,7 +9,7 @@ This document owns baseline method behavior for `volicord.reconcile_changes`:
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - listing unresolved Unrecorded Changes for the current project and Task
 - resolving Unrecorded Changes that Core can verify deterministically
-- creating pending user-owned judgments when an Unrecorded Change requires user acceptance
+- creating pending user-owned actions when an Unrecorded Change requires user acceptance
 - rejecting agent-only dismissal of unresolved Unrecorded Changes
 
 ## What this document does not own
@@ -17,7 +17,7 @@ This document owns baseline method behavior for `volicord.reconcile_changes`:
 This document does not own:
 
 - common request envelope, response branch, dry-run, or rejected-response schema bodies
-- `UserJudgment`, `StateRecordRef`, `CloseReadinessBlocker`, `GuardHealthSummary`, or `NextActionSummary` field definitions
+- `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, `GuardHealthSummary`, or `NextActionSummary` field definitions
 - storage table layout, SQLite constraints, public error code meaning, public error precedence, or shared response-branch routing
 - proof of correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security guarantees
 
@@ -29,7 +29,7 @@ For the selected Task, the method:
 
 - lists unresolved Unrecorded Changes
 - resolves changes that Core can verify from stored Core, host-hook, expected-write, or session-watch records
-- creates a pending `UserJudgment` when a remaining change needs user acceptance
+- creates a pending `UserActionRequest` when a remaining change needs user acceptance
 
 The method never silently dismisses a bypass. An Agent Connection cannot mark an Unrecorded Change as accepted without a compatible resolved User Channel judgment.
 
@@ -39,7 +39,7 @@ Resolving an Unrecorded Change removes it from the unresolved host-hook health c
 
 - A valid `ToolEnvelope`; committed non-dry-run requests that mutate state require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id` for the Task whose unresolved Unrecorded Changes are being reconciled.
-- Optional `resolution_requests` entries when the caller wants to point Core at a resolved user judgment for `accepted_by_user`.
+- Optional `resolution_requests` entries when the caller wants to point Core at a resolved user action for `accepted_by_user`.
 
 Core also scans the current project and Task for unresolved Unrecorded Changes. Callers do not provide observed paths, detection facts, actor provenance, deterministic proof, or close-blocker state.
 
@@ -56,14 +56,14 @@ ReconcileChangesRequest:
 UnrecordedChangeResolutionRequest:
   unrecorded_change_id: string
   basis: string
-  user_judgment_id?: string | null
+  user_action_resolution_id?: string | null
 ```
 
 Request field notes:
 
 - `resolution_requests` may be omitted and defaults to `[]`.
-- `user_judgment_id` may be omitted or set to `null`; both forms mean that no user judgment was supplied for that entry.
-- `basis=accepted_by_user` requires `user_judgment_id` for an existing resolved, current, same-Task `product_decision` judgment linked to the unrecorded-change ref, recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
+- `user_action_resolution_id` may be omitted or set to `null`; both forms mean that no user-action resolution was supplied for that entry.
+- `basis=accepted_by_user` requires `user_action_resolution_id` for an existing resolved, current, same-Task `product_decision` user action linked to the unrecorded-change ref, recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
 - Caller-supplied `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, or `invalid_observation` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
 
 Nested owner links:
@@ -80,15 +80,15 @@ The method requires:
 - a compatible same-project Task selected by `task_id`
 - a workflow-capable Agent Connection when called through MCP
 
-Local administrative recovery commands may call the same Core method with `actor_source=local_user` and `operation_category=local_recovery`. That CLI path is not an MCP Agent Connection path and does not let the CLI impersonate a user judgment. User-owned acceptance still requires a compatible resolved User Channel judgment before `accepted_by_user` can resolve the Unrecorded Change.
+Local administrative recovery commands may call the same Core method with `actor_source=local_user` and `operation_category=local_recovery`. That CLI path is not an MCP Agent Connection path and does not let the CLI impersonate a user-action resolution. User-owned acceptance still requires a compatible resolved User Channel action before `accepted_by_user` can resolve the Unrecorded Change.
 
 ## State version behavior
 
 A committed non-dry-run result that has planned storage effects:
 
 - increments `project_state.state_version` exactly once
-- resolves one or more `unrecorded_changes` rows and stores resolution basis, capture basis, actor source, timestamp, and optional linked user-judgment ref
-- and/or creates pending `user_judgments` rows for remaining Unrecorded Changes that require user acceptance
+- resolves one or more `unrecorded_changes` rows and stores resolution basis, capture basis, actor source, timestamp, and optional linked user-action resolution ref
+- and/or creates pending `user_action_requests` rows for remaining Unrecorded Changes that require user acceptance
 - appends one `authority_events` row and creates a replay row when an idempotency key is present
 - updates close-readiness projections so resolved Unrecorded Changes no longer count as unresolved
 
@@ -96,20 +96,20 @@ A valid call with no storage mutations returns a read-only result and does not c
 
 At a session-bound method boundary, the runtime may run a bounded session-watch check before reconciliation planning. That diagnostic check can link an observation to one deterministic expected-write or active write-ticket match. It creates a new unresolved Unrecorded Change when a Product Repository snapshot change is unmatched, outside ticket scope, or ambiguous.
 
-Dry run previews planned resolutions or pending judgments without creating refs, events, replay rows, user judgments, or resolution rows. Rejected attempts create no effects.
+Dry run previews planned resolutions or pending user actions without creating refs, events, replay rows, user-action requests, or resolution rows. Rejected attempts create no effects.
 
 ## Success result
 
 Returns `ReconcileChangesResult` with:
 
 - `base.response_kind=result`
-- `base.effect_kind=core_committed` when Unrecorded Changes are resolved or judgments are created
+- `base.effect_kind=core_committed` when Unrecorded Changes are resolved or user actions are created
 - `base.effect_kind=read_only` when no storage mutation is needed
 - `summary_card`
 - `task_ref`
 - `unresolved_changes`
 - `resolved_changes`
-- `pending_user_judgment_refs`
+- `pending_user_action_request_refs`
 - `rejected_resolution_requests`
 - current `state`
 - projected `close_blockers`
@@ -121,16 +121,16 @@ Returns `ReconcileChangesResult` with:
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure`, is owned by [API Schema Core](schema-core.md#common-response). `ReconcileChangesResult` uses `base.disclosure.guarantee_class=authority_record`. |
-| `summary_card` | `SummaryCard` for the selected reconciliation result. It summarizes recording, changes, pending judgment, close status, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
+| `summary_card` | `SummaryCard` for the selected reconciliation result. It summarizes recording, changes, pending user action, close status, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `task_ref` | `StateRecordRef` for the reconciled Task. |
 | `unresolved_changes` | Remaining unresolved `UnrecordedChangeFinding` records after applying deterministic and accepted-user resolutions selected by this call. |
-| `resolved_changes` | Unrecorded Changes that this call resolved, including basis, actor source, capture basis, timestamp, and optional linked user judgment. |
-| `pending_user_judgment_refs` | Pending `UserJudgment` refs relevant to the Task after this call, including judgments created for unresolved Unrecorded Changes. |
+| `resolved_changes` | Unrecorded Changes that this call resolved, including basis, actor source, capture basis, timestamp, and optional linked user-action resolution. |
+| `pending_user_action_request_refs` | Pending `UserActionRequest` refs relevant to the Task after this call, including requests created for unresolved Unrecorded Changes. |
 | `rejected_resolution_requests` | Caller-supplied resolution requests that Core refused. These are structured rejections inside a successful method result, not public `ToolRejectedResponse` errors. |
 | `state` | Current `StateSummary` after the reconciliation projection or commit. |
 | `close_blockers` | Projected close blockers after planned reconciliation effects. |
 | `guard_health` | Projected `GuardHealthSummary` hook-state facts when available for the verified connection. |
-| `next_actions` | Next safe steps, such as a `user_only` action for the user to record the created judgment or an `agent_workflow`/`local_recovery` action to rerun reconciliation. A non-empty list has exactly one primary presentation action. |
+| `next_actions` | Next safe steps, such as a `user_only` action for the user to resolve the created user action or an `agent_workflow`/`local_recovery` action to rerun reconciliation. A non-empty list has exactly one primary presentation action. |
 
 The result disclosure is not correctness proof, test sufficiency proof, human review replacement, OS sandboxing, network isolation, malware defense, full write prevention, or actor attribution proof.
 
@@ -146,13 +146,13 @@ Core-owned deterministic bases:
 
 User-owned basis:
 
-- `accepted_by_user`: a compatible resolved `product_decision` judgment linked to the Unrecorded Change records that the local user accepts the observed change as intentional for the Task.
+- `accepted_by_user`: a compatible resolved `product_decision` user action linked to the Unrecorded Change records that the local user accepts the observed change as intentional for the Task.
 
 `superseded_by_new_observation` is reserved and is not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
 
 For Unrecorded Changes that still require acceptance, Core creates pending
-`UserJudgment` rows rather than accepting them. Existing User Channel paths can
-answer those judgments:
+`UserActionRequest` rows rather than accepting them. Existing User Channel paths can
+resolve those user actions:
 
 - host prompt input when the initialized client supports it
 - chat command capture when command capture is `configured`, `observed`, or
@@ -160,10 +160,10 @@ answer those judgments:
 - a loopback local consent URL when the adapter can safely expose it
 - local `volicord inbox` commands
 
-After the user-owned judgment is resolved, `volicord.reconcile_changes` can
+After the user-owned action is resolved, `volicord.reconcile_changes` can
 resolve the linked Unrecorded Change with `accepted_by_user`.
 
-Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned judgment.
+Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned action.
 
 ## Rejected result
 
@@ -184,23 +184,23 @@ Agent-only dismissal attempts for individual Unrecorded Changes do not normally 
 For `dry_run=true`, a valid preview returns `ToolDryRunResponse` with a `DryRunSummary`. The preview uses the same classification logic as the commit path and reports:
 
 - the number of unrecorded changes Core can reconcile automatically
-- the number of changes that still need user judgment
-- pending user-owned judgment requests that would be created
+- the number of changes that still need a user action
+- pending user-action requests that would be created
 - whether the `unresolved_unrecorded_changes` close blocker would be reduced or remain
 - projected close blockers that would remain after the planned reconciliation
 - non-guarantees, including no actor proof, no intent proof, and no correctness proof
 
-Dry run does not resolve Unrecorded Changes, create pending judgments, append events, create replay rows, stage or attach artifacts, or increment `project_state.state_version`.
+Dry run does not resolve Unrecorded Changes, create pending user actions, append events, create replay rows, stage or attach artifacts, or increment `project_state.state_version`.
 
 ## Storage effect
 
-On commit, the method may persist unrecorded-change resolution rows and pending user judgments. Exact storage effects are owned by [Storage Effects](../storage-effects.md#volicordreconcile_changes).
+On commit, the method may persist unrecorded-change resolution rows and pending user actions. Exact storage effects are owned by [Storage Effects](../storage-effects.md#volicordreconcile_changes).
 
 ## Related owners
 
 - Exact public method routing: [API Methods](methods.md).
 - Value sets: [API Value Sets](schema-value-sets.md#unrecorded-change-resolution-basis-values).
 - State-shaped response fields: [API State Schemas](schema-state.md#unrecorded-change-reconciliation-shapes).
-- User judgment authority: [`volicord.record_user_judgment`](method-record-user-judgment.md).
+- User-action authority: [`volicord.resolve_user_action`](method-resolve-user-action.md).
 - Close blocker production: [`volicord.close_task`](method-close-task.md).
 - Storage effects: [Storage Effects](../storage-effects.md#volicordreconcile_changes).

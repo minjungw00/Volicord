@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON;
+use volicord_types::{UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON};
 
 use crate::{
     runtime_home::{
@@ -12,8 +12,9 @@ use crate::{
     },
     schema::STORAGE_PROFILE,
     sqlite::{
-        open_project_state_database, open_registry_database, open_registry_database_read_only,
-        project_home_path, registry_db_path, with_immediate_transaction, PROJECT_STATE_DB_FILE,
+        begin_immediate_transaction, open_project_state_database, open_registry_database,
+        open_registry_database_read_only, project_home_path, registry_db_path,
+        with_immediate_transaction, PROJECT_STATE_DB_FILE,
     },
     StoreError, StoreResult,
 };
@@ -420,7 +421,31 @@ fn write_project_registration_from_validated_paths(
     let state_db_path_text = path_to_text("state_db_path", &state_db_path)?;
 
     let mut project_state = open_project_state_database(&state_db_path)?;
-    with_immediate_transaction(&mut project_state, |tx| {
+    {
+        let tx = begin_immediate_transaction(&mut project_state)?;
+        let existing_updated_at = tx
+            .query_row(
+                "SELECT updated_at
+                   FROM project_state
+                  WHERE project_id = ?1",
+                params![registration.project_internal_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if let Some(updated_at) = existing_updated_at.as_deref() {
+            let valid_floor = UtcTimestamp::parse(updated_at).and_then(|timestamp| {
+                timestamp
+                    .ensure_canonical_rfc3339_representable()
+                    .map_err(|_| volicord_types::UtcTimestampParseError)
+            });
+            if valid_floor.is_err() {
+                return Err(StoreError::corrupt_owner_state_value(
+                    "project_state",
+                    &registration.project_internal_id,
+                    "updated_at",
+                ));
+            }
+        }
         tx.execute(
             "INSERT INTO project_state (
                 project_id,
@@ -440,7 +465,6 @@ fn write_project_registration_from_validated_paths(
             )
             ON CONFLICT(project_id) DO UPDATE SET
                 storage_profile = excluded.storage_profile,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 metadata_json = excluded.metadata_json",
             params![
                 registration.project_internal_id,
@@ -449,8 +473,8 @@ fn write_project_registration_from_validated_paths(
                 BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON
             ],
         )?;
-        Ok(())
-    })?;
+        tx.commit()?;
+    }
 
     with_immediate_transaction(&mut registry, |tx| {
         tx.execute(
@@ -1352,6 +1376,77 @@ mod tests {
         assert_eq!(record.repo_root, fs::canonicalize(repo_root)?);
         assert!(record.project_home.starts_with(runtime_home.path()));
         assert!(record.state_db_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn project_reregistration_preserves_clock_floor_and_rejects_corrupt_floor(
+    ) -> Result<(), Box<dyn Error>> {
+        let project_id = "project_reregister_clock_floor";
+        let (runtime_home, repo_root) =
+            registered_project("store-reregister-clock-floor", project_id)?;
+        let record = project_record(runtime_home.path(), project_id)?
+            .expect("registered project should remain available");
+        let conn = open_project_state_database(&record.state_db_path)?;
+        let future_floor = "2999-07-13T12:34:56.789Z";
+        conn.execute(
+            "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+            params![project_id, future_floor],
+        )?;
+        drop(conn);
+
+        register_project(
+            runtime_home.path(),
+            ProjectRegistration {
+                project_id: project_id.to_owned(),
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: r#"{"reregistered":true}"#.to_owned(),
+            },
+        )?;
+        let conn = open_project_state_database(&record.state_db_path)?;
+        let preserved = conn.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [project_id],
+            |row| row.get::<_, String>(0),
+        )?;
+        assert_eq!(preserved, future_floor);
+
+        drop(conn);
+        for corrupt_floor in ["not-a-timestamp", "9999-12-31T23:59:59-23:59"] {
+            let conn = open_project_state_database(&record.state_db_path)?;
+            conn.execute(
+                "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+                params![project_id, corrupt_floor],
+            )?;
+            drop(conn);
+            let error = register_project(
+                runtime_home.path(),
+                ProjectRegistration {
+                    project_id: project_id.to_owned(),
+                    repo_root: repo_root.clone(),
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: r#"{"must_not_apply":true}"#.to_owned(),
+                },
+            )
+            .expect_err("corrupt project clock floor must fail closed");
+            assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateValue {
+                    table: "project_state",
+                    logical_column: "updated_at",
+                    ..
+                }
+            ));
+            let corrupt = open_project_state_database(&record.state_db_path)?.query_row(
+                "SELECT updated_at FROM project_state WHERE project_id = ?1",
+                [project_id],
+                |row| row.get::<_, String>(0),
+            )?;
+            assert_eq!(corrupt, corrupt_floor);
+        }
         Ok(())
     }
 

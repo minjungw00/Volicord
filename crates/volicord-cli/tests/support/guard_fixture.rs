@@ -8,7 +8,7 @@ use std::{
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_core::{CoreService, InvocationContext};
+use volicord_core::{Clock, CoreService, InvocationContext, SystemClock};
 use volicord_store::agent_connections::{
     add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
     ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
@@ -17,12 +17,13 @@ use volicord_store::agent_connections::{
 use volicord_store::core_pipeline::StorageEffectCounts;
 use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
 use volicord_test_support::core_fixtures::{
-    CoreFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture,
+    artifact_input_for_handle, choice_user_action_resolution, CoreFixture,
+    ObservationUserActionFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserActionFixture,
 };
 use volicord_types::{
-    chat_judgment_verification_code, ActorSource, ChangeUnitOperation, JudgmentKind,
-    OperationCategory, ProjectId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
-    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    chat_user_action_verification_code, ActorSource, ChangeUnitOperation, JudgmentKind,
+    OperationCategory, ProjectId, UtcTimestamp, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use super::{
@@ -44,7 +45,7 @@ use volicord_store::{
 
 #[cfg(unix)]
 use volicord_test_support::{
-    core_fixtures::{answer_payload, supported_evidence_update, DEFAULT_BASELINE_REF},
+    core_fixtures::{supported_evidence_update, DEFAULT_BASELINE_REF},
     TempRuntimeHome,
 };
 
@@ -54,12 +55,11 @@ use volicord_types::{
     ArtifactInputId, ArtifactInputSourceKind, BaselineRef, ChangeUnitId, ChangeUnitUpdate,
     CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent, CloseReason, CloseTaskRequest,
     EvidenceRequirement, EvidenceTarget, IdempotencyKey, InitialScope, IntakeRequest,
-    JudgmentPresentation, JudgmentRationale, JudgmentRequiredFor, ObservedChanges,
-    PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
-    RecordUserJudgmentRequest, RedactionState, RequestId, RequestUserJudgmentRequest,
-    RequestedMode, ResumePolicy, RunKind, ScopeUpdate, StageArtifactRequest, StagedArtifactHandle,
-    StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UpdateScopeRequest, UserJudgmentContext,
-    UserJudgmentOptionId, WriteTicketId,
+    ObservedChanges, PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
+    RedactionState, RequestId, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
+    StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef, TaskId,
+    ToolEnvelope, UpdateScopeRequest, UserActionChoiceDraft, UserActionContext, UserActionDraft,
+    UserActionRequestId, UserActionRequiredFor, WriteTicketId,
 };
 
 #[cfg(unix)]
@@ -78,8 +78,8 @@ pub(crate) const CODEX_PRE_TOOL_BASH_WRITE_EVENT: &str =
     include_str!("../fixtures/host_contracts/codex/events/pre_tool_bash_write.json");
 pub(crate) const CODEX_POST_TOOL_BASH_WRITE_EVENT: &str =
     include_str!("../fixtures/host_contracts/codex/events/post_tool_bash_write.json");
-pub(crate) const CODEX_USER_PROMPT_JUDGMENT_EVENT: &str = include_str!(
-    "../fixtures/host_contracts/codex/events/user_prompt_submit_judgment_command.json"
+pub(crate) const CODEX_USER_PROMPT_ACTION_EVENT: &str = include_str!(
+    "../fixtures/host_contracts/codex/events/user_prompt_submit_user_action_command.json"
 );
 pub(crate) const CODEX_STOP_EVENT: &str =
     include_str!("../fixtures/host_contracts/codex/events/stop.json");
@@ -91,8 +91,8 @@ pub(crate) const CLAUDE_PRE_TOOL_BASH_WRITE_EVENT: &str =
     include_str!("../fixtures/host_contracts/claude_code/events/pre_tool_bash_write.json");
 pub(crate) const CLAUDE_POST_TOOL_BASH_WRITE_EVENT: &str =
     include_str!("../fixtures/host_contracts/claude_code/events/post_tool_bash_write.json");
-pub(crate) const CLAUDE_USER_PROMPT_JUDGMENT_EVENT: &str = include_str!(
-    "../fixtures/host_contracts/claude_code/events/user_prompt_submit_judgment_command.json"
+pub(crate) const CLAUDE_USER_PROMPT_ACTION_EVENT: &str = include_str!(
+    "../fixtures/host_contracts/claude_code/events/user_prompt_submit_user_action_command.json"
 );
 pub(crate) const CLAUDE_STOP_EVENT: &str =
     include_str!("../fixtures/host_contracts/claude_code/events/stop.json");
@@ -101,6 +101,14 @@ pub(crate) struct GuardCliFixture {
     inner: CoreFixture,
     repo_root: PathBuf,
     repo_arg: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PromptEvidenceAction {
+    pub(crate) task_id: String,
+    pub(crate) user_action_request_id: String,
+    pub(crate) target: volicord_types::EvidenceTarget,
+    pub(crate) artifact_candidates: Vec<volicord_types::ArtifactRef>,
 }
 
 impl GuardCliFixture {
@@ -146,6 +154,19 @@ impl GuardCliFixture {
         Ok(self.inner.counts()?)
     }
 
+    pub(crate) fn replay_effect_snapshot(
+        &self,
+    ) -> Result<(StorageEffectCounts, String, Option<String>), Box<dyn Error>> {
+        let (updated_at, active_task_id) = self.inner.conn()?.query_row(
+            "SELECT updated_at, active_task_id
+               FROM project_state
+              WHERE project_id = ?1",
+            [self.project_id()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok((self.inner.counts()?, updated_at, active_task_id))
+    }
+
     pub(crate) fn corrupt_current_close_basis(
         &self,
         task_id: &str,
@@ -186,6 +207,22 @@ impl GuardCliFixture {
         Ok(task_id)
     }
 
+    pub(crate) fn create_additional_active_task(
+        &self,
+        suffix: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let service = CoreService::new(self.runtime_home());
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let request_id = format!("req_guard_additional_intake_{suffix}");
+        let idempotency_key = format!("idem_guard_additional_intake_{suffix}");
+        let response = service.intake(
+            self.inner
+                .intake_request(&request_id, &idempotency_key, false, Some(state_version)),
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        record_id(&response.response_value["task_ref"])
+    }
+
     pub(crate) fn prepare_write(&self, task_id: &str) -> Result<(), Box<dyn Error>> {
         let service = CoreService::new(self.runtime_home());
         let state_version = self.inner.store()?.project_state()?.state_version;
@@ -203,17 +240,17 @@ impl GuardCliFixture {
         Ok(())
     }
 
-    pub(crate) fn create_pending_authority_judgment(
+    pub(crate) fn create_pending_user_action(
         &self,
         suffix: &str,
     ) -> Result<String, Box<dyn Error>> {
         let task_id = self.create_active_task()?;
         let state_version = self.inner.store()?.project_state()?.state_version;
         let service = CoreService::new(self.runtime_home());
-        let request_id = format!("req_guard_chat_judgment_{suffix}");
-        let idempotency_key = format!("idem_guard_chat_judgment_{suffix}");
-        let response = service.request_user_judgment(
-            self.inner.user_judgment_request(UserJudgmentFixture {
+        let request_id = format!("req_guard_chat_user_action_{suffix}");
+        let idempotency_key = format!("idem_guard_chat_user_action_{suffix}");
+        let response = service.request_user_action(
+            self.inner.user_action_request(UserActionFixture {
                 request_id: &request_id,
                 idempotency_key: &idempotency_key,
                 dry_run: false,
@@ -224,104 +261,378 @@ impl GuardCliFixture {
             }),
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
-        record_id(&response.response_value["user_judgment_ref"])
+        record_id(&response.response_value["user_action_request_ref"])
+    }
+
+    pub(crate) fn create_pending_evidence_observation(
+        &self,
+        suffix: &str,
+    ) -> Result<PromptEvidenceAction, Box<dyn Error>> {
+        self.create_pending_evidence_observation_with_marker(suffix, None)
+    }
+
+    pub(crate) fn create_pending_sensitive_evidence_observation(
+        &self,
+        suffix: &str,
+        marker: &str,
+    ) -> Result<PromptEvidenceAction, Box<dyn Error>> {
+        self.create_pending_evidence_observation_with_marker(suffix, Some(marker))
+    }
+
+    fn create_pending_evidence_observation_with_marker(
+        &self,
+        suffix: &str,
+        sensitive_marker: Option<&str>,
+    ) -> Result<PromptEvidenceAction, Box<dyn Error>> {
+        let task_id = self.create_active_task()?;
+        let change_unit_id = self
+            .inner
+            .current_change_unit_id(&task_id)?
+            .ok_or("guard evidence fixture should have a current Change Unit")?;
+        let criteria = self
+            .inner
+            .store()?
+            .active_acceptance_criteria(&volicord_types::TaskId::new(&task_id))?;
+        let [criterion] = criteria.as_slice() else {
+            return Err(format!(
+                "guard evidence fixture expected one acceptance criterion, found {}",
+                criteria.len()
+            )
+            .into());
+        };
+        let target = if let Some(marker) = sensitive_marker {
+            volicord_types::EvidenceTarget::SupplementalClaim {
+                evidence_claim_id: volicord_types::EvidenceClaimId::new(format!(
+                    "claim_guard_sensitive_{suffix}"
+                )),
+                statement: format!(
+                    "An API key must be handled only in a user-only channel: {marker}"
+                ),
+            }
+        } else {
+            volicord_types::EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(
+                    &criterion.acceptance_criterion_id,
+                ),
+            }
+        };
+        let service = CoreService::new(self.runtime_home());
+        let mut staged_handles = Vec::new();
+        let display_names = if let Some(marker) = sensitive_marker {
+            [
+                format!("credential-material-{marker}.txt"),
+                "ordinary-observation-candidate-b.txt".to_owned(),
+            ]
+        } else {
+            [
+                "prompt-observation-candidate-a.txt".to_owned(),
+                "prompt-observation-candidate-b.txt".to_owned(),
+            ]
+        };
+        for (index, (display_name, contents)) in display_names
+            .into_iter()
+            .zip([
+                "First prompt-capture observation candidate.",
+                "Selected prompt-capture observation candidate.",
+            ])
+            .enumerate()
+        {
+            let state_version = self.inner.store()?.project_state()?.state_version;
+            let request_id = format!("req_guard_prompt_evidence_stage_{suffix}_{index}");
+            let idempotency_key = format!("idem_guard_prompt_evidence_stage_{suffix}_{index}");
+            let mut request = self.inner.stage_artifact_request(
+                &request_id,
+                Some(&idempotency_key),
+                false,
+                Some(state_version),
+                &task_id,
+            );
+            request.display_name = display_name;
+            request.safe_bytes_or_notice = contents.to_owned();
+            request.relation_hint = Some("prompt_capture_observation_candidate".to_owned()).into();
+            let response = service
+                .stage_artifact(request, self.invocation(OperationCategory::AgentWorkflow))?;
+            staged_handles.push(serde_json::from_value::<
+                volicord_types::StagedArtifactHandle,
+            >(
+                response.response_value["staged_artifact_handle"].clone()
+            )?);
+        }
+
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let run_request_id = format!("req_guard_prompt_evidence_run_{suffix}");
+        let run_idempotency_key = format!("idem_guard_prompt_evidence_run_{suffix}");
+        let mut run = self.inner.record_run_request(
+            &run_request_id,
+            &run_idempotency_key,
+            false,
+            Some(state_version),
+            &task_id,
+            &change_unit_id,
+        );
+        run.summary = "Register canonical prompt-capture observation candidates.".to_owned();
+        run.artifact_inputs = staged_handles
+            .into_iter()
+            .enumerate()
+            .map(|(index, handle)| {
+                let mut input = artifact_input_for_handle(
+                    &format!("artifact_input_guard_prompt_evidence_{suffix}_{index}"),
+                    handle,
+                    Some("prompt_capture_observation_candidate"),
+                    None,
+                );
+                input.evidence_target = Some(target.clone()).into();
+                input
+            })
+            .collect();
+        let recorded =
+            service.record_run(run, self.invocation(OperationCategory::AgentWorkflow))?;
+        let artifact_candidates = recorded.response_value["registered_artifacts"]
+            .as_array()
+            .ok_or("record_run should expose registered artifacts")?
+            .iter()
+            .cloned()
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<volicord_types::ArtifactRef>, _>>()?;
+        assert_eq!(artifact_candidates.len(), 2);
+
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let request_id = format!("req_guard_prompt_evidence_action_{suffix}");
+        let idempotency_key = format!("idem_guard_prompt_evidence_action_{suffix}");
+        let requested = service.request_user_action(
+            self.inner
+                .observation_user_action_request(ObservationUserActionFixture {
+                    request_id: &request_id,
+                    idempotency_key: &idempotency_key,
+                    dry_run: false,
+                    expected_state_version: Some(state_version),
+                    task_id: &task_id,
+                    change_unit_id: &change_unit_id,
+                    target_candidates: vec![target.clone()],
+                    artifact_candidate_ids: artifact_candidates
+                        .iter()
+                        .map(|artifact| artifact.artifact_id.clone())
+                        .collect(),
+                }),
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        Ok(PromptEvidenceAction {
+            task_id,
+            user_action_request_id: record_id(
+                &requested.response_value["user_action_request_ref"],
+            )?,
+            target,
+            artifact_candidates,
+        })
     }
 
     pub(crate) fn prompt_verification_code(
         &self,
-        judgment_id: &str,
+        user_action_request_id: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let record = self
-            .inner
-            .store()?
-            .user_judgment_record(judgment_id)?
-            .expect("judgment should be stored");
-        Ok(chat_judgment_verification_code(
-            &record.project_id,
-            &record.task_id,
-            &record.judgment_id,
-            &record.requested_at,
+        let store = self.inner.store()?;
+        let now = SystemClock.project_now(&store)?;
+        let record = store
+            .user_action_record(user_action_request_id, &now)?
+            .expect("user action should be stored");
+        Ok(chat_user_action_verification_code(
+            &record.request.project_id,
+            &record.request.task_id,
+            &record.request.user_action_request_id,
+            &record.request.requested_at,
             self.connection_id(),
         ))
     }
 
-    pub(crate) fn assert_recorded_prompt_judgment(
+    pub(crate) fn assert_resolved_prompt_user_action(
         &self,
-        judgment_id: &str,
+        user_action_request_id: &str,
         expected_outcome: &str,
         expected_action: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let record = self
-            .inner
-            .store()?
-            .user_judgment_record(judgment_id)?
-            .expect("judgment should be stored");
-        assert_eq!(record.status, "resolved");
-        assert_eq!(record.resolution_outcome.as_deref(), Some(expected_outcome));
         assert_eq!(
-            record.resolution_machine_action.as_deref(),
-            Some(expected_action)
+            self.inner.user_action_status(user_action_request_id)?,
+            "resolved"
         );
         assert_eq!(
-            record.resolved_by_actor_source.as_deref(),
-            Some("local_user")
+            self.inner
+                .user_action_resolution_outcome(user_action_request_id)?,
+            Some(expected_outcome.to_owned())
         );
         assert_eq!(
-            record.resolved_verification_basis.as_deref(),
-            Some(VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK)
+            self.inner
+                .user_action_resolution_machine_action(user_action_request_id)?,
+            Some(expected_action.to_owned())
+        );
+        let store = self.inner.store()?;
+        let now = SystemClock.project_now(&store)?;
+        let record = store
+            .user_action_record(user_action_request_id, &now)?
+            .expect("resolved user action should be stored")
+            .resolution
+            .expect("user action resolution should be stored");
+        assert_eq!(record.resolved_by_actor_source, "local_user");
+        assert_eq!(
+            record.resolved_verification_basis,
+            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK
+        );
+        assert_eq!(record.resolved_assurance_level, "local_user_channel");
+        Ok(())
+    }
+
+    pub(crate) fn assert_resolved_prompt_evidence_action(
+        &self,
+        action: &PromptEvidenceAction,
+        expected_artifact: &volicord_types::ArtifactRef,
+        expected_relevance: volicord_types::EvidenceRelevanceStatus,
+        expected_summary: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let store = self.inner.store()?;
+        let now = SystemClock.project_now(&store)?;
+        let records = store
+            .user_action_records_for_task(&volicord_types::TaskId::new(&action.task_id), &now)?;
+        assert_eq!(
+            records.len(),
+            1,
+            "prompt capture must not duplicate requests"
+        );
+        let record = records
+            .iter()
+            .find(|record| record.request.user_action_request_id == action.user_action_request_id)
+            .ok_or("prompt evidence action should remain stored")?;
+        assert_eq!(record.status, volicord_types::UserActionStatus::Resolved);
+        let resolution = record
+            .resolution
+            .as_ref()
+            .ok_or("prompt evidence action should have a stored resolution")?;
+        assert_eq!(resolution.resolved_by_actor_source, "local_user");
+        assert_eq!(
+            resolution.channel_kind,
+            volicord_types::UserActionChannelKind::PromptCapture
         );
         assert_eq!(
-            record.resolved_assurance_level.as_deref(),
-            Some("local_user_channel")
+            resolution.resolved_verification_basis,
+            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK
+        );
+        assert_eq!(resolution.resolved_assurance_level, "local_user_channel");
+        let body: volicord_types::UserActionResolutionBody =
+            serde_json::from_str(&resolution.resolution_json)?;
+        let volicord_types::UserActionResolutionBody::EvidenceObservation { observation } = body
+        else {
+            return Err("prompt resolution should be an evidence observation".into());
+        };
+        assert_eq!(observation.target, action.target);
+        assert_eq!(observation.relevance_status, expected_relevance);
+        assert_eq!(observation.summary, expected_summary);
+        assert_eq!(
+            observation.output_artifact_refs,
+            vec![expected_artifact.clone()],
+            "prompt capture must preserve the exact historical artifact ref"
         );
         Ok(())
     }
 
-    pub(crate) fn judgment_status(&self, judgment_id: &str) -> Result<String, Box<dyn Error>> {
-        Ok(self.inner.user_judgment_status(judgment_id)?)
-    }
-
-    pub(crate) fn judgment_resolution(&self, judgment_id: &str) -> Result<Value, Box<dyn Error>> {
-        self.inner.user_judgment_resolution(judgment_id)
-    }
-
-    pub(crate) fn set_judgment_basis_status(
+    pub(crate) fn user_action_status(
         &self,
-        judgment_id: &str,
+        user_action_request_id: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok(self.inner.user_action_status(user_action_request_id)?)
+    }
+
+    pub(crate) fn user_action_resolution(
+        &self,
+        user_action_request_id: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        self.inner.user_action_resolution(user_action_request_id)
+    }
+
+    pub(crate) fn set_user_action_basis_status(
+        &self,
+        user_action_request_id: &str,
         basis_status: &str,
     ) -> Result<(), Box<dyn Error>> {
-        self.inner.conn()?.execute(
-            "UPDATE user_judgments
-                SET basis_status = ?3
+        let basis_json: String = self.inner.conn()?.query_row(
+            "SELECT basis_json
+               FROM user_action_requests
               WHERE project_id = ?1
-                AND judgment_id = ?2",
-            rusqlite::params![self.project_id(), judgment_id, basis_status],
+                AND user_action_request_id = ?2",
+            rusqlite::params![self.project_id(), user_action_request_id],
+            |row| row.get(0),
+        )?;
+        let mut basis: Value = serde_json::from_str(&basis_json)?;
+        basis["coordinates"]["compatibility_status"] = json!(basis_status);
+        self.inner.conn()?.execute(
+            "UPDATE user_action_requests
+                SET basis_status = ?3,
+                    basis_json = ?4
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            rusqlite::params![
+                self.project_id(),
+                user_action_request_id,
+                basis_status,
+                basis.to_string()
+            ],
         )?;
         Ok(())
     }
 
-    pub(crate) fn set_judgment_expires_at(
+    pub(crate) fn expire_user_action_at_core_clock(
         &self,
-        judgment_id: &str,
-        expires_at: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        let mut request_json: Value = serde_json::from_str(
-            &self
-                .inner
-                .store()?
-                .user_judgment_record(judgment_id)?
-                .expect("judgment should be stored")
-                .request_json,
-        )?;
-        request_json["expires_at"] = json!(expires_at);
-        self.inner.conn()?.execute(
-            "UPDATE user_judgments
-                SET request_json = ?3
+        user_action_request_id: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let store = self.inner.store()?;
+        let current_core_now = SystemClock.project_now(&store)?;
+        let mut conn = self.inner.conn()?;
+        let tx = conn.transaction()?;
+        let (requested_at, request_json): (String, String) = tx.query_row(
+            "SELECT requested_at
+                    , request_json
+               FROM user_action_requests
               WHERE project_id = ?1
-                AND judgment_id = ?2",
-            rusqlite::params![self.project_id(), judgment_id, request_json.to_string()],
+                AND user_action_request_id = ?2",
+            rusqlite::params![self.project_id(), user_action_request_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        Ok(())
+        let requested_at = UtcTimestamp::parse(&requested_at)?;
+        let minimum_expiry = UtcTimestamp::from_datetime(
+            *requested_at.as_datetime() + chrono::Duration::milliseconds(1),
+        );
+        let expires_at = std::cmp::max(current_core_now, minimum_expiry);
+        let persisted_floor: String = tx.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            rusqlite::params![self.project_id()],
+            |row| row.get(0),
+        )?;
+        let persisted_floor = UtcTimestamp::parse(&persisted_floor)?;
+        let clock_floor = std::cmp::max(persisted_floor, expires_at.clone());
+        let mut request_json: Value = serde_json::from_str(&request_json)?;
+        request_json["expires_at"] = json!(expires_at.to_string());
+        let request_changed = tx.execute(
+            "UPDATE user_action_requests
+                SET request_json = ?3,
+                    expires_at = ?4
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            rusqlite::params![
+                self.project_id(),
+                user_action_request_id,
+                request_json.to_string(),
+                expires_at.to_string()
+            ],
+        )?;
+        if request_changed != 1 {
+            return Err("test fixture failed to expire exactly one user-action request".into());
+        }
+        let project_changed = tx.execute(
+            "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
+            rusqlite::params![self.project_id(), clock_floor.to_string()],
+        )?;
+        if project_changed != 1 {
+            return Err("test fixture failed to advance exactly one project clock floor".into());
+        }
+        tx.commit()?;
+        Ok(expires_at.to_string())
     }
 
     pub(crate) fn register_extra_connection(
@@ -605,7 +916,7 @@ impl GuardedLifecycleFixture {
             ProjectId::new(&self.project_id),
             ActorSource::LocalUser,
             OperationCategory::UserOnly,
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         )
     }
 
@@ -633,8 +944,7 @@ impl GuardedLifecycleFixture {
             "session_id": self.session_id(),
             "connection_id": self.connection_id(),
             "guard_installation_id": self.guard_installation_id(),
-            "host_kind": "codex",
-            "timestamp": "2026-06-30T06:00:00Z"
+            "host_kind": "codex"
         });
         let output = self.run_guard_event("session-start", &event)?;
         assert_success(&output);
@@ -993,15 +1303,15 @@ impl GuardedLifecycleFixture {
             .expect("state version should be present"))
     }
 
-    pub(crate) fn request_final_acceptance(
+    pub(crate) fn request_final_acceptance_action(
         &self,
         task_id: &str,
         change_unit_id: &str,
         suffix: &str,
     ) -> Result<String, Box<dyn Error>> {
         let state_version = self.state_version()?;
-        let response = self.service().request_user_judgment(
-            RequestUserJudgmentRequest {
+        let response = self.service().request_user_action(
+            volicord_types::RequestUserActionRequest {
                 envelope: self.envelope(
                     &format!("req_{suffix}_final"),
                     Some(&format!("idem_{suffix}_final")),
@@ -1010,58 +1320,65 @@ impl GuardedLifecycleFixture {
                 ),
                 task_id: TaskId::new(task_id),
                 change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
-                judgment_kind: JudgmentKind::FinalAcceptance,
-                presentation: JudgmentPresentation::Short,
-                question: "Does the user accept the current close basis?".to_owned(),
-                options: None.into(),
-                context: UserJudgmentContext {
-                    summary: "The guarded lifecycle fixture is ready for final acceptance."
-                        .to_owned(),
-                    related_refs: Vec::new(),
-                    artifact_refs: Vec::new(),
-                    visible_risks: Vec::new(),
-                    constraints: vec![
-                        "This answer applies only to the current fixture close basis.".to_owned(),
-                    ],
-                },
-                affected_refs: vec![self.state_ref(
-                    StateRecordKind::Task,
-                    task_id,
-                    Some(task_id),
-                    Some(state_version),
-                )],
-                sensitive_action_scope: None.into(),
-                required_for: vec![JudgmentRequiredFor::CloseComplete],
+                action: UserActionDraft::Choice(Box::new(UserActionChoiceDraft {
+                    judgment_kind: JudgmentKind::FinalAcceptance,
+                    presentation: volicord_types::JudgmentPresentation::Short,
+                    question: "Does the user accept the current close basis?".to_owned(),
+                    options: None.into(),
+                    context: UserActionContext {
+                        summary: "The guarded lifecycle fixture is ready for final acceptance."
+                            .to_owned(),
+                        related_refs: Vec::new(),
+                        artifact_refs: Vec::new(),
+                        visible_risks: Vec::new(),
+                        constraints: vec![
+                            "This answer applies only to the current fixture close basis."
+                                .to_owned(),
+                        ],
+                    },
+                    affected_refs: vec![self.state_ref(
+                        StateRecordKind::Task,
+                        task_id,
+                        Some(task_id),
+                        Some(state_version),
+                    )],
+                    sensitive_action_scope: None.into(),
+                })),
+                required_for: vec![UserActionRequiredFor::CloseComplete],
                 expires_at: None.into(),
             },
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
-        record_id(&response.response_value["user_judgment_ref"])
+        record_id(&response.response_value["user_action_request_ref"])
     }
 
-    pub(crate) fn answer_pending_judgment_through_prompt(
+    pub(crate) fn resolve_pending_user_action_through_prompt(
         &self,
         task_id: &str,
-        judgment_id: &str,
+        user_action_request_id: &str,
         event_id: &str,
         capture_id: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let records = self
-            .store()?
-            .user_judgment_records_for_task(&TaskId::new(task_id))?;
+        let store = self.store()?;
+        let now = SystemClock.project_now(&store)?;
+        let records = store.user_action_records_for_task(&TaskId::new(task_id), &now)?;
         let (index, record) = records
             .iter()
             .enumerate()
-            .find(|(_, record)| record.judgment_id == judgment_id)
-            .ok_or("pending judgment should be stored for task")?;
-        let verification_code = chat_judgment_verification_code(
-            &record.project_id,
-            &record.task_id,
-            &record.judgment_id,
-            &record.requested_at,
+            .find(|(_, record)| record.request.user_action_request_id == user_action_request_id)
+            .ok_or("pending user action should be stored for task")?;
+        let verification_code = chat_user_action_verification_code(
+            &record.request.project_id,
+            &record.request.task_id,
+            &record.request.user_action_request_id,
+            &record.request.requested_at,
             self.connection_id(),
         );
-        let message = format!("Volicord: answer J-{} 1 {verification_code}", index + 1);
+        let message = format!(
+            "Volicord: resolve A-{} --request {} --choice 1 {verification_code}",
+            index + 1,
+            record.request.user_action_request_id
+        );
         let event = json!({
             "event_id": event_id,
             "prompt_capture_id": capture_id,
@@ -1070,61 +1387,35 @@ impl GuardedLifecycleFixture {
             "guard_installation_id": self.guard_installation_id(),
             "host_kind": "codex",
             "message": message,
-            "timestamp": "2026-06-30T06:10:00Z"
+            "timestamp": now.to_string()
         });
         let output = self.run_guard_event("prompt-capture", &event)?;
         assert_success(&output);
         let value = json_stdout(&output)?;
         assert_eq!(value["decision"], "inject_context");
         assert_eq!(
-            value["result"]["recognized_judgment_command"]["resolution_outcome"],
-            "accepted"
+            value["result"]["recognized_user_action_command"]["action_type"],
+            "choice"
         );
         Ok(())
     }
 
-    pub(crate) fn record_judgment_direct(
+    pub(crate) fn resolve_user_action_direct(
         &self,
         task_id: &str,
-        judgment_id: &str,
-        judgment_kind: JudgmentKind,
+        user_action_request_id: &str,
     ) -> Result<u64, Box<dyn Error>> {
-        let response = self.service().record_user_judgment(
-            RecordUserJudgmentRequest {
+        let response = self.service().resolve_user_action(
+            volicord_types::ResolveUserActionRequest {
                 envelope: self.envelope(
-                    &format!("req_direct_record_{judgment_id}"),
-                    Some(&format!("idem_direct_record_{judgment_id}")),
-                    Some(self.state_version()?),
+                    &format!("req_direct_resolve_{user_action_request_id}"),
+                    Some(&format!("submission_direct_{user_action_request_id}")),
+                    None,
                     Some(task_id),
                 ),
-                user_judgment_id: volicord_types::UserJudgmentId::new(judgment_id),
-                judgment_kind,
-                selected_option_id: UserJudgmentOptionId::new("accept"),
-                answer: answer_payload(judgment_kind),
-                rationale: JudgmentRationale {
-                    summary: "The local user accepted the fixture judgment.".to_owned(),
-                    selected_reason: Some(
-                        "The fixture close basis was visible to the test user channel.".to_owned(),
-                    )
-                    .into(),
-                    considered_alternatives: Vec::new(),
-                    rejected_alternatives: Vec::new(),
-                    assumptions: vec![
-                        "This direct fixture answer covers only the pending judgment.".to_owned(),
-                    ],
-                    tradeoffs: vec![
-                        "The fixture records acceptance only after the close basis is current."
-                            .to_owned(),
-                    ],
-                    uncertainties: Vec::new(),
-                    review_triggers: vec![
-                        "Review if the fixture close basis changes before close.".to_owned(),
-                    ],
-                    related_refs: Vec::new(),
-                    artifact_refs: Vec::new(),
-                },
-                note: Some("Recorded by guarded lifecycle fixture.".to_owned()).into(),
-                accepted_risks: Vec::new(),
+                user_action_request_id: UserActionRequestId::new(user_action_request_id),
+                channel_submission_id: format!("submission_direct_{user_action_request_id}"),
+                resolution: choice_user_action_resolution("accept"),
             },
             self.user_invocation(),
         )?;
@@ -1217,13 +1508,15 @@ pub(crate) fn prompt_event(
     capture_id: &str,
     message: &str,
 ) -> Value {
+    let timestamp = UtcTimestamp::from_datetime(SystemClock.now()).to_string();
     json!({
         "event_id": event_id,
         "prompt_capture_id": capture_id,
         "session_id": "guard_session_chat",
         "connection_id": fixture.connection_id(),
         "host_kind": PROMPT_CAPTURE_TEST_HOST_KIND,
-        "message": message
+        "message": message,
+        "timestamp": timestamp
     })
 }
 
@@ -1265,9 +1558,15 @@ pub(crate) fn replace_repo_placeholder(value: &mut Value, repo_root: &str) {
     }
 }
 
-pub(crate) fn replace_prompt_verification_code(event: &mut Value, verification_code: &str) {
+pub(crate) fn replace_prompt_user_action_binding(
+    event: &mut Value,
+    user_action_request_id: &str,
+    verification_code: &str,
+) {
     if let Some(Value::String(prompt)) = event.get_mut("prompt") {
-        *prompt = prompt.replace("#VOLICORD_VERIFICATION_CODE", verification_code);
+        *prompt = prompt
+            .replace("VOLICORD_REQUEST_ID", user_action_request_id)
+            .replace("#VOLICORD_VERIFICATION_CODE", verification_code);
     }
 }
 

@@ -90,13 +90,13 @@ Ask for work in ordinary language:
 Inspect the current authentication flow, add the requested lockout message, run the focused checks, and tell me what still blocks close.
 ```
 
-The agent should keep the current task, scope, evidence, pending User Judgment,
-and Close Status visible. When a user-owned decision must be recorded, use the
+The agent should keep the current task, scope, evidence, pending user actions,
+and Close Status visible. When a user-owned action must be recorded, use the
 User Channel path that Volicord shows. The stable CLI fallback is:
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 ## If The Fast Path Is Not Enough

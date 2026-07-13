@@ -252,8 +252,8 @@ claude --version
 서로 다른 절대 결과 경로를 지정합니다.
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-judgment.json VOLICORD_RUN_CODEX_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-judgment.json VOLICORD_RUN_CLAUDE_JUDGMENT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_judgment_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
@@ -268,9 +268,9 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-jud
 3. 새로 조회한 status가 `close_state=ready`, 빈 close blocker, 그리고
    `AuthorityReceipt.latest_run_ref`를 보고합니다. 하네스는 시간이나 ID 정렬로 행을
    고르지 않고 그 ref가 가리키는 정확한 Run을 읽습니다.
-4. 일치하는 `user_judgment_requested`, `user_judgment_recorded`, `run_recorded` 권한
-   이벤트 payload가 Judgment, 선택지, Run, kind, 비쓰기 사실을 보존하고, event
-   sequence가 선택 답변 기록 뒤에 해당 Run이 기록됐음을 증명합니다.
+4. 일치하는 `user_action_requested`, `user_action_resolved`, `run_recorded` 권한
+   이벤트 payload가 요청, 해결, 선택지, Run, kind, 비쓰기 사실을 보존하고, event
+   sequence가 선택 해결 기록 뒤에 해당 Run이 기록됐음을 증명합니다.
 5. `init`이 반환한 정확한 Agent Connection, 같은 Task, `null`이 아닌 호스트 세션의
    마지막 Stop guard event가 `decision=allow`, 빈 reason과 close blocker, 최신 CLI
    status의 `AuthorityReceipt`와 완전히 같은 영수증을 가집니다. 모델의 최종 답변 뒤에
@@ -289,7 +289,7 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-jud
    노출되지 않습니다.
 
 고유 elicitation을 사용할 수 없으면 테스트는 대기 항목이 `volicord inbox`에
-표시되고 현재 `volicord inbox answer` 명령 형태를 사용할 수 있는지 확인합니다.
+표시되고 현재 `volicord inbox resolve` 명령 형태를 사용할 수 있는지 확인합니다.
 픽스처의 임시 경로나 ID가 없는 크기 제한 명령 템플릿을 내보내고
 `result=failed_native_elicitation`을 기록한 뒤 실패합니다. 테스트가 끝나면 폐기 가능한
 Runtime Home이 삭제되므로 이 템플릿은 실행 가능한 복구 명령이 아닙니다. 진단을 위해

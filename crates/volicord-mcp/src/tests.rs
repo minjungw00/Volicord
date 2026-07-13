@@ -17,10 +17,10 @@ use crate::local_http::{
 use crate::local_web_consent::{parse_urlencoded, single_param};
 use crate::prelude::*;
 use crate::stdio::{
-    classify_launch_origin, pending_judgment_from_response, percent_encode_query,
+    classify_launch_origin, pending_user_action_from_response, percent_encode_query,
     run_stdio_with_env_marker, tool_execution_error_result, McpLaunchOrigin,
-    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
-    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_ELICITATION_WIRE_BYTES,
+    MAX_MCP_FULL_MUTATION_RESULT_BYTES, MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
     routing::McpStorageCapability,
@@ -32,7 +32,7 @@ use crate::{
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
+        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID, STATUS_READ_ONLY_EXAMPLE_ID,
         UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
     },
 };
@@ -50,9 +50,11 @@ use volicord_store::guards::{
 use volicord_store::session_watch::{
     latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
 };
-use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_test_support::core_fixtures::{
+    CoreFixture, ResolveUserActionFixture, UserActionFixture,
+};
 use volicord_types::{
-    AgentConnectionMode, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AgentConnectionMode, EvidenceTarget, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use super::*;
@@ -73,12 +75,12 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
         &workflow_names[..PUBLIC_METHOD_TOOL_NAMES.len()],
         PUBLIC_METHOD_TOOL_NAMES
     );
-    assert!(workflow_names.contains(&"volicord.request_user_judgment"));
+    assert!(workflow_names.contains(&"volicord.request_user_action"));
     assert!(workflow_names.contains(&"volicord.reconcile_changes"));
     assert!(workflow_names.contains(&PREPARE_EVIDENCE_CAPTURE_TOOL_NAME));
     assert!(workflow_names.contains(&CHECK_CLOSE_TOOL_NAME));
     assert!(workflow_names.contains(&"volicord.close_task"));
-    assert!(!workflow_names.contains(&"volicord.record_user_judgment"));
+    assert!(!workflow_names.contains(&"volicord.resolve_user_action"));
     assert_eq!(
         workflow_names.last().copied(),
         Some(LIST_PROJECTS_TOOL_NAME)
@@ -176,6 +178,7 @@ fn mcp_readonly_degraded_tools_have_valid_schemas() {
         vec![
             STATUS_TOOL_NAME,
             GET_OPERATION_RESULT_TOOL_NAME,
+            REQUEST_USER_ACTION_TOOL_NAME,
             CHECK_CLOSE_TOOL_NAME,
             LIST_PROJECTS_TOOL_NAME
         ]
@@ -254,7 +257,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             INTAKE_TOOL_NAME
             | UPDATE_SCOPE_TOOL_NAME
             | RECORD_RUN_TOOL_NAME
-            | REQUEST_USER_JUDGMENT_TOOL_NAME
+            | REQUEST_USER_ACTION_TOOL_NAME
             | RECONCILE_CHANGES_TOOL_NAME
             | CLOSE_TASK_TOOL_NAME => McpToolAnnotations {
                 read_only_hint: false,
@@ -273,15 +276,22 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
 }
 
 #[test]
-fn request_user_judgment_output_schema_covers_elicited_recording_response() {
-    let schema = tool_definition(REQUEST_USER_JUDGMENT_TOOL_NAME).output_schema;
+fn request_user_action_output_schema_covers_compound_agent_safe_response() {
+    let schema = tool_definition(REQUEST_USER_ACTION_TOOL_NAME).output_schema;
 
-    assert!(schema_has_definition(&schema, "RequestUserJudgmentResult"));
-    assert!(schema_has_definition(&schema, "RecordUserJudgmentResult"));
+    assert!(schema_has_definition(&schema, "RequestUserActionResult"));
+    assert!(schema_has_definition(
+        &schema,
+        "McpRequestUserActionResponse"
+    ));
+    assert!(schema_has_definition(
+        &schema,
+        "AgentSafeUserActionResolution"
+    ));
     assert!(schema_has_definition(&schema, "AuthorityReceipt"));
     assert!(schema_has_definition(
         &schema,
-        "McpRequestUserJudgmentCompactResult"
+        "McpRequestUserActionCompactResult"
     ));
     assert!(schema_has_definition(&schema, "McpMutationFullResponse"));
     assert!(schema_has_definition(&schema, "McpMutationSummaryResponse"));
@@ -354,17 +364,6 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
                 ("close_assessment", Value::Null),
             ],
         ),
-        (
-            REQUEST_USER_JUDGMENT_TOOL_NAME,
-            REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
-            vec![
-                ("change_unit_id", Value::Null),
-                ("sensitive_action_scope", Value::Null),
-                ("options", Value::Null),
-                ("affected_refs", json!([])),
-                ("expires_at", Value::Null),
-            ],
-        ),
     ];
 
     for (tool_name, example_id, defaults) in cases {
@@ -390,6 +389,47 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         }
     }
 
+    let tool = tool_definition(REQUEST_USER_ACTION_TOOL_NAME);
+    let decoded = decode_mcp_arguments_to_value(
+        REQUEST_USER_ACTION_TOOL_NAME,
+        canonical_example_value(
+            REQUEST_USER_ACTION_TOOL_NAME,
+            REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        )?,
+    )?;
+    let create_schema = schema_variant_by_tag(&tool.input_schema, "operation", "create")
+        .expect("request-user-action schema should expose its create variant");
+    let create_required = root_required_fields(create_schema);
+    for (field, pointer, expected) in [
+        ("change_unit_id", "/request/change_unit_id", Value::Null),
+        ("expires_at", "/request/expires_at", Value::Null),
+    ] {
+        assert!(
+            !create_required.iter().any(|required| required == field),
+            "{REQUEST_USER_ACTION_TOOL_NAME}{pointer} should be omittable"
+        );
+        assert_eq!(
+            create_schema["properties"][field]["default"], expected,
+            "{REQUEST_USER_ACTION_TOOL_NAME}{pointer} should advertise its exact omission default"
+        );
+        assert_eq!(
+            decoded.pointer(pointer),
+            Some(&expected),
+            "{REQUEST_USER_ACTION_TOOL_NAME}{pointer} omission should decode to the advertised default"
+        );
+    }
+    let choice_schema = &tool.input_schema["definitions"]["UserActionChoiceDraft"];
+    assert_eq!(
+        choice_schema["properties"]["options"]["default"],
+        Value::Null
+    );
+    assert_eq!(decoded["request"]["action"]["options"], Value::Null);
+    assert_eq!(decoded["request"]["action"]["affected_refs"], json!([]));
+    assert_eq!(
+        decoded["request"]["action"]["sensitive_action_scope"],
+        Value::Null
+    );
+
     for tool_name in [
         INTAKE_TOOL_NAME,
         UPDATE_SCOPE_TOOL_NAME,
@@ -397,7 +437,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
         PREPARE_WRITE_TOOL_NAME,
         STAGE_ARTIFACT_TOOL_NAME,
         RECORD_RUN_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_ACTION_TOOL_NAME,
         RECONCILE_CHANGES_TOOL_NAME,
         CLOSE_TASK_TOOL_NAME,
     ] {
@@ -428,17 +468,10 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
     }
 
     assert_eq!(
-        root_required_fields(&tool_definition(REQUEST_USER_JUDGMENT_TOOL_NAME).input_schema)
+        root_required_fields(&tool_definition(REQUEST_USER_ACTION_TOOL_NAME).input_schema)
             .into_iter()
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "context".to_owned(),
-            "judgment_kind".to_owned(),
-            "presentation".to_owned(),
-            "question".to_owned(),
-            "required_for".to_owned(),
-            "task_id".to_owned(),
-        ])
+        BTreeSet::from(["request".to_owned()])
     );
     Ok(())
 }
@@ -583,8 +616,8 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
             ][..],
         ),
         (
-            REQUEST_USER_JUDGMENT_TOOL_NAME,
-            &["change_unit_id", "affected_refs", "expires_at"][..],
+            REQUEST_USER_ACTION_TOOL_NAME,
+            &["change_unit_id", "expires_at"][..],
         ),
     ];
 
@@ -598,6 +631,15 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
                 "{method_name}.{field} should remain a required Core request member"
             );
         }
+    }
+
+    let schema = volicord_types::public_request_schema(REQUEST_USER_ACTION_TOOL_NAME)
+        .expect("request-user-action public Core schema should exist");
+    for field in ["affected_refs", "sensitive_action_scope"] {
+        assert!(
+            schema_requires_property(&schema, field),
+            "{REQUEST_USER_ACTION_TOOL_NAME}.action.{field} should remain a required Core request member"
+        );
     }
 }
 
@@ -647,8 +689,11 @@ fn advertised_mcp_examples_cover_supported_branches_and_validate() -> Result<(),
             ],
         ),
         (
-            REQUEST_USER_JUDGMENT_TOOL_NAME,
-            &[REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID],
+            REQUEST_USER_ACTION_TOOL_NAME,
+            &[
+                REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
+                "resume_user_action",
+            ],
         ),
         (RECONCILE_CHANGES_TOOL_NAME, &["reconcile_current_task"]),
         (
@@ -925,15 +970,15 @@ fn record_run_unknown_root_field_reports_expected_arguments() -> Result<(), Box<
 }
 
 #[test]
-fn request_user_judgment_invalid_options_report_option_id_shape() -> Result<(), Box<dyn Error>> {
+fn request_user_action_invalid_options_report_option_id_shape() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-invalid-judgment-options")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        REQUEST_USER_ACTION_TOOL_NAME,
+        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
-    arguments["judgment_kind"] = json!("product_decision");
-    arguments["options"] = json!([
+    arguments["request"]["action"]["judgment_kind"] = json!("product_decision");
+    arguments["request"]["action"]["options"] = json!([
         {
             "id": "accept",
             "label": "Accept",
@@ -944,34 +989,89 @@ fn request_user_judgment_invalid_options_report_option_id_shape() -> Result<(), 
     ]);
 
     let error = adapter
-        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
         .expect_err("invalid options should fail before Core");
-    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
-    tool_error_issue(&response, "/options/0/option_id", "MCP_ARGUMENT_REQUIRED");
-    tool_error_issue(&response, "/options/0/id", "MCP_ARGUMENT_UNKNOWN");
+    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+    tool_error_issue(
+        &response,
+        "/request/action/options/0/option_id",
+        "MCP_ARGUMENT_REQUIRED",
+    );
+    tool_error_issue(
+        &response,
+        "/request/action/options/0/id",
+        "MCP_ARGUMENT_UNKNOWN",
+    );
     Ok(())
 }
 
 #[test]
-fn request_user_judgment_invalid_visible_risk_reports_expected_shape() -> Result<(), Box<dyn Error>>
-{
+fn request_user_action_invalid_visible_risk_reports_expected_shape() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-invalid-judgment-visible-risk")?;
     let adapter = adapter(&fixture)?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        REQUEST_USER_ACTION_TOOL_NAME,
+        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
-    arguments["context"]["visible_risks"] = json!(["plain risk text"]);
+    arguments["request"]["action"]["context"]["visible_risks"] = json!(["plain risk text"]);
 
     let error = adapter
-        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
         .expect_err("invalid visible risk should fail before Core");
-    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
     tool_error_issue(
         &response,
-        "/context/visible_risks/0",
+        "/request/action/context/visible_risks/0",
         "MCP_ARGUMENT_TYPE_MISMATCH",
     );
+    Ok(())
+}
+
+#[test]
+fn request_user_action_operation_union_rejects_missing_invalid_and_mixed_shapes(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-user-action-operation-union")?;
+    let adapter = adapter(&fixture)?;
+    let before = fixture.counts()?;
+    let create = canonical_example_value(
+        REQUEST_USER_ACTION_TOOL_NAME,
+        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
+    )?;
+
+    let mut missing = create.clone();
+    missing["request"]
+        .as_object_mut()
+        .expect("create request should be an object")
+        .remove("operation");
+    let mut invalid = create.clone();
+    invalid["request"]["operation"] = json!("reopen");
+    let mut mixed_create = create;
+    mixed_create["request"]["user_action_request_id"] = json!("uar_mixed_create");
+    let mixed_resume = json!({
+        "request": {
+            "operation": "resume",
+            "user_action_request_id": "uar_mixed_resume",
+            "task_id": "task_mixed_resume"
+        }
+    });
+
+    for (arguments, path, code) in [
+        (missing, "/request/operation", "MCP_ARGUMENT_REQUIRED"),
+        (invalid, "/request/operation", "MCP_ARGUMENT_ENUM_VALUE"),
+        (
+            mixed_create,
+            "/request/user_action_request_id",
+            "MCP_ARGUMENT_UNKNOWN",
+        ),
+        (mixed_resume, "/request/task_id", "MCP_ARGUMENT_UNKNOWN"),
+    ] {
+        let error = adapter
+            .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
+            .expect_err("invalid create/resume union shape should fail before Core");
+        let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
+        tool_error_issue(&response, path, code);
+    }
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -1067,15 +1167,15 @@ fn decoder_only_failure_is_one_structured_issue_without_core_effects() -> Result
     let adapter = adapter(&fixture)?;
     let before = fixture.counts()?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        REQUEST_USER_ACTION_TOOL_NAME,
+        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
-    arguments["expires_at"] = json!("not-a-timestamp");
+    arguments["request"]["expires_at"] = json!("not-a-timestamp");
 
     let error = adapter
-        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
         .expect_err("invalid timestamp format should fail typed decoding");
-    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
 
     assert_eq!(response["issues"].as_array().map(Vec::len), Some(1));
     assert_eq!(response["reported_issue_count"], 1);
@@ -1093,15 +1193,15 @@ fn decoder_failure_precedes_readonly_storage_rejection() -> Result<(), Box<dyn E
     let _guard = make_project_state_readonly(&fixture)?;
     let before = fixture.counts()?;
     let mut arguments = canonical_example_value(
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        REQUEST_USER_ACTION_TOOL_NAME,
+        REQUEST_USER_ACTION_FINAL_ACCEPTANCE_EXAMPLE_ID,
     )?;
-    arguments["expires_at"] = json!("not-a-timestamp");
+    arguments["request"]["expires_at"] = json!("not-a-timestamp");
 
     let error = adapter
-        .call_tool(REQUEST_USER_JUDGMENT_TOOL_NAME, arguments)
+        .call_tool(REQUEST_USER_ACTION_TOOL_NAME, arguments)
         .expect_err("typed argument decoding should precede storage preconditions");
-    let response = structured_tool_error(REQUEST_USER_JUDGMENT_TOOL_NAME, &error);
+    let response = structured_tool_error(REQUEST_USER_ACTION_TOOL_NAME, &error);
 
     assert_eq!(response["code"], "MCP_INVALID_ARGUMENTS");
     tool_error_issue(&response, "", "MCP_ARGUMENT_DECODE_FAILED");
@@ -1332,6 +1432,7 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
     assert_report_line(&report, "effective_tool_mode: read_only_degraded");
     assert!(names.contains(&STATUS_TOOL_NAME));
     assert!(names.contains(&GET_OPERATION_RESULT_TOOL_NAME));
+    assert!(names.contains(&REQUEST_USER_ACTION_TOOL_NAME));
     assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
     assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
     assert!(!names.contains(&INTAKE_TOOL_NAME));
@@ -1643,6 +1744,7 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
         vec![
             STATUS_TOOL_NAME,
             GET_OPERATION_RESULT_TOOL_NAME,
+            REQUEST_USER_ACTION_TOOL_NAME,
             CHECK_CLOSE_TOOL_NAME,
             LIST_PROJECTS_TOOL_NAME
         ]
@@ -1653,7 +1755,7 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
 
 #[cfg(unix)]
 #[test]
-fn mcp_readonly_storage_exposes_status_and_list_projects() -> Result<(), Box<dyn Error>> {
+fn mcp_readonly_storage_exposes_read_tools_and_user_action_resume() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-readonly-exposes-read-tools")?;
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -1664,6 +1766,7 @@ fn mcp_readonly_storage_exposes_status_and_list_projects() -> Result<(), Box<dyn
     assert!(names.contains(&GET_OPERATION_RESULT_TOOL_NAME));
     assert!(names.contains(&LIST_PROJECTS_TOOL_NAME));
     assert!(names.contains(&CHECK_CLOSE_TOOL_NAME));
+    assert!(names.contains(&REQUEST_USER_ACTION_TOOL_NAME));
     assert!(!names.contains(&INTAKE_TOOL_NAME));
     assert!(!names.contains(&RECORD_RUN_TOOL_NAME));
     assert!(!names.contains(&CLOSE_TASK_TOOL_NAME));
@@ -1839,6 +1942,67 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
     assert_eq!(
         read_only_table_count(&fixture, "tool_invocations")?,
         before_invocations
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-readonly-user-action-resume")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&adapter)?;
+    let created = adapter.call_tool(
+        REQUEST_USER_ACTION_TOOL_NAME,
+        product_action_args(&fixture, &task_id, state_version),
+    )?;
+    assert!(!created.replayed);
+    let exact_origin = created.response_value.clone();
+    let exact_operation_result_ref = created.operation_result_ref.clone();
+    let user_action_request_id = created.response_value["user_action_request_ref"]["record_id"]
+        .as_str()
+        .ok_or("request-user-action result should identify its request")?
+        .to_owned();
+    let before_version = read_only_state_version(&fixture)?;
+    let before_events = read_only_table_count(&fixture, "task_events")?;
+    let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    let before_requests = read_only_table_count(&fixture, "user_action_requests")?;
+    let _guard = make_project_state_readonly(&fixture)?;
+
+    assert!(tool_names(&adapter.tools()?).contains(&REQUEST_USER_ACTION_TOOL_NAME));
+    let rejected_create = adapter.call_tool(
+        REQUEST_USER_ACTION_TOOL_NAME,
+        product_action_args(&fixture, &task_id, before_version),
+    )?;
+    assert_eq!(
+        rejected_create.response_value["base"]["response_kind"],
+        "rejected"
+    );
+    assert_eq!(
+        rejected_create.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+
+    let resumed = adapter.call_tool(
+        REQUEST_USER_ACTION_TOOL_NAME,
+        resume_user_action_args(&fixture, &user_action_request_id),
+    )?;
+    assert!(resumed.replayed);
+    assert_eq!(resumed.response_value, exact_origin);
+    assert_eq!(resumed.operation_result_ref, exact_operation_result_ref);
+    assert_eq!(read_only_state_version(&fixture)?, before_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "task_events")?,
+        before_events
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_invocations
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "user_action_requests")?,
+        before_requests
     );
     Ok(())
 }
@@ -2794,7 +2958,8 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
 }
 
 #[test]
-fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>> {
+fn stdio_elicitation_accept_resolves_user_action_with_agent_safe_summary(
+) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-accept")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
@@ -2804,10 +2969,10 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            default_product_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            default_product_action_args(&fixture, &task_id, state_version),
         ),
-        elicitation_accept("keep", Some("diagnostic-private-note-must-not-be-stored")),
+        elicitation_accept("keep", Some("private-note-must-not-enter-agent-output")),
     ])?);
     let mut output = Vec::new();
 
@@ -2816,21 +2981,50 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 3);
     assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
-    assert_eq!(values[1]["id"], "elicit_user_judgment_1");
+    assert_eq!(values[1]["id"], "elicit_user_action_1");
+    assert_eq!(
+        values[1]["params"]["requestedSchema"]["additionalProperties"],
+        false
+    );
     assert_eq!(
         values[1]["params"]["requestedSchema"]["properties"]["selected_option_id"]["enum"][0],
         "keep"
     );
+    let elicitation_message = values[1]["params"]["message"]
+        .as_str()
+        .ok_or("elicitation message should be present")?;
+    for expected in [
+        "Keep focused behavior",
+        "Record the user-owned product decision to keep the behavior.",
+        "Only this focused judgment is resolved.",
+        "is_default: true",
+        "Change focused behavior",
+        "is_default: false",
+        "Note max characters: 1000",
+    ] {
+        assert!(
+            elicitation_message.contains(expected),
+            "elicitation must display {expected}"
+        );
+    }
     let response = volicord_response_from_tool(&values[2])?;
     assert_eq!(response["effect"]["effect_kind"], "core_committed");
     assert_eq!(response["status"], "resolved");
-    assert_eq!(response["selected_option_id"], "keep");
-    assert_eq!(response["selected_option_label"], "Keep focused behavior");
-    assert_eq!(response["resolution_outcome"], "accepted");
-    assert!(response.get("note").is_none());
-    assert!(
-        !serde_json::to_string(&response)?.contains("diagnostic-private-note-must-not-be-stored")
+    assert_eq!(response["resolution_summary"]["resolution_type"], "choice");
+    assert_eq!(response["resolution_summary"]["selected_option_id"], "keep");
+    assert_eq!(
+        response["resolution_summary"]["selected_option_label"],
+        "Keep focused behavior"
     );
+    assert_eq!(
+        response["resolution_summary"]["resolution_outcome"],
+        "accepted"
+    );
+    assert!(response["derived_refs"].as_array().is_some_and(|refs| refs
+        .iter()
+        .any(|record_ref| { record_ref["record_kind"] == "project_continuity_record" })));
+    assert!(response.get("note").is_none());
+    assert!(!serde_json::to_string(&response)?.contains("private-note-must-not-enter-agent-output"));
     assert_eq!(
         stored_resolution_basis(&fixture, &task_id, &response)?,
         VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
@@ -2844,7 +3038,439 @@ fn stdio_elicitation_accept_records_user_judgment() -> Result<(), Box<dyn Error>
     assert!(diagnostics.fallback_counts.is_empty());
     let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
     assert!(!String::from_utf8_lossy(&diagnostics_bytes)
-        .contains("diagnostic-private-note-must-not-be-stored"));
+        .contains("private-note-must-not-enter-agent-output"));
+    Ok(())
+}
+
+#[test]
+fn elicitation_wire_budget_accepts_exact_line_and_falls_back_at_next_byte_without_partial_form(
+) -> Result<(), Box<dyn Error>> {
+    fn set_first_consequence(response: &mut PipelineResponse, consequence: String) {
+        response.response_value["user_action_request"]["body"]["options"][0]["consequence"] =
+            json!(consequence);
+        response.response_value["inbox_item"]["form"]["choices"][0]["consequence"] = response
+            .response_value["user_action_request"]["body"]["options"][0]["consequence"]
+            .clone();
+    }
+
+    let fixture = CoreFixture::new("mcp-elicitation-whole-line-boundary")?;
+    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let mut base_response = pending_response.clone();
+    set_first_consequence(&mut base_response, "x".to_owned());
+    let base_pending = pending_user_action_from_response(&base_response)?
+        .ok_or("boundary response should remain pending")?;
+    let base_request =
+        crate::stdio::elicitation_create_request("elicit_user_action_1", &base_pending)?
+            .ok_or("base request should fit")?;
+    let base_wire_bytes = serde_json::to_vec(&base_request)?.len() + 1;
+    assert!(base_wire_bytes < MAX_MCP_ELICITATION_WIRE_BYTES);
+    let exact_consequence_len = 1 + (MAX_MCP_ELICITATION_WIRE_BYTES - base_wire_bytes);
+
+    let mut exact_response = pending_response.clone();
+    set_first_consequence(&mut exact_response, "x".repeat(exact_consequence_len));
+    let exact_pending = pending_user_action_from_response(&exact_response)?
+        .ok_or("exact-fit response should remain pending")?;
+    exact_pending.inbox_item.form.validate_canonical_size()?;
+    assert_eq!(
+        exact_pending.request.body.capture_form()?,
+        exact_pending.inbox_item.form
+    );
+    let exact_request =
+        crate::stdio::elicitation_create_request("elicit_user_action_1", &exact_pending)?
+            .ok_or("the exact whole-line boundary must fit")?;
+    assert_eq!(
+        serde_json::to_vec(&exact_request)?.len() + 1,
+        MAX_MCP_ELICITATION_WIRE_BYTES,
+        "the budget includes the complete serialized JSON object and trailing LF"
+    );
+
+    let mut over_response = pending_response;
+    set_first_consequence(&mut over_response, "x".repeat(exact_consequence_len + 1));
+    let over_pending = pending_user_action_from_response(&over_response)?
+        .ok_or("one-byte-over response should remain pending")?;
+    over_pending.inbox_item.form.validate_canonical_size()?;
+    assert!(
+        crate::stdio::elicitation_create_request("elicit_user_action_1", &over_pending,)?.is_none()
+    );
+
+    let mut input_lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
+    let mut wire_output = Vec::new();
+    let mut request_sequence = 1;
+    let output = crate::stdio::user_action_tool_output(
+        &adapter(&fixture)?,
+        over_response,
+        true,
+        true,
+        &mut request_sequence,
+        &mut input_lines,
+        &mut wire_output,
+    )?;
+    assert!(
+        wire_output.is_empty(),
+        "an oversized elicitation must not send any partial JSON line"
+    );
+    let result = crate::stdio::tool_call_result_from_output(output);
+    assert!(result["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry["text"].as_str())
+        .any(|text| text.contains("complete elicitation request exceeds the 32768-byte wire budget; no partial form was sent")));
+    Ok(())
+}
+
+#[test]
+fn stdio_elicitation_evidence_observation_preserves_canonical_candidates_and_redacts_user_summary(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-elicitation-evidence-observation")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&setup_adapter)?;
+    let baseline_ref = "baseline_mcp_evidence_observation";
+    let scope = setup_adapter.call_tool(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "task_id": task_id,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": "Observe stored evidence candidates through a User Channel.",
+            "non_goals": [],
+            "acceptance_criteria": [
+                {
+                    "acceptance_criterion_id": null,
+                    "statement": "The first stored target remains available.",
+                    "evidence_requirement": "required"
+                },
+                {
+                    "acceptance_criterion_id": null,
+                    "statement": "The selected stored target is supported by exact bytes.",
+                    "evidence_requirement": "required"
+                }
+            ],
+            "autonomy_boundary": null,
+            "baseline_ref": baseline_ref,
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Exercise the evidence-observation User Channel.",
+                "affected_paths": []
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope response should expose the current Change Unit")?
+        .to_owned();
+    let criteria = scope.response_value["state"]["acceptance_criteria"]
+        .as_array()
+        .ok_or("scope response should expose acceptance criteria")?;
+    assert_eq!(criteria.len(), 2);
+    let target_candidates = criteria
+        .iter()
+        .map(|criterion| {
+            json!({
+                "target_kind": "acceptance_criterion",
+                "acceptance_criterion_id": criterion["acceptance_criterion_id"]
+            })
+        })
+        .collect::<Vec<_>>();
+    let target_selectors = target_candidates
+        .iter()
+        .map(|target| {
+            serde_json::from_value::<volicord_types::EvidenceTarget>(target.clone()).map(|target| {
+                match target {
+                    EvidenceTarget::AcceptanceCriterion {
+                        acceptance_criterion_id,
+                    } => format!("--criterion {acceptance_criterion_id}"),
+                    EvidenceTarget::SupplementalClaim {
+                        evidence_claim_id, ..
+                    } => format!("--claim {evidence_claim_id}"),
+                }
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut staged_handles = Vec::new();
+    for (display_name, bytes) in [
+        (
+            "observation-candidate-a.txt",
+            "First exact evidence candidate bytes.",
+        ),
+        (
+            "observation-candidate-b.txt",
+            "Selected exact evidence candidate bytes.",
+        ),
+    ] {
+        let staged = setup_adapter.call_tool(
+            STAGE_ARTIFACT_TOOL_NAME,
+            json!({
+                "task_id": task_id,
+                "display_name": display_name,
+                "content_type": "text/plain",
+                "redaction_state": "none",
+                "safe_bytes_or_notice": bytes
+            }),
+        )?;
+        staged_handles.push(staged.response_value["staged_artifact_handle"].clone());
+    }
+    let recorded = setup_adapter.call_tool(
+        RECORD_RUN_TOOL_NAME,
+        json!({
+            "task_id": task_id,
+            "change_unit_id": change_unit_id,
+            "kind": "implementation",
+            "baseline_ref": baseline_ref,
+            "summary": "Register exact artifacts for a user-owned observation.",
+            "observed_changes": {
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": baseline_ref
+            },
+            "artifact_inputs": [
+                {
+                    "artifact_input_id": "artifact_input_observation_candidate_a",
+                    "source_kind": "staged_artifact",
+                    "staged_artifact_handle": staged_handles[0],
+                    "existing_artifact_ref": null,
+                    "relation_hint": "user_observation_candidate",
+                    "evidence_target": target_candidates[0],
+                    "expected_sha256": null,
+                    "expected_size_bytes": null,
+                    "redaction_state": "none"
+                },
+                {
+                    "artifact_input_id": "artifact_input_observation_candidate_b",
+                    "source_kind": "staged_artifact",
+                    "staged_artifact_handle": staged_handles[1],
+                    "existing_artifact_ref": null,
+                    "relation_hint": "user_observation_candidate",
+                    "evidence_target": target_candidates[1],
+                    "expected_sha256": null,
+                    "expected_size_bytes": null,
+                    "redaction_state": "none"
+                }
+            ],
+            "evidence_updates": [],
+            "evidence_observations": [],
+            "close_assessment": null
+        }),
+    )?;
+    let registered_artifacts = recorded.response_value["registered_artifacts"]
+        .as_array()
+        .ok_or("record_run should expose registered artifacts")?
+        .clone();
+    assert_eq!(registered_artifacts.len(), 2);
+    let artifact_candidate_ids = registered_artifacts
+        .iter()
+        .map(|artifact| {
+            artifact["artifact_id"]
+                .as_str()
+                .ok_or("registered artifact should expose artifact_id")
+                .map(str::to_owned)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut canonical_artifact_candidate_ids = artifact_candidate_ids.clone();
+    canonical_artifact_candidate_ids.sort();
+    let selected_target = target_candidates[1].clone();
+    let selected_target_selector = target_selectors[1].clone();
+    let selected_artifact_id = artifact_candidate_ids[1].clone();
+    let private_summary = "private-user-observation-summary-must-not-enter-agent-output";
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(
+            2,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            evidence_observation_action_args(
+                &task_id,
+                &change_unit_id,
+                target_candidates.clone(),
+                artifact_candidate_ids.clone(),
+            ),
+        ),
+        elicitation_accept_observation(
+            &selected_target_selector,
+            std::slice::from_ref(&selected_artifact_id),
+            "supported",
+            private_summary,
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let values = stdio_responses(&output)?;
+    assert_eq!(values.len(), 3);
+    assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
+    let requested_schema = &values[1]["params"]["requestedSchema"];
+    assert_eq!(requested_schema["additionalProperties"], false);
+    assert_eq!(
+        requested_schema["properties"]["selected_target"]["enum"],
+        json!(target_selectors)
+    );
+    assert_eq!(
+        requested_schema["properties"]["selected_artifact_ids"]["items"]["enum"],
+        json!(canonical_artifact_candidate_ids)
+    );
+    assert_eq!(
+        requested_schema["properties"]["relevance_status"]["enum"],
+        json!(["supported", "contradicted"])
+    );
+    let message = values[1]["params"]["message"]
+        .as_str()
+        .ok_or("elicitation message should be present")?;
+    for target in &target_candidates {
+        let target: EvidenceTarget = serde_json::from_value(target.clone())?;
+        match target {
+            EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id,
+            } => assert!(message.contains(acceptance_criterion_id.as_str())),
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id,
+                statement,
+            } => {
+                assert!(message.contains(evidence_claim_id.as_str()));
+                assert!(message.contains(&statement));
+            }
+        }
+    }
+    for artifact in &registered_artifacts {
+        for field in [
+            "artifact_id",
+            "display_name",
+            "sha256",
+            "size_bytes",
+            "storage_ref",
+            "created_by_actor_source",
+        ] {
+            let value = &artifact[field];
+            let displayed = value
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| value.to_string());
+            assert!(
+                message.contains(&displayed),
+                "elicitation must display artifact {field} metadata"
+            );
+        }
+    }
+    let response = volicord_response_from_tool(&values[2])?;
+    assert_eq!(response["effect"]["effect_kind"], "core_committed");
+    assert_eq!(response["status"], "resolved");
+    assert_eq!(
+        response["resolution_summary"]["resolution_type"],
+        "evidence_observation"
+    );
+    assert_eq!(response["resolution_summary"]["target"], selected_target);
+    assert_eq!(
+        response["resolution_summary"]["relevance_status"],
+        "supported"
+    );
+    assert_eq!(
+        response["resolution_summary"]["artifact_refs"],
+        json!([registered_artifacts[1].clone()])
+    );
+    assert_eq!(
+        response["user_action_resolution_ref"]["produced_at_state_version"],
+        response["current_projection_state_version"]
+    );
+    assert!(
+        response["current_projection_state_version"]
+            .as_u64()
+            .zip(response["effect"]["state_version"].as_u64())
+            .is_some_and(|(current, origin)| current > origin),
+        "resolution projection must remain distinct from the originating request result"
+    );
+    assert_eq!(response["derived_refs"], json!([]));
+    assert!(response["resolution_summary"].get("summary").is_none());
+    assert!(!String::from_utf8_lossy(&output).contains(private_summary));
+
+    let store = CoreProjectStore::open(
+        fixture.runtime_home_path(),
+        &ProjectId::new(fixture.project_id()),
+    )?;
+    let now = volicord_types::UtcTimestamp::parse(&user_action_channel_current_timestamp(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+    )?)?;
+    let records =
+        store.user_action_records_for_task(&volicord_types::TaskId::new(&task_id), &now)?;
+    assert_eq!(
+        records.len(),
+        1,
+        "host capture must not duplicate the request"
+    );
+    let record = &records[0];
+    assert_eq!(record.status, UserActionStatus::Resolved);
+    let resolution = record
+        .resolution
+        .as_ref()
+        .ok_or("stored evidence observation should be resolved")?;
+    assert_eq!(resolution.resolved_by_actor_source, "local_user");
+    assert_eq!(
+        resolution.channel_kind,
+        volicord_types::UserActionChannelKind::McpElicitation
+    );
+    assert_eq!(
+        resolution.resolved_verification_basis,
+        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+    );
+    assert_eq!(
+        resolution.user_action_resolution_id,
+        response["user_action_resolution_ref"]["record_id"]
+    );
+    let stored_body: volicord_types::UserActionResolutionBody =
+        serde_json::from_str(&resolution.resolution_json)?;
+    let volicord_types::UserActionResolutionBody::EvidenceObservation { observation } = stored_body
+    else {
+        return Err("stored resolution should be an evidence observation".into());
+    };
+    assert_eq!(serde_json::to_value(&observation.target)?, selected_target);
+    assert_eq!(
+        observation.relevance_status,
+        EvidenceRelevanceStatus::Supported
+    );
+    assert_eq!(observation.summary, private_summary);
+    assert_eq!(observation.output_artifact_refs.len(), 1);
+    assert_eq!(
+        observation.output_artifact_refs[0],
+        serde_json::from_value(registered_artifacts[1].clone())?
+    );
+    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
+    assert!(!String::from_utf8_lossy(&diagnostics_bytes).contains(private_summary));
+    Ok(())
+}
+
+#[test]
+fn stdio_elicitation_accept_workflow_preserves_resolution_derived_refs(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-elicitation-workflow-derived-refs")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let mut arguments = default_product_action_args(&fixture, &task_id, state_version);
+    arguments["detail"] = json!("workflow");
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, arguments),
+        elicitation_accept("keep", None),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let values = stdio_responses(&output)?;
+    let response = values
+        .iter()
+        .find(|value| value["id"] == 2)
+        .ok_or("tools/call response should be present")?;
+    let structured = &response["result"]["structuredContent"];
+    assert!(structured["next_actions"].is_array());
+    assert!(structured["method_result"]["derived_refs"]
+        .as_array()
+        .is_some_and(|refs| refs
+            .iter()
+            .any(|record_ref| { record_ref["record_kind"] == "project_continuity_record" })));
     Ok(())
 }
 
@@ -2853,13 +3479,13 @@ fn stdio_full_elicitation_result_does_not_expose_private_user_note() -> Result<(
     let fixture = CoreFixture::new("mcp-elicitation-full-private-note")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
-    let mut arguments = default_product_judgment_args(&fixture, &task_id, state_version);
+    let mut arguments = default_product_action_args(&fixture, &task_id, state_version);
     arguments["detail"] = json!("full");
     let private_note = "private-user-note-must-not-enter-agent-connection-output";
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({ "elicitation": {} })),
         initialized_notification(),
-        tools_call(2, REQUEST_USER_JUDGMENT_TOOL_NAME, arguments),
+        tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, arguments),
         elicitation_accept("keep", Some(private_note)),
     ])?);
     let mut output = Vec::new();
@@ -2876,9 +3502,22 @@ fn stdio_full_elicitation_result_does_not_expose_private_user_note() -> Result<(
     let structured = &response["result"]["structuredContent"];
     assert_eq!(
         structured["operation_result_ref"]["source_method"],
-        REQUEST_USER_JUDGMENT_TOOL_NAME
+        REQUEST_USER_ACTION_TOOL_NAME
     );
-    assert!(structured["method_result"]["user_judgment"]["resolution"]["note"].is_null());
+    assert!(
+        structured["method_result"]["user_channel_resolution"]["resolution_summary"]
+            .get("note")
+            .is_none()
+    );
+    assert_eq!(
+        structured["method_result"]["agent_workflow_result"]["user_action_request"]["status"],
+        "pending"
+    );
+    assert!(structured["method_result"]["derived_refs"]
+        .as_array()
+        .is_some_and(|refs| refs
+            .iter()
+            .any(|record_ref| { record_ref["record_kind"] == "project_continuity_record" })));
 
     let pending_page = adapter(&fixture)?.call_tool(
         GET_OPERATION_RESULT_TOOL_NAME,
@@ -2891,7 +3530,7 @@ fn stdio_full_elicitation_result_does_not_expose_private_user_note() -> Result<(
         .ok_or("retrieved pending response should include chunk_utf8")?;
     assert!(!pending_exact.contains(private_note));
     let pending_value: Value = serde_json::from_str(pending_exact)?;
-    assert_eq!(pending_value["user_judgment"]["status"], "pending");
+    assert_eq!(pending_value["user_action_request"]["status"], "pending");
     Ok(())
 }
 
@@ -2906,8 +3545,8 @@ fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result
         initialized_notification(),
         tools_call(
             2,
-            REQUEST_USER_JUDGMENT_TOOL_NAME,
-            default_product_judgment_args(&fixture, &task_id, state_version),
+            REQUEST_USER_ACTION_TOOL_NAME,
+            default_product_action_args(&fixture, &task_id, state_version),
         ),
         elicitation_accept("keep", None),
     ])?);
@@ -2934,14 +3573,15 @@ fn elicitation_write_failure_returns_nonretryable_post_effect_result() -> Result
         .is_some_and(|anchor| anchor.starts_with("authority_event:")));
     assert_eq!(
         structured["operation_result_ref"]["source_method"],
-        REQUEST_USER_JUDGMENT_TOOL_NAME
+        REQUEST_USER_ACTION_TOOL_NAME
+    );
+    assert!(
+        structured["method_result"]["user_action_request_ref"]["record_id"]
+            .as_str()
+            .is_some_and(|record_id| !record_id.trim().is_empty())
     );
     assert_eq!(
-        structured["method_result"]["user_judgment_ref"]["record_id"],
-        structured["method_result"]["user_judgment"]["judgment_id"]
-    );
-    assert_eq!(
-        structured["method_result"]["user_judgment"]["status"],
+        structured["method_result"]["user_action_request"]["status"],
         "pending"
     );
     assert_eq!(
@@ -3053,7 +3693,7 @@ fn corrupt_diagnostics_store_is_nonfatal_to_mcp_core_result() -> Result<(), Box<
 }
 
 #[test]
-fn stdio_elicitation_decline_records_rejected_authority_judgment() -> Result<(), Box<dyn Error>> {
+fn stdio_elicitation_decline_resolves_stored_reject_choice() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-decline")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
@@ -3063,8 +3703,8 @@ fn stdio_elicitation_decline_records_rejected_authority_judgment() -> Result<(),
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            authority_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            authority_action_args(&fixture, &task_id, state_version),
         ),
         elicitation_action("decline"),
     ])?);
@@ -3075,13 +3715,16 @@ fn stdio_elicitation_decline_records_rejected_authority_judgment() -> Result<(),
     let values = stdio_responses(&output)?;
     assert_eq!(values[1]["method"], ELICITATION_CREATE_METHOD);
     let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["user_judgment"]["status"], "resolved");
     assert_eq!(
-        response["user_judgment"]["resolution"]["selected_option_id"],
+        response["user_channel_resolution"]["resolution_summary"]["resolution_type"],
+        "choice"
+    );
+    assert_eq!(
+        response["user_channel_resolution"]["resolution_summary"]["selected_option_id"],
         "reject"
     );
     assert_eq!(
-        response["user_judgment"]["resolution"]["resolution_outcome"],
+        response["user_channel_resolution"]["resolution_summary"]["resolution_outcome"],
         "rejected"
     );
     assert_eq!(
@@ -3092,7 +3735,7 @@ fn stdio_elicitation_decline_records_rejected_authority_judgment() -> Result<(),
 }
 
 #[test]
-fn stdio_elicitation_accept_can_record_deferred_judgment() -> Result<(), Box<dyn Error>> {
+fn stdio_elicitation_accept_can_resolve_deferred_choice() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-defer")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
@@ -3102,8 +3745,8 @@ fn stdio_elicitation_accept_can_record_deferred_judgment() -> Result<(), Box<dyn
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            authority_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            authority_action_args(&fixture, &task_id, state_version),
         ),
         elicitation_accept("defer", Some("Not enough context yet.")),
     ])?);
@@ -3113,29 +3756,35 @@ fn stdio_elicitation_accept_can_record_deferred_judgment() -> Result<(), Box<dyn
 
     let values = stdio_responses(&output)?;
     let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["user_judgment"]["status"], "resolved");
     assert_eq!(
-        response["user_judgment"]["resolution"]["selected_option_id"],
+        response["user_channel_resolution"]["resolution_summary"]["resolution_type"],
+        "choice"
+    );
+    assert_eq!(
+        response["user_channel_resolution"]["resolution_summary"]["selected_option_id"],
         "defer"
     );
     assert_eq!(
-        response["user_judgment"]["resolution"]["resolution_outcome"],
+        response["user_channel_resolution"]["resolution_summary"]["resolution_outcome"],
         "deferred"
     );
-    assert!(response["user_judgment"]["resolution"]["note"].is_null());
-    let stored = stored_judgment_record(&fixture, &task_id, &response)?;
+    assert!(response["user_channel_resolution"]["resolution_summary"]
+        .get("note")
+        .is_none());
+    let stored = stored_action_record(&fixture, &task_id, &response)?;
     let stored_resolution: Value = serde_json::from_str(
-        stored
-            .resolution_json
-            .as_deref()
-            .ok_or("stored deferred judgment should include resolution JSON")?,
+        &stored
+            .resolution
+            .as_ref()
+            .ok_or("stored deferred action should include a resolution")?
+            .resolution_json,
     )?;
     assert_eq!(stored_resolution["note"], "Not enough context yet.");
     Ok(())
 }
 
 #[test]
-fn stdio_elicitation_cancel_leaves_judgment_pending() -> Result<(), Box<dyn Error>> {
+fn stdio_elicitation_cancel_leaves_user_action_pending() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-cancel")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
@@ -3145,8 +3794,8 @@ fn stdio_elicitation_cancel_leaves_judgment_pending() -> Result<(), Box<dyn Erro
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            product_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            product_action_args(&fixture, &task_id, state_version),
         ),
         elicitation_action("cancel"),
     ])?);
@@ -3156,19 +3805,24 @@ fn stdio_elicitation_cancel_leaves_judgment_pending() -> Result<(), Box<dyn Erro
 
     let values = stdio_responses(&output)?;
     let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["user_judgment"]["status"], "pending");
+    assert_eq!(
+        response["agent_workflow_result"]["user_action_request"]["status"],
+        "pending"
+    );
+    assert!(response["user_channel_resolution"].is_null());
     assert!(values[2]["result"]["content"][1]["text"]
         .as_str()
         .expect("extra text")
-        .contains("remains pending"));
-    let record = stored_judgment_record(&fixture, &task_id, &response)?;
-    assert_eq!(record.status, "pending");
-    assert!(record.resolved_verification_basis.is_none());
+        .contains("current status is pending"));
+    assert_pending_user_action_resume_guidance(&values[2], &response, &fixture)?;
+    let record = stored_action_record(&fixture, &task_id, &response)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
     Ok(())
 }
 
 #[test]
-fn stdio_elicitation_invalid_response_leaves_judgment_pending() -> Result<(), Box<dyn Error>> {
+fn stdio_elicitation_invalid_response_leaves_user_action_pending() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-invalid")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
@@ -3178,8 +3832,8 @@ fn stdio_elicitation_invalid_response_leaves_judgment_pending() -> Result<(), Bo
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            product_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            product_action_args(&fixture, &task_id, state_version),
         ),
         elicitation_accept("not_an_option", None),
     ])?);
@@ -3189,13 +3843,280 @@ fn stdio_elicitation_invalid_response_leaves_judgment_pending() -> Result<(), Bo
 
     let values = stdio_responses(&output)?;
     let response = volicord_response_from_tool(&values[2])?;
-    assert_eq!(response["user_judgment"]["status"], "pending");
+    assert_eq!(
+        response["agent_workflow_result"]["user_action_request"]["status"],
+        "pending"
+    );
     assert!(values[2]["result"]["content"][1]["text"]
         .as_str()
         .expect("extra text")
-        .contains("unknown option_id"));
-    let record = stored_judgment_record(&fixture, &task_id, &response)?;
-    assert_eq!(record.status, "pending");
+        .contains("not a stored choice"));
+    assert_pending_user_action_resume_guidance(&values[2], &response, &fixture)?;
+    let record = stored_action_record(&fixture, &task_id, &response)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    Ok(())
+}
+
+#[test]
+fn stdio_elicitation_rejects_unknown_mixed_and_null_choice_fields_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-elicitation-closed-choice-content")?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let before = user_action_side_effect_snapshot(&fixture)?;
+    assert_eq!(before.1, 0);
+    let cases = [
+        (
+            "unknown",
+            json!({"selected_option_id":"keep","unexpected":"discard-me"}),
+            "unsupported field `unexpected`",
+        ),
+        (
+            "mixed",
+            json!({"selected_option_id":"keep","summary":"cross-variant"}),
+            "unsupported field `summary`",
+        ),
+        (
+            "null-note",
+            json!({"selected_option_id":"keep","note":null}),
+            "content.note must be a string when supplied",
+        ),
+    ];
+
+    for (case, content, expected_error) in cases {
+        let (request, result) =
+            invoke_pending_elicitation(&fixture, pending_response.clone(), content)?;
+        assert_eq!(
+            request["params"]["requestedSchema"]["additionalProperties"], false,
+            "choice schema must remain closed for {case}"
+        );
+        assert!(
+            result["content"][1]["text"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected_error)),
+            "missing rejection reason for {case}: {result}"
+        );
+        assert_eq!(
+            user_action_side_effect_snapshot(&fixture)?,
+            before,
+            "invalid choice content must have no effect for {case}"
+        );
+    }
+
+    let record = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
+    Ok(())
+}
+
+#[test]
+fn stdio_elicitation_rejects_cross_variant_evidence_fields_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-elicitation-closed-evidence-content")?;
+    let pending = create_pending_evidence_observation_action(&fixture)?;
+    let before = user_action_side_effect_snapshot(&fixture)?;
+    let target = match &pending.target_candidates[0] {
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id,
+        } => format!("--criterion {acceptance_criterion_id}"),
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id, ..
+        } => format!("--claim {evidence_claim_id}"),
+    };
+    let artifact_id = pending.registered_artifacts[0]
+        .artifact_id
+        .as_str()
+        .to_owned();
+    let (request, result) = invoke_pending_elicitation(
+        &fixture,
+        pending.response.clone(),
+        json!({
+            "selected_target":target,
+            "selected_artifact_ids":[artifact_id],
+            "relevance_status":"supported",
+            "summary":"bounded observation",
+            "selected_option_id":"keep"
+        }),
+    )?;
+
+    assert_eq!(
+        request["params"]["requestedSchema"]["additionalProperties"],
+        false
+    );
+    assert!(result["content"][1]["text"]
+        .as_str()
+        .is_some_and(|text| text.contains("unsupported field `selected_option_id`")));
+    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before);
+    let record =
+        stored_action_record(&fixture, &pending.task_id, &pending.response.response_value)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
+    Ok(())
+}
+
+#[test]
+fn sensitive_complete_presentation_skips_elicitation_and_prompt_capture_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    const TARGET_MARKER: &str = "SENSITIVE_TARGET_PRESENTATION_MARKER";
+    const ARTIFACT_MARKER: &str = "SENSITIVE_ARTIFACT_PRESENTATION_MARKER";
+
+    for (case, target_marker, artifact_marker, marker) in [
+        ("target_only", Some(TARGET_MARKER), None, TARGET_MARKER),
+        (
+            "artifact_only",
+            None,
+            Some(ARTIFACT_MARKER),
+            ARTIFACT_MARKER,
+        ),
+    ] {
+        let fixture = CoreFixture::new(&format!("mcp-sensitive-presentation-{case}"))?;
+        let pending = create_pending_evidence_observation_action_with_sensitive_markers(
+            &fixture,
+            target_marker,
+            artifact_marker,
+        )?;
+        let before = user_action_side_effect_snapshot(&fixture)?;
+        let mut response = pending.response;
+        response.response_value["inbox_item"]["preferred_capture_path"] = json!({
+            "kind": "prompt_capture",
+            "label": "Host chat prompt capture",
+            "available": true,
+            "command": null,
+            "url": null,
+            "capture_basis": "user_prompt_submit_hook",
+            "expires_at": null,
+            "detail": "Present the exact request-bound form in chat."
+        });
+        let parsed = pending_user_action_from_response(&response)?
+            .ok_or("sensitive presentation should remain a valid pending action")?;
+        assert!(!crate::stdio::agent_facing_user_action_input_allowed(
+            &parsed
+        ));
+        let expected_agent_workflow_result = serde_json::to_vec(&response.response_value)?;
+
+        for client_supports_elicitation in [true, false] {
+            let mut lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
+            let mut writer = Vec::new();
+            let mut request_sequence = 1;
+            let output = crate::stdio::user_action_tool_output(
+                &adapter(&fixture)?,
+                response.clone(),
+                true,
+                client_supports_elicitation,
+                &mut request_sequence,
+                &mut lines,
+                &mut writer,
+            )?;
+
+            assert!(writer.is_empty(), "{case}: no elicitation/create wire");
+            assert_eq!(request_sequence, 1, "{case}: no elicitation id");
+            let result = crate::stdio::tool_call_result_from_output(output);
+            assert_eq!(result["structuredContent"]["current_status"], "pending");
+            assert_eq!(
+                serde_json::to_vec(&result["structuredContent"]["agent_workflow_result"])?,
+                expected_agent_workflow_result,
+                "{case}: immutable historical result bytes must not be rewritten"
+            );
+            assert!(result["structuredContent"]["agent_workflow_result"]
+                .to_string()
+                .contains(marker));
+            let fallback_texts = result["content"]
+                .as_array()
+                .expect("tool content")
+                .iter()
+                .skip(1)
+                .filter_map(|entry| entry["text"].as_str())
+                .collect::<Vec<_>>();
+            assert!(fallback_texts
+                .iter()
+                .any(|text| text.contains("requires a user-only channel")));
+            assert!(fallback_texts
+                .iter()
+                .any(|text| text.contains("CLI inbox path")));
+            assert!(fallback_texts.iter().all(|text| !text.contains(marker)));
+            assert!(fallback_texts
+                .iter()
+                .all(|text| !text.contains("Exact request-bound command template")));
+            assert_eq!(user_action_side_effect_snapshot(&fixture)?, before);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn sensitive_presentation_uses_local_web_and_full_form_stays_on_user_only_page(
+) -> Result<(), Box<dyn Error>> {
+    const TARGET_MARKER: &str = "LOCAL_WEB_SENSITIVE_TARGET_MARKER";
+    const ARTIFACT_MARKER: &str = "LOCAL_WEB_SENSITIVE_ARTIFACT_MARKER";
+
+    let fixture = CoreFixture::new("mcp-sensitive-presentation-local-web")?;
+    let pending = create_pending_evidence_observation_action_with_sensitive_markers(
+        &fixture,
+        Some(TARGET_MARKER),
+        Some(ARTIFACT_MARKER),
+    )?;
+    let expected_agent_workflow_result = serde_json::to_vec(&pending.response.response_value)?;
+    let before = fixture.counts()?;
+    let mut lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
+    let mut writer = Vec::new();
+    let mut request_sequence = 1;
+    let output = crate::stdio::user_action_tool_output(
+        &adapter_with_local_web_consent(&fixture)?,
+        pending.response.clone(),
+        true,
+        true,
+        &mut request_sequence,
+        &mut lines,
+        &mut writer,
+    )?;
+
+    assert!(writer.is_empty());
+    assert_eq!(request_sequence, 1);
+    let result = crate::stdio::tool_call_result_from_output(output);
+    assert_eq!(
+        serde_json::to_vec(&result["structuredContent"]["agent_workflow_result"])?,
+        expected_agent_workflow_result
+    );
+    let fallback_texts = result["content"]
+        .as_array()
+        .expect("tool content")
+        .iter()
+        .skip(1)
+        .filter_map(|entry| entry["text"].as_str())
+        .collect::<Vec<_>>();
+    assert!(fallback_texts
+        .iter()
+        .all(|text| !text.contains(TARGET_MARKER) && !text.contains(ARTIFACT_MARKER)));
+    assert!(fallback_texts
+        .iter()
+        .any(|text| text.contains("requires a user-only channel")));
+    let fallback_state = fallback_texts
+        .iter()
+        .filter_map(|text| serde_json::from_str::<Value>(text).ok())
+        .find(|value| value["volicord_fallback"]["kind"] == "local_web_consent")
+        .ok_or("sensitive presentation should retain local-web fallback")?;
+    let url = fallback_state["volicord_fallback"]["url"]
+        .as_str()
+        .ok_or("local-web fallback should include a URL")?;
+    let target = url
+        .strip_prefix(consent_base_url())
+        .ok_or("fallback URL should use the local consent base URL")?;
+    let mut server = consent_server(&fixture)?;
+    let get = server.handle_request(consent_get_request(target));
+    assert_eq!(get.status, 200);
+    assert_local_web_consent_security_headers(&get);
+    let body = http_body_text(&get)?;
+    assert!(body.contains(TARGET_MARKER));
+    assert!(body.contains(ARTIFACT_MARKER));
+    assert!(body.contains("Supplemental claim"));
+    for artifact in &pending.registered_artifacts {
+        assert!(body.contains(artifact.artifact_id.as_str()));
+        assert!(body.contains(&artifact.display_name));
+    }
+    assert_eq!(fixture.counts()?, before);
+    let record =
+        stored_action_record(&fixture, &pending.task_id, &pending.response.response_value)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
     Ok(())
 }
 
@@ -3211,8 +4132,8 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            product_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            product_action_args(&fixture, &task_id, state_version),
         ),
     ])?);
     let mut output = Vec::new();
@@ -3223,15 +4144,16 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
     assert_eq!(values.len(), 2);
     assert_eq!(
         values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
-        REQUEST_USER_JUDGMENT_TOOL_NAME
+        REQUEST_USER_ACTION_TOOL_NAME
     );
     let response = volicord_response_from_tool(&values[1])?;
-    assert_eq!(response["user_judgment"]["status"], "pending");
+    let workflow = &response["agent_workflow_result"];
+    assert_eq!(workflow["user_action_request"]["status"], "pending");
     assert_eq!(
-        response["inbox_item"]["preferred_capture_path"]["kind"],
+        workflow["inbox_item"]["preferred_capture_path"]["kind"],
         "cli"
     );
-    let availability = &response["inbox_item"]["answer_path_availability"];
+    let availability = &workflow["inbox_item"]["answer_path_availability"];
     assert_eq!(
         channel_path(availability, "mcp_elicitation")["available"],
         false
@@ -3241,17 +4163,38 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
         false
     );
     assert_eq!(channel_path(availability, "cli")["available"], true);
-    assert!(response["inbox_item"]["preferred_capture_path"]["command"]
+    assert!(workflow["inbox_item"]["preferred_capture_path"]["command"]
         .as_str()
         .expect("CLI fallback command should be present")
-        .contains("volicord inbox answer"));
+        .contains("volicord inbox resolve"));
     let fallback = values[1]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text");
     assert!(fallback.contains("Host prompt input is unavailable"));
     assert!(fallback.contains("CLI inbox path"));
-    assert!(fallback.contains("volicord inbox answer"));
-    assert!(!fallback.contains("Volicord: answer J-1 1 #"));
+    assert!(fallback.contains("volicord inbox resolve"));
+    assert!(fallback.contains("nested `request.operation=resume`"));
+    let state: Value = serde_json::from_str(
+        values[1]["result"]["content"][2]["text"]
+            .as_str()
+            .expect("structured fallback text"),
+    )?;
+    let state = &state["volicord_fallback"];
+    assert_eq!(state["kind"], "cli_recovery");
+    assert_eq!(state["resume"]["tool_name"], REQUEST_USER_ACTION_TOOL_NAME);
+    assert_eq!(state["resume"]["creates_new_request"], false);
+    assert_eq!(
+        state["resume"]["arguments"]["project_selector"],
+        fixture.project_id()
+    );
+    assert_eq!(
+        state["resume"]["arguments"]["request"]["operation"],
+        "resume"
+    );
+    assert_eq!(
+        state["resume"]["arguments"]["request"]["user_action_request_id"],
+        workflow["user_action_request"]["user_action_request_id"]
+    );
     let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
         .expect("CLI fallback should create bounded diagnostics");
     assert_eq!(diagnostics.fallback_counts["cli_inbox"], 1);
@@ -3259,8 +4202,7 @@ fn stdio_without_elicitation_capability_returns_cli_recovery_when_prompt_capture
 }
 
 #[test]
-fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
-) -> Result<(), Box<dyn Error>> {
+fn stdio_does_not_reconstruct_prompt_capture_when_core_prefers_cli() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-elicitation-chat-capture")?;
     install_prompt_capture_guard(&fixture)?;
     let setup_adapter = adapter(&fixture)?;
@@ -3271,8 +4213,8 @@ fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
         initialized_notification(),
         tools_call(
             2,
-            "volicord.request_user_judgment",
-            product_judgment_args(&fixture, &task_id, state_version),
+            "volicord.request_user_action",
+            product_action_args(&fixture, &task_id, state_version),
         ),
     ])?);
     let mut output = Vec::new();
@@ -3283,33 +4225,40 @@ fn stdio_without_elicitation_capability_returns_chat_capture_when_configured(
     assert_eq!(values.len(), 2);
     assert_eq!(
         values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
-        REQUEST_USER_JUDGMENT_TOOL_NAME
+        REQUEST_USER_ACTION_TOOL_NAME
     );
     let response = volicord_response_from_tool(&values[1])?;
-    assert_eq!(response["user_judgment"]["status"], "pending");
+    let workflow = &response["agent_workflow_result"];
+    assert_eq!(workflow["user_action_request"]["status"], "pending");
     assert_eq!(
-        response["inbox_item"]["preferred_capture_path"]["kind"],
-        "prompt_capture"
+        workflow["inbox_item"]["preferred_capture_path"]["kind"],
+        "cli"
     );
-    let availability = &response["inbox_item"]["answer_path_availability"];
+    let availability = &workflow["inbox_item"]["answer_path_availability"];
     assert_eq!(
         channel_path(availability, "mcp_elicitation")["available"],
         false
     );
     assert_eq!(
         channel_path(availability, "prompt_capture")["available"],
-        true
+        false
     );
     assert_eq!(channel_path(availability, "cli")["available"], true);
-    let fallback = values[1]["result"]["content"][1]["text"]
-        .as_str()
-        .expect("fallback text");
-    assert!(fallback.contains("Host prompt input is unavailable"));
-    assert!(fallback.contains("Volicord: answer J-1 1 #"));
-    assert!(fallback.contains("Volicord: note J-1 \"text\" #"));
+    let fallback_texts = values[1]["result"]["content"]
+        .as_array()
+        .expect("tool content")
+        .iter()
+        .filter_map(|content| content["text"].as_str())
+        .collect::<Vec<_>>();
+    assert!(fallback_texts
+        .iter()
+        .any(|text| text.contains("Host prompt input is unavailable")));
+    assert!(fallback_texts
+        .iter()
+        .any(|text| text.contains("CLI inbox path")));
     let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
-        .expect("prompt capture fallback should create bounded diagnostics");
-    assert_eq!(diagnostics.fallback_counts["prompt_capture"], 1);
+        .expect("CLI fallback should create bounded diagnostics");
+    assert_eq!(diagnostics.fallback_counts["cli_inbox"], 1);
     Ok(())
 }
 
@@ -3320,14 +4269,18 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let adapter = adapter_with_local_web_consent(&fixture)?;
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let now = volicord_types::UtcTimestamp::parse(&now)?;
+    let request_expires_at = volicord_types::UtcTimestamp::from_datetime(
+        *now.as_datetime() + std::time::Duration::from_secs(120),
+    );
+    let mut arguments = product_action_args(&fixture, &task_id, state_version);
+    arguments["request"]["expires_at"] = json!(request_expires_at);
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
-        tools_call(
-            2,
-            "volicord.request_user_judgment",
-            product_judgment_args(&fixture, &task_id, state_version),
-        ),
+        tools_call(2, "volicord.request_user_action", arguments),
     ])?);
     let mut output = Vec::new();
 
@@ -3337,15 +4290,16 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
     assert_eq!(values.len(), 2);
     assert_eq!(
         values[1]["result"]["structuredContent"]["operation_result_ref"]["source_method"],
-        REQUEST_USER_JUDGMENT_TOOL_NAME
+        REQUEST_USER_ACTION_TOOL_NAME
     );
     let response = volicord_response_from_tool(&values[1])?;
-    assert_eq!(response["user_judgment"]["status"], "pending");
+    let workflow = &response["agent_workflow_result"];
+    assert_eq!(workflow["user_action_request"]["status"], "pending");
     assert_eq!(
-        response["inbox_item"]["preferred_capture_path"]["kind"],
+        workflow["inbox_item"]["preferred_capture_path"]["kind"],
         "local_web_consent"
     );
-    let availability = &response["inbox_item"]["answer_path_availability"];
+    let availability = &workflow["inbox_item"]["answer_path_availability"];
     assert_eq!(
         channel_path(availability, "mcp_elicitation")["available"],
         false
@@ -3355,27 +4309,11 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
         true
     );
     assert_eq!(channel_path(availability, "cli")["available"], true);
-    assert!(response["inbox_item"]["preferred_capture_path"]["url"]
-        .as_str()
-        .expect("local web URL should be present")
-        .starts_with(&format!(
-            "{}{}?project=",
-            consent_base_url(),
-            LOCAL_WEB_CONSENT_PATH
-        )));
-    assert!(response["inbox_item"]["fallbacks"]
-        .as_array()
-        .expect("inbox fallbacks should be an array")
-        .iter()
-        .any(|fallback| fallback["kind"] == "cli"
-            && fallback["command"]
-                .as_str()
-                .is_some_and(|command| command.contains("volicord inbox answer"))));
     let fallback = values[1]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text");
     assert!(fallback.contains("local Volicord consent link"));
-    assert!(!fallback.contains("volicord user judgment answer"));
+    assert!(fallback.contains("nested `request.operation=resume`"));
 
     let state: Value = serde_json::from_str(
         values[1]["result"]["content"][2]["text"]
@@ -3390,6 +4328,25 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
         state["capture_basis"],
         VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
     );
+    assert!(state.get("ttl_seconds").is_none());
+    assert_eq!(
+        state["expires_at"],
+        workflow["user_action_request"]["expires_at"]
+    );
+    assert_eq!(state["resume"]["tool_name"], REQUEST_USER_ACTION_TOOL_NAME);
+    assert_eq!(state["resume"]["creates_new_request"], false);
+    assert_eq!(
+        state["resume"]["arguments"]["project_selector"],
+        fixture.project_id()
+    );
+    assert_eq!(
+        state["resume"]["arguments"]["request"]["operation"],
+        "resume"
+    );
+    assert_eq!(
+        state["resume"]["arguments"]["request"]["user_action_request_id"],
+        workflow["user_action_request"]["user_action_request_id"]
+    );
     let url = state["url"].as_str().expect("fallback URL");
     assert!(url.starts_with(&format!(
         "{}{}?project=",
@@ -3398,20 +4355,21 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
     )));
     let token = token_from_consent_url(url)?;
     let now =
-        local_web_consent_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
-    let validation = validate_local_web_consent_token(
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let validation = validate_user_action_channel_token(
         fixture.runtime_home_path(),
-        LocalWebConsentTokenCheck {
+        UserActionChannelTokenCheck {
             token,
             expected_project_id: fixture.project_id().to_owned(),
             expected_connection_internal_id: fixture.connection_id().to_owned(),
             now,
         },
     )?;
-    assert!(matches!(
-        validation,
-        LocalWebConsentTokenValidation::Valid(_)
-    ));
+    let UserActionChannelTokenValidation::Valid(record) = validation else {
+        return Err("local-web token should remain valid".into());
+    };
+    let token_expires_at = volicord_types::UtcTimestamp::parse(&record.expires_at)?;
+    assert!(token_expires_at <= request_expires_at);
     let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
         .expect("local web fallback should create bounded diagnostics");
     assert_eq!(diagnostics.fallback_counts["local_web_consent"], 1);
@@ -3419,11 +4377,305 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
 }
 
 #[test]
-fn local_web_consent_get_renders_pending_judgment_page() -> Result<(), Box<dyn Error>> {
+fn stdio_pending_resume_with_local_web_is_read_only_exact_replay() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-pending-resume-local-web-read-only")?;
+    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
+    assert!(!pending_response.replayed);
+    let exact_origin_bytes = serde_json::to_vec(&pending_response.response_value)?;
+    let origin_operation_result_ref = serde_json::to_value(
+        pending_response
+            .operation_result_ref
+            .as_ref()
+            .ok_or("created response should have an operation-result ref")?,
+    )?;
+    let user_action_request_id = pending_response.response_value["user_action_request_ref"]
+        ["record_id"]
+        .as_str()
+        .ok_or("created response should identify the user-action request")?
+        .to_owned();
+    let storage_snapshot = || -> Result<(i64, String), Box<dyn Error>> {
+        Ok(fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at
+               FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?)
+    };
+    let before_counts = fixture.counts()?;
+    let before_storage = storage_snapshot()?;
+    assert_eq!(before_storage.0, 0);
+
+    let resume_input = Cursor::new(json_lines(&[
+        initialize_request(3, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(
+            4,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            resume_user_action_args(&fixture, &user_action_request_id),
+        ),
+    ])?);
+    let mut resume_output = Vec::new();
+    run_stdio(
+        adapter_with_local_web_consent(&fixture)?,
+        BufReader::new(resume_input),
+        &mut resume_output,
+    )?;
+
+    let resume_values = stdio_responses(&resume_output)?;
+    assert_eq!(resume_values.len(), 2);
+    assert!(resume_values
+        .iter()
+        .all(|value| value["method"] != "elicitation/create"));
+    assert_eq!(
+        resume_values[1]["result"]["content"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    let resumed = volicord_response_from_tool(&resume_values[1])?;
+    assert_eq!(
+        serde_json::to_vec(&resumed["agent_workflow_result"])?,
+        exact_origin_bytes
+    );
+    assert_eq!(resumed["agent_workflow_result_replayed"], true);
+    assert_eq!(resumed["current_status"], "pending");
+    assert!(resumed["user_channel_resolution_ref"].is_null());
+    assert!(resumed["user_channel_resolution"].is_null());
+    assert_eq!(
+        resume_values[1]["result"]["structuredContent"]["operation_result_ref"],
+        origin_operation_result_ref
+    );
+    assert_eq!(fixture.counts()?, before_counts);
+    assert_eq!(storage_snapshot()?, before_storage);
+    Ok(())
+}
+
+#[test]
+fn stdio_rejects_tampered_noncanonical_and_oversized_pending_forms_before_capture(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-pending-form-fail-closed")?;
+    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let before = user_action_side_effect_snapshot(&fixture)?;
+    assert_eq!(before.1, 0);
+
+    let mut tampered = pending_response.clone();
+    tampered.response_value["inbox_item"]["form"]["choices"][0]["label"] = json!("Tampered label");
+    let mut noncanonical = pending_response.clone();
+    noncanonical.response_value["inbox_item"]["form"]["note_max_chars"] = json!(17);
+    let mut oversized = pending_response.clone();
+    oversized.response_value["inbox_item"]["form"]["choices"][0]["description"] =
+        json!("x".repeat(volicord_types::USER_ACTION_FORM_MAX_BYTES + 1));
+
+    for (case, response) in [
+        ("tampered", tampered),
+        ("noncanonical", noncanonical),
+        ("oversized", oversized),
+    ] {
+        assert!(
+            pending_user_action_from_response(&response).is_err(),
+            "{case} form must fail closed before entering a User Channel"
+        );
+        let mut lines = BufReader::new(Cursor::new(Vec::<u8>::new())).lines();
+        let mut writer = Vec::new();
+        let mut request_sequence = 1;
+        let error = crate::stdio::user_action_tool_output(
+            &adapter_with_local_web_consent(&fixture)?,
+            response,
+            true,
+            true,
+            &mut request_sequence,
+            &mut lines,
+            &mut writer,
+        )
+        .expect_err("invalid pending form must report post-effect adapter failure");
+        assert!(matches!(
+            error,
+            McpAdapterError::Protocol(_) | McpAdapterError::Json(_)
+        ));
+        assert!(writer.is_empty(), "{case} form must not elicit");
+        assert_eq!(request_sequence, 1, "{case} form must not allocate an id");
+        assert_eq!(
+            user_action_side_effect_snapshot(&fixture)?,
+            before,
+            "{case} form must not create a token, resolution, or project effect"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn stdio_resume_replays_exact_origin_and_rereads_cross_channel_resolution(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-user-action-cross-channel-resume")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+
+    let create_input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            product_action_args(&fixture, &task_id, state_version),
+        ),
+    ])?);
+    let mut create_output = Vec::new();
+    run_stdio(
+        adapter(&fixture)?,
+        BufReader::new(create_input),
+        &mut create_output,
+    )?;
+
+    let create_values = stdio_responses(&create_output)?;
+    assert_eq!(create_values.len(), 2);
+    let created = volicord_response_from_tool(&create_values[1])?;
+    assert_eq!(created["current_status"], "pending");
+    assert_eq!(created["agent_workflow_result_replayed"], false);
+    let exact_origin = created["agent_workflow_result"].clone();
+    let exact_origin_bytes = serde_json::to_vec(&exact_origin)?;
+    let origin_operation_result_ref =
+        create_values[1]["result"]["structuredContent"]["operation_result_ref"].clone();
+    let user_action_request_id = exact_origin["user_action_request_ref"]["record_id"]
+        .as_str()
+        .ok_or("created response should identify the user-action request")?
+        .to_owned();
+    let after_create = fixture.counts()?;
+
+    let core = CoreService::new(fixture.runtime_home_path());
+    let resolved = core.resolve_user_action(
+        fixture.resolve_user_action_request(ResolveUserActionFixture {
+            request_id: "req_mcp_cross_channel_resolution",
+            task_id: &task_id,
+            user_action_request_id: &user_action_request_id,
+            channel_submission_id: "submission_mcp_cross_channel_resolution",
+            resolution: UserActionResolutionInput::Choice {
+                selected_option_id: volicord_types::UserActionOptionId::new("keep"),
+                note: Some("This private user note must not enter the MCP projection.".to_owned())
+                    .into(),
+            },
+        }),
+        InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::LocalUser,
+            OperationCategory::UserOnly,
+            VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+        ),
+    )?;
+    assert_eq!(resolved.response_value["base"]["response_kind"], "result");
+    let historical_derived_refs = resolved.response_value["derived_refs"].clone();
+    assert!(historical_derived_refs
+        .as_array()
+        .is_some_and(|refs| !refs.is_empty()));
+    let historical_resolution_ref = resolved.response_value["user_action_resolution_ref"].clone();
+    let resolution_state_version = resolved.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("resolution should report its committed state version")?;
+    let after_resolution = fixture.counts()?;
+    assert_eq!(
+        after_resolution.user_action_requests,
+        after_create.user_action_requests
+    );
+    assert_eq!(
+        after_resolution.user_action_resolutions,
+        after_create.user_action_resolutions + 1
+    );
+
+    let unrelated = core.request_user_action(
+        fixture.user_action_request(UserActionFixture {
+            request_id: "req_mcp_cross_channel_unrelated_action",
+            idempotency_key: "idem_mcp_cross_channel_unrelated_action",
+            dry_run: false,
+            expected_state_version: Some(resolution_state_version),
+            task_id: &task_id,
+            change_unit_id: None,
+            judgment_kind: volicord_types::JudgmentKind::TechnicalDecision,
+        }),
+        InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            OperationCategory::AgentWorkflow,
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        ),
+    )?;
+    assert_eq!(unrelated.response_value["base"]["response_kind"], "result");
+    let before_resume = fixture.counts()?;
+    assert_eq!(before_resume.state_version, resolution_state_version + 1);
+    assert_eq!(
+        before_resume.user_action_requests,
+        after_resolution.user_action_requests + 1
+    );
+
+    let wrong_connection_id = "conn_mcp_cross_channel_wrong";
+    let wrong_adapter = adapter_for_additional_connection(&fixture, wrong_connection_id)?;
+    let wrong_error = wrong_adapter
+        .call_tool(
+            REQUEST_USER_ACTION_TOOL_NAME,
+            resume_user_action_args(&fixture, &user_action_request_id),
+        )
+        .expect_err("another Agent Connection must not resume the originating result");
+    assert!(matches!(wrong_error, McpAdapterError::ToolExecution { .. }));
+    assert_eq!(fixture.counts()?, before_resume);
+
+    let resume_input = Cursor::new(json_lines(&[
+        initialize_request(3, json!({ "elicitation": {} })),
+        initialized_notification(),
+        tools_call(
+            4,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            resume_user_action_args(&fixture, &user_action_request_id),
+        ),
+    ])?);
+    let mut resume_output = Vec::new();
+    run_stdio(
+        adapter(&fixture)?,
+        BufReader::new(resume_input),
+        &mut resume_output,
+    )?;
+
+    let resume_values = stdio_responses(&resume_output)?;
+    assert_eq!(resume_values.len(), 2);
+    assert!(resume_values
+        .iter()
+        .all(|value| value["method"] != "elicitation/create"));
+    let resumed = volicord_response_from_tool(&resume_values[1])?;
+    assert_eq!(
+        serde_json::to_vec(&resumed["agent_workflow_result"])?,
+        exact_origin_bytes
+    );
+    assert_eq!(resumed["agent_workflow_result_replayed"], true);
+    assert_eq!(resumed["current_status"], "resolved");
+    assert_eq!(
+        resumed["current_projection_state_version"],
+        before_resume.state_version
+    );
+    assert!(resumed["current_projection_observed_at"].is_string());
+    assert_eq!(
+        resumed["user_channel_resolution_ref"],
+        historical_resolution_ref
+    );
+    assert_eq!(resumed["derived_refs"], historical_derived_refs);
+    assert_eq!(
+        resumed["user_channel_resolution"]["resolution_summary"]["selected_option_id"],
+        "keep"
+    );
+    assert!(resumed["user_channel_resolution"]
+        .to_string()
+        .find("private user note")
+        .is_none());
+    assert_eq!(
+        resume_values[1]["result"]["structuredContent"]["operation_result_ref"],
+        origin_operation_result_ref
+    );
+    assert_eq!(fixture.counts()?, before_resume);
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_get_renders_pending_user_action_page() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-get")?;
-    let (_task_id, response) = create_pending_product_judgment(&fixture)?;
+    let (_task_id, response) = create_pending_product_action(&fixture)?;
     let token = "1111111111111111111111111111111111111111111111111111111111111111";
-    create_consent_token_for_response(&fixture, &response, token, 60)?;
+    create_consent_token_for_response(&fixture, &response, token)?;
     let mut server = consent_server(&fixture)?;
 
     let response = server.handle_request(consent_get_request(&consent_target(
@@ -3434,9 +4686,9 @@ fn local_web_consent_get_renders_pending_judgment_page() -> Result<(), Box<dyn E
     assert_eq!(response.status, 200);
     assert_local_web_consent_security_headers(&response);
     let body = http_body_text(&response)?;
-    assert!(body.contains("Record user-owned judgment"));
-    assert!(body.contains("This page records one user-owned judgment"));
-    assert!(body.contains("The agent cannot record this judgment on your behalf."));
+    assert!(body.contains("Resolve user action"));
+    assert!(body.contains("This page records one user-owned action"));
+    assert!(body.contains("The agent cannot resolve it on your behalf."));
     assert!(body.contains("does not prove correctness"));
     assert!(body.contains("test sufficiency"));
     assert!(body.contains("deployment success"));
@@ -3445,23 +4697,78 @@ fn local_web_consent_get_renders_pending_judgment_page() -> Result<(), Box<dyn E
     assert!(body.contains(fixture.project_id()));
     assert!(body.contains(&fixture.product_repo_path().display().to_string()));
     assert!(body.contains(fixture.connection_id()));
-    assert!(body.contains("Judgment id"));
+    assert!(body.contains("User-action request id"));
     assert!(body.contains("Token expires"));
     assert!(body.contains("Fallback CLI command"));
-    assert!(body.contains("volicord inbox answer"));
+    assert!(body.contains("volicord inbox resolve"));
     assert!(body.contains("Available choices"));
-    assert!(body.contains("Option ID: <code>keep</code>"));
-    assert!(body.contains("Meaning: Only this focused judgment is resolved."));
+    assert!(body.contains("Choice ID: <code>keep</code>"));
+    assert!(body.contains("Consequence: Only this focused judgment is resolved."));
     assert!(!body.contains("Runtime Home"));
     Ok(())
 }
 
 #[test]
-fn local_web_consent_post_records_user_owned_answer() -> Result<(), Box<dyn Error>> {
+fn local_web_consent_get_and_post_reject_shortened_token_window_without_effects(
+) -> Result<(), Box<dyn Error>> {
+    type TokenSnapshot = (String, String, Option<String>, Option<String>);
+
+    let fixture = CoreFixture::new("mcp-local-web-shortened-token-window")?;
+    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let token = "1212121212121212121212121212121212121212121212121212121212121212";
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
+    let token_hash = volicord_store::user_action_channel::user_action_channel_token_hash(token)?;
+    fixture.conn()?.execute(
+        "UPDATE user_action_channel_tokens
+            SET expires_at = strftime('%Y-%m-%dT%H:%M:%SZ', created_at, '+599 seconds')
+          WHERE project_id = ?1 AND token_hash = ?2",
+        (fixture.project_id(), token_hash.as_str()),
+    )?;
+    let token_snapshot = || -> Result<TokenSnapshot, Box<dyn Error>> {
+        Ok(fixture.conn()?.query_row(
+            "SELECT status, expires_at, consumed_at, completed_at
+                   FROM user_action_channel_tokens
+                  WHERE project_id = ?1 AND token_hash = ?2",
+            (fixture.project_id(), token_hash.as_str()),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?)
+    };
+    let before_effects = user_action_side_effect_snapshot(&fixture)?;
+    let before_token = token_snapshot()?;
+    let mut server = consent_server(&fixture)?;
+
+    let get = server.handle_request(consent_get_request(&consent_target(
+        fixture.project_id(),
+        token,
+    )));
+    assert_eq!(get.status, 500);
+    assert_local_web_consent_security_headers(&get);
+    assert!(http_body_text(&get)?.contains("STORE_UNAVAILABLE"));
+    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before_effects);
+    assert_eq!(token_snapshot()?, before_token);
+
+    let post = server.handle_request(consent_post_request(
+        Some(consent_base_url()),
+        &format!(
+            "project={}&token={}&selected_option_id=keep",
+            percent_encode_query(fixture.project_id()),
+            token
+        ),
+    ));
+    assert_eq!(post.status, 500);
+    assert_local_web_consent_security_headers(&post);
+    assert!(http_body_text(&post)?.contains("STORE_UNAVAILABLE"));
+    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before_effects);
+    assert_eq!(token_snapshot()?, before_token);
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_post_resolves_user_owned_action() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-post")?;
-    let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
     let token = "2222222222222222222222222222222222222222222222222222222222222222";
-    create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
     let mut server = consent_server(&fixture)?;
 
     let response = server.handle_request(consent_post_request(
@@ -3476,20 +4783,413 @@ fn local_web_consent_post_records_user_owned_answer() -> Result<(), Box<dyn Erro
     assert_eq!(response.status, 200);
     assert_local_web_consent_security_headers(&response);
     let body = http_body_text(&response)?;
-    assert!(body.contains("Answer recorded"));
-    assert!(body.contains("user-owned judgment"));
+    assert!(body.contains("Resolution recorded"));
+    assert!(body.contains("resolved user action"));
     assert!(body.contains("does not prove correctness"));
     let pending_value = pending_response.response_value;
-    let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
-    assert_eq!(record.status, "resolved");
+    let record = stored_action_record(&fixture, &task_id, &pending_value)?;
+    assert_eq!(record.status, UserActionStatus::Resolved);
+    let resolution = record.resolution.expect("resolution should be stored");
+    assert_eq!(resolution.resolved_by_actor_source, "local_user");
     assert_eq!(
-        record.resolved_by_actor_source.as_deref(),
-        Some("local_user")
+        resolution.resolved_verification_basis,
+        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
+    );
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_rejects_unknown_mixed_and_malformed_fields_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-closed-choice-fields")?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let token = "2323232323232323232323232323232323232323232323232323232323232323";
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
+    let before = user_action_side_effect_snapshot(&fixture)?;
+    assert_eq!(before.1, 1);
+    let mut server = consent_server(&fixture)?;
+    let canonical_prefix = format!(
+        "project={}&token={}&selected_option_id=keep",
+        percent_encode_query(fixture.project_id()),
+        token
+    );
+    let cases = [
+        (
+            "unknown",
+            format!("{canonical_prefix}&unexpected=discard-me"),
+            "INVALID_SELECTION",
+        ),
+        (
+            "mixed",
+            format!("{canonical_prefix}&summary=cross-variant"),
+            "INVALID_SELECTION",
+        ),
+        (
+            "malformed-extra-name",
+            format!("{canonical_prefix}&%ZZ=discard-me"),
+            "FORM_ENCODING_INVALID",
+        ),
+        (
+            "malformed-extra-value",
+            format!("{canonical_prefix}&unexpected=%ZZ"),
+            "FORM_ENCODING_INVALID",
+        ),
+    ];
+
+    for (case, body, expected_code) in cases {
+        let response = server.handle_request(consent_post_request(Some(consent_base_url()), &body));
+        assert_eq!(response.status, 400, "unexpected status for {case}");
+        assert_local_web_consent_security_headers(&response);
+        assert!(
+            http_body_text(&response)?.contains(expected_code),
+            "missing error code for {case}"
+        );
+        assert_eq!(
+            user_action_side_effect_snapshot(&fixture)?,
+            before,
+            "invalid local-web fields must not consume a token, resolve, or change project state for {case}"
+        );
+    }
+
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    assert!(matches!(
+        validate_user_action_channel_token(
+            fixture.runtime_home_path(),
+            UserActionChannelTokenCheck {
+                token: token.to_owned(),
+                expected_project_id: fixture.project_id().to_owned(),
+                expected_connection_internal_id: fixture.connection_id().to_owned(),
+                now,
+            },
+        )?,
+        UserActionChannelTokenValidation::Valid(_)
+    ));
+    let record = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_evidence_observation_uses_canonical_form_and_consumes_token_atomically(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-evidence-observation")?;
+    let pending = create_pending_evidence_observation_action(&fixture)?;
+    let token = "abababababababababababababababababababababababababababababababab";
+    create_consent_token_for_response(&fixture, &pending.response, token)?;
+    let pending_action = pending_user_action_from_response(&pending.response)?
+        .ok_or("response should include a pending evidence-observation action")?;
+    let expected_form_digest = canonical_json_bare_sha256(&pending_action.inbox_item.form)?;
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let validation = validate_user_action_channel_token(
+        fixture.runtime_home_path(),
+        UserActionChannelTokenCheck {
+            token: token.to_owned(),
+            expected_project_id: fixture.project_id().to_owned(),
+            expected_connection_internal_id: fixture.connection_id().to_owned(),
+            now,
+        },
+    )?;
+    let UserActionChannelTokenValidation::Valid(token_record) = validation else {
+        return Err("local-web token should be valid before capture".into());
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&token_record.created_metadata_json)?["form_digest"],
+        expected_form_digest
+    );
+    let before = fixture.counts()?;
+    let mut server = consent_server(&fixture)?;
+
+    let get = server.handle_request(consent_get_request(&consent_target(
+        fixture.project_id(),
+        token,
+    )));
+    assert_eq!(get.status, 200);
+    assert_local_web_consent_security_headers(&get);
+    let get_body = http_body_text(&get)?;
+    for expected in [
+        "Evidence target",
+        "Observed artifacts",
+        "Relevance",
+        "supported",
+        "contradicted",
+        "name=\"summary\"",
+    ] {
+        assert!(
+            get_body.contains(expected),
+            "missing canonical field {expected}"
+        );
+    }
+    for target in &pending.target_candidates {
+        let volicord_types::EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id,
+        } = target
+        else {
+            return Err("fixture should use acceptance-criterion targets".into());
+        };
+        assert!(get_body.contains(acceptance_criterion_id.as_str()));
+    }
+    for artifact in &pending.registered_artifacts {
+        assert!(get_body.contains(artifact.artifact_id.as_str()));
+        assert!(get_body.contains(&artifact.display_name));
+        let metadata = serde_json::to_value(artifact)?;
+        for field in ["sha256", "storage_ref", "created_by_actor_source"] {
+            let value = metadata[field]
+                .as_str()
+                .ok_or("registered artifact should expose exact presentation metadata")?;
+            assert!(
+                get_body.contains(value),
+                "local-web form must display artifact {field} metadata"
+            );
+        }
+        assert!(get_body.contains(&metadata["size_bytes"].to_string()));
+    }
+
+    let selected_target = pending.target_candidates[1].clone();
+    let selected_target_selector = match &selected_target {
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id,
+        } => format!("--criterion {acceptance_criterion_id}"),
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id, ..
+        } => format!("--claim {evidence_claim_id}"),
+    };
+    let selected_artifact = pending.registered_artifacts[1].clone();
+    let private_summary =
+        "private-local-web-evidence-summary-must-not-enter-browser-or-agent-output";
+    let post_body = format!(
+        "project={}&token={}&selected_target={}&selected_artifact_ids={}&relevance_status=supported&summary={}",
+        percent_encode_query(fixture.project_id()),
+        token,
+        percent_encode_query(&selected_target_selector),
+        percent_encode_query(selected_artifact.artifact_id.as_str()),
+        percent_encode_query(private_summary),
+    );
+    let before_invalid = user_action_side_effect_snapshot(&fixture)?;
+    let mixed = server.handle_request(consent_post_request(
+        Some(consent_base_url()),
+        &format!("{post_body}&selected_option_id=keep"),
+    ));
+    assert_eq!(mixed.status, 400);
+    assert_local_web_consent_security_headers(&mixed);
+    assert!(http_body_text(&mixed)?.contains("INVALID_SELECTION"));
+    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before_invalid);
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    assert!(matches!(
+        validate_user_action_channel_token(
+            fixture.runtime_home_path(),
+            UserActionChannelTokenCheck {
+                token: token.to_owned(),
+                expected_project_id: fixture.project_id().to_owned(),
+                expected_connection_internal_id: fixture.connection_id().to_owned(),
+                now,
+            },
+        )?,
+        UserActionChannelTokenValidation::Valid(_)
+    ));
+    let post = server.handle_request(consent_post_request(Some(consent_base_url()), &post_body));
+    assert_eq!(post.status, 200);
+    assert_local_web_consent_security_headers(&post);
+    let post_response_body = http_body_text(&post)?;
+    assert!(post_response_body.contains("Resolution recorded"));
+    assert!(!post_response_body.contains(private_summary));
+
+    let record =
+        stored_action_record(&fixture, &pending.task_id, &pending.response.response_value)?;
+    assert_eq!(record.status, UserActionStatus::Resolved);
+    let resolution = record
+        .resolution
+        .as_ref()
+        .ok_or("local-web observation resolution should be stored")?;
+    assert_eq!(resolution.resolved_by_actor_source, "local_user");
+    assert_eq!(
+        resolution.channel_kind,
+        volicord_types::UserActionChannelKind::LocalWebConsent
     );
     assert_eq!(
-        record.resolved_verification_basis.as_deref(),
-        Some(VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB)
+        resolution.resolved_verification_basis,
+        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
     );
+    let stored_body: volicord_types::UserActionResolutionBody =
+        serde_json::from_str(&resolution.resolution_json)?;
+    let volicord_types::UserActionResolutionBody::EvidenceObservation { observation } = stored_body
+    else {
+        return Err("stored local-web resolution should be an evidence observation".into());
+    };
+    assert_eq!(observation.target, selected_target);
+    assert_eq!(
+        observation.relevance_status,
+        EvidenceRelevanceStatus::Supported
+    );
+    assert_eq!(observation.summary, private_summary);
+    assert_eq!(
+        observation.output_artifact_refs,
+        vec![selected_artifact.clone()],
+        "the stored resolution must preserve the exact historical artifact ref"
+    );
+
+    let request_id = record.request.user_action_request_id.clone();
+    let projection = CoreService::new(fixture.runtime_home_path())
+        .current_user_action_projection(
+            &ProjectId::new(fixture.project_id()),
+            &volicord_types::UserActionRequestId::new(&request_id),
+        )?
+        .ok_or("resolved action should have a current projection")?;
+    assert_eq!(projection.status, UserActionStatus::Resolved);
+    let safe_resolution = projection
+        .user_action_resolution
+        .as_ref()
+        .ok_or("resolved action should have an agent projection")?;
+    assert_eq!(
+        safe_resolution.channel_kind,
+        volicord_types::UserActionChannelKind::LocalWebConsent
+    );
+    let volicord_types::McpUserActionResolutionSummary::EvidenceObservation {
+        target,
+        artifact_refs,
+        relevance_status,
+    } = &safe_resolution.resolution_summary
+    else {
+        return Err("agent projection should preserve observation semantics".into());
+    };
+    assert_eq!(target, &selected_target);
+    assert_eq!(artifact_refs, &vec![selected_artifact]);
+    assert_eq!(*relevance_status, EvidenceRelevanceStatus::Supported);
+    assert!(!format!("{projection:?}").contains(private_summary));
+
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let consumed = validate_user_action_channel_token(
+        fixture.runtime_home_path(),
+        UserActionChannelTokenCheck {
+            token: token.to_owned(),
+            expected_project_id: fixture.project_id().to_owned(),
+            expected_connection_internal_id: fixture.connection_id().to_owned(),
+            now,
+        },
+    )?;
+    let UserActionChannelTokenValidation::Rejected(UserActionChannelTokenRejection::Consumed(
+        consumed,
+    )) = consumed
+    else {
+        return Err("successful local-web resolution should atomically consume its token".into());
+    };
+    assert_eq!(consumed.status, "consumed");
+    assert!(consumed.consumed_at.is_some());
+    assert!(consumed.completed_at.is_some());
+    assert!(!consumed.completion_metadata_json.is_empty());
+
+    let after = fixture.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.user_action_requests, before.user_action_requests);
+    assert_eq!(
+        after.user_action_resolutions,
+        before.user_action_resolutions + 1
+    );
+    let replay = server.handle_request(consent_post_request(Some(consent_base_url()), &post_body));
+    assert_eq!(replay.status, 200);
+    assert!(http_body_text(&replay)?.contains("Resolution recorded"));
+    assert_eq!(fixture.counts()?, after);
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_form_digest_failures_are_closed_and_leave_tokens_unconsumed(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-form-digest-fail-closed")?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let canonical_action = pending_user_action_from_response(&pending_response)?
+        .ok_or("response should include a canonical pending action")?;
+    let exact_form_digest = canonical_json_bare_sha256(&canonical_action.inbox_item.form)?;
+    let cases = [
+        (
+            "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            json!({
+                "fallback_kind": "local_web_consent",
+                "endpoint": LOCAL_WEB_CONSENT_PATH
+            }),
+        ),
+        (
+            "dededededededededededededededededededededededededededededededede",
+            json!({
+                "fallback_kind": "local_web_consent",
+                "endpoint": LOCAL_WEB_CONSENT_PATH,
+                "form_digest": exact_form_digest,
+                "unexpected": true
+            }),
+        ),
+        (
+            "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+            json!({
+                "fallback_kind": "local_web_consent",
+                "endpoint": LOCAL_WEB_CONSENT_PATH,
+                "form_digest": 7
+            }),
+        ),
+        (
+            "fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa",
+            json!({
+                "fallback_kind": "local_web_consent",
+                "endpoint": LOCAL_WEB_CONSENT_PATH,
+                "form_digest": "0".repeat(64)
+            }),
+        ),
+    ];
+    let before = fixture.counts()?;
+    let mut server = consent_server(&fixture)?;
+
+    for (token, metadata) in cases {
+        create_consent_token_for_response(&fixture, &pending_response, token)?;
+        overwrite_consent_token_created_metadata(&fixture, token, &metadata)?;
+
+        let get = server.handle_request(consent_get_request(&consent_target(
+            fixture.project_id(),
+            token,
+        )));
+        assert_eq!(get.status, 409);
+        assert_local_web_consent_security_headers(&get);
+        assert!(http_body_text(&get)?.contains("TOKEN_FORM_MISMATCH"));
+
+        let post = server.handle_request(consent_post_request(
+            Some(consent_base_url()),
+            &format!(
+                "project={}&token={}&selected_option_id=keep",
+                percent_encode_query(fixture.project_id()),
+                token
+            ),
+        ));
+        assert_eq!(post.status, 409);
+        assert_local_web_consent_security_headers(&post);
+        assert!(http_body_text(&post)?.contains("TOKEN_FORM_MISMATCH"));
+        assert_eq!(fixture.counts()?, before);
+
+        let now = user_action_channel_current_timestamp(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+        )?;
+        let validation = validate_user_action_channel_token(
+            fixture.runtime_home_path(),
+            UserActionChannelTokenCheck {
+                token: token.to_owned(),
+                expected_project_id: fixture.project_id().to_owned(),
+                expected_connection_internal_id: fixture.connection_id().to_owned(),
+                now,
+            },
+        )?;
+        let UserActionChannelTokenValidation::Valid(record) = validation else {
+            return Err("a form-digest failure must leave its token pending".into());
+        };
+        assert_eq!(record.status, "pending");
+        assert!(record.consumed_at.is_none());
+        assert!(record.completed_at.is_none());
+    }
+
+    let record = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
+    assert_eq!(record.status, UserActionStatus::Pending);
+    assert!(record.resolution.is_none());
     Ok(())
 }
 
@@ -3497,9 +5197,9 @@ fn local_web_consent_post_records_user_owned_answer() -> Result<(), Box<dyn Erro
 fn local_web_consent_rejects_origin_mismatch_without_consuming_token() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("mcp-local-web-origin")?;
-    let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
     let token = "9999999999999999999999999999999999999999999999999999999999999999";
-    create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
     let mut server = consent_server(&fixture)?;
     let form_body = format!(
         "project={}&token={}&selected_option_id=keep",
@@ -3519,19 +5219,19 @@ fn local_web_consent_rejects_origin_mismatch_without_consuming_token() -> Result
     let valid = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
     assert_eq!(valid.status, 200);
     assert_local_web_consent_security_headers(&valid);
-    assert!(http_body_text(&valid)?.contains("Answer recorded"));
+    assert!(http_body_text(&valid)?.contains("Resolution recorded"));
     let pending_value = pending_response.response_value;
-    let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
-    assert_eq!(record.status, "resolved");
+    let record = stored_action_record(&fixture, &task_id, &pending_value)?;
+    assert_eq!(record.status, UserActionStatus::Resolved);
     Ok(())
 }
 
 #[test]
 fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-validation-retry")?;
-    let (task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
     let token = "8888888888888888888888888888888888888888888888888888888888888888";
-    create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
     let mut server = consent_server(&fixture)?;
 
     let invalid = server.handle_request(consent_post_request(
@@ -3557,10 +5257,10 @@ fn local_web_consent_validation_failure_leaves_token_reusable() -> Result<(), Bo
 
     assert_eq!(valid.status, 200);
     assert_local_web_consent_security_headers(&valid);
-    assert!(http_body_text(&valid)?.contains("Answer recorded"));
+    assert!(http_body_text(&valid)?.contains("Resolution recorded"));
     let pending_value = pending_response.response_value;
-    let record = stored_judgment_record(&fixture, &task_id, &pending_value)?;
-    assert_eq!(record.status, "resolved");
+    let record = stored_action_record(&fixture, &task_id, &pending_value)?;
+    assert_eq!(record.status, UserActionStatus::Resolved);
     Ok(())
 }
 
@@ -3583,10 +5283,10 @@ fn local_web_consent_rejects_invalid_token() -> Result<(), Box<dyn Error>> {
 #[test]
 fn local_web_consent_rejects_expired_token() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-expired")?;
-    let (_task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
     let token = "3333333333333333333333333333333333333333333333333333333333333333";
-    create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
-    volicord_store::local_consent::expire_local_web_consent_tokens(
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
+    volicord_store::user_action_channel::expire_user_action_channel_tokens(
         fixture.runtime_home_path(),
         fixture.project_id(),
         "2999-01-01T00:00:00.000Z",
@@ -3605,11 +5305,14 @@ fn local_web_consent_rejects_expired_token() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn local_web_consent_rejects_replay() -> Result<(), Box<dyn Error>> {
+fn local_web_consent_duplicate_post_replays_safe_completion() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-replay")?;
-    let (_task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+    let (task_id, pending_response) = create_pending_product_action(&fixture)?;
+    let action = pending_user_action_from_response(&pending_response)?
+        .ok_or("response should include a pending user action")?;
+    let request_id = action.request.user_action_request_id.as_str().to_owned();
     let token = "4444444444444444444444444444444444444444444444444444444444444444";
-    create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
     let mut server = consent_server(&fixture)?;
     let form_body = format!(
         "project={}&token={}&selected_option_id=keep",
@@ -3618,29 +5321,35 @@ fn local_web_consent_rejects_replay() -> Result<(), Box<dyn Error>> {
     );
 
     let first = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
+    assert_eq!(first.status, 200);
+    set_user_action_basis_status(&fixture, &request_id, "stale")?;
+    let stale = stored_action_record(&fixture, &task_id, &pending_response.response_value)?;
+    assert_eq!(stale.status, UserActionStatus::Stale);
+    let after_first = fixture.counts()?;
     let replay = server.handle_request(consent_post_request(Some(consent_base_url()), &form_body));
 
-    assert_eq!(first.status, 200);
-    assert_eq!(replay.status, 409);
+    assert_eq!(replay.status, 200);
     assert_local_web_consent_security_headers(&first);
     assert_local_web_consent_security_headers(&replay);
-    assert!(http_body_text(&replay)?.contains("TOKEN_CONSUMED"));
+    assert!(http_body_text(&replay)?.contains("Resolution recorded"));
+    assert_eq!(fixture.counts()?, after_first);
     Ok(())
 }
 
 #[test]
-fn local_web_consent_rejects_wrong_project_and_connection() -> Result<(), Box<dyn Error>> {
+fn local_web_consent_hides_wrong_project_and_rejects_wrong_connection() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("mcp-local-web-context")?;
-    let (_task_id, pending_response) = create_pending_product_judgment(&fixture)?;
+    let (_task_id, pending_response) = create_pending_product_action(&fixture)?;
     let token = "5555555555555555555555555555555555555555555555555555555555555555";
-    create_consent_token_for_response(&fixture, &pending_response, token, 60)?;
+    create_consent_token_for_response(&fixture, &pending_response, token)?;
 
     let mut server = consent_server(&fixture)?;
     let wrong_project =
         server.handle_request(consent_get_request(&consent_target("project_other", token)));
-    assert_eq!(wrong_project.status, 403);
+    assert_eq!(wrong_project.status, 404);
     assert_local_web_consent_security_headers(&wrong_project);
-    assert!(http_body_text(&wrong_project)?.contains("WRONG_PROJECT"));
+    assert!(http_body_text(&wrong_project)?.contains("INVALID_TOKEN"));
 
     let mut wrong_connection_server =
         consent_server_for_connection(&fixture, "conn_mcp_local_web_other")?;
@@ -3947,6 +5656,42 @@ fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
             .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+    Ok(McpAdapter::new(fixture.runtime_home_path(), context))
+}
+
+fn adapter_for_additional_connection(
+    fixture: &CoreFixture,
+    connection_id: &str,
+) -> Result<McpAdapter, Box<dyn Error>> {
+    let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+        .expect("fixture connection should exist");
+    ensure_agent_connection(
+        fixture.runtime_home_path(),
+        AgentConnectionRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            host_kind: existing.host_kind,
+            intent: existing.intent,
+            host_scope: existing.host_scope,
+            server_name: existing.server_name,
+            config_target: format!("{}_additional", existing.config_target),
+            mode: existing.mode,
+            enabled: existing.enabled,
+            managed_fingerprint: format!("{}_additional", existing.managed_fingerprint),
+            last_verification_status: existing.last_verification_status,
+            last_verification_report_json: existing.last_verification_report_json,
+            last_user_actions_json: existing.last_user_actions_json,
+            metadata_json: existing.metadata_json,
+        },
+    )?;
+    add_connection_project(
+        fixture.runtime_home_path(),
+        ConnectionProjectRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            project_id: fixture.project_id().to_owned(),
+        },
+    )?;
+    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
+        .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
@@ -4261,37 +6006,336 @@ fn add_allowed_project(fixture: &CoreFixture, project_id: &str) -> Result<(), Bo
     Ok(())
 }
 
-fn create_pending_product_judgment(
+fn create_pending_product_action(
     fixture: &CoreFixture,
 ) -> Result<(String, PipelineResponse), Box<dyn Error>> {
     let setup_adapter = adapter(fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let response = setup_adapter.call_tool(
-        "volicord.request_user_judgment",
-        product_judgment_args(fixture, &task_id, state_version),
+        "volicord.request_user_action",
+        product_action_args(fixture, &task_id, state_version),
     )?;
     Ok((task_id, response))
+}
+
+fn invoke_pending_elicitation(
+    fixture: &CoreFixture,
+    pending_response: PipelineResponse,
+    content: Value,
+) -> Result<(Value, Value), Box<dyn Error>> {
+    let input = Cursor::new(json_lines(&[json!({
+        "jsonrpc":"2.0",
+        "id":"elicit_user_action_1",
+        "result":{
+            "action":"accept",
+            "content":content
+        }
+    })])?);
+    let mut lines = BufReader::new(input).lines();
+    let mut request_bytes = Vec::new();
+    let mut request_sequence = 1;
+    let output = crate::stdio::user_action_tool_output(
+        &adapter(fixture)?,
+        pending_response,
+        true,
+        true,
+        &mut request_sequence,
+        &mut lines,
+        &mut request_bytes,
+    )?;
+    let requests = stdio_responses(&request_bytes)?;
+    let request = requests
+        .into_iter()
+        .next()
+        .ok_or("elicitation request should be emitted")?;
+    Ok((request, crate::stdio::tool_call_result_from_output(output)))
+}
+
+fn user_action_side_effect_snapshot(
+    fixture: &CoreFixture,
+) -> Result<
+    (
+        volicord_store::core_pipeline::StorageEffectCounts,
+        i64,
+        String,
+    ),
+    Box<dyn Error>,
+> {
+    let counts = fixture.counts()?;
+    let (tokens, project_updated_at) = fixture.conn()?.query_row(
+        "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at
+           FROM project_state",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok((counts, tokens, project_updated_at))
+}
+
+struct PendingEvidenceObservationAction {
+    task_id: String,
+    response: PipelineResponse,
+    target_candidates: Vec<EvidenceTarget>,
+    registered_artifacts: Vec<volicord_types::ArtifactRef>,
+}
+
+fn create_pending_evidence_observation_action(
+    fixture: &CoreFixture,
+) -> Result<PendingEvidenceObservationAction, Box<dyn Error>> {
+    create_pending_evidence_observation_action_with_sensitive_markers(fixture, None, None)
+}
+
+fn create_pending_evidence_observation_action_with_sensitive_markers(
+    fixture: &CoreFixture,
+    target_marker: Option<&str>,
+    artifact_marker: Option<&str>,
+) -> Result<PendingEvidenceObservationAction, Box<dyn Error>> {
+    let setup_adapter = adapter(fixture)?;
+    let (task_id, _) = create_task(&setup_adapter)?;
+    let baseline_ref = "baseline_local_web_evidence_observation";
+    let scope = setup_adapter.call_tool(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "task_id": task_id,
+            "goal_summary": null,
+            "scope_update": null,
+            "scope_boundary": "Observe stored evidence candidates through local consent.",
+            "non_goals": [],
+            "acceptance_criteria": [
+                {
+                    "acceptance_criterion_id": null,
+                    "statement": "The first local-web target remains available.",
+                    "evidence_requirement": "required"
+                },
+                {
+                    "acceptance_criterion_id": null,
+                    "statement": "The selected local-web target is supported by exact bytes.",
+                    "evidence_requirement": "required"
+                }
+            ],
+            "autonomy_boundary": null,
+            "baseline_ref": baseline_ref,
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": "Exercise local-web evidence observation.",
+                "affected_paths": []
+            },
+            "related_scope_decision_refs": []
+        }),
+    )?;
+    let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope response should expose the current Change Unit")?
+        .to_owned();
+    let target_candidates = if let Some(marker) = target_marker {
+        vec![
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id: volicord_types::EvidenceClaimId::new(
+                    "claim_sensitive_presentation_a",
+                ),
+                statement: format!(
+                    "An API key must be handled only through a user-only channel: {marker}"
+                ),
+            },
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id: volicord_types::EvidenceClaimId::new(
+                    "claim_sensitive_presentation_b",
+                ),
+                statement: "Ordinary secondary evidence claim.".to_owned(),
+            },
+        ]
+    } else {
+        scope.response_value["state"]["acceptance_criteria"]
+            .as_array()
+            .ok_or("scope response should expose acceptance criteria")?
+            .iter()
+            .map(|criterion| {
+                criterion["acceptance_criterion_id"]
+                    .as_str()
+                    .ok_or("criterion should expose its id")
+                    .map(|id| EvidenceTarget::AcceptanceCriterion {
+                        acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(id),
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    assert_eq!(target_candidates.len(), 2);
+
+    let mut staged_handles = Vec::new();
+    let display_names = if let Some(marker) = artifact_marker {
+        [
+            format!("credential-material-{marker}.txt"),
+            "local-web-candidate-b.txt".to_owned(),
+        ]
+    } else {
+        [
+            "local-web-candidate-a.txt".to_owned(),
+            "local-web-candidate-b.txt".to_owned(),
+        ]
+    };
+    for (display_name, bytes) in display_names.into_iter().zip([
+        "First local-web evidence candidate bytes.",
+        "Selected local-web evidence candidate bytes.",
+    ]) {
+        let staged = setup_adapter.call_tool(
+            STAGE_ARTIFACT_TOOL_NAME,
+            json!({
+                "task_id": task_id,
+                "display_name": display_name,
+                "content_type": "text/plain",
+                "redaction_state": "none",
+                "safe_bytes_or_notice": bytes
+            }),
+        )?;
+        staged_handles.push(staged.response_value["staged_artifact_handle"].clone());
+    }
+    let recorded = setup_adapter.call_tool(
+        RECORD_RUN_TOOL_NAME,
+        json!({
+            "task_id": task_id,
+            "change_unit_id": change_unit_id,
+            "kind": "implementation",
+            "baseline_ref": baseline_ref,
+            "summary": "Register local-web evidence-observation candidates.",
+            "observed_changes": {
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": baseline_ref
+            },
+            "artifact_inputs": [
+                {
+                    "artifact_input_id": "artifact_input_local_web_candidate_a",
+                    "source_kind": "staged_artifact",
+                    "staged_artifact_handle": staged_handles[0],
+                    "existing_artifact_ref": null,
+                    "relation_hint": "local_web_user_observation_candidate",
+                    "evidence_target": target_candidates[0],
+                    "expected_sha256": null,
+                    "expected_size_bytes": null,
+                    "redaction_state": "none"
+                },
+                {
+                    "artifact_input_id": "artifact_input_local_web_candidate_b",
+                    "source_kind": "staged_artifact",
+                    "staged_artifact_handle": staged_handles[1],
+                    "existing_artifact_ref": null,
+                    "relation_hint": "local_web_user_observation_candidate",
+                    "evidence_target": target_candidates[1],
+                    "expected_sha256": null,
+                    "expected_size_bytes": null,
+                    "redaction_state": "none"
+                }
+            ],
+            "evidence_updates": [],
+            "evidence_observations": [],
+            "close_assessment": null
+        }),
+    )?;
+    let registered_artifacts = recorded.response_value["registered_artifacts"]
+        .as_array()
+        .ok_or("record_run should expose registered artifacts")?
+        .iter()
+        .cloned()
+        .map(serde_json::from_value)
+        .collect::<Result<Vec<volicord_types::ArtifactRef>, _>>()?;
+    assert_eq!(registered_artifacts.len(), 2);
+    let target_values = target_candidates
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    let artifact_candidate_ids = registered_artifacts
+        .iter()
+        .map(|artifact| artifact.artifact_id.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let response = setup_adapter.call_tool(
+        REQUEST_USER_ACTION_TOOL_NAME,
+        evidence_observation_action_args(
+            &task_id,
+            &change_unit_id,
+            target_values,
+            artifact_candidate_ids,
+        ),
+    )?;
+    Ok(PendingEvidenceObservationAction {
+        task_id,
+        response,
+        target_candidates,
+        registered_artifacts,
+    })
 }
 
 fn create_consent_token_for_response(
     fixture: &CoreFixture,
     response: &PipelineResponse,
     token: &str,
-    ttl_seconds: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let judgment = pending_judgment_from_response(response)
-        .ok_or("response should include a pending user judgment")?;
-    create_local_web_consent_token(
+    let action = pending_user_action_from_response(response)?
+        .ok_or("response should include a pending user action")?;
+    let form_digest = canonical_json_bare_sha256(&action.inbox_item.form)?;
+    create_user_action_channel_token(
         fixture.runtime_home_path(),
-        LocalWebConsentTokenCreate {
+        UserActionChannelTokenCreate {
             token: token.to_owned(),
-            project_id: judgment.project_id.as_str().to_owned(),
+            project_id: action.request.project_id.as_str().to_owned(),
+            channel_kind: UserActionChannelKind::LocalWebConsent,
             connection_internal_id: fixture.connection_id().to_owned(),
-            judgment_id: judgment.judgment_id.as_str().to_owned(),
+            user_action_request_id: action.request.user_action_request_id.as_str().to_owned(),
             capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            ttl_seconds,
-            created_metadata_json: json!({ "test": "local_web_consent" }).to_string(),
+            created_metadata_json: json!({
+                "fallback_kind": "local_web_consent",
+                "endpoint": LOCAL_WEB_CONSENT_PATH,
+                "form_digest": form_digest
+            })
+            .to_string(),
         },
+    )?;
+    Ok(())
+}
+
+fn overwrite_consent_token_created_metadata(
+    fixture: &CoreFixture,
+    token: &str,
+    metadata: &Value,
+) -> Result<(), Box<dyn Error>> {
+    let token_hash = volicord_store::user_action_channel::user_action_channel_token_hash(token)?;
+    let changed = fixture.conn()?.execute(
+        "UPDATE user_action_channel_tokens
+            SET created_metadata_json = ?3
+          WHERE project_id = ?1
+            AND token_hash = ?2",
+        (fixture.project_id(), token_hash, metadata.to_string()),
+    )?;
+    assert_eq!(changed, 1);
+    Ok(())
+}
+
+fn set_user_action_basis_status(
+    fixture: &CoreFixture,
+    user_action_request_id: &str,
+    basis_status: &str,
+) -> Result<(), Box<dyn Error>> {
+    let basis_json: String = fixture.conn()?.query_row(
+        "SELECT basis_json
+           FROM user_action_requests
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        (fixture.project_id(), user_action_request_id),
+        |row| row.get(0),
+    )?;
+    let mut basis: Value = serde_json::from_str(&basis_json)?;
+    basis["coordinates"]["compatibility_status"] = json!(basis_status);
+    fixture.conn()?.execute(
+        "UPDATE user_action_requests
+            SET basis_status = ?3,
+                basis_json = ?4
+          WHERE project_id = ?1
+            AND user_action_request_id = ?2",
+        (
+            fixture.project_id(),
+            user_action_request_id,
+            basis_status,
+            basis.to_string(),
+        ),
     )?;
     Ok(())
 }
@@ -4310,7 +6354,7 @@ fn token_from_consent_url(url: &str) -> Result<String, Box<dyn Error>> {
         .split_once('?')
         .map(|(_, query)| query)
         .ok_or("consent URL should include a query string")?;
-    let fields = parse_urlencoded(query);
+    let fields = parse_urlencoded(query)?;
     Ok(single_param(&fields, "token")
         .ok_or("consent URL should include exactly one token")?
         .to_owned())
@@ -4484,8 +6528,8 @@ fn intake_args(project_selector: Option<&str>) -> Value {
     arguments
 }
 
-fn product_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
-    judgment_args(
+fn product_action_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
+    action_args(
         fixture,
         task_id,
         state_version,
@@ -4510,12 +6554,43 @@ fn product_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u6
     )
 }
 
-fn default_product_judgment_args(
-    fixture: &CoreFixture,
+fn evidence_observation_action_args(
     task_id: &str,
-    state_version: u64,
+    change_unit_id: &str,
+    target_candidates: Vec<Value>,
+    artifact_candidate_ids: Vec<String>,
 ) -> Value {
-    let mut arguments = product_judgment_args(fixture, task_id, state_version);
+    json!({
+        "request": {
+            "operation": "create",
+            "task_id": task_id,
+            "change_unit_id": change_unit_id,
+            "action": {
+                "action_type": "evidence_observation",
+                "question": "Does an exact stored artifact support the selected target?",
+                "context_summary": "Inspect stored candidate bytes and record a user-owned observation.",
+                "target_candidates": target_candidates,
+                "artifact_candidate_ids": artifact_candidate_ids
+            },
+            "required_for": ["record_run"],
+            "expires_at": null
+        }
+    })
+}
+
+fn resume_user_action_args(fixture: &CoreFixture, user_action_request_id: &str) -> Value {
+    json!({
+        "project_selector": fixture.project_id(),
+        "detail": "full",
+        "request": {
+            "operation": "resume",
+            "user_action_request_id": user_action_request_id
+        }
+    })
+}
+
+fn default_product_action_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
+    let mut arguments = product_action_args(fixture, task_id, state_version);
     arguments
         .as_object_mut()
         .expect("judgment arguments should be an object")
@@ -4560,8 +6635,8 @@ impl Write for FailElicitationRequestWriter {
     }
 }
 
-fn authority_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
-    judgment_args(
+fn authority_action_args(fixture: &CoreFixture, task_id: &str, state_version: u64) -> Value {
+    action_args(
         fixture,
         task_id,
         state_version,
@@ -4571,7 +6646,7 @@ fn authority_judgment_args(fixture: &CoreFixture, task_id: &str, state_version: 
     )
 }
 
-fn judgment_args(
+fn action_args(
     fixture: &CoreFixture,
     task_id: &str,
     state_version: u64,
@@ -4581,30 +6656,37 @@ fn judgment_args(
 ) -> Value {
     json!({
         "detail": "full",
-        "task_id": task_id,
-        "change_unit_id": null,
-        "judgment_kind": judgment_kind,
-        "presentation": "short",
-        "question": "Choose the focused User Channel test outcome.",
-        "options": options,
-        "context": {
-            "summary": "A focused test judgment needs a user-owned answer.",
-            "related_refs": [],
-            "artifact_refs": [],
-            "visible_risks": [],
-            "constraints": ["The answer covers only this pending judgment."]
-        },
-        "affected_refs": [
-            {
-                "record_kind": "task",
-                "record_id": task_id,
-                "project_id": fixture.project_id(),
-                "task_id": task_id,
-                "produced_at_state_version": state_version
-            }
-        ],
-        "required_for": required_for,
-        "expires_at": null
+        "request": {
+            "operation": "create",
+            "task_id": task_id,
+            "change_unit_id": null,
+            "action": {
+                "action_type": "choice",
+                "judgment_kind": judgment_kind,
+                "presentation": "short",
+                "question": "Choose the focused User Channel test outcome.",
+                "options": options,
+                "context": {
+                    "summary": "A focused test user action needs a user-owned answer.",
+                    "related_refs": [],
+                    "artifact_refs": [],
+                    "visible_risks": [],
+                    "constraints": ["The answer covers only this pending user action."]
+                },
+                "affected_refs": [
+                    {
+                        "record_kind": "task",
+                        "record_id": task_id,
+                        "project_id": fixture.project_id(),
+                        "task_id": task_id,
+                        "produced_at_state_version": state_version
+                    }
+                ],
+                "sensitive_action_scope": null
+            },
+            "required_for": required_for,
+            "expires_at": null
+        }
     })
 }
 
@@ -4617,7 +6699,7 @@ fn elicitation_accept(selected_option_id: &str, note: Option<&str>) -> Value {
     }
     json!({
         "jsonrpc": "2.0",
-        "id": "elicit_user_judgment_1",
+        "id": "elicit_user_action_1",
         "result": {
             "action": "accept",
             "content": content
@@ -4625,10 +6707,31 @@ fn elicitation_accept(selected_option_id: &str, note: Option<&str>) -> Value {
     })
 }
 
+fn elicitation_accept_observation(
+    selected_target: &str,
+    selected_artifact_ids: &[String],
+    relevance_status: &str,
+    summary: &str,
+) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": "elicit_user_action_1",
+        "result": {
+            "action": "accept",
+            "content": {
+                "selected_target": selected_target,
+                "selected_artifact_ids": selected_artifact_ids,
+                "relevance_status": relevance_status,
+                "summary": summary
+            }
+        }
+    })
+}
+
 fn elicitation_action(action: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
-        "id": "elicit_user_judgment_1",
+        "id": "elicit_user_action_1",
         "result": {
             "action": action
         }
@@ -4658,6 +6761,46 @@ fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>
         .unwrap_or(structured))
 }
 
+fn assert_pending_user_action_resume_guidance(
+    tool_response: &Value,
+    response: &Value,
+    fixture: &CoreFixture,
+) -> Result<(), Box<dyn Error>> {
+    let request_id =
+        &response["agent_workflow_result"]["user_action_request"]["user_action_request_id"];
+    let content = tool_response["result"]["content"]
+        .as_array()
+        .ok_or("tool response content should be an array")?;
+    assert!(content.iter().any(|item| {
+        item["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("nested `request.operation=resume`"))
+    }));
+    let state = content
+        .iter()
+        .filter_map(|item| item["text"].as_str())
+        .filter_map(|text| serde_json::from_str::<Value>(text).ok())
+        .find(|value| value["volicord_fallback"]["kind"] == "resume_pending_user_action")
+        .ok_or("pending response should include structured resume guidance")?;
+    let state = &state["volicord_fallback"];
+    assert_eq!(state["user_action_request_id"], *request_id);
+    assert_eq!(state["resume"]["tool_name"], REQUEST_USER_ACTION_TOOL_NAME);
+    assert_eq!(state["resume"]["creates_new_request"], false);
+    assert_eq!(
+        state["resume"]["arguments"]["project_selector"],
+        fixture.project_id()
+    );
+    assert_eq!(
+        state["resume"]["arguments"]["request"]["operation"],
+        "resume"
+    );
+    assert_eq!(
+        state["resume"]["arguments"]["request"]["user_action_request_id"],
+        *request_id
+    );
+    Ok(())
+}
+
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
     let paths = availability["paths"]
         .as_array()
@@ -4673,31 +6816,35 @@ fn stored_resolution_basis(
     task_id: &str,
     response: &Value,
 ) -> Result<String, Box<dyn Error>> {
-    let record = stored_judgment_record(fixture, task_id, response)?;
+    let record = stored_action_record(fixture, task_id, response)?;
     record
-        .resolved_verification_basis
-        .ok_or_else(|| "stored judgment should have a resolution basis".into())
+        .resolution
+        .map(|resolution| resolution.resolved_verification_basis)
+        .ok_or_else(|| "stored user action should have a resolution basis".into())
 }
 
-fn stored_judgment_record(
+fn stored_action_record(
     fixture: &CoreFixture,
     task_id: &str,
     response: &Value,
-) -> Result<volicord_store::core_pipeline::UserJudgmentRecord, Box<dyn Error>> {
-    let judgment_id = response
-        .pointer("/user_judgment_ref/record_id")
-        .or_else(|| response.pointer("/judgment_ref/record_id"))
+) -> Result<volicord_store::core_pipeline::EffectiveUserActionRecord, Box<dyn Error>> {
+    let request_id = response
+        .pointer("/agent_workflow_result/user_action_request_ref/record_id")
+        .or_else(|| response.pointer("/user_action_request_ref/record_id"))
         .and_then(Value::as_str)
-        .ok_or("response should include user_judgment_ref.record_id")?;
+        .ok_or("response should include user_action_request_ref.record_id")?;
     let store = CoreProjectStore::open(
         fixture.runtime_home_path(),
         &ProjectId::new(fixture.project_id()),
     )?;
+    let now =
+        user_action_channel_current_timestamp(fixture.runtime_home_path(), fixture.project_id())?;
+    let now = volicord_types::UtcTimestamp::parse(&now)?;
     let record = store
-        .user_judgment_records_for_task(&volicord_types::TaskId::new(task_id))?
+        .user_action_records_for_task(&volicord_types::TaskId::new(task_id), &now)?
         .into_iter()
-        .find(|record| record.judgment_id == judgment_id)
-        .ok_or("stored judgment record should exist")?;
+        .find(|record| record.request.user_action_request_id == request_id)
+        .ok_or("stored user-action record should exist")?;
     Ok(record)
 }
 
@@ -4760,8 +6907,8 @@ fn decode_mcp_arguments_to_value(
         RECORD_RUN_TOOL_NAME => {
             serde_json::to_value(serde_json::from_value::<McpRecordRunArguments>(value)?)
         }
-        REQUEST_USER_JUDGMENT_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
-            McpRequestUserJudgmentArguments,
+        REQUEST_USER_ACTION_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
+            McpRequestUserActionArguments,
         >(value)?),
         RECONCILE_CHANGES_TOOL_NAME => serde_json::to_value(serde_json::from_value::<
             McpReconcileChangesArguments,
@@ -4961,6 +7108,53 @@ fn schema_has_definition(schema: &Value, name: &str) -> bool {
                 definition == name || definition.starts_with(&format!("{name}_for_"))
             })
         })
+}
+
+fn schema_variant_by_tag<'a>(schema: &'a Value, tag: &str, value: &str) -> Option<&'a Value> {
+    let tag_schema = schema
+        .get("properties")
+        .and_then(|properties| properties.get(tag));
+    let matches_tag = tag_schema.is_some_and(|tag_schema| {
+        tag_schema.get("const").and_then(Value::as_str) == Some(value)
+            || tag_schema
+                .get("enum")
+                .and_then(Value::as_array)
+                .is_some_and(|values| values.iter().any(|candidate| candidate == value))
+    });
+    if matches_tag {
+        return Some(schema);
+    }
+    match schema {
+        Value::Array(values) => values
+            .iter()
+            .find_map(|schema| schema_variant_by_tag(schema, tag, value)),
+        Value::Object(object) => object
+            .values()
+            .find_map(|schema| schema_variant_by_tag(schema, tag, value)),
+        _ => None,
+    }
+}
+
+fn schema_requires_property(schema: &Value, field: &str) -> bool {
+    if schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .is_some_and(|properties| properties.contains_key(field))
+        && root_required_fields(schema)
+            .iter()
+            .any(|required| required == field)
+    {
+        return true;
+    }
+    match schema {
+        Value::Array(values) => values
+            .iter()
+            .any(|value| schema_requires_property(value, field)),
+        Value::Object(object) => object
+            .values()
+            .any(|value| schema_requires_property(value, field)),
+        _ => false,
+    }
 }
 
 fn stdio_responses(output: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {

@@ -6,8 +6,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 volicord-types = { path = "../volicord-types" }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "functions"] }
 serde = "1"
 serde_json = "1"
 sha2 = "0.10"

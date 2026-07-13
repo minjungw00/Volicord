@@ -380,8 +380,8 @@ fn intake_reference_only_carry_points_to_active_continuity_record() -> Result<()
     let harness = MethodHarness::new()?;
     let (predecessor_task_id, predecessor_change_unit_id) =
         create_task_with_change_unit(&harness, "lineage_decision_record")?;
-    let requested = harness.service.request_user_judgment(
-        user_judgment_request(
+    let requested = harness.service.request_user_action(
+        user_action_request(
             "req_lineage_decision_request",
             "idem_lineage_decision_request",
             false,
@@ -392,19 +392,15 @@ fn intake_reference_only_carry_points_to_active_continuity_record() -> Result<()
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&requested.response_value, "user_judgment_ref");
-    let requested_state_version = requested.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("request state version");
-    let recorded = harness.service.record_user_judgment(
-        record_judgment_request(
+    let judgment_id = response_record_id(&requested.response_value, "user_action_request_ref");
+    let recorded = harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_lineage_decision_record",
             "idem_lineage_decision_record",
-            Some(requested_state_version),
+            None,
             &predecessor_task_id,
             &judgment_id,
-            JudgmentKind::ProductDecision,
-            answer_payload(JudgmentKind::ProductDecision),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;

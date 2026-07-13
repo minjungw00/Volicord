@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
     bootstrap::ProjectRecord,
-    core_pipeline::{CoreProjectStore, UserJudgmentRecord},
+    core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
     guards::{
         guard_health_record, insert_prompt_capture, prompt_capture, prompt_capture_availability,
         PromptCaptureAvailability, PromptCaptureInsert,
@@ -12,47 +12,42 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    chat_judgment_verification_code, ActorSource, GuardDecision, JudgmentResolutionOutcome,
-    PersistedJudgmentBasis, PersistedUserJudgmentRequest, ProjectId, PromptCaptureStatus, TaskId,
-    UserJudgmentOption, UserJudgmentOptionAction, UtcTimestamp,
+    canonical_json_bare_sha256, chat_user_action_verification_code, ActorSource, ArtifactId,
+    EvidenceTarget, GuardDecision, PersistedUserActionRequest, ProjectId, PromptCaptureStatus,
+    TaskId, UserActionInboxForm, UserActionPresentationPlan, UserActionPresentationSafety,
+    UserActionResolutionInput, UserActionStatus, UtcTimestamp,
     VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use crate::user_command::{
-    decode_options, record_user_judgment_from_record, select_option, JudgmentRecordingInput,
-    UserCommandError,
+    canonical_user_action_inbox_items, resolve_user_action_from_record, select_inbox_choice,
+    UserActionResolutionRecordingInput, UserCommandError,
 };
 
 use super::prompt_command::{
-    parse_chat_id, parse_prompt_judgment_command, PromptCommandBlock, PromptCommandDetection,
-    PromptJudgmentCommand, RecordedPromptJudgment,
+    parse_chat_id, parse_prompt_user_action_command, PromptCommandBlock, PromptCommandDetection,
+    PromptEvidenceTarget, PromptUserActionCommand, PromptUserActionResolution,
+    RecordedPromptUserAction,
 };
 use super::{
     args::GuardInput,
-    current_policy_hash,
+    core_current_timestamp, current_policy_hash,
     envelope::{event_string, GuardEnvelope},
     hex_bytes, json_error, sha256_text, stable_id, GuardCommandError,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct GuardPendingJudgmentSummary {
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct GuardPendingUserActionSummary {
     pub(super) chat_id: String,
     pub(super) verification_code: String,
-    pub(super) judgment_kind: String,
-    pub(super) question: Option<String>,
-    pub(super) answer_instruction: String,
-    pub(super) note_instruction: String,
-    pub(super) options: Vec<GuardPendingJudgmentOptionSummary>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct GuardPendingJudgmentOptionSummary {
-    pub(super) selector: String,
-    pub(super) option_id: String,
-    pub(super) label: String,
-    pub(super) machine_action: String,
-    pub(super) resolution_outcome: String,
-    pub(super) instruction: String,
+    pub(super) user_action_request_id: String,
+    pub(super) action_kind: String,
+    pub(super) question: String,
+    pub(super) context_summary: String,
+    pub(super) expires_at: Option<String>,
+    pub(super) form_digest: String,
+    pub(super) resolve_instruction: String,
+    pub(super) form: UserActionInboxForm,
 }
 
 pub(super) fn prompt_capture_availability_for_event(
@@ -116,7 +111,7 @@ fn prompt_capture_unavailable_result(
                 "prompt_capture_configured": availability.prompt_capture_configured,
                 "next_action": next_action
             },
-            "recognized_judgment_command": null,
+            "recognized_user_action_command": null,
             "reasons": [{
                 "code": code,
                 "message": message,
@@ -124,7 +119,7 @@ fn prompt_capture_unavailable_result(
                 "next_action": next_action
             }],
             "next_action": next_action,
-            "model_context": format!("Volicord did not record a user judgment: {message}"),
+            "model_context": format!("Volicord did not resolve a user action: {message}"),
             "enforcement_level": "cooperative_detective"
         }),
         true,
@@ -138,16 +133,18 @@ fn prompt_capture_unavailable_reason(
         PromptCaptureStatus::UnsupportedByHost => (
             "prompt_capture_unsupported",
             "This host does not support user prompt-submit hooks.".to_owned(),
-            "Use host prompt input if available; otherwise use the local volicord inbox command as the CLI inbox path.",
+            "Use host prompt input if available; otherwise use `volicord inbox resolve`.",
         ),
         PromptCaptureStatus::NotConfigured => (
             "prompt_capture_not_configured",
-            "Chat command capture is not configured for this host, project, and connection.".to_owned(),
-            "Configure chat command capture, or use the local volicord inbox command as the CLI inbox path.",
+            "Chat command capture is not configured for this host, project, and connection."
+                .to_owned(),
+            "Configure chat command capture, or use `volicord inbox resolve`.",
         ),
         PromptCaptureStatus::ReloadRequired => (
             "prompt_capture_reload_required",
-            "Chat command capture configuration is installed but the host must reload the current policy.".to_owned(),
+            "Chat command capture configuration is installed but the host must reload the current policy."
+                .to_owned(),
             "Restart or reload the host before using chat commands.",
         ),
         PromptCaptureStatus::Degraded => (
@@ -157,8 +154,9 @@ fn prompt_capture_unavailable_reason(
         ),
         _ => (
             "prompt_capture_unavailable",
-            "Chat command capture is unavailable for this host, project, and connection.".to_owned(),
-            "Use host prompt input if available; otherwise use the local volicord inbox command as the CLI inbox path.",
+            "Chat command capture is unavailable for this host, project, and connection."
+                .to_owned(),
+            "Use host prompt input if available; otherwise use `volicord inbox resolve`.",
         ),
     }
 }
@@ -170,10 +168,7 @@ fn record_prompt_capture(
     input: &GuardInput,
 ) -> Result<Value, GuardCommandError> {
     let Some(prompt) = extract_prompt_text(&input.raw_value) else {
-        return Ok(json!({
-            "captured": false,
-            "reason": "no_prompt_text"
-        }));
+        return Ok(json!({ "captured": false, "reason": "no_prompt_text" }));
     };
     let session_id = envelope.session_id.as_ref().ok_or_else(|| {
         GuardCommandError::Runtime("prompt capture requires a session id".to_owned())
@@ -227,9 +222,8 @@ pub(super) fn handle_prompt_capture(
     }
     let capture = record_prompt_capture(runtime_home, project, envelope, input)?;
     let command = extract_prompt_text(&input.raw_value)
-        .map(|prompt| parse_prompt_judgment_command(&prompt))
+        .map(|prompt| parse_prompt_user_action_command(&prompt))
         .unwrap_or(PromptCommandDetection::NoCommand);
-
     match command {
         PromptCommandDetection::NoCommand => Ok((
             GuardDecision::Allow,
@@ -237,7 +231,7 @@ pub(super) fn handle_prompt_capture(
                 "decision": GuardDecision::Allow.as_str(),
                 "allowed": true,
                 "prompt_capture": capture,
-                "recognized_judgment_command": null,
+                "recognized_user_action_command": null,
                 "model_context": null,
                 "enforcement_level": "cooperative_detective"
             }),
@@ -252,28 +246,31 @@ pub(super) fn handle_prompt_capture(
                         PromptCommandBlock {
                             code: "project_mismatch",
                             message: format!(
-                                "Volicord judgment command targeted project `{event_project_id}`, but this prompt hook is bound to `{}`.",
+                                "Volicord user-action command targeted project `{event_project_id}`, but this prompt hook is bound to `{}`.",
                                 project.project_id
                             ),
                         },
                     ));
                 }
             }
-            match record_prompt_judgment_command(runtime_home, project, envelope, command) {
+            match record_prompt_user_action_command(runtime_home, project, envelope, command) {
                 Ok(recorded) => Ok((
                     GuardDecision::InjectContext,
                     json!({
                         "decision": GuardDecision::InjectContext.as_str(),
                         "allowed": true,
                         "prompt_capture": capture,
-                        "recognized_judgment_command": {
-                            "command_kind": recorded.command_kind,
+                        "recognized_user_action_command": {
+                            "command_kind": "resolve",
                             "chat_id": recorded.chat_id,
                             "verification_code": recorded.verification_code,
+                            "action_type": recorded.action_type,
                             "selected_option_id": recorded.selected_option_id,
-                            "machine_action": recorded.machine_action,
-                            "resolution_outcome": recorded.resolution_outcome,
+                            "selected_target": recorded.selected_target,
+                            "artifact_ids": recorded.artifact_ids,
+                            "relevance_status": recorded.relevance_status,
                             "note_text_omitted": recorded.note_text_omitted,
+                            "summary_text_omitted": recorded.summary_text_omitted,
                             "replayed": recorded.replayed
                         },
                         "model_context": recorded.model_context,
@@ -297,224 +294,406 @@ fn prompt_capture_blocked_result(
             "decision": GuardDecision::Deny.as_str(),
             "allowed": false,
             "prompt_capture": capture,
-            "recognized_judgment_command": null,
-            "reasons": [{
-                "code": block.code,
-                "message": block.message,
-                "severity": "deny"
-            }],
-            "model_context": format!("Volicord did not record a user judgment: {}", block.message),
+            "recognized_user_action_command": null,
+            "reasons": [{ "code": block.code, "message": block.message, "severity": "deny" }],
+            "model_context": format!("Volicord did not resolve a user action: {}", block.message),
             "enforcement_level": "cooperative_detective"
         }),
         true,
     )
 }
 
-fn record_prompt_judgment_command(
+fn record_prompt_user_action_command(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    command: PromptJudgmentCommand,
-) -> Result<RecordedPromptJudgment, PromptCommandBlock> {
+    command: PromptUserActionCommand,
+) -> Result<RecordedPromptUserAction, PromptCommandBlock> {
     let store = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))
         .map_err(prompt_block_from_store_error)?;
-    let project_state = store
-        .project_state()
+    let now = core_current_timestamp(&store).map_err(prompt_block_from_store_error)?;
+    let record = store
+        .user_action_record(&command.user_action_request_id, &now)
         .map_err(prompt_block_from_store_error)?;
-    let Some(active_task_id) = project_state.active_task_id.as_deref() else {
+    let record = record.ok_or_else(|| PromptCommandBlock {
+        code: "unknown_user_action_request",
+        message: format!(
+            "Volicord user-action request `{}` was not found in this project.",
+            command.user_action_request_id
+        ),
+    })?;
+    let task_id = TaskId::new(&record.request.task_id);
+    let records = store
+        .user_action_records_for_task(&task_id, &now)
+        .map_err(prompt_block_from_store_error)?;
+    let index = parse_chat_id(&command.chat_id)?;
+    let indexed_record = records.get(index - 1).ok_or_else(|| PromptCommandBlock {
+        code: "unknown_user_action_id",
+        message: format!(
+            "Volicord user-action id `{}` does not match an action for the stored request task.",
+            command.chat_id
+        ),
+    })?;
+    if indexed_record.request.user_action_request_id != record.request.user_action_request_id {
         return Err(PromptCommandBlock {
-            code: "no_active_task",
-            message: "No active Volicord task is selected for this prompt-capture session."
+            code: "user_action_request_mismatch",
+            message: format!(
+                "Volicord user-action id `{}` does not match request `{}`.",
+                command.chat_id, command.user_action_request_id
+            ),
+        });
+    }
+    validate_prompt_record(&record, envelope, &command)?;
+
+    let (form, question, context_summary) = if record.status == UserActionStatus::Pending {
+        let item = canonical_user_action_inbox_items(
+            runtime_home,
+            &project.project_id,
+            &record.request.task_id,
+            ActorSource::agent_connection(envelope.connection_id.clone()),
+            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+        )
+        .map_err(prompt_block_from_user_error)?
+        .into_iter()
+        .find(|item| item.user_action_request_id.as_str() == record.request.user_action_request_id)
+        .ok_or_else(|| PromptCommandBlock {
+            code: "user_action_not_pending",
+            message: "The addressed user action is no longer in the canonical pending inbox."
                 .to_owned(),
-        });
+        })?;
+        (item.form, item.question, item.context_summary)
+    } else {
+        immutable_replay_presentation(&record)?
     };
-    let task_id = TaskId::new(active_task_id);
-    let (record, chat_index) = select_chat_judgment(&store, &task_id, command.chat_id(), envelope)?;
-    let expected_code = judgment_verification_code(&record, envelope);
-    if command.verification_code() != expected_code {
-        return Err(PromptCommandBlock {
-            code: "wrong_verification_code",
-            message: format!(
-                "Volicord judgment `{}` requires the current displayed verification code.",
-                command.chat_id()
-            ),
-        });
-    }
-    if record.status == "pending" && judgment_code_is_expired(&record, envelope)? {
-        return Err(PromptCommandBlock {
-            code: "expired_verification_code",
-            message: format!(
-                "Volicord judgment `{}` has an expired verification code; refresh the pending judgment instructions.",
-                command.chat_id()
-            ),
-        });
-    }
-    let options = decode_options(&record).map_err(prompt_block_from_user_error)?;
-    let selected_option = match &command {
-        PromptJudgmentCommand::Answer {
-            answer_selector, ..
-        } => select_option(&options, answer_selector).map_err(prompt_block_from_user_error)?,
-        PromptJudgmentCommand::Note { .. } => select_defer_option(&options)?,
-    };
-    let note = match &command {
-        PromptJudgmentCommand::Answer { .. } => None,
-        PromptJudgmentCommand::Note { note, .. } => Some(note.clone()),
-    };
-    let replay_id = prompt_judgment_replay_id(&record, envelope);
-    let expected_state_version = judgment_expected_state_version(&record)?;
-    let response = record_user_judgment_from_record(JudgmentRecordingInput {
+    require_user_only_channel_when_presentation_is_sensitive(&form, &question, &context_summary)?;
+    let (resolution, recorded) = prompt_resolution_from_form(&form, &command.resolution)?;
+    let replay_id = prompt_user_action_replay_id(&record, envelope);
+    let response = resolve_user_action_from_record(UserActionResolutionRecordingInput {
         runtime_home,
         project_id: &project.project_id,
-        expected_state_version: Some(expected_state_version),
         record: &record,
-        selected_option: &selected_option,
-        note,
+        resolution,
         verification_basis: VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
         request_id: Some(format!("req_{replay_id}")),
-        idempotency_key: Some(format!("idem_{replay_id}")),
+        channel_submission_id: Some(format!("submission_{replay_id}")),
     })
     .map_err(prompt_block_from_user_error)?;
     if response.response_value["base"]["response_kind"].as_str() != Some("result") {
         return Err(prompt_block_from_record_response(&response.response_value));
     }
-    let chat_id = chat_id_for_index(chat_index);
-    let resolution_outcome = outcome_value(selected_option.resolution_outcome).to_owned();
-    Ok(RecordedPromptJudgment {
-        command_kind: command.command_kind(),
-        chat_id: chat_id.clone(),
-        verification_code: expected_code,
-        selected_option_id: selected_option.option_id.as_str().to_owned(),
-        machine_action: machine_action_value(selected_option.machine_action).to_owned(),
-        resolution_outcome: resolution_outcome.clone(),
-        note_text_omitted: matches!(command, PromptJudgmentCommand::Note { .. }),
-        replayed: response.replayed,
-        model_context: format!(
-            "Volicord recorded the user-owned judgment for {chat_id} as {resolution_outcome} through the local User Channel. Treat this as recorded context, not as an agent-authored judgment."
-        ),
-    })
+    let mut recorded = recorded;
+    recorded.chat_id = command.chat_id;
+    recorded.verification_code = command.verification_code;
+    recorded.replayed = response.replayed;
+    recorded.model_context = format!(
+        "Volicord resolved user action {} through the local User Channel. Treat this as user-owned recorded context, not as an agent-authored action.",
+        record.request.user_action_request_id
+    );
+    Ok(recorded)
 }
 
-fn select_chat_judgment(
-    store: &CoreProjectStore,
-    task_id: &TaskId,
-    chat_id: &str,
+fn validate_prompt_record(
+    record: &EffectiveUserActionRecord,
     envelope: &GuardEnvelope,
-) -> Result<(UserJudgmentRecord, usize), PromptCommandBlock> {
-    let chat_index = parse_chat_id(chat_id)?;
-    let records = store
-        .user_judgment_records_for_task(task_id)
-        .map_err(prompt_block_from_store_error)?;
-    let Some(record) = records.get(chat_index - 1).cloned() else {
-        return Err(PromptCommandBlock {
-            code: "unknown_judgment_id",
-            message: format!(
-                "Volicord judgment id `{chat_id}` does not match a judgment for the active task."
-            ),
-        });
-    };
+    command: &PromptUserActionCommand,
+) -> Result<(), PromptCommandBlock> {
     let expected_actor =
         ActorSource::agent_connection(envelope.connection_id.clone()).to_canonical_string();
-    if record.requested_by_actor_source != expected_actor {
+    if record.request.requested_by_actor_source != expected_actor {
         return Err(PromptCommandBlock {
             code: "connection_mismatch",
             message: format!(
-                "Volicord judgment `{chat_id}` belongs to a different Agent Connection."
+                "Volicord user action `{}` belongs to a different Agent Connection.",
+                command.chat_id
             ),
         });
     }
-    if record.status != "pending" {
-        if record.status == "resolved" {
-            return Ok((record, chat_index));
-        }
+    let expected_code = user_action_verification_code(record, envelope);
+    if command.verification_code != expected_code {
         return Err(PromptCommandBlock {
-            code: "judgment_not_pending",
+            code: "wrong_verification_code",
             message: format!(
-                "Volicord judgment `{chat_id}` is not pending (status: {}).",
-                record.status
+                "Volicord user action `{}` requires the current displayed verification code.",
+                command.chat_id
             ),
         });
     }
-    if record.basis_status != "current" {
+    if record.status != UserActionStatus::Pending && record.resolution.is_none() {
         return Err(PromptCommandBlock {
-            code: "stale_judgment",
+            code: "user_action_not_pending",
             message: format!(
-                "Volicord judgment `{chat_id}` has a stale or superseded basis (basis_status: {}).",
-                record.basis_status
+                "Volicord user action `{}` is not pending (status: {}).",
+                command.chat_id,
+                enum_text(record.status)
             ),
         });
     }
-    Ok((record, chat_index))
+    Ok(())
 }
 
-fn judgment_code_is_expired(
-    record: &UserJudgmentRecord,
-    envelope: &GuardEnvelope,
-) -> Result<bool, PromptCommandBlock> {
-    let request = serde_json::from_str::<PersistedUserJudgmentRequest>(&record.request_json)
+fn immutable_replay_presentation(
+    record: &EffectiveUserActionRecord,
+) -> Result<(UserActionInboxForm, String, String), PromptCommandBlock> {
+    let request: PersistedUserActionRequest = serde_json::from_str(&record.request.request_json)
         .map_err(|error| PromptCommandBlock {
-            code: "invalid_judgment_command",
-            message: format!("Failed to decode pending judgment request metadata: {error}"),
+            code: "invalid_user_action_command",
+            message: format!("Failed to decode immutable user-action request: {error}"),
         })?;
-    let Some(expires_at) = request.expires_at.as_ref() else {
-        return Ok(false);
-    };
-    let occurred_at =
-        UtcTimestamp::parse(&envelope.occurred_at).map_err(|error| PromptCommandBlock {
-            code: "invalid_judgment_command",
-            message: format!("Prompt capture timestamp is invalid: {error}"),
+    let question = request.body.question().to_owned();
+    let context_summary = request.body.context_summary().to_owned();
+    let form = request
+        .body
+        .capture_form()
+        .map_err(|error| PromptCommandBlock {
+            code: "invalid_user_action_command",
+            message: format!("Invalid immutable user-action form: {error}"),
         })?;
-    Ok(&occurred_at >= expires_at)
+    Ok((form, question, context_summary))
 }
 
-fn judgment_expected_state_version(record: &UserJudgmentRecord) -> Result<u64, PromptCommandBlock> {
-    let basis =
-        serde_json::from_str::<PersistedJudgmentBasis>(&record.basis_json).map_err(|error| {
-            PromptCommandBlock {
-                code: "invalid_judgment_command",
-                message: format!("Failed to decode pending judgment basis metadata: {error}"),
-            }
-        })?;
-    basis
-        .created_at_state_version
-        .checked_add(1)
-        .ok_or_else(|| PromptCommandBlock {
-            code: "invalid_judgment_command",
-            message: "Pending judgment state version is too large.".to_owned(),
+fn require_user_only_channel_when_presentation_is_sensitive(
+    form: &UserActionInboxForm,
+    question: &str,
+    context_summary: &str,
+) -> Result<(), PromptCommandBlock> {
+    let safety = UserActionPresentationPlan::from_form(form)
+        .and_then(|presentation| {
+            presentation.agent_facing_input_safety(question, context_summary)
         })
+        .map_err(|_| PromptCommandBlock {
+            code: "prompt_capture_presentation_unavailable",
+            message: "This user action could not be safely presented through prompt capture. Use a user-only local consent or CLI inbox channel. No resolution was recorded."
+                .to_owned(),
+        })?;
+    if safety == UserActionPresentationSafety::UserOnlyInputRequired {
+        return Err(PromptCommandBlock {
+            code: "prompt_capture_presentation_user_only",
+            message: "This user action requires a user-only local consent or CLI inbox channel. Prompt capture did not show or resolve the action."
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn prompt_resolution_from_form(
+    form: &UserActionInboxForm,
+    input: &PromptUserActionResolution,
+) -> Result<(UserActionResolutionInput, RecordedPromptUserAction), PromptCommandBlock> {
+    match (form, input) {
+        (
+            UserActionInboxForm::Choice { choices, .. },
+            PromptUserActionResolution::Choice { selector, note },
+        ) => {
+            let selected =
+                select_inbox_choice(choices, selector).map_err(prompt_block_from_user_error)?;
+            Ok((
+                UserActionResolutionInput::Choice {
+                    selected_option_id: selected.choice_id.clone(),
+                    note: note.clone().into(),
+                },
+                RecordedPromptUserAction {
+                    chat_id: String::new(),
+                    verification_code: String::new(),
+                    action_type: "choice",
+                    selected_option_id: Some(selected.choice_id.as_str().to_owned()),
+                    selected_target: None,
+                    artifact_ids: Vec::new(),
+                    relevance_status: None,
+                    note_text_omitted: note.is_some(),
+                    summary_text_omitted: false,
+                    replayed: false,
+                    model_context: String::new(),
+                },
+            ))
+        }
+        (
+            UserActionInboxForm::EvidenceObservation {
+                target_candidates,
+                artifact_candidates,
+                ..
+            },
+            PromptUserActionResolution::EvidenceObservation {
+                target,
+                artifact_ids,
+                summary,
+                relevance_status,
+            },
+        ) => {
+            let selected_target = select_prompt_target(target_candidates, target)?;
+            validate_prompt_artifacts(artifact_candidates, artifact_ids)?;
+            let selected_target_text = target_text(&selected_target);
+            Ok((
+                UserActionResolutionInput::EvidenceObservation {
+                    target: selected_target,
+                    artifact_ids: artifact_ids.iter().map(ArtifactId::new).collect(),
+                    relevance_status: *relevance_status,
+                    summary: summary.clone(),
+                },
+                RecordedPromptUserAction {
+                    chat_id: String::new(),
+                    verification_code: String::new(),
+                    action_type: "evidence_observation",
+                    selected_option_id: None,
+                    selected_target: Some(selected_target_text),
+                    artifact_ids: artifact_ids.clone(),
+                    relevance_status: Some(enum_text(*relevance_status)),
+                    note_text_omitted: false,
+                    summary_text_omitted: true,
+                    replayed: false,
+                    model_context: String::new(),
+                },
+            ))
+        }
+        _ => Err(PromptCommandBlock {
+            code: "user_action_form_mismatch",
+            message:
+                "The submitted resolve flags do not match the stored canonical user-action form."
+                    .to_owned(),
+        }),
+    }
+}
+
+fn select_prompt_target(
+    candidates: &[EvidenceTarget],
+    selector: &PromptEvidenceTarget,
+) -> Result<EvidenceTarget, PromptCommandBlock> {
+    candidates
+        .iter()
+        .find(|candidate| match (candidate, selector) {
+            (
+                EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id,
+                },
+                PromptEvidenceTarget::AcceptanceCriterion(id),
+            ) => acceptance_criterion_id.as_str() == id,
+            (
+                EvidenceTarget::SupplementalClaim {
+                    evidence_claim_id, ..
+                },
+                PromptEvidenceTarget::SupplementalClaim(id),
+            ) => evidence_claim_id.as_str() == id,
+            _ => false,
+        })
+        .cloned()
+        .ok_or_else(|| PromptCommandBlock {
+            code: "invalid_user_action_command",
+            message: "The selected evidence target is not in the stored canonical form.".to_owned(),
+        })
+}
+
+fn validate_prompt_artifacts(
+    candidates: &[volicord_types::ArtifactRef],
+    artifact_ids: &[String],
+) -> Result<(), PromptCommandBlock> {
+    if artifact_ids.iter().all(|id| {
+        candidates
+            .iter()
+            .any(|candidate| candidate.artifact_id.as_str() == id)
+    }) {
+        Ok(())
+    } else {
+        Err(PromptCommandBlock {
+            code: "invalid_user_action_command",
+            message: "Every selected artifact must be in the stored canonical form.".to_owned(),
+        })
+    }
+}
+
+pub(super) fn pending_chat_user_action_summaries(
+    runtime_home: &Path,
+    store: &CoreProjectStore,
+    task_id: &TaskId,
+    envelope: &GuardEnvelope,
+    now: &UtcTimestamp,
+) -> Result<Vec<GuardPendingUserActionSummary>, GuardCommandError> {
+    let expected_actor =
+        ActorSource::agent_connection(envelope.connection_id.clone()).to_canonical_string();
+    let records = store.user_action_records_for_task(task_id, now)?;
+    if records.is_empty() {
+        return Ok(Vec::new());
+    }
+    let canonical_items = canonical_user_action_inbox_items(
+        runtime_home,
+        &records[0].request.project_id,
+        task_id.as_str(),
+        ActorSource::agent_connection(envelope.connection_id.clone()),
+        VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    )
+    .map_err(guard_error_from_user_error)?;
+    let mut summaries = Vec::new();
+    for (index, record) in records.iter().enumerate() {
+        if record.status != UserActionStatus::Pending
+            || record.request.requested_by_actor_source != expected_actor
+        {
+            continue;
+        }
+        let Some(item) = canonical_items.iter().find(|item| {
+            item.user_action_request_id.as_str() == record.request.user_action_request_id
+        }) else {
+            continue;
+        };
+        let chat_id = chat_id_for_index(index + 1);
+        let verification_code = user_action_verification_code(record, envelope);
+        let presentation = UserActionPresentationPlan::from_form(&item.form).map_err(json_error)?;
+        if !presentation
+            .agent_facing_input_safety(&item.question, &item.context_summary)
+            .map_err(json_error)?
+            .allows_agent_facing_input()
+        {
+            continue;
+        }
+        let resolve_instruction = presentation.prompt_capture_instruction(
+            &chat_id,
+            item.user_action_request_id.as_str(),
+            &verification_code,
+        );
+        summaries.push(GuardPendingUserActionSummary {
+            chat_id: chat_id.clone(),
+            verification_code: verification_code.clone(),
+            user_action_request_id: item.user_action_request_id.as_str().to_owned(),
+            action_kind: enum_text(item.action_kind),
+            question: item.question.clone(),
+            context_summary: item.context_summary.clone(),
+            expires_at: item.expires_at.as_ref().map(ToString::to_string),
+            form_digest: canonical_json_bare_sha256(&item.form).map_err(json_error)?,
+            resolve_instruction,
+            form: item.form.clone(),
+        });
+    }
+    Ok(summaries)
+}
+
+fn target_text(target: &EvidenceTarget) -> String {
+    match target {
+        EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id,
+        } => format!("--criterion {acceptance_criterion_id}"),
+        EvidenceTarget::SupplementalClaim {
+            evidence_claim_id, ..
+        } => format!("--claim {evidence_claim_id}"),
+    }
 }
 
 fn prompt_block_from_record_response(response: &Value) -> PromptCommandBlock {
-    let message = core_rejection_message(response);
-    if message.contains("idempotency_key was reused with a different request hash") {
-        PromptCommandBlock {
-            code: "conflicting_judgment_command",
-            message: "Volicord already recorded a different answer for this verification code."
-                .to_owned(),
-        }
-    } else {
-        PromptCommandBlock {
-            code: "judgment_record_rejected",
-            message,
-        }
+    let message = response["errors"]
+        .as_array()
+        .and_then(|errors| errors.first())
+        .and_then(|error| error["message"].as_str())
+        .unwrap_or("Core rejected the user-action command.")
+        .to_owned();
+    PromptCommandBlock {
+        code: if message.contains("idempotency_key was reused") {
+            "conflicting_user_action_command"
+        } else {
+            "user_action_resolution_rejected"
+        },
+        message,
     }
-}
-
-fn select_defer_option(
-    options: &[UserJudgmentOption],
-) -> Result<UserJudgmentOption, PromptCommandBlock> {
-    options
-        .iter()
-        .find(|option| option.machine_action == UserJudgmentOptionAction::Defer)
-        .cloned()
-        .ok_or_else(|| PromptCommandBlock {
-            code: "defer_unavailable",
-            message: "The addressed judgment does not offer a defer option.".to_owned(),
-        })
 }
 
 fn prompt_block_from_user_error(error: UserCommandError) -> PromptCommandBlock {
     PromptCommandBlock {
-        code: "invalid_judgment_command",
+        code: "invalid_user_action_command",
         message: error.to_string(),
     }
 }
@@ -526,87 +705,6 @@ fn prompt_block_from_store_error(error: StoreError) -> PromptCommandBlock {
     }
 }
 
-fn core_rejection_message(response: &Value) -> String {
-    response["errors"]
-        .as_array()
-        .and_then(|errors| errors.first())
-        .and_then(|error| error["message"].as_str())
-        .unwrap_or("Core rejected the user judgment command.")
-        .to_owned()
-}
-
-pub(super) fn pending_chat_judgment_summaries(
-    store: &CoreProjectStore,
-    task_id: &TaskId,
-    envelope: &GuardEnvelope,
-) -> Result<Vec<GuardPendingJudgmentSummary>, GuardCommandError> {
-    let occurred_at = UtcTimestamp::parse(&envelope.occurred_at).map_err(|error| {
-        GuardCommandError::Runtime(format!("invalid host-hook timestamp: {error}"))
-    })?;
-    let expected_actor =
-        ActorSource::agent_connection(envelope.connection_id.clone()).to_canonical_string();
-    let records = store.user_judgment_records_for_task(task_id)?;
-    let mut summaries = Vec::new();
-    for (index, record) in records.iter().enumerate() {
-        if record.status != "pending" || record.requested_by_actor_source != expected_actor {
-            continue;
-        }
-        if record.basis_status != "current" {
-            continue;
-        }
-        let chat_id = chat_id_for_index(index + 1);
-        let request = serde_json::from_str::<PersistedUserJudgmentRequest>(&record.request_json)
-            .map_err(|error| {
-                GuardCommandError::Runtime(format!(
-                    "failed to decode user_judgments.request_json: {error}"
-                ))
-            })?;
-        if request
-            .expires_at
-            .as_ref()
-            .is_some_and(|expires_at| &occurred_at >= expires_at)
-        {
-            continue;
-        }
-        let options = decode_options(record).map_err(guard_error_from_user_error)?;
-        let option_summaries = options
-            .iter()
-            .enumerate()
-            .map(|(option_index, option)| {
-                let selector = chat_option_selector(option_index + 1, option);
-                GuardPendingJudgmentOptionSummary {
-                    instruction: format!(
-                        "Volicord: answer {chat_id} {selector} {}",
-                        judgment_verification_code(record, envelope)
-                    ),
-                    selector,
-                    option_id: option.option_id.as_str().to_owned(),
-                    label: option.label.clone(),
-                    machine_action: machine_action_value(option.machine_action).to_owned(),
-                    resolution_outcome: outcome_value(option.resolution_outcome).to_owned(),
-                }
-            })
-            .collect::<Vec<_>>();
-        let default_selector = option_summaries
-            .first()
-            .map(|option| option.selector.clone())
-            .unwrap_or_else(|| "1".to_owned());
-        let verification_code = judgment_verification_code(record, envelope);
-        summaries.push(GuardPendingJudgmentSummary {
-            chat_id: chat_id.clone(),
-            verification_code: verification_code.clone(),
-            judgment_kind: record.judgment_kind.clone(),
-            question: Some(request.question),
-            answer_instruction: format!(
-                "Volicord: answer {chat_id} {default_selector} {verification_code}"
-            ),
-            note_instruction: format!("Volicord: note {chat_id} \"text\" {verification_code}"),
-            options: option_summaries,
-        });
-    }
-    Ok(summaries)
-}
-
 fn guard_error_from_user_error(error: UserCommandError) -> GuardCommandError {
     match error {
         UserCommandError::Usage(message) => GuardCommandError::Usage(message),
@@ -614,38 +712,36 @@ fn guard_error_from_user_error(error: UserCommandError) -> GuardCommandError {
     }
 }
 
-fn chat_option_selector(index: usize, option: &UserJudgmentOption) -> String {
-    match option.machine_action {
-        UserJudgmentOptionAction::Reject => "reject".to_owned(),
-        UserJudgmentOptionAction::Defer => "defer".to_owned(),
-        UserJudgmentOptionAction::Accept => index.to_string(),
-    }
-}
-
-fn chat_id_for_index(index: usize) -> String {
-    format!("J-{index}")
-}
-
-fn judgment_verification_code(record: &UserJudgmentRecord, envelope: &GuardEnvelope) -> String {
-    chat_judgment_verification_code(
-        &record.project_id,
-        &record.task_id,
-        &record.judgment_id,
-        &record.requested_at,
+fn user_action_verification_code(
+    record: &EffectiveUserActionRecord,
+    envelope: &GuardEnvelope,
+) -> String {
+    chat_user_action_verification_code(
+        &record.request.project_id,
+        &record.request.task_id,
+        &record.request.user_action_request_id,
+        &record.request.requested_at,
         &envelope.connection_id,
     )
 }
 
-fn prompt_judgment_replay_id(record: &UserJudgmentRecord, envelope: &GuardEnvelope) -> String {
+fn prompt_user_action_replay_id(
+    record: &EffectiveUserActionRecord,
+    envelope: &GuardEnvelope,
+) -> String {
     let digest = short_digest(&[
-        "prompt_judgment_record",
-        &record.project_id,
-        &record.task_id,
-        &record.judgment_id,
-        &record.requested_at,
+        "prompt_user_action_resolve",
+        &record.request.project_id,
+        &record.request.task_id,
+        &record.request.user_action_request_id,
+        &record.request.requested_at,
         &envelope.connection_id,
     ]);
-    format!("prompt_judgment_{digest}")
+    format!("prompt_user_action_{digest}")
+}
+
+fn chat_id_for_index(index: usize) -> String {
+    format!("A-{index}")
 }
 
 fn short_digest(parts: &[&str]) -> String {
@@ -658,20 +754,11 @@ fn short_digest(parts: &[&str]) -> String {
     digest[..10].to_owned()
 }
 
-fn machine_action_value(value: UserJudgmentOptionAction) -> &'static str {
-    match value {
-        UserJudgmentOptionAction::Accept => "accept",
-        UserJudgmentOptionAction::Reject => "reject",
-        UserJudgmentOptionAction::Defer => "defer",
-    }
-}
-
-fn outcome_value(value: JudgmentResolutionOutcome) -> &'static str {
-    match value {
-        JudgmentResolutionOutcome::Accepted => "accepted",
-        JudgmentResolutionOutcome::Rejected => "rejected",
-        JudgmentResolutionOutcome::Deferred => "deferred",
-    }
+fn enum_text<T: serde::Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 fn event_project_id(event: &Value) -> Option<String> {

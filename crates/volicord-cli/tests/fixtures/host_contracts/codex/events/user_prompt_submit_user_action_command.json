@@ -6,5 +6,5 @@
   "model": "gpt-5.5",
   "permission_mode": "default",
   "turn_id": "turn-002",
-  "prompt": "Volicord: answer J-1 1 #VOLICORD_VERIFICATION_CODE"
+  "prompt": "Volicord: resolve A-1 --request VOLICORD_REQUEST_ID --choice 1 #VOLICORD_VERIFICATION_CODE"
 }

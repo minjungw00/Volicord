@@ -190,10 +190,10 @@ Receipt 하나는 producer를 최대 하나만 만들고 producer 하나는 obse
 
 ## 호환성과 외부 검증
 
-이 안정적인 공개 메서드 추가와 새 intent/receipt/producer record에는 저장 profile
-`baseline_sqlite_v4`가 필요합니다. v3에서 v4로 변환하는 경로는 없으며, 호환되지
-않는 v3 Runtime Home은 명확히 실패하고 다시 만들어야 합니다. 권장 release
-version은 `0.7.0`입니다.
+이 안정적인 공개 메서드와 intent/receipt/producer record는 현재
+`baseline_sqlite_v5` profile에도 유지됩니다. 호환되지 않는 v3 또는 v4 Runtime
+Home을 변환하는 경로는 없으며, 호환되지 않는 상태는 명확히 실패하고 다시 만들어야
+합니다. 현재 권장 release version은 `0.8.0`입니다.
 
 체크인된 host fixture는 adapter만 검증합니다. 실제 Codex 또는 Claude Code의
 invocation identity, output completeness, retry, resume, 병렬 호출 동작에 대한

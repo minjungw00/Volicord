@@ -88,8 +88,20 @@ impl CoreService {
                 )
             }
         };
-        let created_at = utc_timestamp(self.now());
-        let expires_at = utc_timestamp(*created_at.as_datetime() + Duration::hours(24));
+        let created_at = prepared.operation_now.clone();
+        let expires_at = match created_at.checked_add(Duration::hours(24)) {
+            Ok(expires_at) => expires_at,
+            Err(_) => {
+                return rejected_pipeline_response(
+                    request.envelope.dry_run,
+                    Some(project_state.state_version),
+                    vec![stage_validation_error(
+                        "expires_at",
+                        "derived expiration exceeds the supported canonical RFC 3339 range",
+                    )],
+                )
+            }
+        };
         let resolved_task_id = request.task_id.clone();
         let result = StageArtifactResult {
             base: method_result_base(

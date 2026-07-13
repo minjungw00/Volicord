@@ -41,9 +41,15 @@ Effects come from the selected method behavior and response branch. The table su
 | Read-only | Read-only `MethodResult` | No Core authority-state mutation. Response data only except for method-permitted session-watch diagnostic records; no replay row, authority event, artifact effect, write-ticket effect, close-state mutation, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
 | No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
 | Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
-| Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging only; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
-| Core commit | Core committed `MethodResult` | Method-owned effects through `CoreProjectStore::commit_mutation`, including the state-version increment, authority event, optional replay row, and method-selected `CoreStorageMutation` values. | [Core committed result](#core-committed-result) |
+| Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging plus an atomic non-decreasing advance of the persisted canonical-UTC floor; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
+| Core commit | Core committed `MethodResult` | Method-owned effects through `CoreProjectStore::commit_mutation`, including the state-version increment, authority event, optional replay row, method-selected `CoreStorageMutation` values, and one canonical commit timestamp. | [Core committed result](#core-committed-result) |
 | Committed blocker-shaped result | Committed `MethodResult` whose method owner allows blocked or non-allow persistence | Only the explicitly allowed event, replay, state-version, and blocker-state effects. A blocker-shaped response alone is not enough. | [Committed blocked result](#committed-blocked-result) |
+
+Exact replay, rejected requests, valid dry runs, and read-only results do not
+update the persisted canonical Core UTC floor. Storage-owned staging, registered
+evidence-capture receipt fulfillment, and local User Channel token issuance are
+the floor-only exceptions defined below. [Storage Versioning](storage-versioning.md#canonical-core-utc-clock)
+owns the complete clock contract.
 
 <a id="read-only-result"></a>
 ### Read-only result
@@ -63,6 +69,7 @@ Disallowed effects:
 - evidence update or evidence observation
 - write-ticket effect
 - `project_state.state_version` increment
+- persisted canonical-UTC floor update
 
 <a id="toolrejectedresponse-effect"></a>
 ### `ToolRejectedResponse`
@@ -79,6 +86,7 @@ Disallowed effects:
 - artifact effect
 - write-ticket creation or consumption
 - `project_state.state_version` increment
+- persisted canonical-UTC floor update
 
 <a id="valid-dry-run-preview"></a>
 ### Valid dry-run preview
@@ -96,6 +104,7 @@ Disallowed effects:
 - staged-handle creation
 - artifact promotion or link
 - `project_state.state_version` increment
+- persisted canonical-UTC floor update
 
 <a id="staging-created-artifact-result"></a>
 ### Staging-created artifact result
@@ -103,12 +112,14 @@ Disallowed effects:
 Allowed effect:
 
 - storage-owned transient staging
+- an atomic `project_state.updated_at >= artifact_staging.created_at` floor
+  update
 
 This branch is separate from a regular Core committed mutation. It may create a storage-owned staged representation or handle, but that transient staging write is not a Core current-row mutation, persistent `ArtifactRef`, artifact link, or evidence record by itself.
 
 Disallowed effects:
 
-- Core current row
+- Core authority current row other than the physical project-time floor
 - replay row
 - event
 - persistent `ArtifactRef`
@@ -127,6 +138,17 @@ Allowed effects:
 - `authority_events` append
 - replay row creation
 - exactly one `project_state.state_version` increment
+
+The commit selects one canonical `committed_at` that is no earlier than the
+prepared operation-time sample. It writes that exact value to
+`project_state.updated_at`, every appended `authority_events.created_at`, the
+optional replay-row `tool_invocations.created_at`, and Store transaction
+metadata such as applicable `created_at`, `updated_at`, `retired_at`, and
+`promoted_at` values that mutation application generates. Semantic operation
+times such as `requested_at`, `resolved_at`, `closed_at`, `recorded_at`, and
+`consumed_at`, and input- or observation-owned facts such as `observed_at` and
+`started_at`, keep their owner-defined operation sample or validated source
+meaning and are not rewritten to the commit timestamp.
 
 Artifact promotion and `artifact_links` creation occur only when the method owner selects a committed mutation branch that explicitly includes those artifact effects. They do not follow automatically from earlier staging.
 
@@ -306,10 +328,9 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.prepare_evidence_capture` | creates one immutable expiring capture intent | See [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
 | `volicord.stage_artifact` | creates transient staging only | See [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
-| `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
-| `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
-| `volicord.record_user_observation` | records target-bound User Channel evidence | See [`volicord.record_user_observation`](#volicordrecord_user_observation) |
-| `volicord.reconcile_changes` | resolves Unrecorded Changes, creates pending user judgments, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
+| `volicord.request_user_action` | creates one pending user-action request and canonical capture form | See [`volicord.request_user_action`](#volicordrequest_user_action) |
+| `volicord.resolve_user_action` | inserts one immutable User Channel resolution | See [`volicord.resolve_user_action`](#volicordresolve_user_action) |
+| `volicord.reconcile_changes` | resolves Unrecorded Changes, creates pending user actions, and may record session-watch diagnostics | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | close-readiness check with optional session-watch diagnostics | See [`volicord.check_close`](#volicordcheck_close) |
 | `volicord.close_task intent=complete` | persists a successful `complete` terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
 | `volicord.close_task intent=cancel` | persists a successful cancellation terminal effect; blocked attempts return a no-effect result | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
@@ -357,7 +378,7 @@ Committed `dry_run=false` may:
   current Change Unit is created or replaced
 - increment `tasks.scope_revision` for material current-scope or current Change Unit changes
 - invalidate `tasks.close_basis_json` and increment `tasks.close_basis_revision` for material scope changes
-- mark incompatible judgment basis rows stale or superseded as owner-defined compatibility requires
+- mark incompatible user-action basis rows stale or superseded as owner-defined compatibility requires
 - update blockers or stale write-ticket refs as the method owner allows
 - append events
 - create a replay row
@@ -419,7 +440,7 @@ The method is response-only and must not create or change:
 
 - replay rows or `tool_invocations.response_json`
 - `authority_events` or Core current rows
-- Task, Change Unit, judgment, blocker, or continuity state
+- Task, Change Unit, user-action, blocker, or continuity state
 - staging, artifact, evidence, or write-ticket state
 - session-watch diagnostic rows
 - `project_state.state_version`
@@ -495,7 +516,10 @@ receipts create one claim; tool receipts create three claims for the normalized
 host invocation and both distinct guard events. The project-scoped claim key
 rejects reuse of any exact underlying source fact across intents or producer
 classes. It creates no event or replay row and does not change
-`project_state.state_version`. The source observation must satisfy
+`project_state.state_version`. In the same transaction, it advances
+`project_state.updated_at` to at least `receipt.created_at`; another concurrent
+writer may already have established a later floor, so equality is not required.
+The source observation must satisfy
 `intent.created_at <= observed_at < intent.expires_at`; receipt creation must satisfy
 `observed_at <= receipt.created_at < intent.expires_at`, and the staging handle expires exactly
 at `intent.expires_at`. A failed or duplicate-claim transaction rolls back the
@@ -519,6 +543,8 @@ Successful staging may:
 
 - create `artifact_staging` or an equivalent storage-owned staging record
 - store transient safe bytes or notices under `artifacts/tmp/`
+- advance `project_state.updated_at` to at least the staging row's `created_at`
+  atomically with that row
 
 This branch creates only transient storage-owned staging. It is not the regular Core committed mutation branch, and temporary staging directories may be created when staging occurs rather than during project registration.
 
@@ -530,7 +556,7 @@ no staging effect; the size check must not be deferred until after staging.
 
 It does not create:
 
-- Core current row
+- Core authority current row other than the physical project-time floor
 - persistent `ArtifactRef`
 - replay row
 - `project_state.state_version` increment
@@ -563,7 +589,7 @@ Committed `dry_run=false` may:
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
 - create `evidence_claims` rows for new Task-scoped supplemental targets while preserving the immutable statement of an existing same-Task ID
-- update `evidence_summaries`, create `evidence_observations` with separately stored Core-record input refs and non-authoritative source refs, or update allowed blockers
+- insert or update `evidence_summaries` with `produced_at_state_version` set to the transaction's resulting `project_state.state_version`, create `evidence_observations` with separately stored Core-record input refs and non-authoritative source refs, or update allowed blockers
 - for each valid capture-intent observation, consume and promote its safe
   receipt staging handle, link the promoted artifact to a new immutable
   `evidence_producers` row, and create that producer and its one-to-one
@@ -614,6 +640,9 @@ Current close-basis persistence boundary:
 - Sensitive action requirements stored in that `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write-ticket compatibility row, preserving operation, normalized paths, sensitive categories, baseline, Change Unit, source Run ref, and source write-ticket ref through close.
 - Category-only caller input cannot establish, satisfy, or erase a sensitive action requirement.
 - `close_assessment=null` records that the committed Run does not establish a current close basis; any existing current basis becomes stale or absent.
+- Evidence Summary recency is determined by `produced_at_state_version`, not by
+  `created_at`, `updated_at`, or an opaque record ID; the canonical UTC clock
+  does not substitute for authority commit order.
 - Run, current close basis, evidence summary, evidence observation, capture
   producer, receipt artifact promotion/linking, write-ticket compatibility
   consumption, replay, event, and revision effects commit atomically.
@@ -624,17 +653,30 @@ Owner links:
 - [Artifact Storage](storage-artifacts.md)
 - [Storage Records](storage-records.md)
 
-<a id="volicordrequest_user_judgment"></a>
-### `volicord.request_user_judgment`
+<a id="volicordrequest_user_action"></a>
+### `volicord.request_user_action`
 
 Committed `dry_run=false` may:
 
-- create a pending `user_judgments` row
-- store `basis_json` and `basis_status='current'` for the Core-derived judgment basis
+- create one `user_action_requests` row
+- store the closed request, canonical capture form, Core-derived basis, current basis status, required-for targets, candidates, expiry, and exact originating method/idempotency relation
 - update affected blockers
 - append events
 - create a replay row
 - increment `project_state.state_version` once
+
+The direct origin `(project_id, source_idempotency_key)` is unique for
+`source_method=volicord.request_user_action`. The MCP
+`request.operation=resume` branch only reads that row and its immutable original
+replay response for the same Agent Connection access scope. Resume creates no
+request, event, replay row, token, resolution, prompt, blocker update, or state
+version, and does not update the persisted canonical-UTC floor.
+
+When MCP uses the local-web fallback for a newly created pending request, token
+issuance is a separate storage-owned transaction. It inserts the hash-only
+`user_action_channel_tokens` row and advances `project_state.updated_at` to at
+least token `created_at` atomically. Issuance creates no additional authority
+event or replay row and does not increment `state_version`.
 
 No-effect branches:
 
@@ -643,26 +685,27 @@ No-effect branches:
 
 Valid dry-run previews do not create:
 
-- real `user_judgment_ref`
-- pending judgment
+- real `user_action_request_ref`
+- pending user action
 - blocker update
 - event
 - replay row
 - `project_state.state_version` increment
+- persisted canonical-UTC floor update
 
 Owner links:
 
-- [`volicord.request_user_judgment` method](api/method-request-user-judgment.md#volicordrequest_user_judgment)
+- [`volicord.request_user_action` method](api/method-request-user-action.md#volicordrequest_user_action)
 - [Storage Records](storage-records.md)
 
-<a id="volicordrecord_user_judgment"></a>
-### `volicord.record_user_judgment`
+<a id="volicordresolve_user_action"></a>
+### `volicord.resolve_user_action`
 
 Committed `dry_run=false` may:
 
-- set a `user_judgments` row to `status='resolved'`
-- store the selected option, `resolution_machine_action`, `resolution_outcome`, derived resolution actor provenance, answer payload, descriptive rationale metadata, and basis status as allowed by the method owner
-- when invoked through the local web consent capture path, set the matching `local_web_consent_tokens` row to `status='consumed'` in the same project-state commit as the judgment resolution
+- insert one immutable one-to-one `user_action_resolutions` row, causing the Core effective-status evaluator to return `resolved`
+- store the matching closed resolution body, channel kind and submission id, derived local-user provenance, verification basis, assurance level, and Core capture time; the body carries either option-derived choice facts or the full evidence-observation detail
+- when invoked through local web capture, set the matching `user_action_channel_tokens` row to `status='consumed'` in the same project-state commit
 - create `project_continuity_records` for accepted product, technical, or scope decisions and for accepted current residual risks when selected by the method owner
 - update dependent blockers or next actions
 - append events
@@ -674,20 +717,21 @@ No-effect branches:
 - valid dry-run previews
 - rejected attempts
 
-Rejected local web consent attempts, including validation failure, wrong binding, expiration, and judgment-record write failure, must not consume the token or resolve the judgment.
+Rejected channel attempts, including validation failure, wrong binding, expiration, state race, and resolution write failure, must not consume a token or insert a resolution. They also must not update the persisted canonical-UTC floor.
 
 Valid dry-run previews do not create:
 
-- judgment resolution
+- user-action resolution or observation detail
 - project continuity records
 - blocker update
 - event
 - replay row
 - `project_state.state_version` increment
+- persisted canonical-UTC floor update
 
-Recording a user judgment does not increment `tasks.scope_revision` or `tasks.close_basis_revision`.
+Resolving a user action does not increment `tasks.scope_revision` or `tasks.close_basis_revision`.
 
-`status='resolved'` records that an answer was recorded; it is not acceptance by itself. Current resolved rows require complete basis, selected action, `resolution_outcome`, resolution payload, resolution timestamp, User Channel actor source, verification basis, assurance level, and required actor provenance. Missing required resolution authority is invalid stored state, not a readable historical audit judgment.
+Effective `status=resolved` records that an immutable resolution exists; it is not acceptance or supporting evidence by itself. A choice resolution requires its stored option-derived action/outcome. An observation resolution requires exact current target/artifact detail while preserving the exact artifact refs stored by the request. Missing kind-specific authority facts are invalid owner state.
 
 The replay row remains user-only. Its exact response and any free-form private
 note are not eligible for Agent Connection retrieval through
@@ -695,27 +739,7 @@ note are not eligible for Agent Connection retrieval through
 
 Owner links:
 
-- [`volicord.record_user_judgment` method](api/method-record-user-judgment.md#volicordrecord_user_judgment)
-- [Storage Records](storage-records.md)
-
-<a id="volicordrecord_user_observation"></a>
-### `volicord.record_user_observation`
-
-Committed `dry_run=false` may:
-
-- insert one `user_evidence_observations` row with current Task, Change Unit,
-  scope revision, baseline, target, relevance, exact canonical artifact refs,
-  local-user actor, verification basis, summary, and timestamps
-- append `user_evidence_observation_recorded`
-- create a replay row
-- increment `project_state.state_version` once
-
-It does not create a Run, EvidenceSummary, EvidenceObservation, UserJudgment,
-approval, or artifact. Dry run and rejection have no storage effect.
-
-Owner links:
-
-- [`volicord.record_user_observation` method](api/method-record-user-observation.md)
+- [`volicord.resolve_user_action` method](api/method-resolve-user-action.md#volicordresolve_user_action)
 - [Storage Records](storage-records.md)
 
 <a id="volicordreconcile_changes"></a>
@@ -729,9 +753,9 @@ Committed `dry_run=false` may:
   Product Repository changes are not deterministically covered by expected-write
   or active write-ticket correlation
 - set unresolved `unrecorded_changes` rows to `status='resolved'`
-- store resolution JSON that names the resolution basis, capture basis, resolved method, and optional linked user-judgment ref
+- store resolution JSON that names the resolution basis, capture basis, resolved method, and optional linked user-action ref
 - store `resolved_at` and `resolved_by_actor_source`
-- create pending `user_judgments` rows for findings that require user acceptance
+- create pending `user_action_requests` rows for findings that require user acceptance, each carrying `source_method=volicord.reconcile_changes` and the reconciliation idempotency key
 - append events
 - create a replay row when an idempotency key is present
 - increment `project_state.state_version` once
@@ -739,7 +763,7 @@ Committed `dry_run=false` may:
 Read-only branches:
 
 - After any permitted session-watch diagnostic effect above, a valid call with
-  no planned resolution or pending judgment creation returns response data only
+  no planned resolution or pending user-action creation returns response data only
   and creates no reconciliation effect.
 
 No-effect branches:
@@ -747,9 +771,9 @@ No-effect branches:
 - rejected attempts
 - valid dry-run previews
 
-These branches do not resolve findings, create pending judgments, append events, create replay rows, or increment `project_state.state_version`.
+These branches do not resolve findings, create pending user actions, append events, create replay rows, or increment `project_state.state_version`.
 
-Reconciliation effects do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. They only record why an Unrecorded Change is no longer unresolved or create a pending user-owned judgment for remaining acceptance.
+Reconciliation effects do not prove product correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security. They only record why an Unrecorded Change is no longer unresolved or create a pending user-owned action for remaining acceptance. Reconciliation-created requests are not eligible for the direct-request MCP resume branch.
 
 Owner links:
 

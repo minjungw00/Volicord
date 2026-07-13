@@ -24,7 +24,7 @@ Neighboring contracts stay with their owners:
 | Core non-substitution, close readiness, waiver, accepted-risk, and residual-risk meaning | [Core Model Reference](core-model.md) |
 | Judgment shapes and values | [API Judgment Schemas](api/schema-judgment.md) and [API Value Sets](api/schema-value-sets.md) |
 | Blocker shapes and category values | [API State Schemas](api/schema-state.md) and [API Value Sets](api/schema-value-sets.md) |
-| User-owned judgment request and record behavior | [Request-user-judgment method](api/method-request-user-judgment.md) and [Record-user-judgment method](api/method-record-user-judgment.md) |
+| User-owned judgment request and record behavior | [Request-user-action method](api/method-request-user-action.md) and [Resolve-user-action method](api/method-resolve-user-action.md) |
 | Status and close behavior | [Status method](api/method-status.md) and [Close-task method](api/method-close-task.md) |
 | Agent Connection capability and public capability errors | [Agent Connection](agent-connection.md) and [API error codes](api/error-codes.md) |
 | Method-to-storage effects | [Storage Effects](storage-effects.md) |
@@ -49,8 +49,8 @@ that effect. Use the narrowest applicable route below.
 
 | Concern | Owner-defined route | Close effect |
 |---|---|---|
-| <a id="design-quality-product-decision-needed"></a><a id="design-quality-route-product-direction"></a>Product behavior, UX, wording, a release promise, or user value needs a decision. | Use `judgment_kind=product_decision`. | Use `CloseReadinessBlocker.category=user_judgment` only when the applicable close-readiness contract requires that judgment. |
-| <a id="design-quality-technical-decision-needed"></a><a id="design-quality-route-technical-direction"></a>Architecture, a dependency, migration, public interface, compatibility, security/privacy, or another material technical direction needs a decision. | Use `judgment_kind=technical_decision`. | Use `CloseReadinessBlocker.category=user_judgment` only when the applicable close-readiness contract requires that judgment. |
+| <a id="design-quality-product-decision-needed"></a><a id="design-quality-route-product-direction"></a>Product behavior, UX, wording, a release promise, or user value needs a decision. | Use a choice `UserActionDraft` with `judgment_kind=product_decision`. | Use `CloseReadinessBlocker.category=user_action` only when the applicable close-readiness contract requires that action. |
+| <a id="design-quality-technical-decision-needed"></a><a id="design-quality-route-technical-direction"></a>Architecture, a dependency, migration, public interface, compatibility, security/privacy, or another material technical direction needs a decision. | Use a choice `UserActionDraft` with `judgment_kind=technical_decision`. | Use `CloseReadinessBlocker.category=user_action` only when the applicable close-readiness contract requires that action. |
 | <a id="design-quality-scope-boundary-change"></a><a id="design-quality-route-scope-boundary"></a>Scope expansion, non-goal removal, a Change Unit boundary, or an Autonomy Boundary must change. | Use `judgment_kind=scope_decision` or `CloseReadinessBlocker.category=scope`, as defined by the affected scope or judgment contract. | The route affects close only when that contract defines the dependency. |
 | <a id="design-quality-missing-close-relevant-support"></a><a id="design-quality-route-evidence"></a>A close-relevant claim lacks required support. | Request evidence through the Core evidence authority. Use `CloseReadinessBlocker.category=evidence_claim`, `CloseReadinessBlocker.category=evidence_provenance`, or `CloseReadinessBlocker.category=artifact_availability` only where the evidence and close-readiness owners allow them. | Missing evidence blocks close only when those owners require it. |
 | <a id="design-quality-residual-risk-visibility"></a><a id="design-quality-route-residual-risk"></a>A known limitation, unchecked condition, or trade-off matters to close. | Make the risk visible. Use `CloseReadinessBlocker.category=residual_risk_visibility`, or `CloseReadinessBlocker.category=residual_risk_acceptance` when the applicable owner requires acceptance. | The risk affects close only through the applicable residual-risk contract. |
@@ -114,7 +114,7 @@ or make close succeed automatically.
 |---|---|
 | <a id="design-quality-route-final-acceptance"></a>`final_acceptance` | Records the user's result judgment after the close basis is visible. It is not evidence, residual-risk acceptance, QA, verification, or a blocker override. |
 | <a id="design-quality-route-residual-risk-acceptance"></a>`residual_risk_acceptance` | Records acceptance of one named visible risk for the requested close. It affects close only through the residual-risk owner and is not proof of correctness, evidence sufficiency, final acceptance, or a no-risk result. |
-| <a id="design-quality-route-supported-user-judgment-values"></a>Supported `UserJudgment.judgment_kind` values | Record focused user-owned decisions. [API Value Sets](api/schema-value-sets.md) owns the values. Broad approval counts only when the relevant contract asked the specific question. |
+| <a id="design-quality-route-supported-user-action-values"></a>Supported choice `UserActionDraft.judgment_kind` values | Request focused user-owned decisions. [API Value Sets](api/schema-value-sets.md) owns the values. Broad approval counts only when the relevant contract asked the specific question. |
 
 <a id="6-evidence-routing-boundary"></a>
 ## 5. Evidence boundary

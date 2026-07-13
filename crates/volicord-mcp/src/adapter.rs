@@ -115,7 +115,7 @@ impl McpAdapter {
         }
     }
 
-    /// Enables local loopback web consent fallback for pending user judgments.
+    /// Enables local loopback web consent fallback for pending user actions.
     pub fn with_local_web_consent(mut self, context: LocalWebConsentContext) -> Self {
         self.local_web_consent = Some(context);
         self
@@ -650,6 +650,43 @@ impl McpAdapter {
         })
     }
 
+    fn derive_read_only_invocation_context(
+        &self,
+        envelope: &ToolEnvelope,
+        operation_category: OperationCategory,
+        session_id: Option<&str>,
+        host_elicitation_available: bool,
+    ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
+        let store = CoreProjectStore::open_read_only(&self.runtime_home, &envelope.project_id)
+            .map_err(McpAdapterError::Store)?;
+        let git_workspace_context =
+            capture_git_workspace_snapshot(&store.project_record().repo_root)
+                .map_err(|error| {
+                    McpAdapterError::Environment(format!(
+                "failed to capture the selected Product Repository Git workspace context: {error}"
+            ))
+                })?
+                .map(|snapshot| GitWorkspaceContext {
+                    git_common_dir: snapshot.layout.common_dir.display().to_string(),
+                    worktree_id: snapshot.worktree_id,
+                    branch_ref: snapshot.branch_ref,
+                    head_sha: snapshot.head_sha,
+                    workspace_fingerprint: snapshot.workspace_fingerprint,
+                });
+        Ok(McpDerivedInvocationContext {
+            project_id: envelope.project_id.clone(),
+            actor_source: ActorSource::agent_connection(
+                self.context.connection_internal_id.clone(),
+            ),
+            operation_category,
+            invocation_binding_basis: self.context.invocation_binding_basis.clone(),
+            session_id: session_id.map(str::to_owned),
+            host_elicitation_available,
+            local_web_consent_available: self.local_web_consent.is_some(),
+            git_workspace_context,
+        })
+    }
+
     /// Calls one public Volicord method tool and returns Core's response.
     pub fn call_tool(
         &self,
@@ -707,7 +744,7 @@ impl McpAdapter {
             RECORD_RUN_TOOL_NAME => {
                 self.call_record_run(tool_name, params, session_id, host_elicitation_available)
             }
-            REQUEST_USER_JUDGMENT_TOOL_NAME => self.call_request_user_judgment(
+            REQUEST_USER_ACTION_TOOL_NAME => self.call_request_user_action(
                 tool_name,
                 params,
                 session_id,
@@ -1033,43 +1070,76 @@ impl McpAdapter {
         )
     }
 
-    fn call_request_user_judgment(
+    fn call_request_user_action(
         &self,
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
         host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
-        let prepared: PreparedMcpArguments<McpRequestUserJudgmentArguments> =
+        let prepared: PreparedMcpArguments<McpRequestUserActionArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
-        let task_id = prepared.arguments.task_id.clone();
-        let envelope = self.generated_envelope(
-            tool_name,
-            &prepared.project_id,
-            Some(&task_id),
-            OperationCategory::AgentWorkflow,
-        )?;
-        let args = prepared.arguments;
-        self.call_core_request(
-            tool_name,
-            RequestUserJudgmentRequest {
-                envelope,
+        match prepared.arguments.request {
+            McpRequestUserActionOperation::Create {
                 task_id,
-                change_unit_id: args.change_unit_id,
-                sensitive_action_scope: args.sensitive_action_scope,
-                judgment_kind: args.judgment_kind,
-                presentation: args.presentation,
-                question: args.question,
-                options: args.options,
-                context: args.context,
-                affected_refs: args.affected_refs,
-                required_for: args.required_for,
-                expires_at: args.expires_at,
-            },
-            CoreService::request_user_judgment,
-            session_id,
-            host_elicitation_available,
-        )
+                change_unit_id,
+                action,
+                required_for,
+                expires_at,
+            } => {
+                let envelope = self.generated_envelope(
+                    tool_name,
+                    &prepared.project_id,
+                    Some(&task_id),
+                    OperationCategory::AgentWorkflow,
+                )?;
+                self.call_core_request(
+                    tool_name,
+                    RequestUserActionRequest {
+                        envelope,
+                        task_id,
+                        change_unit_id,
+                        action,
+                        required_for,
+                        expires_at,
+                    },
+                    CoreService::request_user_action,
+                    session_id,
+                    host_elicitation_available,
+                )
+            }
+            McpRequestUserActionOperation::Resume {
+                user_action_request_id,
+            } => {
+                self.ensure_mode_allows(tool_name, OperationCategory::AgentWorkflow)?;
+                let envelope = ToolEnvelope {
+                    project_id: prepared.project_id.clone(),
+                    task_id: RequiredNullable::null(),
+                    request_id: RequestId::new("req_internal_user_action_resume"),
+                    idempotency_key: RequiredNullable::null(),
+                    expected_state_version: RequiredNullable::null(),
+                    dry_run: false,
+                    locale: RequiredNullable::null(),
+                };
+                let invocation = self.derive_read_only_invocation_context(
+                    &envelope,
+                    OperationCategory::AgentWorkflow,
+                    session_id,
+                    host_elicitation_available,
+                )?;
+                self.core
+                    .resume_user_action_request(
+                        prepared.project_id,
+                        user_action_request_id,
+                        invocation.core_invocation(),
+                    )
+                    .map_err(McpAdapterError::Core)?
+                    .ok_or_else(|| McpAdapterError::ToolExecution {
+                        tool_name: tool_name.to_owned(),
+                        message: "the resumed user-action request is unavailable or was created by another Agent Connection".to_owned(),
+                    })
+            }
+        }
     }
 
     fn call_reconcile_changes(
@@ -1560,8 +1630,8 @@ fn invalid_argument_guidance(
     let source_text = source.to_string();
     match tool_name {
         RECORD_RUN_TOOL_NAME => record_run_invalid_argument_guidance(params, &source_text),
-        REQUEST_USER_JUDGMENT_TOOL_NAME => {
-            request_user_judgment_invalid_argument_guidance(params, &source_text)
+        REQUEST_USER_ACTION_TOOL_NAME => {
+            request_user_action_invalid_argument_guidance(params, &source_text)
         }
         UPDATE_SCOPE_TOOL_NAME => update_scope_invalid_argument_guidance(params, &source_text),
         PREPARE_WRITE_TOOL_NAME => prepare_write_invalid_argument_guidance(params, &source_text),
@@ -1632,12 +1702,14 @@ fn record_run_invalid_argument_guidance(params: &Value, source: &str) -> Option<
     .or_else(|| root_shape_guidance_for_source(params, source, record_run_root_fields(), crate::tool_registry::RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_ARGUMENTS_JSON))
 }
 
-fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
-    options_shape_guidance(params)
+fn request_user_action_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
+    let request = params.get("request").unwrap_or(&Value::Null);
+    string_value_guidance(request, "operation", &["create", "resume"])
+        .or_else(|| options_shape_guidance(request.get("action").unwrap_or(&Value::Null)))
         .or_else(|| {
             object_shape_guidance(
-                params.get("context"),
-                "context",
+                params.pointer("/request/action/context"),
+                "request.action.context",
                 &[
                     "summary",
                     "related_refs",
@@ -1650,8 +1722,8 @@ fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str)
         })
         .or_else(|| {
             array_item_shape_guidance(
-                params.pointer("/context/visible_risks"),
-                "context.visible_risks",
+                params.pointer("/request/action/context/visible_risks"),
+                "request.action.context.visible_risks",
                 &[
                     "risk_id",
                     "summary",
@@ -1664,15 +1736,15 @@ fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str)
         })
         .or_else(|| {
             array_item_shape_guidance(
-                params.get("affected_refs"),
-                "affected_refs",
+                params.pointer("/request/action/affected_refs"),
+                "request.action.affected_refs",
                 state_record_ref_fields(),
                 state_record_ref_skeleton(),
             )
         })
         .or_else(|| {
             string_value_guidance(
-                params,
+                request.get("action").unwrap_or(&Value::Null),
                 "judgment_kind",
                 &[
                     "product_decision",
@@ -1685,11 +1757,24 @@ fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str)
                 ],
             )
         })
-        .or_else(|| string_value_guidance(params, "presentation", &["short"]))
+        .or_else(|| {
+            string_value_guidance(
+                request.get("action").unwrap_or(&Value::Null),
+                "action_type",
+                &["choice", "evidence_observation"],
+            )
+        })
+        .or_else(|| {
+            string_value_guidance(
+                request.get("action").unwrap_or(&Value::Null),
+                "presentation",
+                &["short"],
+            )
+        })
         .or_else(|| {
             array_string_values_guidance(
-                params.get("required_for"),
-                "required_for",
+                request.get("required_for"),
+                "request.required_for",
                 &[
                     "scope_update",
                     "prepare_write",
@@ -1701,7 +1786,7 @@ fn request_user_judgment_invalid_argument_guidance(params: &Value, source: &str)
                 ],
             )
         })
-        .or_else(|| root_shape_guidance_for_source(params, source, request_user_judgment_root_fields(), crate::tool_registry::REQUEST_USER_JUDGMENT_FINAL_ACCEPTANCE_ARGUMENTS_JSON))
+        .or_else(|| root_shape_guidance_for_source(params, source, request_user_action_root_fields(), crate::tool_registry::REQUEST_USER_ACTION_FINAL_ACCEPTANCE_ARGUMENTS_JSON))
 }
 
 fn update_scope_invalid_argument_guidance(params: &Value, source: &str) -> Option<String> {
@@ -1975,21 +2060,8 @@ fn record_run_root_fields() -> &'static [&'static str] {
     ]
 }
 
-fn request_user_judgment_root_fields() -> &'static [&'static str] {
-    &[
-        "project_selector",
-        "task_id",
-        "change_unit_id",
-        "sensitive_action_scope",
-        "judgment_kind",
-        "presentation",
-        "question",
-        "options",
-        "context",
-        "affected_refs",
-        "required_for",
-        "expires_at",
-    ]
+fn request_user_action_root_fields() -> &'static [&'static str] {
+    &["project_selector", "detail", "request"]
 }
 
 fn update_scope_root_fields() -> &'static [&'static str] {
@@ -2108,7 +2180,7 @@ impl_has_envelope!(
     PrepareWriteRequest,
     StageArtifactRequest,
     RecordRunRequest,
-    RequestUserJudgmentRequest,
+    RequestUserActionRequest,
     ReconcileChangesRequest,
     CheckCloseRequest,
     CloseTaskRequest,
@@ -2129,7 +2201,7 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
         | PREPARE_WRITE_TOOL_NAME
         | STAGE_ARTIFACT_TOOL_NAME
         | RECORD_RUN_TOOL_NAME
-        | REQUEST_USER_JUDGMENT_TOOL_NAME
+        | REQUEST_USER_ACTION_TOOL_NAME
         | RECONCILE_CHANGES_TOOL_NAME
         | CLOSE_TASK_TOOL_NAME => Some(OperationCategory::AgentWorkflow),
         _ => None,

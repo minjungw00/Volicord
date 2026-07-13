@@ -29,9 +29,9 @@ Volicord는 제품, 구현, 실행 파일 역할, MCP 호스트 용어, 기준 �
 | Volicord 설치 | 배포된 Volicord 실행 파일과 필요한 런타임 리소스의 부분집합. | 모든 설치에 문서, 테스트, 소스 파일, 저장소 메타데이터가 들어 있다고 추론하면 안 됩니다. |
 | `volicord` 관리 프로세스 | Volicord 구현 안의 관리 CLI 실행 파일/프로세스. | Volicord나 Volicord 구현 전체와 같은 말로 보면 안 됩니다. |
 | `volicord mcp --stdio` MCP 어댑터 프로세스 | Volicord 구현 안의 로컬 stdio MCP 어댑터 실행 파일/프로세스. | Volicord 구현과 별개이거나 그 자체가 Volicord 구현 전체라고 보면 안 됩니다. |
-| `Agent Connection` | `connection_internal_id`, 연결 의도, 호스트 범위, `workflow` 또는 `read_only`인 `connection.mode`와 함께 저장되는 로컬 MCP 호스트 연결 단위입니다. | OS 샌드박스, 파일시스템 ACL, 네트워크 정책, 비밀값 격리 장치, 사용자 대상 식별자 요구사항, 사용자 판단 경로로 보면 안 됩니다. |
+| `Agent Connection` | `connection_internal_id`, 연결 의도, 호스트 범위, `workflow` 또는 `read_only`인 `connection.mode`와 함께 저장되는 로컬 MCP 호스트 연결 단위입니다. | OS 샌드박스, 파일시스템 ACL, 네트워크 정책, 비밀값 격리 장치, 사용자 대상 식별자 요구사항, 사용자 행동 해결 경로로 보면 안 됩니다. |
 | `Connection Projects` | 사용자 대상 저장소 루트 선택 뒤 Agent Connection이 다룰 수 있는 `project_internal_id` 값의 명시적 허용 목록입니다. | 기본적으로 등록된 모든 프로젝트를 포함하거나 Product Repository 권한을 증명한다고 보면 안 됩니다. |
-| `User Channel` | 권한 효력이 있는 사용자 판단을 기록하는 로컬 사용자 경로입니다. | Agent Connection, MCP 호스트, 생성된 표시, Product Repository 파일로 보면 안 됩니다. |
+| `User Channel` | 판단과 Evidence 관찰을 포함해 권한 효력이 있는 사용자 행동을 기록하는 로컬 사용자 경로입니다. | Agent Connection, MCP 호스트, 생성된 표시, Product Repository 파일로 보면 안 됩니다. |
 | MCP 서버 | 외부 MCP 호스트에 노출되는 서버 항목이나 프로세스의 이름으로 쓸 수 있는 일반 MCP 프로토콜 또는 호스트 설정 용어입니다. 호스트가 그 라벨을 사용한다면 `volicord mcp --stdio` 같은 로컬 stdio 어댑터 프로세스를 가리킬 수도 있습니다. | 제품/시스템인 Volicord, Volicord 구현, `volicord`, `volicord mcp --stdio`를 TCP 또는 HTTP 네트워크 서버로 만들지 않으며, Volicord의 제품 라벨도 아닙니다. |
 
 동작을 한 실행 파일 역할이 수행한다면 그 역할의 이름을 씁니다. 의미가 구현 집합 전체에 적용될 때만 단독 Volicord 구현을 사용합니다.
@@ -53,7 +53,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **`Volicord Runtime Home`**
 
-- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 판단, 아티팩트, 세션 감시 기록을 저장할 수 있습니다. 별도 진단 데이터베이스는 크기가 제한된 로컬 운영 집계만 저장합니다.
+- **포함하는 것:** `registry.sqlite`, 필요할 때 생성되는 비권한 `diagnostics.sqlite`, 프로젝트별 `projects/{project_internal_id}/state.sqlite`, 아티팩트 저장소를 사용할 때의 `projects/{project_internal_id}/artifacts/`입니다. 레지스트리는 Runtime Home 식별 정보와 경로, 설치 프로필, 저장소 루트 기반 프로젝트 등록, 프로젝트 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, `managed host configuration state`를 저장합니다. 프로젝트 상태에는 `Task`, Change Unit, 쓰기 티켓, 증거 메타데이터, User Channel 사용자 행동 resolution, 아티팩트, 세션 감시 기록을 저장할 수 있습니다. 별도 진단 데이터베이스는 크기가 제한된 로컬 운영 집계만 저장합니다.
 - **사용 경로:** `volicord init`, `project`, `connection`, `inbox`, `changes`, `doctor`, `diagnostics`, 숨겨진 내부 훅 명령이 각 담당 경로에 따라 상태를 초기화하거나 읽거나 갱신합니다. `volicord doctor --privacy-footprint`는 행 본문을 출력하지 않고 저장 범주와 개수를 보고합니다. `volicord diagnostics session`은 일반 설정 점검 뒤 크기 제한 진단 저장소만 읽습니다. `volicord mcp --stdio`, Core, Store는 시작, 프로젝트 처리 경로, Core 상태, 아티팩트, 최선 노력 운영 집계를 위해 Runtime Home 상태를 사용합니다.
 - **경계:** Product Repository, 외부 호스트 설정, 설치 디렉터리가 아닙니다. OS 샌드박스, 네트워크 격리, 악성코드·비밀값 검사, 호스트 신뢰, 행위자 귀속, 쓰기 방지, 변조 방지 감사, 전체 파일시스템 감시, 정확성, 테스트 충분성, 검토 완료, 최종 수락, 잔여 위험 수락을 제공하거나 증명하지 않습니다.
 
@@ -85,7 +85,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 - **담당하는 것:** 명시적 로컬 ID 또는 고유한 로컬 저장소 발견 결과로 Agent Connection 하나에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home과 연결 상태를 확인하고, `connection.mode`에 맞는 도구를 노출하고, 허용된 프로젝트를 선택하고, 어댑터가 담당하는 호출 사실을 파생하고, 공개 메서드 호출을 Core와 Store로 전달합니다. 저장소 발견은 현재 Git worktree를 정규화하고 로컬 Runtime Home에서 선택한 등록 프로젝트 하나로 프로세스를 좁힙니다.
 - **시작 주체:** `stdin`/`stdout`으로 통신하는 MCP 호스트입니다.
-- **경계:** 임의 제품 파일 편집 권한이나 사용자 판단 기록 권한을 부여하지 않습니다. 호스트 신뢰를 강제하거나 샌드박싱을 제공하거나 MCP 네트워크 전송 리스너를 열지 않습니다. 비활성화하지 않으면 로컬 User Channel 동의를 위한 별도 임시 루프백 전용 HTTP 리스너를 열 수 있지만, 이 리스너는 MCP 전송이 아닙니다.
+- **경계:** 임의 제품 파일 편집 권한이나 사용자 행동 resolution 기록 권한을 부여하지 않습니다. 호스트 신뢰를 강제하거나 샌드박싱을 제공하거나 MCP 네트워크 전송 리스너를 열지 않습니다. 비활성화하지 않으면 로컬 User Channel 동의를 위한 별도 임시 루프백 전용 HTTP 리스너를 열 수 있지만, 이 리스너는 MCP 전송이 아닙니다.
 
 <a id="runtime-location-product-repository"></a>
 ### `Product Repository`
@@ -262,7 +262,7 @@ transport입니다. 기준 stdio 프로세스가 아니며 공개 네트워크 A
 
 Agent Connection은 `volicord mcp --stdio`를 위한 로컬 MCP 호스트 연결 단위입니다. 연결은 `connection_internal_id`, `personal`, `shared`, `global` 중 하나의 연결 의도, 호스트 범위, `connection.mode=workflow` 또는 `connection.mode=read_only`를 가지며, Connection Projects 허용 목록에 명시된 `project_internal_id` 값만 다룰 수 있습니다. 사용자 대상 관리 명령은 내부 식별 정보를 요구하지 않고 호스트, 의도, 저장소 루트로 연결을 선택합니다. MCP에 보이는 프로젝트 선택은 Volicord가 반환한 `project_selector`를 사용합니다.
 
-Agent Connection은 지원되는 API 경로를 통해 사용자 판단을 요청할 수 있지만, 권한 효력이 있는 사용자 판단을 기록할 수 없습니다. 그런 판단은 `User Channel`을 통해 `actor_source=local_user`로 기록됩니다.
+Agent Connection은 지원되는 API 경로를 통해 사용자 행동을 요청할 수 있지만, 권한 효력이 있는 사용자 행동 resolution을 기록할 수 없습니다. 그런 resolution은 `User Channel`을 통해 `actor_source=local_user`로 기록됩니다.
 
 추론하면 안 되는 것:
 - 복사된 `connection_id` 프로세스 바인딩 값이 권한, 사용자 신원, OS 권한, 호스트 신뢰, 역량을 증명한다는 주장.
@@ -362,7 +362,7 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 
 - [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md), [저장소 버전 관리](storage-versioning.md): 저장소 기록 배치, 효과, 아티팩트, 스키마 초기화, 버전 관리, 런타임 데이터 세부사항.
 - [API 메서드](api/methods.md)와 메서드 담당 문서: 메서드 처리 경로와 메서드 동작.
-- [Core 모델](core-model.md): Core 권한, User Channel 판단 경계, `actor_source`, 쓰기 티켓, 수락, 잔여 위험.
+- [Core 모델](core-model.md): Core 권한, User Channel 사용자 행동 경계, `actor_source`, 쓰기 티켓, 수락, 잔여 위험.
 - [보안](security.md): 보안 주장과 비주장, 신뢰 경계, 보장 수준, `operation_category`, Agent Connection 권한 추론 금지.
 - [상태 보기 권한 참조](projection-and-templates.md): 상태 보기 권한과 최신성 경계.
 - [템플릿 본문](template-bodies.md): 렌더링된 템플릿 본문 계약.

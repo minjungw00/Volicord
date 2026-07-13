@@ -58,7 +58,13 @@
 - 현재 적용 Change Unit을 만들거나 교체할 때 선택적으로 쓰는 `change_unit.effect_contract`. 값이 있으면 `ChangeUnitEffectContract`를 사용합니다. 생략하면 그 Change Unit에는 추가 효과 계약이 없습니다.
 - 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
 
-범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `basis.compatibility_status=current`, 범위 갱신을 포함하는 `required_for`, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 해결 권한 정보 누락, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
+범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처, `basis.coordinates.compatibility_status=current`, 범위 갱신을 포함하는 `required_for`, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 오래됨, 대체됨, 만료됨, 유효하지 않은 근거, 해결 권한 정보 누락, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
+
+범위 또는 Change Unit 효과를 적용하기 전에 Core는 현재 보류 중인 사용자 행동
+요청의 `required_for`에 `scope_update`가 있고 그 행동 종류, Task, 현재 Change Unit,
+`scope_revision`, 근거, 영향받는 참조가 이 연산과 일치하면
+`DECISION_UNRESOLVED`로 거절합니다. 정보 제공용 요청과 해결됨, 오래됨, 대체됨,
+만료됨, 불일치, 행동 종류 비호환 요청은 갱신을 막지 않습니다.
 
 ## 요청 스키마
 
@@ -314,7 +320,7 @@ state:
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

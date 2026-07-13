@@ -18,7 +18,7 @@
 - stdio JSON-RPC 프레이밍, 메시지 검증, 지원되는 MCP 메서드
 - 루프백 전용 로컬 HTTP 전송의 JSON-RPC 요청 처리
 - stdio 전송 경계에서 서버가 시작하는 MCP `elicitation`
-- 대기 중인 사용자 판단을 위한 로컬 consent URL 대체 경로
+- 대기 중인 사용자 행동을 위한 로컬 consent URL 대체 경로
 - 하나의 내부 Agent Connection 바인딩에 대한 MCP 시작 검증
 - 전송 경계에서의 MCP `tools/list`와 `tools/call` 동작
 - 내부 래퍼와 호출 메타데이터를 숨기는 MCP 표시 입력·출력 도구 스키마 투영(MCP 전용
@@ -56,7 +56,7 @@
 모드입니다. MCP 호스트는 이를 자식 프로세스로 시작하고 stdin/stdout으로 통신합니다.
 MCP TCP 리스너, HTTP MCP 리스너, Unix 도메인 소켓 리스너, 또는 그 밖의 MCP 네트워크
 리스너가 아닙니다. 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없을 때는 대기
-중인 사용자 판단을 위해 별도의 루프백 전용 consent 리스너를 시작할 수 있습니다.
+중인 사용자 행동을 위해 별도의 루프백 전용 consent 리스너를 시작할 수 있습니다.
 
 `volicord serve --transport local-http`는 Docker와 `localhost` MCP 사용을 위한 별도의
 명시적 프로세스 모드입니다. 네이티브 로컬 실행은 루프백 전용 HTTP 리스너를
@@ -211,7 +211,7 @@ Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, 레지�
 - `GET /healthz`는 최소 로컬 상태 확인 엔드포인트이지만 같은 베어러 토큰을 요구합니다.
 - `GET /consent`와 `POST /consent`는 로컬 consent URL을 사용할 수 있을 때만 열리는
   엔드포인트입니다. MCP 엔드포인트가 아니며 MCP 베어러 토큰을 사용하지 않습니다.
-  프로젝트, 연결, 대기 판단에 묶인 유효한 일회성 consent 토큰이 필요한 루프백 User
+  프로젝트, 연결, 대기 중인 사용자 행동에 묶인 유효한 일회성 consent 토큰이 필요한 루프백 User
   Channel 입력 경로입니다.
 - 인증 없이 접근할 수 있는 임의 리소스 엔드포인트는 없습니다.
 - 브라우저 대상 요청은 `Origin` 헤더가 있는지로 식별합니다. `Origin`이 있는 MCP
@@ -675,7 +675,7 @@ printf '%s\n' \
 - `tools/call`
 
 초기화된 클라이언트가 `capabilities.elicitation`을 선언했다면 서버는
-`volicord.request_user_judgment`를 처리하는 동안 중첩된 `elicitation/create` 요청 하나를
+`volicord.request_user_action`을 처리하는 동안 중첩된 `elicitation/create` 요청 하나를
 보낼 수 있습니다. 이 요청은 서버가 시작한 MCP 프로토콜 트래픽이며 Agent Connection
 도구가 아닙니다. 서버는 User Channel 기록을 시도하기 전에 그 서버 요청에 대한 클라이언트
 응답을 검증합니다.
@@ -690,14 +690,16 @@ printf '%s\n' \
 
 | 모드와 저장소 읽기·쓰기 가능 여부 | MCP에 보이는 도구 |
 |---|---|
-| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
+| 쓰기 가능한 프로젝트 상태의 `workflow` | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
+| 읽을 수 있지만 쓸 수 없는 프로젝트 상태의 `workflow` | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action`(resume만), `volicord.check_close`, `volicord.list_projects` |
 | 읽을 수 있는 프로젝트 상태의 `read_only` | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
 | 읽을 수 있는 허용 프로젝트 상태가 없음 | `volicord.list_projects` |
 
 MCP 어댑터는 시작과 탐색 중 프로젝트 상태를 읽기 전용으로 살펴볼 수 있습니다. 현재 MCP
 호스트 환경에서 프로젝트 상태를 읽을 수는 있지만 쓸 수 없다면, 저장된 Agent Connection
-모드가 `workflow`여도 읽기 호환 메서드 도구만 계속 보이고 워크플로 변경 도구는 숨깁니다.
+모드가 `workflow`여도 읽기 호환 메서드 도구만 계속 보이고 워크플로 변경 분기는 숨깁니다.
+혼합 `volicord.request_user_action` 도구는 명시적 resume 분기가 기존 요청을 읽을 수 있도록
+계속 보이지만 create 분기는 `MCP_UNAVAILABLE`을 반환합니다.
 허용 프로젝트 상태를 하나도 읽을 수 없으면 호출자가 프로젝트 사용 가능성을 확인할 수
 있도록 `volicord.list_projects`만 보이게 유지합니다.
 
@@ -727,9 +729,8 @@ MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 �
 `volicord.get_operation_result`는 정확한 과거 변경 응답 하나를 크기가 제한된 page로
 조회하는 읽기 전용 Core 메서드에 매핑되며 프로젝트 상태를 읽을 수 있을 때 두 연결 모드에
 모두 나열됩니다.
-`volicord.record_user_judgment`와 `volicord.record_user_observation`은 User
-Channel 경로를 위한 공개 Core API 메서드이지만 둘 다 Agent Connection MCP 도구로
-노출되지 않습니다. 공개 메서드 담당 표는 [API
+`volicord.resolve_user_action`은 모든 User Channel 해결을 위한 공개 Core API
+메서드이지만 Agent Connection MCP 도구로 노출되지 않습니다. 공개 메서드 담당 표는 [API
 메서드](api/methods.md)를 봅니다.
 
 구조적으로 유효한 `tools/call` 요청은 객체 `params` 안에 아래 값을 둡니다.
@@ -773,9 +774,11 @@ MCP 인자 투영은 생략이 기존에 허용하던 명시적 `null` 또는 �
   항목 안에서는 `observed_by_actor_source=null`, `tool_name=null`,
   `tool_invocation_id=null`, `tool_metadata={}`, `input_refs=[]`,
   `source_refs=[]`, `output_artifact_refs=[]`, `limitations=[]`
-- `volicord.request_user_judgment`: `change_unit_id=null`,
-  `sensitive_action_scope=null`, `options=null`, `affected_refs=[]`,
-  `expires_at=null`
+- `volicord.request_user_action`: `request.operation=create` 아래에서 판단 variant는
+  `request.change_unit_id=null`, `request.action.sensitive_action_scope=null`,
+  `request.action.options=null`, `request.action.affected_refs=[]`,
+  `request.expires_at=null`입니다. 관찰 variant에는 호출자 expiry 기본값이 없고,
+  `request.operation=resume`에는 create 기본값이 없습니다.
 
 MCP에 보이는 모든 변경 도구는 `detail=summary|workflow|full`도 받습니다. `detail`을
 생략하면 `summary`가 기본값입니다. 이는 어댑터 응답 상태 보기 선택이며 Core 요청 필드가
@@ -783,9 +786,11 @@ MCP에 보이는 모든 변경 도구는 `detail=summary|workflow|full`도 받�
 
 이 기본값은 MCP 표시 인자 DTO에만 속합니다. 디코딩 뒤 어댑터는 모든 멤버를 갖춘 Core
 요청 형태를 구성합니다. 따라서 각 메서드 참조가 담당하는 공개 Core API의 멤버 존재
-계약은 바뀌지 않습니다. `volicord.request_user_judgment`의 `task_id`,
-`judgment_kind`, `presentation`, `question`, `context`, `required_for`는 계속 필수 MCP
-인자입니다. `volicord.record_run`에서는 각 `evidence_updates` 항목 안의 `target`,
+계약은 바뀌지 않습니다. `volicord.request_user_action`에는 중첩
+`request.operation` 판별자가 필수입니다. create variant는 `request.task_id`와 완전한
+닫힌 `request.action`을 요구하고, resume variant는
+`request.user_action_request_id`만 요구하며 create 필드를 거부합니다.
+`volicord.record_run`에서는 각 `evidence_updates` 항목 안의 `target`,
 `coverage_state`가 계속 필수이고, 각 `evidence_observations` 항목 안의 `target`,
 `source_kind`, `assurance_level`, `observed_at`도 계속 필수입니다. 각 `target`은 API
 상태 스키마가 담당하는 엄격한 태그형 수락 기준 또는 보충 주장 합집합입니다. 이 규칙은 그 밖의 필드에 암묵적 값을 만들지
@@ -800,7 +805,7 @@ description은 완전한 모드와 실행 종류 호환 행렬을 포함합니�
 첫 operation-result page 조회, prepare-write, prepare-evidence-capture 세 변형,
 stage-artifact, Product Repository 파일 쓰기가
 없는 `advisor`의 `shaping_update`,
-증거를 포함한 work `implementation`, request-judgment, reconcile, check-close, close의
+증거를 포함한 work `implementation`, request-user-action create와 resume, reconcile, check-close, close의
 완료·취소·대체 분기가 포함됩니다. 광고한 각 예시는 호출에 쓰는 동일한 `inputSchema`와
 MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 줄 뿐이며, 일치하는 프로젝트
 상태나 권한, 전제조건, 성공적인 Core 결과를 주장하지 않습니다.
@@ -810,9 +815,9 @@ MCP 인자 DTO를 따릅니다. 예시는 지원하는 인자 분기를 보여 �
 스키마를 생성합니다. 변경 도구는 새 `AuthorityReceipt`와 다음 단계에 필요한 메서드 결과를
 결합한 summary·workflow 래퍼, 같은 새 receipt와 정확한 공개 메서드 응답을 결합한 full
 래퍼, 크기가 제한된 효과 적용 후 복구 분기를 광고합니다.
-`volicord.request_user_judgment`의
-full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이 대기 판단을 기록했을 때
-반환되는 User Channel 응답도 포함합니다. `volicord.list_projects`는 정확한 어댑터
+`volicord.request_user_action`은 복합 `agent_workflow_result`, replay 표시, snapshot에
+결속된 현재 상태, nullable `user_channel_resolution` 형태를 사용합니다. user-only 해결이
+정확한 요청 결과를 대체하지 않습니다. `volicord.list_projects`는 정확한 어댑터
 유틸리티 결과 스키마를 사용합니다. `structuredContent`를 포함하는 서버 결과는 광고한
 스키마를 따라야 합니다.
 
@@ -822,7 +827,7 @@ full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이
 |---|---:|---:|---:|---:|
 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` | `true` | `false` | `true` | `false` |
 | `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact` | `false` | `false` | `false` | `false` |
-| `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_judgment`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
+| `volicord.intake`, `volicord.update_scope`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.close_task` | `false` | `true` | `false` | `false` |
 
 파괴적이지 않은 변경 도구 행에서 `destructiveHint=false`는 커밋되는 저장 갱신이 기존
 권한 상태를 교체하거나 무효화하거나 소비하지 않고 추가된다는 뜻입니다. 호출이 읽기
@@ -831,14 +836,22 @@ full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이
 `volicord.record_run`은 커밋할 때 호환되는 쓰기 티켓이나 스테이징 입력을 소비하고,
 증거와 차단 사유를 갱신하고, `close_basis_revision`을 증가시키고, 현재 판단을
 무효화하고, 현재 닫기 근거를 교체하거나 이전 근거를 오래된 상태로 만들 수 있으므로
-`destructiveHint=true`를 사용합니다. 커밋된 `volicord.request_user_judgment`도 대기
-판단을 만들면서 `Task` 생명주기를 바꿀 수 있습니다. 정확한 효과는 메서드와 저장 효과
+`destructiveHint=true`를 사용합니다. 커밋된 `volicord.request_user_action`도 대기
+사용자 행동을 만들면서 `Task` 생명주기를 바꿀 수 있습니다. 정확한 효과는 메서드와 저장 효과
 담당 문서가 정하며, annotation은 이 도구가 기존 권한 상태를 바꿀 수 있음을 MCP
 클라이언트에 보수적으로 알립니다.
 
-모든 변경 도구는 MCP에 보이는 각 호출마다 어댑터가 관리하는 새 요청 식별 정보를
-받으므로 `idempotentHint=false`입니다. 하나의 생성된 식별 정보에 대한 Core 재실행 처리는
-나중에 보이는 별도 MCP 호출이 같은 결과를 내거나 추가 효과가 없다고 보장하지 않습니다.
+하나의 annotation이 `volicord.request_user_action`의 두 operation을 모두 다루므로
+보수적입니다. `request.operation=create`는 문서화된 파괴적 mutation 효과를 가질 수
+있습니다. `request.operation=resume`은 읽기 전용 정확한 과거 replay와 현재 projection일
+뿐 효과를 만들지 않지만, tool 수준 annotation은 계속 `readOnlyHint=false`,
+`destructiveHint=true`, `idempotentHint=false`입니다.
+
+변경할 수 있는 도구는 서로 다른 create 또는 mutation 호출마다 보통 어댑터가 관리하는 새
+요청 식별 정보를 받으므로 `idempotentHint=false`입니다. 하나의 생성된 식별 정보에 대한
+Core 재실행 처리는 나중에 보이는 별도 mutation 호출이 같은 결과를 내거나 추가 효과가
+없다고 보장하지 않습니다. 명시적 `request_user_action` resume 분기는 동작상 예외입니다.
+이미 커밋된 요청을 이름 붙이며 대체 idempotency key나 mutation을 만들지 않습니다.
 
 이 값은 클라이언트 힌트이며 신뢰할 수 있는 권한 부여 사실이 아닙니다. Agent Connection
 권한을 부여하거나, 호스트 신뢰·승인을 우회하거나, 호스트 안전 검토를 생략하거나, 광고한
@@ -861,10 +874,12 @@ full 분기는 원래 도구 호출이 끝나기 전에 호스트 elicitation이
 경고는 관찰이 아직 시작되지 않았음을 말합니다. 명시적 프로젝트 선택으로 기준선이 만들어진
 뒤의 `volicord.list_projects` 출력은 저장된 관찰 시작 시각과 근거를 보고합니다.
 
-MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑터는 `request_id`, 워크플로
+Mutation과 create 분기에서 MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑터는 `request_id`, 워크플로
 효과에 대한 `idempotency_key`, Core가 최신 상태를 요구하는 경우 선택된 프로젝트의 현재
 상태에서 얻은 `expected_state_version`, `dry_run=false`, 기본 로캘, 선택된 내부
 프로젝트, 파생된 호출 맥락을 제공합니다. 공개 MCP 인자는 이 사실들을 덮어쓸 수 없습니다.
+Request-user-action resume 분기는 대신 읽기 전용 접근 맥락을 파생하고 저장된 원천을
+조회하며 mutation envelope, idempotency key, expected state version을 만들지 않습니다.
 
 `volicord.status`는 Core include 행렬을 노출하지 않고 간결한 공개 `detail` 인자를
 사용합니다. 지원 값은 `summary`, `workflow`, `full`이며 `detail`을 생략하면 기본값은
@@ -882,12 +897,15 @@ MCP 어댑터는 Core에 넘기기 전에 Core 래퍼를 생성합니다. 어댑
 `volicord.stage_artifact`에서는 스테이징된 handle과 만료 시각을,
 `volicord.record_run`에서는 정확한 Run ref, 등록된 `ArtifactRef` 값, 새로 기록된 증거
 관찰 ref, null일 수 있는 `close_basis_anchor`를, `volicord.reconcile_changes`에서는
-찾은 항목별 결과를, `volicord.request_user_judgment`에서는 대기 또는 해결 결과를
+찾은 항목별 결과를, `volicord.request_user_action`에서는 정확한 요청 결과, replay 표시,
+현재 projection state version/시각, 별도 안전 해결 사실, 해결에서 파생된 ref를
 보존합니다. `close_basis_anchor`는 `close_basis_revision`, `scope_revision`,
 `source_run_ref`, null일 수 있는 `evidence_summary_ref`를 담습니다. 이는 Task에 저장된
 닫기 근거를 가리키는 타입이 지정된 좌표이며 `StateRecordRef`나 별도 닫기 근거 기록이
-아닙니다. 해결된 간결한 Judgment 결과는 Judgment ref, 상태, 선택한 option ID와 label,
-resolution outcome을 포함하고 자유 형식 사용자 note는 제외합니다. `detail=full`은 이러한
+아닙니다. 해결된 간결한 사용자 행동 결과는 요청 ref, 정확한 과거 해결 ref, snapshot에
+결속된 상태, 선택한 option ID와 label 또는 증거 관찰 요약, 해당되는 resolution outcome,
+공개 해결 파생 ref를 포함하고 자유 형식 사용자 note와 evidence observation summary
+텍스트는 제외합니다. `detail=full`은 이러한
 다음 단계 필수 handle, ticket, Run·증거 ref, 찾은 항목별 결과, 호스트 고유 선택이 아닌
 추가 필드가 필요한 호출자를 위한 값입니다.
 
@@ -1027,7 +1045,7 @@ mutation으로 다시 호출하지 말고, 보존된 모든 필드를 사용한 
 
 Core가 적용된 결과를 이미 반환한 뒤 후속 어댑터 작업이 정상 래퍼를 만들지 못하면,
 어댑터는 같은 검증된 권한 상태 새로 고침을 먼저 수행하고 또 다른 `isError=false`,
-`retryable=false` 효과 적용 후 분기를 반환합니다. 대기 판단을 만든 뒤 호스트 User Channel
+`retryable=false` 효과 적용 후 분기를 반환합니다. 대기 중인 사용자 행동을 만든 뒤 호스트 User Channel
 어댑터가 실패하면 `code=MCP_POST_EFFECT_ADAPTER_FAILED`, 정상 응답 상태 보기를 만드는 중
 실패하면 `code=MCP_RESPONSE_PROJECTION_FAILED`입니다. 두 분기 모두 메서드 `tool_name`,
 `requested_detail`, 효과 사실, null일 수 있는 `effect_anchor`, null일 수 있는
@@ -1061,91 +1079,129 @@ Core/도메인 거절 변경 응답은 이 성공 상태 보기 경로에 들어
 객체와 `isError=false`를 유지하고, 짧은 호환 텍스트로 클라이언트가
 `structuredContent`를 보도록 안내합니다.
 
-<a id="user-judgment-elicitation"></a>
-### 사용자 판단 입력 요청
+<a id="user-action-elicitation"></a>
+### 사용자 행동 입력 요청
 
-`volicord.request_user_judgment`는 Core에 구체적인 대기 `UserJudgment` 생성을 요청하는
-유일한 Agent Connection 도구로 남습니다. MCP 어댑터는 `volicord.record_user_judgment`를
-Agent Connection 도구로 노출하지 않으며, 에이전트가 넣은 답변 필드를 사용자 입력의
-대체물로 받지 않습니다.
+`volicord.request_user_action`은 엄격한 중첩 `request.operation=create` variant를 통해
+대기 `UserActionRequest`를 만드는 유일한 Agent Connection tool입니다. 같은 도구의
+`request.operation=resume` variant는 직접 만든 요청을 이름 붙여 읽기 전용 연속 작업을
+수행합니다. `volicord.resolve_user_action`은 MCP tool로 노출되지 않으며 agent 인자가
+User Channel 해결이 될 수 없습니다.
 
-`workflow` 연결이 `volicord.request_user_judgment`를 호출하고 Core가 대기 판단을 커밋하면
-다음 규칙을 적용합니다.
+`request.operation=create` 요청 커밋 뒤 어댑터는 Core 소유
+`UserActionInboxForm`을 소비합니다. 판단 폼은
+저장된 `selected_option_id`와 선택적 note만 요청합니다. 증거 관찰 폼은 저장 대상
+selector 하나, 저장 아티팩트 ID의 비어 있지 않은 부분집합, `supported` 또는
+`contradicted`, 크기가 제한된 summary를 요청합니다. label, description, consequence,
+기본 선택 표시는 표시 전용입니다. 대상 statement를 포함한 완전한 저장
+`EvidenceTarget` metadata와 `display_name`, `content_type`, `sha256`, `size_bytes`,
+`integrity_status`, `redaction_state`, `availability`, `created_by_run_ref`,
+`created_by_actor_source`, `storage_ref` 필드를 포함한 완전하고 정확한 `ArtifactRef`
+metadata도 표시 전용입니다. 제출하는 값은 선택한 대상 selector와
+아티팩트 ID뿐이며 표시 metadata는 후보 권한으로 제출하지 않습니다. MCP elicitation은
+자르지 않은 완전한
+`elicitation/create` JSON-RPC 요청 객체를 UTF-8 JSON으로 인코딩한 바이트와 끝의 LF
+1바이트를 합친 크기가 32 KiB 이하일 때만 사용합니다. 그렇지 않으면 그 경로를 사용
+불가로 보고하고 prompt capture, local web consent, CLI 순서의 가용 경로를 사용합니다.
+폼과 제출은 자르지 않습니다.
 
-- 초기화된 클라이언트가 `capabilities.elicitation`을 선언했다면 어댑터는 원래
-  `tools/call` 응답을 반환하기 전에 `elicitation/create`를 보낼 수 있습니다. 요청
-  스키마는 Core가 만든 선택지 ID에서 가져온 필수 `selected_option_id`와 선택적 `note`를
-  담은 평평한 객체입니다. 이 스키마는 비밀값, 자격 증명, 토큰, 개인 키 또는 그 밖의
-  비공개 비밀 자료를 요청하지 않습니다.
-- `elicitation` 응답이 `action=accept`이면 어댑터는 `content.selected_option_id`를 대기
-  판단 선택지와 대조해 검증합니다. 유효한 응답은 Core의 User Channel 메서드를 통해
-  `actor_source=local_user`, `operation_category=user_only`,
-  `resolved_verification_basis=mcp_elicitation_user_channel`로 기록합니다. 그런 다음
-  어댑터는 새로 읽은 Task 상태에 선택한 변경 `detail` 상태 보기를 적용합니다.
-- `elicitation` 응답이 `action=decline`이고 대기 판단에 Core 거절 선택지가 있으면
-  어댑터는 같은 User Channel 경로로 그 거절 선택지를 기록합니다. 거절 선택지가 없으면
-  판단은 대기 상태로 남습니다.
-- `elicitation` 응답이 `action=cancel`이거나, 유효하지 않거나, 형식이 잘못되었거나, 대기
-  판단과 맞출 수 없으면 어댑터는 답변을 기록하지 않으며 대기 판단은 대기 상태로 남습니다.
-- 클라이언트가 해당 기능을 선언하지 않아 호스트 프롬프트 입력을 사용할 수 없으면 어댑터는
-  답변을 기록하지 않고 대기 `RequestUserJudgmentResult`와 추가 텍스트를 반환합니다.
-  채팅 명령 캡처 사용 가능 상태가 `configured`, `observed`, `active`이면 그 텍스트에
-  프롬프트 제출 훅 경로와 호환되고 현재 검증 코드를 포함한 정확한 채팅 명령이 들어갈 수
-  있습니다.
-- 채팅 명령 캡처를 사용할 수 없고 로컬 consent URL을 사용할 수 있으면 어댑터는 짧게
-  만료되는 일회성 토큰을 만들고 루프백 consent URL과 구조화된 대체 JSON을 반환합니다.
-  URL에는 프로젝트 선택자와 토큰만 들어갑니다. Runtime Home 경로, 저장소 경로,
-  프롬프트 본문, 답변, 임의 API 매개변수는 포함하지 않습니다.
-- 로컬 consent URL 경로가 비활성화되었거나, 안전하게 바인딩할 수 없거나, 토큰을 만들 수
-  없으면 대체 안내는 `volicord inbox` CLI 받은편지함 경로를 가리킵니다.
-
-모든 성공 분기에서 `result.structuredContent`는 선택한 변경 `detail` 상태 보기를
-따릅니다. Host elicitation이 판단을 해결하면 모든 상태 보기는 최초 agent 소유
-`volicord.request_user_judgment`의 `operation_result_ref`를 유지하며 user-only 기록
-작업의 ref로 바꾸지 않습니다. `detail=full`은 agent에게 안전한 기록 응답 상태 보기와 새
-권한 receipt를 결합합니다. 이 상태 보기는 선택 결과를 유지하되 자유 형식 사용자 note를
-null로 두거나 유지합니다. 정확한 user-only 응답은 담당자를 위해 저장되지만 Agent
-Connection으로 조회할 수 없습니다. 기본값인 `summary`는 해당 receipt와 간결한 Judgment
-결과를 결합합니다. 간결한 결과는
-Judgment ref와 상태를 포함하고, 해결 뒤에는 선택한 option ID와 label, resolution outcome을
-포함하지만 자유 형식 note는 포함하지 않습니다. `result.content[0].text`는 JSON 복사본이
-아니라 짧은 호환 요약으로 남습니다. 추가 `content[]` 텍스트가 있으면 대체 안내나
-`elicitation` 취소·무효 설명 같은 어댑터 안내입니다. 그 추가 텍스트는
-`structuredContent`의 일부가 아니며 Core 권한, 공개 API 응답 필드, 사용자 판단 기록도
+새로운 에이전트 대상 사용자 입력 표면을 열기 전에 어댑터는 질문, context summary,
+표시되는 모든 `EvidenceTarget`과 `ArtifactRef` metadata 값을 포함한 완전한 닫힌 폼
+렌더링에 하나의 보수적인 presentation safety 분류를 적용합니다. 완전한 presentation이
+비밀값이나 credential 자료를 나타내 사용자 전용 채널을 요구하면 어댑터는
+`elicitation/create` 요청을 보내지 않고, 풍부한 prompt-capture 질문, context, 폼,
+검증 코드, resolve 명령 템플릿도 출력하지 않습니다. 사용 가능하면 local web consent로,
+그렇지 않으면 CLI inbox로 내려갑니다. 이 사용자 전용 local web 및 CLI 표면은 완전한
+canonical 폼을 계속 렌더링합니다. 이 분류는 보수적인 어댑터 경로 선택일 뿐이며 일반
+비밀값 scanner, 가림 처리 서비스, 격리 경계, 임의의 비밀값을 탐지한다는 보장이
 아닙니다.
 
+유효한 elicitation을 accept하면 어댑터는 파생 `local_user` provenance, 인식된
+verification basis, 고유 `channel_submission_id`, `expected_state_version=null`로
+user-only 해결 경로를 호출합니다. 어댑터가 만드는 모든 submission identity는 visible
+ASCII `0x21..=0x7e` 1~256 bytes이며, 어댑터는 유효하지 않은 값을 잘라내거나 정규화해
+이 형태로 만들지 않습니다. Core가 preflight에서 현재 상태를 고정합니다. decline은
+거절 선택지가 있는 판단 폼에서만 저장 reject 선택지에 대응합니다. cancel, malformed
+content, 알 수 없거나 혼합된 후보, stale 폼, 상태 충돌은 해결을 기록하지 않으며 요청이
+계속 현재이고 만료되지 않았으면 유효 pending으로 남깁니다.
+
+MCP 결과는 복합 projection입니다. `agent_workflow_result`는 항상 원래 Agent Connection
+호출이 커밋한 byte 단위로 정확한 요청 응답이고 `operation_result_ref`는 그 결과만
+가리킵니다. Presentation safety 경로 선택은 이 변경 불가능한 과거 결과를 가리거나 다시
+쓰지 않습니다. 원래 요청이나 폼에 새로 여는 모든 presentation 표면에서 사용자 전용
+입력을 요구하는 값이 들어 있어도 마찬가지입니다. `agent_workflow_result_replayed`가
+create와 명시적 resume을 구분합니다.
+Resume은 같은 활성 workflow Agent Connection actor 범위와 허용 project를 요구하고 이후
+Git workspace 좌표는 비교하지 않습니다. 다른 connection이나 reconciliation이 만든
+요청에는 사용할 수 없습니다. 요청, replay 행, event, token, prompt, resolution,
+state version을 만들지 않고 영속 정규 UTC 하한도 갱신하지 않습니다.
+
+별도 nullable `user_channel_resolution`은 변경 불가능한 해결과 현재 compact 사실의
+agent-safe 구조화 projection을 담습니다. Core는 이 resolution, `current_status`, 정확한
+과거 `derived_refs`를 `current_projection_state_version`과
+`current_projection_observed_at`으로 식별하는 한 SQLite snapshot에서 읽습니다. 이후 일반
+authority refresh는 더 큰 state version일 수 있으며 projection을 다시 표시하지 않습니다.
+즉시 host 해결이 `agent_workflow_result`를 user-only 메서드 결과로 바꾸면 안 됩니다. 자유
+형식 note와 관찰 summary는 제외합니다. Resolution ref와 derived ref는 이후 관계없는
+commit 뒤에도 원래 `produced_at_state_version`을 유지합니다.
+
+어댑터는 `request.operation=create`를 처리하면서 커밋 후 재조회 결과가 계속
+`pending`일 때만 `elicitation/create`를 보냅니다. Resume은 현재 상태가 `pending`이어도
+`elicitation/create`를 보내거나 prompt capture, local web, CLI fallback을 실행하지 않고
+정확한 과거 `agent_workflow_result`와 현재 안전 projection을 반환합니다. Create에서
+요청이 `resolved`, `stale`, `superseded`, `expired`이면 새 prompt 없이 현재 안전
+projection을 반환합니다. Create 중 요청을 pending으로 남긴 취소·거절·유효하지 않은 host
+입력은 정확한 중첩 resume 안내를 포함하고 두 번째 요청을 만들지 않습니다.
+
+fallback 안내는 Core 권한 밖에 남습니다. 사용할 수 없는 host prompt 입력이 다른 가용
+경로를 숨기면 안 됩니다. Chat capture는 같은 요청 ID, 저장 후보, verification code,
+expiry, form digest를 사용합니다. 풍부한 prompt capture를 사용할 수 없으면 짧게
+만료되는 local web token을 정확한 요청, form digest, project, connection에 결속합니다.
+그 밖에는 `volicord inbox`를 안내합니다. 각 pending fallback은 같은 request ID와
+`request.operation=resume`, `creates_new_request=false`를 담은 구조화 연속 작업 인자를
+포함하며, User Channel 완료 뒤 에이전트는 다른 create 대신 이 분기를 사용합니다.
+
 <a id="local-web-consent-fallback"></a>
-로컬 consent 리스너는 기본적으로 `127.0.0.1`에 바인딩합니다. 안전하게 바인딩할 수
-없으면 요청을 허용하지 않고 실패해야 합니다. stdio 모드에서는 임시 루프백 포트를
-사용합니다. `volicord serve --transport local-http`에서는 같은 루프백 전용 로컬 HTTP
-리스너에서만 consent 경로를 제공합니다.
+로컬 consent listener는 loopback-only이고 fail closed합니다. `GET /consent`는 일회용
+token을 검증하고 정확한 canonical 폼을 렌더링합니다. `POST /consent`는 그 폼의 필드만
+받습니다. Origin, project, connection, request, form digest, expiry, 후보 membership,
+token 상태를 다시 검증합니다. 성공한 폐쇄형 resolution 본문 삽입과 token 소비는
+원자적입니다.
 
-로컬 consent 엔드포인트 동작:
+POST 해결에서 어댑터는 유일하게 허용되는 digest-only `local_web:<sha256>` submission
+identity를 위한 Core 소유 도출을 사용합니다. 이 도출은 정확한 프로젝트, 사용자 행동
+요청, 원문 bearer-token credential, 예상 Agent Connection, 타입이 지정된 canonical 완료
+metadata를 결속합니다. Core는 token을 전달하는 진입점에서 identity를 다시 계산하고
+domain-separated token digest, connection, 같은 폐쇄형 metadata도 mutation replay
+identity에 결속합니다. 이 전체 binding과 canonical resolution이 같은 중복 제출만 원래의
+안전한 완료를 반환합니다. 손으로 만든 identity나 서로 다른 token, connection, metadata,
+resolution은 replay를 열지 못하며 두 번째 효과도 만들지 않습니다. 원문 token은 일시적인
+입력으로만 남습니다. Token 테이블은 domain-separated hash를 저장하고 resolution·replay
+저장소와 응답은 파생 digest 또는 hash만 담습니다. Endpoint는 Runtime Home 또는 Product
+Repository 파일, static asset, MCP method, 임의 API를 제공하지 않습니다.
 
-- `GET /consent?project=<project_id>&token=<token>`은 일회성 토큰을 현재 프로젝트와
-  연결에 대해 검증합니다. 만료되었거나, 사용되었거나, 유효하지 않거나, 프로젝트 또는
-  연결이 다른 토큰은 안전한 HTML 오류 페이지로 거절합니다. 유효한 요청에는 판단 문구,
-  선택지, 검증 정보, 양식이 있는 최소 HTML 페이지를 렌더링합니다. 페이지는 선택지와 그
-  의미, 프로젝트 이름 또는 식별자, 사용할 수 있을 때 등록된 저장소 경로, 연결 식별자,
-  판단 ID, 토큰 만료 시각, 대체 CLI 명령을 보여 줍니다. 또한 사용자가 사용자 소유 판단을
-  기록한다는 점과 에이전트가 사용자를 대신해 이를 기록할 수 없다는 점을 밝힙니다. 이
-  판단은 정확성, 테스트 충분성, 배포 성공,
-  검토 완료, 보안 강제, 닫기 준비 상태를 증명하지 않는다는 점을 명시합니다.
-- `POST /consent`는 토큰, 선택한 Core 선택지 ID, 선택적 메모가 들어 있는
-  `application/x-www-form-urlencoded` 양식 제출만 받습니다. `Origin` 헤더가 있으면 동의
-  엔드포인트의 Origin 값과 일치해야 합니다. 알 수 없는 선택지 ID를 포함한 검증 실패는
-  토큰을 사용 처리하지 않습니다.
-- 성공한 제출은 Core를 통해 `actor_source=local_user`, `operation_category=user_only`,
-  `resolved_verification_basis=local_user_local_web`으로 답변을 기록하고, 같은 프로젝트 상태
-  트랜잭션 또는 동등한 원자적 작업 안에서 토큰을 `consumed`로 표시합니다.
-- 만료, 다른 프로젝트·연결·판단에 묶인 토큰, 사용된 토큰의 재사용은 다른 답변을 기록하기
-  전에 거절합니다. 성공한 제출 뒤 중복 제출은 이미 사용된 토큰 결과를 결정적으로 반환하며
-  기록된 판단을 바꾸지 않습니다. 판단 기록 중 쓰기 실패가 발생하면 대기 판단이 여전히
-  현재 상태인 동안 토큰은 만료 전까지 `pending`으로 남습니다.
-- 로컬 consent URL은 사람 사용자의 답변을 캡처합니다. Agent Connection이 사용자 소유
-  판단에 답하도록 하는 경로로 사용하면 안 됩니다.
-- 엔드포인트는 Runtime Home 파일, Product Repository 파일, 정적 자산, MCP 메서드, 임의
-  API를 제공하지 않습니다.
+Token 발급은 별도 저장소 transaction에서 프로젝트의 정규 Core UTC 시계를 사용합니다.
+Token `created_at`을 저장합니다. 요청 expiry가 있으면 `expires_at`은 요청 expiry와
+`created_at + 600 seconds` 중 더 이른 값으로 정확히 파생하고, 요청 expiry가 없으면
+정확히 `created_at + 600 seconds`로 파생합니다. 또한 원자적으로 영속 프로젝트 시각
+하한을 `created_at` 이상으로 전진시킵니다. 권한 event나 replay 행을 만들지 않고
+`state_version`도 증가시키지 않습니다. GET과 POST 검증은 정규 현재 프로젝트 시각을
+사용합니다. Token은 반열린 구간 `created_at <= now < expires_at`에서만 유효합니다.
+`now < created_at`이면 유효하지 않으며 token을 소비하면 안 됩니다.
+`now >= expires_at`이면 만료이며 resolution을 만들거나 소비하면 안 됩니다. 이미 파생된
+token `expired` 상태를 영속화하더라도 프로젝트 시각 하한은 전진시키지 않습니다. 전체
+하한 계약은 [저장소 버전 관리](storage-versioning.md#canonical-core-utc-clock)가 담당합니다.
+Token TTL은 checked timestamp 덧셈을 사용하고 저장 문자열은 canonical RFC 3339 UTC여야
+합니다. 저장 `created_at`은 요청의 저장 `requested_at`보다 이를 수 없습니다.
+Noncanonical 문자열이나 정확히 파생한 값과 다른 저장 expiry는 손상이며 검증, GET, POST,
+expiry 정리, 소비를 모두 무효과로 실패시킵니다. Overflow 또는 표현 불가능한 expiry는
+token이나 하한을 삽입하기 전에 실패합니다.
+
+token의 저장 생성 metadata는
+`{fallback_kind="local_web_consent", endpoint="/consent", form_digest}` 폐쇄형
+객체입니다. 구성원이 빠지거나, 추가되거나, 형식 또는 타입이 잘못되거나, 값이 일치하지
+않으면 폼 렌더링이나 resolution 시도 전에 실패합니다. 이 실패는 token을 소비하거나
+User Channel 효과를 만들지 않습니다.
 
 Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과
 안에 Volicord 응답 JSON을 래핑합니다.

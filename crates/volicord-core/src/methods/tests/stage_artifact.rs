@@ -180,7 +180,7 @@ fn staged_evidence_input_is_not_close_evidence_until_recorded() -> Result<(), Bo
             ),
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: false,
+                pending_user_actions: false,
                 write_ticket: false,
                 evidence: true,
                 close: true,
@@ -419,6 +419,35 @@ fn stage_artifact_accepts_complete_result_at_serialized_boundary() -> Result<(),
     assert_eq!(after.artifact_staging, before.artifact_staging + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations);
     assert!(stage_artifact_tmp_dir(&harness).is_dir());
+    Ok(())
+}
+
+#[test]
+fn stage_artifact_ttl_overflow_rejects_before_staging_effect() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_stage_artifact_capability(&harness)?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "stage_ttl_overflow")?;
+    harness.use_generator_and_clock(
+        CountingDurableIdGenerator::new(["stage-ttl-overflow"]),
+        ManualClock::at("9999-12-31T23:50:00Z"),
+    );
+    let before = harness.counts()?;
+
+    let response = harness.service.stage_artifact(
+        stage_artifact_request("req_stage_ttl_overflow", None, false, Some(2), &task_id),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "expires_at"
+    );
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 

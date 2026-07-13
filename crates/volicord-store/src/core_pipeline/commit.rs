@@ -1,11 +1,12 @@
 use rusqlite::{params, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
-use volicord_types::{IdempotencyKey, MethodName, ProjectId, RequestHash};
+use volicord_types::{IdempotencyKey, MethodName, ProjectId, RequestHash, UtcTimestamp};
 
 use super::{
-    read_project_state_tx, replay::tool_invocation_tx, validation::*, CommitMutationInput,
-    CommittedEventRef, CommittedMutationFacts, CoreProjectStore, MutationCommitOutcome,
-    PendingTaskEvent, ProjectMutation, VerifiedReplayContext,
+    project_current_utc_timestamp_for_conn, read_project_state_tx, replay::tool_invocation_tx,
+    validation::*, CommitMutationInput, CommittedEventRef, CommittedMutationFacts,
+    CoreProjectStore, MutationCommitOutcome, PendingTaskEvent, ProjectMutation,
+    VerifiedReplayContext,
 };
 use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};
 
@@ -49,6 +50,39 @@ impl CoreProjectStore {
             validate_pending_event(event)?;
         }
 
+        let explicit_clock_floor = input
+            .clock_floor
+            .as_deref()
+            .map(UtcTimestamp::parse)
+            .transpose()
+            .map_err(|_| StoreError::InvalidInput {
+                detail: "commit clock_floor must be a valid RFC 3339 UTC timestamp".to_owned(),
+            })?;
+        if explicit_clock_floor
+            .as_ref()
+            .is_some_and(|timestamp| timestamp.ensure_canonical_rfc3339_representable().is_err())
+        {
+            return Err(StoreError::InvalidInput {
+                detail:
+                    "commit clock_floor must have a canonical four-digit RFC 3339 representation"
+                        .to_owned(),
+            });
+        }
+        let remembered_clock_floor = self.last_clock_sample.borrow().clone();
+        if remembered_clock_floor
+            .as_ref()
+            .is_some_and(|timestamp| timestamp.ensure_canonical_rfc3339_representable().is_err())
+        {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
+                detail: "Core Store handle clock sample is outside the canonical RFC 3339 range"
+                    .to_owned(),
+            });
+        }
+        let local_clock_floor = [remembered_clock_floor, explicit_clock_floor]
+            .into_iter()
+            .flatten()
+            .max();
         let tx = begin_immediate_transaction(&mut self.conn)?;
         let current = read_project_state_tx(&tx, &self.project.project_id)?;
 
@@ -111,17 +145,48 @@ impl CoreProjectStore {
                 })?;
         let current_state_i64 = u64_to_i64("basis_state_version", current.state_version)?;
         let committed_state_i64 = u64_to_i64("committed_state_version", committed_state_version)?;
+        let committed_at = if input.include_live_storage_time {
+            project_current_utc_timestamp_for_conn(
+                &tx,
+                &self.project.project_id,
+                local_clock_floor.as_ref(),
+            )?
+        } else {
+            // An injected Core clock replaces the SQLite live candidate, but it
+            // remains bounded by the transaction's persisted project floor.
+            match local_clock_floor {
+                Some(local_clock_floor) => {
+                    let persisted_floor =
+                        UtcTimestamp::parse(&current.updated_at).map_err(|_| {
+                            StoreError::corrupt_owner_state_value(
+                                "project_state",
+                                &self.project.project_id,
+                                "updated_at",
+                            )
+                        })?;
+                    std::cmp::max(persisted_floor, local_clock_floor)
+                }
+                None => {
+                    return Err(StoreError::InvalidInput {
+                        detail: "commits without live storage time require an explicit clock floor"
+                            .to_owned(),
+                    })
+                }
+            }
+        };
+        let committed_at_text = committed_at.to_string();
 
         let changed = tx.execute(
             "UPDATE project_state
                 SET state_version = ?3,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    updated_at = ?4
               WHERE project_id = ?1
                 AND state_version = ?2",
             params![
                 self.project.project_id,
                 current_state_i64,
-                committed_state_i64
+                committed_state_i64,
+                committed_at_text
             ],
         )?;
         if changed != 1 {
@@ -147,6 +212,7 @@ impl CoreProjectStore {
         let mut mutation = ProjectMutation {
             project_id: &self.project.project_id,
             project_home: &self.project.project_home,
+            committed_at: &committed_at_text,
             tx: &tx,
         };
         apply_mutation(&mut mutation, &facts)?;
@@ -158,7 +224,7 @@ impl CoreProjectStore {
                 + i64::try_from(index).map_err(|_| StoreError::InvalidInput {
                     detail: "event index does not fit in SQLite integer".to_owned(),
                 })?;
-            let created_at = transaction_timestamp(&tx)?;
+            let created_at = committed_at_text.as_str();
             let event_hash = authority_event_hash(AuthorityEventHashInput {
                 project_id: &self.project.project_id,
                 event_seq,
@@ -172,7 +238,7 @@ impl CoreProjectStore {
                 payload_json: &event.event_payload_json,
                 request_hash: &input.request_hash,
                 previous_event_hash: previous_event_hash.as_deref(),
-                created_at: &created_at,
+                created_at,
             });
             tx.execute(
                 "INSERT INTO authority_events (
@@ -258,7 +324,7 @@ impl CoreProjectStore {
                     ?9,
                     ?10,
                     ?11,
-                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    ?12
                 )",
                 params![
                     self.project.project_id,
@@ -271,12 +337,14 @@ impl CoreProjectStore {
                     replay_context.operation_category.as_str(),
                     replay_context.verification_basis.as_deref(),
                     replay_context.git_workspace_context_json.as_deref(),
-                    response_json
+                    response_json,
+                    committed_at_text
                 ],
             )?;
         }
 
         tx.commit()?;
+        *self.last_clock_sample.borrow_mut() = Some(committed_at);
         Ok(MutationCommitOutcome::Committed {
             response_json,
             basis_state_version: current.state_version,
@@ -303,6 +371,8 @@ pub fn commit_input(
         request_hash: request_hash.as_str().to_owned(),
         replay_context,
         expected_state_version,
+        clock_floor: None,
+        include_live_storage_time: true,
         events,
     }
 }
@@ -334,13 +404,6 @@ fn previous_event_hash_tx(tx: &Transaction<'_>, project_id: &str) -> StoreResult
         |row| row.get(0),
     )
     .optional()
-    .map_err(StoreError::from)
-}
-
-fn transaction_timestamp(tx: &Transaction<'_>) -> StoreResult<String> {
-    tx.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
-        row.get(0)
-    })
     .map_err(StoreError::from)
 }
 

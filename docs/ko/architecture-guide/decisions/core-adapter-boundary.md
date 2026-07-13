@@ -99,8 +99,8 @@ Core가 변경 결과를 반환하면 MCP 어댑터는 정확한 메서드 결�
   관리 구성에서 사용하는 프로젝트 등록, Agent Connection 기록,
   Connection Project 멤버십.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs)와
-  [`crates/volicord-core/src/methods/judgment.rs`](../../../../crates/volicord-core/src/methods/judgment.rs):
-  로컬 User Channel 조율과 Core 판단 기록.
+  [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
+  로컬 User Channel 조율과 Core 사용자 행동 해결.
 - `volicord-core`, `volicord-mcp`, `volicord-cli` Cargo 매니페스트.
 
 ## 관련 테스트와 참조 담당 문서

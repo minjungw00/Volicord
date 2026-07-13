@@ -199,7 +199,7 @@ impl DiagnosticUserChannelKind {
     }
 }
 
-/// Controlled pending-judgment fallback category.
+/// Controlled pending-user-action fallback category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticFallbackKind {
     PromptCapture,
@@ -461,7 +461,7 @@ pub fn read_diagnostic_session(
             "SELECT session_id, connection_id, project_id, transport, host_kind,
                     package_version, build_id, started_at, updated_at
                FROM diagnostic_sessions
-              ORDER BY updated_at DESC, session_id DESC
+              ORDER BY julianday(updated_at) DESC, session_id DESC
               LIMIT 1",
             [],
             read_session_row,
@@ -554,7 +554,7 @@ fn prune_diagnostics(conn: &Connection) -> rusqlite::Result<()> {
           WHERE session_id NOT IN (
               SELECT session_id
                 FROM diagnostic_sessions
-               ORDER BY updated_at DESC, session_id DESC
+               ORDER BY julianday(updated_at) DESC, session_id DESC
                LIMIT ?1
           )",
         [DIAGNOSTICS_MAX_SESSIONS],

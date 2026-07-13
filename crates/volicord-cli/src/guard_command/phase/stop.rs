@@ -70,7 +70,7 @@ fn stop_decision(
             },
             include: StatusInclude {
                 task: true,
-                pending_user_judgments: true,
+                pending_user_actions: true,
                 write_ticket: true,
                 evidence: true,
                 close: true,
@@ -86,10 +86,10 @@ fn stop_decision(
         ),
     )?;
     let mut reasons = Vec::new();
-    if summary.pending_user_judgment_count > 0 {
+    if summary.pending_user_action_count > 0 {
         reasons.push(GuardReason {
-            code: "pending_user_judgments",
-            message: "User-owned judgments are still pending for the active task.".to_owned(),
+            code: "pending_user_actions",
+            message: "User-owned actions are still pending for the active task.".to_owned(),
             severity: "deny",
         });
     }
@@ -217,7 +217,7 @@ fn authority_receipt_matches_fresh_status(
                 .change_unit_ref
                 .as_ref()
                 .map(|record| record.record_id.as_str())
-        && summary.pending_user_judgment_count == result.pending_user_judgments.len()
+        && summary.pending_user_action_count == result.pending_user_actions.len()
         && summary.active_blocker_count == result.blocker_refs.len()
         && active_task.project_id.as_str() == project.project_id
         && active_task.state_version == state_version

@@ -35,9 +35,9 @@ Volicord는 추가되는 안정적 읽기 전용 메서드
 - 조회한 본문은 과거 기록이며 현재 권한이 아닙니다. 호출자는 이전 메서드
   응답을 현재 상태로 취급하지 않고 `volicord.status`에서 현재 권한을 읽습니다.
 - 호스트가 중개한 User Channel 답변으로 호출이 끝나면 MCP는 원래 에이전트
-  소유 `volicord.request_user_judgment` 결과 참조를 유지합니다. 이 참조를
+  소유 `volicord.request_user_action` 결과 참조를 유지합니다. 이 참조를
   안전한 간결한 선택 결과와 함께 반환하며, 사용자 전용
-  `volicord.record_user_judgment` 결과나 자유 형식 note는 Agent Connection에
+  `volicord.resolve_user_action` 결과나 자유 형식 note는 Agent Connection에
   노출하지 않습니다.
 - `volicord.stage_artifact`는 재실행 행 경로 밖에 계속 둡니다. 스테이징이
   바이트나 핸들을 만들기 전에 전체 결과를 직렬화해 크기 상한을 확인해야 하며,

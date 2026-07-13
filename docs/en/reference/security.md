@@ -22,10 +22,10 @@ Volicord security wording describes record and policy boundaries inside document
 | Surface | Supported security meaning | Non-guarantee |
 |---|---|---|
 | `Volicord Runtime Home` | Storage/runtime owners define which Volicord operational records live there and how they are validated. | Runtime Home placement is not OS sandboxing, tamper-proof isolation, host trust, network isolation, malware scanning, or secret scanning. |
-| `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-judgment, and write-ticket paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
+| `Product Repository` | Product files can be inspected as inputs, and compatible product-file writes can be governed by owner-defined Core, user-action, and write-ticket paths. | Product files are not Volicord state, and Volicord does not provide arbitrary product-file edit permission, malware scanning, secret scanning, or global filesystem interception. |
 | Agent Connections and host configuration | Agent Connections provide documented connection context, `actor_source` provenance, connection intent, mode, and Connection Projects allowlists when the current invocation matches the registered connection. | Connection configuration is not OS permission, host trust, user identity, or proof that an external host loaded or exposed `volicord mcp --stdio`. |
-| `volicord mcp --stdio` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user judgments, enforce host trust, block commands, block networks, or isolate tools. |
-| Local HTTP transport | `volicord serve --transport local-http` can expose the documented local MCP-over-HTTP subset for localhost and Docker host-loopback use with bearer-token and Origin checks. The bearer token is a local secret for the serve process. The local web consent route can expose a loopback User Channel capture page with a one-time token for one pending judgment. | Local HTTP transport and local web consent are not a public network API, SaaS endpoint, multi-user server, security boundary, public host-interface listener, remote service, authentication service, authorization service, or full MCP Streamable HTTP implementation. |
+| `volicord mcp --stdio` | The adapter routes MCP calls through Agent Connection checks, Runtime Home state, Core, and Store. | The process does not itself grant arbitrary product-file edit authority, record authority-bearing user-action resolutions, enforce host trust, block commands, block networks, or isolate tools. |
+| Local HTTP transport | `volicord serve --transport local-http` can expose the documented local MCP-over-HTTP subset for localhost and Docker host-loopback use with bearer-token and Origin checks. The bearer token is a local secret for the serve process. The local web consent route can expose a loopback User Channel capture page with a one-time token for one pending user action. | Local HTTP transport and local web consent are not a public network API, SaaS endpoint, multi-user server, security boundary, public host-interface listener, remote service, authentication service, authorization service, or full MCP Streamable HTTP implementation. |
 | `volicord` CLI | Administrative commands manage setup, registry state, and supported host-integration state. | The CLI is not a public API security boundary, host trust controller, OS permission mechanism, or blanket write approval. |
 
 ## Supported security guarantees
@@ -43,7 +43,7 @@ The supported guarantee display labels are `cooperative` and `detective`; the va
 
 Conditions:
 - The caller, Agent Connection, User Channel, local admin path, or connector follows the documented Volicord paths.
-- The claim stays inside documented Core, API, storage, runtime, and user-judgment boundaries.
+- The claim stays inside documented Core, API, storage, runtime, and user-action boundaries.
 
 May claim:
 - Volicord records, write compatibility, evidence summaries, user-owned judgments, and close-readiness results are governed by their owner contracts.
@@ -117,16 +117,26 @@ Owner links:
 
 ## Local connection assumptions
 
-Volicord security claims assume local actors use the documented Volicord contracts for Volicord state, records, artifacts, write compatibility, and user-owned judgments.
+Volicord security claims assume local actors use the documented Volicord contracts for Volicord state, records, artifacts, write compatibility, and user-owned actions.
 
 May claim:
-- Local product files can be inputs to Volicord checks or user-owned judgments.
+- Local product files can be inputs to Volicord checks or user-owned actions.
 - Local runtime data location can be defined by storage/runtime owners.
 - Agent Connections can provide `actor_source=agent_connection:<connection_id>` provenance when [Agent Connection Reference](agent-connection.md), method owners, and this security owner allow the claim. The `connection_id` segment is the process-binding/provenance spelling in that string, not a user-facing authority token or storage-field name.
-- The `User Channel` can provide `actor_source=local_user` provenance for authority-bearing user judgments when Core and method owners require it.
+- The `User Channel` can provide `actor_source=local_user` provenance for authority-bearing user-action resolutions, including judgments and evidence observations, when Core and method owners require it.
 - Connection Projects define the explicit `project_internal_id` allowlist for an Agent Connection. User-facing commands select projects by repository root, project name, alias, or a `project_selector` returned by Volicord.
 - `operation_category` classifies an operation as `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - Baseline actor provenance is cooperative local provenance, not cryptographic human identity.
+
+At agent-facing User Channel boundaries, Volicord may conservatively classify
+the question, context summary, and complete rendered closed form as requiring a
+user-only input surface. In that case it does not open a new MCP elicitation or
+rich prompt-capture presentation and instead retains local web consent or CLI
+inbox routing. User-only surfaces still display the complete canonical form,
+and immutable historical Agent Connection results are not redacted or
+rewritten. This surface-routing rule is not general secret scanning, content
+isolation, malware detection, host enforcement, or proof that arbitrary secret
+material was found or excluded.
 
 Must not claim:
 - Local filesystem access proves Volicord authority.
@@ -190,7 +200,7 @@ Connection identity, user-channel provenance, and operation categories limit wha
 May claim:
 - Internal connection identity, connection intent, `connection.mode`, Connection Projects, `operation_category`, and `actor_source` can be used according to the runtime, Core, method, and security owners after the current invocation matches the documented connection context.
 - `actor_source` can supply durable provenance only when the Core and method owners accept the value for the current authority-resolution operation.
-- `actor_source=local_user` through the `User Channel` is required for authority-bearing user judgments.
+- `actor_source=local_user` through the `User Channel` is required for authority-bearing user-action resolutions, including judgments and evidence observations.
 - A workflow Agent Connection can create a current evidence-capture intent.
   Only a registered local source can fulfill it, and only `record_run` can
   finalize the receipt as a producer and observation. There is no MCP receipt-
@@ -226,12 +236,13 @@ a disabled connection, removed project membership, different project, or
 different actor must not expose historical response bytes.
 
 `operation_category=user_only` results are outside this Agent Connection
-retrieval path. In particular, the exact `volicord.record_user_judgment`
-response and any free-form user `note` must not be returned through
-`volicord.get_operation_result`. A host-mediated Judgment flow may expose only
-the MCP-transport-owned agent projection for the agent-owned request. Its
-compact form omits the note, its full form keeps the note null, and neither form
-exposes the user-only operation reference or exact response body.
+retrieval path. In particular, the exact `volicord.resolve_user_action`
+response, any free-form user `note`, and any evidence-observation `summary`
+must not be returned through `volicord.get_operation_result`. A host-mediated
+user-action flow may expose only the MCP-transport-owned agent projection for
+the agent-owned request. Both its compact and full forms omit the private
+`note` and evidence-observation `summary`, and neither form exposes the
+user-only operation reference or exact response body.
 
 Retrieved bytes describe a historical result. They are not an
 `AuthorityReceipt`, current status, evidence, a write ticket, or proof that the
@@ -260,7 +271,7 @@ Generated displays, rendered templates, chat text, connector prose, and agent me
 
 Must not claim:
 - A rendered display, `Projection`, status card, template output, chat message, connector description, or agent memory is a new authority source.
-- Displayed `ArtifactRef`, `UserJudgment`, write-ticket identifier, or `connection_id` text creates the authority named by those identifiers.
+- Displayed `ArtifactRef`, `UserActionRequest`, `UserActionResolution`, write-ticket identifier, or `connection_id` text creates the authority named by those identifiers.
 
 ## Explicit non-guarantees
 
@@ -343,6 +354,14 @@ Volicord Local HTTP transport does not guarantee:
 Bearer-token and Origin checks are transport-bound checks for the local HTTP
 process. They do not make the endpoint suitable for public exposure; keep it on
 host loopback or the intended Docker host-loopback publishing boundary.
+
+The one-time local-web consent token remains a transient bearer secret. Durable
+state stores its domain-separated hash and digest-only submission/replay
+identities, not the raw token. Core binds the submitted identity to the exact
+project, request, expected Agent Connection, and closed completion context and
+revalidates it before replay or commit. These checks prevent a different local
+credential or context from opening that replay; they do not attest a human
+identity or turn the listener into an authentication or authorization service.
 
 ### Broad authority inference
 

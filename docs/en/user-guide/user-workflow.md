@@ -12,9 +12,9 @@ flowchart TD
   ask["Ask for work in ordinary language"]
   boundary["Agent shows the task, scope,<br/>unknowns, and next safe action"]
   action["Agent inspects or acts"]
-  status["Review evidence, blockers,<br/>and pending judgment"]
-  judgment{"User decision pending?"}
-  answer["Answer through a<br/>User Channel"]
+  status["Review evidence, blockers,<br/>and pending user actions"]
+  judgment{"User action pending?"}
+  answer["Resolve it through a<br/>User Channel"]
   changes{"Unrecorded Change<br/>unresolved?"}
   reconcile["Ask the agent to reconcile"]
   close{"Close blocker remains?"}
@@ -31,7 +31,7 @@ flowchart TD
 ```
 
 Ask for status before a large write, after a meaningful change, and before
-close. Treat every pending user decision, Unrecorded Change, and close blocker
+close. Treat every pending user action, Unrecorded Change, and close blocker
 as a named next action rather than background text.
 
 ## Start With The Outcome
@@ -51,7 +51,7 @@ The agent should show:
 
 - the current goal, scope, and non-goals
 - known facts and important unknowns
-- pending user-owned decisions
+- pending user-owned actions
 - the next safe action
 
 A broad request for help is not permission to expand scope, write unrelated
@@ -81,7 +81,7 @@ A useful answer includes:
 - the current work boundary and scope
 - inspected facts and important unknowns
 - the primary blocker
-- any pending user decision or approval
+- any pending user action or approval
 - relevant Evidence and its limits
 - visible residual risk
 - one next safe action
@@ -119,7 +119,7 @@ The stable manual path is:
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 Choose only an option displayed for that pending judgment. One answer resolves
@@ -146,6 +146,7 @@ Neither write approval nor a Write Ticket is whole-plan approval, final
 acceptance, residual-risk acceptance, OS permission, or proof that a write
 occurred.
 
+<a id="use-evidence-without-replacing-judgment"></a>
 ## Use Evidence Without Replacing Judgment
 
 After meaningful work, the agent should show what happened and which Evidence
@@ -156,6 +157,31 @@ Evidence is not your judgment. A test pass, screenshot, log path, attachment,
 or generated summary supports only the claim it actually demonstrates. Ask for
 more Evidence or narrow the claim when the support is insufficient. Do not ask
 the agent to expose secrets, tokens, or full sensitive logs.
+
+Volicord may ask you to record a focused Evidence observation for one stored
+acceptance criterion or supplemental claim. The host prompt, verified chat
+command, local consent page, and CLI inbox all use the same stored target and
+artifact candidates. Select only candidates shown in that form. The stable CLI
+fallback is:
+
+```sh
+volicord inbox --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID \
+  --criterion CRITERION_ID \
+  --artifact ARTIFACT_ID \
+  --summary "What the selected artifact shows" \
+  --repo "<repo>"
+```
+
+Use `--claim CLAIM_ID` instead of `--criterion CRITERION_ID` when the displayed
+target is a supplemental claim. Repeat `--artifact ARTIFACT_ID` to select more
+displayed artifacts, and add `--contradicted` when the observation contradicts
+the target.
+
+This records one user-owned observation; it does not by itself prove evidence
+sufficiency, final acceptance, or close readiness. The free-form summary stays
+private to the User Channel resolution while the agent projection exposes only
+safe selected identifiers and derived refs.
 
 Exact Evidence meaning belongs to [Core Model](../reference/core-model.md).
 

@@ -20,7 +20,9 @@ This document does not own:
 - baseline SQLite DDL, indexes, foreign keys, canonical SQL sources, or constraints; see [Storage DDL](storage-ddl.md)
 - method branch persistence effects; see [Storage Effects](storage-effects.md)
 - artifact staging, promotion, linking, body reads, retention, or integrity lifecycle; see [Artifact Storage](storage-artifacts.md)
-- `project_state.state_version`, idempotency, replay, events, lock, and incompatible-storage handling; see [Storage Versioning](storage-versioning.md)
+- `project_state.state_version`, the canonical Core UTC clock and its persisted
+  floor, idempotency, replay, events, lock, and incompatible-storage handling;
+  see [Storage Versioning](storage-versioning.md)
 - API request or response shape; see [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md)
 - API method behavior; see [API Methods](api/methods.md) and the method owner documents
 - runtime location and repository boundaries; see [Runtime Boundaries](runtime-boundaries.md)
@@ -60,7 +62,7 @@ For operational project records, `project_home` is the location owner for projec
 
 The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, write tickets, guard records, or Agent Connection registry state are stored.
 
-Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v4`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
+Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v5`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
 
 Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`, while a newly created Runtime Home gets a new id. The id can help detect suspicious copies, duplicate registrations, or path drift; it is not a security guarantee.
 
@@ -88,7 +90,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |
 | `registry.sqlite` | Host-hook installation | Host-hook setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, integration mode, host capability JSON, installation lifecycle status, observed hook metadata, timestamps, and metadata. |
-| `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, and project enforcement profile. |
+| `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, project enforcement profile, and `updated_at` as the persisted floor of the canonical Core UTC clock. |
 | `state.sqlite` | `agent_sessions` | Observed Agent Session | Project-scoped session for one Agent Connection, optional host-hook installation, host kind, integration profile, start/end timestamps, and metadata. |
 | `state.sqlite` | `guard_events` | Host-hook decision event | Project-scoped host-hook event tied to a connection and optional session or installation, with decision, subject JSON, result JSON, timestamp, and metadata. |
 | `state.sqlite` | `prompt_captures` | Prompt capture | Project-scoped prompt capture for a session, including connection, capture kind, prompt hash, optional prompt text, timestamp, and metadata. |
@@ -101,8 +103,9 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `evidence_claims` | Supplemental evidence claim | Caller-assigned `Task`-scoped claim identity with one immutable non-empty statement. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, Change Unit lifecycle, and owning `Task` relation. |
 | `state.sqlite` | `evidence_capture_intents` | Evidence-capture intent | Immutable expiring request bound to current Task/Change Unit/scope/baseline/target/workspace, exact capture spec and digest, requesting connection and actor, expected outcome, and timestamps. |
-| `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, and expired user-owned judgments, including basis snapshot, request context, options, sensitive-action scope, resolution machine action and outcome, rationale metadata, User Channel actor source, verification basis, and assurance level. |
-| `state.sqlite` | Local web consent token | User Channel fallback token | Hash-only one-time token metadata for a pending user judgment, scoped by project, connection, judgment, capture basis, status, expiration, and creation/completion metadata. |
+| `state.sqlite` | `user_action_requests` | User-action request | Closed action request JSON, Core-derived basis and compatibility, required-for targets, request actor, originating method/idempotency relation, and expiry. The capture form and effective lifecycle status are derived rather than stored as composite columns. |
+| `state.sqlite` | `user_action_resolutions` | Immutable User Channel resolution | At most one resolution per request, with a closed kind-matching body, channel kind and bounded visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, and Core capture time. Choice facts or full observation detail stay in the body. |
+| `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | Hash-only one-time local-web token bound to one request, connection, expiry, capture basis, and closed creation metadata containing the fallback kind, endpoint, and exact canonical-form digest. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
 | `state.sqlite` | `write_tickets` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
@@ -111,13 +114,12 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `evidence_capture_source_claims` | Exclusive evidence-source claim | Project-scoped normalized identity for each host invocation, guard event, or session-watch observation consumed by one receipt, with its exact intent/receipt pair, capture kind, and claim timestamp. |
 | `state.sqlite` plus artifact store | `artifacts` | Persistent artifact record | Durable artifact metadata or body location, content type, SHA-256, size, integrity status, redaction, retention, producer, and availability facts. |
 | `state.sqlite` | `artifact_links` | Artifact owner relation | Owner relation between an artifact and a baseline Core/API record family. |
-| `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, and gap references. |
+| `state.sqlite` | `evidence_summaries` | Evidence summary | Compact evidence coverage, supporting references, gap references, and the resulting project state version that produced the current row value. |
 | `state.sqlite` | `evidence_observations` | Evidence observation | Durable provenance record for one target, including Core-derived source and assurance, producer anchor, separate relevance assessment, exact outputs, observer, refs, limitations, and timestamps. |
-| `state.sqlite` | `user_evidence_observations` | User Channel evidence observation | Local-user-owned target relevance record bound to one current Task/Change Unit/scope/baseline and exact canonical artifact outputs. |
 | `state.sqlite` | `evidence_producers` | Finalized evidence producer | Immutable one-to-one intent/receipt/observation/artifact authority record bound to one Run and current basis, with canonical producer JSON. |
 | `state.sqlite` | `blockers` | Blocker state | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. |
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
-| `state.sqlite` | `tool_invocations` | Replay and exact operation-result row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including immutable `response_json`, actor source, operation category, and the optional canonical Git workspace context captured from the verified invocation. Eligible `operation_category=agent_workflow` rows are also the storage source addressed by `OperationResultRef`. |
+| `state.sqlite` | `tool_invocations` | Replay and exact operation-result row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including immutable `response_json`, actor source, operation category, optional verification basis, and the optional canonical Git workspace context captured from the verified invocation. Eligible `operation_category=agent_workflow` rows are also the storage source addressed by `OperationResultRef`. |
 
 ## Record Layout Rules
 
@@ -133,7 +135,21 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - `agent_connections.metadata_json.pending_host_cleanup` is Store-owned recovery state. Generic Agent Connection registration and update inputs must reject that reserved key, and generic enable/disable or Connection Projects membership mutations must reject a marked row. A migration must not activate a marked row as its requested target. Migration transition and cleanup operations may rebind or remove the marker on superseded inventory only while revalidating its project membership.
 - A present `pending_host_cleanup` value with missing, extra, empty, or wrongly typed members is not resumable cleanup. Doctor must report it as an invalid reserved marker; cleanup and migration discovery must not interpret it as valid inventory.
 - Host-hook installation identity is unique by `guard_installation_id`. Project-scoped host-hook installations must name a registered project and an Agent Connection that has Connection Projects membership for that project.
-- Local web consent token identity is the stored token hash within one project-state database. The raw token must not be stored, and a pending token must name the project, selected Agent Connection, pending judgment, capture basis, and expiration. Consuming a token and resolving the corresponding user judgment must be one project-state transaction or equivalent atomic operation.
+- Local web consent token identity is the stored domain-separated token hash within one project-state database. The raw token must not be stored, and a pending token must name the project, selected Agent Connection, pending `UserActionRequest`, capture basis, and expiration. Consuming a token and inserting the corresponding `UserActionResolution` must be one project-state transaction or equivalent atomic operation.
+- `user_action_resolutions.channel_submission_id` is 1 through 256 bytes of
+  visible ASCII `0x21..=0x7e` and is unique within its project and channel kind.
+  A local-web value is a digest-only identity bound to the project, request,
+  bearer-token credential, expected connection, and closed completion metadata.
+  The corresponding replay request hash separately incorporates the
+  domain-separated token digest, expected connection, and typed canonical
+  metadata; neither durable record stores the raw token or the internal binding
+  object.
+- Every `user_action_requests` row stores its exact `source_method` and
+  `source_idempotency_key`. A direct `volicord.request_user_action` origin maps
+  to exactly one request per project, which lets the same Agent Connection
+  resume that exact result without creating a second request. One
+  `volicord.reconcile_changes` commit may create several requests, so its rows
+  may intentionally share the reconciliation idempotency key.
 - Project-scoped rows belong to a registered project.
 - Agent Sessions, host-hook events, prompt captures, expected writes, unrecorded changes, session watch baselines, and session watch observations belong to one project-local `state.sqlite` and name the Agent Connection that observed or produced the record.
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.
@@ -152,6 +168,38 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 
 Current record families hold the current Core state for ordinary reads. `authority_events` is an append-only ordering and local audit trail for committed Core authority mutations. Each authority event row stores `event_id`, `project_id`, resulting `state_version`, `event_type`, `actor_source`, `operation_category`, `payload_json`, `request_hash`, `previous_event_hash`, `event_hash`, and `created_at`. The event hashes are local integrity and export-correlation fields; local SQLite storage is not a tamper-proof audit log. `tool_invocations` stores committed replay rows only where [Storage Effects](storage-effects.md) says replay is created.
 
+For a normal Core authority commit, `project_state.updated_at`, every
+`authority_events.created_at` row in the event batch, and the optional
+`tool_invocations.created_at` replay-row value store one exact transaction
+timestamp. That timestamp is no earlier than the prepared operation-time
+sample. It can equal a prior floor and therefore does not imply that distinct
+`state_version` values always have distinct timestamps.
+
+Store transaction metadata that Core mutation application itself generates for
+that transaction also uses the exact transaction timestamp, including
+applicable `created_at`, `updated_at`, `retired_at`, and `promoted_at` values.
+This rule does not replace semantic operation times such as `requested_at`,
+`resolved_at`, `closed_at`, `recorded_at`, or `consumed_at`, or input- and
+observation-owned facts such as `observed_at` and `started_at`; those preserve
+the single operation sample or owner-verified source time defined by their
+owners.
+
+Every committed `evidence_summaries` insert or update stores the transaction's
+resulting `project_state.state_version` in `produced_at_state_version`.
+The current Evidence Summary for a `Task` is the row with the greatest
+`produced_at_state_version`, not the row with the greatest `created_at` or
+`updated_at`. UTC timestamps retain their owner-defined temporal meaning and
+must not be used as a substitute for authority commit order. An opaque record
+ID is likewise not an authority-order key.
+
+Artifact staging, registered evidence-capture receipt fulfillment, and local
+User Channel token issuance are storage-owned temporal effects rather than Core
+authority commits. Each updates `project_state.updated_at` to at least its own
+`created_at` in the same transaction, but creates no authority event or replay
+row and does not increment `state_version`. Exact replay, rejection, dry-run,
+and read-only paths do not persist a later floor. The complete clock and
+bootstrap-preservation rules belong to [Storage Versioning](storage-versioning.md#canonical-core-utc-clock).
+
 <a id="exact-operation-result-storage"></a>
 #### Exact operation-result storage
 
@@ -166,7 +214,7 @@ stored bytes without rewriting, truncating, or recomputing the response.
 The stored actor and project remain part of the row's ownership boundary.
 Retrieval does not broaden that boundary, and historical response bytes are not
 current Core authority. `operation_category=user_only` rows, including the exact
-`volicord.record_user_judgment` response and its private `note`, are not
+`volicord.resolve_user_action` response and its private user text, are not
 eligible for Agent Connection result retrieval. `volicord.stage_artifact` has
 no replay row and therefore no `OperationResultRef`.
 
@@ -221,13 +269,30 @@ Storage must validate stored relationships before commit, including:
 
 Ordinary baseline Core operations preserve authority rows through lifecycle or status transitions. Completing, cancelling, or superseding a `Task` changes the relevant lifecycle/status meaning while keeping committed authority rows addressable for audit and recovery.
 
-This preservation applies to `tasks`, `change_units`, `evidence_capture_intents`, `evidence_capture_receipts`, `evidence_capture_source_claims`, `user_judgments`, `user_evidence_observations`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `evidence_producers`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Only the receipt's staging handle and staged bytes follow the transient artifact lifecycle. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
+This preservation applies to `tasks`, `change_units`, `evidence_capture_intents`, `evidence_capture_receipts`, `evidence_capture_source_claims`, `user_action_requests`, `user_action_resolutions`, `user_action_channel_tokens`, `project_continuity_records`, `write_tickets`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `evidence_observations`, `evidence_producers`, `blockers`, `authority_events`, `tool_invocations`, `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations`. Only the receipt's staging handle and staged bytes follow the transient artifact lifecycle. Artifact-specific transient and durable retention rules belong to [Artifact Storage](storage-artifacts.md).
 
 ### Host-Observation Records
 
 Host-observation records preserve local authority facts about host integration state. They can help Core and Store decide whether work can honestly proceed or close. They do not provide OS sandboxing, filesystem ACLs, external policy enforcement, anti-forgery proof, actor identity proof, or proof that a write was prevented.
 
 All `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unrecorded_changes`, `session_watch_baselines`, and `session_watch_observations` rows are project-local. They must not leak across project `state.sqlite` databases.
+
+Whenever a host-observation read or projection derives the `latest` or most
+recent `agent_sessions`, `guard_events`, `session_watch_baselines`, or
+`session_watch_observations` authority fact, it strict-parses the applicable
+canonical RFC 3339 timestamp, normalizes it to a UTC instant, and compares that
+instant at nanosecond precision. Stored timestamp text, SQLite `julianday()`,
+row insertion order, and opaque record IDs are not authority-order keys. Rows
+at the same greatest instant are co-latest; an opaque ID must not select one as
+newer.
+
+Close- and security-relevant issue predicates from co-latest `guard_events`
+are combined conservatively across the entire set: an issue present on any
+co-latest event remains present, and an `allow` or issue-free sibling cannot
+hide it. When a consumer requires one Agent Session, session-watch baseline,
+or session-watch observation as authority, multiple distinct co-latest
+candidates make that selection ambiguous and fail closed as unavailable owner
+state unless a focused owner explicitly defines a set-valued aggregation.
 
 `guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope:
 
@@ -240,7 +305,7 @@ All `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, `unr
 - A matched row means a post-tool observation was correlated with that expected write. It does not prove product correctness, actor identity, or OS-level write prevention.
 - An unmatched, ambiguous, or ticket-out-of-scope Product Repository change creates an unresolved `unrecorded_changes` row.
 
-An unresolved `unrecorded_changes` row means that an observed Product Repository change still needs owner-defined reconciliation. Resolving it preserves the row and records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user judgment.
+An unresolved `unrecorded_changes` row means that an observed Product Repository change still needs owner-defined reconciliation. Resolving it preserves the row and records the local resolution basis, actor source, capture basis, resolution timestamp, and optional linked user-action resolution.
 
 `session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, or proof of who changed a file or why it changed.
 
@@ -273,8 +338,9 @@ observations:
   Core-reached, Core-committed, replay, observed product-write, and
   authoritative-refresh-failure counters
 
-The schema has no prompt, path, file-body, error-detail, secret, Judgment
-question, answer, rationale, or note column. The bounded tool field accepts an
+The schema has no prompt, path, file-body, error-detail, secret, user-action
+question or capture-form, choice-note, or evidence-observation-summary column.
+The bounded tool field accepts an
 identifier, not arbitrary request text. Content-bearing detailed trace is not
 supported. Any future detailed trace requires a separate explicit opt-in,
 retention, and redaction contract rather than widening these tables.
@@ -296,9 +362,22 @@ The authoritative current `CurrentCloseBasis` record is `tasks.close_basis_json`
 
 Existing open Tasks do not automatically convert terminal close summary JSON into a current close basis. Absence of a current close basis is represented as absence in `tasks.close_basis_json`, not as an empty generated basis. Change Unit records do not store or satisfy current `CurrentCloseBasis` authority.
 
-Stored judgments require a `JudgmentBasis`. Resolved stored judgments require a complete machine-readable resolution, structured descriptive rationale metadata, actor provenance, verification basis, and assurance level. Rows missing those facts are invalid owner state, not audit-compatible authority records.
+Stored user-action requests require a closed request body and `UserActionBasis`.
+Resolved requests require one complete closed resolution body, actor provenance,
+verification basis, and assurance level. Rows missing those facts are invalid
+owner state, not audit-compatible authority records.
 
-For stored judgment authority, `user_judgments.status='resolved'` records that an answer exists. It does not mean the user approved. Current authority-bearing judgment use requires the selected option, stored `resolution_machine_action`, stored `resolution_outcome`, applicable User Channel actor provenance, and method-owned compatibility. Rationale metadata preserves the reason and context for the answer but is not itself authority, evidence, acceptance, close readiness, or residual-risk acceptance. Absence of an outcome, machine action, applicable actor provenance, verification basis, or assurance level is invalid owner state and is never acceptance.
+The presence of one `user_action_resolutions` row causes effective
+`status=resolved` only while the request basis remains current. A stale or
+superseded basis takes precedence over that immutable row. Resolution presence
+does not mean approval or supporting evidence. Current authority-bearing choice
+use requires the selected stored option, derived machine action/outcome,
+applicable User Channel provenance, and current basis.
+Evidence-observation use requires the nested selected target, exact canonical
+artifact refs, relevance status, nonblank observation summary, and current exact
+artifact bytes stored in the closed resolution body. The optional user note is
+private descriptive text, not rationale or authority. Missing kind-specific
+facts are invalid owner state.
 
 ### Project Continuity Records
 
@@ -335,23 +414,21 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
 | `change_units.is_current` | `0`, `1` |
 | `write_tickets.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
-| `user_judgments.status` | `pending`, `resolved`, `stale`, `superseded`, `expired` |
-| `user_judgments.basis_status` | `current`, `stale`, `superseded` |
-| `user_judgments.resolution_machine_action` | `accept`, `reject`, `defer` in complete resolution groups |
-| `user_judgments.resolution_outcome` | `accepted`, `rejected`, `deferred` in complete resolution groups |
-| `local_web_consent_tokens.status` | `pending`, `consumed`, `expired` |
+| `user_action_requests.action_kind` | seven judgment kinds plus `evidence_observation` |
+| `user_action_requests.basis_status` | `current`, `stale`, `superseded` |
+| `user_action_requests.source_method` | `volicord.request_user_action`, `volicord.reconcile_changes` |
+| `user_action_channel_tokens.status` | `pending`, `consumed`, `expired` |
 | `project_continuity_records.kind` | `decision`, `obligation`, `known_limit`, `accepted_risk`, `constraint` |
 | `project_continuity_records.status` | `active`, `superseded`, `closed` |
 | `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` |
 | `artifacts.integrity_status` | `verified`, `corrupt` |
-| `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` |
+| `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_action_request`, `user_action_resolution`, `evidence_summary`, `evidence_observation`, `evidence_producer`, `blocker` |
 | `evidence_capture_intents.capture_kind`, `evidence_capture_receipts.capture_kind`, `evidence_producers.producer_kind` | `verified_command_execution`, `verified_tool_invocation`, `registered_connection_observation` |
 | `evidence_capture_receipts.completeness` | `complete` |
 | `evidence_capture_source_claims.source_claim_kind` | `host_invocation`, `guard_event`, `session_watch_observation` |
 | `evidence_observations.source_kind` | `agent_report`, `connection_observation`, `external_tool`, `user_observation`, `reused_evidence`, `unverified_claim` |
 | `evidence_observations.assurance_level` | `cooperative_report`, `registered_connection_observed`, `external_tool_result`, `user_observed`, `unverified` |
-| `user_evidence_observations.relevance_status` | `supported`, `contradicted` |
 | `blockers.status` | `active`, `resolved`, `superseded` |
 | `tool_invocations.status` | `committed` |
 | `authority_events.operation_category` and `tool_invocations.operation_category` | `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery` |
@@ -369,7 +446,7 @@ intent and complete receipt path can finalize an authority-owned external-tool
 or registered-connection producer. Direct claims without that exact anchor
 remain cooperative even when their artifact bytes are available and verified.
 A `user_observation` row must point to a current
-`user_evidence_observations` record with exact outputs and
+`evidence_observation` `user_action_resolutions` record with matching detail, exact outputs, and
 `relevance_status=supported`. A `reused_evidence` row must point to exactly one
 original evidence observation; Core recursively revalidates that original
 identity, inherited assurance, outputs, producer, and relevance. Descriptive
@@ -396,12 +473,14 @@ Rules:
 | `guard_events` | Host-hook subject JSON, result JSON, and metadata for a local host decision request. |
 | `prompt_captures` | Non-authority metadata for a captured prompt record; prompt text is a direct nullable text column. |
 | `expected_writes` | Expected path arrays, write-ticket id arrays, matched path arrays, and metadata for detective expected-write correlation. |
-| `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-judgment reference; it must not store full sensitive command or prompt content. |
+| `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-action resolution reference; it must not store full sensitive command or prompt content. |
 | `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
 | `session_watch_observations` | Observed changed path arrays, compact change-summary JSON, snapshot entry arrays, and metadata for a session watch observation. Snapshot and change summaries do not prove actor identity, intent, product correctness, or close readiness. |
 | `tasks` | Shaping summary, bounded lists, autonomy boundary, carry-forward dispositions, current close basis, terminal close summary, and lifecycle summary. Acceptance policy, work phase, and lineage edge identity use dedicated columns; acceptance criteria and supplemental evidence claims use their canonical relational tables. |
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |
-| `user_judgments` | Judgment request, context, options, affected refs, artifact refs, basis snapshot, sensitive-action scope, machine-readable resolution, and descriptive rationale metadata. |
+| `user_action_requests` | Closed request, required-for targets, Core-derived basis, request actor, exact originating method/idempotency relation, and expiry. |
+| `user_action_resolutions` | Closed immutable resolution body, channel kind and bounded visible-ASCII submission id, derived actor/verification/assurance, Core capture time, optional private note, and choice or evidence-observation detail. Local-web rows store only the derived digest identity, never the raw token. |
+| `user_action_channel_tokens` | Request-bound local-web hash-token lifecycle and capture basis. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
 | `write_tickets` | Write-ticket attempt scope and non-authority metadata. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
@@ -410,13 +489,12 @@ Rules:
 | `evidence_capture_receipts` | Exact expected/observed outcomes, source refs, limitations, bounded safe receipt JSON and its digest/size, registered source coordinates in metadata, and non-authority metadata. The safe receipt is redacted and contains no raw command, environment, stdout, stderr, tool input, tool response, secret, or unbounded host payload. |
 | `artifacts` | Retention, producer, and non-authority metadata. |
 | `artifact_links` | Non-authority metadata. |
-| `evidence_summaries` | Evidence coverage, supporting refs, gap refs, and non-authority metadata. |
+| `evidence_summaries` | Resulting authority state version, evidence coverage, supporting refs, gap refs, and non-authority metadata. |
 | `evidence_observations` | Tool metadata, Core-record input refs, non-authoritative `SourceRef` JSON, output artifact refs, limitations, and typed Core-derived producer/relevance authority metadata. `source_refs_json` does not create authority. |
-| `user_evidence_observations` | Current basis coordinates, target identity, relevance, exact artifact refs, local-user actor, verification basis, summary, and timestamps. |
 | `evidence_producers` | Strict canonical `EvidenceProducer` JSON plus the relational one-to-one authority keys and verification-basis metadata. |
 | `blockers` | Blocker owner references, related references, details, and non-authority metadata. |
 | `authority_events` | Event payloads for committed Core authority mutations. |
-| `tool_invocations` | Immutable committed replay responses used for replay and eligible exact operation-result paging, plus optional canonical Git workspace-context JSON used for replay compatibility. |
+| `tool_invocations` | Immutable committed replay responses used for replay and eligible exact operation-result paging, plus the verified actor source, operation category, optional verification basis, and optional canonical Git workspace-context JSON used for exact replay compatibility. |
 
 Task and Change Unit shaping JSON stores compact summaries and bounded lists only. It does not create an additional persisted record family.
 
@@ -425,9 +503,11 @@ Task and Change Unit shaping JSON stores compact summaries and bounded lists onl
 - [Storage Effects](storage-effects.md) defines which method branches create, update, observe, or leave records untouched.
 - [Storage DDL](storage-ddl.md) defines baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources.
 - [Artifact Storage](storage-artifacts.md) defines artifact staging, promotion, linking, body reads, retention, and integrity lifecycle.
-- [Storage Versioning](storage-versioning.md) defines the state-version clock, idempotency, replay, events, locks, and incompatible-storage handling.
+- [Storage Versioning](storage-versioning.md) defines the state-version clock,
+  canonical Core UTC clock and persisted floor, idempotency, replay, events,
+  locks, and incompatible-storage handling.
 - [Agent Connection](agent-connection.md) defines Agent Connections, Connection Projects, mode-gated MCP tool access, and User Channel boundaries.
-- [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md) define API shape and public API values.
+- [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API User Action Schemas](api/schema-user-action.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md) define API shape and public API values.
 - [API Methods](api/methods.md) and method owner documents define public method behavior that uses records.
 - [Runtime Boundaries](runtime-boundaries.md) defines `Product Repository`, Volicord installation or runtime process, and `Volicord Runtime Home` location boundaries.
 - [Projection Authority Reference](projection-and-templates.md) and [Template Bodies](template-bodies.md) define read-time projection authority and rendered template bodies.

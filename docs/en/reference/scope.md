@@ -57,12 +57,12 @@ Supported does not mean:
 | Plain-language intake and `Task` creation | A local `Task` can be started from plain-language user intent through the supported intake path. | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
 | Scope updates | `Task` and Change Unit scope can be updated through the supported scope-update path. | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |
 | Status and close-readiness review | Status, evidence sufficiency, known blockers, and close-readiness state can be read through supported read paths. | [Status method](api/method-status.md), [Close method](api/method-close-task.md), [API State Schemas](api/schema-state.md), [Core Model](core-model.md) |
-| Exact historical operation-result retrieval | `volicord.get_operation_result` can read an eligible immutable `operation_category=agent_workflow` Core mutation response in bounded UTF-8 pages. Access requires the currently enabled originating Agent Connection, an allowed selected project, and the same stored actor. The result is historical rather than current authority, and `operation_category=user_only` judgment responses are excluded. | [Get-operation-result method](api/method-get-operation-result.md), [Security](security.md#historical-operation-result-access), [Storage Versioning](storage-versioning.md#exact-operation-result-retrieval) |
+| Exact historical operation-result retrieval | `volicord.get_operation_result` can read an eligible immutable `operation_category=agent_workflow` Core mutation response in bounded UTF-8 pages. Access requires the currently enabled originating Agent Connection, an allowed selected project, and the same stored actor. The result is historical rather than current authority, and `operation_category=user_only` user-action responses are excluded. | [Get-operation-result method](api/method-get-operation-result.md), [Security](security.md#historical-operation-result-access), [Storage Versioning](storage-versioning.md#exact-operation-result-retrieval) |
 | Write ticket | `volicord.prepare_write` can issue a write ticket for one compatible proposed product-file change. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Agent Connection context | Registered Agent Connections provide recorded provenance, mode, and an explicit project allowlist for scope checks. | [Agent Connection Reference](agent-connection.md), [Security](security.md) |
 | Artifact staging and compatible artifact linking | New artifact bytes can enter the baseline through the supported staging path; compatible persisted artifact references can be linked when artifact owners allow it. | See [Artifact staging owners](#artifact-staging-owners). |
 | Run and evidence recording | Runs, compact evidence summaries, and target-scoped evidence observations with provenance can be recorded for baseline work. | [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
-| Focused user-owned judgment capture | User-owned judgments can be requested and recorded through supported judgment paths without substituting for Core-owned state, evidence, or close-readiness rules. | See [User-owned judgment owners](#user-judgment-owners). |
+| Focused user-owned action capture | Choice judgments and evidence observations can be requested and resolved through the supported common User Action paths without substituting for Core-owned state, evidence, or close-readiness rules. | See [User Action owners](#user-action-owners). |
 | Project continuity records | Durable decisions, obligations, known limits, accepted residual risks, and constraints can be preserved as project-level context without replacing current Core authority. | [Core Model](core-model.md), [API State Schemas](api/schema-state.md), [Storage Records](storage-records.md), [Storage Effects](storage-effects.md) |
 | Authority bundle export | `volicord export authority-bundle` can export an integrity-labeled copy of one registered project's local records and currently available persistent artifact bodies without mutating the source Runtime Home or project state, subject to the documented non-guarantees. | [Administrative CLI](admin-cli.md#authority-bundle-export), [Storage Records](storage-records.md), [Security](security.md) |
 | Close attempts | `volicord.check_close` can evaluate close readiness read-only, and `volicord.close_task` can attempt supported close outcomes while preserving evidence, final acceptance, residual-risk, and non-substitution boundaries. | [Close method](api/method-close-task.md), [Core Model](core-model.md), [API blocker routing](api/blocker-routing.md) |
@@ -75,12 +75,12 @@ Artifact staging owners:
 - API shapes: [API Artifact Schemas](api/schema-artifacts.md).
 - Lifecycle and storage effects: [Artifact Storage](storage-artifacts.md) and [Storage Effects](storage-effects.md).
 
-<a id="user-judgment-owners"></a>
-User-owned judgment owners:
+<a id="user-action-owners"></a>
+User Action owners:
 
-- Method behavior: [Request-user-judgment method](api/method-request-user-judgment.md) and [Record-user-judgment method](api/method-record-user-judgment.md).
+- Method behavior: [Request-user-action method](api/method-request-user-action.md) and [Resolve-user-action method](api/method-resolve-user-action.md).
 - Product meaning: [Core Model](core-model.md).
-- API shapes and values: [API Judgment Schemas](api/schema-judgment.md) and [API Value Sets](api/schema-value-sets.md).
+- API shapes and values: [API User Action Schemas](api/schema-user-action.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md).
 
 <a id="excluded-from-baseline-scope"></a>
 ## Excluded from baseline scope

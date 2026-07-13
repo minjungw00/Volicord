@@ -20,7 +20,7 @@ use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
     ActorSource, AgentConnectionMode, OperationCategory, ProjectId, CLOSE_TASK_TOOL_NAME,
     INTAKE_TOOL_NAME, PREPARE_WRITE_TOOL_NAME, RECONCILE_CHANGES_TOOL_NAME,
-    RECORD_USER_JUDGMENT_TOOL_NAME, REQUEST_USER_JUDGMENT_TOOL_NAME,
+    REQUEST_USER_ACTION_TOOL_NAME, RESOLVE_USER_ACTION_TOOL_NAME,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
@@ -38,10 +38,10 @@ fn workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only() 
     assert!(PUBLIC_METHOD_TOOL_NAMES.contains(&RECONCILE_CHANGES_TOOL_NAME));
     assert!(names.contains(&INTAKE_TOOL_NAME));
     assert!(names.contains(&PREPARE_WRITE_TOOL_NAME));
-    assert!(names.contains(&REQUEST_USER_JUDGMENT_TOOL_NAME));
+    assert!(names.contains(&REQUEST_USER_ACTION_TOOL_NAME));
     assert!(names.contains(&RECONCILE_CHANGES_TOOL_NAME));
     assert!(names.contains(&CLOSE_TASK_TOOL_NAME));
-    assert!(!names.contains(&RECORD_USER_JUDGMENT_TOOL_NAME));
+    assert!(!names.contains(&RESOLVE_USER_ACTION_TOOL_NAME));
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn read_only_tools_expose_only_read_operations_and_project_discovery() {
     for mutation_tool in [
         INTAKE_TOOL_NAME,
         PREPARE_WRITE_TOOL_NAME,
-        REQUEST_USER_JUDGMENT_TOOL_NAME,
+        REQUEST_USER_ACTION_TOOL_NAME,
         RECONCILE_CHANGES_TOOL_NAME,
         CLOSE_TASK_TOOL_NAME,
     ] {
@@ -248,17 +248,17 @@ fn tool_listing_and_dispatch_use_current_connection_mode() -> Result<(), Box<dyn
 }
 
 #[test]
-fn user_only_record_judgment_is_not_available_to_agent_mcp() -> Result<(), Box<dyn Error>> {
+fn user_only_action_resolution_is_not_available_to_agent_mcp() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-integration-user-only")?;
     let adapter = adapter(&fixture)?;
 
     assert!(!adapter
         .tools()?
         .iter()
-        .any(|tool| tool.name == RECORD_USER_JUDGMENT_TOOL_NAME));
+        .any(|tool| tool.name == RESOLVE_USER_ACTION_TOOL_NAME));
     let error = adapter
-        .call_tool(RECORD_USER_JUDGMENT_TOOL_NAME, json!({}))
-        .expect_err("agent MCP must not expose user-only judgment recording");
+        .call_tool(RESOLVE_USER_ACTION_TOOL_NAME, json!({}))
+        .expect_err("agent MCP must not expose user-only action resolution");
     assert!(error.to_string().contains("unknown MCP tool"));
     Ok(())
 }

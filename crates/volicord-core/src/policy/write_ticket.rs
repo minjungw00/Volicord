@@ -3,21 +3,23 @@ use std::{collections::BTreeSet, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use volicord_store::{core_pipeline::WriteTicketRecord, StoreError};
 use volicord_types::{
-    BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, JudgmentKind, JudgmentRequiredFor,
-    ObservedChanges, PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision,
-    SensitiveActionScope, StateRecordRef, TaskId, UtcTimestamp, WriteDecisionCategory,
-    WriteDecisionReason, WriteTicketAttemptScope,
+    BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, ObservedChanges, PlannedBlocker,
+    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision, SensitiveActionScope,
+    StateRecordRef, TaskId, UserActionKind, UserActionRequiredFor, UtcTimestamp,
+    UtcTimestampRangeError, WriteDecisionCategory, WriteDecisionReason, WriteTicketAttemptScope,
 };
 
 use crate::policy::{
-    close_readiness::{accepted_current_user_authority, JudgmentAuthority},
+    close_readiness::{accepted_current_user_authority, UserActionAuthority},
     path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
 };
 
 const WRITE_TICKET_LIFETIME_MINUTES: i64 = 15;
 
-pub(crate) fn write_ticket_expires_at(created_at: DateTime<Utc>) -> DateTime<Utc> {
-    created_at + Duration::minutes(WRITE_TICKET_LIFETIME_MINUTES)
+pub(crate) fn write_ticket_expires_at(
+    created_at: &UtcTimestamp,
+) -> Result<UtcTimestamp, UtcTimestampRangeError> {
+    created_at.checked_add(Duration::minutes(WRITE_TICKET_LIFETIME_MINUTES))
 }
 
 pub(crate) fn write_ticket_is_expired(
@@ -32,10 +34,14 @@ pub(crate) fn effective_write_ticket_expiration(
 ) -> Result<UtcTimestamp, StoreError> {
     let stored_expires_at = parse_write_ticket_timestamp(record, "expires_at")?;
     let created_at = parse_write_ticket_timestamp(record, "created_at")?;
-    Ok(std::cmp::min(
-        stored_expires_at,
-        UtcTimestamp::from_datetime(write_ticket_expires_at(*created_at.as_datetime())),
-    ))
+    let maximum_expires_at = write_ticket_expires_at(&created_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "write_tickets",
+            record.write_ticket_id.clone(),
+            "created_at",
+        )
+    })?;
+    Ok(std::cmp::min(stored_expires_at, maximum_expires_at))
 }
 
 fn parse_write_ticket_timestamp(
@@ -53,13 +59,18 @@ fn parse_write_ticket_timestamp(
             ));
         }
     };
-    UtcTimestamp::parse(raw).map_err(|_| {
+    let corrupt = || {
         StoreError::corrupt_owner_state_value(
             "write_tickets",
             record.write_ticket_id.clone(),
             logical_column,
         )
-    })
+    };
+    let timestamp = UtcTimestamp::parse(raw).map_err(|_| corrupt())?;
+    timestamp
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| corrupt())?;
+    Ok(timestamp)
 }
 
 pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> PrepareWriteDecision {
@@ -67,7 +78,7 @@ pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> Prepare
         PrepareWriteDecision::Allowed
     } else if reasons
         .iter()
-        .any(|reason| reason.code == "user_judgment_unresolved")
+        .any(|reason| reason.code == "user_action_unresolved")
     {
         PrepareWriteDecision::DecisionRequired
     } else if reasons
@@ -192,7 +203,7 @@ fn write_decision_category_value(category: WriteDecisionCategory) -> &'static st
     match category {
         WriteDecisionCategory::Scope => "scope",
         WriteDecisionCategory::Workspace => "workspace",
-        WriteDecisionCategory::UserJudgment => "user_judgment",
+        WriteDecisionCategory::UserAction => "user_action",
         WriteDecisionCategory::SensitiveApproval => "sensitive_approval",
         WriteDecisionCategory::WriteCompatibility => "write_compatibility",
         WriteDecisionCategory::Baseline => "baseline",
@@ -209,16 +220,16 @@ pub(crate) struct SensitiveApprovalRequirement<'a> {
     pub(crate) normalized_paths: &'a [String],
     pub(crate) sensitive_categories: &'a [String],
     pub(crate) baseline_ref: Option<&'a BaselineRef>,
-    pub(crate) required_for: JudgmentRequiredFor,
+    pub(crate) required_for: UserActionRequiredFor,
     pub(crate) now: &'a UtcTimestamp,
     pub(crate) repo_root: &'a Path,
 }
 
 pub(crate) fn current_sensitive_approval(
-    judgment: &JudgmentAuthority,
+    judgment: &UserActionAuthority,
     requirement: &SensitiveApprovalRequirement<'_>,
 ) -> bool {
-    if !accepted_current_user_authority(judgment, JudgmentKind::SensitiveApproval) {
+    if !accepted_current_user_authority(judgment, UserActionKind::SensitiveApproval) {
         return false;
     }
     if !judgment.required_for.contains(&requirement.required_for) {
@@ -227,14 +238,15 @@ pub(crate) fn current_sensitive_approval(
     let Some(basis) = judgment.basis.as_ref() else {
         return false;
     };
-    if basis.task_id != *requirement.task_id
-        || basis.change_unit_id.as_ref() != Some(requirement.change_unit_id)
-        || basis.scope_revision != requirement.scope_revision
-        || basis.baseline_ref.as_ref() != requirement.baseline_ref
+    let coordinates = basis.coordinates();
+    if coordinates.task_id != *requirement.task_id
+        || coordinates.change_unit_id.as_ref() != Some(requirement.change_unit_id)
+        || coordinates.scope_revision != requirement.scope_revision
+        || coordinates.baseline_ref.as_ref() != requirement.baseline_ref
     {
         return false;
     }
-    let Some(scope) = basis.sensitive_action_scope.as_ref() else {
+    let Some(scope) = basis.sensitive_action_scope() else {
         return false;
     };
     sensitive_action_scope_matches_requirement(scope, requirement)

@@ -57,7 +57,7 @@ and
 For local User Channel behavior, continue with
 [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)
 and
-[`crates/volicord-core/src/methods/judgment.rs`](../../../crates/volicord-core/src/methods/judgment.rs).
+[`crates/volicord-core/src/methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs).
 
 ## Boundary reminders
 

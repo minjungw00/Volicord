@@ -54,12 +54,12 @@ GetOperationResultRequest:
 agent-workflow 호출과 일치해야 합니다. Ref나 cursor를 가지고 있다는 사실만으로는
 접근 권한이 생기지 않습니다.
 
-정확한 `volicord.record_user_judgment` 본문과 사용자의 자유 형식 note를 포함한
-user-only 결과는 Agent Connection에 노출하지 않습니다. Host가 중개한 Judgment
-흐름은 최초 agent 소유 `volicord.request_user_judgment` ref를 유지합니다. 따라서
+정확한 `volicord.resolve_user_action` 본문, 사용자의 자유 형식 note, Evidence 관찰
+summary를 포함한 user-only 결과는 Agent Connection에 노출하지 않습니다. Host가
+중개한 사용자 행동 흐름은 최초 agent 소유 `volicord.request_user_action` ref를 유지합니다. 따라서
 정확한 결과 조회는 최초 대기 응답을 복원합니다. 별도 담당 MCP 결과 상태 보기는 선택
-결과를 보고할 수 있지만 user-only ref로 바꾸거나 사용자 note 또는 정확한 user-only
-응답 본문을 노출하지 않습니다.
+결과의 안전한 선택 식별자와 파생 ref를 보고할 수 있지만 user-only ref로 바꾸거나
+사용자 note, Evidence 관찰 summary, 정확한 user-only 응답 본문을 노출하지 않습니다.
 
 ## 결과
 

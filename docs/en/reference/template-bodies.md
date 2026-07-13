@@ -201,7 +201,7 @@ Suggested label:
 - judgment needed
 
 Recovery cue:
-- Request or resolve the focused `UserJudgment`.
+- Request or resolve the focused `UserActionRequest` through its owned workflow.
 
 <a id="label-sensitive-approval"></a>
 ### Sensitive-action approval
@@ -294,7 +294,7 @@ Recovery cue:
 ### Input state
 
 - Current read-only state returned by `volicord.status`.
-- Display inputs such as `StateSummary`, blockers, pending `UserJudgment` items, evidence summary and provenance state, close-readiness observations, residual-risk coverage, project continuity summary, guarantee display, and next safe action.
+- Display inputs such as `StateSummary`, blockers, pending `UserActionInboxItem` entries, evidence summary and provenance state, close-readiness observations, residual-risk coverage, project continuity summary, guarantee display, and next safe action.
 - Freshness cues such as source refs, `state_version`, observation time, stale markers, unavailable markers, or capability-limited markers when present.
 - Artifact availability only through owner-approved `ArtifactRef` display data or an owner-approved unavailable/redacted note.
 
@@ -303,13 +303,13 @@ Recovery cue:
 - A compact current-position card.
 - Separate regions for state and current scope.
 - Current goal, current scope, out-of-scope items, and allowed action state when those fields are present.
-- Separate regions for blockers and pending user judgments.
+- Separate regions for blockers and pending user actions.
 - Separate regions for run/evidence summary, evidence provenance limits, and gaps.
 - Separate regions for close-readiness summary, next safe action, source refs, and freshness.
 - Separate regions for residual risks and continuity records carried forward.
 - That the card is read-only derived display.
 - Any stale, partial, unavailable, redacted, or capability-limited source condition.
-- Required blockers, unresolved user judgments, and required evidence gaps.
+- Required blockers, unresolved user actions, and required evidence gaps.
 - Close readiness as a current observation, not as a close action.
 - Artifact limits, including unavailable or redacted artifact content.
 
@@ -325,7 +325,7 @@ Recovery cue:
 Use direct status language:
 
 - `Status as of {observed_at} from state {state_version}.`
-- `Needs your judgment: {pending_judgment_summary}.`
+- `Needs your action: {pending_user_action_summary}.`
 - `Close is blocked by: {close_blocker_summary}.`
 - `Evidence provenance: {provenance_summary}.`
 - `Continuity carried forward: {continuity_summary}.`
@@ -340,7 +340,10 @@ Otherwise, avoid those words.
 - [Projection and template display boundaries](projection-and-templates.md) for read-only display and freshness boundaries.
 - [Core Model](core-model.md) for Core authority and close-readiness meaning.
 - [API State Schemas](api/schema-state.md) for state-shaped display inputs.
-- [API Judgment Schemas](api/schema-judgment.md) for user-judgment references.
+- [API User-Action Schemas](api/schema-user-action.md) for the shared request,
+  inbox, status, and resolution shapes.
+- [API Judgment Schemas](api/schema-judgment.md) for choice-specific judgment
+  detail.
 - [API Artifact Schemas](api/schema-artifacts.md) for `ArtifactRef` display inputs.
 
 <a id="judgment-request-body"></a>
@@ -348,7 +351,7 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- One pending user-owned judgment request returned by `volicord.request_user_judgment`.
+- One pending user-owned judgment request returned by `volicord.request_user_action`.
 - Exact question and bounded options.
 - Rationale, uncertainty, affected scope, consequence of deferral, and non-substitution notes.
 - Any linked source refs, `state_version`, and freshness or capability-limited notes.
@@ -383,9 +386,10 @@ Avoid pressure wording such as `obviously`, `just approve`, or `I can decide thi
 ### Owner links
 
 - [Core Model](core-model.md) for user-owned judgment and non-substitution rules.
-- [Request-user-judgment method](api/method-request-user-judgment.md) for judgment request method behavior.
-- [Record-user-judgment method](api/method-record-user-judgment.md) for judgment record method behavior.
-- [API Judgment Schemas](api/schema-judgment.md) for `UserJudgment`, `SensitiveActionScope`, and accepted-risk shapes.
+- [Request-user-action method](api/method-request-user-action.md) for request behavior.
+- [Resolve-user-action method](api/method-resolve-user-action.md) for immutable User Channel resolution behavior.
+- [API user-action schemas](api/schema-user-action.md) for the common request, resolution, inbox, and capture forms.
+- [API Judgment Schemas](api/schema-judgment.md) for choice payloads, `SensitiveActionScope`, and accepted-risk shapes.
 - [Security](security.md) for sensitive-action approval boundaries.
 
 <a id="run--evidence-summary-body"></a>
@@ -447,7 +451,7 @@ Otherwise, avoid those words.
 ### Input state
 
 - `CloseTaskResult` returned by `volicord.check_close` or `volicord.close_task`.
-- `CloseReadinessBlocker[]`, evidence summary, and pending user judgments.
+- `CloseReadinessBlocker[]`, evidence summary, and pending user actions.
 - Final-acceptance state, residual-risk state, and artifact availability.
 - Project continuity records returned by the close result.
 - Source refs, freshness cues, and the requested method or close intent.
@@ -458,7 +462,7 @@ Otherwise, avoid those words.
 - Whether the body is showing a read-only close check, blocked close attempt, or owner-recorded close result.
 - The close intent when present, and whether the owner result was read-only or state-changing.
 - Every returned close blocker and its responsible blocker category or next action.
-- Remaining evidence, user judgment, final acceptance, residual-risk, or artifact availability gaps.
+- Remaining evidence, user-action, final-acceptance, residual-risk, or artifact availability gaps.
 - Source state version or equivalent freshness cue when available.
 - Continuity records that remain relevant after a successful close.
 - The next safe action when close is blocked.
@@ -499,7 +503,7 @@ an actual state-changing close result.
 ### Input state
 
 - Current task summary, current scope, and out-of-scope items.
-- Pending user judgments, blockers, and next safe actions.
+- Pending user actions, blockers, and next safe actions.
 - Evidence gaps and artifact availability summary.
 - Close readiness, residual-risk summary, and guarantee level.
 - Source refs and freshness cues.
@@ -512,7 +516,7 @@ an actual state-changing close result.
 - A readable display-supported structure when the display uses Markdown, JSON-like text, or another display shape.
 - Authority and freshness cues visible in the packet.
 - Current task and scope in a compact form.
-- Pending user-owned judgments and blockers.
+- Pending user-owned actions and blockers.
 - Next safe action and any action the agent must not take yet.
 - Evidence, artifact, close-readiness, residual-risk, and guarantee limits.
 - Source refs, source freshness, and unavailable or capability-limited conditions.

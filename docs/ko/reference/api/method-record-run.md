@@ -68,6 +68,15 @@ Run 권한을 다른 작업 공간으로 옮길 수 없습니다.
   뒤에는 문장이 바뀌지 않습니다. 필요한 기준은
   `coverage_state=not_applicable`을 거부합니다.
 
+Run 생성, 증거나 닫기 근거 상태 변경, 아티팩트 승격, 쓰기 티켓 소비 전에 Core는
+현재 보류 중인 사용자 행동 요청의 `required_for`에 `record_run`이 있고 그 행동
+종류, Task, 현재 Change Unit, `scope_revision`, 근거, 영향받는 참조가 이 연산과
+일치하면 `DECISION_UNRESOLVED`로 거절합니다. 보류 중인 `sensitive_approval`은
+경계가 지정된 행동 범위가 검증된 쓰기 티켓의 연산, 이 Run의 실제 정규화 변경
+경로, 민감 범주, 기준선과 겹칠 때만 일치합니다. 정보 제공용 요청과 해결됨,
+오래됨, 대체됨, 만료됨, 불일치, 행동 종류 비호환 요청은 Run 기록을 막지
+않습니다.
+
 ## 요청 스키마
 
 이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
@@ -137,7 +146,7 @@ ResidualRiskInput:
 
 닫기 평가 참조 규칙:
 - 호출자가 제공한 `close_assessment.result_refs`와 `ResidualRiskInput.source_refs`는 담당 문서가 다른 종류를 명시적으로 추가하지 않는 한 `record_kind=run`, `artifact`, `evidence_summary`, `change_unit`으로 제한됩니다.
-- 담당 문서가 명시적으로 추가하지 않는 한 이 메서드는 호출자가 제공한 `project_state`, `write_ticket`, `user_judgment`, `blocker`, `task_event`, `task` 참조를 닫기 근거에서 거절하거나 제외합니다.
+- 담당 문서가 명시적으로 추가하지 않는 한 이 메서드는 호출자가 제공한 `project_state`, `write_ticket`, `user_action_request`, `user_action_resolution`, `blocker`, `task_event`, `task` 참조를 닫기 근거에서 거절하거나 제외합니다.
 - 받아들인 모든 참조는 존재해야 하고 같은 프로젝트와 `Task`에 속해야 합니다. 아티팩트 참조는 `Task`에 연결되어 있고 `integrity_status=verified`로 현재 바이트 검증을 통과해야 합니다. 증거 참조는 현재 `Task` 증거 요약을 식별해야 합니다. 현재 닫기 근거 결과 참조로 쓰이는 실행 기록 참조는 현재 `Task`, 현재 적용 Change Unit, 현재 범위 리비전, 호환되는 기준선, 기록된 상태와 호환되는 기록된 현재 실행 기록을 식별해야 합니다.
 - 이력 실행 기록 참조는 이 새 현재 실행 기록이 이력의 `verified` 아티팩트나 증거를 명시적으로 재사용하고 그 재사용을 커밋된 증거나 닫기 평가에 기록하지 않는 한 닫기 근거 용도에서는 감사 기록입니다.
 - Core는 `CurrentCloseBasis`에 기준 참조를 저장하며 호출자가 보낸 `produced_at_state_version` 메타데이터를 권한이나 동시성 입력으로 취급하지 않습니다.
@@ -154,11 +163,16 @@ ResidualRiskInput:
   - 정규 아티팩트는 바이트 identity와 현재 무결성만 증명합니다. 누가 그
     바이트를 만들었는지 또는 해당 대상을 뒷받침하는지는 증명하지 않습니다.
   - `user_observation` / `user_observed`는 `input_refs`가
-    [`volicord.record_user_observation`](method-record-user-observation.md)이 만든
-    현재의 대상 결합 `UserEvidenceObservation`을 식별하고 정확한 출력
+    [`volicord.resolve_user_action`](method-resolve-user-action.md)이 만든
+    현재의 대상 결합 `evidence_observation UserActionResolution`을 식별하고 정확한 출력
     아티팩트가 일치할 때만 유지됩니다. Core는 로컬 사용자 actor, 검증 근거,
     relevance, Task, Change Unit, scope, baseline, 대상, 현재 바이트를 다시
-    확인합니다.
+    확인합니다. Resolution에 저장된 정확한 `supported` 또는 `contradicted` relevance를
+    커밋된 `relevance_assessment`에 보존하고, 호출자가 제공한
+    `EvidenceObservationInput.observed_at`을 바깥 resolution의 `resolved_at`으로
+    대체합니다. 두 relevance 상태 모두 로컬 사용자 producer provenance를 유지합니다.
+    `contradicted`는 부정적 relevance로 남으며 supported coverage나 증거 충분성을
+    세울 수 없습니다.
   - 현재 capture intent와 일치하는 완전한 receipt가 있으면 Core가 verified
     command, verified tool invocation, registered connection observation producer를
     finalization할 수 있습니다. 그 정확한 intent ref가 없으면 직접
@@ -181,6 +195,23 @@ ResidualRiskInput:
   각 재귀 단계는 저장된 권한 메타데이터를 엄격히 decode하고 같은 현재 앵커가
   있는 보장 수준으로 이어져야 합니다. stale, 누락, 모순, 손상, 불일치, 출력
   대체, 순환 체인은 거부됩니다.
+- 위 거부 목록의 `contradicted`는 supported 재사용 규칙이며 producer provenance
+  강등 규칙이 아닙니다. `contradicted` relevance를 가진 현재의 정확한 User Channel
+  관찰은 `user_observation` / `user_observed`로 남지만 `supported`를 세우는 검증된
+  재사용 자격을 얻을 수 없습니다.
+- 위의 모든 strong `user_observation` 및 검증된 재사용 검사에서 정확한 출력 집합은
+  비어 있지 않고 `artifact_id` 값이 서로 달라야 합니다. Core는 중복 아티팩트 ID를
+  중복 제거하지 않고 거부합니다. 각 이력 출력은 현재 정규 `ArtifactRef`의
+  `artifact_id`, `project_id`, `task_id`, `display_name`, `content_type`, `sha256`,
+  `size_bytes`, `integrity_status`, `redaction_state`, `availability`,
+  `created_by_run_ref` 존재 여부와 identity(`record_kind`, `record_id`, `project_id`,
+  `task_id`), `created_by_actor_source`, `storage_ref`가 모두 일치해야 합니다. 이력 ref와
+  현재 정규 상태 보기를 비교할 때 허용되는 유일한 정규화는 중첩
+  `created_by_run_ref.produced_at_state_version`을 새 상태 보기 기준으로 바꾸는 것입니다.
+  이 필드는 상태 보기 최신성만 나타내며 권한이나 동시성을 부여하지 않습니다. 그 밖의
+  typed 필드는 무시하거나 새 기준으로 바꾸거나 대체할 수 없습니다. 중복이나 불일치는
+  커밋 전에 요청을 거부합니다. `dry_run`도 같은 검증을 수행하며 어느 분기도 strong
+  provenance나 다른 효과를 기록하지 않습니다.
 - `supported`가 아닌 상태에서는 대상이 일치하는 현재 협력적 또는 확인되지 않은
   관찰 참조를 설명용 뒷받침으로 보존할 수 있습니다. 강한 재사용 요구는 참조로
   `supported`를 세울 때만 적용됩니다.
@@ -748,7 +779,7 @@ state:
     produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

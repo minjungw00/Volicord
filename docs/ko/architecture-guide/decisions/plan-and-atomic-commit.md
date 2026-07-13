@@ -15,6 +15,12 @@
 `CommitMutationInput`을 만들고, `CoreProjectStore::commit_mutation`은 정상
 커밋 변이를 하나의 즉시 Store 트랜잭션 안에서 적용합니다.
 
+준비된 동작은 `operation_now` 시계 하한 하나를 제공합니다. Store는 이 하한보다 이르지
+않은 정규 transaction `committed_at` 하나를 선택하고 영속 프로젝트 시각 하한, event와
+선택적 replay 생성, Store 생성 transaction metadata에 일관되게 사용합니다. 의미 있는
+동작·관찰 시각은 계획 코드 또는 담당자가 제공한 사실로 남습니다. 근거는
+[정규 Core UTC 시계](canonical-core-utc-clock.md)에 기록합니다.
+
 일시적 아티팩트 스테이징은 별도의 Store 소유 효과 경로이며 정상 Core
 변이 커밋을 사용하지 않습니다.
 
@@ -24,6 +30,8 @@
   테스트에서 구분됩니다.
 - Store는 재실행, 오래된 상태, 이벤트 추가, 응답 저장, 롤백 동작을 하나의
   커밋 경계에서 집행할 수 있습니다.
+- Store는 재실행, 최신성, 영속 프로젝트 시각 하한을 점검하는 직렬화 경계 안에서
+  커밋 timestamp를 선택할 수 있습니다.
 - 메서드 코드는 원시 저장소 메커니즘을 품지 않고 의도 효과를 표현할 수
   있습니다.
 - 커밋된 메서드 효과 변경은 보통 메서드 계획 코드, Store 변이 적용, 집중
@@ -64,3 +72,4 @@
 - [저장 효과](../../reference/storage-effects.md),
   [저장소 버전 관리](../../reference/storage-versioning.md),
   [API 메서드](../../reference/api/methods.md)에서 연결된 공개 메서드 담당 문서.
+- [정규 Core UTC 시계](canonical-core-utc-clock.md).

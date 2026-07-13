@@ -705,7 +705,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "volicord-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cap-fs-ext",
  "cap-std",
@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-conformance-tests"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "serde_json",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-integration-tests"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -767,7 +767,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-mcp"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "getrandom",
  "schemars",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-platform-fs"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "sha2",
  "windows-sys 0.61.2",
@@ -790,8 +790,9 @@ dependencies = [
 
 [[package]]
 name = "volicord-store"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
+ "chrono",
  "rusqlite",
  "serde",
  "serde_json",
@@ -802,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-test-support"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -813,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "volicord-types"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "getrandom",
@@ -1078,7 +1079,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "pulldown-cmark",

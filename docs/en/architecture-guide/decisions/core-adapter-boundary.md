@@ -106,8 +106,8 @@ host response-shaping policy.
   project registration, Agent Connection records, and Connection Project
   memberships used by administrative provisioning.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs)
-  and [`crates/volicord-core/src/methods/judgment.rs`](../../../../crates/volicord-core/src/methods/judgment.rs):
-  local User Channel orchestration and Core judgment recording.
+  and [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
+  local User Channel orchestration and Core user-action resolution.
 - Cargo manifests for `volicord-core`, `volicord-mcp`, and `volicord-cli`.
 
 ## Related tests and Reference owners

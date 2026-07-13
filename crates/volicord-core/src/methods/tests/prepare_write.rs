@@ -1,6 +1,38 @@
 use super::*;
 
 #[test]
+fn prepare_write_ttl_overflow_rejects_without_effects() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_write_ttl_overflow")?;
+    harness.use_clock(ManualClock::at("9999-12-31T23:50:00Z"));
+    let before = harness.counts()?;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_write_ttl_overflow",
+            "idem_prepare_write_ttl_overflow",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "write_ticket.expires_at"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn advisor_prepare_write_rejects_without_ticket_or_state_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
@@ -34,9 +66,11 @@ fn advisor_prepare_write_rejects_without_ticket_or_state_effect() -> Result<(), 
 fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock.clone());
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_allowed")?;
-    let sensitive_judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let sensitive_judgment = harness.service.request_user_action(
+        user_action_request(
             "req_prepare_allowed_sensitive",
             "idem_prepare_allowed_sensitive",
             false,
@@ -47,23 +81,23 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let sensitive_judgment_id =
-        response_record_id(&sensitive_judgment.response_value, "user_judgment_ref");
-    harness.service.record_user_judgment(
-        record_judgment_request(
+    let sensitive_judgment_id = response_record_id(
+        &sensitive_judgment.response_value,
+        "user_action_request_ref",
+    );
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
             "req_prepare_allowed_record",
             "idem_prepare_allowed_record",
-            Some(3),
+            None,
             &task_id,
             &sensitive_judgment_id,
-            JudgmentKind::SensitiveApproval,
-            answer_payload(JudgmentKind::SensitiveApproval),
+            "accept",
         ),
         invocation(OperationCategory::UserOnly),
     )?;
     let id_generator =
         CountingDurableIdGenerator::new(["prepare_allowed_auth", "prepare_allowed_event"]);
-    let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator.clone(), clock);
     let before = harness.counts()?;
 
@@ -152,7 +186,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         json!(["src/export.rs"])
     );
     assert_eq!(
-        response.response_value["active_user_judgment_refs"]
+        response.response_value["active_user_action_refs"]
             .as_array()
             .expect("active judgment refs should be an array")
             .len(),
@@ -548,10 +582,12 @@ fn prepare_write_shaping_task_is_rejected_before_change_unit_resolution(
 }
 
 #[test]
-fn prepare_write_unresolved_user_judgment_requires_decision() -> Result<(), Box<dyn Error>> {
+fn prepare_write_unresolved_user_action_requires_decision() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock.clone());
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_judgment")?;
-    let mut judgment_request = user_judgment_request(
+    let mut judgment_request = user_action_request(
         "req_prepare_judgment_pending",
         "idem_prepare_judgment_pending",
         false,
@@ -560,13 +596,12 @@ fn prepare_write_unresolved_user_judgment_requires_decision() -> Result<(), Box<
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    judgment_request.required_for = vec![volicord_types::JudgmentRequiredFor::PrepareWrite];
-    harness.service.request_user_judgment(
+    judgment_request.required_for = vec![volicord_types::UserActionRequiredFor::PrepareWrite];
+    harness.service.request_user_action(
         judgment_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
     let id_generator = CountingDurableIdGenerator::new(["prepare_decision_event"]);
-    let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator.clone(), clock);
     let before = harness.counts()?;
 
@@ -583,7 +618,7 @@ fn prepare_write_unresolved_user_judgment_requires_decision() -> Result<(), Box<
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["decision"], "decision_required");
-    assert_prepare_reason(&response.response_value, "user_judgment_unresolved");
+    assert_prepare_reason(&response.response_value, "user_action_unresolved");
     assert_eq!(after.write_tickets, before.write_tickets);
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.task_events, before.task_events + 1);
@@ -593,15 +628,15 @@ fn prepare_write_unresolved_user_judgment_requires_decision() -> Result<(), Box<
         &harness,
         &response.response_value,
         "decision_required",
-        "user_judgment_unresolved",
+        "user_action_unresolved",
     )?;
     let reason = event_payload["write_decision_reasons"][0].clone();
-    assert_eq!(reason["category"], "user_judgment");
-    assert_eq!(reason["code"], "user_judgment_unresolved");
+    assert_eq!(reason["category"], "user_action");
+    assert_eq!(reason["code"], "user_action_unresolved");
     assert!(reason["message"]
         .as_str()
         .expect("reason message should be present")
-        .contains("user-owned judgment"));
+        .contains("user action"));
     assert!(!reason["related_refs"]
         .as_array()
         .expect("related_refs should be an array")
@@ -621,8 +656,8 @@ fn prepare_write_ignores_pending_final_acceptance() -> Result<(), Box<dyn Error>
         "prepare_ignore_final",
         true,
     )?;
-    harness.service.request_user_judgment(
-        user_judgment_request(
+    harness.service.request_user_action(
+        user_action_request(
             "req_prepare_ignore_final_pending",
             "idem_prepare_ignore_final_pending",
             false,
@@ -661,7 +696,7 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "informational_judgment")?;
-    let mut judgment_request = user_judgment_request(
+    let mut judgment_request = user_action_request(
         "req_info_pending",
         "idem_info_pending",
         false,
@@ -670,8 +705,8 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
         Some(&change_unit_id),
         JudgmentKind::TechnicalDecision,
     );
-    judgment_request.required_for = vec![volicord_types::JudgmentRequiredFor::Informational];
-    harness.service.request_user_judgment(
+    judgment_request.required_for = vec![volicord_types::UserActionRequiredFor::Informational];
+    harness.service.request_user_action(
         judgment_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
@@ -701,13 +736,13 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
         }),
         invocation(OperationCategory::Read),
     )?;
-    assert_no_close_blocker(&close.response_value, "pending_user_judgment");
-    assert!(close.response_value["pending_judgment_inbox_items"]
+    assert_no_close_blocker(&close.response_value, "pending_user_action");
+    assert!(close.response_value["pending_user_action_inbox_items"]
         .as_array()
         .expect("close pending judgment inbox should be an array")
         .is_empty());
     assert_eq!(
-        close.response_value["state"]["pending_user_judgment_refs"]
+        close.response_value["state"]["pending_user_action_refs"]
             .as_array()
             .expect("state pending judgment refs should be an array")
             .len(),
@@ -720,7 +755,7 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
 fn prepare_write_ignores_another_change_unit_pending_judgment() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_other_cu")?;
-    let mut judgment_request = user_judgment_request(
+    let mut judgment_request = user_action_request(
         "req_prepare_other_cu_pending",
         "idem_prepare_other_cu_pending",
         false,
@@ -729,30 +764,48 @@ fn prepare_write_ignores_another_change_unit_pending_judgment() -> Result<(), Bo
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    judgment_request.required_for = vec![volicord_types::JudgmentRequiredFor::PrepareWrite];
-    let judgment = harness.service.request_user_judgment(
+    judgment_request.required_for = vec![volicord_types::UserActionRequiredFor::PrepareWrite];
+    let judgment = harness.service.request_user_action(
         judgment_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    mutate_user_judgment_basis_json(&harness, &judgment_id, |basis| {
-        basis["change_unit_id"] = json!("cu_unrelated");
-    })?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    let replaced = harness.service.update_scope(
+        update_scope_request(
+            "req_prepare_other_cu_replace",
+            "idem_prepare_other_cu_replace",
+            false,
+            Some(3),
+            &task_id,
+            ChangeUnitOperation::ReplaceCurrent,
+            "Replace the current Change Unit before preparing the next write.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let current_change_unit_id = replaced.response_value["state"]["active_change_unit_ref"]
+        ["record_id"]
+        .as_str()
+        .expect("replacement Change Unit")
+        .to_owned();
+    let current_state_version = replaced.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("replacement state version");
+    assert_eq!(user_action_status(&harness, &judgment_id)?, "superseded");
     let before = harness.counts()?;
 
     let response = harness.service.prepare_write(
         prepare_write_request(
             "req_prepare_other_cu",
             "idem_prepare_other_cu",
-            Some(3),
+            Some(current_state_version),
             Some(&task_id),
-            Some(&change_unit_id),
+            Some(&current_change_unit_id),
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
     assert_eq!(response.response_value["decision"], "allowed");
-    assert_no_prepare_reason(&response.response_value, "user_judgment_unresolved");
+    assert_no_prepare_reason(&response.response_value, "user_action_unresolved");
     assert_eq!(harness.counts()?.write_tickets, before.write_tickets + 1);
     Ok(())
 }
@@ -762,8 +815,8 @@ fn malformed_stored_required_for_rejects_prepare_write_without_effect() -> Resul
 {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_required_for")?;
-    let judgment = harness.service.request_user_judgment(
-        user_judgment_request(
+    let judgment = harness.service.request_user_action(
+        user_action_request(
             "req_bad_required_for_pending",
             "idem_bad_required_for_pending",
             false,
@@ -774,8 +827,8 @@ fn malformed_stored_required_for_rejects_prepare_write_without_effect() -> Resul
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-    set_user_judgment_owner_json(
+    let judgment_id = response_record_id(&judgment.response_value, "user_action_request_ref");
+    set_user_action_owner_json(
         &harness,
         &judgment_id,
         "request_json",
@@ -796,9 +849,9 @@ fn malformed_stored_required_for_rejects_prepare_write_without_effect() -> Resul
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_owner_state_rejection(
+    assert_owner_state_value_rejection(
         &response,
-        "user_judgments",
+        "user_action_requests",
         &judgment_id,
         "request_json",
         &harness.runtime_home_path,

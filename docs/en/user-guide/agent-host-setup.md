@@ -251,14 +251,19 @@ behavior belongs to [MCP Transport](../reference/mcp-transport.md).
 
 ## User Channel Boundary
 
-An Agent Connection may request or display a focused user decision. It does not
-record the user's answer. When Volicord shows a pending judgment, use the User
-Channel path it provides. The stable CLI path is:
+An Agent Connection may request or display a focused user action. It does not
+record the user's resolution. When Volicord shows a pending action, use the User
+Channel path it provides. The stable CLI path lists the stored form and then
+resolves it; for a choice form:
 
 ```sh
 volicord inbox --repo "<repo>"
-volicord inbox answer JUDGMENT_ID --choice CHOICE_ID --repo "<repo>"
+volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
+
+Evidence-observation forms instead use the displayed criterion or claim,
+artifact IDs, summary, and optional contradicted flag. See
+[User Workflow](user-workflow.md#use-evidence-without-replacing-judgment).
 
 ## Removal
 

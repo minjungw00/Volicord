@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde_json::Value;
 use volicord_types::{
     GuardDecision, GuardInstallationStatus, HostKind, IntegrationProfile, PromptCaptureStatus,
-    UnrecordedChangeStatus,
+    UnrecordedChangeStatus, UtcTimestamp,
 };
 
 use crate::{
@@ -289,6 +289,8 @@ pub struct GuardHealthRecord {
     pub guard_installation: Option<GuardInstallationRecord>,
     pub latest_session: Option<AgentSessionRecord>,
     pub latest_event: Option<GuardEventRecord>,
+    /// Every guard event at the exact greatest observed UTC instant.
+    pub co_latest_events: Vec<GuardEventRecord>,
     pub unresolved_unrecorded_changes: Vec<UnrecordedChangeRecord>,
 }
 
@@ -303,7 +305,7 @@ pub struct PromptCaptureAvailability {
 
 impl PromptCaptureAvailability {
     pub fn can_use_chat_commands(&self) -> bool {
-        self.status.allows_chat_judgment_commands()
+        self.status.allows_chat_user_action_commands()
     }
 }
 
@@ -959,7 +961,9 @@ pub fn list_pending_expected_writes(
         WHERE project_id = ?1
           AND connection_internal_id = ?2
           AND status = 'pending'
-        ORDER BY created_at DESC, expected_write_id DESC",
+        ORDER BY volicord_utc_seconds(created_at) DESC,
+                 volicord_utc_subsec_nanos(created_at) DESC,
+                 expected_write_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1006,7 +1010,9 @@ pub fn list_expected_writes_for_connection(
          FROM expected_writes
         WHERE project_id = ?1
           AND connection_internal_id = ?2
-        ORDER BY created_at DESC, expected_write_id DESC",
+        ORDER BY volicord_utc_seconds(created_at) DESC,
+                 volicord_utc_subsec_nanos(created_at) DESC,
+                 expected_write_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1057,7 +1063,9 @@ pub fn list_expected_writes_matched_by_post_event(
           AND connection_internal_id = ?2
           AND status = 'matched'
           AND matched_post_tool_guard_event_id = ?3
-        ORDER BY matched_at DESC, expected_write_id DESC",
+        ORDER BY volicord_utc_seconds(matched_at) DESC,
+                 volicord_utc_subsec_nanos(matched_at) DESC,
+                 expected_write_id DESC",
     )?;
     let rows = stmt.query_map(
         params![
@@ -1232,7 +1240,9 @@ pub fn list_unresolved_unrecorded_changes(
         WHERE project_id = ?1
           AND status = 'unresolved'
           AND (?2 IS NULL OR connection_internal_id = ?2)
-        ORDER BY detected_at, unrecorded_change_id",
+        ORDER BY volicord_utc_seconds(detected_at),
+                 volicord_utc_subsec_nanos(detected_at),
+                 unrecorded_change_id",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1254,7 +1264,8 @@ pub fn guard_health_record(
     let guard_installation =
         selected_guard_installation(&runtime_home, project_id, connection_internal_id)?;
     let latest_session = latest_agent_session(&runtime_home, project_id, connection_internal_id)?;
-    let latest_event = latest_guard_event(&runtime_home, project_id, connection_internal_id)?;
+    let co_latest_events = latest_guard_events(&runtime_home, project_id, connection_internal_id)?;
+    let latest_event = co_latest_events.first().cloned();
     let unresolved_unrecorded_changes = list_unresolved_unrecorded_changes(
         &runtime_home,
         project_id,
@@ -1265,6 +1276,7 @@ pub fn guard_health_record(
         guard_installation,
         latest_session,
         latest_event,
+        co_latest_events,
         unresolved_unrecorded_changes,
     })
 }
@@ -1401,10 +1413,8 @@ fn latest_agent_session(
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
         return Ok(None);
     };
-    project
-        .conn
-        .query_row(
-            "SELECT
+    let mut stmt = project.conn.prepare(
+        "SELECT
                 project_id,
                 session_id,
                 connection_internal_id,
@@ -1417,27 +1427,52 @@ fn latest_agent_session(
              FROM agent_sessions
             WHERE project_id = ?1
               AND connection_internal_id = ?2
-            ORDER BY started_at DESC, session_id DESC
-            LIMIT 1",
-            params![project.project.project_id, connection_internal_id],
-            agent_session_from_row,
-        )
-        .optional()
-        .map_err(StoreError::from)
+            ORDER BY volicord_utc_seconds(started_at) DESC,
+                     volicord_utc_subsec_nanos(started_at) DESC,
+                     session_id DESC
+            LIMIT 2",
+    )?;
+    let rows = stmt.query_map(
+        params![project.project.project_id, connection_internal_id],
+        agent_session_from_row,
+    )?;
+    let records = collect_rows(rows)?;
+    if records.len() > 1 {
+        let first = strict_stored_timestamp(
+            "agent_sessions",
+            &records[0].session_id,
+            "started_at",
+            &records[0].started_at,
+        )?;
+        let second = strict_stored_timestamp(
+            "agent_sessions",
+            &records[1].session_id,
+            "started_at",
+            &records[1].started_at,
+        )?;
+        if first == second {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                format!(
+                    "ambiguous co-latest agent_sessions for connection {connection_internal_id}"
+                ),
+            ));
+        }
+    }
+    Ok(records.into_iter().next())
 }
 
-fn latest_guard_event(
+fn latest_guard_events(
     runtime_home: &Path,
     project_id: &str,
     connection_internal_id: &str,
-) -> StoreResult<Option<GuardEventRecord>> {
+) -> StoreResult<Vec<GuardEventRecord>> {
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
-    project
-        .conn
-        .query_row(
-            "SELECT
+    let mut stmt = project.conn.prepare(
+        "WITH candidates AS (
+            SELECT
                 project_id,
                 guard_event_id,
                 session_id,
@@ -1448,17 +1483,41 @@ fn latest_guard_event(
                 subject_json,
                 result_json,
                 occurred_at,
-                metadata_json
+                metadata_json,
+                volicord_utc_seconds(occurred_at) AS utc_seconds,
+                volicord_utc_subsec_nanos(occurred_at) AS utc_subsec_nanos
              FROM guard_events
             WHERE project_id = ?1
               AND connection_internal_id = ?2
-            ORDER BY occurred_at DESC, guard_event_id DESC
-            LIMIT 1",
-            params![project.project.project_id, connection_internal_id],
-            guard_event_from_row,
+        ), latest_seconds AS (
+            SELECT MAX(utc_seconds) AS value FROM candidates
+        ), latest_instant AS (
+            SELECT MAX(utc_subsec_nanos) AS value
+              FROM candidates, latest_seconds
+             WHERE utc_seconds = latest_seconds.value
         )
-        .optional()
-        .map_err(StoreError::from)
+        SELECT
+            project_id,
+            guard_event_id,
+            session_id,
+            connection_internal_id,
+            guard_installation_id,
+            event_kind,
+            decision,
+            subject_json,
+            result_json,
+            occurred_at,
+            metadata_json
+          FROM candidates, latest_seconds, latest_instant
+         WHERE utc_seconds = latest_seconds.value
+           AND utc_subsec_nanos = latest_instant.value
+         ORDER BY guard_event_id DESC",
+    )?;
+    let rows = stmt.query_map(
+        params![project.project.project_id, connection_internal_id],
+        guard_event_from_row,
+    )?;
+    collect_rows(rows)
 }
 
 /// Resolves one unresolved unrecorded-change row.
@@ -1864,7 +1923,32 @@ fn validate_text(field: &'static str, value: &str) -> StoreResult<()> {
 }
 
 fn validate_timestamp_text(field: &'static str, value: &str) -> StoreResult<()> {
-    validate_identifier(field, value)
+    validate_identifier(field, value)?;
+    UtcTimestamp::parse(value)
+        .and_then(|timestamp| {
+            timestamp
+                .ensure_canonical_rfc3339_representable()
+                .map_err(|_| volicord_types::UtcTimestampParseError)
+        })
+        .map_err(|_| StoreError::InvalidInput {
+            detail: format!(
+                "{field} must be a canonical four-digit RFC 3339 timestamp with an explicit offset"
+            ),
+        })
+}
+
+fn strict_stored_timestamp(
+    table: &'static str,
+    record_ref: &str,
+    field: &'static str,
+    value: &str,
+) -> StoreResult<UtcTimestamp> {
+    let timestamp = UtcTimestamp::parse(value)
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, field))?;
+    timestamp
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, field))?;
+    Ok(timestamp)
 }
 
 fn validate_host_kind(value: &str) -> StoreResult<()> {
@@ -3069,6 +3153,125 @@ mod tests {
         )
         .expect_err("unknown observation phase must be rejected");
         assert!(matches!(error, StoreError::InvalidInput { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn guard_health_uses_exact_submillisecond_latest_and_returns_all_co_latest_events(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = GuardFixture::new("guard-health-exact-latest")?;
+        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
+        insert_agent_session(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            AgentSessionInsert {
+                session_id: "session_guard_a".to_owned(),
+                connection_internal_id: "conn_guard_a".to_owned(),
+                guard_installation_id: None,
+                host_kind: "codex".to_owned(),
+                guard_mode: "detective".to_owned(),
+                started_at: "2026-06-30T04:00:00Z".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+
+        for (guard_event_id, decision, occurred_at) in [
+            (
+                "guard_event_z_earlier",
+                "warn",
+                "2026-06-30T04:00:01.000000500Z",
+            ),
+            (
+                "guard_event_a_latest_allow",
+                "allow",
+                "2026-06-30T04:00:01.000000501Z",
+            ),
+            (
+                "guard_event_b_latest_deny",
+                "deny",
+                "2026-06-30T04:00:01.000000501Z",
+            ),
+        ] {
+            insert_guard_event(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                GuardEventInsert {
+                    guard_event_id: guard_event_id.to_owned(),
+                    session_id: Some("session_guard_a".to_owned()),
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    guard_installation_id: None,
+                    event_kind: "write_attempt".to_owned(),
+                    decision: decision.to_owned(),
+                    subject_json: "{}".to_owned(),
+                    result_json: "{}".to_owned(),
+                    occurred_at: occurred_at.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+        }
+
+        let health = guard_health_record(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            "conn_guard_a",
+        )?;
+        assert_eq!(
+            health
+                .latest_event
+                .as_ref()
+                .expect("one co-latest event should remain available as the compact latest event")
+                .guard_event_id,
+            "guard_event_b_latest_deny"
+        );
+        let mut co_latest = health
+            .co_latest_events
+            .iter()
+            .map(|event| (event.guard_event_id.as_str(), event.decision.as_str()))
+            .collect::<Vec<_>>();
+        co_latest.sort_unstable();
+        assert_eq!(
+            co_latest,
+            vec![
+                ("guard_event_a_latest_allow", "allow"),
+                ("guard_event_b_latest_deny", "deny"),
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn guard_health_rejects_ambiguous_co_latest_agent_sessions() -> Result<(), Box<dyn Error>> {
+        let fixture = GuardFixture::new("guard-health-session-tie")?;
+        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
+        for session_id in ["session_guard_a", "session_guard_b"] {
+            insert_agent_session(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                AgentSessionInsert {
+                    session_id: session_id.to_owned(),
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    guard_installation_id: None,
+                    host_kind: "codex".to_owned(),
+                    guard_mode: "detective".to_owned(),
+                    started_at: "2026-06-30T05:00:00.000000001Z".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+        }
+
+        let error = guard_health_record(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            "conn_guard_a",
+        )
+        .expect_err("distinct co-latest sessions must not be selected by opaque id order");
+        assert!(matches!(
+            error,
+            StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail,
+            } if detail.contains("ambiguous co-latest agent_sessions")
+        ));
         Ok(())
     }
 

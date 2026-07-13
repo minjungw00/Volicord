@@ -162,7 +162,7 @@ struct DiagnosticsRedactionReport {
     stores_prompt_text: bool,
     stores_file_content_or_paths: bool,
     stores_secret_text: bool,
-    stores_judgment_question_answer_or_note: bool,
+    stores_user_action_form_or_resolution_text: bool,
     stored_detail: &'static str,
 }
 
@@ -172,7 +172,7 @@ struct AuthorityIsolationReport {
     changes_state_version: bool,
     changes_evidence_or_assurance: bool,
     changes_close_readiness: bool,
-    changes_user_judgments: bool,
+    changes_user_actions: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -235,7 +235,7 @@ fn diagnostics_report(aggregate: Option<DiagnosticSessionAggregate>) -> Diagnost
             stores_prompt_text: false,
             stores_file_content_or_paths: false,
             stores_secret_text: false,
-            stores_judgment_question_answer_or_note: false,
+            stores_user_action_form_or_resolution_text: false,
             stored_detail: "allowlisted identifiers, categorical outcomes, counters, byte sizes, and latency only",
         },
         authority_isolation: AuthorityIsolationReport {
@@ -243,7 +243,7 @@ fn diagnostics_report(aggregate: Option<DiagnosticSessionAggregate>) -> Diagnost
             changes_state_version: false,
             changes_evidence_or_assurance: false,
             changes_close_readiness: false,
-            changes_user_judgments: false,
+            changes_user_actions: false,
         },
         current_build: CurrentBuildReport {
             package_version: build.package_version,
@@ -359,7 +359,7 @@ mod tests {
         DiagnosticFallbackKind, DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart,
         DiagnosticTransport,
     };
-    use volicord_test_support::core_fixtures::{CoreFixture, UserJudgmentFixture};
+    use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{ActorSource, JudgmentKind, OperationCategory, ProjectId};
 
     use super::*;
@@ -433,8 +433,8 @@ mod tests {
         assurance_levels: Option<String>,
         blocker_count: u64,
         close_state: Option<String>,
-        judgment_count: u64,
-        judgment_state: Option<String>,
+        user_action_count: u64,
+        user_action_state: Option<String>,
     }
 
     fn authority_snapshot(fixture: &CoreFixture) -> AuthoritySnapshot {
@@ -470,15 +470,15 @@ mod tests {
                 .optional()
                 .expect("close state")
                 .flatten(),
-            judgment_count: count(&conn, "user_judgments"),
-            judgment_state: conn
+            user_action_count: count(&conn, "user_action_requests"),
+            user_action_state: conn
                 .query_row(
-                    "SELECT group_concat(status || ':' || COALESCE(resolved_verification_basis, 'pending'), ',') FROM user_judgments",
+                    "SELECT group_concat(r.action_kind || ':' || COALESCE(s.resolved_verification_basis, 'pending'), ',') FROM user_action_requests r LEFT JOIN user_action_resolutions s ON s.user_action_request_id = r.user_action_request_id",
                     [],
                     |row| row.get(0),
                 )
                 .optional()
-                .expect("judgment state")
+                .expect("user-action state")
                 .flatten(),
         }
     }
@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_cannot_change_authority_state_evidence_close_assurance_or_judgments() {
+    fn diagnostics_cannot_change_authority_state_evidence_close_assurance_or_user_actions() {
         let fixture = CoreFixture::new("diagnostics-authority-isolation").expect("fixture");
         let core = CoreService::new(fixture.runtime_home_path());
         let invocation = InvocationContext::new(
@@ -510,10 +510,10 @@ mod tests {
         let state_version = intake.response_value["base"]["state_version"]
             .as_u64()
             .expect("state version");
-        core.request_user_judgment(
-            fixture.user_judgment_request(UserJudgmentFixture {
-                request_id: "req_diag_judgment",
-                idempotency_key: "idem_diag_judgment",
+        core.request_user_action(
+            fixture.user_action_request(UserActionFixture {
+                request_id: "req_diag_user_action",
+                idempotency_key: "idem_diag_user_action",
                 dry_run: false,
                 expected_state_version: Some(state_version),
                 task_id,
@@ -522,7 +522,7 @@ mod tests {
             }),
             invocation,
         )
-        .expect("pending judgment");
+        .expect("pending user action");
         let before = authority_snapshot(&fixture);
 
         start_diagnostic_session(
@@ -543,7 +543,7 @@ mod tests {
             DiagnosticEvent {
                 session_id: "session_isolation",
                 event_kind: DiagnosticEventKind::McpToolCall,
-                tool_name: Some("volicord.request_user_judgment"),
+                tool_name: Some("volicord.request_user_action"),
                 latency_micros: 120,
                 request_bytes: 500,
                 response_bytes: 900,

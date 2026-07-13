@@ -86,7 +86,7 @@ Requires:
 - any separate accepted sensitive-action approval (`sensitive_approval`)
 - compatible `actor_source` for the agent workflow invocation
 
-A separate sensitive-action approval satisfies this method only when the judgment is current, resolved with `resolved_by_actor_source=local_user` and compatible User Channel provenance, selected an option with `resolution_outcome=accepted`, and its `JudgmentBasis` remains compatible with the current `scope_revision`, current Change Unit, intended operation, normalized `intended_paths`, sensitive categories, and `baseline_ref`. A judgment cannot satisfy sensitive-action approval if it has invalid basis state or is stale, superseded, expired, rejected, deferred, missing required resolution authority, or incompatible. Callers do not submit revision fields to make an approval compatible.
+A separate sensitive-action approval satisfies this method only when the user action is current, resolved with `resolved_by_actor_source=local_user` and compatible User Channel provenance, selected an option with `resolution_outcome=accepted`, and its `UserActionBasis` remains compatible with the current `scope_revision`, current Change Unit, intended operation, normalized `intended_paths`, sensitive categories, and `baseline_ref`. A user action cannot satisfy sensitive-action approval if it has invalid basis state or is stale, superseded, expired, rejected, deferred, missing required resolution authority, or incompatible. Callers do not submit revision fields to make an approval compatible.
 
 ## State version behavior
 
@@ -118,12 +118,12 @@ A newly allowed committed call receives its durable `write_ticket_id` only when 
 | `allowed_path_patterns` | Normalized Product Repository path patterns captured as allowed by the ticket decision. In an allowed result, this is the ticket's allowed path pattern list. |
 | `denied_path_patterns` | Normalized Product Repository path patterns captured as denied by the ticket decision, or `[]` when no path-level denial applies. |
 | `control_surface` | `ControlSurfaceSummary | null` describing the current Volicord control surface used for disclosure. `os_enforced=false` means the ticket is not OS-level enforcement. |
-| `active_user_judgment_refs` | `StateRecordRef[]` for current accepted user-owned judgments applied to the write-preparation decision, including matching `sensitive_approval` judgments when present. |
+| `active_user_action_refs` | `StateRecordRef[]` for current accepted user-owned judgments applied to the write-preparation decision, including matching `sensitive_approval` judgments when present. |
 | `write_decision_reasons` | `WriteDecisionReason[]` explaining non-allow decisions. The shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
-| `user_judgment_candidate` | `UserJudgmentCandidate | null` when the method proposes a focused user-owned judgment instead of issuing a write ticket; otherwise `null`. The shape is owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate). |
+| `user_action_draft` | `UserActionDraft | null` when the method proposes a focused choice action instead of issuing a write ticket; otherwise `null`. It is a proposal for a later `volicord.request_user_action` call, not a durable request. The shape is owned by [API User Action Schemas](schema-user-action.md). |
 | `guarantee_display` | `GuaranteeDisplay | null` for the method's compatibility display. The display shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); security guarantee meaning is owned by [Security](../security.md). |
 
-Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `ControlSurfaceSummary`, `WriteDecisionReason`, `UserJudgmentCandidate`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
+Nested `StateRecordRef`, `StateSummary`, `WriteTicket`, `WriteTicketStateSummary`, `ControlSurfaceSummary`, `WriteDecisionReason`, `UserActionDraft`, and `GuaranteeDisplay` field bodies stay with the schema owners linked above.
 
 ## Success result
 
@@ -145,7 +145,7 @@ For `decision=allowed`:
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
 - replay eligibility requires the current verified invocation to retain the exact optional Git workspace context captured with the original replay row; a changed, newly absent, or newly present workspace context returns `INVOCATION_CONTEXT_MISMATCH` without exposing the stored allowed response or its write ticket
 - the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`
-- `active_user_judgment_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
+- `active_user_action_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
 ## Blocked result
 
@@ -178,7 +178,7 @@ The production meanings below apply only when this method reaches a committed no
 | `scope_not_current` | `scope` | Current scope is not compatible with the addressed Task, Change Unit, or intended write basis. |
 | `path_out_of_scope` | `scope` | One or more `intended_paths` are outside current scope. |
 | `sensitive_approval_missing` | `sensitive_approval` | A required separate `sensitive_approval` user judgment is absent. |
-| `user_judgment_unresolved` | `user_judgment` | A user-owned judgment required for the write preconditions remains unresolved. |
+| `user_action_unresolved` | `user_action` | A user-owned action required for the write preconditions remains unresolved. |
 | `baseline_mismatch` | `baseline` | `baseline_ref` does not match the write-compatibility basis. |
 | `workspace_context_mismatch` | `workspace` | The current Git common directory, worktree identity, branch or detached-HEAD state, HEAD SHA, or workspace fingerprint differs from the Change Unit baseline context. No ticket is issued until `update_scope` replaces the Change Unit with an explicit current baseline. |
 | `effect_contract_forbids_product_file_write` | `effect_contract` | The current Change Unit effect contract explicitly forbids product-file writes. |
@@ -312,7 +312,7 @@ state:
     produced_at_state_version: 20
   baseline_ref: baseline_pref_001
   shaping_readiness: null
-  pending_user_judgment_refs: []
+  pending_user_action_request_refs: []
   blocker_refs: []
   write_ticket_summary:
     status: active
@@ -396,14 +396,14 @@ control_surface:
   unrecorded_changes_detectable: false
   actor_identity_provable: false
   os_enforced: false
-active_user_judgment_refs:
-  - record_kind: user_judgment
+active_user_action_refs:
+  - record_kind: user_action_resolution
     record_id: uj_sensitive_pref_001
     project_id: proj_pref_001
     task_id: task_pref_001
     produced_at_state_version: 20
 write_decision_reasons: []
-user_judgment_candidate: null
+user_action_draft: null
 guarantee_display:
   level: cooperative
   basis: "Write ticket is a Volicord authority record, not OS permission."
@@ -446,8 +446,8 @@ write_decision_reasons:
     code: sensitive_approval_missing
     message: "Profile preference updates require separate sensitive-action approval before write ticket issuance."
     related_refs: []
-active_user_judgment_refs: []
-user_judgment_candidate: null
+active_user_action_refs: []
+user_action_draft: null
 guarantee_display:
   level: cooperative
   basis: "Write ticket is a Volicord authority record, not OS permission."
