@@ -463,10 +463,11 @@ Use this checklist before publishing a release that claims the maintained
 Codex or Claude Code evidence-observation path through local web consent. This
 is authenticated, human-in-the-loop validation against the exact release
 candidate. It requires an actual installed host to create and resume the
-request and a human to submit the canonical form in a local browser. An ignored
-test, fixture-only check, ordinary workspace test, direct MCP-adapter test,
-native Judgment result, CLI-fallback result, or final-output result cannot
-replace it.
+request, negotiate the exact model-invisible capability, present the host-only
+handoff outside model context, and let a human submit the canonical form in a
+local browser. An ignored test, fixture-only check, ordinary workspace test,
+direct MCP-adapter test, native Judgment result, CLI-fallback result, or final-
+output result cannot replace it.
 
 Exact request and resume behavior remains with
 [`volicord.request_user_action`](../reference/api/method-request-user-action.md),
@@ -500,13 +501,16 @@ For each host, confirm all of these observations against the release candidate:
    afterward, exactly one request created by the installed host on the prepared
    Agent Connection. Its target, artifact candidate, and `required_for` facts
    match the fixture and the request and schema owners linked above.
-2. The prepared artifact carries an explicitly non-secret credential-shaped
-   routing marker. The cell observes that the complete-presentation classifier
-   offers `local_web_consent`, and the human operator—not the Agent or
-   harness—opens the loopback form and submits the prepared target and artifact,
-   `supported`, and a bounded non-secret summary. This assertion covers the
-   selected path and human participation, not secret detection or native
-   elicitation.
+2. The captured initialization exchange contains exact boolean `true` at
+   `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
+   The create response contains the closed local-web handoff only at
+   `CallToolResult._meta["io.volicord/user-channel"]`, and the installed host
+   visibly presents that handoff on a host-owned surface outside model context.
+   The human operator—not the Agent or harness—uses that surface to open the
+   loopback form and submit the prepared target and artifact, `supported`, and a
+   bounded non-secret summary. This assertion covers exact capability
+   negotiation, selected path, and human participation, not secret detection or
+   native elicitation.
 3. Store inspection observes one immutable resolution and compares it with the
    focused resolution and schema owners. The persisted fields are
    `resolved_by_actor_source=local_user`,
@@ -518,32 +522,45 @@ For each host, confirm all of these observations against the release candidate:
    host exits confirms exact equality with the stored summary.
 4. Same-connection diagnostics and Store inspection observe one resume for the
    exact request, `agent_workflow_result_replayed=true`, no second request or
-   resolution, and later consumption of the exact resolution ref. Because the
-   live cell retains no host transcript, it does not directly prove that the
-   resumed response omitted the raw summary. That negative assertion remains
-   with focused schema and adapter regression tests; the live cell proves replay
-   and ref consumption.
+   resolution, and later consumption of the exact resolution ref. A bounded
+   exchange observer checks the actual create and resume model-visible
+   projections, including MCP `content`, `structuredContent`, compatibility and
+   diagnostic text, and the replayed Agent Workflow body. The historical
+   pending request is exactly
+   `{user_action_request_id, status=pending, next_actor=user}`, and the complete
+   request, question, options, context, form, capture path, command, raw URL,
+   bearer token, user note, and evidence summary are absent.
 5. Store inspection compares the consuming Run, one evidence observation,
    producer and relevance anchors, exact artifact, Core-derived observation
    time, required-criterion coverage, and request-resolution-Run event order
    with the `record_run` and state-schema owners linked above. These are
    observed owner-conformance assertions, not definitions supplied by this
    checklist.
-6. Fresh status follows `AuthorityReceipt.latest_run_ref` to the consuming Run.
-   The cell compares the observed ready state and empty blocker set with the
-   status and state owners. It also requires one new Task-bound Detective Stop
-   `allow` event after the pre-host cursor and exact equality among the stored
-   Stop receipt, fresh status receipt, and the complete receipt copied from the
-   separate host-owned managed UI.
+6. While the request is pending, the cell also observes one status result, one
+   blocked close result, and the first exact operation-result page. Their model-
+   visible pending projection is the same exact three-field summary, all
+   forbidden fields from item 4 are absent, and the operation-result page is
+   withheld unless the entire stored response satisfies the current closed
+   shape. After resolution, fresh status follows
+   `AuthorityReceipt.latest_run_ref` to the consuming Run and the cell compares
+   the observed ready state and empty blocker set with the status and state
+   owners. It also requires one new Task-bound Detective Stop `allow` event
+   after the pre-host cursor and exact equality among the stored Stop receipt,
+   fresh status receipt, and the complete receipt copied from the separate host-
+   owned managed UI.
 7. The closed, bounded external JSON records
    `kind=live_host_evidence_observation_release_validation`, safe validation
-   coordinates, owner-comparison results, and only an exact-match Boolean and
-   bounded character count for the operator summary. It must not contain the
-   consent URL, bearer token, raw summary, prompt or transcript content,
-   screenshots or recordings, credentials, secrets, or private operator input.
+   coordinates, owner-comparison results, model-invisible capability and host-
+   presentation Booleans, per-projection safe-shape Booleans and digests, and
+   only an exact-match Boolean and bounded character count for the operator
+   summary. It must not contain the consent URL, bearer token, raw tool body,
+   raw summary, prompt or transcript content, screenshots or recordings,
+   credentials, secrets, or private operator input.
 
 The result recorder first writes a bounded `result=running` record. A missing
-host executable or non-interactive TTY is recorded as `result=unavailable`.
+host executable, non-interactive TTY, omitted or malformed exact capability,
+missing host-only presentation surface, or inability to distinguish host-only
+`_meta` from model-visible result data is recorded as `result=unavailable`.
 Fixture setup failure, abnormal termination of a selected host, or a stored
 state, Stop, receipt, or result-validator invariant failure is recorded as
 `result=failed` with only a safe stage identifier. Authentication and browser

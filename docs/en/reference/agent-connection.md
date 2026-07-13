@@ -638,25 +638,39 @@ Conditions:
   `volicord mcp --stdio` may use server-initiated elicitation as a User Channel
   path for a pending request created by `volicord.request_user_action`; the
   wire behavior is owned by [MCP Transport](mcp-transport.md#user-action-elicitation).
-- When host prompt input is unavailable, MCP fallback text may route the human
-  user to chat commands compatible with the prompt-submit hook path when command
-  capture is `configured`, `observed`, or `active`.
-- When host prompt input and chat command capture are unavailable, MCP fallback
-  text may route the human user to a loopback local consent URL owned by
-  [MCP Transport](mcp-transport.md#user-action-elicitation). That local web
-  answer is still a `local_user` User Channel path, not an Agent Connection
-  answer. The consent page identifies the pending request, stored candidates,
-  and non-guarantees; it does not create Agent Connection resolution authority.
-- The fallback text routes the user to the `volicord inbox` CLI inbox path only
-  when host prompt input, chat command capture, and local consent URL are not
-  available.
-- Status and user-action inbox projections may show User Channel availability for
-  host prompt input, chat command capture, local consent URL, and CLI inbox
-  together. Unavailable host prompt input must not hide another available
-  answer path, and the CLI inbox remains visible when it is applicable. These
-  projections tell the user where to answer; they do not let an Agent
-  Connection resolve the action.
-- A rich path is available for a particular action only when its complete,
+- A User Channel credential, bearer token, credential-bearing URL, complete
+  request body, or `UserActionInboxForm` must never cross Agent Connection MCP
+  `content`, `structuredContent`, compatibility or diagnostic text, full-detail
+  output, resume replay, or operation-result bytes. An Agent Connection receives
+  only the pending request ID, `status=pending`, and `next_actor=user` for the
+  request itself.
+- Local web is available only when a loopback listener exists and the
+  initialized client sends exact boolean `true` at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
+  The capability is a cooperative delivery contract: the host must keep the
+  namespaced tool-result `_meta` handoff outside model context and render it on
+  a user-owned surface. It is not proof of host isolation. Missing, false,
+  wrong-typed, wrong-namespace, or malformed capability data is unavailable
+  and must not issue a token.
+- The local-web URL may appear only in that model-invisible `_meta` handoff.
+  It must not be copied into fallback text for the agent to relay. The consent
+  page identifies the pending request, stored candidates, and non-guarantees;
+  possession of its bearer credential is what opens that user-only page.
+- When native elicitation and a negotiated model-invisible local-web surface
+  are unavailable, agent-visible fallback identifies the pending request and
+  routes the human user to the `volicord inbox` CLI path. Prompt-submit capture
+  remains a separately verified User Channel integration; fallback text must
+  not expose its complete form or a resolution credential.
+- Public Agent status and close results use only the exact three-field pending
+  summaries; they return no User Channel availability or capture-path facts. A
+  complete `UserActionInboxItem` and its credential-free availability categories
+  are fetched only through the separate internal Core projection used by a
+  verified User Channel renderer. Unavailable host prompt input must not hide
+  another available answer path, and the CLI inbox remains available when
+  applicable. These projections do not let an Agent Connection resolve the
+  action.
+- A rich path is available for a particular action only on a User Channel
+  surface and when its complete,
   untruncated request-bound presentation fits the transport or host-render
   budget owned by MCP Transport or Administrative CLI. A presentation-budget
   failure makes that path unavailable and must continue to the next compatible
@@ -669,12 +683,15 @@ Conditions:
 Agent may:
 
 - request a missing user action when a method owner supports that path
-- display pending action state and the Core-generated capture form
+- display only the agent-safe pending request summary and current safe
+  resolution projection
 - route the human user to the supported `User Channel`
 
 Agent must not:
 
 - resolve any user action from an Agent Connection
+- obtain, relay, open, or submit a User Channel bearer credential or complete
+  user-only capture form from Agent Connection output
 - treat Agent Connection tool arguments as MCP elicitation responses
 - treat a natural-language approval, chat reply, generated Markdown status, or
   rendered projection as User Channel provenance

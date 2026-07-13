@@ -217,6 +217,19 @@ Replay eligibility:
 - compatible context plus the same `idempotency_key` and same `request_hash` returns the stored original committed response exactly
 - compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT`
 
+Every stored public-method result has an additional whole-response eligibility
+check before direct replay; MCP resume uses the same check. The immutable stored
+JSON must strict-decode as the current closed result type selected by its stored
+`method_name`. This includes every nested `StateSummary`. A request result must
+contain exactly one closed three-field
+`AgentSafeUserActionRequestSummary`; a close result must contain the current
+`pending_user_action_summaries` field and must not contain the legacy
+`pending_user_action_inbox_items` field. A missing or malformed required field,
+legacy full-form field, unknown extra field, wrong method shape, or mixed old
+and new shape makes the row unavailable. Direct replay and resume then fail
+closed at the typed owner-state boundary as `MCP_UNAVAILABLE`; no stored bytes
+are returned. Core never rewrites, redacts, or upgrades an existing replay row.
+
 Replay uses the stored response body. It does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field. Replay does not append events, promote or link artifacts, issue or consume write tickets, create another replay row, or change state again.
 
 <a id="exact-operation-result-retrieval"></a>
@@ -234,6 +247,10 @@ Before returning any page, Store loads the exact stored bytes and computes their
 byte length and SHA-256; Core compares those facts with the reference. The
 current verified actor and project access are checked separately under the
 security and method owners; the reference is not a bearer credential.
+Core also applies the corresponding whole-response closed-result eligibility
+check after access-context validation and before the first page for every
+stored method. An ineligible legacy, wrong-method, or mixed-shape row returns
+`OPERATION_RESULT_UNAVAILABLE`, and no partial page is returned.
 `operation_category=user_only` rows, including
 `volicord.resolve_user_action`, are not eligible for Agent Connection
 retrieval. The retrieved response is historical and does not replace a current

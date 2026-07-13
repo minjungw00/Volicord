@@ -1352,13 +1352,17 @@ fn close_task_complete_blocks_missing_final_acceptance() -> Result<(), Box<dyn E
         .expect("final-acceptance action label should be text")
         .contains("Agent Connection"));
     assert_eq!(
-        response.response_value["state"]["pending_user_action_refs"],
+        response.response_value["state"]["pending_user_action_summaries"],
         json!([])
     );
     assert_eq!(
-        response.response_value["pending_user_action_inbox_items"],
+        response.response_value["pending_user_action_summaries"],
         json!([])
     );
+    assert!(response
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
     assert_eq!(
         response.response_value["summary_card"]["next_action"],
         action.clone()
@@ -1390,39 +1394,43 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
     let requested_judgment_id =
         response_record_id(&requested.response_value, "user_action_request_ref");
     assert_eq!(
-        requested.response_value["inbox_item"]["user_action_request_id"],
-        requested_judgment_id.as_str()
+        requested.response_value["user_action_request_summary"],
+        pending_user_action_summary(&requested_judgment_id)
     );
+    assert!(requested.response_value.get("inbox_item").is_none());
+    let projection = cli_user_channel_projection(&harness, &task_id)?;
+    let projected = projection
+        .items
+        .iter()
+        .find(|item| item.request.user_action_request_id.as_str() == requested_judgment_id.as_str())
+        .expect("CLI User Channel projection should retain the full pending request");
     assert_eq!(
-        requested.response_value["inbox_item"]["form"]["choices"][0]["choice_id"],
+        serde_json::to_value(&projected.inbox_item.form)?["choices"][0]["choice_id"],
         "accept"
     );
     assert_eq!(
-        requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
+        serde_json::to_value(&projected.inbox_item.preferred_capture_path)?["kind"],
         "cli"
     );
     let requested_availability =
-        &requested.response_value["inbox_item"]["answer_path_availability"];
+        serde_json::to_value(&projected.inbox_item.answer_path_availability)?;
     assert_eq!(
-        channel_path(requested_availability, "mcp_elicitation")["available"],
+        channel_path(&requested_availability, "mcp_elicitation")["available"],
         false
     );
     assert_eq!(
-        channel_path(requested_availability, "prompt_capture")["available"],
+        channel_path(&requested_availability, "prompt_capture")["available"],
         false
     );
     assert_eq!(
-        channel_path(requested_availability, "local_web_consent")["available"],
+        channel_path(&requested_availability, "local_web_consent")["available"],
         false
     );
     assert_eq!(
-        channel_path(requested_availability, "cli")["available"],
+        channel_path(&requested_availability, "cli")["available"],
         true
     );
-    assert!(requested.response_value["inbox_item"]["fallbacks"]
-        .as_array()
-        .expect("fallbacks should be an array")
-        .is_empty());
+    assert!(projected.inbox_item.fallbacks.is_empty());
     let mut prepare_write_request = user_action_request(
         "req_close_prepare_write_pending",
         "idem_close_prepare_write_pending",
@@ -1471,27 +1479,31 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         "pending_user_action",
         "pending_user_action",
     );
-    let close_inbox = response.response_value["pending_user_action_inbox_items"]
+    let close_summaries = response.response_value["pending_user_action_summaries"]
         .as_array()
-        .expect("close pending judgment inbox should be an array");
-    assert_eq!(close_inbox.len(), 1);
+        .expect("close pending summaries should be an array");
+    assert_eq!(close_summaries.len(), 1);
     assert_eq!(
-        close_inbox[0]["user_action_request_id"],
-        requested_judgment_id
+        close_summaries[0],
+        pending_user_action_summary(&requested_judgment_id)
     );
     assert!(
-        close_inbox
+        close_summaries
             .iter()
             .all(|item| item["user_action_request_id"] != prepare_write_judgment_id),
-        "prepare-write-only judgments must not enter the close inbox: {close_inbox:?}"
+        "prepare-write-only judgments must not enter the close summaries: {close_summaries:?}"
     );
     assert_eq!(
-        response.response_value["state"]["pending_user_action_refs"]
+        response.response_value["state"]["pending_user_action_summaries"]
             .as_array()
-            .expect("state pending judgment refs should be an array")
+            .expect("state pending judgment summaries should be an array")
             .len(),
         2
     );
+    assert!(response
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -3922,21 +3934,28 @@ fn guarded_pending_user_action_displays_paths_and_prefers_available_cli(
     let requested_judgment_id =
         response_record_id(&requested.response_value, "user_action_request_ref");
     assert_eq!(
-        requested.response_value["inbox_item"]["user_action_request_id"],
-        requested_judgment_id.as_str()
+        requested.response_value["user_action_request_summary"],
+        pending_user_action_summary(&requested_judgment_id)
     );
+    assert!(requested.response_value.get("inbox_item").is_none());
+    let cli_projection = cli_user_channel_projection(&harness, &task_id)?;
+    let cli_item = cli_projection
+        .items
+        .iter()
+        .find(|item| item.request.user_action_request_id.as_str() == requested_judgment_id.as_str())
+        .expect("CLI User Channel projection should include the pending request");
     assert_eq!(
-        requested.response_value["inbox_item"]["form"]["choices"][0]["choice_id"],
+        serde_json::to_value(&cli_item.inbox_item.form)?["choices"][0]["choice_id"],
         "accept"
     );
     assert_eq!(
-        requested.response_value["inbox_item"]["preferred_capture_path"]["kind"],
+        serde_json::to_value(&cli_item.inbox_item.preferred_capture_path)?["kind"],
         "cli"
     );
-    let availability = &requested.response_value["inbox_item"]["answer_path_availability"];
-    assert_eq!(channel_path(availability, "cli")["available"], true);
+    let availability = serde_json::to_value(&cli_item.inbox_item.answer_path_availability)?;
+    assert_eq!(channel_path(&availability, "cli")["available"], true);
     assert_eq!(
-        channel_path(availability, "prompt_capture")["available"],
+        channel_path(&availability, "prompt_capture")["available"],
         false
     );
     let after_final = record_final_acceptance(
@@ -3945,6 +3964,20 @@ fn guarded_pending_user_action_displays_paths_and_prefers_available_cli(
         &change_unit_id,
         after_evidence + 1,
         "guarded_pending",
+    )?;
+    let session_id = "session_guarded_pending_projection";
+    insert_agent_session(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        AgentSessionInsert {
+            session_id: session_id.to_owned(),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "detective".to_owned(),
+            started_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
     )?;
     let before = harness.counts()?;
 
@@ -3965,37 +3998,13 @@ fn guarded_pending_user_action_displays_paths_and_prefers_available_cli(
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "pending_user_action");
     assert_eq!(
-        response.response_value["pending_user_action_inbox_items"][0]["user_action_request_id"],
-        requested_judgment_id.as_str()
+        response.response_value["pending_user_action_summaries"],
+        json!([pending_user_action_summary(&requested_judgment_id)])
     );
-    assert_eq!(
-        response.response_value["pending_user_action_inbox_items"][0]["requirement_status"],
-        "required"
-    );
-    let close_item = &response.response_value["pending_user_action_inbox_items"][0];
-    assert_eq!(
-        close_item["preferred_capture_path"]["kind"],
-        "prompt_capture"
-    );
-    assert!(close_item["fallbacks"]
-        .as_array()
-        .expect("close inbox fallbacks should be an array")
-        .iter()
-        .any(|fallback| fallback["kind"] == "cli"));
-    let close_availability = &close_item["answer_path_availability"];
-    assert_eq!(
-        channel_path(close_availability, "mcp_elicitation")["available"],
-        false
-    );
-    assert_eq!(
-        channel_path(close_availability, "prompt_capture")["status"],
-        "available"
-    );
-    assert_eq!(
-        channel_path(close_availability, "local_web_consent")["available"],
-        false
-    );
-    assert_eq!(channel_path(close_availability, "cli")["available"], true);
+    assert!(response
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
     let pending = response.response_value["blockers"]
         .as_array()
         .expect("blockers should be an array")
@@ -4007,12 +4016,7 @@ fn guarded_pending_user_action_displays_paths_and_prefers_available_cli(
         "volicord.resolve_user_action"
     );
     assert!(pending["next_actions"][0]["expected_state_version"].is_null());
-    let guidance = pending["next_actions"][0]["blocking_question"]
-        .as_str()
-        .expect("pending blocker should include answer-path guidance");
-    assert!(guidance.contains("chat command"), "{guidance}");
-    assert!(!guidance.contains("host prompt"), "{guidance}");
-    assert!(!guidance.contains("volicord user"), "{guidance}");
+    assert!(pending["next_actions"][0]["blocking_question"].is_null());
     assert_eq!(
         response.response_value["guard_health"]["prompt_capture_available"],
         true
@@ -4039,91 +4043,109 @@ fn guarded_pending_user_action_displays_paths_and_prefers_available_cli(
         },
         invocation(OperationCategory::Read),
     )?;
-    let status_availability = &status.response_value["user_channel_availability"];
     assert_eq!(
-        channel_path(status_availability, "mcp_elicitation")["available"],
+        status.response_value["pending_user_action_summaries"],
+        json!([pending_user_action_summary(&requested_judgment_id)])
+    );
+    assert!(status
+        .response_value
+        .get("user_channel_availability")
+        .is_none());
+    assert!(status
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
+
+    let prompt_projection = user_channel_projection_for_invocation(
+        &harness,
+        &task_id,
+        InvocationContext::new(
+            ProjectId::new(PROJECT_ID),
+            ActorSource::agent_connection(CONNECTION_ID),
+            OperationCategory::Read,
+            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+        )
+        .with_session_id(session_id),
+    )?;
+    let status_availability = serde_json::to_value(&prompt_projection.user_channel_availability)?;
+    assert_eq!(
+        channel_path(&status_availability, "mcp_elicitation")["available"],
         false
     );
     assert_eq!(
-        channel_path(status_availability, "prompt_capture")["available"],
+        channel_path(&status_availability, "prompt_capture")["available"],
         true
     );
     assert_eq!(
-        channel_path(status_availability, "local_web_consent")["available"],
+        channel_path(&status_availability, "local_web_consent")["available"],
         false
     );
-    assert_eq!(channel_path(status_availability, "cli")["available"], true);
+    assert_eq!(channel_path(&status_availability, "cli")["available"], true);
+    let prompt_item = prompt_projection
+        .items
+        .first()
+        .expect("same-session prompt projection should include its pending request");
     assert_eq!(
-        status.response_value["pending_user_action_inbox_items"][0]["preferred_capture_path"]
-            ["kind"],
+        serde_json::to_value(&prompt_item.inbox_item.preferred_capture_path)?["kind"],
         "prompt_capture"
     );
+    assert!(prompt_item
+        .inbox_item
+        .fallbacks
+        .iter()
+        .any(|fallback| fallback.kind == "cli"));
 
-    let local_web_status = harness.service.status(
-        StatusRequest {
-            envelope: envelope(
-                "req_status_guarded_pending_local_web_paths",
-                None,
-                false,
-                None,
-                Some(&task_id),
-            ),
-            include: StatusInclude {
-                task: true,
-                pending_user_actions: true,
-                write_ticket: false,
-                evidence: true,
-                close: true,
-                guarantees: false,
-                continuity: false,
-            },
-        },
-        invocation(OperationCategory::Read).with_local_web_consent_available(true),
+    let local_web_projection = user_channel_projection_for_invocation(
+        &harness,
+        &task_id,
+        InvocationContext::new(
+            ProjectId::new(PROJECT_ID),
+            ActorSource::agent_connection(CONNECTION_ID),
+            OperationCategory::Read,
+            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        )
+        .with_session_id(session_id)
+        .with_local_web_consent_available(true),
     )?;
-    let local_web_availability = &local_web_status.response_value["user_channel_availability"];
+    let local_web_availability =
+        serde_json::to_value(&local_web_projection.user_channel_availability)?;
     assert_eq!(
-        channel_path(local_web_availability, "local_web_consent")["available"],
-        true
-    );
-    assert!(
-        local_web_status.response_value["pending_user_action_inbox_items"][0]["fallbacks"]
-            .as_array()
-            .expect("local web fallbacks should be an array")
-            .iter()
-            .any(|fallback| fallback["kind"] == "local_web_consent")
-    );
-
-    let host_elicitation_status = harness.service.status(
-        StatusRequest {
-            envelope: envelope(
-                "req_status_guarded_pending_host_prompt_paths",
-                None,
-                false,
-                None,
-                Some(&task_id),
-            ),
-            include: StatusInclude {
-                task: true,
-                pending_user_actions: true,
-                write_ticket: false,
-                evidence: true,
-                close: true,
-                guarantees: false,
-                continuity: false,
-            },
-        },
-        invocation(OperationCategory::Read).with_host_elicitation_available(true),
-    )?;
-    assert_eq!(
-        channel_path(
-            &host_elicitation_status.response_value["user_channel_availability"],
-            "mcp_elicitation"
-        )["available"],
+        channel_path(&local_web_availability, "local_web_consent")["available"],
         true
     );
     assert_eq!(
-        host_elicitation_status.response_value["pending_user_action_inbox_items"][0]
-            ["preferred_capture_path"]["kind"],
+        serde_json::to_value(
+            &local_web_projection.items[0]
+                .inbox_item
+                .preferred_capture_path
+        )?["kind"],
+        "local_web_consent"
+    );
+
+    let host_elicitation_projection = user_channel_projection_for_invocation(
+        &harness,
+        &task_id,
+        InvocationContext::new(
+            ProjectId::new(PROJECT_ID),
+            ActorSource::agent_connection(CONNECTION_ID),
+            OperationCategory::Read,
+            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+        )
+        .with_session_id(session_id)
+        .with_host_elicitation_available(true),
+    )?;
+    let host_elicitation_availability =
+        serde_json::to_value(&host_elicitation_projection.user_channel_availability)?;
+    assert_eq!(
+        channel_path(&host_elicitation_availability, "mcp_elicitation")["available"],
+        true
+    );
+    assert_eq!(
+        serde_json::to_value(
+            &host_elicitation_projection.items[0]
+                .inbox_item
+                .preferred_capture_path
+        )?["kind"],
         "mcp_elicitation"
     );
     assert_eq!(harness.counts()?, before);
@@ -4162,16 +4184,32 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
         JudgmentKind::ProductDecision,
     );
     product_request.required_for = vec![volicord_types::UserActionRequiredFor::CloseComplete];
-    harness.service.request_user_action(
+    let requested = harness.service.request_user_action(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    let requested_judgment_id =
+        response_record_id(&requested.response_value, "user_action_request_ref");
     record_final_acceptance(
         &harness,
         &task_id,
         &change_unit_id,
         after_evidence + 1,
         "guarded_pending_prompt_capture",
+    )?;
+    let session_id = "session_guarded_pending_prompt_capture";
+    insert_agent_session(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        AgentSessionInsert {
+            session_id: session_id.to_owned(),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "detective".to_owned(),
+            started_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
     )?;
 
     let status = harness.service.status(
@@ -4196,19 +4234,39 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
         invocation(OperationCategory::Read),
     )?;
     assert_eq!(status.response_value["close_state"], "blocked");
-    assert_pending_judgment_prompt_capture_guidance(&status.response_value);
+    assert_pending_judgment_safe_guidance(&status.response_value);
     assert_eq!(
-        status.response_value["pending_user_action_inbox_items"][0]["preferred_capture_path"]
-            ["kind"],
+        status.response_value["pending_user_action_summaries"],
+        json!([pending_user_action_summary(&requested_judgment_id)])
+    );
+    assert!(status
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
+    let prompt_projection = user_channel_projection_for_invocation(
+        &harness,
+        &task_id,
+        InvocationContext::new(
+            ProjectId::new(PROJECT_ID),
+            ActorSource::agent_connection(CONNECTION_ID),
+            OperationCategory::Read,
+            VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+        )
+        .with_session_id(session_id),
+    )?;
+    let prompt_item = prompt_projection
+        .items
+        .first()
+        .expect("same-session prompt projection should include the pending request");
+    assert_eq!(
+        serde_json::to_value(&prompt_item.inbox_item.preferred_capture_path)?["kind"],
         "prompt_capture"
     );
-    assert!(
-        status.response_value["pending_user_action_inbox_items"][0]["fallbacks"]
-            .as_array()
-            .expect("status inbox fallbacks should be an array")
-            .iter()
-            .any(|fallback| fallback["kind"] == "cli")
-    );
+    assert!(prompt_item
+        .inbox_item
+        .fallbacks
+        .iter()
+        .any(|fallback| fallback.kind == "cli"));
 
     let check = harness.service.check_close(
         check_close_request(CloseTaskFixture {
@@ -4224,12 +4282,15 @@ fn guarded_pending_judgment_uses_prompt_capture_guidance_when_mcp_unhealthy(
         invocation(OperationCategory::Read),
     )?;
     assert_eq!(check.response_value["close_state"], "blocked");
-    assert_pending_judgment_prompt_capture_guidance(&check.response_value);
+    assert_pending_judgment_safe_guidance(&check.response_value);
     assert_eq!(
-        check.response_value["pending_user_action_inbox_items"][0]["preferred_capture_path"]
-            ["kind"],
-        "prompt_capture"
+        check.response_value["pending_user_action_summaries"],
+        json!([pending_user_action_summary(&requested_judgment_id)])
     );
+    assert!(check
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
     assert_eq!(
         check.response_value["guard_health"]["mcp_connection_healthy"],
         false

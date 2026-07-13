@@ -263,6 +263,25 @@ replay lookup or commit.
 ## Inbox and capture form
 
 ```yaml
+AgentSafeUserActionRequestSummary:
+  user_action_request_id: string
+  status: pending
+  next_actor: user
+
+UserChannelAvailability:
+  paths: UserChannelPathAvailability[]
+  recommended_path_kind: string | null
+  recommended_path_label: string | null
+  recommendation: string | null
+
+UserChannelPathAvailability:
+  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  label: string
+  available: boolean
+  status: available | unavailable
+  capture_basis: string | null
+  detail: string | null
+
 UserActionInboxItem:
   user_action_request_id: string
   request_ref: StateRecordRef
@@ -295,14 +314,60 @@ UserActionInboxForm:
   artifact_candidates: ArtifactRef[]
   relevance_options: [supported, contradicted]
   summary_max_chars: integer
+
+UserActionCapturePath:  # internal/User Channel projection only
+  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  label: string
+  available: boolean
+  command: string | null
+  url: string | null
+  capture_basis: string | null
+  expires_at: string | null
+  detail: string | null
 ```
 
-Core derives this one capture form from the stored request. Channel adapters
-must not reconstruct candidates from chat, request arguments, or adapter-local
-state. Supported path kinds are `mcp_elicitation`, `prompt_capture`,
-`local_web_consent`, and `cli`; availability is action- and capability-specific.
-An unavailable rich path remains visible and must not hide another available
+`AgentSafeUserActionRequestSummary` is the only pending-request projection
+allowed in an Agent Connection result. It identifies only the request, its
+historical pending status, and the user as next actor. It does not carry the
+request ref, action kind, expiry, request body, basis, question, context,
+candidates, capture form, capture path, command, URL, or any User Channel
+credential. Current non-pending status belongs to the separately refreshed
+current projection rather than this historical pending summary.
+
+This is a closed object with exactly three required fields and no unknown or
+additional fields. `user_action_request_id` must satisfy its non-empty bounded
+identifier contract, while `status` and `next_actor` are the literal values
+`pending` and `user`. A missing, additional, wrong-typed, or wrong-literal field
+is invalid in ordinary output, replay, resume, and operation-result eligibility.
+
+The public `UserChannelAvailability` is a closed, credential-free capability
+summary. Its labels, detail, and recommendation may give only generic User
+Channel or CLI guidance. They never contain the durable request question or
+context, candidate or form data, a capture command, URL, token, or other
+credential. `UserActionCapturePath`, including its optional `command` and
+`url`, is a separate internal/User Channel-only projection and is never nested
+in an Agent Connection result. Availability alone neither issues a token nor
+proves that a host kept a surface invisible to the model.
+
+Core derives one complete `UserActionInboxItem` and capture form from the stored
+request for a verified User Channel projection. Agent-workflow method results,
+Agent Connection status and close projections, exact replay, and operation-
+result retrieval never contain that item. Channel adapters must not reconstruct
+candidates from chat, request arguments, or adapter-local state. Supported path
+kinds are `mcp_elicitation`, `prompt_capture`, `local_web_consent`, and `cli`;
+availability is action- and capability-specific. An unavailable rich path
+remains visible on a user-owned surface and must not hide another available
 path. CLI is the ordinary fallback when local project state is writable.
+
+The internal projection fails closed unless the caller uses `operation_category=read`
+and an exact supported User Channel binding. Local CLI access requires
+`actor_source=local_user` with `cli_direct_user_channel`. Agent-mediated
+renderers require a non-empty active session for the same project and Agent
+Connection, plus either `user_prompt_submit_hook` or the applicable MCP
+connection binding. An Agent-mediated projection contains only pending requests
+created by that same Agent Connection. Missing, ended, cross-project,
+cross-connection, wrong-basis, or wrong-operation context returns no projection;
+the adapter must not replace that denial with a direct Store read.
 
 ## MCP compound projection
 
@@ -320,7 +385,7 @@ McpRequestUserActionResponse:
 McpRequestUserActionCompactResult:
   effect: McpMutationEffectSummary
   agent_workflow_result_replayed: boolean
-  user_action_request_ref: StateRecordRef
+  user_action_request_summary: AgentSafeUserActionRequestSummary
   current_projection_state_version: integer
   current_projection_observed_at: string
   user_action_resolution_ref: StateRecordRef | null
@@ -356,6 +421,11 @@ McpUserActionResolutionSummary:
 `operation_result_ref`. `agent_workflow_result_replayed=false` means this call
 created the request; `true` means the same Agent Connection used the explicit
 read-only resume operation and no second Agent Workflow mutation occurred.
+That exact historical result contains
+`AgentSafeUserActionRequestSummary`, not `UserActionRequest` or
+`UserActionInboxItem`; replay and paged operation-result retrieval preserve the
+same safe bytes. A stored result using the superseded full-form shape is
+ineligible for Agent Connection replay or retrieval.
 Immediate or later channel resolution is a separate
 nullable projection. Its ref identifies the immutable resolution but does not
 retrieve its private body. The agent-safe value omits the user's free-form note,

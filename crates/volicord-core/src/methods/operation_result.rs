@@ -136,6 +136,16 @@ impl CoreService {
                 "operation result is unavailable",
             );
         }
+        if !crate::pipeline::stored_public_response_is_current(
+            request.operation_result_ref.source_method,
+            &stored.response_json,
+        ) {
+            return operation_result_rejected(
+                &prepared,
+                ErrorCode::OperationResultUnavailable,
+                "operation result is unavailable",
+            );
+        }
 
         let start_offset = match parsed_cursor {
             Some(cursor) if cursor_matches_ref(&cursor, &request.operation_result_ref) => {

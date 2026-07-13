@@ -16,10 +16,10 @@ pub(crate) use serde::Serialize;
 pub(crate) use serde_json::{json, Map, Value};
 pub(crate) use volicord_core::{
     local_web_channel_submission_id, rejected_response, tool_error, validate_authority_status,
-    AuthorityStatusExpectation, Clock, CoreBoundary, CorePipelineError, CoreService,
+    AuthorityStatusExpectation, CoreBoundary, CorePipelineError, CoreService,
     CurrentUserActionProjection, GitWorkspaceContext, InvocationContext,
-    LocalWebConsentCompletionMetadata, LocalWebConsentUserActionRequest, PipelineResponse,
-    SystemClock,
+    LocalWebConsentCompletionMetadata, LocalWebConsentUserActionProjectionOutcome,
+    LocalWebConsentUserActionProjectionRequest, LocalWebConsentUserActionRequest, PipelineResponse,
 };
 pub(crate) use volicord_store::{
     agent_connections::{
@@ -57,15 +57,15 @@ pub(crate) use volicord_store::{
     StoreError,
 };
 pub(crate) use volicord_types::{
-    canonical_json_bare_sha256, chat_user_action_verification_code, mcp_request_schema,
-    mcp_response_schema, ActorSource, AgentConnectionId, AgentConnectionMode, AuthorityReceipt,
-    CheckCloseRequest, CloseTaskRequest, EffectKind, ErrorCode, EvidenceRelevanceStatus,
-    GetOperationResultRequest, GuaranteeDisclosure, IdempotencyKey, IntakeRequest,
-    IntegrationProfile, McpAuthoritativeRefreshFailure, McpCheckCloseArguments,
-    McpCloseTaskArguments, McpGetOperationResultArguments, McpIntakeArguments,
-    McpMutationEffectSummary, McpMutationFullResponse, McpMutationPostEffectFailure,
-    McpMutationProjectionErrorCode, McpMutationResponseBudgetExceeded, McpMutationSummaryResponse,
-    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
+    canonical_json_bare_sha256, mcp_request_schema, mcp_response_schema, ActorSource,
+    AgentConnectionId, AgentConnectionMode, AuthorityReceipt, CheckCloseRequest, CloseTaskRequest,
+    EffectKind, ErrorCode, EvidenceRelevanceStatus, GetOperationResultRequest, GuaranteeDisclosure,
+    IdempotencyKey, IntakeRequest, IntegrationProfile, McpAuthoritativeRefreshFailure,
+    McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
+    McpIntakeArguments, McpMutationEffectSummary, McpMutationFullResponse,
+    McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
+    McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
+    McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
     McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteArguments, McpPrepareWriteCompactResult,
     McpReconcileChangesArguments, McpReconcileChangesCompactResult, McpRecordRunArguments,
     McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult, McpRequestUserActionArguments,
@@ -80,13 +80,12 @@ pub(crate) use volicord_types::{
     ResolveUserActionRequest, SessionWatchCoverageBasis, SessionWatchScanSummary,
     SessionWatchStatus, StageArtifactRequest, StageArtifactResult, StateRecordKind, StateRecordRef,
     StatusDetailLevel, StatusRequest, TaskId, ToolEnvelope, ToolResultBase, UpdateScopeRequest,
-    UserActionCapturePath, UserActionChannelKind, UserActionInboxForm, UserActionInboxItem,
-    UserActionOptionAction, UserActionPresentationForm, UserActionPresentationPlan,
-    UserActionPresentationSafety, UserActionRequest, UserActionRequestBody,
-    UserActionResolutionInput, UserActionStatus, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
-    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
-    USER_ACTION_FORM_MAX_BYTES, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    UserActionChannelKind, UserActionInboxForm, UserActionInboxItem, UserActionOptionAction,
+    UserActionPresentationForm, UserActionPresentationPlan, UserActionPresentationSafety,
+    UserActionRequest, UserActionRequestBody, UserActionRequestId, UserActionResolutionInput,
+    UserActionStatus, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
+    MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES, USER_ACTION_FORM_MAX_BYTES,
+    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };

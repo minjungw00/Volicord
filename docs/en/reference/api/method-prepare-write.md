@@ -312,7 +312,7 @@ state:
     produced_at_state_version: 20
   baseline_ref: baseline_pref_001
   shaping_readiness: null
-  pending_user_action_request_refs: []
+  pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary:
     status: active

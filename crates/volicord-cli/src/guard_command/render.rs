@@ -1,7 +1,5 @@
 use serde_json::{json, Value};
-use volicord_types::{
-    GuardDecision, UserActionInboxForm, UserActionPresentationPlan, USER_ACTION_FORM_MAX_BYTES,
-};
+use volicord_types::{GuardDecision, USER_ACTION_FORM_MAX_BYTES};
 
 use crate::disclosure::{
     cooperative_host_decision_disclosure_json, COOPERATIVE_DECISION_DISCLOSURE_TEXT,
@@ -320,32 +318,14 @@ fn guard_context_message(result: &Value) -> Option<String> {
 }
 
 fn pending_user_action_context(item: &Value) -> Option<String> {
-    let chat_id = item.get("chat_id")?.as_str()?;
-    let verification_code = item.get("verification_code")?.as_str()?;
     let request_id = item.get("user_action_request_id")?.as_str()?;
-    let action_kind = item.get("action_kind")?.as_str()?;
-    let question = item.get("question")?.as_str()?;
-    let context_summary = item.get("context_summary")?.as_str()?;
-    let form_digest = item.get("form_digest")?.as_str()?;
-    let resolve_instruction = item.get("resolve_instruction")?.as_str()?;
-    let expires_at = item
-        .get("expires_at")
-        .and_then(Value::as_str)
-        .unwrap_or("none");
-    let form = serde_json::from_value::<UserActionInboxForm>(item.get("form")?.clone()).ok()?;
-    let presentation = UserActionPresentationPlan::from_form(&form).ok()?;
-    if !presentation
-        .agent_facing_input_safety(question, context_summary)
-        .ok()?
-        .allows_agent_facing_input()
-    {
+    let status = item.get("status")?.as_str()?;
+    let next_actor = item.get("next_actor")?.as_str()?;
+    if status != "pending" || next_actor != "user" {
         return None;
     }
-    let form_text = presentation.render_plain_text().ok()?;
     Some(format!(
-        "Volicord pending user action {chat_id}:\nrequest_id: {request_id}\naction_kind: {action_kind}\nverification_code: {verification_code}\nexpires_at: {expires_at}\nform_digest: {form_digest}\nquestion: {}\ncontext: {}\nexact command: {resolve_instruction}\n{form_text}",
-        serde_json::to_string(question).ok()?,
-        serde_json::to_string(context_summary).ok()?
+        "Volicord pending user action {request_id}: status {status}, next_actor {next_actor}. Inspect and resolve it through the user-only CLI with `volicord inbox`."
     ))
 }
 
@@ -468,16 +448,9 @@ pub(super) fn write_ticket_backing_json(coverage: WriteTicketCoverage) -> Value 
 
 pub(super) fn pending_user_action_summary_json(summary: &GuardPendingUserActionSummary) -> Value {
     json!({
-        "chat_id": summary.chat_id,
-        "verification_code": summary.verification_code,
         "user_action_request_id": summary.user_action_request_id,
-        "action_kind": summary.action_kind,
-        "question": summary.question,
-        "context_summary": summary.context_summary,
-        "expires_at": summary.expires_at,
-        "form_digest": summary.form_digest,
-        "resolve_instruction": summary.resolve_instruction,
-        "form": summary.form
+        "status": summary.status,
+        "next_actor": summary.next_actor
     })
 }
 
@@ -532,7 +505,7 @@ mod tests {
         serde_json::from_str(rendered.stdout.trim()).expect("Stop host output should be JSON")
     }
 
-    fn session_result_with_form_padding(padding: usize) -> Value {
+    fn safe_session_result() -> Value {
         json!({
             "context": {
                 "project_name": "render-project",
@@ -542,27 +515,9 @@ mod tests {
                 "pending_user_action_count": 1,
                 "unresolved_unrecorded_change_count": 0,
                 "pending_user_actions": [{
-                    "chat_id": "A-1",
-                    "verification_code": "#ABC123",
                     "user_action_request_id": "action_render_boundary",
-                    "action_kind": "product_decision",
-                    "question": "Choose the complete host presentation.",
-                    "context_summary": "Exercise the actual host-native JSON line budget.",
-                    "expires_at": null,
-                    "form_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "resolve_instruction": "Volicord: resolve A-1 --request action_render_boundary --choice <choice_id> #ABC123",
-                    "form": {
-                        "form_type": "choice",
-                        "choices": [{
-                            "choice_id": "accept",
-                            "label": "Accept boundary",
-                            "description": "Display the entire closed choice.",
-                            "consequence": format!("HOST_FORM_MARKER{}", "x".repeat(padding)),
-                            "is_default": true
-                        }],
-                        "note_allowed": true,
-                        "note_max_chars": 1000
-                    }
+                    "status": "pending",
+                    "next_actor": "user"
                 }]
             }
         })
@@ -595,72 +550,53 @@ mod tests {
     }
 
     #[test]
-    fn session_host_native_budget_accepts_exact_json_line_and_uses_no_partial_at_next_byte() {
-        let base_result = session_result_with_form_padding(1);
-        let base_wire = serde_json::to_vec(&unbounded_session_output(&base_result))
-            .expect("base host output serializes")
-            .len()
-            + 1;
-        assert!(base_wire < MAX_HOST_USER_ACTION_CONTEXT_BYTES);
-        let exact_padding = 1 + (MAX_HOST_USER_ACTION_CONTEXT_BYTES - base_wire);
-
-        let exact_result = session_result_with_form_padding(exact_padding);
-        let exact_form: UserActionInboxForm = serde_json::from_value(
-            exact_result["context"]["pending_user_actions"][0]["form"].clone(),
-        )
-        .expect("exact form parses");
-        exact_form
-            .validate_canonical_size()
-            .expect("exact host line still carries an owner-valid form");
+    fn session_host_native_output_carries_only_the_exact_safe_summary_and_generic_cli_route() {
+        let result = safe_session_result();
+        let summary = pending_user_action_summary_json(
+            &volicord_types::AgentSafeUserActionRequestSummary::pending(
+                volicord_types::UserActionRequestId::new("action_render_boundary"),
+            ),
+        );
         assert_eq!(
-            serde_json::to_vec(&unbounded_session_output(&exact_result))
-                .expect("exact host output serializes")
+            summary,
+            json!({
+                "user_action_request_id": "action_render_boundary",
+                "status": "pending",
+                "next_actor": "user"
+            })
+        );
+        let unbounded = unbounded_session_output(&result);
+        assert!(
+            serde_json::to_vec(&unbounded)
+                .expect("host output serializes")
                 .len()
-                + 1,
-            MAX_HOST_USER_ACTION_CONTEXT_BYTES
+                + 1
+                < MAX_HOST_USER_ACTION_CONTEXT_BYTES
         );
         for host in [HostOutputMode::Codex, HostOutputMode::ClaudeCode] {
-            let exact = render_host_native_output(
+            let rendered = render_host_native_output(
                 host,
                 GuardPhase::SessionStart,
                 GuardDecision::InjectContext,
-                exact_result.clone(),
+                result.clone(),
             )
-            .expect("exact host output renders");
-            assert_eq!(exact.stdout.len(), MAX_HOST_USER_ACTION_CONTEXT_BYTES);
-            assert!(exact.stdout.contains("HOST_FORM_MARKER"));
-            assert!(exact.stdout.ends_with('\n'));
-        }
-
-        let over_result = session_result_with_form_padding(exact_padding + 1);
-        let over_form: UserActionInboxForm = serde_json::from_value(
-            over_result["context"]["pending_user_actions"][0]["form"].clone(),
-        )
-        .expect("one-byte-over form parses");
-        over_form
-            .validate_canonical_size()
-            .expect("the transport envelope, not the canonical form, exceeds its budget");
-        assert_eq!(
-            serde_json::to_vec(&unbounded_session_output(&over_result))
-                .expect("one-byte-over host output serializes")
-                .len()
-                + 1,
-            MAX_HOST_USER_ACTION_CONTEXT_BYTES + 1
-        );
-        for host in [HostOutputMode::Codex, HostOutputMode::ClaudeCode] {
-            let over = render_host_native_output(
-                host,
-                GuardPhase::SessionStart,
-                GuardDecision::InjectContext,
-                over_result.clone(),
-            )
-            .expect("one-byte-over host output renders fallback");
-            assert!(over.stdout.len() <= MAX_HOST_USER_ACTION_CONTEXT_BYTES);
-            assert!(over.stdout.contains("no partial form is shown"));
-            assert!(over.stdout.contains("volicord inbox"));
-            assert!(!over.stdout.contains("HOST_FORM_MARKER"));
-            assert!(!over.stdout.contains("choice_id"));
-            assert!(over.stdout.ends_with('\n'));
+            .expect("host output renders");
+            assert!(rendered.stdout.contains("action_render_boundary"));
+            assert!(rendered.stdout.contains("status pending"));
+            assert!(rendered.stdout.contains("next_actor user"));
+            assert!(rendered.stdout.contains("volicord inbox"));
+            for forbidden in [
+                "question",
+                "context_summary",
+                "form_type",
+                "verification_code",
+                "resolve_instruction",
+                "choice_id",
+                "volicord inbox resolve",
+            ] {
+                assert!(!rendered.stdout.contains(forbidden), "leaked {forbidden}");
+            }
+            assert!(rendered.stdout.ends_with('\n'));
         }
     }
 }

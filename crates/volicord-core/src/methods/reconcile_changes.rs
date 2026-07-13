@@ -450,7 +450,6 @@ fn plan_reconcile_changes(
         .map(|resolution| resolution_summary(resolution, &request, planned_state_version))
         .collect::<Vec<_>>();
     let mut result_next_actions = reconcile_next_actions(
-        &request,
         &unresolved_findings,
         &planned_user_actions,
         user_channel_guard_health.as_ref(),
@@ -482,7 +481,9 @@ fn plan_reconcile_changes(
         task_ref,
         unresolved_changes: unresolved_findings.clone(),
         resolved_changes,
-        pending_user_action_refs: projected_pending_refs,
+        pending_user_action_summaries: agent_safe_pending_user_action_summaries(
+            projected_pending_refs,
+        ),
         rejected_resolution_requests,
         state,
         close_blockers: close_plan.blockers.clone(),
@@ -1096,10 +1097,7 @@ fn unrecorded_finding(
             ],
             label: "Run reconciliation; the user must resolve any created action through a User Channel."
                 .to_owned(),
-            blocking_question: Some(
-                "Does the user accept this observed Product Repository change as intentional?"
-                    .to_owned(),
-            ),
+            blocking_question: None,
             expected_state_version: RequiredNullable::null(),
             required_refs: vec![unrecorded_change_ref(record, request, state_version)],
         },
@@ -1141,7 +1139,6 @@ fn resolution_summary(
 }
 
 fn reconcile_next_actions(
-    request: &ReconcileChangesRequest,
     unresolved_findings: &[UnrecordedChangeFinding],
     planned_user_actions: &[PlannedUserAction],
     guard_health: Option<&GuardHealthSummary>,
@@ -1162,10 +1159,7 @@ fn reconcile_next_actions(
                 ],
                 label: "Run reconciliation without dry-run to create pending user-action requests."
                     .to_owned(),
-                blocking_question: Some(
-                    "Does the user accept the observed Product Repository change as intentional?"
-                        .to_owned(),
-                ),
+                blocking_question: None,
                 expected_state_version: RequiredNullable::null(),
                 required_refs: planned_user_actions
                     .iter()
@@ -1178,27 +1172,12 @@ fn reconcile_next_actions(
             action_kind: NextActionKind::ResolveUserAction,
             owner_method: Some(MethodName::ResolveUserAction),
             allowed_operation_categories: vec![OperationCategory::UserOnly],
-            label: format!(
-                "The user must answer through the User Channel. {}",
-                close_task::user_channel_pending_action_instruction(guard_health)
-            ),
-            blocking_question: Some(
-                "Does the user accept the observed Product Repository change as intentional?"
-                    .to_owned(),
-            ),
+            label: close_task::user_channel_pending_action_instruction(guard_health),
+            blocking_question: None,
             expected_state_version: RequiredNullable::null(),
             required_refs: planned_user_actions
                 .iter()
-                .filter_map(|user_action| user_action.user_action.as_ref())
-                .map(|user_action| {
-                    state_ref(
-                        StateRecordKind::UserActionRequest,
-                        user_action.user_action_request_id.as_str(),
-                        &request.envelope.project_id,
-                        Some(&request.task_id),
-                        None,
-                    )
-                })
+                .map(|user_action| user_action.unrecorded_change_ref.clone())
                 .collect(),
         }];
     }
@@ -1256,11 +1235,10 @@ fn dry_run_summary_for_reconciliation(
     ];
     diagnostics.extend(planned_user_actions.iter().map(|user_action| {
         format!(
-            "would_create_user_action_for={}; kind={}; question={}",
+            "would_create_user_action_for={}; kind={}",
             user_action.unrecorded_change_ref.record_id.as_str(),
             storage_value(user_action.candidate.action_kind())
-                .unwrap_or_else(|_| "unknown".to_owned()),
-            user_action.candidate.question()
+                .unwrap_or_else(|_| "unknown".to_owned())
         )
     }));
     Ok(DryRunSummary {

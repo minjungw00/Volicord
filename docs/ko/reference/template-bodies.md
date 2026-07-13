@@ -347,7 +347,9 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 ### 입력 상태
 
 - `volicord.status`가 반환한 현재 읽기 전용 상태입니다.
-- `StateSummary`, 차단 사유, 대기 중인 `UserActionInboxItem` 항목, 증거 요약과 출처 상태, 닫기 준비 상태 관찰, 잔여 위험 범위, 프로젝트 연속성 요약, 보장 표시, 다음 안전한 행동 같은 표시 입력입니다.
+- `StateSummary`, 차단 사유, 대기 중인 `AgentSafeUserActionRequestSummary` 항목, 증거
+  요약과 출처 상태, 닫기 준비 상태 관찰, 잔여 위험 범위, 프로젝트 연속성 요약, 보장
+  표시, 다음 안전한 행동 같은 표시 입력입니다.
 - 원천 참조, `state_version`, 관찰 시각, 오래됨 표시, 사용할 수 없음 표시, 역량 제한 표시 같은 최신성 단서가 있으면 함께 사용합니다.
 - 아티팩트 가용성은 담당 문서가 허용한 `ArtifactRef` 표시 데이터나 사용할 수 없음/가림 처리 메모로만 표시합니다.
 
@@ -372,6 +374,11 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 - [API 값 집합](api/schema-value-sets.md)이 지원 값으로 정의하지 않았는데 초록색 또는 긍정 라벨이 기준 enum 값이라는 의미.
 - 아티팩트가 있다는 사실만으로 증거가 충분하다는 의미.
 - 빠진 원천 데이터를 낙관적인 문구로 대신할 수 있다는 의미.
+- 기존 대기 요청의 질문, 선택지, 맥락, canonical form, 캡처 경로, 명령, URL,
+  credential을 차단 사유, 다음 행동, template text에서 다시 만들 수 있다는 의미. 이
+  요청은 요청 ID, `pending`, 다음 actor/User Channel만 표시합니다. 요청을 만들기 전의
+  `missing_final_acceptance` 행동은 Agent가 요청을 만드는 데 필요한 차단 질문을 계속
+  표시할 수 있지만, 요청을 만든 뒤에는 일반 대기 요약 규칙을 적용합니다.
 
 ### 사용자에게 보이는 문구
 
@@ -403,7 +410,9 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 
 ### 입력 상태
 
-- `volicord.request_user_action`가 반환한 대기 중인 사용자 소유 판단 요청 하나.
+- 검증된 User Channel renderer에 전달된 Core 파생 내부 `UserActionInboxItem` 하나. 이
+  template은 안전한 요약만 담는 Agent 대상 `volicord.request_user_action` 결과에서 만들지
+  않습니다.
 - 정확한 질문과 제한된 선택지.
 - 근거, 불확실성, 영향을 받는 범위, 미룰 때의 결과, 대체 불가 메모.
 - 연결된 출처 참조, `state_version`, 최신성 또는 역량 제한 메모가 있으면 함께 사용합니다.
@@ -423,6 +432,8 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 - 포괄적인 "예"가 민감 동작 승인, 최종 수락, 잔여 위험 수락 또는 다른 별도 판단을 대신한다는 의미.
 - 답변이 증거를 만들거나, 작업을 검증하거나, 관련 없는 쓰기를 승인한다는 의미.
 - 서로 다른 결정을 묶어 질문하고 하나의 답변으로 기록할 수 있다는 의미.
+- 이 완전한 질문·선택지 template을 Agent Connection 출력, fallback text, status,
+  close, replay, operation-result byte에 표시할 수 있다는 의미.
 
 ### 사용자에게 보이는 문구
 
@@ -503,7 +514,8 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 ### 입력 상태
 
 - `volicord.check_close` 또는 `volicord.close_task`가 반환한 `CloseTaskResult`.
-- `CloseReadinessBlocker[]`, 증거 요약, 대기 중인 사용자 행동.
+- `CloseReadinessBlocker[]`, 증거 요약, 대기 중인
+  `AgentSafeUserActionRequestSummary` 항목.
 - 최종 수락 상태, 잔여 위험 상태, 아티팩트 가용성.
 - 닫기 결과가 반환한 프로젝트 연속성 기록.
 - 출처 참조, 최신성 단서, 요청한 메서드 또는 닫기 의도.
@@ -526,6 +538,10 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 - 포괄적 승인이 최종 수락이나 잔여 위험 수락을 대신한다는 의미.
 - 본문이 차단 사유를 성공처럼 보이는 문장 안에 숨길 수 있다는 의미.
 - 빠진 증거나 사용할 수 없는 아티팩트를 닫기 문구로 충족할 수 있다는 의미.
+- 기존 대기 요청의 질문, 선택지, 맥락, form, 캡처 경로, 명령, URL, credential이 차단
+  사유나 다음 행동 문구에 들어갈 수 있다는 의미. Agent-safe 요약과 일반 User Channel
+  안내만 사용합니다. 별도의 요청 전 `missing_final_acceptance` 상태는 요청 생성에 필요한
+  질문을 표시할 수 있습니다.
 
 ### 사용자에게 보이는 문구
 
@@ -555,7 +571,7 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 ### 입력 상태
 
 - 현재 작업 요약, 현재 적용 범위, 범위 밖 항목.
-- 대기 중인 사용자 행동, 차단 사유, 다음 안전한 행동.
+- 대기 중인 `AgentSafeUserActionRequestSummary` 항목, 차단 사유, 다음 안전한 행동.
 - 증거 공백과 아티팩트 가용성 요약.
 - 닫기 준비 상태, 잔여 위험 요약, 보장 수준.
 - 출처 참조와 최신성 단서.
@@ -580,6 +596,8 @@ receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표
 - 에이전트가 사용자 판단, 쓰기 티켓, 아티팩트 규칙, 닫기 차단 사유를 우회할 수 있다는 의미.
 - 전체 스키마, DDL, 로그, 아티팩트 본문, 관련 없는 계약 자료를 기본으로 주입해야 한다는 의미.
 - 지원 범위 밖 기능 자료나 같은 `doc_id`의 한영 문서를 기본으로 주입해야 한다는 의미.
+- 대기 요청의 질문, 선택지, 맥락, canonical form, 캡처 경로, 명령, URL, credential을
+  포함하거나 다시 만들어야 한다는 의미.
 
 ### 사용자에게 보이는 문구
 

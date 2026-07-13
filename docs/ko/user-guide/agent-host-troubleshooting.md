@@ -204,7 +204,9 @@ volicord connection verify codex --shared --repo "<repo>"
 다른 실행 가능한 `Next` 줄은 선택된 작업 흐름 안에서 해석합니다. 출력이
 `volicord inbox`를 이름 붙이면 터미널에서 대기 중인 사용자 행동을 확인하거나
 해결합니다. 로컬 동의 URL이 없다고 하면 표시된 CLI resolution 명령이나 MCP 사용자
-행동 받은편지함 항목에 이미 표시된 URL을 사용합니다. 선택자가 모호하거나 잘못된 저장소가
+행동 받은편지함 항목의 URL을 찾지 않습니다. 모델에 노출되지 않는 host 소유 consent
+표면이 host UI에 표시되면 그 표면을 직접 사용하고, 그렇지 않으면 터미널에서 `volicord
+inbox`를 실행합니다. 선택자가 모호하거나 잘못된 저장소가
 선택되었다면 `--repo PATH`와 `--shared` 또는 `--global` 같은 일치하는 의도 플래그를
 붙여 다시 실행합니다.
 

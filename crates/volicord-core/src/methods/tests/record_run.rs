@@ -1669,9 +1669,20 @@ fn final_acceptance_judgment_basis_uses_canonical_close_basis_refs() -> Result<(
     )?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
+    let request_id = response_record_id(&response.response_value, "user_action_request_ref");
     assert_eq!(
-        response.response_value["user_action_request"]["basis"]["result_refs"],
-        serde_json::to_value(&close_basis.result_refs)?
+        response.response_value["user_action_request_summary"],
+        pending_user_action_summary(&request_id)
+    );
+    let projection = cli_user_channel_projection(&harness, &task_id)?;
+    let projected = projection
+        .items
+        .iter()
+        .find(|item| item.request.user_action_request_id.as_str() == request_id)
+        .expect("trusted User Channel projection should retain the close-basis request");
+    assert_eq!(
+        projected.request.basis.result_refs(),
+        close_basis.result_refs.as_slice()
     );
     assert!(close_basis.result_refs.iter().all(|record_ref| {
         record_ref.produced_at_state_version.as_ref() == Some(&state_version)

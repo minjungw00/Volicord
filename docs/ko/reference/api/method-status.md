@@ -92,10 +92,12 @@ StatusRequest:
 `include` 상태 보기 계약:
 
 - `include.task`는 선택된 `Task` 요약과 현재 Change Unit을 `active_task`로 반환합니다.
-- `include.pending_user_actions`는 현재 대기 사용자 행동 요청 참조,
-  `pending_user_action_inbox_items`, 현재 호출 맥락에서 지원되는 resolution 경로를
-  나타내는 `user_channel_availability`를 반환합니다. 관련 있는 stale 또는 superseded
-  요청은 `blocker_refs`, `next_actions.required_refs` 같은 기존 결과 필드로 나타납니다.
+- `include.pending_user_actions`는 `pending_user_action_summaries`를 반환합니다. 공개 결과는
+  User Channel 가용성, Core가 도출한 요청 본문, canonical form, 완전한
+  `UserActionInboxItem`을 반환하지 않습니다. 검증된 User Channel renderer는 별도 내부
+  Core 경계를 통해 가용성과 완전한 항목을 조회합니다. 관련 stale 또는 superseded
+  기록은 owner가 정의한 상태와 다음 행동 필드에 불투명한 authority ref로 계속 나타날
+  수 있지만, 그 ref는 요청 상세 projection이 아닙니다.
 - `include.write_ticket`는 활성, 만료, 오래됨, 소비됨 또는 그 밖의 관련 쓰기 티켓 상태를 `write_ticket_summary`로 반환합니다.
 - `write_ticket_summary`는 호환성 요약일 뿐이며 파일시스템 접근, 셸 승인, 최종 수락, 일반 쓰기 승인, 쓰기가 실제로 일어났다는 증명이 아닙니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위, 기준 `evidence_gate` 상태 보기를 반환합니다.
@@ -140,9 +142,7 @@ StatusRequest:
 | `active_task` | 현재 선택된 `Task` 요약의 `StateSummary | null`입니다. |
 | `status_summary` | 현재 상태 조회 보기를 요약하는 자유 형식 표시 문자열입니다. 닫기 준비 상태 보기가 선택되면 현재 닫기 준비 상태나 첫 번째 닫기 차단 사유 코드를 요약할 수 있습니다. 구조화된 권한 사실은 다른 결과 필드에 남습니다. |
 | `next_actions` | 다음 안전한 API 단계를 설명하는 `NextActionSummary[]`입니다. 비어 있지 않은 목록에는 `presentation_role=primary`인 항목이 정확히 하나 있으며 `summary_card.next_action`은 배열 위치가 아니라 그 행동을 선택합니다. |
-| `pending_user_actions` | 상태 조회 보기에 선택된 유효 대기 요청의 `record_kind=user_action_request` `StateRecordRef[]`입니다. |
-| `pending_user_action_inbox_items` | `include.pending_user_actions=true`일 때 사용자 행동이 필요한 대기 요청의 `UserActionInboxItem[]`입니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. |
-| `user_channel_availability` | `include.pending_user_actions=true`이고 Task 범위 사용자 행동 보기를 사용할 수 있을 때 지원되는 resolution 경로를 나타내는 `UserChannelAvailability`입니다. 한 경로를 사용할 수 없다고 보고하면서도 다른 사용 가능한 경로를 유지할 수 있습니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. |
+| `pending_user_action_summaries` | 선택된 각 대기 요청에 대해 요청 ID, `status=pending`, `next_actor=user`만 담는 `AgentSafeUserActionRequestSummary[]`입니다. Agent Connection projection은 이 필드를 사용합니다. |
 | `blocker_refs` | 현재 상태 조회 보기에 보이는 차단 사유 기록의 `StateRecordRef[]`입니다. |
 | `write_ticket_summary` | 쓰기 티켓 상태 보기의 `WriteTicketStateSummary | null`입니다. `include.write_ticket=true`인데 `null`이면 관련 쓰기 티켓을 사용할 수 없음을 뜻하고, 해당 상태 보기를 선택하지 않으면 이 고정 형태 필드는 `null`로 남습니다. 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다. |
 | `evidence_summary` | `include.evidence=true`일 때의 `EvidenceSummary | null`입니다. 명시적 `null`은 선택한 상태 보기에서 현재 증거 요약을 찾지 못했음을 뜻하고, `include.evidence=false`이면 이 필드를 생략합니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
@@ -158,7 +158,7 @@ StatusRequest:
 | `task_flow` | `include.continuity=true`이고 Task를 선택했을 때의 `TaskFlowItem[]`이며 그 밖에는 생략합니다. 연결된 lineage projection이지 승계된 현재 권한이 아닙니다. |
 | `authority_receipt` | Task를 선택했을 때 새로 계산한 `AuthorityReceipt`이며 Task가 없으면 `null`입니다. 같은 관찰 `state_version`에서 전체 close blocker, 최신 기록 Run, product-write 관찰, Evidence gate, 다음 actor/action을 담습니다. 형태는 [API 상태 스키마](schema-state.md#task-lineage-workspace-and-authority-receipt)가 담당합니다. |
 
-중첩된 `UserChannelAvailability`와 `UserActionInboxItem` 형태는 [API 사용자 행동
+중첩된 `AgentSafeUserActionRequestSummary` 형태는 [API 사용자 행동
 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. 중첩된
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
 `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`,
@@ -199,7 +199,11 @@ StatusRequest:
 
 이 메서드는 Core 상태 변경, 이벤트, 재실행 행, 닫기 변경, 상태 버전 증가를 저장하지 않습니다. 세션에 묶인 Agent Connection으로 호출되면 위에서 설명한 것처럼 런타임이 `session-watch` 진단 기록을 초기화할 수 있습니다. 정확한 저장 의미는 아래 저장 담당 문서가 담당합니다.
 
-아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 상태 조회 결과 분기, 관찰된 참조, 상태 버전, 현재 적용 범위, 현재 적용 Change Unit, 닫기 상태, 다음 행동을 보여 주는 데 필요한 필드로 축약했습니다.
+아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 공개
+agent-safe 상태 projection입니다. 검증된 User Channel renderer는 완전한 canonical inbox
+form을 `StatusResult`가 아닌 별도 내부 Core 경계에서 얻습니다. 응답은
+상태 조회 결과 분기, 관찰된 참조, 상태 버전, 현재 적용 범위, 현재 적용 Change Unit,
+닫기 상태, 다음 행동을 보여 주는 데 필요한 필드로 축약했습니다.
 
 메서드 안의 전제: `task_export_001`, `cu_export_001`, `ua_export_columns_001`은 `proj_export_001`에 이미 있고 아래 상태 버전을 가집니다. 읽기 전용 응답은 이 참조를 관찰할 뿐 새로 만들지 않습니다.
 
@@ -269,12 +273,10 @@ active_task:
     produced_at_state_version: 42
   baseline_ref: baseline_export_001
   shaping_readiness: null
-  pending_user_action_request_refs:
-    - record_kind: user_action_request
-      record_id: ua_export_columns_001
-      project_id: proj_export_001
-      task_id: task_export_001
-      produced_at_state_version: 42
+  pending_user_action_summaries:
+    - user_action_request_id: ua_export_columns_001
+      status: pending
+      next_actor: user
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
@@ -284,29 +286,19 @@ active_task:
   close_blockers:
     - category: pending_user_action
       code: pending_user_action
-      message: "CSV 열 순서에 대한 사용자 소유 제품 결정이 아직 대기 중입니다."
+      message: "사용자 소유 행동이 대기 중입니다."
       can_resolve_in_chat: false
       outside_chat_action_required: false
-      related_refs:
-        - record_kind: user_action_request
-          record_id: ua_export_columns_001
-          project_id: proj_export_001
-          task_id: task_export_001
-          produced_at_state_version: 42
+      related_refs: []
       next_actions:
         - presentation_role: primary
           action_kind: resolve_user_action
           owner_method: volicord.resolve_user_action
           allowed_operation_categories: [user_only]
-          label: "사용자가 User Channel을 통해 대기 중인 CSV 열 순서 결정에 답해야 합니다."
-          blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
+          label: "사용자가 User Channel에서 대기 행동을 해결해야 합니다."
+          blocking_question: null
           expected_state_version: null
-          required_refs:
-            - record_kind: user_action_request
-              record_id: ua_export_columns_001
-              project_id: proj_export_001
-              task_id: task_export_001
-              produced_at_state_version: 42
+          required_refs: []
   guarantee_display:
     level: cooperative
     basis: "현재 적용된 더 강한 로컬 보장은 없습니다."
@@ -317,90 +309,14 @@ next_actions:
     action_kind: resolve_user_action
     owner_method: volicord.resolve_user_action
     allowed_operation_categories: [user_only]
-    label: "사용자가 User Channel을 통해 대기 중인 CSV 열 순서 결정에 답해야 합니다."
-    blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
+    label: "사용자가 User Channel에서 대기 행동을 해결해야 합니다."
+    blocking_question: null
     expected_state_version: null
-    required_refs:
-      - record_kind: user_action_request
-        record_id: ua_export_columns_001
-        project_id: proj_export_001
-        task_id: task_export_001
-        produced_at_state_version: 42
-pending_user_actions:
-  - record_kind: user_action_request
-    record_id: ua_export_columns_001
-    project_id: proj_export_001
-    task_id: task_export_001
-    produced_at_state_version: 42
-user_channel_availability: &user_channel_availability_example
-  paths:
-    - kind: mcp_elicitation
-      label: "호스트 프롬프트 입력"
-      available: false
-      status: unavailable
-      capture_basis: mcp_elicitation_user_channel
-      detail: "이 호출에서는 호스트 프롬프트 입력을 사용할 수 없습니다."
-    - kind: prompt_capture
-      label: "채팅 명령 캡처"
-      available: false
-      status: unavailable
-      capture_basis: user_prompt_submit_hook
-      detail: "현재 이 연결에서는 채팅 명령 캡처를 사용할 수 없습니다."
-    - kind: local_web_consent
-      label: "로컬 consent URL"
-      available: false
-      status: unavailable
-      capture_basis: local_user_local_web
-      detail: "이 호출에서 사용할 수 있는 로컬 consent URL이 없습니다."
-    - kind: cli
-      label: "CLI inbox"
-      available: true
-      status: available
-      capture_basis: cli_direct_user_channel
-      detail: "로컬 터미널에서 사용자로 답변합니다."
-  recommended_path_kind: cli
-  recommended_path_label: "CLI inbox"
-  recommendation: "CLI inbox로 대기 중인 사용자 행동을 해결하세요."
-pending_user_action_inbox_items:
+    required_refs: []
+pending_user_action_summaries:
   - user_action_request_id: ua_export_columns_001
-    request_ref:
-      record_kind: user_action_request
-      record_id: ua_export_columns_001
-      project_id: proj_export_001
-      task_id: task_export_001
-      produced_at_state_version: 42
-    project_id: proj_export_001
-    task_id: task_export_001
-    change_unit_id: cu_export_001
-    action_kind: product_decision
-    question: "어떤 CSV 열 순서를 사용할까요?"
-    context_summary: "내보내기에 안정적인 열 순서 하나가 필요합니다."
-    required: true
-    requirement_status: required
-    required_for: [close_complete]
     status: pending
-    form:
-      form_type: choice
-      choices:
-        - choice_id: accept
-          label: "제안된 CSV 열 순서 사용"
-          description: "검토한 제안을 유지합니다."
-          consequence: "내보내기 순서가 검토한 순서가 됩니다."
-          is_default: false
-      note_allowed: true
-      note_max_chars: 1000
-    answer_path_availability: *user_channel_availability_example
-    preferred_capture_path:
-      kind: cli
-      label: "CLI inbox"
-      available: true
-      command: "volicord inbox resolve ua_export_columns_001 --choice <choice>"
-      url: null
-      capture_basis: cli_direct_user_channel
-      expires_at: null
-      detail: "로컬 터미널에서 사용자로 해결합니다."
-    fallbacks: []
-    expires_at: null
+    next_actor: user
 blocker_refs: []
 evidence_gate:
   state: not_required
@@ -410,29 +326,19 @@ risk_acceptance_coverage: []
 close_blockers:
   - category: pending_user_action
     code: pending_user_action
-    message: "CSV 열 순서에 대한 사용자 소유 제품 결정이 아직 대기 중입니다."
+    message: "사용자 소유 행동이 대기 중입니다."
     can_resolve_in_chat: false
     outside_chat_action_required: false
-    related_refs:
-      - record_kind: user_action_request
-        record_id: ua_export_columns_001
-        project_id: proj_export_001
-        task_id: task_export_001
-        produced_at_state_version: 42
+    related_refs: []
     next_actions:
       - presentation_role: primary
         action_kind: resolve_user_action
         owner_method: volicord.resolve_user_action
         allowed_operation_categories: [user_only]
-        label: "사용자가 User Channel을 통해 대기 중인 CSV 열 순서 결정에 답해야 합니다."
-        blocking_question: "대기 중인 CSV 열 순서 결정에 사용자가 어떻게 답했습니까?"
+        label: "사용자가 User Channel에서 대기 행동을 해결해야 합니다."
+        blocking_question: null
         expected_state_version: null
-        required_refs:
-          - record_kind: user_action_request
-            record_id: ua_export_columns_001
-            project_id: proj_export_001
-            task_id: task_export_001
-            produced_at_state_version: 42
+        required_refs: []
 guarantee_display:
   level: cooperative
   basis: "현재 적용된 더 강한 로컬 보장은 없습니다."

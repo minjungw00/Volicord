@@ -104,7 +104,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `evidence_capture_intents` | 증거 캡처 intent | 현재 Task/Change Unit/scope/baseline/target/workspace, 정확한 capture spec과 command/tool input digest 또는 Core가 파생한 connection source-selector digest, 요청 connection과 actor, 예상 outcome, timestamp에 결합된 만료되는 불변 요청. |
 | `state.sqlite` | `user_action_requests` | 사용자 행동 요청 | 폐쇄형 행동 요청 JSON, Core 파생 근거와 호환성, required-for 대상, 요청 actor, 원천 메서드/idempotency 관계, expiry를 담습니다. 캡처 폼과 유효 lifecycle 상태는 합성 열로 저장하지 않고 파생합니다. |
 | `state.sqlite` | `user_action_resolutions` | 변경 불가능한 User Channel resolution | 요청당 최대 하나이며 폐쇄형 종류 일치 본문, channel kind와 크기가 제한된 visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, Core 캡처 시각을 담습니다. Choice 사실 또는 전체 관찰 detail은 본문에 남습니다. |
-| `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | 요청, connection, expiry, capture basis, fallback 종류·endpoint·정확한 canonical-form digest를 담은 폐쇄형 생성 metadata에 결속된 hash-only 일회성 local-web token. |
+| `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | 요청, connection, expiry, capture basis, 정확한 fallback 종류·`delivery_surface=model_invisible_user_surface`·endpoint·canonical-form digest를 담은 폐쇄형 생성 metadata에 결속된 hash-only 일회성 local-web token. |
 | `state.sqlite` | `project_continuity_records` | 프로젝트 연속성 맥락 | 원천 `Task`가 닫힌 뒤에도 주소 지정할 수 있게 남는 프로젝트 수준 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약. |
 | `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 단일 사용 쓰기 티켓 권한 기록, 기준 버전, 시도 범위, 만료, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장하는 물리 테이블입니다. |
 | `state.sqlite` | `runs` | 실행 또는 관찰 기록 | 커밋된 실행 또는 관찰 기록, 선택적 호환 쓰기 티켓 소비, 행위자 출처, 간결한 증거 갱신. |
@@ -346,6 +346,17 @@ User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키
 요청에는 완전한 닫힌 해결 본문, 행위자 출처, 검증 근거, 보장 수준이 필요합니다. 이
 사실이 빠진 행은 감사 호환 권한 기록이 아니라 유효하지 않은 소유자 상태입니다.
 
+`user_action_channel_tokens.creation_metadata_json`은 정확히
+`{fallback_kind, delivery_surface, endpoint, form_digest}`로 strict decode되어야 합니다.
+필수 값은 `fallback_kind=local_web_consent`,
+`delivery_surface=model_invisible_user_surface`, `endpoint=/consent`이며 digest는 저장된 닫힌
+요청에서 도출한 canonical form과 일치해야 합니다. Metadata가 누락됐거나 추가됐거나,
+타입이 잘못됐거나, 값이 일치하지 않으면 사용할 수 없습니다. 특히 `delivery_surface`가
+없는 수정 전 행은 수정된 코드에서 영구적으로 사용할 수 없습니다. 이때 local-web GET,
+POST, token 소비, resolution은 form을 표시하지 않고 닫힌 상태로 실패하며 token,
+프로젝트, UTC 하한, 사용자 행동 상태를 바꾸지 않습니다. 이런 행은 upgrade하지 않으며
+대기 행동은 CLI 같은 다른 유효 User Channel로 계속 해결할 수 있습니다.
+
 `user_action_resolutions` 행 하나가 존재해도 요청 근거가 계속 현재 상태일 때만 유효
 `status=resolved`가 됩니다. stale 또는 superseded 근거는 이 불변 행보다 우선합니다.
 Resolution 존재 자체는 승인이나 증거 뒷받침을 뜻하지 않습니다. 현재 권한 효력이 있는
@@ -454,7 +465,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `change_units` | 범위 요약, 제한된 목록, 쓰기 근거 요약, 선택적 효과 계약 데이터, 생명주기 지원 데이터. |
 | `user_action_requests` | 폐쇄형 요청, required-for 대상, Core 파생 근거, 요청 actor, 정확한 원천 메서드/idempotency 관계, expiry. |
 | `user_action_resolutions` | 폐쇄형 불변 resolution 본문, channel kind와 크기가 제한된 visible-ASCII submission ID, 파생 actor/verification/assurance, Core 캡처 시각, 선택적 비공개 note, choice 또는 Evidence 관찰 detail. Local-web 행은 파생 digest identity만 저장하며 원문 token은 저장하지 않습니다. |
-| `user_action_channel_tokens` | 요청 결합 local-web hash-token lifecycle과 capture basis. |
+| `user_action_channel_tokens` | 요청 결합 local-web hash-token lifecycle, capture basis, 폐쇄형 delivery-surface 생성 metadata. |
 | `project_continuity_records` | 오래 유지하는 프로젝트 맥락을 위한 적용 대상 경로, 적용 대상 참조, 원천 참조, 아티팩트 참조, 대체된 참조, 검토 트리거, 비권한 메타데이터. |
 | `write_tickets` | 쓰기 티켓 시도 범위와 비권한 메타데이터. |
 | `runs` | 요약, 관찰된 변경, 증거 갱신, 쓰기 티켓 효과 데이터, 비권한 메타데이터. |

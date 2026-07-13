@@ -1574,7 +1574,7 @@ mod tests {
             &[
                 "effect",
                 "agent_workflow_result_replayed",
-                "user_action_request_ref",
+                "user_action_request_summary",
                 "current_projection_state_version",
                 "current_projection_observed_at",
                 "user_action_resolution_ref",
@@ -1583,6 +1583,28 @@ mod tests {
                 "derived_refs",
             ],
             "McpRequestUserActionCompactResult",
+        );
+        let safe_request_summary = definition(&action, "AgentSafeUserActionRequestSummary");
+        assert_required(
+            safe_request_summary,
+            &["user_action_request_id", "status", "next_actor"],
+            "AgentSafeUserActionRequestSummary",
+        );
+        assert_eq!(
+            safe_request_summary["additionalProperties"],
+            Value::Bool(false),
+            "AgentSafeUserActionRequestSummary must remain closed"
+        );
+        let summary_properties = safe_request_summary["properties"]
+            .as_object()
+            .expect("AgentSafeUserActionRequestSummary properties should be an object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            summary_properties,
+            BTreeSet::from(["next_actor", "status", "user_action_request_id"]),
+            "AgentSafeUserActionRequestSummary must declare exactly three properties"
         );
         let agent_safe_resolution = definition(&action, "AgentSafeUserActionResolution");
         assert_required(

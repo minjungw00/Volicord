@@ -7831,7 +7831,11 @@ fn user_channel_resolves_pending_action_with_local_user_provenance() -> Result<(
         ),
         core_invocation(OperationCategory::AgentWorkflow),
     )?;
-    let user_action_request_id = record_id(&user_action.response_value["user_action_request_ref"])?;
+    let user_action_request_id = user_action.response_value["user_action_request_summary"]
+        ["user_action_request_id"]
+        .as_str()
+        .expect("safe request summary should identify the pending request")
+        .to_owned();
 
     let status = run_with_home_env_in_dir(runtime_home.path(), ["status"], &[], &repo_root)?;
     assert_success(&status);
@@ -7842,9 +7846,7 @@ fn user_channel_resolves_pending_action_with_local_user_provenance() -> Result<(
     assert!(status_text.contains(
         "Volicord record effect for this command: none (does not describe product-file writes or Runtime Home write capability)"
     ));
-    assert!(status_text.contains(
-        "Available resolve paths: host prompt unavailable; chat capture unavailable; local consent unavailable; CLI inbox available"
-    ));
+    assert!(!status_text.contains("Available resolve paths:"));
     assert!(status_text.contains("Primary next action:"));
     assert!(status_text.contains("Does not prove:"));
     assert!(status_text.contains("risk-free outcome"));
@@ -7869,17 +7871,17 @@ fn user_channel_resolves_pending_action_with_local_user_provenance() -> Result<(
     assert!(status_text.contains(&format!(
         "Top-level next actions (total): {next_action_count}"
     )));
+    assert!(status_value.get("user_channel_availability").is_none());
+    let status_summaries = status_value["pending_user_action_summaries"]
+        .as_array()
+        .expect("status should expose safe pending user-action summaries");
+    assert_eq!(status_summaries.len(), 1);
     assert_eq!(
-        channel_path(&status_value["user_channel_availability"], "cli")["available"],
-        true
+        status_summaries[0]["user_action_request_id"],
+        user_action_request_id.as_str()
     );
-    assert_eq!(
-        channel_path(
-            &status_value["user_channel_availability"],
-            "local_web_consent"
-        )["available"],
-        false
-    );
+    assert_eq!(status_summaries[0]["status"], "pending");
+    assert_eq!(status_summaries[0]["next_actor"], "user");
 
     let list = run_with_home_env_in_dir(runtime_home.path(), ["inbox"], &[], &repo_root)?;
     assert_success(&list);

@@ -104,12 +104,16 @@ project state.
 The resume variant is read-only continuation, not a second public mutation. It
 addresses only a request created directly by `volicord.request_user_action`,
 requires the same enabled workflow Agent Connection actor scope and an allowed
-project, and replays the byte-exact original Agent Workflow response with the
-same `operation_result_ref`. It creates no request, event, replay row, prompt,
-token, resolution, or state-version increment. A request created by another
-connection or by `volicord.reconcile_changes` is unavailable through this
-branch. An unrelated later Git or authority-state change does not rewrite or
-invalidate the historical result.
+project, and replays the byte-exact original agent-safe Agent Workflow response
+with the same `operation_result_ref`. The replayed result contains only the
+canonical request summary; it never contains the full request, inbox item,
+capture form, capture path, or User Channel credential. It creates no request,
+event, replay row, prompt, token, resolution, or state-version increment. A
+request created by another connection or by `volicord.reconcile_changes` is
+unavailable through this branch. An unrelated later Git or authority-state
+change does not rewrite or invalidate the historical result. A stored response
+using the superseded full-form result shape is unavailable instead of being
+replayed.
 
 After create or resume, the adapter asks Core for a separate current,
 agent-safe projection. Core reads its status, optional safe resolution, exact
@@ -127,9 +131,7 @@ read snapshot and is not persisted merely because the projection was read.
 ```yaml
 RequestUserActionResult:
   base: ToolResultBase
-  user_action_request_ref: StateRecordRef
-  user_action_request: UserActionRequest
-  inbox_item: UserActionInboxItem
+  user_action_request_summary: AgentSafeUserActionRequestSummary
   blocker_refs: StateRecordRef[]
   state: StateSummary
 ```
@@ -138,7 +140,10 @@ A committed call inserts one `user_action_requests` row, appends one authority
 event, stores the exact replay result, increments `state_version` once, and may
 move the current non-terminal Task to `waiting_user` when a current effective
 pending request has a non-informational `required_for`. Idempotent replay
-returns the original request and candidates without recanonicalizing them.
+returns the original agent-safe request summary without recanonicalizing the
+stored request. The summary contains only the request ID, historical `pending`
+status, and `next_actor=user`. It omits refs, action kind, expiry, question,
+context, body, basis, candidates, form, channel paths, commands, URLs, and credentials.
 It does not update the persisted canonical-UTC floor.
 
 Dry run returns no durable ref and has no effect. Invalid candidates, oversized
@@ -152,8 +157,8 @@ discover and use resume, while create rejects before Core mutation. A
 `read_only` Agent Connection cannot use either branch. The adapter may render
 the canonical capture form through a supported User Channel only for a newly
 created request that is still pending; the Agent Connection call itself never
-resolves the action. Resume returns only the exact replay and current safe
-projection and never opens a User Channel.
+receives that form or resolves the action. Resume returns only the exact safe
+replay and current safe projection and never opens a User Channel.
 
 ## Related owners
 

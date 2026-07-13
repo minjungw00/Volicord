@@ -109,7 +109,7 @@ UnrecordedChangeResolutionRequest:
 - `task_ref`
 - `unresolved_changes`
 - `resolved_changes`
-- `pending_user_action_request_refs`
+- `pending_user_action_summaries`
 - `rejected_resolution_requests`
 - 현재 `state`
 - 계획 후 `close_blockers`
@@ -125,7 +125,7 @@ UnrecordedChangeResolutionRequest:
 | `task_ref` | 조정한 `Task`의 `StateRecordRef`입니다. |
 | `unresolved_changes` | 이 호출이 선택한 결정적 해결과 사용자 수락 해결을 적용한 뒤에도 남은 미해결 `UnrecordedChangeFinding` 기록입니다. |
 | `resolved_changes` | 이 호출이 해결한 미기록 변경입니다. 해결 근거, 행위자 출처, 포착 근거, 타임스탬프, 선택적 사용자 행동 resolution을 포함합니다. |
-| `pending_user_action_request_refs` | 이 호출이 미해결 미기록 변경을 위해 만든 요청을 포함해 호출 뒤 `Task`와 관련된 대기 중인 `UserActionRequest` 참조입니다. |
+| `pending_user_action_summaries` | 이 호출이 미해결 미기록 변경을 위해 만든 요청을 포함해 호출 뒤 `Task`와 관련된 정확한 세 필드 `AgentSafeUserActionRequestSummary[]`입니다. 결과에는 request ref, 본문, 질문, form, 캡처 경로, 명령, URL, credential이 들어가지 않습니다. |
 | `rejected_resolution_requests` | Core가 거부한 호출자 제공 해결 요청입니다. 이는 성공한 메서드 결과 안의 구조화된 거부이며 공개 `ToolRejectedResponse` 오류가 아닙니다. |
 | `state` | 조정 보기 또는 커밋 뒤의 현재 `StateSummary`입니다. |
 | `close_blockers` | 계획된 조정 효과 뒤의 닫기 차단 사유 보기입니다. |
@@ -150,11 +150,18 @@ Core가 결정하는 해결 근거(`basis`):
 
 `superseded_by_new_observation`은 예약 값이며 기준 메서드가 생성하지 않습니다. 호출자는 Core가 결정하는 해결 근거를 에이전트 묵살 사유로 선택할 수 없습니다. 이 메서드는 해결 근거를 만들기 위해 파일시스템을 되돌리거나 추가로 탐색하지 않습니다.
 
-아직 수락이 필요한 미기록 변경은 Core가 임의로 수락하지 않습니다. 대신 대기 중인 `UserActionRequest` 행을 만듭니다. 사용자는 다음 User Channel 입력 방법으로 해결할 수 있습니다.
+아직 수락이 필요한 미기록 변경은 Core가 임의로 수락하지 않습니다. 대신 대기 중인
+`UserActionRequest` 행을 만듭니다. 메서드 결과는
+`AgentSafeUserActionRequestSummary` 항목과 일반 User Channel 연속 작업만 노출합니다.
+Form, 명령, URL, credential, request ref를 반환하지 않고 결과 projection만을 위해 token을
+발급하지 않습니다. 사용자는 별도로 검증된 다음 User Channel 입력 방법으로 해결할 수 있습니다.
 
 - 초기화된 클라이언트가 지원하는 호스트 프롬프트 입력
 - 명령 캡처 상태가 `configured`, `observed`, `active`일 때의 채팅 명령 캡처
-- 어댑터가 안전하게 노출할 수 있을 때의 루프백 로컬 consent URL
+- listener가 준비됐고 초기화한 client가
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
+  정확한 boolean `true`를 보냈을 때의 loopback local consent 표면. URL은 host 소유의
+  모델 비가시적 `_meta`로만 전달합니다.
 - CLI inbox 경로인 로컬 `volicord inbox` 명령
 
 사용자 소유 행동이 해결되면 `volicord.reconcile_changes`가 연결된 미기록 변경을 `accepted_by_user`로 해결할 수 있습니다.

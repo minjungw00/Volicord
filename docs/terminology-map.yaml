@@ -189,8 +189,13 @@ identifier_preservation:
     - "scope_decision"
     - "UserActionRequest"
     - "UserActionResolution"
+    - "AgentSafeUserActionRequestSummary"
     - "user_action_request"
     - "user_action_resolution"
+    - "model_invisible_user_surface"
+    - "io.volicord/user-channel"
+    - "_meta"
+    - "delivery_surface"
     - "judgment_kind"
     - "CloseReadinessBlocker"
     - "CloseReadinessBlocker.category"
@@ -1242,6 +1247,7 @@ terms:
     preserve_as_identifier:
       - "UserActionRequest"
       - "UserActionResolution"
+      - "AgentSafeUserActionRequestSummary"
       - "user_action_request"
       - "user_action_resolution"
     primary_owner:
@@ -1258,6 +1264,30 @@ terms:
         ko: "docs/ko/reference/api/method-resolve-user-action.md"
     notes:
       - "Use the common identifiers for durable request and immutable resolution records; judgment payload identifiers remain nested variants."
+  mcp_user_channel_extension:
+    category: "identifier"
+    en: "MCP User Channel extension identifiers"
+    preserve_identifier: true
+    ko_reference: "MCP User Channel extension 식별자"
+    ko_user: "MCP User Channel extension 식별자"
+    preserve_as_identifier:
+      - "model_invisible_user_surface"
+      - "io.volicord/user-channel"
+      - "_meta"
+      - "delivery_surface"
+    primary_owner:
+      en: "docs/en/reference/mcp-transport.md"
+      ko: "docs/ko/reference/mcp-transport.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+      - en: "docs/en/reference/api/schema-user-action.md"
+        ko: "docs/ko/reference/api/schema-user-action.md"
+      - en: "docs/en/reference/agent-connection.md"
+        ko: "docs/ko/reference/agent-connection.md"
+    notes:
+      - "Use these exact identifiers for the negotiated MCP User Channel capability, host-only tool-result handoff, and its delivery-surface marker."
+      - "MCP Transport owns the extension and handoff shape; Security owns the model-visibility guarantee and non-guarantee wording."
   final_acceptance:
     category: "product_concept"
     en: "final acceptance"

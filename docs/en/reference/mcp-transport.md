@@ -66,8 +66,11 @@ Labels follow the canonical vocabulary in
 `volicord` executable. An MCP host starts it as a child process and communicates
 through stdin/stdout. It is not an MCP TCP listener, HTTP MCP listener,
 Unix-domain socket listener, or other MCP network listener. It may start a
-separate loopback-only local web consent listener for pending user actions
-when host prompt input and chat command capture are unavailable.
+separate loopback-only local web consent listener for pending user actions.
+Listener startup alone never selects that channel or authorizes token issuance;
+each tool call also requires the exact negotiated model-invisible host
+capability owned below. Otherwise the pending action remains available through
+the CLI inbox.
 
 `volicord serve --transport local-http` is a separate explicit process mode
 for Docker and localhost MCP use. Native local runs start a loopback-only HTTP
@@ -643,8 +646,28 @@ The first valid MCP request in a connection is `initialize`. A valid
 - `clientInfo` as an object containing string `name` and `version` fields
 
 If `params.capabilities.elicitation` is an object, the adapter treats the MCP
-client as eligible for server-initiated elicitation. Other capability entries
-do not create Volicord behavior by themselves.
+client as eligible for server-initiated elicitation. The separate Volicord
+extension capability is:
+
+```json
+{
+  "capabilities": {
+    "experimental": {
+      "io.volicord/user-channel": {
+        "model_invisible_user_surface": true
+      }
+    }
+  }
+}
+```
+
+Only the exact boolean `true` makes that client eligible for a model-invisible
+local-web handoff. Missing members, `false`, wrong types, wrong namespaces, and
+malformed nested objects are capability-unavailable rather than initialize
+errors. The flag is not user authority or proof of host trust; it is the
+client's cooperative promise that the namespaced tool-result `_meta` value is
+delivered to a user-owned surface and never supplied to model context. Other
+capability entries do not create Volicord behavior by themselves.
 
 Examples use the fields listed above. `volicord mcp --stdio` may accept additional MCP
 `Implementation` metadata allowed by the 2025-11-25 schema, such as `title`,
@@ -661,6 +684,10 @@ target, exact profile or approximate profile class, optimization level, and
 debug state. It has no build timestamp. Unknown Git metadata is explicit, and
 a dirty tree is labeled without claiming to identify its exact modified
 contents.
+The initialize result also advertises the
+`capabilities.experimental["io.volicord/user-channel"]` extension so clients
+can negotiate this optional handoff; advertisement alone does not make the
+client capability available.
 
 Protocol-version negotiation:
 
@@ -1014,13 +1041,15 @@ intent, and expiry for `volicord.prepare_evidence_capture`, the staged handle an
 for `volicord.stage_artifact`, the exact Run ref, registered `ArtifactRef`
 values, newly recorded evidence-observation refs, and nullable
 `close_basis_anchor` for `volicord.record_run`, per-finding results for
-`volicord.reconcile_changes`, and the exact request result, replay marker,
+`volicord.reconcile_changes` without newly created request refs or forms, and
+the exact request result, replay marker,
 current-projection state version/time, separate safe resolution facts, and
 resolution-derived refs for `volicord.request_user_action`. `close_basis_anchor` contains
 `close_basis_revision`, `scope_revision`, `source_run_ref`, and nullable
 `evidence_summary_ref`. It is a typed coordinate for the close basis stored on
 the Task, not a `StateRecordRef` and not a separate close-basis record. A
-resolved compact user-action outcome contains the request ref, exact historical
+resolved compact user-action outcome contains the exact closed three-field
+request summary and no request ref, the exact historical
 resolution ref, snapshot-anchored status, selected option ID and label or
 evidence-observation summary, resolution outcome where applicable, and any
 public resolution-derived refs; it omits the free-form user note and evidence
@@ -1240,7 +1269,9 @@ read-only continuation. `volicord.resolve_user_action` is never exposed as an
 MCP tool, and agent arguments cannot become a User Channel resolution.
 
 After a `request.operation=create` commit, the adapter consumes the Core-owned
-`UserActionInboxForm`. A judgment form requests only a stored
+`UserActionInboxForm` only inside the selected User Channel renderer. The Agent
+Connection result receives `AgentSafeUserActionRequestSummary` with only the
+request ID, `status=pending`, and `next_actor=user`. A judgment form requests only a stored
 `selected_option_id` and optional note. An evidence-observation form requests
 one stored target selector, a non-empty subset of stored artifact IDs,
 `supported` or `contradicted`, and a bounded summary. Labels, descriptions,
@@ -1254,18 +1285,19 @@ are submitted; display metadata is not submitted as candidate authority. MCP
 elicitation may be used only when the complete, untruncated
 `elicitation/create` JSON-RPC request object encoded as UTF-8 JSON plus its one
 trailing LF byte is at most 32 KiB. Otherwise that path is reported unavailable
-and the adapter uses prompt capture, local web consent, or CLI in the advertised
-order. Forms and submissions are never truncated.
+and the adapter uses a negotiated model-invisible local-web surface or CLI in
+that order. An agent-visible prompt-capture fallback is not a complete-form
+delivery surface. Forms and submissions are never truncated.
 
-Before opening a new agent-facing user-input surface, adapters apply one
+Before opening a separately verified User Channel surface, adapters apply one
 conservative presentation-safety classification to the question, context
 summary, and complete rendered closed form, including every displayed
 `EvidenceTarget` and `ArtifactRef` metadata value. When that complete
 presentation indicates secret or credential material and requires a user-only
 channel, the adapter sends no `elicitation/create` request and emits no rich
 prompt-capture question, context, form, verification code, or resolve-command
-template. It falls through to local web consent when available and otherwise
-to the CLI inbox. Those user-only local web and CLI surfaces continue to render
+template. It falls through to negotiated model-invisible local web when
+available and otherwise to the CLI inbox. Those user-only local web and CLI surfaces continue to render
 the complete canonical form. This classification is conservative adapter
 routing, not a general secret scanner, redaction service, isolation boundary,
 or guarantee that arbitrary secret material is detected.
@@ -1283,11 +1315,10 @@ state conflict records no resolution and leaves the request effectively pending
 when it remains current and unexpired.
 
 The MCP result is a compound projection. `agent_workflow_result` is always the
-byte-exact request response committed by the original Agent Connection call,
-and its `operation_result_ref` addresses only that result.
-Presentation-safety routing does not redact or rewrite that immutable
-historical result, even when its original request or form contains a value that
-requires user-only input for every newly opened presentation surface.
+byte-exact agent-safe request response committed by the original Agent
+Connection call, and its `operation_result_ref` addresses only that result. The
+historical result was created without the complete request or form, so
+presentation-safety routing does not need to redact or rewrite it.
 `agent_workflow_result_replayed` distinguishes create from explicit resume.
 Resume requires the same enabled workflow Agent Connection actor scope and an
 allowed project, does not compare later Git workspace coordinates, and is
@@ -1310,7 +1341,7 @@ The adapter sends `elicitation/create` only while handling
 `request.operation=create` and only after its post-commit reread says the
 request is still `pending`. A resume returns the exact historical
 `agent_workflow_result` plus the current safe projection without sending
-`elicitation/create` or running prompt-capture, local-web, or CLI fallback,
+`elicitation/create` or running local-web or CLI fallback,
 even when the current status is `pending`. For create, a resolved, stale,
 superseded, or expired request returns the current safe projection without
 another prompt. Cancelled, declined, or invalid host input during create that
@@ -1318,14 +1349,34 @@ leaves the request pending includes exact nested resume guidance and creates no
 second request.
 
 Fallback guidance stays outside Core authority. Unavailable host prompt input
-does not hide another available path. Chat capture uses the same request ID,
-stored candidates, verification code, expiry, and form digest. If rich prompt
-capture is unavailable, a short-lived local web token is bound to the exact
-request, form digest, project, and connection. Otherwise the adapter points to
-`volicord inbox`. Each pending fallback includes structured continuation
-arguments with `request.operation=resume`, the same request ID, and
-`creates_new_request=false`; after User Channel completion the agent uses that
-branch rather than issuing another create.
+does not hide another available path. If a loopback listener and the negotiated
+model-invisible surface are both available, a short-lived local web token is
+bound to the exact request, form digest, project, connection, and delivery-
+surface marker. The raw credential-bearing URL is placed only in
+the following closed top-level handoff; unknown or additional fields are not
+allowed:
+
+```json
+{
+  "_meta": {
+    "io.volicord/user-channel": {
+      "kind": "local_web_consent",
+      "url": "http://127.0.0.1:PORT/consent?...&token=...",
+      "expires_at": "RFC3339 UTC timestamp"
+    }
+  }
+}
+```
+
+`CallToolResult._meta["io.volicord/user-channel"]` is outside the public tool
+`outputSchema`. Agent-visible content reports
+only the request ID, pending state, next actor, and safe continuation guidance.
+If either capability input is unavailable, the adapter issues no token and
+points to `volicord inbox`. A pending fallback does not synthesize a second
+request or add a structured continuation object outside the closed public
+response schema. After User Channel completion, a caller that continues the
+workflow uses the public `request.operation=resume` branch with the request ID
+from the exact pending summary rather than issuing another create.
 
 <a id="local-web-consent-fallback"></a>
 The local web consent listener remains loopback-only and fails closed. `GET
@@ -1334,6 +1385,21 @@ The local web consent listener remains loopback-only and fails closed. `GET
 connection, request, form digest, expiry, candidate membership, and token state
 are revalidated. Successful insertion of the closed resolution body and token
 consumption are atomic.
+
+Listener startup alone never selects this path. Token creation occurs only
+after the exact model-invisible client capability is available. Before issuing
+a token, the adapter verifies that the complete safe tool result plus the
+closed `_meta` handoff fits the selected 65,536- or 262,144-byte response
+budget. If it cannot fit, the adapter issues no token, omits `_meta`, and
+returns generic CLI fallback; it never creates an orphan token or truncates the
+URL. The handoff is absent on resume, non-pending results, CLI fallback, token
+issuance failure, unsupported or malformed capability, and response-budget
+degradation. The URL and token must not appear in MCP `content`,
+`structuredContent`, compatibility or diagnostic text, status or close
+projections, exact Core replay, operation-result bytes, logs, or templates. A
+host declaration is a cooperative promise to preserve model invisibility, not
+proof of host isolation, user identity, or user authority. A host that cannot
+preserve this separation must omit the capability and receives CLI fallback.
 
 For POST resolution, the adapter uses the Core-owned derivation for the only
 accepted digest-only `local_web:<sha256>` submission identity. The derivation
@@ -1372,10 +1438,12 @@ cleanup, and consumption without effects. Overflow or an unrepresentable
 expiry fails before token or floor insertion.
 
 The token's stored creation metadata is the closed object
-`{fallback_kind="local_web_consent", endpoint="/consent", form_digest}`.
+`{fallback_kind="local_web_consent", delivery_surface="model_invisible_user_surface", endpoint="/consent", form_digest}`.
 Missing, extra, malformed, wrong-typed, or mismatched members fail before the
 form is rendered or a resolution is attempted. That failure neither consumes
-the token nor creates a User Channel effect.
+the token nor creates a User Channel effect. This required marker also makes a
+pre-correction token fail closed rather than reuse the former Agent-visible
+delivery contract.
 
 For known public Volicord method-tool calls that reach Volicord, `tools/call`
 wraps the Volicord response JSON inside the MCP result:

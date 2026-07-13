@@ -58,6 +58,25 @@ impl McpDerivedInvocationContext {
     }
 }
 
+/// Transport capabilities that may make a User Channel available for one call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct McpUserChannelCapabilities {
+    pub(crate) host_elicitation_available: bool,
+    pub(crate) model_invisible_user_surface: bool,
+}
+
+impl McpUserChannelCapabilities {
+    pub(crate) const fn new(
+        host_elicitation_available: bool,
+        model_invisible_user_surface: bool,
+    ) -> Self {
+        Self {
+            host_elicitation_available,
+            model_invisible_user_surface,
+        }
+    }
+}
+
 /// Loopback consent endpoint facts available to adapter fallback selection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalWebConsentContext {
@@ -620,6 +639,21 @@ impl McpAdapter {
         session_id: Option<&str>,
         host_elicitation_available: bool,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
+        self.derive_invocation_context_with_user_channel_capabilities(
+            envelope,
+            operation_category,
+            session_id,
+            McpUserChannelCapabilities::new(host_elicitation_available, false),
+        )
+    }
+
+    fn derive_invocation_context_with_user_channel_capabilities(
+        &self,
+        envelope: &ToolEnvelope,
+        operation_category: OperationCategory,
+        session_id: Option<&str>,
+        capabilities: McpUserChannelCapabilities,
+    ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
         let store = CoreProjectStore::open(&self.runtime_home, &envelope.project_id)
             .map_err(McpAdapterError::Store)?;
         let git_workspace_context =
@@ -644,18 +678,19 @@ impl McpAdapter {
             operation_category,
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
-            host_elicitation_available,
-            local_web_consent_available: self.local_web_consent.is_some(),
+            host_elicitation_available: capabilities.host_elicitation_available,
+            local_web_consent_available: self.local_web_consent.is_some()
+                && capabilities.model_invisible_user_surface,
             git_workspace_context,
         })
     }
 
-    fn derive_read_only_invocation_context(
+    fn derive_read_only_invocation_context_with_user_channel_capabilities(
         &self,
         envelope: &ToolEnvelope,
         operation_category: OperationCategory,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
         let store = CoreProjectStore::open_read_only(&self.runtime_home, &envelope.project_id)
             .map_err(McpAdapterError::Store)?;
@@ -681,8 +716,9 @@ impl McpAdapter {
             operation_category,
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
-            host_elicitation_available,
-            local_web_consent_available: self.local_web_consent.is_some(),
+            host_elicitation_available: capabilities.host_elicitation_available,
+            local_web_consent_available: self.local_web_consent.is_some()
+                && capabilities.model_invisible_user_surface,
             git_workspace_context,
         })
     }
@@ -712,55 +748,54 @@ impl McpAdapter {
         session_id: Option<&str>,
         host_elicitation_available: bool,
     ) -> Result<PipelineResponse, McpAdapterError> {
+        self.call_tool_for_session_with_user_channel_capabilities(
+            tool_name,
+            params,
+            session_id,
+            McpUserChannelCapabilities::new(host_elicitation_available, false),
+        )
+    }
+
+    pub(crate) fn call_tool_for_session_with_user_channel_capabilities(
+        &self,
+        tool_name: &str,
+        params: Value,
+        session_id: Option<&str>,
+        capabilities: McpUserChannelCapabilities,
+    ) -> Result<PipelineResponse, McpAdapterError> {
         validate_mcp_tool_arguments(tool_name, &params)?;
         match tool_name {
-            INTAKE_TOOL_NAME => {
-                self.call_intake(tool_name, params, session_id, host_elicitation_available)
-            }
+            INTAKE_TOOL_NAME => self.call_intake(tool_name, params, session_id, capabilities),
             UPDATE_SCOPE_TOOL_NAME => {
-                self.call_update_scope(tool_name, params, session_id, host_elicitation_available)
+                self.call_update_scope(tool_name, params, session_id, capabilities)
             }
-            STATUS_TOOL_NAME => {
-                self.call_status(tool_name, params, session_id, host_elicitation_available)
+            STATUS_TOOL_NAME => self.call_status(tool_name, params, session_id, capabilities),
+            GET_OPERATION_RESULT_TOOL_NAME => {
+                self.call_get_operation_result(tool_name, params, session_id, capabilities)
             }
-            GET_OPERATION_RESULT_TOOL_NAME => self.call_get_operation_result(
-                tool_name,
-                params,
-                session_id,
-                host_elicitation_available,
-            ),
-            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => self.call_prepare_evidence_capture(
-                tool_name,
-                params,
-                session_id,
-                host_elicitation_available,
-            ),
+            PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
+                self.call_prepare_evidence_capture(tool_name, params, session_id, capabilities)
+            }
             PREPARE_WRITE_TOOL_NAME => {
-                self.call_prepare_write(tool_name, params, session_id, host_elicitation_available)
+                self.call_prepare_write(tool_name, params, session_id, capabilities)
             }
             STAGE_ARTIFACT_TOOL_NAME => {
-                self.call_stage_artifact(tool_name, params, session_id, host_elicitation_available)
+                self.call_stage_artifact(tool_name, params, session_id, capabilities)
             }
             RECORD_RUN_TOOL_NAME => {
-                self.call_record_run(tool_name, params, session_id, host_elicitation_available)
+                self.call_record_run(tool_name, params, session_id, capabilities)
             }
-            REQUEST_USER_ACTION_TOOL_NAME => self.call_request_user_action(
-                tool_name,
-                params,
-                session_id,
-                host_elicitation_available,
-            ),
-            RECONCILE_CHANGES_TOOL_NAME => self.call_reconcile_changes(
-                tool_name,
-                params,
-                session_id,
-                host_elicitation_available,
-            ),
+            REQUEST_USER_ACTION_TOOL_NAME => {
+                self.call_request_user_action(tool_name, params, session_id, capabilities)
+            }
+            RECONCILE_CHANGES_TOOL_NAME => {
+                self.call_reconcile_changes(tool_name, params, session_id, capabilities)
+            }
             CHECK_CLOSE_TOOL_NAME => {
-                self.call_check_close(tool_name, params, session_id, host_elicitation_available)
+                self.call_check_close(tool_name, params, session_id, capabilities)
             }
             CLOSE_TASK_TOOL_NAME => {
-                self.call_close_task(tool_name, params, session_id, host_elicitation_available)
+                self.call_close_task(tool_name, params, session_id, capabilities)
             }
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
@@ -771,7 +806,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpIntakeArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -797,7 +832,7 @@ impl McpAdapter {
             },
             CoreService::intake,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -806,7 +841,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -835,7 +870,7 @@ impl McpAdapter {
             },
             CoreService::update_scope,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -844,7 +879,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStatusArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -864,7 +899,7 @@ impl McpAdapter {
             },
             CoreService::status,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -873,7 +908,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpGetOperationResultArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -893,16 +928,16 @@ impl McpAdapter {
             },
             CoreService::get_operation_result,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
-    pub(crate) fn refresh_authority_status(
+    pub(crate) fn refresh_authority_status_with_user_channel_capabilities(
         &self,
         project_id: &ProjectId,
         task_id: &TaskId,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let envelope = self.generated_envelope(
             STATUS_TOOL_NAME,
@@ -918,8 +953,39 @@ impl McpAdapter {
             },
             CoreService::status,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
+    }
+
+    pub(crate) fn user_channel_inbox_projection(
+        &self,
+        project_id: &ProjectId,
+        task_id: &TaskId,
+        session_id: Option<&str>,
+        capabilities: McpUserChannelCapabilities,
+    ) -> Result<Option<volicord_core::UserChannelInboxProjection>, McpAdapterError> {
+        let mut invocation = InvocationContext::new(
+            project_id.clone(),
+            ActorSource::agent_connection(self.context.connection_internal_id.clone()),
+            OperationCategory::Read,
+            self.context.invocation_binding_basis.clone(),
+        )
+        .with_host_elicitation_available(capabilities.host_elicitation_available)
+        .with_local_web_consent_available(
+            self.local_web_consent.is_some() && capabilities.model_invisible_user_surface,
+        );
+        if let Some(session_id) = session_id {
+            invocation = invocation.with_session_id(session_id.to_owned());
+        }
+        self.core
+            .user_channel_inbox_projection(
+                volicord_core::UserChannelInboxProjectionRequest {
+                    project_id: project_id.clone(),
+                    task_id: task_id.clone(),
+                },
+                invocation,
+            )
+            .map_err(McpAdapterError::Core)
     }
 
     fn call_prepare_evidence_capture(
@@ -927,7 +993,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareEvidenceCaptureArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -951,7 +1017,7 @@ impl McpAdapter {
             },
             CoreService::prepare_evidence_capture,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -960,7 +1026,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -986,7 +1052,7 @@ impl McpAdapter {
             },
             CoreService::prepare_write,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -995,7 +1061,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1022,7 +1088,7 @@ impl McpAdapter {
             },
             CoreService::stage_artifact,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -1031,7 +1097,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1066,7 +1132,7 @@ impl McpAdapter {
             },
             CoreService::record_run,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -1075,7 +1141,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserActionArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1105,7 +1171,7 @@ impl McpAdapter {
                     },
                     CoreService::request_user_action,
                     session_id,
-                    host_elicitation_available,
+                    capabilities,
                 )
             }
             McpRequestUserActionOperation::Resume {
@@ -1121,12 +1187,13 @@ impl McpAdapter {
                     dry_run: false,
                     locale: RequiredNullable::null(),
                 };
-                let invocation = self.derive_read_only_invocation_context(
-                    &envelope,
-                    OperationCategory::AgentWorkflow,
-                    session_id,
-                    host_elicitation_available,
-                )?;
+                let invocation = self
+                    .derive_read_only_invocation_context_with_user_channel_capabilities(
+                        &envelope,
+                        OperationCategory::AgentWorkflow,
+                        session_id,
+                        capabilities,
+                    )?;
                 self.core
                     .resume_user_action_request(
                         prepared.project_id,
@@ -1147,7 +1214,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1168,7 +1235,7 @@ impl McpAdapter {
             },
             CoreService::reconcile_changes,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -1177,7 +1244,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1193,7 +1260,7 @@ impl McpAdapter {
             CheckCloseRequest { envelope, task_id },
             CoreService::check_close,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -1202,7 +1269,7 @@ impl McpAdapter {
         tool_name: &str,
         params: Value,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
             self.prepare_mcp_arguments(tool_name, params, session_id)?;
@@ -1226,7 +1293,7 @@ impl McpAdapter {
             },
             CoreService::close_task,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )
     }
 
@@ -1287,7 +1354,7 @@ impl McpAdapter {
         request: T,
         call: F,
         session_id: Option<&str>,
-        host_elicitation_available: bool,
+        capabilities: McpUserChannelCapabilities,
     ) -> Result<PipelineResponse, McpAdapterError>
     where
         T: MethodOperationCategory + HasEnvelope,
@@ -1302,11 +1369,11 @@ impl McpAdapter {
         }
         let operation_category = request.operation_category();
         self.ensure_mode_allows(tool_name, operation_category)?;
-        let invocation = self.derive_invocation_context(
+        let invocation = self.derive_invocation_context_with_user_channel_capabilities(
             request_envelope(&request),
             operation_category,
             session_id,
-            host_elicitation_available,
+            capabilities,
         )?;
         call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }

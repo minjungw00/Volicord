@@ -737,17 +737,21 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
         invocation(OperationCategory::Read),
     )?;
     assert_no_close_blocker(&close.response_value, "pending_user_action");
-    assert!(close.response_value["pending_user_action_inbox_items"]
+    assert!(close.response_value["pending_user_action_summaries"]
         .as_array()
-        .expect("close pending judgment inbox should be an array")
+        .expect("close pending judgment summaries should be an array")
         .is_empty());
     assert_eq!(
-        close.response_value["state"]["pending_user_action_refs"]
+        close.response_value["state"]["pending_user_action_summaries"]
             .as_array()
-            .expect("state pending judgment refs should be an array")
+            .expect("state pending judgment summaries should be an array")
             .len(),
         1
     );
+    assert!(close
+        .response_value
+        .get("pending_user_action_inbox_items")
+        .is_none());
     Ok(())
 }
 

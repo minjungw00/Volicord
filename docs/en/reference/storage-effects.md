@@ -666,7 +666,9 @@ Owner links:
 Committed `dry_run=false` may:
 
 - create one `user_action_requests` row
-- store the closed request, canonical capture form, Core-derived basis, current basis status, required-for targets, candidates, expiry, and exact originating method/idempotency relation
+- store the closed request from which Core derives the canonical capture form,
+  plus the Core-derived basis, current basis status, required-for targets,
+  candidates, expiry, and exact originating method/idempotency relation
 - update affected blockers
 - append events
 - create a replay row
@@ -675,7 +677,10 @@ Committed `dry_run=false` may:
 The direct origin `(project_id, source_idempotency_key)` is unique for
 `source_method=volicord.request_user_action`. The MCP
 `request.operation=resume` branch only reads that row and its immutable original
-replay response for the same Agent Connection access scope. Resume creates no
+replay response for the same Agent Connection access scope, and only after the
+whole response strict-decodes as the current closed agent-safe result shape.
+Legacy or mixed full-form replay rows fail closed as `MCP_UNAVAILABLE` and are
+not rewritten. Resume creates no
 request, event, replay row, token, resolution, prompt, blocker update, or state
 version, and does not update the persisted canonical-UTC floor.
 
@@ -684,6 +689,15 @@ issuance is a separate storage-owned transaction. It inserts the hash-only
 `user_action_channel_tokens` row and advances `project_state.updated_at` to at
 least token `created_at` atomically. Issuance creates no additional authority
 event or replay row and does not increment `state_version`.
+The token row is created only after the current adapter evaluator confirms both
+a ready listener and the client's exact model-invisible-surface capability. Its
+closed creation metadata is exactly
+`{fallback_kind=local_web_consent,
+delivery_surface=model_invisible_user_surface, endpoint=/consent,
+form_digest}`. A missing, extra, wrong, or mismatched field makes the row
+permanently unusable under corrected code; GET, POST, consumption, and
+resolution have no effect. Token issuance is not performed merely to compute or
+report availability.
 
 No-effect branches:
 

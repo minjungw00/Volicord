@@ -779,7 +779,7 @@ state:
     produced_at_state_version: 32
   baseline_ref: baseline_runprobe_001
   shaping_readiness: null
-  pending_user_action_request_refs: []
+  pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

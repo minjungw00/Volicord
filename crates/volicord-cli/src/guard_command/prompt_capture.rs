@@ -12,10 +12,10 @@ use volicord_store::{
     StoreError,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, chat_user_action_verification_code, ActorSource, ArtifactId,
+    chat_user_action_verification_code, ActorSource, AgentSafeUserActionRequestSummary, ArtifactId,
     EvidenceTarget, GuardDecision, PersistedUserActionRequest, ProjectId, PromptCaptureStatus,
     TaskId, UserActionInboxForm, UserActionPresentationPlan, UserActionPresentationSafety,
-    UserActionResolutionInput, UserActionStatus, UtcTimestamp,
+    UserActionRequestId, UserActionResolutionInput, UserActionStatus, UtcTimestamp,
     VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
@@ -36,19 +36,7 @@ use super::{
     hex_bytes, json_error, sha256_text, stable_id, GuardCommandError,
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct GuardPendingUserActionSummary {
-    pub(super) chat_id: String,
-    pub(super) verification_code: String,
-    pub(super) user_action_request_id: String,
-    pub(super) action_kind: String,
-    pub(super) question: String,
-    pub(super) context_summary: String,
-    pub(super) expires_at: Option<String>,
-    pub(super) form_digest: String,
-    pub(super) resolve_instruction: String,
-    pub(super) form: UserActionInboxForm,
-}
+pub(super) type GuardPendingUserActionSummary = AgentSafeUserActionRequestSummary;
 
 pub(super) fn prompt_capture_availability_for_event(
     runtime_home: &Path,
@@ -352,6 +340,7 @@ fn record_prompt_user_action_command(
             &record.request.task_id,
             ActorSource::agent_connection(envelope.connection_id.clone()),
             VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+            envelope.session_id.as_deref(),
         )
         .map_err(prompt_block_from_user_error)?
         .into_iter()
@@ -599,8 +588,7 @@ fn validate_prompt_artifacts(
     }
 }
 
-pub(super) fn pending_chat_user_action_summaries(
-    runtime_home: &Path,
+pub(super) fn pending_agent_user_action_summaries(
     store: &CoreProjectStore,
     task_id: &TaskId,
     envelope: &GuardEnvelope,
@@ -609,56 +597,16 @@ pub(super) fn pending_chat_user_action_summaries(
     let expected_actor =
         ActorSource::agent_connection(envelope.connection_id.clone()).to_canonical_string();
     let records = store.user_action_records_for_task(task_id, now)?;
-    if records.is_empty() {
-        return Ok(Vec::new());
-    }
-    let canonical_items = canonical_user_action_inbox_items(
-        runtime_home,
-        &records[0].request.project_id,
-        task_id.as_str(),
-        ActorSource::agent_connection(envelope.connection_id.clone()),
-        VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
-    )
-    .map_err(guard_error_from_user_error)?;
     let mut summaries = Vec::new();
-    for (index, record) in records.iter().enumerate() {
+    for record in records {
         if record.status != UserActionStatus::Pending
             || record.request.requested_by_actor_source != expected_actor
         {
             continue;
         }
-        let Some(item) = canonical_items.iter().find(|item| {
-            item.user_action_request_id.as_str() == record.request.user_action_request_id
-        }) else {
-            continue;
-        };
-        let chat_id = chat_id_for_index(index + 1);
-        let verification_code = user_action_verification_code(record, envelope);
-        let presentation = UserActionPresentationPlan::from_form(&item.form).map_err(json_error)?;
-        if !presentation
-            .agent_facing_input_safety(&item.question, &item.context_summary)
-            .map_err(json_error)?
-            .allows_agent_facing_input()
-        {
-            continue;
-        }
-        let resolve_instruction = presentation.prompt_capture_instruction(
-            &chat_id,
-            item.user_action_request_id.as_str(),
-            &verification_code,
-        );
-        summaries.push(GuardPendingUserActionSummary {
-            chat_id: chat_id.clone(),
-            verification_code: verification_code.clone(),
-            user_action_request_id: item.user_action_request_id.as_str().to_owned(),
-            action_kind: enum_text(item.action_kind),
-            question: item.question.clone(),
-            context_summary: item.context_summary.clone(),
-            expires_at: item.expires_at.as_ref().map(ToString::to_string),
-            form_digest: canonical_json_bare_sha256(&item.form).map_err(json_error)?,
-            resolve_instruction,
-            form: item.form.clone(),
-        });
+        summaries.push(AgentSafeUserActionRequestSummary::pending(
+            UserActionRequestId::new(record.request.user_action_request_id),
+        ));
     }
     Ok(summaries)
 }
@@ -705,13 +653,6 @@ fn prompt_block_from_store_error(error: StoreError) -> PromptCommandBlock {
     }
 }
 
-fn guard_error_from_user_error(error: UserCommandError) -> GuardCommandError {
-    match error {
-        UserCommandError::Usage(message) => GuardCommandError::Usage(message),
-        UserCommandError::Runtime(message) => GuardCommandError::Runtime(message),
-    }
-}
-
 fn user_action_verification_code(
     record: &EffectiveUserActionRecord,
     envelope: &GuardEnvelope,
@@ -738,10 +679,6 @@ fn prompt_user_action_replay_id(
         &envelope.connection_id,
     ]);
     format!("prompt_user_action_{digest}")
-}
-
-fn chat_id_for_index(index: usize) -> String {
-    format!("A-{index}")
 }
 
 fn short_digest(parts: &[&str]) -> String {

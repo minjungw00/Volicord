@@ -1,5 +1,18 @@
 use super::*;
 
+const LOCAL_WEB_CONSENT_FALLBACK_KIND: &str = "local_web_consent";
+const LOCAL_WEB_CONSENT_DELIVERY_SURFACE: &str = "model_invisible_user_surface";
+const LOCAL_WEB_CONSENT_ENDPOINT: &str = "/consent";
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalWebConsentCreatedMetadata {
+    fallback_kind: String,
+    delivery_surface: String,
+    endpoint: String,
+    form_digest: String,
+}
+
 impl CoreService {
     /// Executes `volicord.request_user_action` through the shared Core mutation pipeline.
     pub fn request_user_action(
@@ -49,6 +62,275 @@ impl CoreService {
                 completion_metadata_json,
             }),
         )
+    }
+
+    /// Projects the complete canonical local-web form for one bearer token.
+    ///
+    /// The adapter supplies the raw presented credential and the exact token
+    /// record returned by its non-recording validation. Core then rereads that
+    /// record and all project-local authority in one read snapshot before
+    /// returning this nonserialized User Channel value.
+    pub fn local_web_consent_user_action_projection(
+        &self,
+        request: LocalWebConsentUserActionProjectionRequest,
+    ) -> CoreResult<LocalWebConsentUserActionProjectionOutcome> {
+        let LocalWebConsentUserActionProjectionRequest {
+            token,
+            validated_token,
+            allow_resolved_replay,
+        } = request;
+        let Ok(token_hash) = user_action_channel_token_hash(&token) else {
+            return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+        };
+        if token_hash != validated_token.token_hash
+            || validated_token.channel_kind != UserActionChannelKind::LocalWebConsent
+            || validated_token.capture_basis
+                != UserActionChannelKind::LocalWebConsent.verification_basis()
+        {
+            return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+        }
+
+        let current_access = agent_connection_project_access_read_only(
+            self.runtime_home(),
+            &validated_token.connection_internal_id,
+            &validated_token.project_id,
+        )?;
+        if !current_access.is_some_and(|access| {
+            access.connection_internal_id == validated_token.connection_internal_id
+                && access.project_id == validated_token.project_id
+                && access.connection_enabled
+                && access.project_allowed
+                && access.project.is_some()
+        }) {
+            return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+        }
+
+        let project_id = ProjectId::new(validated_token.project_id.clone());
+        let store = CoreProjectStore::open_read_only(self.runtime_home(), &project_id)?;
+        store.with_read_snapshot(|store| {
+            Ok(
+                (|| -> CoreResult<LocalWebConsentUserActionProjectionOutcome> {
+                    let Some(snapshot_token) =
+                        store.user_action_channel_token_record(&validated_token.token_hash)?
+                    else {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                    };
+                    if snapshot_token != validated_token || snapshot_token.token_hash != token_hash
+                    {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                    }
+                    if !store.has_active_agent_session_for_connection(
+                        &snapshot_token.connection_internal_id,
+                    )? {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                    }
+
+                    let project_state = store.project_state()?;
+                    let observed_at = self.project_store_now(store)?;
+                    let (created_at, expires_at) =
+                        store.validate_user_action_channel_token_window(&snapshot_token)?;
+                    let Some(effective) = store
+                        .user_action_record(&snapshot_token.user_action_request_id, &observed_at)?
+                    else {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                    };
+                    let expected_creator =
+                        format!("agent_connection:{}", snapshot_token.connection_internal_id);
+                    if effective.request.requested_by_actor_source != expected_creator {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                    }
+
+                    match snapshot_token.status.as_str() {
+                        "pending"
+                            if observed_at >= created_at
+                                && observed_at < expires_at
+                                && effective.status == UserActionStatus::Pending
+                                && effective.resolution.is_none() => {}
+                        "consumed"
+                            if allow_resolved_replay
+                                && observed_at >= created_at
+                                && observed_at < expires_at
+                                && effective.resolution.is_some() =>
+                        {
+                            let Some(consumed_at) = snapshot_token
+                                .consumed_at
+                                .as_deref()
+                                .and_then(|value| UtcTimestamp::parse(value).ok())
+                            else {
+                                return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                            };
+                            let Some(completed_at) = snapshot_token
+                                .completed_at
+                                .as_deref()
+                                .and_then(|value| UtcTimestamp::parse(value).ok())
+                            else {
+                                return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                            };
+                            if consumed_at != completed_at
+                                || consumed_at < created_at
+                                || consumed_at >= expires_at
+                            {
+                                return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid);
+                            }
+                        }
+                        _ => return Ok(LocalWebConsentUserActionProjectionOutcome::Invalid),
+                    }
+
+                    let Ok(metadata) = serde_json::from_str::<LocalWebConsentCreatedMetadata>(
+                        &snapshot_token.created_metadata_json,
+                    ) else {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch);
+                    };
+                    if metadata.fallback_kind != LOCAL_WEB_CONSENT_FALLBACK_KIND
+                        || metadata.delivery_surface != LOCAL_WEB_CONSENT_DELIVERY_SURFACE
+                        || metadata.endpoint != LOCAL_WEB_CONSENT_ENDPOINT
+                    {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch);
+                    }
+
+                    let public_request =
+                        user_action_from_record(&effective, project_state.state_version)?;
+                    let form = public_request.body.capture_form().map_err(|_| {
+                        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                            "user_action_requests",
+                            snapshot_token.user_action_request_id.clone(),
+                            "request_json",
+                        ))
+                    })?;
+                    let current_form_digest = canonical_json_bare_sha256(&form)?;
+                    if metadata.form_digest != current_form_digest {
+                        return Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch);
+                    }
+                    Ok(LocalWebConsentUserActionProjectionOutcome::Projected(
+                        Box::new(LocalWebConsentUserActionProjection {
+                            request: public_request,
+                            form,
+                        }),
+                    ))
+                })(),
+            )
+        })?
+    }
+
+    /// Projects pending user-action forms only for an authenticated User
+    /// Channel consumer.
+    ///
+    /// This is an internal, nonserialized boundary. Public methods and MCP
+    /// structured output use the separate agent-safe summary projection.
+    pub fn user_channel_inbox_projection(
+        &self,
+        request: UserChannelInboxProjectionRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<Option<UserChannelInboxProjection>> {
+        if request.project_id != invocation.project_id
+            || invocation.operation_category != OperationCategory::Read
+        {
+            return Ok(None);
+        }
+
+        let (same_connection_actor, user_channel, required_active_session) =
+            match &invocation.actor_source {
+                ActorSource::LocalUser
+                    if invocation.invocation_binding_basis
+                        == VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL =>
+                {
+                    (
+                        None,
+                        UserChannelContext {
+                            prompt_capture_available: false,
+                            host_elicitation_available: false,
+                            local_web_consent_available: false,
+                        },
+                        None,
+                    )
+                }
+                ActorSource::AgentConnection(connection_id) => {
+                    let prompt_capture = invocation.invocation_binding_basis
+                        == VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK;
+                    let mcp_connection_binding = matches!(
+                        invocation.invocation_binding_basis.as_str(),
+                        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+                            | VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING
+                    );
+                    if !prompt_capture && !mcp_connection_binding {
+                        return Ok(None);
+                    }
+                    let Some(session_id) = invocation
+                        .session_id
+                        .as_deref()
+                        .filter(|session_id| !session_id.trim().is_empty())
+                    else {
+                        return Ok(None);
+                    };
+                    (
+                        Some(invocation.actor_source.to_canonical_string()),
+                        UserChannelContext {
+                            prompt_capture_available: prompt_capture,
+                            host_elicitation_available: mcp_connection_binding
+                                && invocation.host_elicitation_available,
+                            local_web_consent_available: mcp_connection_binding
+                                && invocation.local_web_consent_available,
+                        },
+                        Some((session_id.to_owned(), connection_id.as_str().to_owned())),
+                    )
+                }
+                ActorSource::LocalUser | ActorSource::System => return Ok(None),
+            };
+
+        let store = CoreProjectStore::open_read_only(self.runtime_home(), &request.project_id)?;
+        let Some((project_state, observed_at, records)) = store.with_read_snapshot(|store| {
+            if let Some((session_id, connection_id)) = required_active_session.as_ref() {
+                let Some(session) = store.agent_session(session_id)? else {
+                    return Ok(None);
+                };
+                if session.project_id != request.project_id.as_str()
+                    || session.connection_internal_id.as_str() != connection_id
+                    || session.ended_at.is_some()
+                {
+                    return Ok(None);
+                }
+            }
+            if !store.task_exists(&request.task_id)? {
+                return Ok(None);
+            }
+            let project_state = store.project_state()?;
+            let observed_at = self.project_store_now(store)?;
+            let records = store.pending_user_action_records(&request.task_id, &observed_at)?;
+            Ok(Some((project_state, observed_at, records)))
+        })?
+        else {
+            return Ok(None);
+        };
+        let items = records
+            .iter()
+            .filter(|record| {
+                same_connection_actor
+                    .as_ref()
+                    .is_none_or(|actor| record.request.requested_by_actor_source == actor.as_str())
+            })
+            .map(|record| {
+                let request = user_action_from_record(record, project_state.state_version)?;
+                let inbox_item = user_action_inbox_item_from_request(
+                    record,
+                    request.clone(),
+                    project_state.state_version,
+                    user_channel,
+                )?;
+                Ok(UserChannelInboxProjectionItem {
+                    request,
+                    inbox_item,
+                })
+            })
+            .collect::<CoreResult<Vec<_>>>()?;
+        let user_channel_availability = user_channel_availability(user_channel);
+        Ok(Some(UserChannelInboxProjection {
+            project_id: request.project_id,
+            task_id: request.task_id,
+            observed_state_version: project_state.state_version,
+            observed_at,
+            user_channel_availability,
+            items,
+        }))
     }
 
     /// Reads the current effective status and agent-safe resolution projection
@@ -215,6 +497,17 @@ impl CoreService {
                 ),
             ));
         }
+        if !crate::pipeline::stored_public_response_is_current(
+            MethodName::RequestUserAction,
+            &replay.response_json,
+        ) {
+            return crate::pipeline::stored_response_unavailable_response(
+                project_state.state_version,
+                Some(verified_invocation),
+                Some(task_id),
+            )
+            .map(Some);
+        }
         let result: RequestUserActionResult = decode_required_json(
             "tool_invocations",
             format!(
@@ -224,29 +517,6 @@ impl CoreService {
             "response_json",
             Some(&replay.response_json),
         )?;
-        let mut historical_request =
-            user_action_from_record(&record, replay.committed_state_version)?;
-        historical_request.status = UserActionStatus::Pending;
-        historical_request.user_action_resolution_ref = RequiredNullable::null();
-        match &mut historical_request.basis {
-            UserActionBasis::Choice(choice) => {
-                choice.coordinates.compatibility_status = UserActionBasisStatus::Current;
-            }
-            UserActionBasis::EvidenceObservation(observation) => {
-                observation.coordinates.compatibility_status = UserActionBasisStatus::Current;
-            }
-        }
-        let historical_form = historical_request.body.capture_form().map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "user_action_requests",
-                user_action_request_id.as_str(),
-                "request_json",
-            ))
-        })?;
-        let historical_required = historical_request
-            .required_for
-            .iter()
-            .any(|target| *target != UserActionRequiredFor::Informational);
         let exact_origin = replay.project_id == project_id.as_str()
             && replay.tool_name == MethodName::RequestUserAction.as_str()
             && replay.idempotency_key == source_idempotency_key.as_str()
@@ -257,35 +527,8 @@ impl CoreService {
             && result.base.effect_kind == EffectKind::CoreCommitted
             && !result.base.dry_run
             && result.base.state_version == Some(replay.committed_state_version)
-            && result.user_action_request == historical_request
-            && result.inbox_item.request_ref == result.user_action_request_ref
-            && result.inbox_item.form == historical_form
-            && result.inbox_item.user_action_request_id == user_action_request_id
-            && result.inbox_item.project_id == project_id
-            && result.inbox_item.task_id == task_id
-            && result.inbox_item.change_unit_id == historical_request.change_unit_id
-            && result.inbox_item.action_kind == historical_request.action_kind
-            && result.inbox_item.question == historical_request.body.question()
-            && result.inbox_item.context_summary == historical_request.body.context_summary()
-            && result.inbox_item.required == historical_required
-            && result.inbox_item.requirement_status
-                == if historical_required {
-                    "required"
-                } else {
-                    "optional"
-                }
-            && result.inbox_item.required_for == historical_request.required_for
-            && result.inbox_item.status == UserActionStatus::Pending
-            && result.inbox_item.expires_at == historical_request.expires_at
-            && result.user_action_request_ref.record_kind == StateRecordKind::UserActionRequest
-            && result.user_action_request_ref.record_id.as_str() == user_action_request_id.as_str()
-            && result.user_action_request_ref.project_id == project_id
-            && result.user_action_request_ref.task_id.as_ref() == Some(&task_id)
-            && result
-                .user_action_request_ref
-                .produced_at_state_version
-                .as_ref()
-                == Some(&replay.committed_state_version);
+            && result.user_action_request_summary
+                == AgentSafeUserActionRequestSummary::pending(user_action_request_id.clone());
         if !exact_origin {
             return Err(CorePipelineError::Store(
                 StoreError::corrupt_owner_state_json(
@@ -757,17 +1000,7 @@ fn plan_request_user_action(
     let action_kind = materialized.public_request.action_kind;
     let request_id = materialized.public_request.user_action_request_id.clone();
     let request_ref = materialized.request_ref.clone();
-    let public_request = materialized.public_request;
     let effective = materialized.effective;
-    let inbox_item = user_action_inbox_item(
-        &effective,
-        planned_state_version,
-        UserChannelContext {
-            guard_health: None,
-            host_elicitation_available: verified_invocation.host_elicitation_available,
-            local_web_consent_available: verified_invocation.local_web_consent_available,
-        },
-    )?;
     let mut pending_authorities = pending_user_action_authorities_for_plan(
         store,
         project_state,
@@ -801,9 +1034,7 @@ fn plan_request_user_action(
     )?;
     let result = RequestUserActionResult {
         base: placeholder_base(),
-        user_action_request_ref: request_ref,
-        user_action_request: public_request,
-        inbox_item,
+        user_action_request_summary: AgentSafeUserActionRequestSummary::pending(request_id.clone()),
         blocker_refs,
         state,
     };

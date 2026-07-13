@@ -2,7 +2,10 @@ use std::{error::Error, fs, path::Path};
 
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
-use volicord_core::{rejected_response, tool_error, Clock, CoreService, InvocationContext};
+use volicord_core::{
+    rejected_response, tool_error, Clock, CoreService, InvocationContext,
+    UserChannelInboxProjectionRequest,
+};
 use volicord_store::{
     agent_connections::HOST_KIND_CODEX,
     guards::{
@@ -22,8 +25,9 @@ use volicord_types::{
     ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind,
     ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId, EvidenceObservationInput,
     EvidenceRelevanceStatus, EvidenceSourceKind, EvidenceTarget, JsonObject, JudgmentKind,
-    OperationCategory, ProjectId, ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle,
-    StateRecordKind, StateRecordRef, StatusRequest, UserActionRequiredFor,
+    JudgmentResolutionOutcome, OperationCategory, ProjectId, ResidualRiskInput, ResponseKind,
+    RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusRequest, TaskId,
+    UserActionBasis, UserActionOptionAction, UserActionRequestBody, UserActionRequiredFor,
     UserActionResolutionBody, UtcTimestamp, WriteTicketId,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
@@ -649,8 +653,8 @@ fn user_action_kinds_remain_separate_from_scope_and_write_tickets() -> Result<()
         }),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let scope_user_action_request_id = scope_action.response_value["user_action_request_ref"]
-        ["record_id"]
+    let scope_user_action_request_id = scope_action.response_value["user_action_request_summary"]
+        ["user_action_request_id"]
         .as_str()
         .expect("scope user-action request id should be present")
         .to_owned();
@@ -688,7 +692,7 @@ fn user_action_kinds_remain_separate_from_scope_and_write_tickets() -> Result<()
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let sensitive_user_action_request_id = sensitive_action.response_value
-        ["user_action_request_ref"]["record_id"]
+        ["user_action_request_summary"]["user_action_request_id"]
         .as_str()
         .expect("sensitive user-action request id should be present")
         .to_owned();
@@ -750,8 +754,8 @@ fn user_action_kinds_remain_separate_from_scope_and_write_tickets() -> Result<()
         }),
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
-    let risk_user_action_request_id = risk_action.response_value["user_action_request_ref"]
-        ["record_id"]
+    let risk_user_action_request_id = risk_action.response_value["user_action_request_summary"]
+        ["user_action_request_id"]
         .as_str()
         .expect("risk user-action request id should be present")
         .to_owned();
@@ -2216,7 +2220,12 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         }),
         invocation(&actor_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_current_authority_options(&requested_action.response_value);
+    assert_current_authority_options(
+        &actor_fixture,
+        &actor_service,
+        &task_id,
+        &requested_action.response_value,
+    )?;
     let user_action_request_id =
         response_record_id(&requested_action.response_value, "user_action_request_ref");
     let agent_record = actor_fixture.resolve_user_action_request(ResolveUserActionFixture {
@@ -3110,10 +3119,27 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
         }),
         invocation(&canonical_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(
-        final_action.response_value["user_action_request"]["basis"]["result_refs"],
-        basis["result_refs"]
-    );
+    let final_action_request_id =
+        response_record_id(&final_action.response_value, "user_action_request_ref");
+    let final_action_projection =
+        trusted_user_channel_projection(&canonical_fixture, &canonical_service, &task_id)?;
+    let final_action_request = final_action_projection
+        .items
+        .iter()
+        .find(|item| {
+            item.request.user_action_request_id.as_str() == final_action_request_id.as_str()
+        })
+        .expect("trusted User Channel projection should contain the final-acceptance request");
+    let UserActionBasis::Choice(final_action_basis) = &final_action_request.request.basis else {
+        panic!("final acceptance should use a choice authority basis");
+    };
+    let expected_result_refs: Vec<StateRecordRef> =
+        serde_json::from_value(basis["result_refs"].clone())?;
+    assert_eq!(final_action_basis.result_refs, expected_result_refs);
+    assert!(final_action
+        .response_value
+        .get("user_action_request")
+        .is_none());
 
     const HELLO_SHA256: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
     const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -4306,11 +4332,8 @@ fn record_final_acceptance(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    let user_action_request_id = requested_action.response_value["user_action_request_ref"]
-        ["record_id"]
-        .as_str()
-        .expect("final-acceptance user-action request id should be present")
-        .to_owned();
+    let user_action_request_id =
+        response_record_id(&requested_action.response_value, "user_action_request_ref");
     let response = resolve_choice_user_action(
         fixture,
         service,
@@ -4423,7 +4446,7 @@ fn record_authority_user_action_with_option(
         }),
         invocation(fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_current_authority_options(&requested_action.response_value);
+    assert_current_authority_options(fixture, service, task_id, &requested_action.response_value)?;
     let user_action_request_id =
         response_record_id(&requested_action.response_value, "user_action_request_ref");
     let response = resolve_choice_user_action(
@@ -4750,41 +4773,111 @@ fn state_record_ref_with_project(
 }
 
 fn response_record_id(response_value: &Value, field: &str) -> String {
-    response_value[field]["record_id"]
+    let (response_field, identifier_field) = match field {
+        "user_action_request_ref" => ("user_action_request_summary", "user_action_request_id"),
+        _ => (field, "record_id"),
+    };
+    response_value[response_field][identifier_field]
         .as_str()
-        .expect("record_id should be present")
+        .expect("response identifier should be present")
         .to_owned()
 }
 
-fn assert_current_authority_options(response_value: &Value) {
-    let options = response_value["user_action_request"]["body"]["options"]
-        .as_array()
-        .expect("authority user-action options should be present");
+fn trusted_user_channel_projection(
+    fixture: &CoreFixture,
+    service: &CoreService,
+    task_id: &str,
+) -> Result<volicord_core::UserChannelInboxProjection, Box<dyn Error>> {
+    service
+        .user_channel_inbox_projection(
+            UserChannelInboxProjectionRequest {
+                project_id: ProjectId::new(fixture.project_id()),
+                task_id: TaskId::new(task_id),
+            },
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?
+        .ok_or_else(|| "authenticated local CLI should receive the User Channel projection".into())
+}
+
+fn assert_current_authority_options(
+    fixture: &CoreFixture,
+    service: &CoreService,
+    task_id: &str,
+    response_value: &Value,
+) -> Result<(), Box<dyn Error>> {
+    let user_action_request_id = response_record_id(response_value, "user_action_request_ref");
+    assert_eq!(
+        response_value["user_action_request_summary"],
+        json!({
+            "user_action_request_id": user_action_request_id,
+            "status": "pending",
+            "next_actor": "user",
+        })
+    );
+    for forbidden in [
+        "user_action_request_ref",
+        "user_action_request",
+        "inbox_item",
+        "user_channel_availability",
+    ] {
+        assert!(
+            response_value.get(forbidden).is_none(),
+            "public request result must omit {forbidden}: {response_value}"
+        );
+    }
+
+    let projection = trusted_user_channel_projection(fixture, service, task_id)?;
+    let request = projection
+        .items
+        .iter()
+        .find(|item| {
+            item.request.user_action_request_id.as_str() == user_action_request_id.as_str()
+        })
+        .expect("trusted User Channel projection should contain the authority request");
+    let UserActionRequestBody::Choice(choice) = &request.request.body else {
+        panic!("authority user action should use a choice request body");
+    };
+    let options = &choice.options;
     let option_ids = options
         .iter()
-        .map(|option| option["option_id"].as_str().expect("option id"))
+        .map(|option| option.option_id.as_str())
         .collect::<Vec<_>>();
     assert_eq!(option_ids, vec!["accept", "reject", "defer"]);
     for option in options {
-        match option["option_id"].as_str().expect("option id") {
+        match option.option_id.as_str() {
             "accept" => {
-                assert_eq!(option["machine_action"], "accept");
-                assert_eq!(option["resolution_outcome"], "accepted");
-                assert_eq!(option["is_default"], true);
+                assert_eq!(option.machine_action, UserActionOptionAction::Accept);
+                assert_eq!(
+                    option.resolution_outcome,
+                    JudgmentResolutionOutcome::Accepted
+                );
+                assert!(option.is_default);
             }
             "reject" => {
-                assert_eq!(option["machine_action"], "reject");
-                assert_eq!(option["resolution_outcome"], "rejected");
-                assert_eq!(option["is_default"], false);
+                assert_eq!(option.machine_action, UserActionOptionAction::Reject);
+                assert_eq!(
+                    option.resolution_outcome,
+                    JudgmentResolutionOutcome::Rejected
+                );
+                assert!(!option.is_default);
             }
             "defer" => {
-                assert_eq!(option["machine_action"], "defer");
-                assert_eq!(option["resolution_outcome"], "deferred");
-                assert_eq!(option["is_default"], false);
+                assert_eq!(option.machine_action, UserActionOptionAction::Defer);
+                assert_eq!(
+                    option.resolution_outcome,
+                    JudgmentResolutionOutcome::Deferred
+                );
+                assert!(!option.is_default);
             }
             other => panic!("unexpected authority option id {other}"),
         }
     }
+    Ok(())
 }
 
 fn assert_prepare_reason(response_value: &Value, code: &str) {

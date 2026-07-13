@@ -55,8 +55,10 @@
 `volicord mcp --stdio`는 설치된 `volicord` 실행 파일의 로컬 MCP stdio 프로세스
 모드입니다. MCP 호스트는 이를 자식 프로세스로 시작하고 stdin/stdout으로 통신합니다.
 MCP TCP 리스너, HTTP MCP 리스너, Unix 도메인 소켓 리스너, 또는 그 밖의 MCP 네트워크
-리스너가 아닙니다. 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없을 때는 대기
-중인 사용자 행동을 위해 별도의 루프백 전용 consent 리스너를 시작할 수 있습니다.
+리스너가 아닙니다. 대기 중인 사용자 행동을 위해 별도의 루프백 전용 consent
+리스너를 시작할 수 있습니다. 리스너 시작 자체는 이 channel을 선택하거나 token
+발급을 허용하지 않습니다. 각 tool call은 아래에서 정한 정확히 협상된 모델 비가시적
+host capability를 함께 요구합니다. 그렇지 않으면 대기 행동은 CLI inbox에 남습니다.
 
 `volicord serve --transport local-http`는 Docker와 `localhost` MCP 사용을 위한 별도의
 명시적 프로세스 모드입니다. 네이티브 로컬 실행은 루프백 전용 HTTP 리스너를
@@ -571,8 +573,27 @@ JSON-RPC 응답을 만들지 않습니다. 그러나 그런 `params`는 수명�
 - 문자열 `name`과 `version` 필드를 포함하는 객체 `clientInfo`
 
 `params.capabilities.elicitation`이 객체이면 어댑터는 MCP 클라이언트가 서버 시작
-사용자 입력 요청을 사용할 수 있다고 봅니다. 다른 기능 항목은 그 자체로 Volicord 동작을
-만들지 않습니다.
+사용자 입력 요청을 사용할 수 있다고 봅니다. 별도 Volicord 확장 capability는 다음과
+같습니다.
+
+```json
+{
+  "capabilities": {
+    "experimental": {
+      "io.volicord/user-channel": {
+        "model_invisible_user_surface": true
+      }
+    }
+  }
+}
+```
+
+정확한 boolean `true`만 그 클라이언트를 모델 비가시적 local-web handoff 대상으로
+만듭니다. 구성원이 없거나 `false`, 잘못된 타입, 잘못된 namespace, 잘못된 중첩 객체이면
+initialize 오류가 아니라 capability unavailable입니다. 이 flag는 사용자 권한이나 host
+신뢰의 증거가 아닙니다. Namespaced tool-result `_meta` 값을 사용자 소유 표면에 전달하고
+모델 맥락에는 절대 제공하지 않는다는 클라이언트의 협력적 약속입니다. 다른 capability
+항목은 그 자체로 Volicord 동작을 만들지 않습니다.
 
 예시는 위에 나열한 필드를 사용합니다. `volicord mcp --stdio`는 2025-11-25 스키마가
 허용하는 추가 MCP `Implementation` 메타데이터, 예를 들어 `title`, `description`,
@@ -587,6 +608,9 @@ JSON-RPC 응답을 만들지 않습니다. 그러나 그런 `params`는 수명�
 최적화 수준, 디버그 상태를 포함합니다. 빌드 시각은 포함하지 않습니다. 알 수 없는 Git
 메타데이터는 명시적으로 표현하고, dirty 작업 트리는 수정된 내용을 정확히 식별한다고
 주장하지 않은 채 표시합니다.
+Initialize 결과는 클라이언트가 이 선택적 handoff를 협상할 수 있도록
+`capabilities.experimental["io.volicord/user-channel"]` 확장도 광고합니다. 서버 광고만으로
+클라이언트 capability가 available이 되지는 않습니다.
 
 프로토콜 버전 협상:
 
@@ -896,13 +920,15 @@ Request-user-action resume 분기는 대신 읽기 전용 접근 맥락을 파�
 `volicord.prepare_evidence_capture`에서는 정확한 capture-intent ref, intent, expiry를,
 `volicord.stage_artifact`에서는 스테이징된 handle과 만료 시각을,
 `volicord.record_run`에서는 정확한 Run ref, 등록된 `ArtifactRef` 값, 새로 기록된 증거
-관찰 ref, null일 수 있는 `close_basis_anchor`를, `volicord.reconcile_changes`에서는
-찾은 항목별 결과를, `volicord.request_user_action`에서는 정확한 요청 결과, replay 표시,
+관찰 ref, null일 수 있는 `close_basis_anchor`를, `volicord.reconcile_changes`에서는 새로
+생성한 요청 ref나 form이 없는 찾은 항목별 결과를, `volicord.request_user_action`에서는
+정확한 요청 결과, replay 표시,
 현재 projection state version/시각, 별도 안전 해결 사실, 해결에서 파생된 ref를
 보존합니다. `close_basis_anchor`는 `close_basis_revision`, `scope_revision`,
 `source_run_ref`, null일 수 있는 `evidence_summary_ref`를 담습니다. 이는 Task에 저장된
 닫기 근거를 가리키는 타입이 지정된 좌표이며 `StateRecordRef`나 별도 닫기 근거 기록이
-아닙니다. 해결된 간결한 사용자 행동 결과는 요청 ref, 정확한 과거 해결 ref, snapshot에
+아닙니다. 해결된 간결한 사용자 행동 결과는 요청 ref 없이 정확한 닫힌 세 필드 요청
+요약, 정확한 과거 해결 ref, snapshot에
 결속된 상태, 선택한 option ID와 label 또는 증거 관찰 요약, 해당되는 resolution outcome,
 공개 해결 파생 ref를 포함하고 자유 형식 사용자 note와 evidence observation summary
 텍스트는 제외합니다. `detail=full`은 이러한
@@ -1089,7 +1115,9 @@ Core/도메인 거절 변경 응답은 이 성공 상태 보기 경로에 들어
 User Channel 해결이 될 수 없습니다.
 
 `request.operation=create` 요청 커밋 뒤 어댑터는 Core 소유
-`UserActionInboxForm`을 소비합니다. 판단 폼은
+`UserActionInboxForm`을 선택된 User Channel renderer 안에서만 소비합니다. Agent
+Connection 결과는 요청 ID, `status=pending`, `next_actor=user`만 담은
+`AgentSafeUserActionRequestSummary`를 받습니다. 판단 폼은
 저장된 `selected_option_id`와 선택적 note만 요청합니다. 증거 관찰 폼은 저장 대상
 selector 하나, 저장 아티팩트 ID의 비어 있지 않은 부분집합, `supported` 또는
 `contradicted`, 크기가 제한된 summary를 요청합니다. label, description, consequence,
@@ -1102,10 +1130,11 @@ metadata도 표시 전용입니다. 제출하는 값은 선택한 대상 selecto
 자르지 않은 완전한
 `elicitation/create` JSON-RPC 요청 객체를 UTF-8 JSON으로 인코딩한 바이트와 끝의 LF
 1바이트를 합친 크기가 32 KiB 이하일 때만 사용합니다. 그렇지 않으면 그 경로를 사용
-불가로 보고하고 prompt capture, local web consent, CLI 순서의 가용 경로를 사용합니다.
-폼과 제출은 자르지 않습니다.
+불가로 보고하고 협상된 모델 비가시적 local web, CLI 순서의 가용 경로를 사용합니다.
+에이전트 대상 prompt-capture fallback은 완전한 폼 전달 표면이 아닙니다. 폼과 제출은
+자르지 않습니다.
 
-새로운 에이전트 대상 사용자 입력 표면을 열기 전에 어댑터는 질문, context summary,
+별도로 검증된 User Channel 표면을 열기 전에 어댑터는 질문, context summary,
 표시되는 모든 `EvidenceTarget`과 `ArtifactRef` metadata 값을 포함한 완전한 닫힌 폼
 렌더링에 하나의 보수적인 presentation safety 분류를 적용합니다. 완전한 presentation이
 비밀값이나 credential 자료를 나타내 사용자 전용 채널을 요구하면 어댑터는
@@ -1126,10 +1155,9 @@ content, 알 수 없거나 혼합된 후보, stale 폼, 상태 충돌은 해결�
 계속 현재이고 만료되지 않았으면 유효 pending으로 남깁니다.
 
 MCP 결과는 복합 projection입니다. `agent_workflow_result`는 항상 원래 Agent Connection
-호출이 커밋한 byte 단위로 정확한 요청 응답이고 `operation_result_ref`는 그 결과만
-가리킵니다. Presentation safety 경로 선택은 이 변경 불가능한 과거 결과를 가리거나 다시
-쓰지 않습니다. 원래 요청이나 폼에 새로 여는 모든 presentation 표면에서 사용자 전용
-입력을 요구하는 값이 들어 있어도 마찬가지입니다. `agent_workflow_result_replayed`가
+호출이 커밋한 byte 단위로 정확한 agent-safe 요청 응답이고 `operation_result_ref`는 그
+결과만 가리킵니다. 과거 결과는 완전한 요청이나 폼 없이 만들어졌으므로 presentation
+safety 경로 선택이 가리거나 다시 쓸 필요가 없습니다. `agent_workflow_result_replayed`가
 create와 명시적 resume을 구분합니다.
 Resume은 같은 활성 workflow Agent Connection actor 범위와 허용 project를 요구하고 이후
 Git workspace 좌표는 비교하지 않습니다. 다른 connection이나 reconciliation이 만든
@@ -1147,19 +1175,38 @@ commit 뒤에도 원래 `produced_at_state_version`을 유지합니다.
 
 어댑터는 `request.operation=create`를 처리하면서 커밋 후 재조회 결과가 계속
 `pending`일 때만 `elicitation/create`를 보냅니다. Resume은 현재 상태가 `pending`이어도
-`elicitation/create`를 보내거나 prompt capture, local web, CLI fallback을 실행하지 않고
+`elicitation/create`를 보내거나 local web, CLI fallback을 실행하지 않고
 정확한 과거 `agent_workflow_result`와 현재 안전 projection을 반환합니다. Create에서
 요청이 `resolved`, `stale`, `superseded`, `expired`이면 새 prompt 없이 현재 안전
 projection을 반환합니다. Create 중 요청을 pending으로 남긴 취소·거절·유효하지 않은 host
 입력은 정확한 중첩 resume 안내를 포함하고 두 번째 요청을 만들지 않습니다.
 
 fallback 안내는 Core 권한 밖에 남습니다. 사용할 수 없는 host prompt 입력이 다른 가용
-경로를 숨기면 안 됩니다. Chat capture는 같은 요청 ID, 저장 후보, verification code,
-expiry, form digest를 사용합니다. 풍부한 prompt capture를 사용할 수 없으면 짧게
-만료되는 local web token을 정확한 요청, form digest, project, connection에 결속합니다.
-그 밖에는 `volicord inbox`를 안내합니다. 각 pending fallback은 같은 request ID와
-`request.operation=resume`, `creates_new_request=false`를 담은 구조화 연속 작업 인자를
-포함하며, User Channel 완료 뒤 에이전트는 다른 create 대신 이 분기를 사용합니다.
+경로를 숨기면 안 됩니다. Loopback listener와 협상된 모델 비가시적 표면을 모두 사용할
+수 있으면 짧게 만료되는 local web token을 정확한 요청, form digest, project,
+connection, delivery-surface marker에 결속합니다. 원문 credential을 포함한 URL은
+아래의 닫힌 최상위 전달값에만 두며 알 수 없거나 추가된 필드는 허용하지 않습니다.
+
+```json
+{
+  "_meta": {
+    "io.volicord/user-channel": {
+      "kind": "local_web_consent",
+      "url": "http://127.0.0.1:PORT/consent?...&token=...",
+      "expires_at": "RFC3339 UTC timestamp"
+    }
+  }
+}
+```
+
+`CallToolResult._meta["io.volicord/user-channel"]`는 공개 tool `outputSchema` 밖에 있습니다.
+Agent 대상 content는 요청
+ID, pending 상태, next actor, 안전한 연속 작업 안내만 보고합니다. 어느 capability 입력이든
+사용할 수 없으면 token을 발급하지 않고 `volicord inbox`를 안내합니다. 각 pending
+fallback은 두 번째 요청을 만들거나 닫힌 공개 응답 스키마 밖의 구조화된 연속 작업 객체를
+추가하지 않습니다. User Channel 완료 뒤 workflow를 계속하는 호출자는 다른 create를
+발급하지 않고 정확한 pending summary의 request ID로 공개
+`request.operation=resume` 분기를 사용합니다.
 
 <a id="local-web-consent-fallback"></a>
 로컬 consent listener는 loopback-only이고 fail closed합니다. `GET /consent`는 일회용
@@ -1167,6 +1214,18 @@ token을 검증하고 정확한 canonical 폼을 렌더링합니다. `POST /cons
 받습니다. Origin, project, connection, request, form digest, expiry, 후보 membership,
 token 상태를 다시 검증합니다. 성공한 폐쇄형 resolution 본문 삽입과 token 소비는
 원자적입니다.
+
+Listener 시작만으로는 이 경로를 선택하지 않습니다. 정확한 모델 비가시적 client
+capability를 사용할 수 있을 때만 token을 만듭니다. Token 발급 전에 adapter는 완전한
+안전 tool result와 닫힌 `_meta` 전달값이 선택된 65,536 또는 262,144-byte 응답 예산에
+맞는지 확인합니다. 맞지 않으면 token을 발급하지 않고 `_meta`를 생략하며 일반 CLI
+fallback을 반환합니다. 고아 token을 만들거나 URL을 자르지 않습니다. 이 전달값은
+resume, pending이 아닌 결과, CLI fallback, token 발급 실패, 지원되지 않거나 잘못된
+capability, 응답 예산 저하에서 없습니다. URL과 token은 MCP `content`,
+`structuredContent`, 호환·진단 text, status·close projection, 정확한 Core replay,
+operation-result byte, log, template에 나타나면 안 됩니다. Host 선언은 모델 비노출을
+지키겠다는 협력형 약속일 뿐 host 격리, 사용자 identity, 사용자 권한의 증명이 아닙니다.
+이 분리를 보존할 수 없는 host는 capability를 생략하고 CLI fallback을 받아야 합니다.
 
 POST 해결에서 어댑터는 유일하게 허용되는 digest-only `local_web:<sha256>` submission
 identity를 위한 Core 소유 도출을 사용합니다. 이 도출은 정확한 프로젝트, 사용자 행동
@@ -1198,10 +1257,11 @@ expiry 정리, 소비를 모두 무효과로 실패시킵니다. Overflow 또는
 token이나 하한을 삽입하기 전에 실패합니다.
 
 token의 저장 생성 metadata는
-`{fallback_kind="local_web_consent", endpoint="/consent", form_digest}` 폐쇄형
+`{fallback_kind="local_web_consent", delivery_surface="model_invisible_user_surface", endpoint="/consent", form_digest}` 폐쇄형
 객체입니다. 구성원이 빠지거나, 추가되거나, 형식 또는 타입이 잘못되거나, 값이 일치하지
 않으면 폼 렌더링이나 resolution 시도 전에 실패합니다. 이 실패는 token을 소비하거나
-User Channel 효과를 만들지 않습니다.
+User Channel 효과를 만들지 않습니다. 이 필수 marker 때문에 보정 전 token도 이전의
+Agent-visible 전달 계약을 재사용하지 않고 fail closed합니다.
 
 Volicord까지 도달한 알려진 공개 Volicord 메서드 도구 호출에서 `tools/call`은 MCP 결과
 안에 Volicord 응답 JSON을 래핑합니다.

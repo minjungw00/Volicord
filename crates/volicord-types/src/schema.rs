@@ -751,7 +751,42 @@ pub fn baseline_project_enforcement_profile() -> ProjectEnforcementProfile {
 }
 
 /// Compact current-position state returned by public methods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum AgentSafePendingUserActionStatus {
+    #[serde(rename = "pending")]
+    Pending,
+}
+
+/// Closed next-actor literal for an agent-safe pending user-action summary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum AgentSafeUserActionNextActor {
+    #[serde(rename = "user")]
+    User,
+}
+
+/// Exact Agent-visible projection of one effectively pending user action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSafeUserActionRequestSummary {
+    pub user_action_request_id: UserActionRequestId,
+    pub status: AgentSafePendingUserActionStatus,
+    pub next_actor: AgentSafeUserActionNextActor,
+}
+
+impl AgentSafeUserActionRequestSummary {
+    /// Creates the only valid pending user-action summary.
+    pub fn pending(user_action_request_id: UserActionRequestId) -> Self {
+        Self {
+            user_action_request_id,
+            status: AgentSafePendingUserActionStatus::Pending,
+            next_actor: AgentSafeUserActionNextActor::User,
+        }
+    }
+}
+
+/// Compact current-position state returned by public methods.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct StateSummary {
     pub project_id: ProjectId,
     pub state_version: u64,
@@ -773,7 +808,7 @@ pub struct StateSummary {
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context: Option<WorkspaceContext>,
     pub shaping_readiness: Option<ShapingReadiness>,
-    pub pending_user_action_refs: Vec<StateRecordRef>,
+    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
     pub evidence_summary: Option<EvidenceSummary>,

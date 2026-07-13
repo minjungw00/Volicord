@@ -6,10 +6,14 @@
 //! Adapters may depend on this crate; this crate does not depend on adapter
 //! crates.
 
-use volicord_store::{artifacts::ArtifactStoreBoundary, sqlite::SqliteStoreBoundary};
+use volicord_store::{
+    artifacts::ArtifactStoreBoundary, sqlite::SqliteStoreBoundary,
+    user_action_channel::UserActionChannelTokenRecord,
+};
 use volicord_types::{
-    AgentSafeUserActionResolution, ProjectId, ResolveUserActionRequest, StateRecordRef,
-    TypeBoundary, UserActionRequestId, UserActionStatus, UtcTimestamp,
+    AgentSafeUserActionResolution, ProjectId, ResolveUserActionRequest, StateRecordRef, TaskId,
+    TypeBoundary, UserActionInboxForm, UserActionInboxItem, UserActionRequest, UserActionRequestId,
+    UserActionStatus, UserChannelAvailability, UtcTimestamp,
 };
 
 mod authority_status;
@@ -48,6 +52,42 @@ pub struct LocalWebConsentUserActionRequest {
     pub token: String,
     pub expected_connection_internal_id: String,
     pub completion_metadata_json: String,
+}
+
+/// Internal input for projecting the canonical local-web consent form after
+/// the adapter has validated the presented bearer token.
+///
+/// Core rereads and exact-matches the supplied token record inside the same
+/// project snapshot used for session, request, creator, and form validation.
+/// This boundary is intentionally not serializable.
+#[derive(Clone, PartialEq, Eq)]
+pub struct LocalWebConsentUserActionProjectionRequest {
+    pub token: String,
+    pub validated_token: UserActionChannelTokenRecord,
+    pub allow_resolved_replay: bool,
+}
+
+/// Complete Core-owned request and form for the loopback User Channel.
+///
+/// This value can contain private user-facing context and candidates. It is a
+/// nonserialized Core-to-User-Channel boundary and must not enter MCP tool
+/// output, diagnostics, replay bytes, or public method results.
+#[derive(Clone, PartialEq)]
+pub struct LocalWebConsentUserActionProjection {
+    pub request: UserActionRequest,
+    pub form: UserActionInboxForm,
+}
+
+/// Fail-closed classification for the local-web projection boundary.
+///
+/// `FormMismatch` is kept distinct so the loopback renderer can preserve its
+/// specific user-facing conflict response without learning or rebuilding the
+/// canonical form in the adapter.
+#[derive(Clone, PartialEq)]
+pub enum LocalWebConsentUserActionProjectionOutcome {
+    Projected(Box<LocalWebConsentUserActionProjection>),
+    Invalid,
+    FormMismatch,
 }
 
 impl std::fmt::Debug for LocalWebConsentUserActionRequest {
@@ -103,6 +143,42 @@ pub struct CurrentUserActionProjection {
     pub user_action_resolution_ref: Option<StateRecordRef>,
     pub user_action_resolution: Option<AgentSafeUserActionResolution>,
     pub derived_refs: Vec<StateRecordRef>,
+}
+
+/// Internal request for the user-visible inbox projection.
+///
+/// This boundary is intentionally not serializable and is not part of the
+/// public method or MCP schemas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserChannelInboxProjectionRequest {
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+}
+
+/// Current user-visible inbox projection for one Task.
+///
+/// The projection may contain private question, form, path, and command data.
+/// It therefore remains a typed, nonserialized Core-to-User-Channel boundary.
+#[derive(Clone, PartialEq)]
+pub struct UserChannelInboxProjection {
+    pub project_id: ProjectId,
+    pub task_id: TaskId,
+    pub observed_state_version: u64,
+    pub observed_at: UtcTimestamp,
+    pub user_channel_availability: UserChannelAvailability,
+    pub items: Vec<UserChannelInboxProjectionItem>,
+}
+
+/// One trusted User Channel item with both its immutable machine request and
+/// its user-facing presentation.
+///
+/// Adapters use the request body for closed resolution semantics and the inbox
+/// item for user presentation. Neither value crosses the public result
+/// boundary through this container.
+#[derive(Clone, PartialEq)]
+pub struct UserChannelInboxProjectionItem {
+    pub request: UserActionRequest,
+    pub inbox_item: UserActionInboxItem,
 }
 
 /// Minimal Core service marker for validating crate boundaries.

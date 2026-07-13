@@ -128,19 +128,26 @@ May claim:
 - `operation_category` classifies an operation as `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - Baseline actor provenance is cooperative local provenance, not cryptographic human identity.
 
-At agent-facing User Channel boundaries, Volicord may conservatively classify
-the question, context summary, and complete rendered closed form as requiring a
-user-only input surface. In that case it does not open a new MCP elicitation or
-rich prompt-capture presentation and instead retains local web consent or CLI
-inbox routing. User-only surfaces still display the complete canonical form,
-and immutable historical Agent Connection results are not redacted or
-rewritten. This surface-routing rule is not general secret scanning, content
-isolation, malware detection, host enforcement, or proof that arbitrary secret
-material was found or excluded.
+The Core-derived durable user-action request/body/basis, complete inbox item,
+canonical capture form, capture paths, and credentials are returned only to a
+verified User Channel renderer. An Agent may already know draft text that it
+authored; this rule is non-disclosure of the authoritative stored projection,
+not a claim that the Agent never saw its own input. Agent Connection results
+carry only the canonical pending request summary and safe current-resolution
+projection. This is a projection boundary, not content redaction: the complete
+form is never written into the agent result, exact replay, or operation-result
+bytes in the first place. User-only surfaces still display the complete
+canonical form. Presentation-safety classification may additionally decline a
+rich host input path, but it is not general secret scanning, content isolation,
+malware detection, host enforcement, or proof that arbitrary secret material
+was found or excluded.
 
 Must not claim:
 - Local filesystem access proves Volicord authority.
-- A local path, directory name, copied identifier, displayed identifier, or rendered text is a security token.
+- A local path, directory name, copied identifier, displayed non-credential
+  identifier, or ordinary rendered text is a security token. The raw local-web
+  token and the complete URL containing it are bearer credentials and are not
+  covered by this non-claim.
 - Direct local modification outside those documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, a write ticket, or artifact authority.
 - `Volicord Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
 - A caller-supplied `verified` flag, requested `operation_category`, copied `actor_source`, public request field, or environment variable supplies trusted provenance.
@@ -201,6 +208,16 @@ May claim:
 - Internal connection identity, connection intent, `connection.mode`, Connection Projects, `operation_category`, and `actor_source` can be used according to the runtime, Core, method, and security owners after the current invocation matches the documented connection context.
 - `actor_source` can supply durable provenance only when the Core and method owners accept the value for the current authority-resolution operation.
 - `actor_source=local_user` through the `User Channel` is required for authority-bearing user-action resolutions, including judgments and evidence observations.
+- No raw User Channel bearer token or credential-bearing URL may enter an
+  Agent-visible/model-context or public output projection, including `content`,
+  `structuredContent`, compatibility/diagnostic text, exact replay, and
+  operation-result bytes.
+  Local-web delivery requires both a loopback listener and exact boolean `true`
+  at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`;
+  the sole host-only exception is the namespaced top-level tool-result `_meta`
+  handoff outside `outputSchema` and model context. Capability omission,
+  false, or malformed data issues no token and leaves CLI inbox recovery.
 - A workflow Agent Connection can create a current evidence-capture intent.
   Only a registered local source can fulfill it, and only `record_run` can
   finalize the receipt as a producer and observation. There is no MCP receipt-
@@ -240,9 +257,13 @@ retrieval path. In particular, the exact `volicord.resolve_user_action`
 response, any free-form user `note`, and any evidence-observation `summary`
 must not be returned through `volicord.get_operation_result`. A host-mediated
 user-action flow may expose only the MCP-transport-owned agent projection for
-the agent-owned request. Both its compact and full forms omit the private
-`note` and evidence-observation `summary`, and neither form exposes the
-user-only operation reference or exact response body.
+the agent-owned request. Compact, full, resume, and paged historical forms all
+contain only the request ID, historical `pending` status, and
+`next_actor=user` for the pending request; they omit the complete request,
+inbox form, private `note`, evidence-observation `summary`, User Channel
+credential, user-only operation reference, and exact user-only response body.
+A pre-correction stored result that fails this safe shape is unavailable rather
+than partially returned.
 
 Retrieved bytes describe a historical result. They are not an
 `AuthorityReceipt`, current status, evidence, a write ticket, or proof that the
@@ -365,6 +386,12 @@ project, request, expected Agent Connection, and closed completion context and
 revalidates it before replay or commit. These checks prevent a different local
 credential or context from opening that replay; they do not attest a human
 identity or turn the listener into an authentication or authorization service.
+The raw token is issued only for a negotiated model-invisible host surface and
+must not enter Agent Connection output. A token created under the superseded
+delivery contract lacks the required delivery-surface marker and is permanently
+unusable under corrected code: GET and POST fail closed without rendering or
+effects. The row is never upgraded; the pending action remains resolvable
+through another valid User Channel such as CLI.
 
 ### Broad authority inference
 

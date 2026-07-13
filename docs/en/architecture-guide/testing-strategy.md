@@ -30,7 +30,7 @@ policy.
 | Opt-in live host configuration smoke tests | [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs), target `live_host_smoke`, package `volicord-cli`. | Explicit configuration checks against an installed Codex or Claude Code executable, selected with `VOLICORD_RUN_CODEX_SMOKE=1` or `VOLICORD_RUN_CLAUDE_SMOKE=1`. | Evidence that the host delivered a final-output event, displayed fixed UI, or completed a User Judgment round trip. |
 | Opt-in live final-output matrix | The four Codex/Claude Code by Record/Detective tests in `live_host_smoke`. | Separately recording managed configuration-fixture, generated-wrapper wire, actual host event, actual fixed-UI, Detective decision, status-fallback, and exact-replay evidence. | Treating fixture or direct-wrapper output as proof of actual host delivery or UI, or treating one host/profile cell as proof of another. |
 | Opt-in live Judgment round trips | The Codex and Claude Code `*_live_user_action_round_trip_is_opt_in` tests in `live_host_smoke`. | Authenticated, human-in-the-loop host-native Judgment selection and its resulting authority records. | Final-output matrix evidence; Judgment elicitation and final-output disclosure are separate validation concerns. |
-| Opt-in live evidence-observation local-web round trips | The Codex and Claude Code `*_live_evidence_observation_round_trip_is_opt_in` tests in `live_host_smoke`. | An actual installed host creates and resumes an evidence-observation request while a human submits the canonical form through the loopback `local_web_consent` User Channel path. | Native Judgment elicitation, CLI recovery, or final-output matrix evidence; each remains a separate release-validation cell. |
+| Opt-in live evidence-observation local-web round trips | The Codex and Claude Code `*_live_evidence_observation_round_trip_is_opt_in` tests in `live_host_smoke`. | An installed host negotiates the exact model-invisible capability, presents the host-only `_meta` handoff outside model context, and lets a human submit the canonical loopback `local_web_consent` form while model-visible projections remain summary-only. | Native Judgment elicitation, CLI recovery, final-output matrix evidence, or a pass when the host cannot prove the model-invisible surface; each remains a separate release-validation cell. |
 | Opt-in live CLI-fallback round trips | The Codex and Claude Code `*_live_cli_fallback_round_trip_is_opt_in` tests in `live_host_smoke`. | A human-selected choice submitted by the actual CLI User Channel, exact CLI retry, and same-Agent-Connection host resume through the installed host. | Native Judgment elicitation, evidence-observation local-web, or final-output matrix evidence; all release-validation surfaces remain separate. |
 | MCP integration tests | [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs), target `mcp_connection`, package `volicord-integration-tests`. | Cross-layer MCP, Core, Store, connection binding, `operation_category` derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Public contract snapshot tests | [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs), target `public_contract_snapshots`, package `volicord-integration-tests`. | Generated API request-schema and MCP tool-contract snapshot drift against the current source projection. | Hand-edited generated snapshots, semantic Reference review, or proof that the public contract is correct. |
@@ -223,6 +223,25 @@ external result retention, UI confirmation, fallback, and skipped-validation
 reporting. An unavailable host, authentication environment, interactive TTY,
 or native elicitation surface is not a passing round trip.
 
+### User Channel projection-boundary regressions
+
+Focused Core tests table all maintained action kinds and compare the public
+create, pending status, pending close, reconcile, and nested `StateSummary`
+projections with the exact three-field agent-safe summary. They also prove that
+the separately authorized, non-serialized User Channel projection retains the
+complete canonical form for CLI-direct and same-session host submission while
+Agent Connection, MCP, Stop, final-output, and fixture contexts fail closed.
+
+Focused MCP tests table exact capability `true`, omission, `false`, wrong type,
+malformed namespace, and listener-unavailable combinations. Only exact `true`
+plus a ready listener may issue a token and return the closed host-only `_meta`
+handoff. The model-visible view must omit every form and credential field.
+Budget-boundary tests must preflight the complete safe result and handoff before
+token creation, proving that degradation produces generic CLI guidance and no
+orphan token. Replay tests cover direct retry, resume, close, and operation-
+result page one with legacy full-form, legacy `StateSummary`, mixed-shape, and
+wrong-method stored rows; rejected rows produce no state or cleanup effects.
+
 ### Evidence-observation local-web round trips
 
 The evidence-observation checks are two additional host cells, separate from
@@ -236,18 +255,29 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-code-evidence-observation.json VO
 
 Each cell uses fixture-only setup to establish disposable starting state, then
 requires the actual installed host to create and resume one evidence-observation
-request on the prepared Agent Connection. A human opens the loopback consent
-form and submits the prepared target and artifact, `supported`, and a bounded
-non-secret summary. The host must then consume the resulting resolution in a
-Run. Store inspection, authority-event order, fresh status, the Task-bound Stop
-event, and full managed-UI receipt confirmation provide the observed
-cross-layer assertions. Fixture setup and adapter-only checks remain identified
-separately and cannot stand in for the installed-host observations.
+request on the prepared Agent Connection. The captured initialization exchange
+must show exact boolean `true` at
+`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
+The host, not the Agent or harness, presents the
+`CallToolResult._meta["io.volicord/user-channel"]` handoff outside model
+context; a human uses that surface to open the loopback form and submits the
+prepared target and artifact, `supported`, and a bounded non-secret summary.
+The host must then consume the resulting resolution in a Run. Store inspection,
+authority-event order, fresh status, the Task-bound Stop event, and full
+managed-UI receipt confirmation provide the observed cross-layer assertions.
+Fixture setup and adapter-only checks remain identified separately and cannot
+stand in for the installed-host observations.
 
-The non-secret credential-shaped artifact marker makes the conservative
-User Channel route deterministic for this fixture. The cell observes that the
-local-web path was selected; it does not prove secret detection, native
-elicitation, or the security of the external host.
+The live harness records only bounded Booleans, counts, and digests while
+inspecting the actual create, pending status, pending close, exact operation-
+result, and resume exchanges. For MCP calls, the observer checks `content`,
+`structuredContent`, compatibility and diagnostic text, and the replayed Agent
+Workflow body. Each model-visible projection must contain the exact three-field
+pending summary and must omit the complete request, question, options, context,
+form, capture path, command, raw URL, and bearer token. The URL may occur only
+in the observed host-owned `_meta` delivery. This assertion does not prove
+secret detection, native elicitation, or the general security of the external
+host.
 
 These are release-test assertions, not a second API contract. Exact request and
 resume behavior belongs to
@@ -263,11 +293,14 @@ Fresh status and receipt comparisons use the
 [status method](../reference/api/method-status.md) and
 [API State Schemas](../reference/api/schema-state.md).
 
-The live cell intentionally retains no host transcript. It proves the observed
-same-request replay and downstream resolution-ref consumption, but it does not
-directly inspect the resumed response for omission of the user's raw summary.
-That omission remains covered by the focused schema and adapter regression
-tests against the owners linked above.
+The live cell retains no host transcript or raw tool body. Its bounded exchange
+observer must nevertheless establish the safe-shape and forbidden-field facts
+above for create, resume, status, close, and operation-result projections. If
+the installed host omits or malforms the exact capability, cannot present the
+handoff outside model context, or cannot provide an observation boundary that
+distinguishes host-only `_meta` from model-visible result data, the cell records
+`unavailable`, never `passed`. Focused schema and adapter regressions remain
+necessary but cannot upgrade that unavailable host observation.
 
 The bounded external result records safe validation coordinates and summary
 match facts, never the consent URL, bearer token, raw summary, prompt, or
@@ -275,8 +308,10 @@ transcript. Its result lifecycle and retention rules are maintained by the
 paired checklist linked below.
 
 These ignored cells require the installed host executable, its ordinary
-authentication environment, an interactive TTY, a usable local browser, host
-trust or approval where requested, and the fresh external result path. An
+authentication environment, an interactive TTY, exact model-invisible
+capability negotiation, an observable host-only handoff surface, a usable local
+browser, host trust or approval where requested, and the fresh external result
+path. An
 ordinary Cargo report that the test was ignored, a run without the opt-in
 variable, or an unavailable prerequisite is not a pass. Follow the paired
 [live-host evidence-observation release-validation checklist](../maintain/validation.md#live-host-evidence-observation-release-validation)

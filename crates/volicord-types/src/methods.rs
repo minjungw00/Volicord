@@ -7,19 +7,19 @@ use crate::ids::{
     UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use crate::schema::{
-    AcceptanceCriterionInput, AcceptanceCriterionReplacement, ArtifactInput, ArtifactRef,
-    AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput, CloseReadinessBlocker,
-    ConnectionObservationSourceSelector, ControlSurfaceSummary, CoverageSummary, CurrentCloseBasis,
-    EventRef, EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate,
-    EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput, EvidenceProducer,
-    EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
+    AcceptanceCriterionInput, AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary,
+    ArtifactInput, ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
+    CloseReadinessBlocker, ConnectionObservationSourceSelector, ControlSurfaceSummary,
+    CoverageSummary, CurrentCloseBasis, EventRef, EvidenceCaptureIntent, EvidenceCaptureSpec,
+    EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput,
+    EvidenceProducer, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay,
     GuardHealthSummary, JsonObject, NextActionSummary, ObservedChanges, ProjectContinuitySummary,
     RequiredNullable, RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle,
     StateRecordRef, StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse,
     ToolEnvelope, ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserActionDraft, UserActionInboxItem, UserActionRequest,
-    UserActionResolution, UserActionResolutionInput, UserChannelAvailability, WriteDecisionReason,
-    WriteTicket, WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
+    UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
+    UserActionResolutionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
+    CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
@@ -273,7 +273,7 @@ pub struct McpRecordRunCompactResult {
 pub struct McpRequestUserActionCompactResult {
     pub effect: McpMutationEffectSummary,
     pub agent_workflow_result_replayed: bool,
-    pub user_action_request_ref: StateRecordRef,
+    pub user_action_request_summary: AgentSafeUserActionRequestSummary,
     pub current_projection_state_version: u64,
     pub current_projection_observed_at: UtcTimestamp,
     pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
@@ -310,7 +310,7 @@ pub struct McpReconcileChangesCompactResult {
     pub effect: McpMutationEffectSummary,
     pub unresolved_changes: Vec<UnrecordedChangeFinding>,
     pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
-    pub pending_user_action_refs: Vec<StateRecordRef>,
+    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
 }
 
@@ -668,16 +668,14 @@ pub struct StatusInclude {
 
 /// `volicord.status` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct StatusResult {
     pub base: ToolResultBase,
     pub summary_card: SummaryCard,
     pub active_task: Option<StateSummary>,
     pub status_summary: String,
     pub next_actions: Vec<NextActionSummary>,
-    pub pending_user_actions: Vec<StateRecordRef>,
-    pub pending_user_action_inbox_items: Vec<UserActionInboxItem>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_channel_availability: Option<UserChannelAvailability>,
+    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub write_ticket_summary: Option<WriteTicketStateSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1171,11 +1169,10 @@ pub enum McpRequestUserActionOperation {
 
 /// `volicord.request_user_action` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RequestUserActionResult {
     pub base: ToolResultBase,
-    pub user_action_request_ref: StateRecordRef,
-    pub user_action_request: UserActionRequest,
-    pub inbox_item: UserActionInboxItem,
+    pub user_action_request_summary: AgentSafeUserActionRequestSummary,
     pub blocker_refs: Vec<StateRecordRef>,
     pub state: StateSummary,
 }
@@ -1262,13 +1259,14 @@ pub struct UnrecordedChangeResolutionRequest {
 
 /// `volicord.reconcile_changes` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReconcileChangesResult {
     pub base: ToolResultBase,
     pub summary_card: SummaryCard,
     pub task_ref: StateRecordRef,
     pub unresolved_changes: Vec<UnrecordedChangeFinding>,
     pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
-    pub pending_user_action_refs: Vec<StateRecordRef>,
+    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
     pub state: StateSummary,
     pub close_blockers: Vec<CloseReadinessBlocker>,
@@ -1355,6 +1353,7 @@ pub struct McpCloseTaskArguments {
 
 /// `volicord.close_task` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CloseTaskResult {
     pub base: ToolResultBase,
     pub summary_card: SummaryCard,
@@ -1364,7 +1363,7 @@ pub struct CloseTaskResult {
     pub continuity_summary: Vec<ProjectContinuitySummary>,
     pub state: StateSummary,
     pub blockers: Vec<CloseReadinessBlocker>,
-    pub pending_user_action_inbox_items: Vec<UserActionInboxItem>,
+    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub guard_health: Option<GuardHealthSummary>,
     pub coverage_summary: Option<CoverageSummary>,
     pub evidence_summary: Option<EvidenceSummary>,

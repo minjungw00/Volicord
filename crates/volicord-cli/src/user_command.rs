@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{
     Clock, CorePipelineError, CoreService, InvocationContext, PipelineResponse, SystemClock,
+    UserChannelInboxProjection, UserChannelInboxProjectionRequest,
 };
 use volicord_store::{
     core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
@@ -239,7 +240,7 @@ where
 {
     let parsed = parse_status_options(args, current_dir)?;
     let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
-    let store = CoreProjectStore::open(
+    let store = CoreProjectStore::open_read_only(
         &resolved.runtime_home,
         &ProjectId::new(&resolved.project_id),
     )?;
@@ -259,13 +260,26 @@ where
     let parsed = parse_inbox_options(args, true, 0, current_dir)?;
     reject_resolution_flags_for_list(&parsed)?;
     let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
-    let store = CoreProjectStore::open(
+    let store = CoreProjectStore::open_read_only(
         &resolved.runtime_home,
         &ProjectId::new(&resolved.project_id),
     )?;
     let task_id = selected_or_active_task_id(&store, &parsed.task)?;
-    let response = status_response(&resolved, task_id.as_deref())?;
-    render_inbox_response(&response, parsed.output, task_id.is_some())
+    let projection = task_id
+        .as_deref()
+        .map(|task_id| {
+            user_channel_inbox_projection(
+                &resolved.runtime_home,
+                &resolved.project_id,
+                task_id,
+                ActorSource::LocalUser,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                None,
+            )
+        })
+        .transpose()?
+        .flatten();
+    render_inbox_response(projection.as_ref(), parsed.output, task_id.is_some())
 }
 
 fn status_response(
@@ -302,41 +316,57 @@ pub(crate) fn canonical_user_action_inbox_items(
     task_id: &str,
     actor_source: ActorSource,
     verification_basis: &str,
+    session_id: Option<&str>,
 ) -> Result<Vec<UserActionInboxItem>, UserCommandError> {
-    let response = CoreService::new(runtime_home).status(
-        StatusRequest {
-            envelope: envelope(
-                project_id,
-                Some(task_id),
-                generated_id("req_user_action_form_projection"),
-                None,
-            ),
-            include: StatusInclude {
-                task: false,
-                pending_user_actions: true,
-                write_ticket: false,
-                evidence: false,
-                close: false,
-                guarantees: false,
-                continuity: false,
+    user_channel_inbox_projection(
+        runtime_home,
+        project_id,
+        task_id,
+        actor_source,
+        verification_basis,
+        session_id,
+    )?
+    .map(|projection| {
+        projection
+            .items
+            .into_iter()
+            .map(|item| item.inbox_item)
+            .collect()
+    })
+    .ok_or_else(|| {
+        UserCommandError::Runtime(
+            "Core denied the canonical User Channel inbox projection".to_owned(),
+        )
+    })
+}
+
+fn user_channel_inbox_projection(
+    runtime_home: &Path,
+    project_id: &str,
+    task_id: &str,
+    actor_source: ActorSource,
+    verification_basis: &str,
+    session_id: Option<&str>,
+) -> Result<Option<UserChannelInboxProjection>, UserCommandError> {
+    let invocation = InvocationContext::new(
+        ProjectId::new(project_id),
+        actor_source,
+        OperationCategory::Read,
+        verification_basis,
+    );
+    let invocation = match session_id {
+        Some(session_id) => invocation.with_session_id(session_id),
+        None => invocation,
+    };
+    CoreService::new(runtime_home)
+        .user_channel_inbox_projection(
+            UserChannelInboxProjectionRequest {
+                project_id: ProjectId::new(project_id),
+                task_id: TaskId::new(task_id),
             },
-        },
-        InvocationContext::new(
-            ProjectId::new(project_id),
-            actor_source,
-            OperationCategory::Read,
-            verification_basis,
-        ),
-    )?;
-    if response_kind(&response) != Some("result") {
-        return Err(UserCommandError::Runtime(
-            "Core rejected the canonical user-action form projection".to_owned(),
-        ));
-    }
-    serde_json::from_value(response.response_value["pending_user_action_inbox_items"].clone())
-        .map_err(|error| {
-            UserCommandError::Runtime(format!("failed to decode canonical inbox items: {error}"))
-        })
+            invocation,
+        )
+        .map_err(Into::into)
 }
 
 fn command_inbox_resolve<F>(
@@ -350,7 +380,7 @@ where
     let parsed = parse_inbox_options(args, false, 1, current_dir)?;
     let request_id = required_inbox_positional(&parsed, 0, "user-action-request-id")?;
     let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
-    let store = CoreProjectStore::open(
+    let store = CoreProjectStore::open_read_only(
         &resolved.runtime_home,
         &ProjectId::new(&resolved.project_id),
     )?;
@@ -360,8 +390,15 @@ where
     })?;
     let resolution = match record.status {
         UserActionStatus::Pending => {
-            let status = status_response(&resolved, Some(&record.request.task_id))?;
-            let item = canonical_inbox_item(&status, request_id)?;
+            let items = canonical_user_action_inbox_items(
+                &resolved.runtime_home,
+                &resolved.project_id,
+                &record.request.task_id,
+                ActorSource::LocalUser,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                None,
+            )?;
+            let item = canonical_inbox_item(items, request_id)?;
             resolution_from_form(&item.form, &parsed)?
         }
         _ if record.resolution.is_some() => resolution_from_immutable_request(&record, &parsed)?,
@@ -464,21 +501,9 @@ fn resolution_from_form(
 }
 
 fn canonical_inbox_item(
-    response: &PipelineResponse,
+    items: Vec<UserActionInboxItem>,
     request_id: &str,
 ) -> Result<UserActionInboxItem, UserCommandError> {
-    if response_kind(response) != Some("result") {
-        return Err(UserCommandError::Runtime(
-            "Core could not project the selected user-action form".to_owned(),
-        ));
-    }
-    let items: Vec<UserActionInboxItem> =
-        serde_json::from_value(response.response_value["pending_user_action_inbox_items"].clone())
-            .map_err(|error| {
-                UserCommandError::Runtime(format!(
-                    "failed to decode canonical inbox items: {error}"
-                ))
-            })?;
     items
         .into_iter()
         .find(|item| item.user_action_request_id.as_str() == request_id)
@@ -946,18 +971,6 @@ fn render_status_response(
     output.push_str(&render_close_and_next_action_totals_text(
         &response.response_value,
     ));
-    if response
-        .response_value
-        .get("pending_user_action_inbox_items")
-        .and_then(Value::as_array)
-        .is_some_and(|items| !items.is_empty())
-    {
-        if let Some(line) = render_user_channel_availability_text(
-            response.response_value.get("user_channel_availability"),
-        ) {
-            output.push_str(&line);
-        }
-    }
     if let Some(coverage) = render_coverage_summary_text(&response.response_value) {
         output.push_str(&coverage);
     }
@@ -965,29 +978,20 @@ fn render_status_response(
 }
 
 fn render_inbox_response(
-    response: &PipelineResponse,
+    projection: Option<&UserChannelInboxProjection>,
     output: OutputFormat,
     has_selected_task: bool,
 ) -> Result<String, UserCommandError> {
-    if response_kind(response) != Some("result") {
-        return if output == OutputFormat::Json {
-            pretty_response(response)
-        } else {
-            render_rejected_or_json(response)
-        };
-    }
-    let items: Vec<UserActionInboxItem> =
-        serde_json::from_value(response.response_value["pending_user_action_inbox_items"].clone())
-            .map_err(|error| {
-                UserCommandError::Runtime(format!(
-                    "failed to decode canonical inbox items: {error}"
-                ))
-            })?;
-    let availability = response
-        .response_value
-        .get("user_channel_availability")
-        .cloned()
-        .unwrap_or(Value::Null);
+    let items = projection
+        .map(|projection| {
+            projection
+                .items
+                .iter()
+                .map(|item| &item.inbox_item)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let availability = projection.map(|projection| &projection.user_channel_availability);
     let summary_card = inbox_summary_card(&items, has_selected_task);
     if output == OutputFormat::Json {
         return serde_json::to_string_pretty(&json!({
@@ -1004,7 +1008,11 @@ fn render_inbox_response(
         text.push_str("No pending user actions.\n");
         return Ok(text);
     }
-    if let Some(line) = render_user_channel_availability_text(Some(&availability)) {
+    let availability_value = availability
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
+    if let Some(line) = render_user_channel_availability_text(availability_value.as_ref()) {
         text.push_str(&line);
     }
     for (index, item) in items.iter().enumerate() {
@@ -1076,7 +1084,7 @@ fn render_inbox_response(
     Ok(text)
 }
 
-fn inbox_summary_card(items: &[UserActionInboxItem], has_selected_task: bool) -> SummaryCard {
+fn inbox_summary_card(items: &[&UserActionInboxItem], has_selected_task: bool) -> SummaryCard {
     SummaryCard {
         task: if has_selected_task {
             "selected"

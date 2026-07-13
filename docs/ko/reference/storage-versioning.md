@@ -201,6 +201,19 @@ binding 객체는 `tool_invocations`에 저장하지 않으며 결과 request ha
 - 호출 맥락, `idempotency_key`, `request_hash`가 모두 같으면 처음 커밋해 저장한 응답을 그대로 반환합니다.
 - 호출 맥락과 `idempotency_key`는 같지만 `request_hash`가 다르면 `STATE_VERSION_CONFLICT`를 반환합니다.
 
+저장된 모든 공개 메서드 결과에는 직접 replay 전에 전체 응답을 확인하는
+추가 조건이 있으며 MCP resume은 같은 검사를 사용합니다. 변경 불가능한
+저장 JSON 전체가 저장된 `method_name`이 선택하는 현재의 닫힌 결과 타입으로
+strict decode되어야 하며 모든 중첩 `StateSummary`도 포함합니다. 요청
+결과는 정확한 닫힌 세 필드 `AgentSafeUserActionRequestSummary`를 담아야
+합니다. 닫기 결과는 현재 `pending_user_action_summaries` 필드를 담고 기존
+`pending_user_action_inbox_items` 필드를 담지 않아야 합니다. 필수 필드가
+없거나 잘못됐거나, 기존 full-form 필드가 있거나, 알 수 없는 추가 필드가
+있거나, 메서드 형태가 틀리거나, 이전·새 형태가 섞이면 그 행을 사용할 수
+없습니다. 직접 replay와 resume은 타입이 지정된 owner 상태 경계에서
+`MCP_UNAVAILABLE`로 닫힌 상태로 실패하며 저장 byte를 반환하지 않습니다. Core는
+기존 replay 행을 다시 쓰거나, redact하거나, upgrade하지 않습니다.
+
 재실행은 저장된 응답 본문을 사용합니다. `write_ticket_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 분류하지 않습니다. 이벤트나 재실행 행을 추가하지 않고, 아티팩트를 승격하거나 연결하지 않으며, 쓰기 티켓을 발급하거나 소비하지 않고, 상태를 다시 변경하지 않습니다.
 
 <a id="exact-operation-result-retrieval"></a>
@@ -218,6 +231,10 @@ binding 객체는 `tool_invocations`에 저장하지 않으며 결과 request ha
 SHA-256을 계산하며, Core는 그 사실을 `OperationResultRef`와 대조합니다. 현재 검증된
 행위자와 프로젝트 접근은 보안 및 메서드 담당
 문서에 따라 별도로 확인하며 참조는 베어러 자격 증명이 아닙니다.
+모든 저장 메서드에 대해 Core는 접근 맥락 검증 뒤 첫 page를 반환하기 전에
+해당 전체 응답 닫힌 결과 조건도 적용합니다. 사용할 수 없는 기존,
+잘못된 메서드, 또는 혼합 형태 행은 `OPERATION_RESULT_UNAVAILABLE`을 반환하며
+일부 page도 반환하지 않습니다.
 `volicord.resolve_user_action`을 포함한 `operation_category=user_only` 행은
 Agent Connection 조회 대상이 아닙니다. 조회한 응답은 과거 결과이며 현재
 `volicord.status` 조회를 대신하지 않습니다.

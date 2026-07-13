@@ -179,11 +179,13 @@ volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --
   사전 점검과 핸드셰이크, 호스트 관찰은 JSON에 둡니다. Codex 텍스트는 프로젝트 신뢰,
   관리 시작, 관리 `tools/list`, 관리 도구 호출, 활성 도구 노출, 호스트 MCP 명령을 별도
   점검으로 보여 줄 수 있습니다.
-- 대기 중인 사용자 행동이 있으면 상태와 받은편지함 텍스트는 `Available answer paths:`에 호스트
-  프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI 받은편지함을 표시할 수 있습니다.
-  이 줄은 사용자를 resolution 경로로 안내할 뿐 사용자 행동을 해결하거나 Agent Connection이 사용자처럼
-  동작하게 하지 않습니다. JSON은 같은 사실을 `user_channel_availability` 또는
-  `answer_path_availability`에 담습니다.
+- 대기 중인 사용자 행동이 있으면 사용자 전용 받은편지함 텍스트는 `Available answer
+  paths:`에 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI 받은편지함을
+  표시할 수 있습니다. 이 줄은 사용자를 resolution 경로로 안내할 뿐 사용자 행동을
+  해결하거나 Agent Connection이 사용자처럼 동작하게 하지 않습니다. 받은편지함 JSON은
+  이 사실을 `user_channel_availability`에 담고 내부 항목은
+  `answer_path_availability`를 사용합니다. 공개 status 텍스트와 JSON은 정확한 세 필드
+  대기 요약만 반환하며 User Channel 가용성이나 capture-path 사실은 반환하지 않습니다.
 - 다른 진단 보기는 `action_required` 또는 저하 상태에 간결한 `Result`, `Why`, `Next`,
   `Does not prove` 줄을 사용할 수 있습니다. 연결 상태와 검증은 섹션 형태를 사용합니다.
   어느 형태에서도 `action_required`는 치명적인 CLI 오류가 아닙니다. `Next`에는 호스트
@@ -1102,20 +1104,17 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
   --claim ID) --artifact ID [--artifact ID ...] --summary "text" [--contradicted] #AB7K`를
   사용합니다. 오래 유지되는 request ID는 필수입니다. `A-N`은 표시되는 Task 로컬
   binding으로 남으며 나중에 다른 Task가 활성이 되어도 저장 요청의 Task와 대조합니다.
-  에이전트 대상 입력에 적합하다고 분류된 presentation에서 세션 시작의 호스트 네이티브
-  맥락은 요청에 결합된 `A-N`, 현재 검증 코드, 명령 템플릿, Core가 도출한 완전한 닫힌
-  폼을 보여 줍니다. 완전한 UTF-8 호스트 네이티브
-  훅 출력 JSON 객체와 끝의 LF를 합친 크기는 32 KiB 이하여야 합니다. 이 크기에 맞지
-  않으면 해당 표시에 프롬프트 캡처를 사용할 수 없고, 폼 일부를 보여 주지 않으며, 다른
-  사용 가능한 User Channel 경로를 계속 보여 줍니다. MCP 어댑터와 같은 보수적인
-  presentation safety 분류가 질문, context summary, 완전하게 렌더링한 폼을 평가합니다.
-  사용자 전용 입력을 요구하면 세션 시작과 다른 guard context는 일반적인 local consent
-  또는 `volicord inbox` 안내만 담고 질문, context, 폼, 검증 코드, 명령 템플릿을
-  생략합니다. 직접 입력된 채팅 resolve 명령도 영속 요청의 질문, context, 완전한 폼을
-  같은 분류로 다시 검증합니다. 사용자 전용 presentation이면 `deny`를 반환하고
-  resolution을 기록하지 않습니다. 터미널 `volicord inbox` 경로는 사용자 전용으로 남아
-  완전한 canonical 폼을 표시합니다. 이 경로 선택 검사는 일반 비밀값 scanner나 OS 보안
-  경계가 아닙니다. 지원되지 않거나, 설정되지 않았거나, 다시 읽어야 하거나,
+  세션 시작과 다른 모든 Agent 대상 host context는 기존 대기 요청을
+  `AgentSafeUserActionRequestSummary`, 즉 영속 request ID, `pending`, 다음 actor/User
+  Channel로만 표시합니다. 요청에 결합된 `A-N`, 검증 코드, 명령 template, 질문, context,
+  Core가 도출한 완전한 form은 생략합니다. 완전한 form이나 검증 credential은 모델 맥락
+  밖에 유지되는 별도 검증 User Channel 표면에서만 표시할 수 있으며 prompt-capture
+  가용성만으로 그런 표면이 성립하지 않습니다. 이런 user-only 표시가 32 KiB 상한을
+  넘으면 해당 경로를 사용할 수 없고 form 일부를 보여 주지 않으며 다른 User Channel
+  경로를 유지합니다. Agent 대상 fallback text는 일반적인 `volicord inbox` 안내만
+  담습니다. 터미널 `volicord inbox` 경로는 사용자 전용으로 남아 완전한 canonical form을
+  표시합니다. 이 경로 선택 검사는 일반 비밀값 scanner나 OS 보안 경계가 아닙니다.
+  지원되지 않거나, 설정되지 않았거나, 다시 읽어야 하거나,
   저하된 프롬프트 캡처는 `prompt_capture_unsupported`,
   `prompt_capture_not_configured`, `prompt_capture_reload_required` 같은 구조화된
   비기록 출력을 하나의 다음 행동과 함께 반환합니다. 명령이 아닌 프롬프트는 프롬프트
@@ -1239,19 +1238,17 @@ Session, 설치 활성화, 감시기 상태, 호스트 관찰을 만들지 않�
 Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Connection이 사용자처럼
 동작할 수 있게 하지 않습니다.
 
-초기화된 MCP 클라이언트가 호스트 프롬프트 지원을 선언하면 호스트 프롬프트 입력은
-`volicord.request_user_action`으로 만들어진 호환 대기 행동의 선호 User Channel 입력
-방법입니다. 호스트 프롬프트 입력을 사용할 수 없고 채팅 명령 캡처가 `configured`,
-`observed`, `active`이면 대체 안내가 요청에 결합된 정확한 채팅 명령과 현재 검증 코드를
-보여 줄 수 있습니다. 호스트 프롬프트 입력과 채팅 명령 캡처를 모두 사용할 수 없고
-어댑터가 로컬 consent URL을 안전하게 노출할 수 있으면, 대체 안내가 짧게 만료되는
-일회성 토큰을 쓰는 루프백 consent URL을 보여 줄 수 있습니다. 터미널의
-`volicord inbox` 명령은 다른 캡처 경로를 사용할 수 없거나, 비활성화되었거나,
-저하되었거나, 해당 행동 양식에 부적합할 때 쓰는 CLI 받은편지함과 수동 점검 경로로
-남습니다.
-완전한 presentation이 사용자 전용 입력을 요구하면 풍부한 호스트 prompt 및 채팅 명령
-presentation은 그 폼에 부적합합니다. 이때 표시된 local web consent와 터미널 inbox가
-완전한 폼을 보여 주는 표면으로 남습니다.
+초기화된 MCP client가 host prompt 지원을 선언하면 native host prompt 입력은
+`volicord.request_user_action`으로 만든 호환 대기 행동의 선호 User Channel 입력
+방법입니다. Agent 대상 fallback 안내에는 요청 결합 chat 명령, 검증 코드, 완전한 form,
+loopback bearer URL이 들어가지 않습니다. Local web consent는 listener가 준비됐고
+초기화한 client가
+`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
+정확한 boolean `true`를 보냈을 때만 선택합니다. 짧게 만료되는 URL은 네임스페이스가
+지정된 최상위 tool-result `_meta` 전달값으로만 보냅니다. 그 밖에는 Agent가 일반 CLI
+inbox 안내만 받습니다. 터미널의 `volicord inbox` 명령은 다른 검증 User Channel을 사용할
+수 없거나, 비활성화됐거나, 저하됐거나, 해당 행동 form에 부적합할 때 완전한 form을
+보여 주는 CLI 입력 및 수동 점검 경로로 남습니다.
 
 프로젝트 선택은 `--repo PATH` 또는 현재 작업 디렉터리의 저장소 루트를 사용합니다.
 작업 선택은 기본적으로 현재 작업을 사용합니다. `--task active`는 이를 명시하고,

@@ -109,7 +109,7 @@ Returns `ReconcileChangesResult` with:
 - `task_ref`
 - `unresolved_changes`
 - `resolved_changes`
-- `pending_user_action_request_refs`
+- `pending_user_action_summaries`
 - `rejected_resolution_requests`
 - current `state`
 - projected `close_blockers`
@@ -125,7 +125,7 @@ Returns `ReconcileChangesResult` with:
 | `task_ref` | `StateRecordRef` for the reconciled Task. |
 | `unresolved_changes` | Remaining unresolved `UnrecordedChangeFinding` records after applying deterministic and accepted-user resolutions selected by this call. |
 | `resolved_changes` | Unrecorded Changes that this call resolved, including basis, actor source, capture basis, timestamp, and optional linked user-action resolution. |
-| `pending_user_action_request_refs` | Pending `UserActionRequest` refs relevant to the Task after this call, including requests created for unresolved Unrecorded Changes. |
+| `pending_user_action_summaries` | Exact three-field `AgentSafeUserActionRequestSummary[]` relevant to the Task after this call, including requests created for unresolved Unrecorded Changes. The result does not return a request ref, body, question, form, capture path, command, URL, or credential. |
 | `rejected_resolution_requests` | Caller-supplied resolution requests that Core refused. These are structured rejections inside a successful method result, not public `ToolRejectedResponse` errors. |
 | `state` | Current `StateSummary` after the reconciliation projection or commit. |
 | `close_blockers` | Projected close blockers after planned reconciliation effects. |
@@ -151,13 +151,19 @@ User-owned basis:
 `superseded_by_new_observation` is reserved and is not produced by the baseline method. A caller cannot select Core-owned bases as an agent dismissal. This method does not perform filesystem reversion or an extra filesystem probe to manufacture a resolution basis.
 
 For Unrecorded Changes that still require acceptance, Core creates pending
-`UserActionRequest` rows rather than accepting them. Existing User Channel paths can
-resolve those user actions:
+`UserActionRequest` rows rather than accepting them. The method result exposes
+only `AgentSafeUserActionRequestSummary` entries and generic User Channel
+continuation; it does not return a form, command, URL, credential, or request
+ref and does not issue a token merely to project the result. Separately verified
+User Channel paths can resolve those user actions:
 
 - host prompt input when the initialized client supports it
 - chat command capture when command capture is `configured`, `observed`, or
   `active`
-- a loopback local consent URL when the adapter can safely expose it
+- a loopback local consent surface only when its listener is ready and the
+  initialized client sent exact boolean `true` at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`;
+  its URL is delivered only through host-owned model-invisible `_meta`
 - local `volicord inbox` commands
 
 After the user-owned action is resolved, `volicord.reconcile_changes` can

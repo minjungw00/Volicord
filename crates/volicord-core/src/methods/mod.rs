@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
+    agent_connections::agent_connection_project_access_read_only,
     artifacts::{ArtifactStagingInsert, PersistentArtifactVerificationStatus, StagedPayloadKind},
     core_pipeline::*,
     evidence_capture::{
@@ -72,7 +73,10 @@ use crate::policy::{
 };
 use crate::{
     local_web_channel_submission_id, CurrentUserActionProjection,
-    LocalWebConsentCompletionMetadata, LocalWebConsentUserActionRequest,
+    LocalWebConsentCompletionMetadata, LocalWebConsentUserActionProjection,
+    LocalWebConsentUserActionProjectionOutcome, LocalWebConsentUserActionProjectionRequest,
+    LocalWebConsentUserActionRequest, UserChannelInboxProjection, UserChannelInboxProjectionItem,
+    UserChannelInboxProjectionRequest,
 };
 
 mod close_task;
@@ -1318,36 +1322,12 @@ fn user_action_from_record(
     })
 }
 
-fn pending_user_action_inbox_items(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    state_version: u64,
-    user_channel: UserChannelContext<'_>,
-    now: &UtcTimestamp,
-) -> Result<Vec<UserActionInboxItem>, PlanError> {
-    store
-        .pending_user_action_records(task_id, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
-        .iter()
-        .map(|record| user_action_inbox_item(record, state_version, user_channel))
-        .collect::<CoreResult<Vec<_>>>()
-        .map_err(PlanError::Core)
-}
-
-fn user_action_inbox_item(
+fn user_action_inbox_item_from_request(
     record: &EffectiveUserActionRecord,
+    request: UserActionRequest,
     state_version: u64,
-    user_channel: UserChannelContext<'_>,
+    user_channel: UserChannelContext,
 ) -> CoreResult<UserActionInboxItem> {
-    let request = user_action_from_record(record, state_version)?;
     let form = request.body.capture_form().map_err(|_| {
         CorePipelineError::Store(StoreError::corrupt_owner_state_json(
             "user_action_requests",
@@ -1463,20 +1443,15 @@ fn user_action_capture_paths(
 }
 
 #[derive(Clone, Copy)]
-struct UserChannelContext<'a> {
-    guard_health: Option<&'a GuardHealthSummary>,
+struct UserChannelContext {
+    prompt_capture_available: bool,
     host_elicitation_available: bool,
     local_web_consent_available: bool,
 }
 
-fn user_channel_availability(user_channel: UserChannelContext<'_>) -> UserChannelAvailability {
-    let prompt_available = user_channel
-        .guard_health
-        .is_some_and(|summary| summary.prompt_capture_available);
-    let local_web_available = user_channel.local_web_consent_available
-        || user_channel
-            .guard_health
-            .is_some_and(|summary| summary.local_web_consent_available);
+fn user_channel_availability(user_channel: UserChannelContext) -> UserChannelAvailability {
+    let prompt_available = user_channel.prompt_capture_available;
+    let local_web_available = user_channel.local_web_consent_available;
     let path =
         |kind: &str, label: &str, available: bool, basis: &str| UserChannelPathAvailability {
             kind: kind.to_owned(),
@@ -2395,6 +2370,18 @@ fn active_acceptance_criteria_for_task(
         .collect()
 }
 
+fn agent_safe_pending_user_action_summaries(
+    refs: impl IntoIterator<Item = StateRecordRef>,
+) -> Vec<AgentSafeUserActionRequestSummary> {
+    refs.into_iter()
+        .map(|record_ref| {
+            AgentSafeUserActionRequestSummary::pending(UserActionRequestId::new(
+                record_ref.record_id.as_str(),
+            ))
+        })
+        .collect()
+}
+
 struct SummaryBuild<'a> {
     project_id: &'a ProjectId,
     state_version: u64,
@@ -2546,7 +2533,9 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         baseline_ref: scope.baseline_ref.map(BaselineRef::new),
         workspace_context,
         shaping_readiness: None,
-        pending_user_action_refs,
+        pending_user_action_summaries: agent_safe_pending_user_action_summaries(
+            pending_user_action_refs,
+        ),
         blocker_refs,
         write_ticket_summary,
         evidence_summary,

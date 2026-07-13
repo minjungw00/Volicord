@@ -19,12 +19,26 @@ method is an MCP tool.
 
 The MCP tool has an explicit nested `request.operation=create|resume` union.
 `create` runs the public mutation once. `resume` names an existing direct
-request and reads the exact original request result for the same Agent
-Connection access scope; it creates no request, emits no authority event, and
-does not resolve the action. After either branch, Core rereads the effective
-status and agent-safe resolution in one SQLite read snapshot. The MCP result
-keeps that projection's state version and observation time separate from the
-historical request result and any later generic authority receipt.
+request and reads the exact original agent-safe request result for the same
+Agent Connection access scope; it creates no request, emits no authority event,
+and does not resolve the action. The stored Agent Workflow result contains only
+`AgentSafeUserActionRequestSummary`, never the full request, inbox item, or
+capture form. After either branch, Core rereads the effective status and agent-
+safe resolution in one SQLite read snapshot. The MCP result keeps that
+projection's state version and observation time separate from the historical
+request result and any later generic authority receipt.
+
+User Channel presentation is a distinct projection. Native elicitation uses
+its protocol-owned user input surface. A local-web bearer URL may be issued only
+when a loopback listener is available and the initialized client declares exact
+boolean `true` at
+`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
+The server places that URL only in the namespaced top-
+level tool-result `_meta` handoff promised to remain outside model context. A
+missing, false, or malformed capability selects the CLI inbox without issuing a
+token. No User Channel credential or credential-bearing URL may enter Agent
+Connection `content`, `structuredContent`, compatibility or diagnostic text,
+exact replay, or operation-result bytes.
 
 Request creation and resolution each use one canonical prepared-operation time
 sample for status, expiry, and their semantic timestamps. A later Core commit
@@ -34,9 +48,11 @@ half-open interval `created_at <= now < expires_at` from the same project clock.
 The closed action kinds are the seven judgment kinds and
 `evidence_observation`. Tagged payloads keep judgment action/outcome authority
 separate from observation relevance. Core derives one capture form, basis,
-effective status, candidate set, and expiry result. MCP elicitation, prompt
-capture, local web consent, and CLI inbox adapters render and submit that same
-form. An ordinary channel adapter supplies a bounded replay-bound
+effective status, candidate set, and expiry result. Separately verified User
+Channel renderers—including native MCP elicitation, negotiated model-invisible
+local web, and CLI inbox—render and submit that same form. Agent-visible prompt
+capture receives only the safe pending summary and generic CLI guidance; it is
+not a complete-form surface. An ordinary channel adapter supplies a bounded replay-bound
 `channel_submission_id`; it does not recompute candidates or user authority.
 For local-web consent, Core owns the digest-only identity derivation and exact
 revalidation over the project, request, bearer-token credential, expected
@@ -56,6 +72,14 @@ shape are removed.
 ## Invariants and consequences
 
 - An Agent Connection can create a request but cannot resolve it.
+- An Agent Connection receives only the canonical request summary for a pending
+  user action. The complete request, question, context, candidates, capture
+  form, capture path, command, URL, and User Channel credential remain on User
+  Channel projections.
+- Listener existence is not a delivery capability. Local web is available only
+  when the listener and negotiated model-invisible host surface are both
+  available; capability omission or negotiation failure falls back to CLI
+  without token issuance.
 - The user selects only stored candidates through a verified `User Channel`.
 - Resolution kind, request kind, basis, Task, Change Unit, scope, baseline,
   target, artifact bytes, expiry, and channel binding are revalidated before one
@@ -82,10 +106,11 @@ shape are removed.
   `record_run` must reference it before evidence coverage can use it.
 - Free-form user text remains in the user-only result. Agent-safe MCP
   projections expose only structured selected outcomes and refs.
-- Cross-channel continuation replays the byte-exact original Agent Workflow
-  result and marks it as replayed. It then attaches a separately observed,
-  agent-safe current projection. It neither fabricates a new idempotency key nor
-  exposes the exact user-only resolution response.
+- Cross-channel continuation replays the byte-exact original safe Agent
+  Workflow result and marks it as replayed. It then attaches a separately
+  observed, agent-safe current projection. It neither fabricates a new
+  idempotency key nor exposes the complete User Channel form or exact user-only
+  resolution response.
 - Current status, safe resolution, and historical resolution-derived refs are
   read from one Core/Store snapshot. Their observed state version and time make
   freshness explicit if a newer authority receipt is produced later.
@@ -102,6 +127,26 @@ refs `accepted_by_user_action_resolution_refs`.
 
 The storage profile is `baseline_sqlite_v5`. There is no v4-to-v5 conversion or
 legacy read path. A v4 Runtime Home is incompatible and must be recreated.
+
+The safe request projection and model-invisible handoff are corrections inside
+the same unreleased `0.8.0` clean-break batch, so they do not introduce another
+SemVer or storage profile. No DDL changes. Every stored public-method result is
+strictly checked against its current closed result type before replay or
+operation-result paging. Stored pre-correction request results using the full-
+form shape, close results containing `pending_user_action_inbox_items`, and any
+result embedding the superseded `StateSummary` pending-action projection are
+therefore ineligible. They are never rewritten or adapted.
+Pre-correction local-web tokens omit the required
+`delivery_surface=model_invisible_user_surface` creation marker and are
+permanently unusable under corrected code: GET and POST fail closed without
+rendering or effects. The row is never upgraded; the pending action remains
+resolvable through another valid User Channel such as CLI. No compatibility
+alias restores the unsafe projection.
+
+The corrected Store and adapter fences apply only after the pre-correction
+process has been replaced or restarted. A still-running old process can retain
+an already-issued raw credential and is bounded only by that token's existing
+TTL; operators must replace it before relying on the corrected fence.
 
 ## Rejected alternatives
 
@@ -120,6 +165,14 @@ legacy read path. A v4 Runtime Home is incompatible and must be recreated.
   identify the exact historical result after another channel resolved it.
 - Keeping flat create fields beside an optional resume ID would admit mixed or
   ambiguous requests instead of a closed operation union.
+- Removing only the bearer string from fallback text would leave full User
+  Channel forms reachable through full-detail results, status/close
+  projections, resume, and exact operation-result retrieval.
+- Treating listener startup as proof of a safe host surface would issue an
+  authority-bearing bearer credential to clients that can expose it to the
+  model.
+- Putting the URL in ordinary MCP content with instructions not to use it would
+  preserve the authority bypass rather than enforce the channel boundary.
 
 ## Implementation and tests
 

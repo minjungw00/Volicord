@@ -21,7 +21,12 @@ use crate::{
         PersistentArtifactBodySpec, PersistentArtifactVerification,
     },
     bootstrap::ProjectRecord,
+    guards::{agent_session_from_conn, AgentSessionRecord},
     sqlite::ARTIFACTS_DIR,
+    user_action_channel::{
+        user_action_channel_token_record_tx, validate_persisted_user_action_channel_token_window,
+        UserActionChannelTokenRecord,
+    },
     StoreError, StoreResult,
 };
 
@@ -894,6 +899,34 @@ impl CoreProjectStore {
         read_project_state(&self.conn, &self.project.project_id)
     }
 
+    /// Reads one Agent Session through this handle's current SQLite snapshot.
+    pub fn agent_session(&self, session_id: &str) -> StoreResult<Option<AgentSessionRecord>> {
+        validate_identifier("session_id", session_id)?;
+        agent_session_from_conn(&self.conn, &self.project.project_id, session_id)
+    }
+
+    /// Returns whether this snapshot contains an active Agent Session for the
+    /// selected connection.
+    pub fn has_active_agent_session_for_connection(
+        &self,
+        connection_internal_id: &str,
+    ) -> StoreResult<bool> {
+        validate_identifier("connection_internal_id", connection_internal_id)?;
+        self.conn
+            .query_row(
+                "SELECT EXISTS (
+                    SELECT 1
+                      FROM agent_sessions
+                     WHERE project_id = ?1
+                       AND connection_internal_id = ?2
+                       AND ended_at IS NULL
+                )",
+                params![self.project.project_id, connection_internal_id],
+                |row| row.get(0),
+            )
+            .map_err(StoreError::from)
+    }
+
     /// Reads and strictly validates the active project enforcement profile.
     pub fn project_enforcement_profile(&self) -> StoreResult<ProjectEnforcementProfileRecord> {
         project_enforcement_profile(&self.conn, &self.project.project_id)
@@ -1277,6 +1310,30 @@ impl CoreProjectStore {
             &self.project.project_id,
             user_action_request_id,
             now,
+        )
+    }
+
+    /// Reads one channel-token row by its stored digest through this handle's
+    /// current SQLite snapshot.
+    pub fn user_action_channel_token_record(
+        &self,
+        token_hash: &str,
+    ) -> StoreResult<Option<UserActionChannelTokenRecord>> {
+        user_action_channel_token_record_tx(&self.conn, token_hash)
+    }
+
+    /// Strictly validates one channel-token lifetime window against its bound
+    /// user-action request through this handle's current SQLite snapshot.
+    pub fn validate_user_action_channel_token_window(
+        &self,
+        record: &UserActionChannelTokenRecord,
+    ) -> StoreResult<(UtcTimestamp, UtcTimestamp)> {
+        validate_persisted_user_action_channel_token_window(
+            &self.conn,
+            &record.project_id,
+            &record.user_action_request_id,
+            &record.created_at,
+            &record.expires_at,
         )
     }
 

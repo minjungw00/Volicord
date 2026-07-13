@@ -239,7 +239,7 @@ CloseTaskRequest:
 | `risk_acceptance_coverage` | 닫기 준비 상태 결과에서 현재 잔여 위험 수락 범위를 나타내는 `RiskAcceptanceCoverage[]`입니다. 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. |
 | `continuity_summary` | 이 닫기 결과로 관련성이 생긴 프로젝트 연속성 기록의 `ProjectContinuitySummary[]`입니다. 성공한 `intent=complete`에서는 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계를 Core가 이어 가는 연속성 기록이 여기에 포함됩니다. 빈 배열은 이 결과에 대해 계산이 실행됐고 이어 갈 기록이 없었다는 뜻입니다. 형태는 [API 상태 스키마](schema-state.md#project-continuity-shapes)가 담당합니다. |
 | `blockers` | 요청한 경로에 닫기 차단 사유 또는 종료 차단 사유가 있을 때 반환되는 `CloseReadinessBlocker[]`입니다. 형태와 중첩은 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당하며, `category` 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. |
-| `pending_user_action_inbox_items` | 이 닫기 준비 상태 결과의 현재 사용자 행동 blocker가 선택한 정확한 필수 유효 대기 요청의 `UserActionInboxItem[]`입니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. |
+| `pending_user_action_summaries` | 이 닫기 준비 상태 결과의 현재 사용자 행동 blocker가 선택한 정확한 필수 유효 대기 요청의 `AgentSafeUserActionRequestSummary[]`입니다. 각 항목은 요청 ID, `status=pending`, `next_actor=user`만 담습니다. 형태는 [API 사용자 행동 스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. |
 | `guard_health` | 닫기 준비 상태 결과에 선택된 호스트 훅 상태 정보의 `GuardHealthSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `coverage_summary` | 현재 적용 프로필, 호스트 훅과 세션 감시자의 관찰 상태, 추적된 타임스탬프, 미해결 미기록 변경 수, 관찰 범위의 비보장을 담는 `CoverageSummary | null`입니다. 형태는 [API 상태 스키마](schema-state.md#guard-health-summary)가 담당합니다. |
 | `evidence_summary` | 결과에 선택된 닫기 근거의 `EvidenceSummary | null`입니다. 결과에 증거 요약이 선택되지 않으면 `null`입니다. 현재 닫기 근거가 선택된 요약을 참조하면 `evidence_summary.evidence_state`는 `accepted_for_close`입니다. 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다. |
@@ -249,10 +249,11 @@ CloseTaskRequest:
 `CloseTaskResult`에는 최상위 `next_actions` 목록이 없습니다. `summary_card.next`는 `presentation_role=primary`인 차단 사유 행동에서 선택된 단일 표시 다음 행동이며 배열 위치는 선택 계약이 아닙니다. 닫기 차단 사유의 다음 동작은 계속 `CloseReadinessBlocker.next_actions` 안에 나타나며 [API 상태 스키마](schema-state.md#current-position-display-shapes)의 기준 `NextActionSummary` 형태를 사용합니다. 결과 하나의 `blockers[*].next_actions` 전체에는 primary가 정확히 하나 있으며 뒤쪽의 차단 사유 목록에는 additional 행동만 있을 수 있습니다.
 
 다른 작업을 위한 대기 사용자 행동과 정보성 전용 대기 행동은 더 넓은
-`state.pending_user_action_request_refs` 상태 보기에 계속 나타날 수 있습니다. 요청한
+`state.pending_user_action_summaries` 상태 보기에 계속 나타날 수 있습니다. 요청한
 닫기 경로의 현재 `pending_user_action` 차단 사유가 해당 행동의 정확한
-`UserActionRequest` 참조를 선택하지 않으면 이 행동은 최상위
-`pending_user_action_inbox_items` 목록에 들어가지 않습니다.
+요청을 내부에서 선택하지 않으면 이 행동은 최상위 `pending_user_action_summaries`
+목록에 들어가지 않습니다. 이 선택의 공개 출력은 해당 안전 요약뿐이며 request ref나 요청
+상세를 담지 않습니다.
 
 이 메서드는 자신이 생성하는 메서드 범위의 `CloseReadinessBlocker.code` 값을 담당합니다. 이런 코드는 공개 `ErrorCode` 값이 아니며 전역 값 집합 항목도 아닙니다.
 
@@ -300,9 +301,9 @@ CloseTaskRequest:
 
 이 코드는 메서드 로컬 `CloseReadinessBlocker.code` 값입니다. 공개 `ErrorCode` 값, `WriteDecisionReason.code` 값, 전역 값 집합 항목이 아닙니다.
 
-`pending_user_action`의 경우 차단 사유의 다음 행동은 사용할 수 있는 User Channel 입력 방법을 가리킬 수 있습니다. `pending_user_action_inbox_items`는 사용자가 행동할 수 있는 수신함 항목을 담습니다. 답변 경로에는 사용할 수 있을 때 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL, CLI inbox 명령 `volicord inbox resolve <user-action-request-id> --choice <choice>`가 포함될 수 있습니다. 이 차단 사유는 Agent Connection이 사용자 소유 행동을 해결하도록 권한을 부여하지 않습니다.
+`pending_user_action`의 경우 차단 사유의 다음 행동은 다음 actor가 User Channel임을 나타낼 수 있고, `pending_user_action_summaries`는 정확한 agent-safe 대기 요약만 담습니다. 공개 닫기 결과에는 canonical form, 캡처 명령, 로컬 consent URL, User Channel credential이 들어가지 않습니다. 검증된 User Channel renderer는 별도 내부 Core 경계에서 완전한 inbox 항목을 얻으며 일반 로컬 fallback은 일반 `volicord inbox` 안내입니다. 이 차단 사유는 Agent Connection이 사용자 소유 행동을 해결하도록 권한을 부여하지 않습니다.
 
-대기 중인 최종 수락 요청 없이 `missing_final_acceptance`가 있는 상태는 지원되는 2단계 상태이며 권한 우회가 아닙니다. 읽기 전용 점검이나 차단된 닫기 시도는 요청이나 해결 기록을 만들지 않습니다. 이 상태의 `request_user_action` 행동은 `allowed_operation_categories=[agent_workflow]`이며 Agent Connection이 표시된 질문으로 현재 요청을 만듭니다. 그 커밋 뒤에는 `pending_user_action`이 `allowed_operation_categories=[user_only]`인 `resolve_user_action` 행동과 사용할 수 있는 User Channel 경로를 보여 줍니다. Agent Connection은 두 번째 행동을 수행하면 안 됩니다.
+대기 중인 최종 수락 요청 없이 `missing_final_acceptance`가 있는 상태는 지원되는 2단계 상태이며 권한 우회가 아닙니다. 읽기 전용 점검이나 차단된 닫기 시도는 요청이나 해결 기록을 만들지 않습니다. 이 상태의 `request_user_action` 행동은 `allowed_operation_categories=[agent_workflow]`이며 Agent Connection이 표시된 질문으로 현재 요청을 만듭니다. 그 커밋 뒤 공개 `pending_user_action` blocker는 `allowed_operation_categories=[user_only]`인 일반 `resolve_user_action` 행동만 보여 줍니다. 사용 가능한 입력 경로는 별도로 검증된 User Channel projection이 사용자에게 제공합니다. Agent Connection은 두 번째 행동을 수행하면 안 됩니다.
 
 ## 차단 결과
 
@@ -459,7 +460,7 @@ state:
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
   shaping_readiness: null
-  pending_user_action_request_refs: []
+  pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

@@ -386,7 +386,7 @@ fn validate_record_for_context(
     }
 }
 
-fn user_action_channel_token_record_tx(
+pub(crate) fn user_action_channel_token_record_tx(
     conn: &Connection,
     token_hash: &str,
 ) -> StoreResult<Option<UserActionChannelTokenRecord>> {

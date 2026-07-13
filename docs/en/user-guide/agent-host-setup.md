@@ -251,10 +251,11 @@ behavior belongs to [MCP Transport](../reference/mcp-transport.md).
 
 ## User Channel Boundary
 
-An Agent Connection may request or display a focused user action. It does not
-record the user's resolution. When Volicord shows a pending action, use the User
-Channel path it provides. The stable CLI path lists the stored form and then
-resolves it; for a choice form:
+An Agent Connection may create a focused user action but displays only its
+request ID, `status=pending`, and `next_actor=user`. It neither receives the
+canonical form nor records the user's resolution. Use the separately verified
+User Channel host surface when one is shown; the stable CLI path lists the
+stored form and then resolves it. For a choice form:
 
 ```sh
 volicord inbox --repo "<repo>"

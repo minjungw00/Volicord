@@ -18,7 +18,6 @@ pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
 pub(crate) const MAX_MCP_ELICITATION_WIRE_BYTES: usize = USER_ACTION_FORM_MAX_BYTES;
-pub(crate) const MAX_MCP_PROMPT_CAPTURE_PRESENTATION_BYTES: usize = USER_ACTION_FORM_MAX_BYTES;
 
 pub fn run_stdio<R, W>(adapter: McpAdapter, reader: R, writer: W) -> Result<(), McpAdapterError>
 where
@@ -339,6 +338,7 @@ pub(crate) enum ConnectionPhase {
 pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
     pub(crate) client_supports_elicitation: bool,
+    pub(crate) client_supports_model_invisible_user_surface: bool,
     pub(crate) next_server_request_id: u64,
     pub(crate) session_id: String,
     pub(crate) managed_host_lifecycle_observations: bool,
@@ -350,6 +350,7 @@ impl Default for ConnectionState {
         Self {
             phase: ConnectionPhase::AwaitingInitialize,
             client_supports_elicitation: false,
+            client_supports_model_invisible_user_surface: false,
             next_server_request_id: 1,
             session_id: generated_metadata_id("session", "mcp", "stdio"),
             managed_host_lifecycle_observations: false,
@@ -515,6 +516,8 @@ where
             match validate_initialize_params(&response_id, request.params) {
                 Ok(capabilities) => {
                     state.client_supports_elicitation = capabilities.elicitation;
+                    state.client_supports_model_invisible_user_surface =
+                        capabilities.model_invisible_user_surface;
                     state.phase = ConnectionPhase::AwaitingInitialized;
                 }
                 Err(error) => return Ok(error),
@@ -649,6 +652,7 @@ pub(crate) fn initialize_result() -> Value {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientCapabilities {
     elicitation: bool,
+    model_invisible_user_surface: bool,
 }
 
 fn validate_initialize_params(
@@ -693,7 +697,20 @@ fn validate_initialize_params(
         .and_then(|capabilities| capabilities.get("elicitation"))
         .is_some_and(Value::is_object);
 
-    Ok(ClientCapabilities { elicitation })
+    let model_invisible_user_surface = object
+        .get("capabilities")
+        .and_then(Value::as_object)
+        .and_then(|capabilities| capabilities.get("experimental"))
+        .and_then(Value::as_object)
+        .and_then(|experimental| experimental.get("io.volicord/user-channel"))
+        .and_then(Value::as_object)
+        .and_then(|user_channel| user_channel.get("model_invisible_user_surface"))
+        == Some(&Value::Bool(true));
+
+    Ok(ClientCapabilities {
+        elicitation,
+        model_invisible_user_surface,
+    })
 }
 
 pub(crate) fn validate_optional_object_params(
@@ -859,11 +876,14 @@ where
 
     let session_id = state.session_id.clone();
     let output = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
-        match adapter.call_tool_for_session_with_capabilities(
+        match adapter.call_tool_for_session_with_user_channel_capabilities(
             tool_name,
             arguments,
             Some(&session_id),
-            state.client_supports_elicitation,
+            McpUserChannelCapabilities::new(
+                state.client_supports_elicitation,
+                state.client_supports_model_invisible_user_surface,
+            ),
         ) {
             Ok(response) if tool_name == REQUEST_USER_ACTION_TOOL_NAME => {
                 let pending_response = response.clone();
@@ -1004,6 +1024,7 @@ where
         }
     };
     let output = finalize_mutation_output(adapter, state, tool_name, mutation_detail, output)?;
+    let output = materialize_local_web_handoff(adapter, mutation_detail, output)?;
 
     record_managed_lifecycle_event(
         adapter,
@@ -1051,6 +1072,13 @@ fn mutation_detail_for_tool(tool_name: &str, arguments: &Value) -> Option<Mutati
 struct MutationRefreshContext {
     project_id: ProjectId,
     task_id: TaskId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeferredLocalWebHandoff {
+    project_id: ProjectId,
+    user_action_request_id: UserActionRequestId,
+    form_digest: String,
 }
 
 impl MutationRefreshContext {
@@ -1186,6 +1214,8 @@ pub(crate) struct ToolCallOutput {
     operation_result_ref: Option<OperationResultRef>,
     mutation_refresh_context: Option<MutationRefreshContext>,
     post_effect_failure: Option<McpPostEffectFailureCode>,
+    host_meta: Option<Value>,
+    deferred_local_web_handoff: Option<DeferredLocalWebHandoff>,
 }
 
 impl ToolCallOutput {
@@ -1206,6 +1236,8 @@ impl ToolCallOutput {
             operation_result_ref: None,
             mutation_refresh_context: None,
             post_effect_failure: None,
+            host_meta: None,
+            deferred_local_web_handoff: None,
         })
     }
 
@@ -1297,13 +1329,15 @@ impl ToolCallOutput {
         self
     }
 
-    fn with_fallback(mut self, fallback: DiagnosticFallbackKind) -> Self {
-        self.diagnostic_facts.fallback_kind = Some(fallback);
+    fn with_post_effect_failure(mut self, code: McpPostEffectFailureCode) -> Self {
+        self.post_effect_failure = Some(code);
         self
     }
 
-    fn with_post_effect_failure(mut self, code: McpPostEffectFailureCode) -> Self {
-        self.post_effect_failure = Some(code);
+    fn with_user_action_fallback(mut self, fallback: UserActionFallback) -> Self {
+        self.diagnostic_facts.fallback_kind = Some(fallback.kind);
+        self.extra_texts.extend(fallback.texts);
+        self.deferred_local_web_handoff = fallback.deferred_local_web_handoff;
         self
     }
 
@@ -1360,12 +1394,95 @@ fn finalize_mutation_output(
     output: ToolCallOutput,
 ) -> Result<ToolCallOutput, McpAdapterError> {
     finalize_mutation_output_with_refresh(tool_name, detail, output, |context| {
-        adapter.refresh_authority_status(
+        adapter.refresh_authority_status_with_user_channel_capabilities(
             &context.project_id,
             &context.task_id,
             Some(&state.session_id),
-            state.client_supports_elicitation,
+            McpUserChannelCapabilities::new(
+                state.client_supports_elicitation,
+                state.client_supports_model_invisible_user_surface,
+            ),
         )
+    })
+}
+
+fn materialize_local_web_handoff(
+    adapter: &McpAdapter,
+    detail: Option<MutationDetailLevel>,
+    mut output: ToolCallOutput,
+) -> Result<ToolCallOutput, McpAdapterError> {
+    let Some(deferred) = output.deferred_local_web_handoff.take() else {
+        return Ok(output);
+    };
+    let Some(context) = adapter.local_web_consent.as_ref() else {
+        output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
+        return Ok(output);
+    };
+    let token = match generate_bearer_token() {
+        Ok(token) => token,
+        Err(_) => {
+            output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
+            return Ok(output);
+        }
+    };
+    let url = format!(
+        "{}{}?project={}&token={}",
+        context.base_url,
+        LOCAL_WEB_CONSENT_PATH,
+        percent_encode_query(deferred.project_id.as_str()),
+        percent_encode_query(&token)
+    );
+    let worst_case_meta = local_web_host_meta(&url, "9999-12-31T23:59:59.999999999Z");
+    output.host_meta = Some(worst_case_meta);
+    let response_budget = match detail.unwrap_or(MutationDetailLevel::Summary) {
+        MutationDetailLevel::Summary | MutationDetailLevel::Workflow => {
+            MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
+        }
+        MutationDetailLevel::Full => MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+    };
+    if rendered_tool_call_output_size(&output)? > response_budget {
+        output.host_meta = None;
+        output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
+        return Ok(output);
+    }
+    output.host_meta = None;
+    let record = match create_user_action_channel_token(
+        &adapter.runtime_home,
+        UserActionChannelTokenCreate {
+            token,
+            project_id: deferred.project_id.as_str().to_owned(),
+            channel_kind: UserActionChannelKind::LocalWebConsent,
+            connection_internal_id: adapter.context.connection_internal_id.to_string(),
+            user_action_request_id: deferred.user_action_request_id.as_str().to_owned(),
+            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
+            created_metadata_json: json!({
+                "fallback_kind": "local_web_consent",
+                "delivery_surface": LOCAL_WEB_CONSENT_DELIVERY_SURFACE,
+                "endpoint": LOCAL_WEB_CONSENT_PATH,
+                "form_digest": deferred.form_digest,
+            })
+            .to_string(),
+        },
+    ) {
+        Ok(record) => record,
+        Err(_) => {
+            output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
+            return Ok(output);
+        }
+    };
+    output.host_meta = Some(local_web_host_meta(&url, &record.expires_at));
+    output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::LocalWebConsent);
+    debug_assert!(rendered_tool_call_output_size(&output).is_ok_and(|size| size <= response_budget));
+    Ok(output)
+}
+
+fn local_web_host_meta(url: &str, expires_at: &str) -> Value {
+    json!({
+        "io.volicord/user-channel": {
+            "kind": "local_web_consent",
+            "url": url,
+            "expires_at": expires_at,
+        }
     })
 }
 
@@ -1598,7 +1715,7 @@ fn compact_mutation_method_result(
                 effect,
                 unresolved_changes: result.unresolved_changes,
                 resolved_changes: result.resolved_changes,
-                pending_user_action_refs: result.pending_user_action_refs,
+                pending_user_action_summaries: result.pending_user_action_summaries,
                 rejected_resolution_requests: result.rejected_resolution_requests,
             })
             .map_err(McpAdapterError::Json)
@@ -1648,7 +1765,7 @@ fn compact_request_user_action_result(
     serde_json::to_value(McpRequestUserActionCompactResult {
         effect,
         agent_workflow_result_replayed: compound.agent_workflow_result_replayed,
-        user_action_request_ref: agent_result.user_action_request_ref,
+        user_action_request_summary: agent_result.user_action_request_summary,
         current_projection_state_version: compound.current_projection_state_version,
         current_projection_observed_at: compound.current_projection_observed_at,
         user_action_resolution_ref: compound.user_channel_resolution_ref,
@@ -1786,6 +1903,8 @@ fn mutation_response_budget_exceeded_output(
                 operation_result_ref: outcome.operation_result_ref.clone(),
                 mutation_refresh_context: None,
                 post_effect_failure: None,
+                host_meta: None,
+                deferred_local_web_handoff: None,
             })
         };
     select_bounded_mutation_recovery(
@@ -1856,6 +1975,8 @@ fn mutation_post_effect_failure_output(
                 operation_result_ref: outcome.operation_result_ref.clone(),
                 mutation_refresh_context: None,
                 post_effect_failure: None,
+                host_meta: None,
+                deferred_local_web_handoff: None,
             })
         };
     select_bounded_mutation_recovery(
@@ -1872,6 +1993,8 @@ struct ToolCallResultRef<'a> {
     content: Vec<ToolCallTextContentRef<'a>>,
     structured_content: &'a Value,
     is_error: bool,
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    host_meta: Option<&'a Value>,
 }
 
 #[derive(Serialize)]
@@ -1900,6 +2023,7 @@ fn rendered_tool_call_output_size(output: &ToolCallOutput) -> Result<usize, McpA
         content,
         structured_content: &output.structured_content,
         is_error: output.is_error,
+        host_meta: output.host_meta.as_ref(),
     })
     .map(|rendered| rendered.len())
     .map_err(McpAdapterError::Json)
@@ -1956,6 +2080,8 @@ fn authoritative_refresh_failure_output(
                 operation_result_ref: outcome.operation_result_ref.clone(),
                 mutation_refresh_context: None,
                 post_effect_failure: None,
+                host_meta: None,
+                deferred_local_web_handoff: None,
             })
         };
     select_bounded_mutation_recovery(
@@ -2081,6 +2207,7 @@ fn record_tool_diagnostic_best_effort(
 }
 
 pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
+    let host_meta = output.host_meta.clone();
     let mut content = vec![json!({
         "type": "text",
         "text": output.primary_text
@@ -2092,11 +2219,15 @@ pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
         })
     }));
 
-    json!({
+    let mut result = json!({
         "content": content,
         "structuredContent": output.structured_content,
         "isError": output.is_error
-    })
+    });
+    if let Some(host_meta) = host_meta {
+        result["_meta"] = host_meta;
+    }
+    result
 }
 
 pub(crate) fn user_action_tool_output<R, W>(
@@ -2112,53 +2243,57 @@ where
     R: BufRead,
     W: Write,
 {
-    let Some(pending) = pending_user_action_from_response(&pending_response)? else {
+    let Some(coordinate) = pending_user_action_coordinate_from_response(&pending_response)? else {
         return ToolCallOutput::from_pipeline_response(&pending_response);
     };
-    let current = current_user_action_projection(adapter, &pending)?;
+    let current = current_user_action_projection_for_coordinate(adapter, &coordinate)?;
     if !allow_user_action_capture {
         return compound_user_action_output(&pending_response, &current);
     }
     if current.status != UserActionStatus::Pending {
         return Ok(compound_user_action_output(&pending_response, &current)?.with_extra(format!(
             "Volicord did not open a new User Channel prompt because user action `{}` is currently {}.",
-            pending.request.user_action_request_id.as_str(),
+            coordinate.user_action_request_id.as_str(),
             user_action_status_text(current.status)
         )));
     }
+    if pending_response.replayed {
+        return Ok(compound_user_action_output(&pending_response, &current)?
+            .with_user_action_fallback(cli_recovery_fallback()));
+    }
+    let Some(pending) = pending_user_action_from_response(adapter, &pending_response)? else {
+        return Err(McpAdapterError::Protocol(
+            "the trusted User Channel projection did not contain the newly pending request"
+                .to_owned(),
+        ));
+    };
 
     if !client_supports_elicitation {
         let fallback = user_action_fallback(adapter, &pending)?;
-        let fallback_kind = fallback.kind;
         return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_fallback(fallback_kind)
-            .with_extras(fallback.texts));
+            .with_user_action_fallback(fallback));
     }
 
     if !agent_facing_user_action_input_allowed(&pending) {
         let fallback = user_action_fallback(adapter, &pending)?;
-        let fallback_kind = fallback.kind;
         return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_fallback(fallback_kind)
             .with_extra(format!(
                 "Volicord did not open host prompt input for pending user action `{}` because its complete presentation requires a user-only channel. No elicitation or prompt-capture presentation was opened. Do not ask the user to enter secrets, credentials, tokens, or private keys through agent-facing host input.",
                 pending.request.user_action_request_id.as_str()
             ))
-            .with_extras(fallback.texts));
+            .with_user_action_fallback(fallback));
     }
 
     let request_id = next_server_request_id("elicit_user_action", server_request_sequence);
     let Some(request) = elicitation_create_request(&request_id, &pending)? else {
         let fallback = user_action_fallback(adapter, &pending)?;
-        let fallback_kind = fallback.kind;
         return Ok(compound_user_action_output(&pending_response, &current)?
-            .with_fallback(fallback_kind)
             .with_extra(format!(
                 "Volicord did not open host prompt input for pending user action `{}` because the complete elicitation request exceeds the {}-byte wire budget; no partial form was sent.",
                 pending.request.user_action_request_id.as_str(),
                 MAX_MCP_ELICITATION_WIRE_BYTES
             ))
-            .with_extras(fallback.texts));
+            .with_user_action_fallback(fallback));
     };
     write_json_line(writer, request)?;
     writer.flush().map_err(McpAdapterError::Io)?;
@@ -2264,13 +2399,11 @@ where
                 ));
             }
             let fallback = user_action_fallback(adapter, &pending)?;
-            let fallback_kind = fallback.kind;
             Ok(compound_user_action_output(&pending_response, &current)?
-            .with_fallback(fallback_kind)
             .with_extra(format!(
                 "Host prompt input was unavailable after the client advertised support: {message}."
             ))
-            .with_extras(fallback.texts))
+            .with_user_action_fallback(fallback))
         }
     }
 }
@@ -2303,20 +2436,31 @@ fn current_user_action_projection(
     adapter: &McpAdapter,
     pending: &PendingUserAction,
 ) -> Result<CurrentUserActionProjection, McpAdapterError> {
+    current_user_action_projection_for_coordinate(
+        adapter,
+        &PendingUserActionCoordinate {
+            project_id: pending.request.project_id.clone(),
+            task_id: pending.request.task_id.clone(),
+            user_action_request_id: pending.request.user_action_request_id.clone(),
+        },
+    )
+}
+
+fn current_user_action_projection_for_coordinate(
+    adapter: &McpAdapter,
+    coordinate: &PendingUserActionCoordinate,
+) -> Result<CurrentUserActionProjection, McpAdapterError> {
     let current = adapter
         .core
-        .current_user_action_projection(
-            &pending.request.project_id,
-            &pending.request.user_action_request_id,
-        )
+        .current_user_action_projection(&coordinate.project_id, &coordinate.user_action_request_id)
         .map_err(McpAdapterError::Core)?
         .ok_or_else(|| {
             McpAdapterError::Protocol(
                 "committed user-action request disappeared during current-state reread".to_owned(),
             )
         })?;
-    if current.project_id != pending.request.project_id
-        || current.user_action_request_id != pending.request.user_action_request_id
+    if current.project_id != coordinate.project_id
+        || current.user_action_request_id != coordinate.user_action_request_id
     {
         return Err(McpAdapterError::Protocol(
             "current user-action projection does not match the original request".to_owned(),
@@ -2336,24 +2480,13 @@ fn user_action_status_text(status: UserActionStatus) -> &'static str {
 }
 
 fn pending_user_action_resume_texts(
-    pending: &PendingUserAction,
+    _pending: &PendingUserAction,
     current: &CurrentUserActionProjection,
 ) -> Vec<String> {
     if current.status != UserActionStatus::Pending {
         return Vec::new();
     }
-    vec![
-        format!(
-            "To continue this same pending user action after User Channel completion, call `volicord.request_user_action` with nested `request.operation=resume` and request ID `{}`; do not create a second request.",
-            pending.request.user_action_request_id.as_str()
-        ),
-        fallback_state_json(json!({
-            "kind": "resume_pending_user_action",
-            "project_id": pending.request.project_id.as_str(),
-            "user_action_request_id": pending.request.user_action_request_id.as_str(),
-            "resume": user_action_resume_guidance(pending),
-        })),
-    ]
+    vec![generic_user_channel_fallback_text()]
 }
 
 #[derive(Debug, Clone)]
@@ -2362,28 +2495,91 @@ pub(crate) struct PendingUserAction {
     pub(crate) inbox_item: UserActionInboxItem,
 }
 
-pub(crate) fn pending_user_action_from_response(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingUserActionCoordinate {
+    project_id: ProjectId,
+    task_id: TaskId,
+    user_action_request_id: UserActionRequestId,
+}
+
+fn pending_user_action_coordinate_from_response(
     response: &PipelineResponse,
-) -> Result<Option<PendingUserAction>, McpAdapterError> {
+) -> Result<Option<PendingUserActionCoordinate>, McpAdapterError> {
     if response.response_value["base"]["response_kind"].as_str() != Some("result") {
         return Ok(None);
     }
     let result = serde_json::from_value::<RequestUserActionResult>(response.response_value.clone())
         .map_err(McpAdapterError::Json)?;
-    if result.user_action_request.status != UserActionStatus::Pending {
+    let invocation = response.verified_invocation.as_ref().ok_or_else(|| {
+        McpAdapterError::Protocol(
+            "successful request_user_action response omitted verified invocation facts".to_owned(),
+        )
+    })?;
+    let task_id = response.resolved_task_id.clone().ok_or_else(|| {
+        McpAdapterError::Protocol(
+            "successful request_user_action response omitted its resolved Task".to_owned(),
+        )
+    })?;
+    Ok(Some(PendingUserActionCoordinate {
+        project_id: invocation.project_id.clone(),
+        task_id,
+        user_action_request_id: result.user_action_request_summary.user_action_request_id,
+    }))
+}
+
+pub(crate) fn pending_user_action_from_response(
+    adapter: &McpAdapter,
+    response: &PipelineResponse,
+) -> Result<Option<PendingUserAction>, McpAdapterError> {
+    let Some(coordinate) = pending_user_action_coordinate_from_response(response)? else {
         return Ok(None);
+    };
+    let invocation = response
+        .verified_invocation
+        .as_ref()
+        .expect("pending coordinate requires verified invocation");
+    let Some(session_id) = invocation.session_id.as_deref() else {
+        return Ok(None);
+    };
+    let capabilities = McpUserChannelCapabilities::new(
+        invocation.host_elicitation_available,
+        invocation.local_web_consent_available,
+    );
+    let Some(projection) = adapter.user_channel_inbox_projection(
+        &coordinate.project_id,
+        &coordinate.task_id,
+        Some(session_id),
+        capabilities,
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(item) = projection
+        .items
+        .into_iter()
+        .find(|item| item.request.user_action_request_id == coordinate.user_action_request_id)
+    else {
+        return Ok(None);
+    };
+    if item.request.project_id != coordinate.project_id
+        || item.request.task_id != coordinate.task_id
+        || item.request.status != UserActionStatus::Pending
+        || item.inbox_item.user_action_request_id != coordinate.user_action_request_id
+        || item.inbox_item.project_id != coordinate.project_id
+        || item.inbox_item.task_id != coordinate.task_id
+        || item.inbox_item.status != UserActionStatus::Pending
+    {
+        return Err(McpAdapterError::Protocol(
+            "trusted User Channel projection coordinates do not match the agent request summary"
+                .to_owned(),
+        ));
     }
-    let canonical_form = result
-        .user_action_request
-        .body
-        .capture_form()
-        .map_err(|error| {
-            McpAdapterError::Protocol(format!(
-                "pending user-action request body cannot produce a canonical form: {error}"
-            ))
-        })?;
-    result
-        .inbox_item
+    let canonical_form = item.request.body.capture_form().map_err(|error| {
+        McpAdapterError::Protocol(format!(
+            "pending user-action request body cannot produce a canonical form: {error}"
+        ))
+    })?;
+    item.inbox_item
         .form
         .validate_canonical_size()
         .map_err(|error| {
@@ -2391,15 +2587,15 @@ pub(crate) fn pending_user_action_from_response(
                 "pending user-action inbox form is invalid: {error}"
             ))
         })?;
-    if result.inbox_item.form != canonical_form {
+    if item.inbox_item.form != canonical_form {
         return Err(McpAdapterError::Protocol(
             "pending user-action inbox form does not match the canonical request-body projection"
                 .to_owned(),
         ));
     }
     Ok(Some(PendingUserAction {
-        request: result.user_action_request,
-        inbox_item: result.inbox_item,
+        request: item.request,
+        inbox_item: item.inbox_item,
     }))
 }
 
@@ -2788,257 +2984,53 @@ fn reject_resolution(pending: &PendingUserAction) -> Option<UserActionResolution
 pub(crate) struct UserActionFallback {
     texts: Vec<String>,
     kind: DiagnosticFallbackKind,
+    deferred_local_web_handoff: Option<DeferredLocalWebHandoff>,
 }
 
 pub(crate) fn user_action_fallback(
     adapter: &McpAdapter,
     pending: &PendingUserAction,
 ) -> Result<UserActionFallback, McpAdapterError> {
-    let agent_facing_input_allowed = agent_facing_user_action_input_allowed(pending);
-    let prompt_path = pending
+    let local_web_available = pending
         .inbox_item
         .preferred_capture_path
         .as_ref()
         .into_iter()
         .chain(pending.inbox_item.fallbacks.iter())
-        .find(|path| path.available && path.kind == "prompt_capture");
-    let prompt_capture_unavailable = if !agent_facing_input_allowed {
-        true
-    } else if let Some(path) = prompt_path {
-        if let Some(fallback) = prompt_capture_fallback(adapter, pending, path) {
-            return Ok(fallback);
-        }
-        true
-    } else {
-        false
-    };
-    let unavailable_reason = if !agent_facing_input_allowed {
-        "PROMPT_CAPTURE_PRESENTATION_REQUIRES_USER_ONLY_CHANNEL"
-    } else if prompt_capture_unavailable {
-        "PROMPT_CAPTURE_PRESENTATION_UNAVAILABLE"
-    } else {
-        "LOCAL_WEB_CONSENT_DISABLED"
-    };
-    let prompt_notice = if !agent_facing_input_allowed {
-        Some(
-            "Prompt capture is unavailable for this action because its complete presentation requires a user-only channel; no question, context, closed form, or resolve-command template was placed in agent-facing fallback text."
-                .to_owned(),
-        )
-    } else {
-        prompt_capture_unavailable.then(|| {
-            format!(
-                "Prompt capture is unavailable for this action because its complete request-bound presentation could not be rendered within the {}-byte budget; no partial form was shown.",
-                MAX_MCP_PROMPT_CAPTURE_PRESENTATION_BYTES
-            )
-        })
-    };
-    if adapter.local_web_consent.is_some() {
-        match local_web_consent_fallback(adapter, pending) {
-            Ok(mut fallback) => {
-                if let Some(notice) = prompt_notice.as_ref() {
-                    fallback.texts.push(notice.clone());
-                }
-                return Ok(fallback);
-            }
-            Err(_) => {
-                let mut fallback = cli_recovery_fallback(
-                    adapter,
-                    pending,
-                    if prompt_capture_unavailable {
-                        unavailable_reason
-                    } else {
-                        "LOCAL_WEB_CONSENT_TOKEN_UNAVAILABLE"
-                    },
-                );
-                if let Some(notice) = prompt_notice.as_ref() {
-                    fallback.texts.push(notice.clone());
-                }
-                return Ok(fallback);
-            }
-        }
+        .any(|path| path.available && path.kind == "local_web_consent");
+    if local_web_available && adapter.local_web_consent.is_some() {
+        return local_web_consent_fallback(pending);
     }
-    let mut fallback = cli_recovery_fallback(adapter, pending, unavailable_reason);
-    if let Some(notice) = prompt_notice {
-        fallback.texts.push(notice);
-    }
-    Ok(fallback)
-}
-
-fn prompt_capture_fallback(
-    adapter: &McpAdapter,
-    pending: &PendingUserAction,
-    path: &UserActionCapturePath,
-) -> Option<UserActionFallback> {
-    if !agent_facing_user_action_input_allowed(pending) {
-        return None;
-    }
-    let store =
-        CoreProjectStore::open_read_only(&adapter.runtime_home, &pending.request.project_id)
-            .ok()?;
-    let now = SystemClock.project_now(&store).ok()?;
-    let records = store
-        .user_action_records_for_task(&pending.request.task_id, &now)
-        .ok()?;
-    let (index, record) = records.iter().enumerate().find(|(_, record)| {
-        record.request.user_action_request_id == pending.request.user_action_request_id.as_str()
-    })?;
-    let expected_actor =
-        ActorSource::agent_connection(adapter.context.connection_internal_id.as_str().to_owned())
-            .to_canonical_string();
-    if record.status != UserActionStatus::Pending
-        || record.request.requested_by_actor_source != expected_actor
-    {
-        return None;
-    }
-    let chat_id = format!("A-{}", index + 1);
-    let verification_code = chat_user_action_verification_code(
-        &record.request.project_id,
-        &record.request.task_id,
-        &record.request.user_action_request_id,
-        &record.request.requested_at,
-        adapter.context.connection_internal_id.as_str(),
-    );
-    let presentation = UserActionPresentationPlan::from_form(&pending.inbox_item.form).ok()?;
-    let form_text = presentation.render_plain_text().ok()?;
-    let instruction = presentation.prompt_capture_instruction(
-        &chat_id,
-        pending.request.user_action_request_id.as_str(),
-        &verification_code,
-    );
-    let form_digest = canonical_json_bare_sha256(&pending.inbox_item.form).ok()?;
-    let human_text = format!(
-        "Host elicitation is unavailable. The pending user action `{}` remains unresolved. Use chat action `{chat_id}` with current verification code `{verification_code}`. Exact request-bound command template: {instruction}\n\nQuestion: {}\n\nContext: {}\n\nCanonical closed form:\n{form_text}\n\nAfter the User Channel completes, call `volicord.request_user_action` with nested `request.operation=resume` and this request ID; do not create a second request.",
-        pending.request.user_action_request_id.as_str(),
-        pending.inbox_item.question,
-        pending.inbox_item.context_summary
-    );
-    let structured_text = fallback_state_json(json!({
-        "kind": "prompt_capture",
-        "project_id": pending.request.project_id.as_str(),
-        "connection_id": adapter.context.connection_internal_id.as_str(),
-        "user_action_request_id": pending.request.user_action_request_id.as_str(),
-        "chat_id": chat_id,
-        "verification_code": verification_code,
-        "resolve_instruction": instruction,
-        "form_digest": form_digest,
-        "expires_at": pending.request.expires_at,
-        "capture_path": path,
-        "resume": user_action_resume_guidance(pending),
-    }));
-    let texts = vec![human_text, structured_text];
-    let rendered_bytes = serde_json::to_vec(&texts).ok()?.len();
-    if rendered_bytes > MAX_MCP_PROMPT_CAPTURE_PRESENTATION_BYTES {
-        return None;
-    }
-    Some(UserActionFallback {
-        texts,
-        kind: DiagnosticFallbackKind::PromptCapture,
-    })
+    Ok(cli_recovery_fallback())
 }
 
 pub(crate) fn local_web_consent_fallback(
-    adapter: &McpAdapter,
     pending: &PendingUserAction,
 ) -> Result<UserActionFallback, McpAdapterError> {
-    let Some(context) = adapter.local_web_consent.as_ref() else {
-        return Err(McpAdapterError::Environment(
-            "local consent URL is not available".to_owned(),
-        ));
-    };
-    let token = generate_bearer_token()?;
     let form_digest =
         canonical_json_bare_sha256(&pending.inbox_item.form).map_err(McpAdapterError::Json)?;
-    let record = create_user_action_channel_token(
-        &adapter.runtime_home,
-        UserActionChannelTokenCreate {
-            token: token.clone(),
-            project_id: pending.request.project_id.as_str().to_owned(),
-            channel_kind: UserActionChannelKind::LocalWebConsent,
-            connection_internal_id: adapter.context.connection_internal_id.to_string(),
-            user_action_request_id: pending.request.user_action_request_id.as_str().to_owned(),
-            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
-            created_metadata_json: json!({
-                "fallback_kind": "local_web_consent",
-                "endpoint": LOCAL_WEB_CONSENT_PATH,
-                "form_digest": form_digest,
-            })
-            .to_string(),
-        },
-    )
-    .map_err(McpAdapterError::Store)?;
-    let url = format!(
-        "{}{}?project={}&token={}",
-        context.base_url,
-        LOCAL_WEB_CONSENT_PATH,
-        percent_encode_query(pending.request.project_id.as_str()),
-        percent_encode_query(&token)
-    );
-    let human_text = format!(
-        "Host prompt input is unavailable. The pending user action `{}` remains unresolved. Open this local Volicord consent link before {}: {} After consent completes, call `volicord.request_user_action` with nested `request.operation=resume` and this request ID; do not create a second request.",
-        pending.request.user_action_request_id.as_str(),
-        record.expires_at,
-        url
-    );
-    let structured_text = fallback_state_json(json!({
-        "kind": "local_web_consent",
-        "url": url,
-        "expires_at": record.expires_at,
-        "project_id": record.project_id,
-        "connection_id": record.connection_internal_id,
-        "user_action_request_id": record.user_action_request_id,
-        "capture_basis": record.capture_basis,
-        "endpoint": LOCAL_WEB_CONSENT_PATH,
-        "resume": user_action_resume_guidance(pending),
-    }));
     Ok(UserActionFallback {
-        texts: vec![human_text, structured_text],
-        kind: DiagnosticFallbackKind::LocalWebConsent,
+        texts: vec![generic_user_channel_fallback_text()],
+        kind: DiagnosticFallbackKind::CliInbox,
+        deferred_local_web_handoff: Some(DeferredLocalWebHandoff {
+            project_id: pending.request.project_id.clone(),
+            user_action_request_id: pending.request.user_action_request_id.clone(),
+            form_digest,
+        }),
     })
 }
 
-pub(crate) fn cli_recovery_fallback(
-    adapter: &McpAdapter,
-    pending: &PendingUserAction,
-    local_web_reason: &'static str,
-) -> UserActionFallback {
-    let human_text = format!(
-        "Host prompt input is unavailable. The pending user action `{}` remains unresolved. Local consent URL is unavailable ({local_web_reason}). Use `volicord inbox` and `volicord inbox resolve` as the CLI inbox path. After resolution, call `volicord.request_user_action` with nested `request.operation=resume` and this request ID; do not create a second request.",
-        pending.request.user_action_request_id.as_str()
-    );
-    let structured_text = fallback_state_json(json!({
-        "kind": "cli_recovery",
-        "project_id": pending.request.project_id.as_str(),
-        "connection_id": adapter.context.connection_internal_id.as_str(),
-        "user_action_request_id": pending.request.user_action_request_id.as_str(),
-        "command": format!("volicord inbox resolve {}", pending.request.user_action_request_id.as_str()),
-        "resume": user_action_resume_guidance(pending),
-        "local_web_consent": {
-            "available": false,
-            "reason": local_web_reason
-        }
-    }));
+pub(crate) fn cli_recovery_fallback() -> UserActionFallback {
     UserActionFallback {
-        texts: vec![human_text, structured_text],
+        texts: vec![generic_user_channel_fallback_text()],
         kind: DiagnosticFallbackKind::CliInbox,
+        deferred_local_web_handoff: None,
     }
 }
 
-fn user_action_resume_guidance(pending: &PendingUserAction) -> Value {
-    json!({
-        "tool_name": REQUEST_USER_ACTION_TOOL_NAME,
-        "arguments": {
-            "project_selector": pending.request.project_id.as_str(),
-            "request": {
-                "operation": "resume",
-                "user_action_request_id": pending.request.user_action_request_id.as_str(),
-            },
-        },
-        "creates_new_request": false,
-    })
-}
-
-pub(crate) fn fallback_state_json(state: Value) -> String {
-    json!({ "volicord_fallback": state }).to_string()
+fn generic_user_channel_fallback_text() -> String {
+    "A pending UserAction requires the user. Use the host's User Channel when available; otherwise open `volicord inbox`. Resume the existing request after the user completes it."
+        .to_owned()
 }
 
 pub(crate) fn percent_encode_query(value: &str) -> String {
@@ -3986,6 +3978,209 @@ mod mutation_output_tests {
     }
 
     #[test]
+    fn local_web_handoff_budget_failure_creates_no_token_or_clock_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-no-orphan-budget")?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            )
+        };
+        let intake = core.intake(
+            fixture.intake_request(
+                "req_mcp_local_web_no_orphan_intake",
+                "idem_mcp_local_web_no_orphan_intake",
+                false,
+                Some(0),
+            ),
+            invocation(),
+        )?;
+        let task_id = intake.resolved_task_id.expect("intake resolves a Task");
+        let pending = core.request_user_action(
+            fixture.user_action_request(UserActionFixture {
+                request_id: "req_mcp_local_web_no_orphan_pending",
+                idempotency_key: "idem_mcp_local_web_no_orphan_pending",
+                dry_run: false,
+                expected_state_version: Some(1),
+                task_id: task_id.as_str(),
+                change_unit_id: None,
+                judgment_kind: JudgmentKind::ProductDecision,
+            }),
+            invocation(),
+        )?;
+        let request_id = pending.response_value["user_action_request_summary"]
+            ["user_action_request_id"]
+            .as_str()
+            .expect("result identifies the pending request");
+        let context =
+            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+        let adapter = McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent(
+            LocalWebConsentContext {
+                base_url: "http://127.0.0.1:39000".to_owned(),
+            },
+        );
+        let before: (i64, String) = fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let mut output = ToolCallOutput::success("{}".to_owned())?;
+        output.primary_text = "x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+        output.deferred_local_web_handoff = Some(DeferredLocalWebHandoff {
+            project_id: ProjectId::new(fixture.project_id()),
+            user_action_request_id: UserActionRequestId::new(request_id),
+            form_digest: format!("sha256:{}", "0".repeat(64)),
+        });
+
+        let output =
+            materialize_local_web_handoff(&adapter, Some(MutationDetailLevel::Summary), output)?;
+
+        assert!(output.host_meta.is_none());
+        assert!(output.deferred_local_web_handoff.is_none());
+        assert_eq!(
+            output.diagnostic_facts.fallback_kind,
+            Some(DiagnosticFallbackKind::CliInbox)
+        );
+        let after: (i64, String) = fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(
+            after, before,
+            "budget fallback must have no token or clock effect"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn idempotent_create_replay_never_reissues_a_local_web_handoff() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-local-web-create-replay")?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let intake = core.intake(
+            fixture.intake_request(
+                "req_mcp_local_web_replay_intake",
+                "idem_mcp_local_web_replay_intake",
+                false,
+                Some(0),
+            ),
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            ),
+        )?;
+        let task_id = intake.resolved_task_id.expect("intake resolves a Task");
+        let context =
+            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
+                .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
+        let adapter = McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent(
+            LocalWebConsentContext {
+                base_url: "http://127.0.0.1:39000".to_owned(),
+            },
+        );
+        let session_id = "session_mcp_local_web_create_replay";
+        adapter.call_tool_for_session_with_user_channel_capabilities(
+            STATUS_TOOL_NAME,
+            json!({"task_id": task_id.as_str()}),
+            Some(session_id),
+            McpUserChannelCapabilities::new(false, true),
+        )?;
+        let invocation = || {
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            )
+            .with_session_id(session_id)
+            .with_local_web_consent_available(true)
+        };
+        let request = fixture.user_action_request(UserActionFixture {
+            request_id: "req_mcp_local_web_create_replay",
+            idempotency_key: "idem_mcp_local_web_create_replay",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: task_id.as_str(),
+            change_unit_id: None,
+            judgment_kind: JudgmentKind::ProductDecision,
+        });
+        let created = core.request_user_action(request.clone(), invocation())?;
+        assert!(!created.replayed);
+        let created_operation_result_ref = created.operation_result_ref.clone();
+        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
+        let mut writer = Vec::new();
+        let mut request_sequence = 1;
+        let created_output = user_action_tool_output(
+            &adapter,
+            created,
+            true,
+            false,
+            &mut request_sequence,
+            &mut lines,
+            &mut writer,
+        )?;
+        let created_output = materialize_local_web_handoff(
+            &adapter,
+            Some(MutationDetailLevel::Summary),
+            created_output,
+        )?;
+        assert!(created_output.host_meta.is_some());
+        let exact_origin = created_output.structured_content["agent_workflow_result"].clone();
+        let after_create_counts = fixture.counts()?;
+        let after_create_storage: (i64, String) = fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(after_create_storage.0, 1);
+
+        let replayed = core.request_user_action(request, invocation())?;
+        assert!(replayed.replayed);
+        assert_eq!(replayed.operation_result_ref, created_operation_result_ref);
+        let mut lines = io::BufReader::new(io::Cursor::new(Vec::<u8>::new())).lines();
+        let mut writer = Vec::new();
+        let mut request_sequence = 1;
+        let replayed_output = user_action_tool_output(
+            &adapter,
+            replayed,
+            true,
+            false,
+            &mut request_sequence,
+            &mut lines,
+            &mut writer,
+        )?;
+        let replayed_output = materialize_local_web_handoff(
+            &adapter,
+            Some(MutationDetailLevel::Summary),
+            replayed_output,
+        )?;
+        assert!(replayed_output.host_meta.is_none());
+        assert!(replayed_output.deferred_local_web_handoff.is_none());
+        assert_eq!(
+            replayed_output.structured_content["agent_workflow_result_replayed"],
+            true
+        );
+        assert_eq!(
+            replayed_output.structured_content["agent_workflow_result"],
+            exact_origin
+        );
+        assert_eq!(fixture.counts()?, after_create_counts);
+        let after_replay_storage: (i64, String) = fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(after_replay_storage, after_create_storage);
+        Ok(())
+    }
+
+    #[test]
     fn superseded_user_action_suppresses_elicitation_and_preserves_the_origin_effect(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-elicited-record-race")?;
@@ -4023,7 +4218,6 @@ mod mutation_output_tests {
             }),
             workflow_invocation(),
         )?;
-        assert!(pending_user_action_from_response(&pending_response)?.is_some());
         core.update_scope(
             fixture.update_scope_request(UpdateScopeFixture {
                 request_id: "req_mcp_elicited_record_race_scope",
@@ -4054,7 +4248,8 @@ mod mutation_output_tests {
         )?;
         assert_eq!(output.post_effect_failure, None);
         assert_eq!(
-            output.structured_content["agent_workflow_result"]["user_action_request"]["status"],
+            output.structured_content["agent_workflow_result"]["user_action_request_summary"]
+                ["status"],
             "pending"
         );
         assert_eq!(output.structured_content["current_status"], "superseded");
@@ -4112,8 +4307,8 @@ mod mutation_output_tests {
     }
 
     #[test]
-    fn noncanonical_pending_form_routes_to_closed_post_effect_recovery(
-    ) -> Result<(), Box<dyn Error>> {
+    fn mismatched_safe_summary_routes_to_closed_post_effect_recovery() -> Result<(), Box<dyn Error>>
+    {
         let fixture = CoreFixture::new("mcp-noncanonical-pending-post-effect")?;
         let core = CoreService::new(fixture.runtime_home_path());
         let workflow_invocation = || {
@@ -4150,8 +4345,8 @@ mod mutation_output_tests {
             workflow_invocation(),
         )?;
         let before = fixture.counts()?;
-        pending_response.response_value["inbox_item"]["form"]["choices"][0]["label"] =
-            json!("tampered transport label");
+        pending_response.response_value["user_action_request_summary"]["user_action_request_id"] =
+            json!("uar_not_in_trusted_projection");
         let context =
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
@@ -4168,7 +4363,7 @@ mod mutation_output_tests {
             &mut lines,
             &mut elicitation_request,
         )
-        .expect_err("noncanonical post-Core form must fail adapter projection");
+        .expect_err("mismatched public summary must fail before User Channel projection");
         assert!(matches!(error, McpAdapterError::Protocol(_)));
         assert!(elicitation_request.is_empty());
         assert_eq!(request_sequence, 1);
@@ -4210,7 +4405,7 @@ mod mutation_output_tests {
         assert!(recovery.status_read_required);
         assert!(recovery.completion_claim_withheld);
         assert_eq!(
-            output.structured_content["method_result"]["user_action_request"]["status"],
+            output.structured_content["method_result"]["user_action_request_summary"]["status"],
             "pending"
         );
         assert!(output
@@ -4883,12 +5078,10 @@ mod mutation_output_tests {
                 "events": []
             },
             "agent_workflow_result_replayed": true,
-            "user_action_request_ref": {
-                "record_kind": "user_action_request",
-                "record_id": "user_action_request_recovery",
-                "project_id": "project_mcp_recovery_order",
-                "task_id": "task_mcp_recovery_order",
-                "produced_at_state_version": 2
+            "user_action_request_summary": {
+                "user_action_request_id": "user_action_request_recovery",
+                "status": "pending",
+                "next_actor": "user"
             },
             "user_action_resolution_ref": {
                 "record_kind": "user_action_resolution",

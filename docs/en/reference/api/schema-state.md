@@ -150,7 +150,7 @@ StateSummary:
   baseline_ref: string | null
   workspace_context: WorkspaceContext | null
   shaping_readiness: ShapingReadiness | null
-  pending_user_action_request_refs: StateRecordRef[]
+  pending_user_action_summaries: AgentSafeUserActionRequestSummary[]
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
@@ -178,10 +178,18 @@ Meaning:
 - `workspace_context` is the optional verified Git coordinate captured for the
   current Change Unit baseline. Its paths and hashes are local authority facts,
   not portable repository identity or a security guarantee.
-- `pending_user_action_request_refs` lists effectively pending user-action
-  requests relevant to the response view. A request is operation-blocking only
-  when its `required_for` target, action kind, Task, Change Unit, affected refs,
-  and current basis are compatible with that operation.
+- `pending_user_action_summaries` lists effectively pending user actions
+  relevant to the response view using only request ID, `status=pending`, and
+  `next_actor=user`. Core still evaluates required-for target, action kind,
+  Task, Change Unit, affected refs, and current basis internally to determine
+  whether a request blocks an operation; `StateSummary` does not expose those
+  request details.
+- For an existing pending action in an Agent-facing result,
+  `StateSummary.blocker_refs`, `CloseReadinessBlocker.related_refs`,
+  `NextActionSummary.required_refs`, and summary-card ref collections exclude
+  `record_kind=user_action_request`. Other blocker and authority record kinds
+  remain governed by their owners. The request identity is supplied only by
+  `AgentSafeUserActionRequestSummary`.
 
 Does not imply:
 - `StateSummary` field presence does not define whether a method committed.
@@ -353,7 +361,16 @@ Meaning:
 - `required_hook_phases` and `missing_required_hook_phases` report required host-hook configuration completeness. A required phase is missing when it is absent from `required_hook_phases` or listed in `missing_required_hook_phases`. Missing required phases keep effective detective health non-active even when a valid hook event has been observed.
 - `prompt_capture_status` reports the machine-readable prompt-capture availability state for the selected connection. `prompt_capture_available=true` only when that state allows verification-code chat commands; it does not mean raw prompt text is included.
 - `prompt_capture_available` reports whether prompt-capture verification-code chat commands may be shown or recorded for the selected connection. It does not include prompt text.
-- `local_web_consent_available` reports whether the current adapter invocation can offer the loopback local web consent fallback for User Channel recovery.
+- `local_web_consent_available=true` only when the current adapter invocation's
+  loopback listener is ready **and** the initialized client sent exact boolean
+  `true` at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
+  An omitted, false, wrong-typed, malformed, or wrong-namespace declaration
+  means `false`. This fact does not mean a token was issued, a form was
+  rendered, a user was identified, or model isolation was proved. Status and
+  check-close use the same evaluator and never issue a token merely to report
+  availability; setup diagnostics that cannot observe both runtime inputs also
+  report `false`.
 - `mcp_connection_healthy` and `mcp_connection_status` summarize the tracked Agent Connection verification state when that state is available.
 - `session_watch_status` reports whether the session-level Product Repository watcher is `disabled`, `active`, `degraded`, `unavailable`, or `pending_project_selection` for the selected connection or session.
 - `last_session_watch_checked_at` is the latest watcher baseline status update timestamp, or `null` when no session-watch baseline is available.
@@ -646,6 +663,11 @@ Meaning:
 - When evidence or close projection is selected, `SummaryCard.evidence` is the exact `EvidenceGateSummary.state` value owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). It does not independently infer a state from staged input or `EvidenceSummary.evidence_state`.
 - `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
+- For an already-existing pending user action, `SummaryCard.user_action`,
+  `SummaryCard.next`, method `status_summary`, blocker messages, and every other
+  display/template string stay generic. They may say that user action is
+  pending and identify the User Channel as next actor, but must not reconstruct
+  request question, options, context, form, path, command, URL, or credential.
 - `SummaryCard.guarantee` is concise display wording for the summarized view. It must not claim correctness proof, test sufficiency proof, review completion, or OS-level enforcement unless another owner explicitly provides that guarantee.
 - `NextActionSummary` is the canonical next-action display shape. Its valid fields are `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, and `required_refs`.
 - Every non-empty top-level `next_actions` collection has exactly one `presentation_role=primary`. Remaining entries use `additional`. Close readiness is the explicit nested exception: `blockers[*].next_actions` flattened across one close-readiness result is one projection unit with exactly one primary, so an individual later blocker list can contain only additional actions. A singular `next_action` uses `primary`.
@@ -654,6 +676,15 @@ Meaning:
 - `expected_state_version` is always present and nullable. For an API mutation action that consumes optimistic concurrency, it contains the current `project_state.state_version` from the projection that produced the action and maps directly to `ToolEnvelope.expected_state_version` for that invocation. It is `null` for read actions, `user_only` actions, actions without a single owner method, and owner-method actions that do not consume optimistic concurrency.
 - `expected_state_version` is a retryable concurrency input, not identity or authority. It can become stale after another committed mutation; callers refresh current state after `STATE_VERSION_CONFLICT`. Neither `required_refs` nor any ref's `produced_at_state_version` supplies or overrides this token.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
+- For an already-existing pending user action, `NextActionSummary.label` and
+  the owning blocker message use generic User Channel guidance,
+  `blocking_question=null`, and `required_refs` contains no
+  `user_action_request` ref. The request ID and pending/next-actor facts come
+  only from `AgentSafeUserActionRequestSummary`; next-action text must not
+  reconstruct the question, options, context, form, capture path, command, URL,
+  or credential. The distinct pre-request `missing_final_acceptance` action may
+  carry the question and Task/current-basis refs needed for the Agent to create
+  the request. After creation, the pending rule applies.
 - `WriteTicketStateSummary.status` is a controlled value string.
 - `WriteTicketStateSummary.consumed_by_run_ref` is non-null only when the summarized write ticket has been consumed by a recorded Run.
 - `WriteTicketStateSummary.observation_refs` lists evidence observation refs created by that consuming Run when those refs are available; it is empty when the write ticket is not consumed or the consuming Run created no observations.
@@ -674,10 +705,10 @@ Meaning:
 | `action_kind` | Controlled action category. | Uses the [next-action values](schema-value-sets.md#next-action-values). It is not a method-name value. |
 | `owner_method` | Method-name value or `null`. | Names the API method that owns the next action when one supported public method applies. Use `null` when no single owner method applies. |
 | `allowed_operation_categories` | Controlled operation-category values. | Lists the owner-supported invocation categories for this action. Uses `[]` when `owner_method=null` or no supported API invocation path is identified. |
-| `label` | Free-form display string. | Human- and agent-facing display text, not a canonical value. |
-| `blocking_question` | Free-form display string or `null`. | The question to resolve before the action can proceed, or `null` when no blocking question is needed. |
+| `label` | Free-form display string. | Human- and agent-facing display text, not a canonical value. For an existing pending user action it is generic User Channel guidance and carries no request detail. |
+| `blocking_question` | Free-form display string or `null`. | The question to resolve before the action can proceed, or `null` when no blocking question is needed. It is always `null` for an existing pending user action; the pre-request creation exception is described above. |
 | `expected_state_version` | Project state clock value or `null`. | Maps to `ToolEnvelope.expected_state_version` for a mutation action that consumes optimistic concurrency. Uses `null` for read, `user_only`, or no-concurrency actions. |
-| `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. Refs identify records and context; they never supply the concurrency token. |
+| `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. Refs identify records and context; they never supply the concurrency token. Existing pending-user-action entries exclude the request ref. |
 
 `WriteTicketAttemptScope` field classifications:
 

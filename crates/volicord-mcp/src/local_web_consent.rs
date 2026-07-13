@@ -193,11 +193,8 @@ pub(crate) fn handle_local_web_consent_get(
     };
     match validate_local_web_consent(adapter, project_id, token, &now) {
         Ok(UserActionChannelTokenValidation::Valid(record)) => {
-            match local_web_pending_user_action(adapter, &record, false) {
-                Ok(action) => match validate_local_web_consent_form(&record, &action) {
-                    Ok(()) => local_web_consent_page(adapter, &record, &action, token),
-                    Err(response) => response,
-                },
+            match local_web_pending_user_action(adapter, &record, token, false) {
+                Ok(action) => local_web_consent_page(adapter, &record, &action, token),
                 Err(response) => response,
             }
         }
@@ -302,13 +299,10 @@ pub(crate) fn handle_local_web_consent_post(
             return local_web_consent_rejection_page(rejection)
         }
     };
-    let action = match local_web_pending_user_action(adapter, &record, true) {
+    let action = match local_web_pending_user_action(adapter, &record, token, true) {
         Ok(action) => action,
         Err(response) => return response,
     };
-    if let Err(response) = validate_local_web_consent_form(&record, &action) {
-        return response;
-    }
     let resolution = match local_web_resolution_from_fields(&action, &fields) {
         Ok(resolution) => resolution,
         Err(message) => {
@@ -408,43 +402,9 @@ pub(crate) fn local_web_post_recording_failed(
     }
 }
 
-#[derive(Debug, Clone)]
 pub(crate) struct LocalWebPendingUserAction {
     request: UserActionRequest,
     form: UserActionInboxForm,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LocalWebConsentTokenMetadata {
-    fallback_kind: String,
-    endpoint: String,
-    form_digest: String,
-}
-
-fn validate_local_web_consent_form(
-    token_record: &UserActionChannelTokenRecord,
-    pending: &LocalWebPendingUserAction,
-) -> Result<(), HttpResponse> {
-    let metadata: LocalWebConsentTokenMetadata =
-        serde_json::from_str(&token_record.created_metadata_json)
-            .map_err(|_| local_web_consent_form_mismatch_page())?;
-    if metadata.fallback_kind != "local_web_consent" || metadata.endpoint != LOCAL_WEB_CONSENT_PATH
-    {
-        return Err(local_web_consent_form_mismatch_page());
-    }
-    let current_digest = canonical_json_bare_sha256(&pending.form).map_err(|_| {
-        local_web_consent_error_page(
-            500,
-            "Internal Server Error",
-            "STORE_UNAVAILABLE",
-            "Volicord could not verify this consent form.",
-        )
-    })?;
-    if metadata.form_digest != current_digest {
-        return Err(local_web_consent_form_mismatch_page());
-    }
-    Ok(())
 }
 
 fn local_web_consent_form_mismatch_page() -> HttpResponse {
@@ -459,103 +419,42 @@ fn local_web_consent_form_mismatch_page() -> HttpResponse {
 pub(crate) fn local_web_pending_user_action(
     adapter: &McpAdapter,
     token_record: &UserActionChannelTokenRecord,
+    token: &str,
     allow_resolved_replay: bool,
 ) -> Result<LocalWebPendingUserAction, HttpResponse> {
-    let project_id = ProjectId::new(token_record.project_id.clone());
-    let store = CoreProjectStore::open(&adapter.runtime_home, &project_id).map_err(|_| {
-        local_web_consent_error_page(
-            404,
-            "Not Found",
-            "INVALID_TOKEN",
-            "This consent link is not valid for an available project.",
-        )
-    })?;
-    let now = SystemClock.project_now(&store).map_err(|_| {
-        local_web_consent_error_page(
-            500,
-            "Internal Server Error",
-            "STORE_UNAVAILABLE",
-            "Volicord could not read the user-action clock.",
-        )
-    })?;
-    let effective = store
-        .user_action_record(&token_record.user_action_request_id, &now)
-        .map_err(|_| {
-            local_web_consent_error_page(
-                500,
-                "Internal Server Error",
-                "STORE_UNAVAILABLE",
-                "Volicord could not read this pending user action.",
-            )
-        })?
-        .ok_or_else(|| {
-            local_web_consent_error_page(
+    match adapter.core.local_web_consent_user_action_projection(
+        LocalWebConsentUserActionProjectionRequest {
+            token: token.to_owned(),
+            validated_token: token_record.clone(),
+            allow_resolved_replay,
+        },
+    ) {
+        Ok(LocalWebConsentUserActionProjectionOutcome::Projected(projection)) => {
+            let projection = *projection;
+            Ok(LocalWebPendingUserAction {
+                request: projection.request,
+                form: projection.form,
+            })
+        }
+        Ok(LocalWebConsentUserActionProjectionOutcome::FormMismatch) => {
+            Err(local_web_consent_form_mismatch_page())
+        }
+        Ok(LocalWebConsentUserActionProjectionOutcome::Invalid)
+        | Err(CorePipelineError::Store(StoreError::NotFound { .. })) => {
+            Err(local_web_consent_error_page(
                 404,
                 "Not Found",
                 "INVALID_TOKEN",
-                "This consent token does not identify an available pending user action.",
-            )
-        })?;
-    let has_replayable_resolution = allow_resolved_replay && effective.resolution.is_some();
-    if effective.status != UserActionStatus::Pending && !has_replayable_resolution {
-        return Err(local_web_consent_error_page(
-            409,
-            "Conflict",
-            "TOKEN_CONSUMED",
-            "This pending user action has already been resolved or is no longer available.",
-        ));
-    }
-    user_action_from_record(&effective).map_err(|_| {
-        local_web_consent_error_page(
+                "This consent link is not valid for an available pending user action.",
+            ))
+        }
+        Err(_) => Err(local_web_consent_error_page(
             500,
             "Internal Server Error",
             "STORE_UNAVAILABLE",
-            "Volicord could not render this pending user action.",
-        )
-    })
-}
-
-pub(crate) fn user_action_from_record(
-    effective: &volicord_store::core_pipeline::EffectiveUserActionRecord,
-) -> Result<LocalWebPendingUserAction, McpAdapterError> {
-    let stored: volicord_types::PersistedUserActionRequest =
-        serde_json::from_str(&effective.request.request_json).map_err(McpAdapterError::Json)?;
-    let basis =
-        serde_json::from_str(&effective.request.basis_json).map_err(McpAdapterError::Json)?;
-    let created_at =
-        volicord_types::UtcTimestamp::parse(&effective.request.requested_at).map_err(|error| {
-            McpAdapterError::ToolExecution {
-                tool_name: LOCAL_WEB_CONSENT_PATH.to_owned(),
-                message: error.to_string(),
-            }
-        })?;
-    let request = UserActionRequest {
-        user_action_request_id: effective.request.user_action_request_id.clone().into(),
-        project_id: effective.request.project_id.clone().into(),
-        task_id: effective.request.task_id.clone().into(),
-        change_unit_id: effective
-            .request
-            .change_unit_id
-            .clone()
-            .map(Into::into)
-            .into(),
-        action_kind: effective.request.action_kind,
-        status: effective.status,
-        body: stored.body,
-        basis,
-        required_for: stored.required_for,
-        user_action_resolution_ref: RequiredNullable::null(),
-        expires_at: stored.expires_at,
-        created_at,
-    };
-    let form = request
-        .body
-        .capture_form()
-        .map_err(|error| McpAdapterError::ToolExecution {
-            tool_name: LOCAL_WEB_CONSENT_PATH.to_owned(),
-            message: format!("invalid stored user-action form: {error}"),
-        })?;
-    Ok(LocalWebPendingUserAction { request, form })
+            "Volicord could not read this pending user action.",
+        )),
+    }
 }
 
 fn local_web_resolution_from_fields(

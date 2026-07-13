@@ -105,7 +105,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `evidence_capture_intents` | Evidence-capture intent | Immutable expiring request bound to current Task/Change Unit/scope/baseline/target/workspace, exact capture spec and command/tool input digest or Core-derived connection source-selector digest, requesting connection and actor, expected outcome, and timestamps. |
 | `state.sqlite` | `user_action_requests` | User-action request | Closed action request JSON, Core-derived basis and compatibility, required-for targets, request actor, originating method/idempotency relation, and expiry. The capture form and effective lifecycle status are derived rather than stored as composite columns. |
 | `state.sqlite` | `user_action_resolutions` | Immutable User Channel resolution | At most one resolution per request, with a closed kind-matching body, channel kind and bounded visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, and Core capture time. Choice facts or full observation detail stay in the body. |
-| `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | Hash-only one-time local-web token bound to one request, connection, expiry, capture basis, and closed creation metadata containing the fallback kind, endpoint, and exact canonical-form digest. |
+| `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | Hash-only one-time local-web token bound to one request, connection, expiry, capture basis, and closed creation metadata containing exactly the fallback kind, `delivery_surface=model_invisible_user_surface`, endpoint, and exact canonical-form digest. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
 | `state.sqlite` | `write_tickets` | Write-ticket authority | Physical storage table for single-use write ticket authority records, basis version, attempt scope, expiration, actor source, optional originating judgment, and consumption state. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
@@ -367,6 +367,18 @@ Resolved requests require one complete closed resolution body, actor provenance,
 verification basis, and assurance level. Rows missing those facts are invalid
 owner state, not audit-compatible authority records.
 
+`user_action_channel_tokens.creation_metadata_json` strict-decodes as exactly
+`{fallback_kind, delivery_surface, endpoint, form_digest}`. The required values
+are `fallback_kind=local_web_consent`,
+`delivery_surface=model_invisible_user_surface`, and `endpoint=/consent`; the
+digest must match the canonical form derived from the closed stored request.
+Missing, extra, wrong-typed, or mismatched metadata—including every
+pre-correction row without `delivery_surface`—is permanently unusable under
+corrected code. Local-web GET, POST, token consumption, and resolution then fail
+closed without rendering a form or changing token, project, UTC-floor, or
+user-action state. Such a row is never upgraded; the pending action remains
+resolvable through another valid User Channel such as CLI.
+
 The presence of one `user_action_resolutions` row causes effective
 `status=resolved` only while the request basis remains current. A stale or
 superseded basis takes precedence over that immutable row. Resolution presence
@@ -480,7 +492,7 @@ Rules:
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |
 | `user_action_requests` | Closed request, required-for targets, Core-derived basis, request actor, exact originating method/idempotency relation, and expiry. |
 | `user_action_resolutions` | Closed immutable resolution body, channel kind and bounded visible-ASCII submission id, derived actor/verification/assurance, Core capture time, optional private note, and choice or evidence-observation detail. Local-web rows store only the derived digest identity, never the raw token. |
-| `user_action_channel_tokens` | Request-bound local-web hash-token lifecycle and capture basis. |
+| `user_action_channel_tokens` | Request-bound local-web hash-token lifecycle, capture basis, and closed delivery-surface creation metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
 | `write_tickets` | Write-ticket attempt scope and non-authority metadata. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |

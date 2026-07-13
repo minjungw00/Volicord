@@ -579,6 +579,37 @@ pub(super) fn plan_close_task_with_context(
         &blockers,
     );
 
+    let current_close_pending_user_action_ids = blockers
+        .iter()
+        .filter(|blocker| blocker.code == "pending_user_action")
+        .flat_map(|blocker| blocker.related_refs.iter())
+        .filter(|record_ref| record_ref.record_kind == StateRecordKind::UserActionRequest)
+        .map(|record_ref| record_ref.record_id.as_str().to_owned())
+        .collect::<BTreeSet<_>>();
+    let result_pending_user_action_summaries = agent_safe_pending_user_action_summaries(
+        context
+            .pending_user_action_refs
+            .iter()
+            .filter(|record_ref| {
+                current_close_pending_user_action_ids.contains(record_ref.record_id.as_str())
+            })
+            .cloned(),
+    );
+    for blocker in &mut blockers {
+        if blocker.code != "pending_user_action" {
+            continue;
+        }
+        blocker
+            .related_refs
+            .retain(|record_ref| record_ref.record_kind != StateRecordKind::UserActionRequest);
+        for action in &mut blocker.next_actions {
+            action.blocking_question = None;
+            action
+                .required_refs
+                .retain(|record_ref| record_ref.record_kind != StateRecordKind::UserActionRequest);
+        }
+    }
+
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
@@ -609,33 +640,6 @@ pub(super) fn plan_close_task_with_context(
         .guard_health
         .as_ref()
         .map(coverage_summary_from_guard_health);
-    let current_close_pending_user_action_ids = blockers
-        .iter()
-        .filter(|blocker| blocker.code == "pending_user_action")
-        .flat_map(|blocker| blocker.related_refs.iter())
-        .filter(|record_ref| record_ref.record_kind == StateRecordKind::UserActionRequest)
-        .map(|record_ref| record_ref.record_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let mut result_pending_user_action_inbox_items = pending_user_action_inbox_items(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        response_state_version,
-        UserChannelContext {
-            guard_health: context.guard_health.as_ref(),
-            host_elicitation_available: verified_invocation
-                .map(|invocation| invocation.host_elicitation_available)
-                .unwrap_or(false),
-            local_web_consent_available: verified_invocation
-                .map(|invocation| invocation.local_web_consent_available)
-                .unwrap_or(false),
-        },
-        now,
-    )?;
-    result_pending_user_action_inbox_items.retain(|item| {
-        current_close_pending_user_action_ids.contains(item.user_action_request_id.as_str())
-    });
     let no_next_actions: &[NextActionSummary] = &[];
     let summary_card = summary_card_for_core(SummaryCardBuild {
         task: Some(&synthetic_task),
@@ -650,7 +654,7 @@ pub(super) fn plan_close_task_with_context(
         ),
         write_ticket: write_ticket_summary_text(true, result_state.write_ticket_summary.as_ref()),
         evidence: evidence_gate_summary_text(true, result_state.evidence_gate.as_ref()),
-        pending_user_actions: result_state.pending_user_action_refs.len(),
+        pending_user_actions: result_state.pending_user_action_summaries.len(),
         changes: changes_summary_text(
             true,
             context
@@ -673,7 +677,7 @@ pub(super) fn plan_close_task_with_context(
         continuity_summary: Vec::new(),
         state: result_state.clone(),
         blockers: blockers.clone(),
-        pending_user_action_inbox_items: result_pending_user_action_inbox_items,
+        pending_user_action_summaries: result_pending_user_action_summaries,
         guard_health: context.guard_health.clone(),
         coverage_summary: result_coverage_summary,
         evidence_summary: result_evidence_summary.clone(),
@@ -2502,21 +2506,13 @@ fn guard_blockers_with_control_surface(
 }
 
 pub(super) fn user_channel_pending_action_instruction(
-    guard_health: Option<&GuardHealthSummary>,
+    _guard_health: Option<&GuardHealthSummary>,
 ) -> String {
-    if guard_health.is_some_and(|summary| summary.prompt_capture_available) {
-        "Use the displayed chat command with the current verification code.".to_owned()
-    } else if guard_health.is_some_and(|summary| summary.local_web_consent_available) {
-        "Use the local consent URL if the adapter offers one.".to_owned()
-    } else {
-        "Use `volicord inbox` to list and resolve pending user actions.".to_owned()
-    }
+    "Use `volicord inbox` through the User Channel to list and resolve pending actions.".to_owned()
 }
 
-pub(super) fn user_channel_can_resolve_in_chat(guard_health: Option<&GuardHealthSummary>) -> bool {
-    guard_health
-        .map(|summary| summary.prompt_capture_available)
-        .unwrap_or(false)
+pub(super) fn user_channel_can_resolve_in_chat(_guard_health: Option<&GuardHealthSummary>) -> bool {
+    false
 }
 
 fn guard_installation_close_blocker(

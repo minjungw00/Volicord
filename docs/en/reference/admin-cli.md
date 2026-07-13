@@ -196,11 +196,14 @@ Not supported:
   may show separate checks for project trust, managed startup, managed
   `tools/list`, managed tool calls, active tool exposure, and the host MCP
   command.
-- When judgments are pending, status and inbox text may show `Available answer
-  paths:` for host prompt input, chat command capture, a local consent URL, and
-  the CLI inbox. This line only routes the user; it does not record a judgment or
-  let an Agent Connection act as the user. JSON uses
-  `user_channel_availability` or `answer_path_availability` for the same facts.
+- When judgments are pending, the user-only inbox text may show `Available
+  answer paths:` for host prompt input, chat command capture, a local consent
+  URL, and the CLI inbox. This line only routes the user; it does not record a
+  judgment or let an Agent Connection act as the user. Inbox JSON uses
+  `user_channel_availability` and its internal items use
+  `answer_path_availability` for those facts. Public status text and JSON return
+  only the exact three-field pending summaries and no User Channel availability
+  or capture-path facts.
 - Other diagnostic views may use concise `Result`, `Why`, `Next`, and `Does not
   prove` lines for `action_required` or degraded states. Connection status and
   verification use their section layout instead. In either layout,
@@ -1236,23 +1239,19 @@ Lifecycle behavior:
   request ID is required; `A-N` remains a displayed task-local binding and is
   checked against the stored request's Task even when another Task later becomes
   active.
-  For an agent-facing-input-eligible presentation, session-start host-native
-  context shows the request-bound `A-N`, current verification code, command
-  template, and complete Core-derived closed form.
-  The complete UTF-8 host-native hook-output JSON object plus its trailing LF
-  must be at most 32 KiB. If it does not fit, prompt capture is unavailable for
-  that presentation, no partial form is shown, and another available User
-  Channel path remains visible.
-  The same conservative presentation-safety classification used by the MCP
-  adapter evaluates the question, context summary, and complete rendered form.
-  When it requires user-only input, session-start and other guard context
-  contain only generic local-consent or `volicord inbox` guidance and omit the
-  question, context, form, verification code, and command template. A direct
-  chat resolve command revalidates the persisted request question, context, and
-  complete form with that classification; a user-only presentation returns
-  `deny` and records no resolution. The terminal `volicord inbox` path remains
-  user-only and displays the complete canonical form. This routing check is not
-  a general secret scanner or an OS security boundary.
+  Session-start and every other Agent-facing host context show an existing
+  pending request only through `AgentSafeUserActionRequestSummary`: durable
+  request ID, `pending`, and next actor/User Channel. They omit the request-bound
+  `A-N`, verification code, command template, question, context, and complete
+  Core-derived form. A complete form or verification credential may be rendered
+  only by a separately verified User Channel surface that remains outside model
+  context; prompt-capture availability by itself does not establish that
+  surface. If such a user-only rendering exceeds its 32 KiB bound, the path is
+  unavailable, no partial form is shown, and another User Channel path remains
+  available. Agent-facing fallback text contains only generic `volicord inbox`
+  guidance. The terminal `volicord inbox` path remains user-only and displays
+  the complete canonical form. This routing check is not a general secret
+  scanner or an OS security boundary.
   Unsupported, unconfigured, reload-needed,
   or degraded prompt capture returns structured non-recording output such as
   `prompt_capture_unsupported`, `prompt_capture_not_configured`, or
@@ -1396,20 +1395,18 @@ and resolve pending `UserActionRequest` records through the `User Channel`.
 They do not create an Agent Connection, install MCP host configuration, or make
 an Agent Connection eligible to act as the user.
 
-When the initialized MCP client declares host prompt support, host prompt input
-is the preferred User Channel input method for a compatible pending action
-created through `volicord.request_user_action`. If host prompt input is
-unavailable and chat command capture is `configured`, `observed`, or `active`,
-fallback guidance may show an exact request-bound chat command and current
-verification code. If both host prompt input and chat command capture are
-unavailable and the adapter can safely expose a local consent URL, fallback
-guidance may show a loopback consent URL backed by a short-lived one-time token.
-The terminal `volicord inbox` commands remain the CLI inbox input method and
-manual-inspection path when another capture path is unavailable, disabled,
-degraded, or inappropriate for the action form.
-When the complete presentation requires user-only input, rich host prompt and
-chat-command presentation are inappropriate for that form; local web consent
-when advertised and the terminal inbox remain the complete-form surfaces.
+When the initialized MCP client declares host prompt support, native host
+prompt input is the preferred User Channel input method for a compatible
+pending action created through `volicord.request_user_action`. Agent-facing
+fallback guidance never shows a request-bound chat command, verification code,
+complete form, or loopback bearer URL. Local web consent is selected only when
+the listener is ready and the initialized client sent exact boolean `true` at
+`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`;
+the short-lived URL is delivered only in the namespaced top-level tool-result
+`_meta` handoff. Otherwise the Agent receives generic CLI inbox guidance. The
+terminal `volicord inbox` commands remain the complete-form CLI input and
+manual-inspection path when another verified User Channel is unavailable,
+disabled, degraded, or inappropriate for the action form.
 
 Project selection uses `--repo PATH` or the current working directory's
 repository root. Task selection uses the active task by default; `--task active`

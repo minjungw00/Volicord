@@ -279,7 +279,10 @@ impl GuardCliFixture {
             }),
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
-        record_id(&response.response_value["user_action_request_ref"])
+        response.response_value["user_action_request_summary"]["user_action_request_id"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "safe user-action request summary should identify the request".into())
     }
 
     pub(crate) fn create_pending_evidence_observation(
@@ -436,9 +439,11 @@ impl GuardCliFixture {
         )?;
         Ok(PromptEvidenceAction {
             task_id,
-            user_action_request_id: record_id(
-                &requested.response_value["user_action_request_ref"],
-            )?,
+            user_action_request_id: requested.response_value["user_action_request_summary"]
+                ["user_action_request_id"]
+                .as_str()
+                .ok_or("safe user-action request summary should identify the request")?
+                .to_owned(),
             target,
             artifact_candidates,
         })
@@ -1409,7 +1414,10 @@ impl GuardedLifecycleFixture {
             },
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
-        record_id(&response.response_value["user_action_request_ref"])
+        response.response_value["user_action_request_summary"]["user_action_request_id"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "safe user-action request summary should identify the request".into())
     }
 
     pub(crate) fn resolve_pending_user_action_through_prompt(

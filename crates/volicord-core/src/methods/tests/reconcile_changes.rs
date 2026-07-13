@@ -52,8 +52,8 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
     assert_close_blocker_resolution(
         &before.response_value,
         "unresolved_unrecorded_changes",
-        true,
         false,
+        true,
     );
     let blocker = close_blocker_by_code(&before.response_value, "unresolved_unrecorded_changes");
     assert_eq!(
@@ -283,9 +283,9 @@ fn reconcile_changes_local_recovery_reports_no_unresolved_findings_read_only(
         .as_array()
         .expect("resolved_changes should be an array")
         .is_empty());
-    assert!(response.response_value["pending_user_action_refs"]
+    assert!(response.response_value["pending_user_action_summaries"]
         .as_array()
-        .expect("pending refs should be an array")
+        .expect("pending summaries should be an array")
         .is_empty());
     assert_eq!(
         response
@@ -353,6 +353,18 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
     assert!(diagnostics.iter().any(|value| value
         .as_str()
         .is_some_and(|text| text.contains(&unrecorded_change_id))));
+    assert!(diagnostics.iter().all(|value| value
+        .as_str()
+        .is_none_or(|text| !text.contains("question="))));
+    assert!(dry_run.response_value["dry_run_summary"]["next_actions"]
+        .as_array()
+        .expect("dry-run next_actions should be an array")
+        .iter()
+        .all(|action| action["blocking_question"].is_null()));
+    assert!(!dry_run
+        .response_value
+        .to_string()
+        .contains("Does the user accept the observed Product Repository change as intentional?"));
     assert_eq!(harness.counts()?, before);
     assert_eq!(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
@@ -382,9 +394,9 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
         "core_committed"
     );
     assert_eq!(
-        committed.response_value["pending_user_action_refs"]
+        committed.response_value["pending_user_action_summaries"]
             .as_array()
-            .expect("pending refs should be an array")
+            .expect("pending summaries should be an array")
             .len(),
         1
     );
@@ -433,9 +445,9 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
-        response.response_value["pending_user_action_refs"]
+        response.response_value["pending_user_action_summaries"]
             .as_array()
-            .expect("pending refs should be an array")
+            .expect("pending summaries should be an array")
             .len(),
         2
     );
@@ -444,14 +456,14 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
 
-    let pending_request_ids = response.response_value["pending_user_action_refs"]
+    let pending_request_ids = response.response_value["pending_user_action_summaries"]
         .as_array()
-        .expect("pending refs should be an array")
+        .expect("pending summaries should be an array")
         .iter()
-        .map(|record_ref| {
-            record_ref["record_id"]
+        .map(|summary| {
+            summary["user_action_request_id"]
                 .as_str()
-                .expect("pending ref should expose record_id")
+                .expect("pending summary should identify its request")
                 .to_owned()
         })
         .collect::<Vec<_>>();
@@ -526,7 +538,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
         1
     );
     assert_eq!(
-        first.response_value["pending_user_action_refs"]
+        first.response_value["pending_user_action_summaries"]
             .as_array()
             .unwrap()
             .len(),
@@ -536,9 +548,10 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
         unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?.status,
         "unresolved"
     );
-    let judgment_id = first.response_value["pending_user_action_refs"][0]["record_id"]
+    let judgment_id = first.response_value["pending_user_action_summaries"][0]
+        ["user_action_request_id"]
         .as_str()
-        .expect("pending judgment ref should be present")
+        .expect("pending judgment summary should identify its request")
         .to_owned();
     let recorded = harness.service.resolve_user_action(
         resolve_user_action_request(
@@ -583,9 +596,9 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
         second.response_value["resolved_changes"][0]["resolved_by_actor_source"],
         "local_user"
     );
-    assert!(second.response_value["pending_user_action_refs"]
+    assert!(second.response_value["pending_user_action_summaries"]
         .as_array()
-        .expect("pending refs should be an array")
+        .expect("pending summaries should be an array")
         .is_empty());
     let row = unrecorded_change_row(&harness, PROJECT_ID, &unrecorded_change_id)?;
     assert_eq!(row.status, "resolved");
@@ -662,9 +675,10 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
         ),
         invocation(OperationCategory::LocalRecovery),
     )?;
-    let judgment_id = first.response_value["pending_user_action_refs"][0]["record_id"]
+    let judgment_id = first.response_value["pending_user_action_summaries"][0]
+        ["user_action_request_id"]
         .as_str()
-        .expect("pending judgment ref should be present")
+        .expect("pending judgment summary should identify its request")
         .to_owned();
     let recorded = harness.service.resolve_user_action(
         resolve_user_action_request(

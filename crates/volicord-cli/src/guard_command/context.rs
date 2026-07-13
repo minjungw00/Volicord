@@ -21,7 +21,7 @@ use super::{
     envelope::GuardEnvelope,
     json_error,
     prompt_capture::{
-        pending_chat_user_action_summaries, prompt_capture_availability_for_event,
+        pending_agent_user_action_summaries, prompt_capture_availability_for_event,
         GuardPendingUserActionSummary,
     },
     GuardCommandError,
@@ -112,15 +112,8 @@ pub(super) fn guard_state_summary(
         pending_user_action_count = store
             .pending_user_action_records(&task_id, &now_timestamp)?
             .len();
-        if prompt_capture_enabled {
-            pending_user_actions = pending_chat_user_action_summaries(
-                runtime_home,
-                &store,
-                &task_id,
-                envelope,
-                &now_timestamp,
-            )?;
-        }
+        pending_user_actions =
+            pending_agent_user_action_summaries(&store, &task_id, envelope, &now_timestamp)?;
         active_blocker_count = store
             .active_blocker_refs(&task_id, project_state.state_version)?
             .len();

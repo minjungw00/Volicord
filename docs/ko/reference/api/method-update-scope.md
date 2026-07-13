@@ -320,7 +320,7 @@ state:
     head_sha: "0123456789abcdef0123456789abcdef01234567"
     workspace_fingerprint: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   shaping_readiness: null
-  pending_user_action_request_refs: []
+  pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null

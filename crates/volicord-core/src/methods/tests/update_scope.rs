@@ -729,9 +729,7 @@ fn scope_decision_ref_alone_does_not_change_current_scope() -> Result<(), Box<dy
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let decision_ref: StateRecordRef =
-        serde_json::from_value(decision.response_value["user_action_request_ref"].clone())?;
-    let decision_id = decision_ref.record_id.as_str().to_owned();
+    let decision_id = response_record_id(&decision.response_value, "user_action_request_ref");
     let resolved = harness.service.resolve_user_action(
         resolve_user_action_request(
             "req_scope_decision_ref_only_record",

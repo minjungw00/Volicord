@@ -245,6 +245,25 @@ visible-ASCII 형태를 표현하고, Core는 replay 조회나 커밋 전에 정
 ## Inbox와 캡처 폼
 
 ```yaml
+AgentSafeUserActionRequestSummary:
+  user_action_request_id: string
+  status: pending
+  next_actor: user
+
+UserChannelAvailability:
+  paths: UserChannelPathAvailability[]
+  recommended_path_kind: string | null
+  recommended_path_label: string | null
+  recommendation: string | null
+
+UserChannelPathAvailability:
+  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  label: string
+  available: boolean
+  status: available | unavailable
+  capture_basis: string | null
+  detail: string | null
+
 UserActionInboxItem:
   user_action_request_id: string
   request_ref: StateRecordRef
@@ -277,14 +296,56 @@ UserActionInboxForm:
   artifact_candidates: ArtifactRef[]
   relevance_options: [supported, contradicted]
   summary_max_chars: integer
+
+UserActionCapturePath:  # 내부/User Channel projection 전용
+  kind: mcp_elicitation | prompt_capture | local_web_consent | cli
+  label: string
+  available: boolean
+  command: string | null
+  url: string | null
+  capture_basis: string | null
+  expires_at: string | null
+  detail: string | null
 ```
 
-Core는 저장 요청에서 이 단일 캡처 폼을 도출합니다. 채널 어댑터는 chat, 요청 인자,
-어댑터 로컬 상태에서 후보를 다시 만들면 안 됩니다. 지원 경로 종류는
-`mcp_elicitation`, `prompt_capture`, `local_web_consent`, `cli`이며 가용성은 행동과
-capability별로 정합니다. 풍부한 폼을 지원하지 못하는 경로도 unavailable로 보여야 하며
-다른 사용 가능한 경로를 숨기면 안 됩니다. 로컬 프로젝트 상태에 쓸 수 있을 때 CLI가
-일반 fallback입니다.
+`AgentSafeUserActionRequestSummary`는 Agent Connection 결과에서 허용되는 유일한 대기
+요청 projection입니다. 요청 식별자, 과거 pending 상태, 다음 actor인 사용자만 담습니다.
+요청 ref, 행동 종류, 만료 시각, 요청 본문, 근거, 질문, 맥락, 후보, 캡처 폼, 캡처 경로,
+명령, URL, User Channel credential은 담지 않습니다. 현재의 pending이 아닌 상태는 이
+과거 대기 요약이 아니라 별도로 갱신한 현재 projection에 속합니다.
+
+이는 알 수 없거나 추가된 필드가 없는 정확한 세 필수 필드의 닫힌 객체입니다.
+`user_action_request_id`는 비어 있지 않은 크기 제한 identifier 계약을 만족해야 하고
+`status`, `next_actor`는 각각 literal `pending`, `user`여야 합니다. 필드가 누락되거나
+추가되거나, 타입이나 literal 값이 잘못되면 일반 출력, replay, resume,
+operation-result eligibility에서 유효하지 않습니다.
+
+공개 `UserChannelAvailability`는 credential이 없는 닫힌 capability 요약입니다. Label,
+detail, recommendation에는 일반적인 User Channel 또는 CLI 안내만 담을 수 있습니다.
+영속 요청의 질문이나 맥락, 후보나 form 데이터, 캡처 명령, URL, token, 그 밖의 credential은
+담지 않습니다. 선택적 `command`와 `url`을 가진 `UserActionCapturePath`는 별도 내부/User
+Channel 전용 projection이며 Agent Connection 결과에 중첩되지 않습니다. 가용성만으로는
+token을 발급하지 않으며 host가 해당 표면을 모델에 노출하지 않았음을 증명하지도 않습니다.
+
+Core는 검증된 User Channel projection을 위해 저장 요청에서 완전한
+`UserActionInboxItem`과 캡처 폼 하나를 도출합니다. Agent-workflow 메서드 결과, Agent
+Connection 상태·닫기 projection, 정확한 replay, operation-result 조회에는 이 항목이
+들어가지 않습니다. 채널 어댑터는 chat, 요청 인자, 어댑터 로컬 상태에서 후보를 다시
+만들면 안 됩니다. 지원 경로 종류는 `mcp_elicitation`, `prompt_capture`,
+`local_web_consent`, `cli`이며 가용성은 행동과 capability별로 정합니다. 풍부한 폼을
+지원하지 못하는 경로도 사용자 소유 표면에서는 unavailable로 보여야 하며 다른 사용
+가능한 경로를 숨기면 안 됩니다. 로컬 프로젝트 상태에 쓸 수 있을 때 CLI가 일반
+fallback입니다.
+
+내부 projection은 호출자가 `operation_category=read`와 정확히 지원되는 User Channel
+binding을 사용하지 않으면 fail closed합니다. 로컬 CLI 접근에는
+`actor_source=local_user`와 `cli_direct_user_channel`이 필요합니다. Agent 매개
+renderer에는 같은 project와 Agent Connection에 속한 비어 있지 않은 활성 session과
+`user_prompt_submit_hook` 또는 해당 MCP connection binding 중 하나가 필요합니다.
+Agent 매개 projection은 같은 Agent Connection이 생성한 pending 요청만 포함합니다.
+누락되거나 종료된 session, project나 connection 불일치, 잘못된 basis 또는 operation
+context에는 projection을 반환하지 않으며, adapter는 이 거부를 직접 Store read로
+대체하면 안 됩니다.
 
 ## MCP 복합 projection
 
@@ -302,7 +363,7 @@ McpRequestUserActionResponse:
 McpRequestUserActionCompactResult:
   effect: McpMutationEffectSummary
   agent_workflow_result_replayed: boolean
-  user_action_request_ref: StateRecordRef
+  user_action_request_summary: AgentSafeUserActionRequestSummary
   current_projection_state_version: integer
   current_projection_observed_at: string
   user_action_resolution_ref: StateRecordRef | null
@@ -337,7 +398,10 @@ McpUserActionResolutionSummary:
 `volicord.request_user_action` 응답 분기로 남습니다.
 `agent_workflow_result_replayed=false`는 이 호출이 요청을 만들었다는 뜻이고, `true`는 같은
 Agent Connection이 명시적 읽기 전용 resume 연산을 사용해 두 번째 Agent Workflow
-mutation이 없었다는 뜻입니다. 즉시 또는 이후의 채널 resolution은
+mutation이 없었다는 뜻입니다. 이 정확한 과거 결과는 `UserActionRequest`나
+`UserActionInboxItem`이 아니라 `AgentSafeUserActionRequestSummary`를 담으며 replay와
+page 단위 operation-result 조회도 같은 안전한 byte를 보존합니다. 폐기된 전체 폼 형태를
+사용하는 저장 결과는 Agent Connection replay나 조회 대상이 아닙니다. 즉시 또는 이후의 채널 resolution은
 별도 nullable projection입니다. resolution ref는 불변 resolution을 식별하지만 private
 body를 조회하지 않습니다. agent-safe 값은 사용자 자유 형식 note, 관찰 summary, channel
 submission identity, verification basis, assurance text를 제외합니다. 요청 operation

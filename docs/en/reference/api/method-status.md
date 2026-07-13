@@ -92,11 +92,13 @@ Non-claim: `StatusResult.close_blockers` are not stored close results, correctne
 Include projection contract:
 
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
-- `include.pending_user_actions` returns current pending user-action request
-  refs, `pending_user_action_inbox_items`, and `user_channel_availability` for
-  supported resolution paths in the current invocation context. Relevant stale
-  or superseded requests appear through existing result fields such as
-  `blocker_refs` and `next_actions.required_refs`.
+- `include.pending_user_actions` returns `pending_user_action_summaries`. The
+  public result never returns User Channel availability, the Core-derived
+  request body, canonical form, or a complete `UserActionInboxItem`. A verified
+  User Channel renderer fetches the availability and complete item through its
+  separate internal Core boundary. Relevant stale or superseded records can
+  still appear as opaque authority refs in owner-defined state and next-action
+  fields; those refs are not request-detail projections.
 - `include.write_ticket` returns active, expired, stale, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`.
 - `write_ticket_summary` is a compatibility summary only; it is not filesystem access, shell approval, final acceptance, ordinary write approval, or proof that a write occurred.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available, plus the canonical `evidence_gate` projection.
@@ -144,9 +146,7 @@ Truthful projection rules:
 | `active_task` | `StateSummary | null` for the currently selected Task summary. |
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. A non-empty list has exactly one `presentation_role=primary`; `summary_card.next_action` selects that action rather than relying on array position. |
-| `pending_user_actions` | `StateRecordRef[]` with `record_kind=user_action_request` for effectively pending requests selected into the status view. |
-| `pending_user_action_inbox_items` | `UserActionInboxItem[]` for pending requests needing user action when `include.pending_user_actions=true`. Shape is owned by [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). |
-| `user_channel_availability` | `UserChannelAvailability` for supported resolution paths when `include.pending_user_actions=true` and a Task-scoped user-action view is available. It may report one path unavailable while retaining other available paths. Shape is owned by [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). |
+| `pending_user_action_summaries` | `AgentSafeUserActionRequestSummary[]` containing only request ID, `status=pending`, and `next_actor=user` for each selected pending request. This is the Agent Connection projection. |
 | `blocker_refs` | `StateRecordRef[]` for blocker records visible in the current status view. |
 | `write_ticket_summary` | `WriteTicketStateSummary | null` for the write-ticket projection. When `include.write_ticket=true`, `null` means no relevant write ticket is available; when the projection is not selected, this fixed-shape field remains `null`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `evidence_summary` | `EvidenceSummary | null` when `include.evidence=true`; explicit `null` means the selected projection found no current evidence summary. The field is omitted when `include.evidence=false`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
@@ -162,7 +162,7 @@ Truthful projection rules:
 | `task_flow` | `TaskFlowItem[]` when `include.continuity=true` and a Task is selected; omitted otherwise. It is the connected lineage projection, not inherited current authority. |
 | `authority_receipt` | Fresh `AuthorityReceipt` whenever a Task is selected, otherwise `null`. It uses the same observed `state_version` and carries the complete close-blocker set, latest recorded Run, product-write observation, evidence gate, and next actor/action. Shape is owned by [API State Schemas](schema-state.md#task-lineage-workspace-and-authority-receipt). |
 
-Nested `UserChannelAvailability` and `UserActionInboxItem` shapes are owned by
+The nested `AgentSafeUserActionRequestSummary` shape is owned by
 [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). Nested
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
 `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuitySummary`,
@@ -204,7 +204,12 @@ A valid request returns the same `StatusResult` shape with:
 
 This method does not persist Core state changes, events, replay rows, close mutations, or state-version increments. When invoked through a session-bound Agent Connection, runtime session-watch diagnostic records may be initialized as described above. Exact persistence semantics are owned by the storage documents linked below.
 
-The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the status branch, observed refs, state version, current scope, current Change Unit, close state, and next actions.
+The examples are intentionally compact and method-local. The representative
+response is the public agent-safe status projection. A verified User Channel
+renderer obtains the complete canonical inbox form through its separate
+internal Core boundary, never through `StatusResult`. The response is
+abbreviated to the fields needed to show the status branch, observed refs,
+state version, current scope, current Change Unit, close state, and next actions.
 
 Method-local precondition: `task_export_001`, `cu_export_001`, and `ua_export_columns_001` already exist in `proj_export_001` at the listed state versions. The read-only response observes those refs; it does not create them.
 
@@ -274,12 +279,10 @@ active_task:
     produced_at_state_version: 42
   baseline_ref: baseline_export_001
   shaping_readiness: null
-  pending_user_action_request_refs:
-    - record_kind: user_action_request
-      record_id: ua_export_columns_001
-      project_id: proj_export_001
-      task_id: task_export_001
-      produced_at_state_version: 42
+  pending_user_action_summaries:
+    - user_action_request_id: ua_export_columns_001
+      status: pending
+      next_actor: user
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
@@ -289,29 +292,19 @@ active_task:
   close_blockers:
     - category: pending_user_action
       code: pending_user_action
-      message: "User-owned product decision about CSV column order is still pending."
+      message: "A user-owned action is pending."
       can_resolve_in_chat: false
       outside_chat_action_required: false
-      related_refs:
-        - record_kind: user_action_request
-          record_id: ua_export_columns_001
-          project_id: proj_export_001
-          task_id: task_export_001
-          produced_at_state_version: 42
+      related_refs: []
       next_actions:
         - presentation_role: primary
           action_kind: resolve_user_action
           owner_method: volicord.resolve_user_action
           allowed_operation_categories: [user_only]
-          label: "The user must answer the pending CSV column decision through the User Channel."
-          blocking_question: "What is the user's answer for the pending CSV column decision?"
+          label: "The user must resolve the pending action through a User Channel."
+          blocking_question: null
           expected_state_version: null
-          required_refs:
-            - record_kind: user_action_request
-              record_id: ua_export_columns_001
-              project_id: proj_export_001
-              task_id: task_export_001
-              produced_at_state_version: 42
+          required_refs: []
   guarantee_display:
     level: cooperative
     basis: "No stronger local guarantee is currently applied."
@@ -322,90 +315,14 @@ next_actions:
     action_kind: resolve_user_action
     owner_method: volicord.resolve_user_action
     allowed_operation_categories: [user_only]
-    label: "The user must answer the pending CSV column decision through the User Channel."
-    blocking_question: "What is the user's answer for the pending CSV column decision?"
+    label: "The user must resolve the pending action through a User Channel."
+    blocking_question: null
     expected_state_version: null
-    required_refs:
-      - record_kind: user_action_request
-        record_id: ua_export_columns_001
-        project_id: proj_export_001
-        task_id: task_export_001
-        produced_at_state_version: 42
-pending_user_actions:
-  - record_kind: user_action_request
-    record_id: ua_export_columns_001
-    project_id: proj_export_001
-    task_id: task_export_001
-    produced_at_state_version: 42
-user_channel_availability: &user_channel_availability_example
-  paths:
-    - kind: mcp_elicitation
-      label: "Host prompt input"
-      available: false
-      status: unavailable
-      capture_basis: mcp_elicitation_user_channel
-      detail: "Host prompt input is unavailable for this invocation."
-    - kind: prompt_capture
-      label: "Chat command capture"
-      available: false
-      status: unavailable
-      capture_basis: user_prompt_submit_hook
-      detail: "Chat command capture is not currently available for this connection."
-    - kind: local_web_consent
-      label: "Local consent URL"
-      available: false
-      status: unavailable
-      capture_basis: local_user_local_web
-      detail: "No local consent URL is available for this invocation."
-    - kind: cli
-      label: "CLI inbox"
-      available: true
-      status: available
-      capture_basis: cli_direct_user_channel
-      detail: "Answer from the local terminal as the user."
-  recommended_path_kind: cli
-  recommended_path_label: "CLI inbox"
-  recommendation: "Use CLI inbox to resolve the pending user action."
-pending_user_action_inbox_items:
+    required_refs: []
+pending_user_action_summaries:
   - user_action_request_id: ua_export_columns_001
-    request_ref:
-      record_kind: user_action_request
-      record_id: ua_export_columns_001
-      project_id: proj_export_001
-      task_id: task_export_001
-      produced_at_state_version: 42
-    project_id: proj_export_001
-    task_id: task_export_001
-    change_unit_id: cu_export_001
-    action_kind: product_decision
-    question: "Which CSV column order should be used?"
-    context_summary: "The export needs one stable column order."
-    required: true
-    requirement_status: required
-    required_for: [close_complete]
     status: pending
-    form:
-      form_type: choice
-      choices:
-        - choice_id: accept
-          label: "Use the proposed CSV column order"
-          description: "Keep the reviewed proposal."
-          consequence: "The export order becomes the reviewed order."
-          is_default: false
-      note_allowed: true
-      note_max_chars: 1000
-    answer_path_availability: *user_channel_availability_example
-    preferred_capture_path:
-      kind: cli
-      label: "CLI inbox"
-      available: true
-      command: "volicord inbox resolve ua_export_columns_001 --choice <choice>"
-      url: null
-      capture_basis: cli_direct_user_channel
-      expires_at: null
-      detail: "Resolve from the local terminal as the user."
-    fallbacks: []
-    expires_at: null
+    next_actor: user
 blocker_refs: []
 evidence_gate:
   state: not_required
@@ -415,29 +332,19 @@ risk_acceptance_coverage: []
 close_blockers:
   - category: pending_user_action
     code: pending_user_action
-    message: "User-owned product decision about CSV column order is still pending."
+    message: "A user-owned action is pending."
     can_resolve_in_chat: false
     outside_chat_action_required: false
-    related_refs:
-      - record_kind: user_action_request
-        record_id: ua_export_columns_001
-        project_id: proj_export_001
-        task_id: task_export_001
-        produced_at_state_version: 42
+    related_refs: []
     next_actions:
       - presentation_role: primary
         action_kind: resolve_user_action
         owner_method: volicord.resolve_user_action
         allowed_operation_categories: [user_only]
-        label: "The user must answer the pending CSV column decision through the User Channel."
-        blocking_question: "What is the user's answer for the pending CSV column decision?"
+        label: "The user must resolve the pending action through a User Channel."
+        blocking_question: null
         expected_state_version: null
-        required_refs:
-          - record_kind: user_action_request
-            record_id: ua_export_columns_001
-            project_id: proj_export_001
-            task_id: task_export_001
-            produced_at_state_version: 42
+        required_refs: []
 guarantee_display:
   level: cooperative
   basis: "No stronger local guarantee is currently applied."

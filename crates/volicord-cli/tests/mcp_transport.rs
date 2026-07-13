@@ -421,10 +421,8 @@ fn volicord_mcp_subcommand_stdio_resolves_user_action_with_elicitation(
     assert_eq!(values[1]["id"], "elicit_user_action_1");
     let projection = volicord_response(&values[2])?;
     let response = &projection["method_result"];
-    assert_eq!(
-        response["agent_workflow_result"]["user_action_request"]["status"],
-        "pending"
-    );
+    assert_agent_safe_pending_user_action_summary(response);
+    assert_model_visible_user_action_private_fields_absent(&values[2]["result"]);
     assert!(response["user_channel_resolution_ref"].is_object());
     let resolution = &response["user_channel_resolution"];
     assert_eq!(resolution["action_kind"], "product_decision");
@@ -491,18 +489,17 @@ fn volicord_mcp_subcommand_stdio_without_elicitation_returns_cli_recovery_fallba
     assert_eq!(responses.len(), 2);
     let projection = volicord_response(&responses[&2])?;
     let response = &projection["method_result"];
-    assert_eq!(
-        response["agent_workflow_result"]["user_action_request"]["status"],
-        "pending"
-    );
+    assert_agent_safe_pending_user_action_summary(response);
+    assert_model_visible_user_action_private_fields_absent(&responses[&2]["result"]);
     assert!(response["user_channel_resolution_ref"].is_null());
     assert!(response["user_channel_resolution"].is_null());
     let fallback = responses[&2]["result"]["content"][1]["text"]
         .as_str()
         .expect("fallback text should be present");
-    assert!(fallback.contains("Host prompt input is unavailable"));
-    assert!(fallback.contains("CLI inbox path"));
-    assert!(fallback.contains("volicord inbox resolve"));
+    assert!(fallback.contains("pending UserAction requires the user"));
+    assert!(fallback.contains("`volicord inbox`"));
+    assert!(!fallback.contains("volicord inbox resolve"));
+    assert!(!fallback.contains("request.operation=resume"));
     assert!(!fallback.contains("Volicord: resolve A-1"));
 
     let record = fixture.stored_user_action(&task_id, response)?;
@@ -708,13 +705,14 @@ impl McpFixture {
         response: &Value,
     ) -> Result<volicord_store::core_pipeline::EffectiveUserActionRecord, Box<dyn Error>> {
         let user_action_request_id = response
-            .pointer("/user_action_request_ref/record_id")
+            .pointer("/user_action_request_summary/user_action_request_id")
             .or_else(|| {
-                response.pointer("/agent_workflow_result/user_action_request_ref/record_id")
+                response.pointer(
+                    "/agent_workflow_result/user_action_request_summary/user_action_request_id",
+                )
             })
-            .or_else(|| response.pointer("/request_ref/record_id"))
             .and_then(Value::as_str)
-            .ok_or("response should include user_action_request_ref.record_id")?;
+            .ok_or("response should include user_action_request_summary.user_action_request_id")?;
         let store = volicord_store::core_pipeline::CoreProjectStore::open(
             self.runtime_home_path(),
             &ProjectId::new(self.project_id()),
@@ -728,6 +726,92 @@ impl McpFixture {
             .find(|record| record.request.user_action_request_id == user_action_request_id)
             .ok_or("stored user-action record should exist")?;
         Ok(record)
+    }
+}
+
+fn assert_agent_safe_pending_user_action_summary(response: &Value) -> &str {
+    let agent_result = response["agent_workflow_result"]
+        .as_object()
+        .expect("request_user_action result should include agent_workflow_result");
+    let summary = agent_result
+        .get("user_action_request_summary")
+        .and_then(Value::as_object)
+        .expect("agent_workflow_result should include user_action_request_summary");
+    let actual_keys = summary.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    let expected_keys = ["next_actor", "status", "user_action_request_id"]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(actual_keys, expected_keys);
+    assert_eq!(summary.get("status"), Some(&json!("pending")));
+    assert_eq!(summary.get("next_actor"), Some(&json!("user")));
+    summary
+        .get("user_action_request_id")
+        .and_then(Value::as_str)
+        .filter(|request_id| !request_id.is_empty())
+        .expect("safe pending summary should include a non-empty request id")
+}
+
+fn assert_model_visible_user_action_private_fields_absent(tool_result: &Value) {
+    let model_visible = json!({
+        "content": tool_result["content"].clone(),
+        "structuredContent": tool_result["structuredContent"].clone()
+    });
+    let mut forbidden_keys = BTreeSet::new();
+    collect_forbidden_user_action_keys(&model_visible, &mut forbidden_keys);
+    assert!(
+        forbidden_keys.is_empty(),
+        "model-visible UserAction projection exposed forbidden keys: {forbidden_keys:?}"
+    );
+    let rendered = serde_json::to_string(&model_visible)
+        .expect("model-visible UserAction projection should serialize");
+    let normalized = rendered.to_ascii_lowercase();
+    for forbidden in [
+        "http://",
+        "https://",
+        "/consent?",
+        "token=",
+        "choose the focused user channel outcome",
+        "user_action_request_ref",
+        "request_ref",
+    ] {
+        assert!(
+            !normalized.contains(forbidden),
+            "model-visible UserAction projection exposed forbidden text {forbidden:?}"
+        );
+    }
+}
+
+fn collect_forbidden_user_action_keys<'a>(value: &'a Value, found: &mut BTreeSet<&'a str>) {
+    const FORBIDDEN: &[&str] = &[
+        "user_action_request",
+        "user_action_request_ref",
+        "request_ref",
+        "inbox_item",
+        "question",
+        "options",
+        "form",
+        "preferred_capture_path",
+        "answer_path_availability",
+        "user_channel_availability",
+        "command",
+        "url",
+        "token",
+    ];
+    match value {
+        Value::Object(object) => {
+            for (key, child) in object {
+                if FORBIDDEN.contains(&key.as_str()) {
+                    found.insert(key.as_str());
+                }
+                collect_forbidden_user_action_keys(child, found);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                collect_forbidden_user_action_keys(child, found);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
     }
 }
 

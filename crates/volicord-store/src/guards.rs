@@ -2223,7 +2223,7 @@ fn guard_installation_from_row(row: &Row<'_>) -> rusqlite::Result<GuardInstallat
     })
 }
 
-fn agent_session_from_conn(
+pub(crate) fn agent_session_from_conn(
     conn: &Connection,
     project_id: &str,
     session_id: &str,

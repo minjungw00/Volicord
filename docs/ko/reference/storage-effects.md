@@ -658,7 +658,8 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `user_action_requests` 행 하나를 생성합니다.
-- 닫힌 요청, canonical 캡처 폼, Core 파생 근거, 현재 근거 상태, required-for 대상, 후보, 만료, 정확한 원천 메서드/idempotency 관계를 저장합니다.
+- Core가 canonical 캡처 폼을 도출하는 닫힌 요청과 Core 파생 근거, 현재 근거 상태,
+  required-for 대상, 후보, 만료, 정확한 원천 메서드/idempotency 관계를 저장합니다.
 - 영향받은 차단 사유를 갱신합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
@@ -667,7 +668,9 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 `source_method=volicord.request_user_action`이면 직접 원천
 `(project_id, source_idempotency_key)`는 고유합니다. MCP
 `request.operation=resume` 분기는 같은 Agent Connection 접근 범위에서 그 행과 불변 원래
-replay 응답만 읽습니다. Resume은 요청, event, replay 행, token, resolution, prompt,
+replay 응답 전체가 현재의 닫힌 agent-safe 결과 형태로 strict decode된 뒤에만 읽습니다.
+기존 또는 혼합 full-form replay 행은 다시 쓰지 않고 `MCP_UNAVAILABLE`로 닫힌 상태로
+실패합니다. Resume은 요청, event, replay 행, token, resolution, prompt,
 blocker 갱신, state version을 만들지 않고 영속 정규 UTC 하한도 갱신하지 않습니다.
 
 MCP가 새로 생성한 대기 요청에 로컬 web fallback을 사용할 때 token 발급은 별도의
@@ -675,6 +678,13 @@ MCP가 새로 생성한 대기 요청에 로컬 web fallback을 사용할 때 to
 원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다.
 발급은 추가 권한 이벤트나 재실행 행을 만들지 않고 `state_version`도 증가시키지
 않습니다.
+Token 행은 현재 adapter evaluator가 준비된 listener와 client의 정확한 모델 비가시 표면
+capability를 모두 확인한 뒤에만 만듭니다. 폐쇄형 생성 metadata는 정확히
+`{fallback_kind=local_web_consent,
+delivery_surface=model_invisible_user_surface, endpoint=/consent,
+form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못되거나 일치하지 않으면 그
+행은 수정된 코드에서 영구적으로 사용할 수 없으며 GET, POST, 소비, resolution은 아무
+효과도 만들지 않습니다. 가용성 계산이나 보고만을 위해 token을 발급하지 않습니다.
 
 효과가 없는 분기:
 

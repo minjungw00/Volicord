@@ -81,6 +81,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -177,7 +180,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3ae5bec66b534f2f7d6802081e96c01c08e5a7721fbb0f60e7fc1b6891c2cdaf"
+        "sha256": "sha256:b4df2636c98bf663c7019a30e430a6ea45497c35e9598ab55a5903ce67eabfb2"
       }
     },
     {
@@ -227,6 +230,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -323,7 +329,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bbf885ffe904af33c8199577a8fabcf8c9907e71961cb9cef550b854240d7feb"
+        "sha256": "sha256:71a9606e7442095682d7df9d025bfc24e3959080aaa10422a3a6c2cd7c2ace94"
       }
     },
     {
@@ -352,6 +358,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -380,7 +389,6 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
-          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -441,15 +449,6 @@
           "ToolRejectedResponse",
           "ToolResponse_for_StatusResult",
           "ToolResultBase",
-          "UserActionCapturePath",
-          "UserActionInboxChoice",
-          "UserActionInboxForm",
-          "UserActionInboxItem",
-          "UserActionKind",
-          "UserActionRequiredFor",
-          "UserActionStatus",
-          "UserChannelAvailability",
-          "UserChannelPathAvailability",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -459,7 +458,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:511825a50b5efa703f0fcc8220f31da77e5f139c534f72054f9c786cced20a22"
+        "sha256": "sha256:0507d7c963f1d385b966191dc30c6192baca4093ed8dd78837cd32f691dfdcf6"
       }
     },
     {
@@ -660,6 +659,9 @@
           "AcceptancePolicy",
           "AcceptedRiskInput",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -771,7 +773,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1d6fbcd3b5427d9424a9c06acbd6a8dd8e2456a5fc07b3d76dae21842cfe9877"
+        "sha256": "sha256:7ce9330f8e09289af1a0ac7987fce0fe16e4287da3c440d77505a6102b4432bb"
       }
     },
     {
@@ -945,6 +947,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -1065,7 +1070,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1193be278a7ba5310bdf21022014c610fb6e4fa5209fa5121e3668acad1f1c12"
+        "sha256": "sha256:18cc2ff349582511faf7403d2a5134c69922ee92f980d48ef39d3fce0ea0f336"
       }
     },
     {
@@ -1113,8 +1118,10 @@
         "definitions": [
           "AcceptanceCriterion",
           "AcceptancePolicy",
-          "AcceptedRiskInput",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "AgentSafeUserActionResolution",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
@@ -1156,8 +1163,6 @@
           "GuardObservationStatus",
           "HostKind",
           "IntegrationProfile",
-          "JudgmentKind",
-          "JudgmentPresentation",
           "JudgmentResolutionOutcome",
           "McpAuthoritativeRefreshFailure_for_McpRequestUserActionCompactResult",
           "McpMutationEffectSummary",
@@ -1190,7 +1195,6 @@
           "RedactionState",
           "RequestUserActionResult",
           "ResponseKind",
-          "SensitiveActionScope",
           "SessionWatchCoverageBasis",
           "SessionWatchScanSummary",
           "SessionWatchStatus",
@@ -1211,24 +1215,10 @@
           "ToolRejectedResponse",
           "ToolResponse_for_RequestUserActionResult",
           "ToolResultBase",
-          "UserActionBasis",
-          "UserActionBasisCoordinates",
-          "UserActionBasisStatus",
-          "UserActionCapturePath",
           "UserActionChannelKind",
-          "UserActionContext",
-          "UserActionInboxChoice",
-          "UserActionInboxForm",
-          "UserActionInboxItem",
           "UserActionKind",
-          "UserActionOption",
           "UserActionOptionAction",
-          "UserActionRequest",
-          "UserActionRequestBody",
-          "UserActionRequiredFor",
           "UserActionStatus",
-          "UserChannelAvailability",
-          "UserChannelPathAvailability",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1238,7 +1228,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b84bff0af7891b6eb993688a6ef0d581540bcb0e16d21d0aae1eaee495250f20"
+        "sha256": "sha256:fe76610fa78318801f81eae66bc5bbf88a974f946978e3bd417df27b46e97374"
       }
     },
     {
@@ -1272,6 +1262,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -1375,7 +1368,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6688ef6d190195e8b18b969b9a89c7105e5d3af4185bdcb98ea26cb5811dc155"
+        "sha256": "sha256:44d1477463936a9a4a585bb6d7195989ab65d9d4e9166f41561941e2b8162110"
       }
     },
     {
@@ -1403,6 +1396,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -1430,7 +1426,6 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
-          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -1488,15 +1483,6 @@
           "ToolRejectedResponse",
           "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
-          "UserActionCapturePath",
-          "UserActionInboxChoice",
-          "UserActionInboxForm",
-          "UserActionInboxItem",
-          "UserActionKind",
-          "UserActionRequiredFor",
-          "UserActionStatus",
-          "UserChannelAvailability",
-          "UserChannelPathAvailability",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1506,7 +1492,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0416086c24475a6c18fd34df5e853fc0061ab0297bdbf6e8f66c45fae6863fb1"
+        "sha256": "sha256:2cc87c35918d14e7cb44eeff052b82e51dd0571a5e064bf64cd0abd2ddc52a68"
       }
     },
     {
@@ -1544,6 +1530,9 @@
           "AcceptanceCriterion",
           "AcceptancePolicy",
           "ActorSource",
+          "AgentSafePendingUserActionStatus",
+          "AgentSafeUserActionNextActor",
+          "AgentSafeUserActionRequestSummary",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -1573,7 +1562,6 @@
           "EvidenceDisplayState",
           "EvidenceGateState",
           "EvidenceGateSummary",
-          "EvidenceRelevanceStatus",
           "EvidenceRequirement",
           "EvidenceStatus",
           "EvidenceSummary",
@@ -1643,15 +1631,6 @@
           "ToolRejectedResponse",
           "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
-          "UserActionCapturePath",
-          "UserActionInboxChoice",
-          "UserActionInboxForm",
-          "UserActionInboxItem",
-          "UserActionKind",
-          "UserActionRequiredFor",
-          "UserActionStatus",
-          "UserChannelAvailability",
-          "UserChannelPathAvailability",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1661,7 +1640,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1490e8c78aca7ede888e7dcab8b33807758227f9c8a648f8e5bc40c6527e95d3"
+        "sha256": "sha256:0e1bd60c7c6ce570a65bf74b13f92bc0882b08d48bf3582aa101c8f73b14137c"
       }
     },
     {

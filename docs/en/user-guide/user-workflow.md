@@ -123,8 +123,10 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 Choose only an option displayed for that pending judgment. One answer resolves
-only that judgment. An Agent Connection may show the question and explain the
-options, but it does not record the user's answer.
+only that judgment. The Agent Connection shows only the request ID,
+`status=pending`, and `next_actor=user`; the exact question and options appear
+only on the verified User Channel host surface or in `volicord inbox`. The Agent
+does not receive the canonical form or record the user's answer.
 
 Exact command behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#user-channel-commands). Exact

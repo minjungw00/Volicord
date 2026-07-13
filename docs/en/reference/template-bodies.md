@@ -352,7 +352,10 @@ command on the same bounded surface.
 ### Input state
 
 - Current read-only state returned by `volicord.status`.
-- Display inputs such as `StateSummary`, blockers, pending `UserActionInboxItem` entries, evidence summary and provenance state, close-readiness observations, residual-risk coverage, project continuity summary, guarantee display, and next safe action.
+- Display inputs such as `StateSummary`, blockers, pending
+  `AgentSafeUserActionRequestSummary` entries, evidence summary and provenance
+  state, close-readiness observations, residual-risk coverage, project
+  continuity summary, guarantee display, and next safe action.
 - Freshness cues such as source refs, `state_version`, observation time, stale markers, unavailable markers, or capability-limited markers when present.
 - Artifact availability only through owner-approved `ArtifactRef` display data or an owner-approved unavailable/redacted note.
 
@@ -377,6 +380,13 @@ command on the same bounded surface.
 - A green or positive label is a canonical enum value without support from [API Value Sets](api/schema-value-sets.md).
 - Artifact availability alone proves evidence sufficiency.
 - Missing source data can be replaced by optimistic wording.
+- An existing pending request's question, options, context, canonical form,
+  capture path, command, URL, or credential can be reconstructed from blocker,
+  next-action, or template text. Display that request only by request ID,
+  `pending`, and next actor/User Channel. A pre-request
+  `missing_final_acceptance` action may still show the blocking question needed
+  for the Agent to create the request; after creation, the generic pending rule
+  applies.
 
 ### User-facing wording
 
@@ -409,7 +419,9 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- One pending user-owned judgment request returned by `volicord.request_user_action`.
+- One Core-derived internal `UserActionInboxItem` supplied to a verified User
+  Channel renderer. This template is never built from the Agent-facing
+  `volicord.request_user_action` result, which contains only the safe summary.
 - Exact question and bounded options.
 - Rationale, uncertainty, affected scope, consequence of deferral, and non-substitution notes.
 - Any linked source refs, `state_version`, and freshness or capability-limited notes.
@@ -429,6 +441,8 @@ Otherwise, avoid those words.
 - A broad yes replaces sensitive-action approval, final acceptance, residual-risk acceptance, or any other distinct judgment.
 - The answer creates evidence, verifies work, or authorizes unrelated writes.
 - Grouped questions can be recorded as one answer when the decisions are separate.
+- This complete question/options template may be rendered in Agent Connection
+  output, fallback text, status, close, replay, or operation-result bytes.
 
 ### User-facing wording
 
@@ -509,7 +523,8 @@ Otherwise, avoid those words.
 ### Input state
 
 - `CloseTaskResult` returned by `volicord.check_close` or `volicord.close_task`.
-- `CloseReadinessBlocker[]`, evidence summary, and pending user actions.
+- `CloseReadinessBlocker[]`, evidence summary, and pending
+  `AgentSafeUserActionRequestSummary` entries.
 - Final-acceptance state, residual-risk state, and artifact availability.
 - Project continuity records returned by the close result.
 - Source refs, freshness cues, and the requested method or close intent.
@@ -532,6 +547,11 @@ Otherwise, avoid those words.
 - Broad approval substitutes for final acceptance or residual-risk acceptance.
 - The body may hide blockers inside successful-looking prose.
 - Missing evidence or unavailable artifacts can be satisfied by close wording.
+- An existing pending request's question, options, context, form, capture path,
+  command, URL, or credential can appear in blocker or next-action prose. Use
+  only its agent-safe summary and generic User Channel guidance. The separate
+  pre-request `missing_final_acceptance` state may show the question required to
+  create a request.
 
 ### User-facing wording
 
@@ -561,7 +581,8 @@ an actual state-changing close result.
 ### Input state
 
 - Current task summary, current scope, and out-of-scope items.
-- Pending user actions, blockers, and next safe actions.
+- Pending `AgentSafeUserActionRequestSummary` entries, blockers, and next safe
+  actions.
 - Evidence gaps and artifact availability summary.
 - Close readiness, residual-risk summary, and guarantee level.
 - Source refs and freshness cues.
@@ -586,6 +607,8 @@ an actual state-changing close result.
 - The agent may bypass user judgment, write-ticket, artifact rules, or close blockers.
 - The packet should include full schemas, DDL, logs, artifact bodies, or unrelated contract material by default.
 - The packet should include out-of-scope capability catalogs or paired bilingual docs by default.
+- The packet should include or reconstruct a pending request's question,
+  options, context, canonical form, capture path, command, URL, or credential.
 
 ### User-facing wording
 

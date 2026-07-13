@@ -126,17 +126,22 @@ Volicord 보안 주장은 로컬 행위자가 Volicord 상태, 기록, 아티팩
 - `operation_category`는 작업을 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 분류합니다.
 - 기준 행위자 출처는 협력적 로컬 출처이지 암호학적 인간 신원 증명이 아닙니다.
 
-에이전트 대상 User Channel 경계에서 Volicord는 질문, context summary, 완전하게 렌더링한
-닫힌 폼을 사용자 전용 입력 표면이 필요한 presentation으로 보수적으로 분류할 수
-있습니다. 이 경우 새로운 MCP elicitation이나 풍부한 prompt-capture presentation을 열지
-않고 local web consent 또는 CLI inbox 경로를 유지합니다. 사용자 전용 표면은 완전한
-canonical 폼을 계속 표시하며 변경 불가능한 과거 Agent Connection 결과를 가리거나 다시
-쓰지 않습니다. 이 표면 경로 선택 규칙은 일반 비밀값 검사, 콘텐츠 격리, 악성코드 탐지,
-호스트 강제, 임의의 비밀값을 찾았거나 배제했다는 증명이 아닙니다.
+Core가 도출한 영속 사용자 행동 요청·본문·근거, 완전한 inbox 항목, canonical 캡처 form,
+캡처 경로, credential은 검증된 User Channel renderer에만 반환합니다. Agent가 자신이
+작성한 draft text를 이미 알고 있을 수 있습니다. 이 규칙은 권한 있는 저장 projection의
+비공개 규칙이지 Agent가 자신의 입력을 본 적이 없다는 주장이 아닙니다. Agent Connection
+결과는 정규 대기 요청 요약과 안전한 현재 resolution projection만 담습니다. 이는 콘텐츠
+가림 처리가 아니라 projection 경계입니다. 완전한 form은
+처음부터 에이전트 결과, 정확한 replay, operation-result byte에 기록하지 않습니다.
+사용자 전용 표면은 완전한 canonical 폼을 계속 표시합니다. Presentation safety 분류가
+추가로 풍부한 host 입력 경로를 거절할 수 있지만 이 규칙은 일반 비밀값 검사, 콘텐츠
+격리, 악성코드 탐지, host 강제, 임의의 비밀값을 찾았거나 배제했다는 증명이 아닙니다.
 
 주장하면 안 되는 것:
 - 로컬 파일시스템 접근이 Volicord 권한을 증명한다는 주장.
-- 로컬 경로, 디렉터리 이름, 복사된 식별자, 표시된 식별자, 렌더링된 텍스트가 보안 토큰이라는 주장.
+- 로컬 경로, 디렉터리 이름, 복사된 식별자, 표시된 non-credential 식별자, 일반 렌더링
+  text가 보안 token이라는 주장. 원문 local-web token과 이를 포함한 완전한 URL은 bearer
+  credential이며 이 비주장에 포함되지 않습니다.
 - 문서화된 Volicord 계약 밖의 직접 로컬 수정이 유효한 Volicord 기록, 증거, 수락, 잔여 위험 수락, 쓰기 티켓, 아티팩트 권한을 만든다는 주장.
 - `Volicord Runtime Home`이 자동으로 OS 보안 경계, 샌드박스, 격리 계층이라는 주장.
 - 호출자가 제공한 `verified` 플래그, 요청된 `operation_category`, 복사된 `actor_source`, 공개 요청 필드, 환경 변수가 Volicord 권한을 부여하거나 신뢰된 출처를 제공한다는 주장.
@@ -195,6 +200,13 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - `connection_internal_id`, 연결 의도, `connection.mode`, Connection Projects, `operation_category`, `actor_source`는 현재 호출이 문서화된 연결 맥락에 맞은 뒤 런타임, Core, 메서드, 보안 담당 문서에 따라 사용할 수 있습니다.
 - `actor_source`는 Core와 메서드 담당 문서가 현재 권한 해결 동작에 대해 그 값을 받아들일 때만 지속되는 출처 정보를 제공할 수 있습니다.
 - 판단과 Evidence 관찰을 포함한 권한 효력이 있는 사용자 행동 resolution에는 `User Channel`을 통한 `actor_source=local_user`가 필요합니다.
+- 원문 User Channel bearer token이나 credential을 포함한 URL은 `content`,
+  `structuredContent`, 호환·진단 text, 정확한 replay, operation-result byte를 포함한 Agent
+  대상·모델 맥락 또는 공개 출력 projection에 들어가면 안 됩니다. Local-web 전달에는 loopback listener와
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`의
+  정확한 boolean `true`가 모두 필요하며 유일한 host-only 예외로 URL을 `outputSchema`와
+  모델 맥락 밖의 namespaced 최상위 tool-result `_meta` handoff에만 둡니다. Capability가 없거나 false이거나 잘못된 형태이면
+  token을 발급하지 않고 CLI inbox 복구를 남깁니다.
 - Workflow Agent Connection은 현재 evidence-capture intent를 만들 수 있습니다. 등록된
   local source만 이를 fulfillment할 수 있고, receipt를 producer와 observation으로
   finalization할 수 있는 메서드는 `record_run`뿐입니다. MCP receipt-fulfillment
@@ -232,9 +244,11 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 제외합니다. 특히 정확한 `volicord.resolve_user_action` 응답, 사용자의 자유 형식
 `note`, Evidence 관찰 `summary`를 `volicord.get_operation_result`로 반환하면 안
 됩니다. 호스트가 중개한 사용자 행동 흐름은 에이전트 소유 요청에 대해 MCP 전송
-담당 문서가 정의한 에이전트용 상태 보기만 노출할 수 있습니다. 간결한 형태와 full
-형태는 모두 비공개 `note`와 Evidence 관찰 `summary`를 생략하며, 어느 형태도
-user-only 작업 ref나 정확한 응답 본문을 노출하지 않습니다.
+담당 문서가 정의한 에이전트용 상태 보기만 노출할 수 있습니다. Compact, full, resume,
+page 단위 과거 형태는 대기 요청에 대해 요청 ID, 과거 `pending` 상태,
+`next_actor=user`만 담습니다. 완전한 요청, inbox 폼, 비공개 `note`, Evidence 관찰
+`summary`, User Channel credential, user-only 작업 ref, 정확한 응답 본문을 생략합니다.
+이 안전 형태에 맞지 않는 보정 전 저장 결과는 일부를 반환하지 않고 unavailable입니다.
 
 조회한 바이트는 과거 결과를 설명합니다. `AuthorityReceipt`, 현재 상태, 증거,
 쓰기 티켓이 아니며 과거 상태가 여전히 현재라는 증명도 아닙니다. 현재 권한을
@@ -352,6 +366,11 @@ token이 아니라 domain-separated hash와 digest-only submission/replay identi
 폐쇄형 완료 맥락에 결속하고 replay 또는 커밋 전에 다시 검증합니다. 이 점검은 서로 다른
 로컬 credential이나 맥락이 해당 replay를 여는 것을 막지만 사람 신원을 증명하거나
 listener를 인증·인가 서비스로 바꾸지는 않습니다.
+원문 token은 협상된 모델 비가시적 host 표면에 대해서만 발급하고 Agent Connection 출력에
+들어가면 안 됩니다. 폐기된 전달 계약으로 만든 token에는 필수 delivery-surface marker가
+없으므로 수정된 코드에서 영구적으로 사용할 수 없습니다. GET과 POST는 표시나
+효과 없이 닫힌 상태로 실패합니다. 그 행은 upgrade하지 않으며 대기 행동은 CLI 같은
+다른 유효한 User Channel로 계속 해결할 수 있습니다.
 
 ### 포괄적 권한 추론
 

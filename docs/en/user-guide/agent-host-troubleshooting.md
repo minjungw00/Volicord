@@ -222,7 +222,9 @@ may already exist.
 Other actionable `Next` lines stay local to the selected workflow. If output
 names `volicord inbox`, inspect or resolve the pending user action from the
 terminal. If output says no local consent URL is available, use the shown CLI
-resolution command or the URL already shown by the MCP user-action inbox item. If the
+inbox guidance. If a model-invisible host-owned consent surface is presented,
+use it directly in that host UI; an Agent-visible MCP inbox item never contains
+the URL. Otherwise run `volicord inbox` in the terminal. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 

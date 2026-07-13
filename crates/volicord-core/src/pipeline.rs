@@ -7,7 +7,7 @@ use std::{
 };
 
 use chrono::{DateTime, Timelike, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
@@ -18,12 +18,15 @@ use volicord_store::{
     StoreError, StoreFailureRoute, StoreResult,
 };
 use volicord_types::{
-    canonical_request_hash, ActorSource, ChangeUnitId, DryRunSummary, DurableIdError,
-    DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef,
-    GuaranteeDisclosure, IdempotencyKey, JsonObject, MethodName, OperationCategory,
-    OperationResultRef, ProjectId, RandomDurableIdGenerator, RequestHash, ResponseKind, TaskId,
+    canonical_request_hash, ActorSource, ChangeUnitId, CheckCloseResponse, CloseTaskResponse,
+    DryRunSummary, DurableIdError, DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode,
+    EventId, EventRef, GetOperationResultResponse, GuaranteeDisclosure, IdempotencyKey,
+    IntakeResponse, JsonObject, MethodName, OperationCategory, OperationResultRef,
+    PrepareEvidenceCaptureResponse, PrepareWriteResponse, ProjectId, RandomDurableIdGenerator,
+    ReconcileChangesResponse, RecordRunResponse, RequestHash, RequestUserActionResponse,
+    ResolveUserActionResponse, ResponseKind, StageArtifactResponse, StatusResponse, TaskId,
     ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase,
-    UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+    UpdateScopeResponse, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::policy::{
@@ -1106,6 +1109,13 @@ fn replay_preflight_response(
         )?));
     }
     if record.request_hash == request_hash.as_str() {
+        if !stored_public_response_is_current(request.method_name, &record.response_json) {
+            return Ok(Some(stored_response_unavailable_response(
+                project_state.state_version,
+                Some(verified_invocation.clone()),
+                request.envelope.task_id.as_ref().cloned(),
+            )?));
+        }
         let resolved_task_id =
             replay_resolved_task_id(&record.response_json, request, project_state)?;
         let operation_result_ref = operation_result_ref(
@@ -1140,6 +1150,70 @@ fn replay_preflight_response(
         Some(verified_invocation.clone()),
         None,
     )?))
+}
+
+pub(crate) fn stored_public_response_is_current(
+    method_name: MethodName,
+    response_json: &str,
+) -> bool {
+    let Ok(response_value) = serde_json::from_str::<Value>(response_json) else {
+        return false;
+    };
+    if !response_value.is_object() {
+        return false;
+    }
+    match method_name {
+        MethodName::Intake => exact_typed_response::<IntakeResponse>(&response_value),
+        MethodName::UpdateScope => exact_typed_response::<UpdateScopeResponse>(&response_value),
+        MethodName::Status => exact_typed_response::<StatusResponse>(&response_value),
+        MethodName::GetOperationResult => {
+            exact_typed_response::<GetOperationResultResponse>(&response_value)
+        }
+        MethodName::CheckClose => exact_typed_response::<CheckCloseResponse>(&response_value),
+        MethodName::PrepareEvidenceCapture => {
+            exact_typed_response::<PrepareEvidenceCaptureResponse>(&response_value)
+        }
+        MethodName::PrepareWrite => exact_typed_response::<PrepareWriteResponse>(&response_value),
+        MethodName::StageArtifact => exact_typed_response::<StageArtifactResponse>(&response_value),
+        MethodName::RecordRun => exact_typed_response::<RecordRunResponse>(&response_value),
+        MethodName::RequestUserAction => {
+            exact_typed_response::<RequestUserActionResponse>(&response_value)
+        }
+        MethodName::ResolveUserAction => {
+            exact_typed_response::<ResolveUserActionResponse>(&response_value)
+        }
+        MethodName::ReconcileChanges => {
+            exact_typed_response::<ReconcileChangesResponse>(&response_value)
+        }
+        MethodName::CloseTask => exact_typed_response::<CloseTaskResponse>(&response_value),
+    }
+}
+
+fn exact_typed_response<T>(response_value: &Value) -> bool
+where
+    T: DeserializeOwned + Serialize,
+{
+    serde_json::from_value::<T>(response_value.clone())
+        .and_then(serde_json::to_value)
+        .is_ok_and(|round_trip| round_trip == *response_value)
+}
+
+pub(crate) fn stored_response_unavailable_response(
+    state_version: u64,
+    verified_invocation: Option<VerifiedInvocationContext>,
+    resolved_task_id: Option<TaskId>,
+) -> CoreResult<PipelineResponse> {
+    response_from_rejected(
+        rejected_response(
+            false,
+            Some(state_version),
+            vec![mcp_unavailable_error(
+                "stored operation result does not match the current response contract",
+            )],
+        ),
+        verified_invocation,
+        resolved_task_id,
+    )
 }
 
 fn replay_resolved_task_id(
@@ -2154,7 +2228,7 @@ mod tests {
     }
 
     #[test]
-    fn idempotency_replay_returns_stored_response() -> Result<(), Box<dyn Error>> {
+    fn idempotency_replay_rejects_untyped_stored_response() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         let envelope = envelope(
             "req_replay",
@@ -2179,8 +2253,13 @@ mod tests {
         let second = harness.execute(request)?;
         let after_second = harness.counts()?;
 
-        assert!(second.replayed);
-        assert_eq!(second.response_json, first.response_json);
+        assert!(!second.replayed);
+        assert_eq!(second.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            second.response_value["errors"][0]["code"],
+            "MCP_UNAVAILABLE"
+        );
+        assert_ne!(second.response_json, first.response_json);
         assert_eq!(after_second, after_first);
         Ok(())
     }

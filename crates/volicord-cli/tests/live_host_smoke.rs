@@ -87,6 +87,11 @@ mod unix {
     const LIVE_EVIDENCE_ARTIFACT_DISPLAY_NAME: &str = "credential-routing-fixture.txt";
     const LIVE_EVIDENCE_ARTIFACT_BYTES: &str = "Deterministic benign local-consent fixture bytes.";
     const LIVE_EVIDENCE_RELATION_HINT: &str = "local-consent-routing-fixture";
+    const MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE: &str = "io.volicord/user-channel";
+    const MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_FIELD: &str = "model_invisible_user_surface";
+    const MODEL_INVISIBLE_SURFACE_CONFIRMATION: &str = "surface:host-owned-model-invisible";
+    const MODEL_VISIBLE_ABSENCE_CONFIRMATION: &str =
+        "model-visible:none-url-token-form-question-request-ref";
     const LIVE_CLI_FALLBACK_BASELINE_REF: &str = "baseline_live_host_cli_fallback";
     const LIVE_INBOX_COMMAND_TEMPLATE: &str =
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
@@ -196,6 +201,28 @@ mod unix {
     }
 
     #[test]
+    fn local_web_delivery_boundary_confirmation_requires_both_exact_observations(
+    ) -> Result<(), Box<dyn Error>> {
+        let confirmed = parse_local_web_delivery_boundary_confirmation(
+            MODEL_INVISIBLE_SURFACE_CONFIRMATION,
+            MODEL_VISIBLE_ABSENCE_CONFIRMATION,
+        )?;
+        assert!(confirmed.host_owned_model_invisible_surface_confirmed);
+        assert!(confirmed.model_visible_forbidden_payloads_absent_confirmed);
+        assert!(parse_local_web_delivery_boundary_confirmation(
+            "surface:chat",
+            MODEL_VISIBLE_ABSENCE_CONFIRMATION,
+        )
+        .is_err());
+        assert!(parse_local_web_delivery_boundary_confirmation(
+            MODEL_INVISIBLE_SURFACE_CONFIRMATION,
+            "model-visible:unobserved",
+        )
+        .is_err());
+        Ok(())
+    }
+
+    #[test]
     fn authenticated_host_launch_removes_inherited_volicord_control_environment() {
         let control_names = [
             "VOLICORD_MCP_VERIFICATION",
@@ -236,6 +263,48 @@ mod unix {
             (
                 &["local_web_user_channel", "resolution", "actor_source"][..],
                 Value::String("agent_connection:CONN-live".to_owned()),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "handoff_delivery",
+                    "effective_exact_capability_observed",
+                ][..],
+                Value::Bool(false),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "handoff_delivery",
+                    "handoff_transport",
+                ][..],
+                Value::String("model_visible_content".to_owned()),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "handoff_delivery",
+                    "host_owned_model_invisible_surface_operator_confirmed",
+                ][..],
+                Value::Bool(false),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "handoff_delivery",
+                    "negative_model_visible_observation",
+                    "operator_confirmed_absent",
+                ][..],
+                Value::Bool(false),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "handoff_delivery",
+                    "negative_model_visible_observation",
+                    "diagnostic_store_scan_passed",
+                ][..],
+                Value::Bool(false),
             ),
             (
                 &["evidence_consumption", "producer_anchor", "producer_kind"][..],
@@ -352,6 +421,7 @@ mod unix {
         for (stage, expected_result) in [
             ("host_executable", "unavailable"),
             ("interactive_terminal", "unavailable"),
+            ("host_delivery_boundary", "unavailable"),
             ("fixture_setup", "failed"),
             ("host_process", "failed"),
             ("stored_resolution", "failed"),
@@ -1447,7 +1517,7 @@ mod unix {
     }
 
     #[test]
-    #[ignore = "requires an authenticated interactive Codex host, a local browser, and VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1"]
+    #[ignore = "requires an authenticated interactive Codex host with an observable host-owned model-invisible user surface and VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1"]
     fn codex_live_evidence_observation_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
         live_evidence_observation_round_trip(
             "codex",
@@ -1458,7 +1528,7 @@ mod unix {
     }
 
     #[test]
-    #[ignore = "requires an authenticated interactive Claude Code host, a local browser, and VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1"]
+    #[ignore = "requires an authenticated interactive Claude Code host with an observable host-owned model-invisible user surface and VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1"]
     fn claude_code_live_evidence_observation_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
         live_evidence_observation_round_trip(
             "claude-code",
@@ -2564,7 +2634,7 @@ mod unix {
                 "4. Wait for the host's native MCP elicitation/User Channel UI. The human running this smoke will choose the answer. Never infer, fabricate, or submit that answer yourself.\n",
                 "5. After Volicord reports the user action resolved, consume `structuredContent.method_result.resolution_summary.selected_option_id` from that default compact result. If it is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, call `volicord.record_run` with summary exactly `{beta_run_marker}`. Use the retained Task ID, Change Unit ID, and baseline ref; set `kind=shaping_update`, `run_id=null`, `write_ticket_id=null`, `artifact_inputs=[]`, `evidence_updates=[]`, and `evidence_observations=[]`; report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`. Supply a non-null `close_assessment` whose `result_summary` is exactly the selected Run marker and whose `result_refs`, `residual_risks`, `sensitive_categories`, and `recovery_constraints` are all empty arrays. Do not record a Run if the selected option is absent or unrecognized.\n",
                 "6. After that Run is recorded, call `volicord.status` for the Task and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop.\n\n",
-                "If a native prompt does not appear and Volicord returns a pending inbox item, do not simulate a resolution or execute a fallback command. Report that the pending CLI inbox fallback is required and stop so the disposable harness can verify inbox visibility and the resolve-command shape."
+                "If a native prompt does not appear and Volicord returns only a pending `user_action_request_summary`, do not simulate a resolution or execute a fallback command. Report that the CLI User Channel is required and stop so the disposable harness can verify the trusted CLI inbox and resolve-command shape."
             ),
             task_marker = marker,
             baseline_ref = LIVE_HOST_BASELINE_REF,
@@ -2699,7 +2769,7 @@ mod unix {
         let stop_cursor = stop_event_cursor(&fixture, &prepared.project_id)?;
         let prompt = live_evidence_observation_prompt(&prepared);
         println!(
-            "\n=== Volicord live {host} evidence-observation smoke ===\nThe installed host must create one evidence-observation request on its configured Agent Connection. Volicord will intentionally route the complete form to a loopback-only local consent page. Open only the URL shown by Volicord, select the sole target and artifact, choose `supported`, enter a non-secret one-line summary, submit it yourself, and then tell the same host session that submission is complete. Do not enter credentials, secrets, tokens, or private keys. Exit the host only after it reports final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
+            "\n=== Volicord live {host} evidence-observation smoke ===\nThis cell is valid only if the MCP client negotiated `capabilities.experimental[\"{MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE}\"].{MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_FIELD}=true` and the host consumes `CallToolResult._meta[\"{MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE}\"]` in a separate host-owned model-invisible surface. That `_meta` handoff must never enter chat or model output. Never ask the agent to relay, quote, print, or open the URL. If that separate surface appears, use it yourself to select the sole target and artifact, choose `supported`, enter a non-secret one-line summary, and submit. If it does not appear—or if any URL, token, form, question, or request ref appears in returned tool-result content, returned structured output, or host diagnostic text—tell the host to stop without fallback; the harness will record this cell unavailable. Do not enter credentials, secrets, tokens, or private keys.\n\n{prompt}\n=== end instruction ===\n"
         );
 
         *stage = "host_process";
@@ -2716,6 +2786,9 @@ mod unix {
             ))
             .into());
         }
+
+        *stage = "host_delivery_boundary";
+        let delivery_boundary = confirm_local_web_delivery_boundary(host)?;
 
         *stage = "stored_resolution";
         assert_live_connection_verified(&fixture, &identity.connection_id)?;
@@ -2785,9 +2858,14 @@ mod unix {
             LiveEvidenceCompletedSummaryInput {
                 identity: &identity,
                 observation: &observation,
+                delivery_boundary: &delivery_boundary,
                 operator_summary_character_count,
                 consumption: &consumption,
                 diagnostic: &diagnostic,
+                diagnostic_payload_scan_passed: assert_live_evidence_diagnostic_payload_absence(
+                    &fixture,
+                    &observation,
+                )?,
                 authority_event_order: &authority_event_order,
                 stop_observation: &stop_observation,
                 receipt: &receipt,
@@ -2982,12 +3060,12 @@ mod unix {
         format!(
             concat!(
                 "Continue the prepared Volicord evidence-observation validation using the MCP server named `volicord`. ",
-                "Do not edit files, run shell commands, prepare a write, open the consent URL yourself, or answer on the user's behalf. The fixture contains no real credential or secret; its display metadata contains a routing marker solely so Volicord requires a user-only local consent page.\n\n",
+                "Do not edit files, run shell commands, prepare a write, inspect or relay host-only metadata, open any consent URL, or answer on the user's behalf. The fixture contains no real credential or secret; its display metadata contains a routing marker solely so Volicord requires a user-only local consent page.\n\n",
                 "1. Call `volicord.request_user_action` exactly once with `detail=full` and nested `request.operation=create`. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `request.action.action_type=evidence_observation`, question `{question}`, context summary `{context_summary}`, `target_candidates=[{target}]`, `artifact_candidate_ids=[\"{artifact_id}\"]`, `required_for=[\"record_run\"]`, and `expires_at=null`. Do not create any other user action.\n",
-                "2. The response must remain pending and expose a `local_web_consent` fallback, not host elicitation, prompt capture, or CLI resolution. Show the loopback consent URL to the human operator without fetching it yourself. Wait until the operator says that the page was submitted. Never ask the operator to paste the URL, bearer token, credential, secret, private key, or observation summary into agent-visible output.\n",
-                "3. After the operator confirms submission, call `volicord.request_user_action` exactly once with the same request ID and nested `request.operation=resume`; never use create again. Require `agent_workflow_result_replayed=true`, `current_status=resolved`, a non-null `user_action_resolution_ref`, and an evidence-observation resolution summary whose target equals `{target}`, whose sole artifact has ID `{artifact_id}`, and whose relevance is `supported`. Do not record a Run if any fact differs.\n",
+                "2. The returned public result must expose only `user_action_request_summary` with the exact keys `user_action_request_id`, `status=pending`, and `next_actor=user`; it must not expose a full request, request ref, inbox item, form, question, URL, token, command, or channel availability. The local-web handoff exists only in host-consumed top-level `CallToolResult._meta[\"{capability_namespace}\"]` and is owned entirely by a separate host model-invisible surface. Do not inspect, print, quote, relay, or open it. If the host does not render that separate surface, report only that the required User Channel is unavailable and stop without elicitation, prompt capture, or CLI fallback.\n",
+                "3. Wait until the operator confirms completion without pasting any URL, token, form value, or observation summary into chat. Then call `volicord.request_user_action` exactly once with the same request ID and nested `request.operation=resume`; never use create again. Require `agent_workflow_result_replayed=true`, `current_status=resolved`, a non-null `user_action_resolution_ref`, and an evidence-observation resolution summary whose target equals `{target}`, whose sole artifact has ID `{artifact_id}`, and whose relevance is `supported`. Do not record a Run if any fact differs.\n",
                 "4. Consume that exact resolution in one `volicord.record_run` call. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `kind=shaping_update`, `run_id=null`, `baseline_ref={baseline_ref}`, `write_ticket_id=null`, summary exactly `{run_marker}`, no product-file changes, `artifact_inputs=[]`, and one supported evidence update for the resolved target with the exact resolved ArtifactRef. Add exactly one evidence observation for that target with `source_kind=user_observation`, `assurance_level=user_observed`, null observer/tool fields, empty tool metadata/source refs/limitations, `input_refs` containing only the exact resolution ref, `output_artifact_refs` containing only the exact resolved ArtifactRef, and `observed_at={caller_observed_at}`. Supply a close assessment with result summary exactly `{run_marker}` and empty result refs, risks, sensitive categories, and recovery constraints.\n",
-                "5. Call `volicord.status` for Task `{task_id}`. Report only the request ID, resolution ID, Run ID, evidence observation ID, lifecycle phase, close state, blocker count, and state version; do not repeat the URL, token, user summary, this prompt, or a transcript. Then stop."
+                "5. Call `volicord.status` for Task `{task_id}`. Report only the request ID from the safe summary, resolution ID, Run ID, evidence observation ID, lifecycle phase, close state, blocker count, and state version. Do not repeat a request ref, form, question, URL, token, user summary, this prompt, or a transcript. Then stop."
             ),
             task_id = prepared.task_id,
             change_unit_id = prepared.change_unit_id,
@@ -2998,6 +3076,7 @@ mod unix {
             baseline_ref = LIVE_EVIDENCE_OBSERVATION_BASELINE_REF,
             run_marker = LIVE_EVIDENCE_OBSERVATION_RUN_MARKER,
             caller_observed_at = LIVE_EVIDENCE_CALLER_OBSERVED_AT,
+            capability_namespace = MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE,
         )
     }
 
@@ -3123,13 +3202,15 @@ mod unix {
             }),
         )?;
         if requested.response_value["base"]["response_kind"] != "result"
-            || requested.response_value["user_action_request"]["status"] != "pending"
+            || requested.response_value["user_action_request_summary"]["status"] != "pending"
+            || requested.response_value["user_action_request_summary"]["next_actor"] != "user"
         {
             return Err(
                 io::Error::other("CLI-fallback setup did not create a pending request").into(),
             );
         }
-        let requested_id = requested.response_value["user_action_request_ref"]["record_id"]
+        let requested_id = requested.response_value["user_action_request_summary"]
+            ["user_action_request_id"]
             .as_str()
             .ok_or_else(|| io::Error::other("CLI-fallback setup returned no request id"))?;
         let observation = inspect_live_user_action(fixture, marker)?
@@ -4900,6 +4981,63 @@ mod unix {
         Ok(summary.to_owned())
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct LiveLocalWebDeliveryBoundaryConfirmation {
+        host_owned_model_invisible_surface_confirmed: bool,
+        model_visible_forbidden_payloads_absent_confirmed: bool,
+    }
+
+    fn confirm_local_web_delivery_boundary(
+        host: &str,
+    ) -> Result<LiveLocalWebDeliveryBoundaryConfirmation, Box<dyn Error>> {
+        print!(
+            "\nConfirm the {host} handoff appeared in a separate host-owned model-invisible surface, never in chat or model output. Type `{MODEL_INVISIBLE_SURFACE_CONFIRMATION}` only if observed; type `unavailable` otherwise: "
+        );
+        io::stdout().flush()?;
+        let mut surface_confirmation = String::new();
+        if io::stdin().read_line(&mut surface_confirmation)? == 0 {
+            return Err(io::Error::other(
+                "no operator confirmation was received for the host-owned model-invisible surface",
+            )
+            .into());
+        }
+
+        print!(
+            "\nReview the returned tool-result content, returned structured output, and host diagnostic text from this cell. Type `{MODEL_VISIBLE_ABSENCE_CONFIRMATION}` only if all three were observable and none contained a consent URL, bearer token, full form, question, or UserAction request ref; type `unavailable` otherwise: "
+        );
+        io::stdout().flush()?;
+        let mut absence_confirmation = String::new();
+        if io::stdin().read_line(&mut absence_confirmation)? == 0 {
+            return Err(io::Error::other(
+                "no operator confirmation was received for model-visible payload absence",
+            )
+            .into());
+        }
+
+        parse_local_web_delivery_boundary_confirmation(
+            surface_confirmation.trim(),
+            absence_confirmation.trim(),
+        )
+    }
+
+    fn parse_local_web_delivery_boundary_confirmation(
+        surface_confirmation: &str,
+        absence_confirmation: &str,
+    ) -> Result<LiveLocalWebDeliveryBoundaryConfirmation, Box<dyn Error>> {
+        if surface_confirmation != MODEL_INVISIBLE_SURFACE_CONFIRMATION
+            || absence_confirmation != MODEL_VISIBLE_ABSENCE_CONFIRMATION
+        {
+            return Err(io::Error::other(
+                "the live local-web cell is unavailable without both exact delivery-boundary confirmations",
+            )
+            .into());
+        }
+        Ok(LiveLocalWebDeliveryBoundaryConfirmation {
+            host_owned_model_invisible_surface_confirmed: true,
+            model_visible_forbidden_payloads_absent_confirmed: true,
+        })
+    }
+
     #[derive(Clone, Debug)]
     enum FinalOutputUiExpectation {
         ManagedSurface,
@@ -4982,9 +5120,11 @@ mod unix {
     struct LiveEvidenceCompletedSummaryInput<'a> {
         identity: &'a LiveHostIdentity,
         observation: &'a LiveEvidenceObservation,
+        delivery_boundary: &'a LiveLocalWebDeliveryBoundaryConfirmation,
         operator_summary_character_count: usize,
         consumption: &'a LiveEvidenceConsumption,
         diagnostic: &'a LiveEvidenceDiagnosticObservation,
+        diagnostic_payload_scan_passed: bool,
         authority_event_order: &'a AuthorityEventOrder,
         stop_observation: &'a VerifiedStopObservation,
         receipt: &'a VerifiedLiveReceipt,
@@ -4996,9 +5136,11 @@ mod unix {
         let LiveEvidenceCompletedSummaryInput {
             identity,
             observation,
+            delivery_boundary,
             operator_summary_character_count,
             consumption,
             diagnostic,
+            diagnostic_payload_scan_passed,
             authority_event_order,
             stop_observation,
             receipt,
@@ -5023,6 +5165,23 @@ mod unix {
                 "state_version": observation.state_version
             },
             "local_web_user_channel": {
+                "handoff_delivery": {
+                    "capability_namespace": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE,
+                    "capability_field": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_FIELD,
+                    "capability_value": true,
+                    "handoff_transport": "top_level_call_tool_result_meta",
+                    "handoff_meta_key": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE,
+                    "effective_exact_capability_observed": diagnostic.create_calls == 1,
+                    "listener_enabled_for_cell": true,
+                    "host_owned_model_invisible_surface_operator_confirmed": delivery_boundary.host_owned_model_invisible_surface_confirmed,
+                    "agent_was_not_instructed_to_relay_or_open": true,
+                    "negative_model_visible_observation": {
+                        "surfaces": ["content", "structured_content", "diagnostic_text"],
+                        "forbidden_categories": ["url", "token", "form", "question", "request_ref"],
+                        "operator_confirmed_absent": delivery_boundary.model_visible_forbidden_payloads_absent_confirmed,
+                        "diagnostic_store_scan_passed": diagnostic_payload_scan_passed
+                    }
+                },
                 "request": {
                     "user_action_request_id": observation.user_action_request_id,
                     "action_kind": "evidence_observation",
@@ -5128,7 +5287,7 @@ mod unix {
 
     fn live_evidence_observation_incomplete_summary(host: &str, stage: &str) -> Value {
         let result = match stage {
-            "host_executable" | "interactive_terminal" => "unavailable",
+            "host_executable" | "interactive_terminal" | "host_delivery_boundary" => "unavailable",
             _ => "failed",
         };
         serde_json::json!({
@@ -5167,6 +5326,23 @@ mod unix {
                 "state_version": 7
             },
             "local_web_user_channel": {
+                "handoff_delivery": {
+                    "capability_namespace": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE,
+                    "capability_field": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_FIELD,
+                    "capability_value": true,
+                    "handoff_transport": "top_level_call_tool_result_meta",
+                    "handoff_meta_key": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE,
+                    "effective_exact_capability_observed": true,
+                    "listener_enabled_for_cell": true,
+                    "host_owned_model_invisible_surface_operator_confirmed": true,
+                    "agent_was_not_instructed_to_relay_or_open": true,
+                    "negative_model_visible_observation": {
+                        "surfaces": ["content", "structured_content", "diagnostic_text"],
+                        "forbidden_categories": ["url", "token", "form", "question", "request_ref"],
+                        "operator_confirmed_absent": true,
+                        "diagnostic_store_scan_passed": true
+                    }
+                },
                 "request": {
                     "user_action_request_id": "UAR-live",
                     "action_kind": "evidence_observation",
@@ -5336,7 +5512,31 @@ mod unix {
             ),
             (
                 "/local_web_user_channel",
-                &["request", "resolution", "host_resume"][..],
+                &["handoff_delivery", "request", "resolution", "host_resume"][..],
+            ),
+            (
+                "/local_web_user_channel/handoff_delivery",
+                &[
+                    "capability_namespace",
+                    "capability_field",
+                    "capability_value",
+                    "handoff_transport",
+                    "handoff_meta_key",
+                    "effective_exact_capability_observed",
+                    "listener_enabled_for_cell",
+                    "host_owned_model_invisible_surface_operator_confirmed",
+                    "agent_was_not_instructed_to_relay_or_open",
+                    "negative_model_visible_observation",
+                ][..],
+            ),
+            (
+                "/local_web_user_channel/handoff_delivery/negative_model_visible_observation",
+                &[
+                    "surfaces",
+                    "forbidden_categories",
+                    "operator_confirmed_absent",
+                    "diagnostic_store_scan_passed",
+                ][..],
             ),
             (
                 "/local_web_user_channel/request",
@@ -5553,6 +5753,8 @@ mod unix {
         }
         let request_artifact_id =
             required_result_string(value, "/local_web_user_channel/request/artifact_id")?;
+        let handoff_delivery = &value["local_web_user_channel"]["handoff_delivery"];
+        let negative_observation = &handoff_delivery["negative_model_visible_observation"];
         required_result_string(value, "/stop_hook/guard_event_id")?;
         required_result_string(value, "/stop_hook/session_id")?;
         if value["kind"] != LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
@@ -5560,6 +5762,23 @@ mod unix {
             || request_id.is_empty()
             || resolution_id.is_empty()
             || evidence_observation_id.is_empty()
+            || handoff_delivery["capability_namespace"]
+                != MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE
+            || handoff_delivery["capability_field"] != MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_FIELD
+            || handoff_delivery["capability_value"] != true
+            || handoff_delivery["handoff_transport"] != "top_level_call_tool_result_meta"
+            || handoff_delivery["handoff_meta_key"]
+                != MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE
+            || handoff_delivery["effective_exact_capability_observed"] != true
+            || handoff_delivery["listener_enabled_for_cell"] != true
+            || handoff_delivery["host_owned_model_invisible_surface_operator_confirmed"] != true
+            || handoff_delivery["agent_was_not_instructed_to_relay_or_open"] != true
+            || negative_observation["surfaces"]
+                != serde_json::json!(["content", "structured_content", "diagnostic_text"])
+            || negative_observation["forbidden_categories"]
+                != serde_json::json!(["url", "token", "form", "question", "request_ref"])
+            || negative_observation["operator_confirmed_absent"] != true
+            || negative_observation["diagnostic_store_scan_passed"] != true
             || value["local_web_user_channel"]["request"]["action_kind"] != "evidence_observation"
             || value["local_web_user_channel"]["request"]["requested_by_actor_source"]
                 != expected_actor_source
@@ -5647,7 +5866,7 @@ mod unix {
         required_result_string(value, "/host/kind")?;
         let stage = required_result_string(value, "/stage")?;
         let expected_result = match stage {
-            "host_executable" | "interactive_terminal" => "unavailable",
+            "host_executable" | "interactive_terminal" | "host_delivery_boundary" => "unavailable",
             "fixture_setup"
             | "host_process"
             | "stored_resolution"
@@ -7514,6 +7733,48 @@ mod unix {
             successful_status_calls: observed.7,
             ordered: diagnostic_ordered,
         })
+    }
+
+    fn assert_live_evidence_diagnostic_payload_absence(
+        fixture: &LiveSmokeFixture,
+        observation: &LiveEvidenceObservation,
+    ) -> Result<bool, Box<dyn Error>> {
+        let diagnostic_bytes = fs::read(diagnostics_db_path(&fixture.runtime_home_path))?;
+        let diagnostic_text = String::from_utf8_lossy(&diagnostic_bytes);
+        let normalized = diagnostic_text.to_ascii_lowercase();
+        for forbidden in [
+            LIVE_EVIDENCE_REQUEST_QUESTION,
+            LIVE_EVIDENCE_REQUEST_CONTEXT,
+            LIVE_EVIDENCE_ARTIFACT_DISPLAY_NAME,
+            LIVE_EVIDENCE_ARTIFACT_BYTES,
+            observation.user_action_request_id.as_str(),
+            observation.summary.as_str(),
+            "user_action_request_ref",
+        ] {
+            if diagnostic_text.contains(forbidden) {
+                return Err(io::Error::other(
+                    "live diagnostic storage contained a forbidden UserAction payload or request ref",
+                )
+                .into());
+            }
+        }
+        if [
+            "http://",
+            "https://",
+            "/consent?",
+            "token=",
+            "\"form\"",
+            "\"question\"",
+        ]
+        .into_iter()
+        .any(|forbidden| normalized.contains(forbidden))
+        {
+            return Err(io::Error::other(
+                "live diagnostic storage contained a URL, token, form, or question payload",
+            )
+            .into());
+        }
+        Ok(true)
     }
 
     struct LiveSmokeFixture {

@@ -1461,7 +1461,8 @@ fn guard_prompt_capture_hashes_prompt_and_omits_text() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn guard_session_start_shows_chat_user_action_instructions() -> Result<(), Box<dyn Error>> {
+fn guard_session_start_shows_only_the_exact_safe_user_action_summary() -> Result<(), Box<dyn Error>>
+{
     let fixture = GuardCliFixture::with_prompt_capture("guard-chat-instructions")?;
     fixture.create_pending_user_action("instructions")?;
     let event = json!({
@@ -1485,21 +1486,30 @@ fn guard_session_start_shows_chat_user_action_instructions() -> Result<(), Box<d
     );
     assert_eq!(value["result"]["context"]["prompt_capture_enabled"], true);
     let pending = &value["result"]["context"]["pending_user_actions"][0];
-    assert_eq!(pending["chat_id"], "A-1");
-    let user_action_request_id = pending["user_action_request_id"]
-        .as_str()
-        .expect("request id should be present");
-    let verification_code = pending["verification_code"]
-        .as_str()
-        .expect("verification code should be present");
-    assert!(verification_code.starts_with('#'));
     assert_eq!(
-        pending["resolve_instruction"],
-        format!(
-            "Volicord: resolve A-1 --request {user_action_request_id} --choice <choice_id> [--note \"text\"] {verification_code}"
-        )
+        pending
+            .as_object()
+            .expect("pending summary should be an object")
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>(),
+        ["next_actor", "status", "user_action_request_id"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
     );
-    assert_eq!(pending["form"]["form_type"], "choice");
+    assert_eq!(pending["status"], "pending");
+    assert_eq!(pending["next_actor"], "user");
+    let rendered = stdout(&output);
+    for forbidden in [
+        "verification_code",
+        "resolve_instruction",
+        "form_type",
+        "choice_id",
+        "volicord inbox resolve",
+    ] {
+        assert!(!rendered.contains(forbidden), "leaked {forbidden}");
+    }
     Ok(())
 }
 
@@ -1554,13 +1564,13 @@ fn guard_session_start_requires_user_only_channel_for_sensitive_complete_present
         let context = value["hookSpecificOutput"]["additionalContext"]
             .as_str()
             .expect("SessionStart should return bounded generic context");
-        assert!(context.contains("unavailable for agent-facing prompt capture"));
-        assert!(context.contains("user-only local consent"));
+        assert!(context.contains(action.user_action_request_id.as_str()));
+        assert!(context.contains("status pending"));
+        assert!(context.contains("next_actor user"));
         assert!(context.contains("volicord inbox"));
         for hidden in [
             PRESENTATION_MARKER,
             verification_code.as_str(),
-            action.user_action_request_id.as_str(),
             "Volicord: resolve",
             "--request",
             "Canonical closed form",
@@ -1579,8 +1589,7 @@ fn guard_session_start_requires_user_only_channel_for_sensitive_complete_present
 }
 
 #[test]
-fn guard_session_start_hides_chat_user_action_instructions_without_prompt_capture(
-) -> Result<(), Box<dyn Error>> {
+fn guard_session_start_keeps_safe_summary_without_prompt_capture() -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-chat-instructions-not-configured")?;
     fixture.install_guard_policy_with(true, false, "configured")?;
     fixture.create_pending_user_action("instructions_not_configured")?;
@@ -1605,13 +1614,12 @@ fn guard_session_start_hides_chat_user_action_instructions_without_prompt_captur
     );
     assert_eq!(value["result"]["context"]["prompt_capture_enabled"], false);
     assert_eq!(value["result"]["context"]["pending_user_action_count"], 1);
-    assert_eq!(
-        value["result"]["context"]["pending_user_actions"]
-            .as_array()
-            .expect("pending user actions should be an array")
-            .len(),
-        0
-    );
+    let pending = value["result"]["context"]["pending_user_actions"]
+        .as_array()
+        .expect("pending user actions should be an array");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0]["status"], "pending");
+    assert_eq!(pending[0]["next_actor"], "user");
     Ok(())
 }
 
@@ -3274,14 +3282,14 @@ fn guarded_bypass_reconcile_prompt_acceptance_unblocks_close() -> Result<(), Box
 
     let first_reconcile = fixture.reconcile_changes(&task_id, "bypass_first")?;
     assert_eq!(
-        first_reconcile.response_value["pending_user_action_refs"]
+        first_reconcile.response_value["pending_user_action_summaries"]
             .as_array()
-            .expect("pending refs should be an array")
+            .expect("pending safe summaries should be an array")
             .len(),
         1
     );
     let reconciliation_user_action_request_id = first_reconcile.response_value
-        ["pending_user_action_refs"][0]["record_id"]
+        ["pending_user_action_summaries"][0]["user_action_request_id"]
         .as_str()
         .expect("reconciliation user-action request id should be present")
         .to_owned();

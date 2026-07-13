@@ -96,10 +96,13 @@ resume 필드 혼합은 Core 전에 거부됩니다. create variant는 완전한
 resume variant는 두 번째 공개 mutation이 아니라 읽기 전용 연속 작업입니다.
 `volicord.request_user_action`이 직접 만든 요청만 가리킬 수 있고, 같은 활성 workflow
 Agent Connection actor 범위와 허용 프로젝트를 요구하며, 같은 `operation_result_ref`와 함께
-byte 단위로 정확한 원래 Agent Workflow 응답을 재생합니다. 요청, event, replay 행,
-prompt, token, resolution, state-version 증가를 만들지 않습니다. 다른 connection 또는
-`volicord.reconcile_changes`가 만든 요청은 이 분기에서 사용할 수 없습니다. 이후 관계없는
-Git 변경이나 authority 상태 변경도 과거 결과를 다시 쓰거나 무효화하지 않습니다.
+byte 단위로 정확한 원래 agent-safe Agent Workflow 응답을 재생합니다. 재생 결과는 정규
+요청 요약만 담고 전체 요청, inbox 항목, 캡처 폼, 캡처 경로, User Channel credential을
+담지 않습니다. 요청, event, replay 행, prompt, token, resolution, state-version 증가를
+만들지 않습니다. 다른 connection 또는 `volicord.reconcile_changes`가 만든 요청은 이
+분기에서 사용할 수 없습니다. 이후 관계없는 Git 변경이나 authority 상태 변경도 과거
+결과를 다시 쓰거나 무효화하지 않습니다. 폐기된 전체 폼 결과 형태를 사용하는 저장
+응답은 재생하지 않고 unavailable로 처리합니다.
 
 create 또는 resume 뒤 어댑터는 Core에 별도 현재 agent-safe projection을 요청합니다.
 Core는 상태, 선택적 안전 resolution, 정확한 과거 resolution 파생 ref, 관찰 anchor를 한
@@ -116,9 +119,7 @@ projection을 읽었다는 이유만으로 영속화하지 않습니다.
 ```yaml
 RequestUserActionResult:
   base: ToolResultBase
-  user_action_request_ref: StateRecordRef
-  user_action_request: UserActionRequest
-  inbox_item: UserActionInboxItem
+  user_action_request_summary: AgentSafeUserActionRequestSummary
   blocker_refs: StateRecordRef[]
   state: StateSummary
 ```
@@ -126,8 +127,10 @@ RequestUserActionResult:
 커밋 호출은 `user_action_requests` 행 하나를 삽입하고 authority event 하나와 정확한
 replay 결과를 저장하며 `state_version`을 한 번 증가시킵니다. 현재 유효한 대기 요청에
 정보성이 아닌 `required_for`가 있으면 현재 종료되지 않은 Task를 `waiting_user`로
-바꿀 수 있습니다. 멱등 replay는 후보를 다시 정규화하지 않고 원래 요청과 후보를
-반환하며 영속 정규 UTC 하한을 갱신하지 않습니다.
+바꿀 수 있습니다. 멱등 replay는 저장 요청을 다시 정규화하지 않고 원래 agent-safe 요청
+요약을 반환합니다. 이 요약은 요청 ID, 과거 `pending` 상태, `next_actor=user`만 담고 ref,
+행동 종류, 만료 시각, 질문, 맥락, 본문, 근거, 후보, 폼, 채널 경로, 명령, URL,
+credential은 생략합니다. 영속 정규 UTC 하한도 갱신하지 않습니다.
 
 Dry run은 지속 ref를 반환하지 않고 효과가 없습니다. 유효하지 않은 후보, 크기 초과
 폼, stale 상태, 잘못된 operation category, 비호환 근거, 사용할 수 없는 아티팩트
@@ -139,8 +142,8 @@ MCP는 쓸 수 있는 `workflow` Agent Connection에 create를 노출합니다. 
 create는 Core mutation 전에 거부됩니다. `read_only` Agent Connection은 어느 분기도 쓸
 수 없습니다. 어댑터는 새로 생성되어 계속 pending인 요청에만 canonical 캡처 폼을 지원
 User Channel로 렌더링할 수 있으며 Agent Connection 호출 자체는 행동을 해결하지
-않습니다. Resume은 정확한 replay와 현재 안전 projection만 반환하고 User Channel을 열지
-않습니다.
+않고 그 폼도 받지 않습니다. Resume은 정확한 안전 replay와 현재 안전 projection만
+반환하고 User Channel을 열지 않습니다.
 
 ## 관련 담당 문서
 

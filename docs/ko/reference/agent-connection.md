@@ -552,23 +552,32 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   `volicord mcp --stdio`는 `volicord.request_user_action`이 만든 대기 요청에 대해 서버
   시작 사용자 입력 요청을 User Channel 경로로 사용할 수 있습니다. 전송 동작은
   [MCP 전송](mcp-transport.md#user-action-elicitation)이 담당합니다.
-- 호스트 프롬프트 입력을 사용할 수 없으면 MCP 대체 안내 텍스트는 명령 캡처가
-  `configured`, `observed`, `active`일 때 프롬프트 제출 훅 경로와 호환되는 채팅
-  명령으로 사람 사용자를 안내할 수 있습니다.
-- 호스트 프롬프트 입력과 채팅 명령 캡처를 사용할 수 없으면 MCP 대체 안내 텍스트는
-  사람 사용자를 [MCP 전송](mcp-transport.md#user-action-elicitation)이 담당하는
-  루프백 로컬 consent URL로 안내할 수 있습니다. 이 웹 답변은 여전히 `local_user` User
-  Channel 경로이지 Agent Connection 답변이 아닙니다. 동의 페이지는 사용자에게 대기
-  요청, 저장된 후보, 비보장을 식별해 보여 주며, Agent Connection이 행동을 해결할 권한을 만들지
-  않습니다.
-- 대체 안내 텍스트는 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL을 모두
-  사용할 수 없을 때만 사용자를 `volicord inbox` CLI inbox 경로로 안내합니다.
-- 상태 보기와 사용자 행동 받은편지함은 호스트 프롬프트 입력, 채팅 명령 캡처, 로컬 consent URL,
-  CLI 받은편지함의 User Channel 사용 가능 상태를 함께 보여 줄 수 있습니다. 호스트
-  프롬프트 입력을 사용할 수 없다는 사실이 다른 사용 가능한 답변 경로를 숨기면 안 되며,
-  적용 가능한 경우 CLI 받은편지함은 계속 보입니다. 이 상태 보기는 사용자가 어디에서 답할 수
-  있는지 알려 줄 뿐이며 Agent Connection이 행동을 해결할 수 있게 하지 않습니다.
-- 특정 행동의 rich 경로는 요청에 결합된 완전한 표시를 자르지 않고 MCP 전송 또는 관리
+- User Channel credential, bearer token, credential을 포함한 URL, 완전한 요청 본문,
+  `UserActionInboxForm`은 Agent Connection MCP `content`, `structuredContent`, 호환·진단
+  text, full-detail 출력, resume replay, operation-result byte를 절대 통과하면 안 됩니다.
+  Agent Connection은 요청 자체에 대해 대기 요청 ID, `status=pending`,
+  `next_actor=user`만 받습니다.
+- Local web은 loopback listener가 있고 초기화된 client가
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
+  정확한 boolean `true`를 보냈을 때만 사용할 수 있습니다. 이 capability는 협력적 전달
+  계약입니다. Host는
+  namespaced tool-result `_meta` handoff를 모델 맥락 밖에 두고 사용자 소유 표면에
+  렌더링해야 하지만 host 격리 증명은 아닙니다. Capability가 없거나 false이거나, 타입이나
+  namespace가 다르거나, 형태가 잘못되면 unavailable이며 token을 발급하면 안 됩니다.
+- Local-web URL은 그 모델 비가시적 `_meta` handoff에만 나타날 수 있습니다. 에이전트가
+  전달하도록 fallback text에 복사하면 안 됩니다. Consent page는 대기 요청, 저장 후보,
+  비보장을 보여 주며 bearer credential을 소지해야 그 user-only page를 열 수 있습니다.
+- Native elicitation과 협상된 모델 비가시적 local-web 표면을 사용할 수 없으면 에이전트
+  대상 fallback은 대기 요청을 식별하고 사람 사용자를 `volicord inbox` CLI 경로로
+  안내합니다. Prompt-submit capture는 별도로 검증되는 User Channel 통합으로 남으며
+  fallback text가 완전한 폼이나 resolution credential을 노출하면 안 됩니다.
+- 공개 Agent status와 close 결과는 정확한 세 필드 대기 요약만 사용하며 User Channel
+  가용성이나 capture-path 사실을 반환하지 않습니다. 완전한 `UserActionInboxItem`과
+  credential이 없는 가용성 범주는 검증된 User Channel renderer가 사용하는 별도 내부
+  Core projection으로만 조회합니다. Host prompt 입력을 사용할 수 없다는 사실이 다른
+  가용 답변 경로를 숨기면 안 되며 적용 가능한 경우 CLI inbox는 계속 사용할 수 있습니다.
+  이 projection은 Agent Connection이 행동을 해결할 수 있게 하지 않습니다.
+- 특정 행동의 rich 경로는 User Channel 표면에서만 사용할 수 있고 요청에 결합된 완전한 표시를 자르지 않고 MCP 전송 또는 관리
   CLI가 담당하는 전송·호스트 렌더링 바이트 예산 안에 넣을 수 있을 때만 사용할 수
   있습니다. 표시가 바이트 예산을 넘으면 그 경로를 사용할 수 없으며 다음 호환 User
   Channel 경로로 계속 진행해야 합니다.
@@ -580,12 +589,14 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
 에이전트가 할 수 있는 것:
 
 - 메서드 담당 문서가 그 경로를 지원할 때 빠진 사용자 행동을 요청할 수 있습니다.
-- 담당 결과가 반환한 대기 행동 상태와 Core 생성 캡처 양식을 표시할 수 있습니다.
+- agent-safe 대기 요청 요약과 현재 안전 resolution projection만 표시할 수 있습니다.
 - 사람 사용자를 지원되는 `User Channel`로 안내할 수 있습니다.
 
 에이전트가 하면 안 되는 것:
 
 - Agent Connection에서 사용자 행동을 해결하면 안 됩니다.
+- Agent Connection 출력에서 User Channel bearer credential이나 완전한 user-only 캡처 폼을
+  얻거나, 전달하거나, 열거나, 제출하면 안 됩니다.
 - Agent Connection 도구 인자를 MCP elicitation 응답으로 취급하면 안 됩니다.
 - 자연어 승인, 채팅 답변, 생성된 Markdown 상태, 렌더링된 상태 보기를 User Channel
   출처로 취급하면 안 됩니다.

@@ -152,7 +152,7 @@ StateSummary:
   baseline_ref: string | null
   workspace_context: WorkspaceContext | null
   shaping_readiness: ShapingReadiness | null
-  pending_user_action_request_refs: StateRecordRef[]
+  pending_user_action_summaries: AgentSafeUserActionRequestSummary[]
   blocker_refs: StateRecordRef[]
   write_ticket_summary: WriteTicketStateSummary | null
   evidence_summary: EvidenceSummary | null
@@ -179,7 +179,15 @@ StateSummary:
 - `workspace_context`는 현재 Change Unit 기준선에 결합한 선택적 검증 Git
   좌표입니다. 그 경로와 해시는 로컬 권한 사실이며 portable repository
   identity나 보안 보장이 아닙니다.
-- `pending_user_action_request_refs`는 응답 보기에 관련된 현재 대기 사용자 행동을 나열합니다. 대기 행동은 `required_for` 대상, 행동 종류, `Task`, Change Unit, 영향받는 참조, 근거가 해당 작업과 호환될 때만 작업을 차단합니다.
+- `pending_user_action_summaries`는 응답 보기에 관련된 현재 대기 사용자 행동을 request ID,
+  `status=pending`, `next_actor=user`만으로 나열합니다. Core는 요청이 작업을 차단하는지
+  결정하기 위해 required-for 대상, 행동 종류, Task, Change Unit, 영향받는 ref, 현재 근거를
+  내부에서 계속 평가하지만 `StateSummary`는 그 요청 상세를 노출하지 않습니다.
+- Agent 대상 결과의 기존 대기 행동에는 `StateSummary.blocker_refs`,
+  `CloseReadinessBlocker.related_refs`, `NextActionSummary.required_refs`, summary-card ref
+  collection에서 `record_kind=user_action_request`를 제외합니다. 다른 blocker 및 authority
+  record kind는 각 owner 규칙을 따릅니다. 요청 identity는
+  `AgentSafeUserActionRequestSummary`만 제공합니다.
 
 의미하지 않는 것:
 - `StateSummary` 필드가 있다는 사실만으로 메서드 커밋 여부가 정의되지 않습니다.
@@ -354,7 +362,14 @@ CoverageSummary:
 - `required_hook_phases`와 `missing_required_hook_phases`는 필수 호스트 훅 설정이 완전한지를 보고합니다. 필요한 단계가 `required_hook_phases`에 없거나 `missing_required_hook_phases`에 나열되어 있으면 누락된 것으로 취급합니다. 필요한 단계가 누락되면 유효한 훅 이벤트가 관찰되었더라도 유효 `detective` 상태는 `active`가 되지 않습니다.
 - `prompt_capture_status`는 선택된 연결에서 프롬프트 캡처를 사용할 수 있는지를 기계가 읽을 수 있는 값으로 보고합니다. `prompt_capture_available=true`는 그 상태가 검증 코드 채팅 명령을 허용할 때만 사용합니다. 원문 프롬프트 텍스트가 포함된다는 뜻은 아닙니다.
 - `prompt_capture_available`은 선택된 연결에서 프롬프트 캡처용 검증 코드 채팅 명령을 표시하거나 기록할 수 있는지 보고합니다. 프롬프트 텍스트는 포함하지 않습니다.
-- `local_web_consent_available`은 현재 어댑터 호출이 User Channel 복구를 위한 루프백 로컬 웹 동의 대체 경로를 제공할 수 있는지 보고합니다.
+- `local_web_consent_available=true`는 현재 어댑터 호출의 루프백 listener가 준비됐고
+  초기화한 client가
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
+  정확한 boolean `true`를 보냈을 때만 사용합니다. 선언이 생략됐거나 false이거나, 타입이
+  다르거나, 형태가 잘못됐거나, namespace가 다르면 `false`입니다. 이 값은 token 발급,
+  form 표시, 사용자 식별, 모델 격리 증명을 뜻하지 않습니다. Status와 check-close는 같은
+  evaluator를 사용하고 가용성 보고만을 위해 token을 발급하지 않습니다. 두 런타임 입력을
+  관찰할 수 없는 setup 진단도 `false`를 보고합니다.
 - `mcp_connection_healthy`와 `mcp_connection_status`는 추적되는 Agent Connection 확인 상태가 있을 때 그 상태를 요약합니다.
 - `session_watch_status`는 선택된 연결 또는 세션의 Product Repository 세션 감시기가 `disabled`, `active`, `degraded`, `unavailable`, `pending_project_selection` 중 어떤 상태인지 보고합니다.
 - `last_session_watch_checked_at`은 가장 최근 세션 감시 기준선 상태 갱신 시각입니다. 사용할 수 있는 기준선이 없으면 `null`입니다.
@@ -649,6 +664,10 @@ WriteDecisionReason:
 - 증거 또는 닫기 상태 보기를 선택하면 `SummaryCard.evidence`는 [API 값 집합](schema-value-sets.md#evidence-gate-values)이 담당하는 `EvidenceGateSummary.state` 값을 그대로 사용합니다. 스테이징 입력이나 `EvidenceSummary.evidence_state`에서 별도 상태를 추론하지 않습니다.
 - `SummaryCard.next`는 요약을 위해 선택된 단일 표시 다음 행동입니다. 담당 문서가 선택한 보기에서 알 수 있는 다음 행동이 없을 때만 `none`을 사용합니다. `SummaryCard.next_action`은 대응하는 구조화된 `NextActionSummary`를 담을 수 있으며 구조화된 행동이 적용되지 않으면 생략될 수 있습니다. 구조화된 행동이 적용되면 요약은 `presentation_role=primary`인 행동을 선택하며 배열 위치는 선택 계약이 아닙니다.
 - `SummaryCard`는 담당 문서가 선택한 다른 상태 필드의 요약이지 두 번째 권한 기록이 아닙니다. 표시된 다음 행동에 식별자가 필요하지 않은 한 내부 식별자를 추가하면 안 됩니다.
+- 이미 존재하는 대기 사용자 행동에는 `SummaryCard.user_action`, `SummaryCard.next`, 메서드
+  `status_summary`, blocker message, 그 밖의 모든 display/template string이 일반 문구만
+  사용합니다. 사용자 행동이 대기 중이고 다음 actor가 User Channel임을 말할 수 있지만
+  요청 질문, 선택지, 맥락, form, 경로, 명령, URL, credential을 다시 만들면 안 됩니다.
 - `SummaryCard.guarantee`는 요약된 보기에 대한 짧은 표시 문구입니다. 다른 담당 문서가 명시적으로 그런 보장을 제공하지 않는 한 정확성 증명, 테스트 충분성 증명, 검토 완료, OS 수준 집행을 주장하면 안 됩니다.
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `presentation_role`, `action_kind`, `owner_method`, `allowed_operation_categories`, `label`, `blocking_question`, `expected_state_version`, `required_refs`입니다.
 - 비어 있지 않은 각 최상위 `next_actions` 모음에는 `presentation_role=primary`인 항목이 정확히 하나 있습니다. 나머지 항목은 `additional`을 사용합니다. 닫기 준비 상태는 명시적인 중첩 예외입니다. 닫기 준비 상태 결과 하나의 `blockers[*].next_actions`를 평탄화한 전체가 primary 하나를 갖는 투영 단위이므로 뒤쪽의 개별 차단 사유 목록에는 additional 행동만 있을 수 있습니다. 단일 `next_action`은 `primary`를 사용합니다.
@@ -657,6 +676,13 @@ WriteDecisionReason:
 - `expected_state_version`은 항상 존재하는 null 허용 필드입니다. 낙관적 동시성을 사용하는 API 변경 행동에는 그 행동을 만든 상태 보기의 현재 `project_state.state_version`을 담으며, 해당 호출의 `ToolEnvelope.expected_state_version`으로 직접 매핑됩니다. 읽기 행동, `user_only` 행동, 단일 담당 메서드가 없는 행동, 낙관적 동시성을 사용하지 않는 담당 메서드 행동에는 `null`을 사용합니다.
 - `expected_state_version`은 재시도 가능한 동시성 입력이며 신원이나 권한이 아닙니다. 다른 변경이 커밋되면 오래될 수 있으므로 호출자는 `STATE_VERSION_CONFLICT` 뒤 현재 상태를 새로 읽습니다. `required_refs`와 참조의 `produced_at_state_version`은 이 토큰을 제공하거나 덮어쓰지 않습니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
+- 이미 존재하는 대기 사용자 행동에는 `NextActionSummary.label`과 소유 blocker message가
+  일반 User Channel 안내만 사용하고 `blocking_question=null`이며 `required_refs`에
+  `user_action_request` ref가 없습니다. Request ID와 pending/next-actor 사실은
+  `AgentSafeUserActionRequestSummary`에서만 가져옵니다. 다음 행동 text는 질문, 선택지, 맥락,
+  form, 캡처 경로, 명령, URL, credential을 다시 만들면 안 됩니다. 별도의 요청 전
+  `missing_final_acceptance` 행동은 Agent가 요청을 만드는 데 필요한 질문과 Task/현재 근거
+  ref를 담을 수 있습니다. 요청을 만든 뒤에는 대기 규칙을 적용합니다.
 - `WriteTicketStateSummary.status`는 제어 값 문자열입니다.
 - `WriteTicketStateSummary.consumed_by_run_ref`는 요약된 쓰기 티켓이 기록된 Run에 의해 소비되었을 때만 `null`이 아닙니다.
 - `WriteTicketStateSummary.observation_refs`는 사용할 수 있을 때 그 소비 Run이 만든 증거 관찰 참조를 나열합니다. 쓰기 티켓이 소비되지 않았거나 소비 Run이 관찰을 만들지 않았다면 비어 있습니다.
@@ -677,10 +703,10 @@ WriteDecisionReason:
 | `action_kind` | 제어되는 행동 범주 값. | [다음 행동 값](schema-value-sets.md#next-action-values)의 값 집합을 사용합니다. 메서드 이름 값이 아닙니다. |
 | `owner_method` | 담당 메서드 이름 또는 `null`. | 지원되는 공개 메서드 하나가 다음 행동을 담당할 때 그 API 메서드를 이름 붙입니다. 단일 담당 메서드가 없으면 `null`을 사용합니다. |
 | `allowed_operation_categories` | 제어되는 작업 범주 값. | 이 행동에 대해 담당 문서가 지원하는 호출 범주를 나열합니다. `owner_method=null`이거나 지원되는 API 호출 경로가 식별되지 않으면 `[]`를 사용합니다. |
-| `label` | 자유 형식 표시 문자열. | 사람과 에이전트가 읽는 표시 문자열이며 기준 값이 아닙니다. |
-| `blocking_question` | 자유 형식 표시 문자열 또는 `null`. | 행동을 진행하기 전에 풀어야 하는 질문입니다. 필요한 질문이 없으면 `null`을 사용합니다. |
+| `label` | 자유 형식 표시 문자열. | 사람과 에이전트가 읽는 표시 문자열이며 기준 값이 아닙니다. 기존 대기 사용자 행동에는 요청 상세가 없는 일반 User Channel 안내를 사용합니다. |
+| `blocking_question` | 자유 형식 표시 문자열 또는 `null`. | 행동을 진행하기 전에 풀어야 하는 질문입니다. 기존 대기 사용자 행동에는 항상 `null`이며 요청 전 생성 예외는 위 규칙을 따릅니다. |
 | `expected_state_version` | 프로젝트 상태 시계 값 또는 `null`. | 낙관적 동시성을 사용하는 변경 행동에서는 `ToolEnvelope.expected_state_version`으로 매핑합니다. 읽기, `user_only`, 동시성을 사용하지 않는 행동에는 `null`을 사용합니다. |
-| `required_refs` | `StateRecordRef[]`. | 다음 행동에 필요한 기록입니다. 필요한 참조가 없으면 `[]`를 사용합니다. 참조는 기록과 맥락을 식별할 뿐 동시성 토큰을 제공하지 않습니다. |
+| `required_refs` | `StateRecordRef[]`. | 다음 행동에 필요한 기록입니다. 필요한 참조가 없으면 `[]`를 사용합니다. 참조는 기록과 맥락을 식별할 뿐 동시성 토큰을 제공하지 않습니다. 기존 대기 사용자 행동 항목은 요청 ref를 제외합니다. |
 
 `WriteTicketAttemptScope` 필드 분류:
 

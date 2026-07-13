@@ -11,9 +11,10 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
     agent_connections::{
-        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
-        ConnectionProjectRegistration, CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX,
-        HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
+        add_connection_project, ensure_agent_connection, remove_connection_project,
+        set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, VERIFIED_STATUS_COMPLETE,
+        VERIFIED_STATUS_FAILED,
     },
     bootstrap::{
         initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
@@ -33,7 +34,12 @@ use volicord_store::{
         WatchObservationInsert, WatchSnapshot, WatchSnapshotOptions,
     },
     sqlite::open_project_state_database,
-    user_action_channel::{create_user_action_channel_token, UserActionChannelTokenCreate},
+    user_action_channel::{
+        create_user_action_channel_token, user_action_channel_current_timestamp,
+        validate_user_action_channel_token, UserActionChannelTokenCheck,
+        UserActionChannelTokenCreate, UserActionChannelTokenRecord,
+        UserActionChannelTokenRejection, UserActionChannelTokenValidation,
+    },
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::CloseMutationIntent;
@@ -330,6 +336,12 @@ fn set_method_harness_connection_verification_status(
 }
 
 fn response_record_id(response_value: &Value, field: &str) -> String {
+    if field == "user_action_request_ref" {
+        return response_value["user_action_request_summary"]["user_action_request_id"]
+            .as_str()
+            .expect("agent-safe user-action request summary should identify the request")
+            .to_owned();
+    }
     response_value[field]["record_id"]
         .as_str()
         .expect("record_id should be present")
@@ -341,6 +353,52 @@ fn response_event_id(response_value: &Value) -> String {
         .as_str()
         .expect("event_id should be present")
         .to_owned()
+}
+
+fn pending_user_action_summary(user_action_request_id: &str) -> Value {
+    json!({
+        "user_action_request_id": user_action_request_id,
+        "status": "pending",
+        "next_actor": "user"
+    })
+}
+
+fn cli_user_channel_projection(
+    harness: &MethodHarness,
+    task_id: &str,
+) -> Result<UserChannelInboxProjection, Box<dyn Error>> {
+    Ok(harness
+        .service
+        .user_channel_inbox_projection(
+            UserChannelInboxProjectionRequest {
+                project_id: ProjectId::new(PROJECT_ID),
+                task_id: TaskId::new(task_id),
+            },
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?
+        .expect("authenticated local CLI should receive the User Channel projection"))
+}
+
+fn user_channel_projection_for_invocation(
+    harness: &MethodHarness,
+    task_id: &str,
+    invocation: InvocationContext,
+) -> Result<UserChannelInboxProjection, Box<dyn Error>> {
+    Ok(harness
+        .service
+        .user_channel_inbox_projection(
+            UserChannelInboxProjectionRequest {
+                project_id: ProjectId::new(PROJECT_ID),
+                task_id: TaskId::new(task_id),
+            },
+            invocation,
+        )?
+        .expect("authenticated User Channel invocation should receive its projection"))
 }
 
 fn test_state_record_ref(
@@ -366,6 +424,7 @@ mod operation_result;
 mod preflight;
 mod prepare_evidence_capture;
 mod prepare_write;
+mod projection_boundary;
 mod reconcile_changes;
 mod record_run;
 mod replay;
@@ -1898,10 +1957,8 @@ fn record_final_acceptance_with_id(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let user_action_request_id = action.response_value["user_action_request_ref"]["record_id"]
-        .as_str()
-        .expect("user-action request ref should be present")
-        .to_owned();
+    let user_action_request_id =
+        response_record_id(&action.response_value, "user_action_request_ref");
     let record_request_id = format!("req_close_final_record_{suffix}");
     let record_idempotency_key = format!("idem_close_final_record_{suffix}");
     let response = harness.service.resolve_user_action(
@@ -1986,9 +2043,8 @@ fn record_scope_decision_authority(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
-    let decision_ref: StateRecordRef =
-        serde_json::from_value(action.response_value["user_action_request_ref"].clone())?;
-    let user_action_request_id = decision_ref.record_id.as_str().to_owned();
+    let user_action_request_id =
+        response_record_id(&action.response_value, "user_action_request_ref");
     let record_request_id = format!("req_scope_authority_record_{suffix}");
     let record_idempotency_key = format!("idem_scope_authority_record_{suffix}");
     let request = resolve_user_action_request(
@@ -2217,15 +2273,16 @@ fn assert_close_blocker_category(response_value: &Value, code: &str, category: &
     assert_eq!(blocker["category"], category);
 }
 
-fn assert_pending_judgment_prompt_capture_guidance(response_value: &Value) {
+fn assert_pending_judgment_safe_guidance(response_value: &Value) {
     assert_close_blocker(response_value, "pending_user_action");
     let blocker = close_blocker_by_code(response_value, "pending_user_action");
-    let guidance = blocker["next_actions"][0]["blocking_question"]
-        .as_str()
-        .expect("pending blocker should include answer-path guidance");
-    assert!(guidance.contains("chat command"), "{guidance}");
-    assert!(guidance.contains("verification code"), "{guidance}");
-    assert!(!guidance.contains("MCP elicitation"), "{guidance}");
+    assert!(blocker["next_actions"][0]["blocking_question"].is_null());
+    assert_eq!(
+        blocker["next_actions"][0]["label"],
+        "Resolve pending user actions through the User Channel."
+    );
+    assert!(!response_value.to_string().contains("verification code"));
+    assert!(!response_value.to_string().contains("chat command"));
 }
 
 fn channel_path<'a>(availability: &'a Value, kind: &str) -> &'a Value {
@@ -3189,6 +3246,130 @@ fn create_local_web_token_for_user_action(
         },
     )?;
     Ok(record.token_hash)
+}
+
+struct LocalWebProjectionFixture {
+    task_id: String,
+    action_id: String,
+    session_id: String,
+    token: String,
+    validated_token: UserActionChannelTokenRecord,
+}
+
+fn create_local_web_projection_fixture(
+    harness: &MethodHarness,
+    suffix: &str,
+) -> Result<LocalWebProjectionFixture, Box<dyn Error>> {
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(harness, &format!("local_web_projection_{suffix}"))?;
+    let requested = harness.service.request_user_action(
+        user_action_request(
+            &format!("req_local_web_projection_{suffix}"),
+            &format!("idem_local_web_projection_{suffix}"),
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let action_id = requested.response_value["user_action_request_summary"]
+        ["user_action_request_id"]
+        .as_str()
+        .ok_or("request result should contain its safe user-action request id")?
+        .to_owned();
+    let session_id = format!("session_local_web_projection_{suffix}");
+    insert_agent_session(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "detective".to_owned(),
+            started_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let inbox = harness
+        .service
+        .user_channel_inbox_projection(
+            UserChannelInboxProjectionRequest {
+                project_id: ProjectId::new(PROJECT_ID),
+                task_id: TaskId::new(&task_id),
+            },
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::agent_connection(CONNECTION_ID),
+                OperationCategory::Read,
+                VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            )
+            .with_session_id(session_id.clone())
+            .with_local_web_consent_available(true),
+        )?
+        .ok_or("active MCP fixture session should receive a User Channel projection")?;
+    let item = inbox
+        .items
+        .iter()
+        .find(|item| item.request.user_action_request_id.as_str() == action_id)
+        .ok_or("projection should contain its newly created user action")?;
+    let form_digest = canonical_json_bare_sha256(&item.inbox_item.form)?;
+    let token = format!("local-web-projection-token-{suffix}");
+    create_user_action_channel_token(
+        &harness.runtime_home_path,
+        UserActionChannelTokenCreate {
+            token: token.clone(),
+            project_id: PROJECT_ID.to_owned(),
+            channel_kind: UserActionChannelKind::LocalWebConsent,
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            user_action_request_id: action_id.clone(),
+            capture_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
+            created_metadata_json: json!({
+                "fallback_kind": "local_web_consent",
+                "delivery_surface": "model_invisible_user_surface",
+                "endpoint": "/consent",
+                "form_digest": form_digest,
+            })
+            .to_string(),
+        },
+    )?;
+    let now = user_action_channel_current_timestamp(&harness.runtime_home_path, PROJECT_ID)?;
+    let validated_token = match validate_user_action_channel_token(
+        &harness.runtime_home_path,
+        UserActionChannelTokenCheck {
+            token: token.clone(),
+            expected_project_id: PROJECT_ID.to_owned(),
+            expected_connection_internal_id: CONNECTION_ID.to_owned(),
+            now,
+        },
+    )? {
+        UserActionChannelTokenValidation::Valid(record) => record,
+        other => return Err(format!("fixture token should validate: {other:?}").into()),
+    };
+    Ok(LocalWebProjectionFixture {
+        task_id,
+        action_id,
+        session_id,
+        token,
+        validated_token,
+    })
+}
+
+fn local_web_projection(
+    harness: &MethodHarness,
+    fixture: &LocalWebProjectionFixture,
+    validated_token: UserActionChannelTokenRecord,
+    allow_resolved_replay: bool,
+) -> CoreResult<LocalWebConsentUserActionProjectionOutcome> {
+    harness.service.local_web_consent_user_action_projection(
+        LocalWebConsentUserActionProjectionRequest {
+            token: fixture.token.clone(),
+            validated_token,
+            allow_resolved_replay,
+        },
+    )
 }
 
 fn local_web_token_status(

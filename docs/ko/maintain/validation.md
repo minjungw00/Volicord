@@ -415,7 +415,8 @@ Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `
 유지되는 Codex 또는 Claude Code의 `local_web_consent` 증거 관찰 경로를 지원한다고
 명시하는 릴리스를 게시하기 전에 이 체크리스트를 사용합니다. 정확한 릴리스 후보에서
 인증된 환경과 사람의 참여로 수행하는 검증입니다. 실제 설치 호스트가 요청을 만들고
-재개해야 하며, 사람은 로컬 브라우저에서 정규 폼을 제출해야 합니다. 무시된 테스트,
+재개하며, 정확한 모델 비가시적 capability를 협상하고, 모델 맥락 밖에 host 전용
+handoff를 표시해야 합니다. 사람은 로컬 브라우저에서 정규 form을 제출해야 합니다. 무시된 테스트,
 픽스처만 수행한 점검, 일반 워크스페이스 테스트, MCP 어댑터 직접 테스트, 호스트 고유
 Judgment 결과, CLI 대체 경로 결과, 최종 출력 결과는 이를 대신할 수 없습니다.
 
@@ -446,11 +447,15 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evi
    호스트가 준비된 Agent Connection으로 만든 요청 하나만 관찰되어야 합니다. 대상,
    아티팩트 후보, `required_for` 사실을 위에서 연결한 요청 및 스키마 담당 문서와
    대조합니다.
-2. 준비된 아티팩트에는 비밀값이 아닌 자격 증명 형태의 경로 선택 표식이 있습니다. 셀은
-   전체 표시 내용 분류가 `local_web_consent`를 제공했는지 관찰합니다. 에이전트나
-   하네스가 아닌 사람 운영자가 루프백 폼을 열고 준비된 대상과 아티팩트, `supported`,
-   크기가 제한된 비밀값 없는 요약을 제출해야 합니다. 이 단언은 선택된 경로와 사람의
-   참여만 확인하며 비밀값 탐지나 호스트 고유 elicitation을 증명하지 않습니다.
+2. 캡처한 초기화 교환에
+   `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`
+   값이 정확한 boolean `true`로 들어 있어야 합니다. create 응답은 닫힌 local-web
+   handoff를 `CallToolResult._meta["io.volicord/user-channel"]`에만 담고, 설치된 호스트가
+   이 handoff를 모델 맥락 밖의 host 소유 표면에 눈에 보이게 표시해야 합니다. Agent나
+   하네스가 아닌 사람 운영자가 그 표면을 사용해 루프백 form을 열고 준비된 대상과
+   아티팩트, `supported`, 크기가 제한된 비밀값 없는 요약을 제출해야 합니다. 이 단언은
+   정확한 capability 협상, 선택된 경로, 사람 참여만 확인하며 비밀값 탐지나 호스트 고유
+   elicitation을 증명하지 않습니다.
 3. Store 검사에서 변경할 수 없는 해결 하나를 관찰하고 집중 해결 및 스키마 담당 문서와
    대조합니다. 정확한 영속 필드는 `resolved_by_actor_source=local_user`,
    `channel_kind=local_web_consent`, 그리고 User Channel 어댑터가 제공하는 인식된 로컬 웹
@@ -460,26 +465,36 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evi
    입력하면 하네스가 저장 값과 정확히 같은지 확인합니다.
 4. 같은 연결의 진단과 Store 검사는 정확한 요청을 대상으로 한 재개 하나,
    `agent_workflow_result_replayed=true`, 추가 요청이나 해결 없음, 이후 정확한 해결 ref
-   소비를 관찰합니다. 실제 셀은 호스트 대화 기록을 보존하지 않으므로 재개 응답에서 원문
-   요약이 빠졌는지 직접 증명하지 않습니다. 이 부정 단언은 집중 스키마 및 어댑터 회귀
-   테스트가 담당하고, 실제 셀은 재생과 ref 소비를 증명합니다.
+   소비를 관찰합니다. 제한된 교환 observer는 실제 create와 resume의 모델 가시
+   projection을 검사하며, MCP `content`, `structuredContent`, 호환·진단 text, replay된
+   Agent Workflow 본문도 포함합니다. 과거 pending 요청은 정확히
+   `{user_action_request_id, status=pending, next_actor=user}`로 표현되고, 전체 요청, 질문,
+   option, context, form, capture path, command, raw URL, bearer token, 사용자 note, 증거
+   summary는 없어야 합니다.
 5. Store 검사는 소비 Run, 증거 관찰 하나, 생산자와 관련성 앵커, 정확한 아티팩트,
    Core가 파생한 관찰 시각, 필수 기준 coverage, 요청-해결-Run 이벤트 순서를 위에서
    연결한 `record_run` 및 상태 스키마 담당 문서와 대조합니다. 이는 담당 문서가 정의한
    사실을 관찰하는 단언이며 이 체크리스트가 동작을 새로 정의하는 것이 아닙니다.
-6. 새 상태는 `AuthorityReceipt.latest_run_ref`를 따라 소비 Run을 가리켜야 합니다. 셀은
-   관찰한 ready 상태와 빈 차단 사유 집합을 상태 및 스키마 담당 문서와 대조합니다. 또한
-   호스트 실행 전 커서 뒤의 새 Task 결속 Detective Stop `allow` 이벤트 하나와, 저장된
-   Stop receipt, 새 상태 receipt, 별도의 호스트 소유 관리 UI에서 복사한 완전한 receipt
-   사이의 정확한 일치를 요구합니다.
+6. 요청이 pending인 동안 셀은 status 결과 하나, 차단된 close 결과 하나, 정확한
+   operation-result의 첫 page도 관찰합니다. 모델 가시 pending projection은 같은 정확한
+   세 필드 summary이고 4번의 모든 금지 필드를 빼야 합니다. operation-result page는 저장
+   응답 전체가 현재 닫힌 형태를 만족할 때만 반환합니다. 해결 뒤 새 상태는
+   `AuthorityReceipt.latest_run_ref`를 따라 소비 Run을 가리켜야 하며, 셀은 관찰한 ready
+   상태와 빈 차단 사유 집합을 상태 및 스키마 담당 문서와 대조합니다. 또한 호스트
+   실행 전 커서 뒤의 새 Task 결속 Detective Stop `allow` 이벤트 하나와, 저장된 Stop receipt,
+   새 상태 receipt, 별도의 호스트 소유 관리 UI에서 복사한 완전한 receipt 사이의
+   정확한 일치를 요구합니다.
 7. 폐쇄형이며 크기가 제한된 외부 JSON에는
    `kind=live_host_evidence_observation_release_validation`, 안전한 검증 좌표, 담당 문서
-   대조 결과, 운영자 요약의 정확한 일치 여부와 제한된 문자 수만 기록합니다. consent URL,
-   bearer token, 원문 요약, 프롬프트나 대화 기록 내용, 스크린샷이나 녹화, 자격 증명,
+   대조 결과, 모델 비가시적 capability 및 host 표시 boolean, projection별 안전 형태 boolean과
+   digest, 운영자 요약의 정확한 일치 여부와 제한된 문자 수만 기록합니다. consent URL,
+   bearer token, raw tool body, 원문 요약, 프롬프트나 대화 기록 내용, 스크린샷이나 녹화, 자격 증명,
    비밀값, 비공개 운영자 입력을 담으면 안 됩니다.
 
 결과 기록기는 먼저 크기가 제한된 `result=running` 기록을 씁니다. 호스트 실행 파일이
-없거나 TTY가 대화형이 아니면 `result=unavailable`을 기록합니다. 픽스처 준비 실패,
+없거나 TTY가 대화형이 아니거나, 정확한 capability가 누락되거나 잘못됐거나, host 전용
+표시 표면이 없거나, host 전용 `_meta`와 모델 가시 결과 데이터를 구별할 수 없으면
+`result=unavailable`을 기록합니다. 픽스처 준비 실패,
 선택된 호스트의 비정상 종료, 저장 상태·Stop·receipt·결과 검증기 invariant 실패는 안전한
 단계 식별자만 포함한 `result=failed`로 기록합니다. 인증과 브라우저 실패는 호스트 실행
 전에 항상 분류할 수 없습니다. 선택된 호스트 실행이 그 이유로 실패하더라도 결과는

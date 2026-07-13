@@ -120,8 +120,9 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
 대기 판단에 표시된 선택지만 고릅니다. 답변 하나는 그 판단 하나만 해결합니다.
-에이전트 연결은 질문을 보여 주고 선택지를 설명할 수 있지만 사용자 답변을 대신
-기록하지 않습니다.
+Agent Connection은 request ID, `status=pending`, `next_actor=user`만 보여 줍니다. 정확한
+질문과 선택지는 검증된 User Channel host 표면 또는 `volicord inbox`에만 나타납니다.
+Agent는 canonical form을 받거나 사용자 답변을 대신 기록하지 않습니다.
 
 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md#user-channel-commands)에
 있습니다. 정확한 입력 방법과 출처 경계는

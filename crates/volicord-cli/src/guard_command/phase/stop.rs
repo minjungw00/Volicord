@@ -186,7 +186,7 @@ fn authoritative_status_result(
     let result = validate_authority_status(response, &expectation)
         .ok()?
         .into_status();
-    if summary.pending_user_action_count != result.pending_user_actions.len()
+    if summary.pending_user_action_count != result.pending_user_action_summaries.len()
         || summary.active_blocker_count != result.blocker_refs.len()
     {
         return None;

@@ -56,12 +56,32 @@ reference or cursor alone grants no access.
 
 User-only results, including the exact `volicord.resolve_user_action` body,
 free-form user note, and evidence-observation summary, are not exposed to an
-Agent Connection. A host-mediated user-action flow keeps the original agent-owned
-`volicord.request_user_action` reference. Its exact-result lookup therefore
-reconstructs the original pending response. The separately owned MCP outcome
-projection may report safe selected identifiers and derived refs, but it never
-substitutes the user-only reference or exposes the user note, evidence-
-observation summary, or exact user-only response body.
+Agent Connection. A host-mediated user-action flow keeps the original
+agent-owned `volicord.request_user_action` reference. That exact stored response
+is eligible only when the whole response decodes as the current closed
+`RequestUserActionResponse` shape and contains the exact three-field
+`AgentSafeUserActionRequestSummary`. A response with the legacy
+`user_action_request` or `inbox_item` field, missing or malformed summary,
+unknown extra field, or mixed old and new fields is ineligible and returns
+`OPERATION_RESULT_UNAVAILABLE`. The method validates the complete response
+before returning the first page and never rewrites legacy bytes or returns a
+partial fragment. The separately owned MCP outcome projection may report safe
+selected identifiers and derived refs, but it never substitutes the user-only
+reference or exposes the user note, evidence-observation summary, or exact
+user-only response body.
+
+Stored `volicord.close_task` results are eligible only when the whole response
+strict-decodes as the current closed `CloseTaskResponse` and uses
+`pending_user_action_summaries` without the legacy
+`pending_user_action_inbox_items` field. A legacy, mixed, or otherwise malformed
+close response is also `OPERATION_RESULT_UNAVAILABLE`; no partial page is
+returned and stored bytes are not rewritten.
+
+The same current closed-result check applies to every source method before any
+page is returned. In particular, legacy results from `volicord.intake`,
+`volicord.update_scope`, `volicord.prepare_write`, `volicord.record_run`, or
+`volicord.reconcile_changes` that embed the superseded `StateSummary` pending-
+action shape are unavailable rather than exact-replayed through this method.
 
 ## Result
 

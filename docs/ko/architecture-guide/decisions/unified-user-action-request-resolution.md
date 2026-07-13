@@ -17,11 +17,23 @@ Volicord는 이전에 대기 판단을 `user_judgments`에 저장하고 판단 �
 
 MCP tool은 명시적인 중첩 `request.operation=create|resume` union을 사용합니다.
 `create`는 공개 mutation을 한 번 실행합니다. `resume`은 기존 직접 요청을 지정하고 같은
-Agent Connection 접근 범위에서 정확한 원래 요청 결과를 읽습니다. 새 요청이나 authority
-event를 만들지 않으며 행동을 해결하지도 않습니다. 어느 분기 뒤든 Core는 한 SQLite 읽기
-snapshot에서 유효 상태와 agent-safe resolution을 다시 읽습니다. MCP 결과는 이
-projection의 state version과 관찰 시각을 과거 요청 결과 및 이후의 일반 authority
-receipt와 분리해 보존합니다.
+Agent Connection 접근 범위에서 정확한 원래 agent-safe 요청 결과를 읽습니다. 새 요청이나
+authority event를 만들지 않으며 행동을 해결하지도 않습니다. 저장된 Agent Workflow
+결과는 `AgentSafeUserActionRequestSummary`만 담고 전체 요청, inbox 항목, 캡처 폼을 담지
+않습니다. 어느 분기 뒤든 Core는 한 SQLite 읽기 snapshot에서 유효 상태와 agent-safe
+resolution을 다시 읽습니다. MCP 결과는 이 projection의 state version과 관찰 시각을
+과거 요청 결과 및 이후의 일반 authority receipt와 분리해 보존합니다.
+
+User Channel presentation은 별도 projection입니다. Native elicitation은 프로토콜이
+담당하는 사용자 입력 표면을 사용합니다. Local-web bearer URL은 초기화된 클라이언트가
+loopback listener를 사용할 수 있고 초기화된 client가
+`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
+정확한 boolean `true`를 선언했을 때만 발급할 수 있습니다. 서버는 모델 맥락 밖에 남는다고 약속된
+namespaced 최상위 tool-result `_meta` handoff에만 URL을 넣습니다. Capability가 없거나
+false이거나 잘못된 형태이면 token을 발급하지 않고 CLI inbox를 선택합니다. User Channel
+credential이나 credential을 포함한 URL은 Agent Connection `content`,
+`structuredContent`, 호환·진단 text, 정확한 replay, operation-result byte에 들어가면 안
+됩니다.
 
 요청 생성과 해결은 각각 정규 준비 동작 시각 샘플 하나를 상태, expiry, 의미 있는
 timestamp에 사용합니다. 이후의 Core 커밋 timestamp는 이 샘플을 다시 쓰지 않습니다.
@@ -30,8 +42,10 @@ timestamp에 사용합니다. 이후의 Core 커밋 timestamp는 이 샘플을 �
 
 닫힌 행동 종류는 일곱 판단 종류와 `evidence_observation`입니다. Tagged payload는 판단
 action/outcome 권한과 관찰 relevance를 분리합니다. Core가 캡처 폼, 근거, 유효 상태,
-후보 집합, 만료 결과를 한 번 파생합니다. MCP elicitation, prompt capture, 로컬 web
-consent, CLI inbox 어댑터는 같은 폼을 렌더링하고 제출합니다. 일반 채널 어댑터는 크기가
+후보 집합, 만료 결과를 한 번 파생합니다. Native MCP elicitation, 협상된 모델 비가시
+local web, CLI inbox를 포함한 별도 검증 User Channel renderer는 같은 form을 렌더링하고
+제출합니다. Agent에 보이는 prompt capture는 안전한 대기 요약과 일반 CLI 안내만 받으며
+완전한 form 표면이 아닙니다. 일반 채널 어댑터는 크기가
 제한되고 replay에 결속된 `channel_submission_id`를 제공하며 후보나 사용자 권한을 다시
 계산하지 않습니다. Local-web consent에서는 Core가 프로젝트, 요청, bearer-token
 credential, 예상 connection, 폐쇄형 canonical 완료 metadata에 대한 digest-only identity
@@ -48,6 +62,12 @@ connection과 metadata를 결합한 domain-separated token digest를 사용합�
 ## 불변 조건과 결과
 
 - Agent Connection은 요청을 만들 수 있지만 해결할 수 없습니다.
+- Agent Connection은 대기 사용자 행동의 정규 요청 요약만 받습니다. 완전한 요청, 질문,
+  맥락, 후보, 캡처 폼, 캡처 경로, 명령, URL, User Channel credential은 User Channel
+  projection에만 남습니다.
+- Listener 존재는 전달 capability가 아닙니다. Listener와 협상된 모델 비가시적 host
+  표면을 모두 사용할 수 있을 때만 local web을 사용할 수 있으며 capability 누락이나
+  협상 실패는 token 발급 없이 CLI로 fallback합니다.
 - 사용자는 검증된 `User Channel`에서 저장된 후보만 선택합니다.
 - 해결 종류, 요청 종류, 근거, Task, Change Unit, scope, baseline, 대상, 아티팩트
   bytes, 만료, 채널 binding을 하나의 원자적 커밋 전에 다시 검증합니다.
@@ -69,9 +89,10 @@ connection과 metadata를 결합한 domain-separated token digest를 사용합�
   증거 coverage가 사용할 수 있습니다.
 - 자유 형식 사용자 텍스트는 user-only 결과에 남습니다. agent-safe MCP projection은
   구조화된 선택 결과와 ref만 노출합니다.
-- 채널을 넘나드는 연속 작업은 byte 단위로 정확한 원래 Agent Workflow 결과를 재생하고
-  재생 여부를 표시합니다. 이어 별도로 관찰한 agent-safe 현재 projection을 붙이며 새
-  idempotency key를 만들거나 정확한 user-only resolution 응답을 노출하지 않습니다.
+- 채널을 넘나드는 연속 작업은 byte 단위로 정확한 원래 안전 Agent Workflow 결과를
+  재생하고 재생 여부를 표시합니다. 이어 별도로 관찰한 agent-safe 현재 projection을
+  붙이며 새 idempotency key를 만들거나 완전한 User Channel 폼 또는 정확한 user-only
+  resolution 응답을 노출하지 않습니다.
 - 현재 상태, 안전한 resolution, 과거 resolution 파생 ref는 하나의 Core/Store
   snapshot에서 읽습니다. 관찰 state version과 시각을 함께 내보내므로 이후 더 최신
   authority receipt가 만들어져도 freshness가 명시적입니다.
@@ -87,6 +108,23 @@ ref 이름도 `accepted_by_user_action_resolution_refs`로 통일합니다.
 
 저장소 profile은 `baseline_sqlite_v5`입니다. v4-to-v5 변환이나 legacy 읽기 경로는
 없습니다. v4 Runtime Home은 호환되지 않으며 다시 만들어야 합니다.
+
+안전한 요청 projection과 모델 비가시적 handoff는 같은 미출시 `0.8.0` clean-break batch
+안의 보정이므로 별도 SemVer나 저장소 profile을 만들지 않습니다. DDL 변경도 없습니다.
+저장된 모든 공개 메서드 결과는 replay 또는 operation-result paging 전에 현재의
+닫힌 결과 타입과 strict 대조합니다. 따라서 보정 전 전체 form 형태를 사용하는
+저장 요청 결과, `pending_user_action_inbox_items`를 담은 닫기 결과, 폐기된
+`StateSummary` 대기 행동 projection을 담은 결과는 모두 사용할 수 없습니다.
+이 결과를 다시 쓰거나 변환하지 않습니다. 보정 전 local-web
+token에는 필수 `delivery_surface=model_invisible_user_surface` 생성 marker가 없으므로
+수정된 코드에서는 영구적으로 사용할 수 없습니다. GET과 POST는 표시나 효과 없이
+닫힌 상태로 실패합니다. 그 행은 upgrade하지 않으며 대기 행동은 CLI 같은 다른
+유효한 User Channel로 계속 해결할 수 있습니다. 안전하지 않은 projection을 복구하는
+호환 별칭은 두지 않습니다.
+
+수정된 Store와 adapter fence는 수정 전 process를 교체하거나 재시작한 뒤에만 적용됩니다.
+계속 실행 중인 이전 process는 이미 발급한 raw credential을 보유할 수 있고 기존 token
+TTL로만 제한됩니다. 수정된 fence에 의존하기 전에 이전 process를 교체해야 합니다.
 
 ## 거부한 대안
 
@@ -104,6 +142,12 @@ ref 이름도 `accepted_by_user_action_resolution_refs`로 통일합니다.
   합치며, 다른 채널이 해결한 뒤 정확한 과거 결과를 식별하지도 못합니다.
 - 평면 create 필드 옆에 선택적 resume ID를 두면 폐쇄형 operation union 대신 혼합되거나
   모호한 요청을 허용하게 됩니다.
+- Fallback text에서 bearer 문자열만 제거하면 full-detail 결과, status/close projection,
+  resume, 정확한 operation-result 조회를 통한 전체 User Channel 폼 접근이 남습니다.
+- Listener 시작을 안전한 host 표면의 증거로 취급하면 모델에게 노출할 수 있는
+  클라이언트에 권한 효력이 있는 bearer credential을 발급하게 됩니다.
+- 일반 MCP content에 URL을 넣고 사용하지 말라고 안내하면 채널 경계를 강제하지 않고
+  권한 우회를 그대로 유지합니다.
 
 ## 구현과 테스트
 

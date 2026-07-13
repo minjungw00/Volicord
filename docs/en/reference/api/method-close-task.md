@@ -239,7 +239,7 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `continuity_summary` | `ProjectContinuitySummary[]` for project continuity records made relevant by this close result. For successful `intent=complete`, this includes continuity records Core carries forward for close-basis known limits that do not require residual-risk acceptance. Empty means the computation ran and found no carry-forward records for this result. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `blockers` | `CloseReadinessBlocker[]` returned when the requested path has close or terminal blockers. Shape and nesting are owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); `category` values are owned by [API Value Sets](schema-value-sets.md#state-and-blocker-values). |
-| `pending_user_action_inbox_items` | `UserActionInboxItem[]` for the exact required effectively pending requests selected by current user-action blockers in this close-readiness result. Shape is owned by [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). |
+| `pending_user_action_summaries` | `AgentSafeUserActionRequestSummary[]` for the exact required effectively pending requests selected by current user-action blockers in this close-readiness result. Each item contains only request ID, `status=pending`, and `next_actor=user`. Shape is owned by [API User Action Schemas](schema-user-action.md#inbox-and-capture-form). |
 | `guard_health` | `GuardHealthSummary | null` for hook-state facts selected into the close-readiness result. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `coverage_summary` | `CoverageSummary | null` for the derived active profile, host-hook coverage state, session-watcher coverage state, tracked timestamps, unresolved unrecorded-change count, and coverage non-guarantees. Shape is owned by [API State Schemas](schema-state.md#guard-health-summary). |
 | `evidence_summary` | `EvidenceSummary | null` for the close basis visible in the result, or `null` when no evidence summary is selected into the result. When the current close basis references the selected summary, `evidence_summary.evidence_state` is `accepted_for_close`. Shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes). |
@@ -250,10 +250,11 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 
 Pending user actions for another operation and informational-only pending
 actions may remain visible through the broader
-`state.pending_user_action_request_refs` projection. They do not enter the top-level
-`pending_user_action_inbox_items` list unless a current
-`pending_user_action` blocker selects its exact `UserActionRequest` ref for the
-requested close path.
+`state.pending_user_action_summaries` projection. They do not enter the top-level
+`pending_user_action_summaries` list unless a current
+`pending_user_action` blocker internally selects that request for the requested
+close path. The public output of that selection is only the corresponding safe
+summary, never a request ref or request detail.
 
 This method owns the method-scoped `CloseReadinessBlocker.code` values it produces. Those codes are not public `ErrorCode` values and are not global value-set entries.
 
@@ -301,9 +302,9 @@ The production meanings below apply only after the method reaches close-readines
 
 These codes are method-local `CloseReadinessBlocker.code` values. They are not public `ErrorCode` values, not `WriteDecisionReason.code` values, and not global value-set entries.
 
-For `pending_user_action`, blocker next actions may point to available User Channel input methods, and `pending_user_action_inbox_items` carries the actionable inbox item shape. Capture paths can include host prompt input, chat command capture, local consent URL, or the CLI inbox command `volicord inbox resolve <user-action-request-id> --choice <choice>` when those paths are available. The blocker does not authorize an Agent Connection to resolve the user-owned action.
+For `pending_user_action`, blocker next actions may identify the User Channel as the next actor, while `pending_user_action_summaries` carries only the exact agent-safe pending summaries. The public close result never carries the canonical form, capture command, local consent URL, or User Channel credential. A verified User Channel renderer obtains the complete inbox item through its separate internal Core boundary; ordinary local fallback is generic `volicord inbox` guidance. The blocker does not authorize an Agent Connection to resolve the user-owned action.
 
-`missing_final_acceptance` with no pending final-acceptance request is a supported two-step state, not an authority shortcut. A read-only check or a blocked close attempt does not create a request or resolution record. Its `request_user_action` action has `allowed_operation_categories=[agent_workflow]`; the Agent Connection creates the current request using the displayed question. After that commit, `pending_user_action` exposes a `resolve_user_action` action with `allowed_operation_categories=[user_only]` and the available User Channel paths. The Agent Connection must not perform the second action.
+`missing_final_acceptance` with no pending final-acceptance request is a supported two-step state, not an authority shortcut. A read-only check or a blocked close attempt does not create a request or resolution record. Its `request_user_action` action has `allowed_operation_categories=[agent_workflow]`; the Agent Connection creates the current request using the displayed question. After that commit, the public `pending_user_action` blocker exposes only a generic `resolve_user_action` action with `allowed_operation_categories=[user_only]`. A separately verified User Channel projection supplies any available input path to the user. The Agent Connection must not perform the second action.
 
 ## Blocked result
 
@@ -460,7 +461,7 @@ state:
   active_change_unit_ref: null
   baseline_ref: baseline_close_001
   shaping_readiness: null
-  pending_user_action_request_refs: []
+  pending_user_action_summaries: []
   blocker_refs: []
   write_ticket_summary: null
   evidence_summary: null
