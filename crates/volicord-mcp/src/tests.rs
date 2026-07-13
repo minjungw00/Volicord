@@ -1905,6 +1905,179 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
     Ok(())
 }
 
+#[test]
+fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-operation-result-budget-chain")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&setup_adapter)?;
+    let mut next_request_id = 10_u64;
+    let mut call_stdio = |tool_name: &str, arguments: Value| -> Result<Value, Box<dyn Error>> {
+        let initialize_id = next_request_id;
+        let tool_id = next_request_id + 1;
+        next_request_id += 2;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(initialize_id, json!({})),
+            initialized_notification(),
+            tools_call(tool_id, tool_name, arguments),
+        ])?);
+        let mut output = Vec::new();
+        run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+        let responses = stdio_responses(&output)?;
+        assert_eq!(responses.len(), 2);
+        Ok(responses[1].clone())
+    };
+
+    let bounded_unicode_text =
+        |label: &str, index: usize| format!("{label}-{index}:{}", "결과🙂".repeat(2_000));
+    let omitted_exact_marker = "OMITTED_EXACT_OPERATION_RESULT_MARKER";
+    let goal_summary = format!("{}:{omitted_exact_marker}", bounded_unicode_text("goal", 0));
+    let scope_boundary = bounded_unicode_text("scope", 0);
+    let non_goals = (0..6)
+        .map(|index| bounded_unicode_text("non-goal", index))
+        .collect::<Vec<_>>();
+    let acceptance_criteria = (0..6)
+        .map(|index| {
+            json!({
+                "acceptance_criterion_id": null,
+                "statement": bounded_unicode_text("criterion", index),
+                "evidence_requirement": "required"
+            })
+        })
+        .collect::<Vec<_>>();
+    let autonomy_boundary = bounded_unicode_text("autonomy", 0);
+    let change_unit_summary = bounded_unicode_text("change-unit", 0);
+
+    let omitted = call_stdio(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "detail": "full",
+            "task_id": task_id,
+            "goal_summary": goal_summary,
+            "scope_boundary": scope_boundary,
+            "non_goals": non_goals,
+            "acceptance_criteria": acceptance_criteria,
+            "autonomy_boundary": autonomy_boundary,
+            "change_unit": {
+                "operation": "create_current",
+                "scope_summary": change_unit_summary,
+                "affected_paths": ["src/operation-result.rs"]
+            }
+        }),
+    )?;
+    let omitted_result = &omitted["result"];
+    let omitted_structured = &omitted_result["structuredContent"];
+    assert_eq!(omitted_result["isError"], false);
+    assert_eq!(omitted_structured["code"], "MCP_RESPONSE_BUDGET_EXCEEDED");
+    assert_eq!(omitted_structured["requested_detail"], "full");
+    assert_eq!(omitted_structured["reached_core"], true);
+    assert_eq!(omitted_structured["committed"], true);
+    assert_eq!(omitted_structured["effect_applied"], true);
+    assert_eq!(omitted_structured["response_projection_omitted"], true);
+    assert_eq!(omitted_structured["status_read_required"], true);
+    assert!(omitted_structured["method_result"].get("state").is_none());
+    assert!(serde_json::to_vec(omitted_result)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+    assert!(!serde_json::to_string(&omitted)?.contains(omitted_exact_marker));
+
+    let operation_result_ref_value = omitted_structured["operation_result_ref"].clone();
+    let operation_result_ref: OperationResultRef =
+        serde_json::from_value(operation_result_ref_value.clone())?;
+    assert_eq!(operation_result_ref.source_method, MethodName::UpdateScope);
+    assert_eq!(
+        omitted_structured["authority_receipt"]["state_version"],
+        operation_result_ref.committed_state_version
+    );
+    let stored = fixture
+        .store()?
+        .operation_result(
+            operation_result_ref.source_method,
+            &operation_result_ref.source_idempotency_key,
+        )?
+        .ok_or("budget-omitted exact result should remain in the replay row")?;
+    assert_eq!(
+        stored.response_size_bytes,
+        operation_result_ref.response_size_bytes
+    );
+    assert_eq!(stored.response_sha256, operation_result_ref.response_sha256);
+    assert!(stored.response_json.len() > MAX_MCP_FULL_MUTATION_RESULT_BYTES);
+    assert!(stored.response_json.contains(omitted_exact_marker));
+
+    let advanced = call_stdio(
+        UPDATE_SCOPE_TOOL_NAME,
+        json!({
+            "task_id": task_id,
+            "change_unit": { "operation": "keep_current" }
+        }),
+    )?;
+    let advanced_structured = &advanced["result"]["structuredContent"];
+    assert_eq!(advanced["result"]["isError"], false);
+    assert!(advanced_structured.get("code").is_none());
+    let advanced_state_version = advanced_structured["authority_receipt"]["state_version"]
+        .as_u64()
+        .ok_or("state-advance receipt should expose state_version")?;
+    assert!(advanced_state_version > operation_result_ref.committed_state_version);
+    let after_advance = fixture.counts()?;
+
+    let mut cursor = None;
+    let mut reconstructed = String::new();
+    let mut pages = 0_usize;
+    loop {
+        let mut arguments = json!({
+            "operation_result_ref": operation_result_ref_value.clone()
+        });
+        if let Some(next_cursor) = cursor.take() {
+            arguments["cursor"] = Value::String(next_cursor);
+        }
+        let response = call_stdio(GET_OPERATION_RESULT_TOOL_NAME, arguments)?;
+        let result = &response["result"];
+        let page = &result["structuredContent"];
+        assert_eq!(result["isError"], false);
+        assert_eq!(page["base"]["response_kind"], "result");
+        assert_eq!(page["base"]["effect_kind"], "read_only");
+        assert_eq!(page["operation_result_ref"], operation_result_ref_value);
+        assert_eq!(page["start_offset_bytes"], reconstructed.len() as u64);
+        let chunk = page["chunk_utf8"]
+            .as_str()
+            .ok_or("operation-result page should contain UTF-8 text")?;
+        assert!(chunk.len() <= volicord_types::MAX_OPERATION_RESULT_PAGE_BYTES);
+        reconstructed.push_str(chunk);
+        assert_eq!(page["end_offset_bytes"], reconstructed.len() as u64);
+        assert_eq!(page["historical"], true);
+        assert_eq!(page["current_authority_refresh_required"], true);
+        assert!(serde_json::to_vec(result)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
+        pages += 1;
+        assert!(
+            pages < 100,
+            "bounded retrieval should make forward progress"
+        );
+        if page["complete"] == true {
+            assert!(page["next_cursor"].is_null());
+            break;
+        }
+        cursor = Some(
+            page["next_cursor"]
+                .as_str()
+                .ok_or("incomplete operation-result page should expose a cursor")?
+                .to_owned(),
+        );
+    }
+    assert!(pages > 1);
+    assert_eq!(reconstructed.as_bytes(), stored.response_json.as_bytes());
+
+    let status = call_stdio(
+        STATUS_TOOL_NAME,
+        json!({ "detail": "summary", "task_id": task_id }),
+    )?;
+    let status_structured = &status["result"]["structuredContent"];
+    assert_eq!(status["result"]["isError"], false);
+    assert_eq!(
+        status_structured["authority_receipt"]["state_version"],
+        advanced_state_version
+    );
+    assert_eq!(fixture.counts()?, after_advance);
+    Ok(())
+}
+
 #[cfg(unix)]
 #[test]
 fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<dyn Error>> {

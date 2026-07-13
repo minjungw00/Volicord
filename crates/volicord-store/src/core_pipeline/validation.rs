@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use volicord_types::{
-    canonical_json_string, ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis,
-    EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceSourceKind, PersistedArtifactProducer,
-    PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
+    canonical_json_string, ActorSource, ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis,
+    EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceSourceKind, OperationCategory,
+    PersistedArtifactProducer, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
     PersistedEvidenceObservationAuthority, PersistedUserActionRequest,
     PersistedUserActionResolution, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfile, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
@@ -63,16 +63,79 @@ pub(super) fn validate_pending_event(event: &PendingTaskEvent) -> StoreResult<()
 }
 
 pub(super) fn validate_replay_context(context: &VerifiedReplayContext) -> StoreResult<()> {
-    validate_identifier("actor_source", &context.actor_source)?;
-    validate_identifier("operation_category", &context.operation_category)?;
-    if let Some(verification_basis) = &context.verification_basis {
-        validate_identifier("verification_basis", verification_basis)?;
+    validate_canonical_replay_identity(
+        &context.actor_source,
+        &context.operation_category,
+        context.verification_basis.as_deref(),
+        context.git_workspace_context_json.as_deref(),
+    )
+    .map_err(|failure| StoreError::InvalidInput {
+        detail: format!("{} {}", failure.input_field, failure.detail),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReplayContextFieldKind {
+    Value,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ReplayContextValidationFailure {
+    pub(super) input_field: &'static str,
+    pub(super) logical_column: &'static str,
+    pub(super) detail: &'static str,
+    pub(super) field_kind: ReplayContextFieldKind,
+}
+
+pub(super) fn validate_canonical_replay_identity(
+    actor_source: &str,
+    operation_category: &str,
+    verification_basis: Option<&str>,
+    git_workspace_context_json: Option<&str>,
+) -> Result<(), ReplayContextValidationFailure> {
+    let actor_source_is_canonical = actor_source
+        .parse::<ActorSource>()
+        .is_ok_and(|parsed| parsed.to_canonical_string() == actor_source);
+    if !actor_source_is_canonical {
+        return Err(ReplayContextValidationFailure {
+            input_field: "actor_source",
+            logical_column: "actor_source",
+            detail: "must be a canonical ActorSource value",
+            field_kind: ReplayContextFieldKind::Value,
+        });
     }
-    if let Some(git_workspace_context_json) = &context.git_workspace_context_json {
-        validate_git_workspace_context_json(
-            "tool_invocations.git_workspace_context_json",
-            git_workspace_context_json,
-        )?;
+
+    let operation_category_is_canonical =
+        serde_json::from_value::<OperationCategory>(Value::String(operation_category.to_owned()))
+            .is_ok_and(|parsed| parsed.as_str() == operation_category);
+    if !operation_category_is_canonical {
+        return Err(ReplayContextValidationFailure {
+            input_field: "operation_category",
+            logical_column: "operation_category",
+            detail: "must be a canonical supported OperationCategory value",
+            field_kind: ReplayContextFieldKind::Value,
+        });
+    }
+
+    if verification_basis.is_some_and(|basis| basis.trim().is_empty()) {
+        return Err(ReplayContextValidationFailure {
+            input_field: "verification_basis",
+            logical_column: "verification_basis",
+            detail: "must not be empty",
+            field_kind: ReplayContextFieldKind::Value,
+        });
+    }
+
+    if let Some(context) = git_workspace_context_json {
+        parse_canonical_git_workspace_context(context).map_err(|detail| {
+            ReplayContextValidationFailure {
+                input_field: "tool_invocations.git_workspace_context_json",
+                logical_column: "git_workspace_context_json",
+                detail,
+                field_kind: ReplayContextFieldKind::Json,
+            }
+        })?;
     }
     Ok(())
 }
@@ -85,29 +148,6 @@ struct PersistedGitWorkspaceReplayContext {
     branch_ref: Option<String>,
     head_sha: Option<String>,
     workspace_fingerprint: String,
-}
-
-pub(super) fn validate_stored_git_workspace_context_json(
-    record_ref: &str,
-    text: &str,
-) -> StoreResult<()> {
-    parse_canonical_git_workspace_context(text)
-        .map(|_| ())
-        .map_err(|_| {
-            StoreError::corrupt_owner_state_json(
-                "tool_invocations",
-                record_ref,
-                "git_workspace_context_json",
-            )
-        })
-}
-
-fn validate_git_workspace_context_json(field: &'static str, text: &str) -> StoreResult<()> {
-    parse_canonical_git_workspace_context(text)
-        .map(|_| ())
-        .map_err(|detail| StoreError::InvalidInput {
-            detail: format!("{field} {detail}"),
-        })
 }
 
 fn parse_canonical_git_workspace_context(

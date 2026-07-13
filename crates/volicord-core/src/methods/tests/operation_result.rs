@@ -131,6 +131,173 @@ fn exact_result_reconstructs_unicode_across_pages_and_survives_state_advance(
 }
 
 #[test]
+fn corrupt_replay_identity_routes_operation_result_to_owner_state_unavailability(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let committed = harness.service.intake(
+        intake_request(
+            "req_operation_result_identity",
+            "idem_operation_result_identity",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let operation_result_ref = committed
+        .operation_result_ref
+        .expect("committed agent result should have a lookup ref");
+    let record_ref = format!(
+        "{PROJECT_ID}/{}/{}",
+        operation_result_ref.source_method.as_str(),
+        operation_result_ref.source_idempotency_key.as_str()
+    );
+    let before = harness.counts()?;
+
+    harness.conn()?.execute(
+        "UPDATE tool_invocations
+            SET actor_source = 'not-an-actor'
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3",
+        rusqlite::params![
+            PROJECT_ID,
+            operation_result_ref.source_method.as_str(),
+            operation_result_ref.source_idempotency_key.as_str()
+        ],
+    )?;
+    let actor = harness.service.get_operation_result(
+        get_request(
+            "req_operation_result_corrupt_actor",
+            operation_result_ref.clone(),
+            None,
+        ),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_rejected_without_chunk(&actor, "MCP_UNAVAILABLE");
+    assert_owner_state_value_rejection(
+        &actor,
+        "tool_invocations",
+        &record_ref,
+        "actor_source",
+        &harness.runtime_home_path,
+    );
+    harness.conn()?.execute(
+        "UPDATE tool_invocations
+            SET actor_source = ?4
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3",
+        rusqlite::params![
+            PROJECT_ID,
+            operation_result_ref.source_method.as_str(),
+            operation_result_ref.source_idempotency_key.as_str(),
+            AGENT_ACTOR_SOURCE
+        ],
+    )?;
+
+    harness.conn()?.execute(
+        "UPDATE tool_invocations
+            SET verification_basis = ''
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3",
+        rusqlite::params![
+            PROJECT_ID,
+            operation_result_ref.source_method.as_str(),
+            operation_result_ref.source_idempotency_key.as_str()
+        ],
+    )?;
+    let basis = harness.service.get_operation_result(
+        get_request(
+            "req_operation_result_corrupt_basis",
+            operation_result_ref.clone(),
+            None,
+        ),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_rejected_without_chunk(&basis, "MCP_UNAVAILABLE");
+    assert_owner_state_value_rejection(
+        &basis,
+        "tool_invocations",
+        &record_ref,
+        "verification_basis",
+        &harness.runtime_home_path,
+    );
+    harness.conn()?.execute(
+        "UPDATE tool_invocations
+            SET verification_basis = ?4
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3",
+        rusqlite::params![
+            PROJECT_ID,
+            operation_result_ref.source_method.as_str(),
+            operation_result_ref.source_idempotency_key.as_str(),
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+        ],
+    )?;
+
+    {
+        let conn = harness.conn()?;
+        conn.pragma_update(None, "ignore_check_constraints", true)?;
+        conn.execute(
+            "UPDATE tool_invocations
+                SET operation_category = 'unsupported'
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            rusqlite::params![
+                PROJECT_ID,
+                operation_result_ref.source_method.as_str(),
+                operation_result_ref.source_idempotency_key.as_str()
+            ],
+        )?;
+        conn.pragma_update(None, "ignore_check_constraints", false)?;
+    }
+    let category = harness.service.get_operation_result(
+        get_request(
+            "req_operation_result_corrupt_category",
+            operation_result_ref.clone(),
+            None,
+        ),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_rejected_without_chunk(&category, "MCP_UNAVAILABLE");
+    assert_owner_state_value_rejection(
+        &category,
+        "tool_invocations",
+        &record_ref,
+        "operation_category",
+        &harness.runtime_home_path,
+    );
+    harness.conn()?.execute(
+        "UPDATE tool_invocations
+            SET operation_category = 'agent_workflow'
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3",
+        rusqlite::params![
+            PROJECT_ID,
+            operation_result_ref.source_method.as_str(),
+            operation_result_ref.source_idempotency_key.as_str()
+        ],
+    )?;
+
+    let restored = harness.service.get_operation_result(
+        get_request(
+            "req_operation_result_identity_restored",
+            operation_result_ref,
+            None,
+        ),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(restored.response_value["base"]["response_kind"], "result");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn operation_result_failures_return_no_chunk_and_have_no_effects() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let committed = harness.service.intake(

@@ -56,7 +56,10 @@ decision records only the durable implementation direction.
 
 - Exact recovery and idempotent replay read the same immutable response body.
 - Retrieval adds no table, artifact family, migration chain, or storage-profile
-  version. The existing `baseline_sqlite_v3` DDL remains sufficient.
+  version. `baseline_sqlite_v3`, which was current when this decision was
+  adopted, already contained the required immutable replay row. Later storage
+  profiles retain that row; their unrelated profile changes do not make
+  retrieval a migration-owning feature.
 - Core owns access and integrity decisions; Store owns the scoped replay-row
   read; MCP owns projection and retention of the result reference.
 - Retrieval is read-only and does not replay the mutation, append an authority

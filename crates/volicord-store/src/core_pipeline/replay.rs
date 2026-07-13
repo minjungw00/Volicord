@@ -3,7 +3,9 @@ use sha2::{Digest, Sha256};
 use volicord_types::{IdempotencyKey, MethodName};
 
 use super::{
-    validation::{nonnegative_i64_to_u64, validate_stored_git_workspace_context_json},
+    validation::{
+        nonnegative_i64_to_u64, validate_canonical_replay_identity, ReplayContextFieldKind,
+    },
     CoreProjectStore, StoredOperationResult, ToolInvocationRecord, VerifiedReplayContext,
 };
 use crate::{StoreError, StoreResult};
@@ -144,13 +146,28 @@ fn tool_invocation(
 fn validate_loaded_replay_context(
     record: ToolInvocationRecord,
 ) -> StoreResult<ToolInvocationRecord> {
-    if let Some(context) = record.git_workspace_context_json.as_deref() {
-        let record_ref = format!(
-            "{}/{}/{}",
-            record.project_id, record.tool_name, record.idempotency_key
-        );
-        validate_stored_git_workspace_context_json(&record_ref, context)?;
-    }
+    let record_ref = format!(
+        "{}/{}/{}",
+        record.project_id, record.tool_name, record.idempotency_key
+    );
+    validate_canonical_replay_identity(
+        &record.actor_source,
+        &record.operation_category,
+        record.verification_basis.as_deref(),
+        record.git_workspace_context_json.as_deref(),
+    )
+    .map_err(|failure| match failure.field_kind {
+        ReplayContextFieldKind::Value => StoreError::corrupt_owner_state_value(
+            "tool_invocations",
+            record_ref.clone(),
+            failure.logical_column,
+        ),
+        ReplayContextFieldKind::Json => StoreError::corrupt_owner_state_json(
+            "tool_invocations",
+            record_ref.clone(),
+            failure.logical_column,
+        ),
+    })?;
     Ok(record)
 }
 

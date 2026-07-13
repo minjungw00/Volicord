@@ -4668,6 +4668,219 @@ mod tests {
     }
 
     #[test]
+    fn invalid_replay_identity_is_rejected_before_transaction_and_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let before_state = store.project_state()?;
+        let before_effects = store.effect_counts()?;
+
+        let mut invalid_actor = replay_context(CONNECTION_ID, "agent_workflow");
+        invalid_actor.actor_source = "agent_connection:".to_owned();
+        let mut invalid_category = replay_context(CONNECTION_ID, "agent_workflow");
+        invalid_category.operation_category = "agent-workflow".to_owned();
+        let mut blank_basis = replay_context(CONNECTION_ID, "agent_workflow");
+        blank_basis.verification_basis = Some(" \t ".to_owned());
+        let mut invalid_git_context = replay_context(CONNECTION_ID, "agent_workflow");
+        invalid_git_context.git_workspace_context_json = Some("{}".to_owned());
+
+        for (case, context, expected_field) in [
+            ("actor", invalid_actor, "actor_source"),
+            ("category", invalid_category, "operation_category"),
+            ("basis", blank_basis, "verification_basis"),
+            (
+                "git_context",
+                invalid_git_context,
+                "tool_invocations.git_workspace_context_json",
+            ),
+        ] {
+            let idempotency_key =
+                IdempotencyKey::new(format!("idem_invalid_replay_identity_{case}"));
+            let input = commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::UpdateScope,
+                Some(&idempotency_key),
+                &RequestHash::new(format!("sha256:invalid-replay-identity-{case}")),
+                Some(context),
+                Some(before_state.state_version),
+                vec![pending_event(&format!("invalid_replay_identity_{case}"))],
+            );
+            let error = store
+                .commit_mutation(
+                    input,
+                    |_, _| panic!("invalid replay identity must not apply a mutation"),
+                    |_| panic!("invalid replay identity must not build a response"),
+                )
+                .expect_err("invalid replay identity must fail before commit");
+            let StoreError::InvalidInput { detail } = error else {
+                panic!("unexpected invalid replay identity error: {error}");
+            };
+            assert!(
+                detail.starts_with(expected_field),
+                "{case} reported unexpected detail: {detail}"
+            );
+            assert!(store.conn.is_autocommit());
+            assert_eq!(store.project_state()?, before_state);
+            let after_effects = store.effect_counts()?;
+            assert_eq!(after_effects.state_version, before_effects.state_version);
+            assert_eq!(after_effects.task_events, before_effects.task_events);
+            assert_eq!(
+                after_effects.tool_invocations,
+                before_effects.tool_invocations
+            );
+            assert_eq!(after_effects, before_effects);
+            assert!(store
+                .tool_invocation(MethodName::UpdateScope, &idempotency_key)?
+                .is_none());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn loaded_replay_context_rejects_corrupt_typed_identity_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let idempotency_key = IdempotencyKey::new("idem_store_loaded_replay_identity");
+        let context = replay_context(CONNECTION_ID, "agent_workflow");
+        let input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::UpdateScope,
+            Some(&idempotency_key),
+            &RequestHash::new("sha256:loaded-replay-identity"),
+            Some(context.clone()),
+            Some(0),
+            vec![pending_event("loaded_replay_identity")],
+        );
+        let committed = store.commit_mutation(
+            input,
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert("task_loaded_replay_identity"))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(committed, MutationCommitOutcome::Committed { .. }));
+        let before = store.effect_counts()?;
+        let expected_record_ref = format!(
+            "{PROJECT_ID}/{}/{}",
+            MethodName::UpdateScope.as_str(),
+            idempotency_key.as_str()
+        );
+        let assert_corrupt_value = |error: StoreError, expected_column: &str| match error {
+            StoreError::CorruptOwnerStateValue {
+                database_kind,
+                table,
+                record_ref,
+                logical_column,
+            } => {
+                assert_eq!(database_kind, "project_state");
+                assert_eq!(table, "tool_invocations");
+                assert_eq!(record_ref, expected_record_ref);
+                assert_eq!(logical_column, expected_column);
+            }
+            other => panic!("unexpected replay identity error: {other}"),
+        };
+
+        store.conn.execute(
+            "UPDATE tool_invocations
+                SET actor_source = 'not-an-actor'
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            params![
+                PROJECT_ID,
+                MethodName::UpdateScope.as_str(),
+                idempotency_key.as_str()
+            ],
+        )?;
+        let actor_error = store
+            .operation_result(MethodName::UpdateScope, &idempotency_key)
+            .expect_err("malformed stored actor source must fail closed");
+        assert_corrupt_value(actor_error, "actor_source");
+        store.conn.execute(
+            "UPDATE tool_invocations
+                SET actor_source = ?4
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            params![
+                PROJECT_ID,
+                MethodName::UpdateScope.as_str(),
+                idempotency_key.as_str(),
+                ACTOR_SOURCE
+            ],
+        )?;
+
+        store
+            .conn
+            .execute_batch("PRAGMA ignore_check_constraints = ON")?;
+        store.conn.execute(
+            "UPDATE tool_invocations
+                SET operation_category = 'unsupported'
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            params![
+                PROJECT_ID,
+                MethodName::UpdateScope.as_str(),
+                idempotency_key.as_str()
+            ],
+        )?;
+        store
+            .conn
+            .execute_batch("PRAGMA ignore_check_constraints = OFF")?;
+        let category_error = store
+            .tool_invocation(MethodName::UpdateScope, &idempotency_key)
+            .expect_err("unsupported stored operation category must fail closed");
+        assert_corrupt_value(category_error, "operation_category");
+        store.conn.execute(
+            "UPDATE tool_invocations
+                SET operation_category = 'agent_workflow'
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            params![
+                PROJECT_ID,
+                MethodName::UpdateScope.as_str(),
+                idempotency_key.as_str()
+            ],
+        )?;
+
+        store.conn.execute(
+            "UPDATE tool_invocations
+                SET verification_basis = ''
+              WHERE project_id = ?1
+                AND tool_name = ?2
+                AND idempotency_key = ?3",
+            params![
+                PROJECT_ID,
+                MethodName::UpdateScope.as_str(),
+                idempotency_key.as_str()
+            ],
+        )?;
+        let replay_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::UpdateScope,
+            Some(&idempotency_key),
+            &RequestHash::new("sha256:loaded-replay-identity"),
+            Some(context),
+            Some(0),
+            vec![pending_event("loaded_replay_identity")],
+        );
+        let basis_error = store
+            .commit_mutation(
+                replay_input,
+                |_, _| panic!("corrupt replay identity must not apply a mutation"),
+                |_| panic!("corrupt replay identity must not rebuild a response"),
+            )
+            .expect_err("empty stored verification basis must fail closed");
+        assert_corrupt_value(basis_error, "verification_basis");
+        assert_eq!(store.effect_counts()?, before);
+        Ok(())
+    }
+
+    #[test]
     fn transaction_replay_hash_conflict_rejects_without_effect() -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
@@ -4745,12 +4958,7 @@ mod tests {
         )?;
         assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
 
-        let user_context = VerifiedReplayContext {
-            actor_source: "user_channel:local_user".to_owned(),
-            operation_category: "user_only".to_owned(),
-            verification_basis: Some("store_test_user_channel".to_owned()),
-            git_workspace_context_json: None,
-        };
+        let user_context = user_replay_context();
         let second = store.commit_mutation(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
@@ -4827,7 +5035,7 @@ mod tests {
 
         assert_eq!(rows[1].0, 2);
         assert_eq!(rows[1].2, 2);
-        assert_eq!(rows[1].4, "user_channel:local_user");
+        assert_eq!(rows[1].4, "local_user");
         assert_eq!(rows[1].5, "user_only");
         assert_eq!(rows[1].7, "sha256:authority-second");
         assert_eq!(rows[1].8.as_deref(), Some(rows[0].9.as_str()));
