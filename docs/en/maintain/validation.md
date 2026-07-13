@@ -456,6 +456,113 @@ the observed host and environment only; it is not portable host conformance, a
 security proof, product acceptance, close readiness, or a general correctness
 claim.
 
+<a id="live-host-evidence-observation-release-validation"></a>
+## Live-Host Evidence-Observation Release Validation
+
+Use this checklist before publishing a release that claims the maintained
+Codex or Claude Code evidence-observation path through local web consent. This
+is authenticated, human-in-the-loop validation against the exact release
+candidate. It requires an actual installed host to create and resume the
+request and a human to submit the canonical form in a local browser. An ignored
+test, fixture-only check, ordinary workspace test, direct MCP-adapter test,
+native Judgment result, CLI-fallback result, or final-output result cannot
+replace it.
+
+Exact request and resume behavior remains with
+[`volicord.request_user_action`](../reference/api/method-request-user-action.md),
+resolution authority remains with
+[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md),
+common request and resolution fields remain with
+[API User Action Schemas](../reference/api/schema-user-action.md),
+Run and evidence effects remain with
+[`volicord.record_run`](../reference/api/method-record-run.md), and local-web
+routing remains with [MCP Transport](../reference/mcp-transport.md#local-web-consent-fallback).
+Exact status and receipt behavior remains with the
+[status method](../reference/api/method-status.md) and
+[API State Schemas](../reference/api/schema-state.md). This checklist owns only
+release-validation execution, evidence separation, and safe result retention.
+
+Prepare an approved release-record location outside the source repository and
+record the exact release-candidate and installed-host identities. A local
+browser must be able to reach the loopback consent listener. Each result path
+must be a different new absolute path with an existing parent directory; the
+harness rejects an existing path. Run both ignored cells separately from an
+interactive TTY in the ordinary authenticated host environment:
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+For each host, confirm all of these observations against the release candidate:
+
+1. Store inspection observes no `UserActionRequest` before host launch and,
+   afterward, exactly one request created by the installed host on the prepared
+   Agent Connection. Its target, artifact candidate, and `required_for` facts
+   match the fixture and the request and schema owners linked above.
+2. The prepared artifact carries an explicitly non-secret credential-shaped
+   routing marker. The cell observes that the complete-presentation classifier
+   offers `local_web_consent`, and the human operator—not the Agent or
+   harness—opens the loopback form and submits the prepared target and artifact,
+   `supported`, and a bounded non-secret summary. This assertion covers the
+   selected path and human participation, not secret detection or native
+   elicitation.
+3. Store inspection observes one immutable resolution and compares it with the
+   focused resolution and schema owners. The persisted fields are
+   `resolved_by_actor_source=local_user`,
+   `channel_kind=local_web_consent`, and a
+   `resolved_verification_basis` equal to the recognized local-web basis supplied
+   by the User Channel adapter. This checklist does not establish a new stable
+   basis value. The stored body matches the prepared target and `ArtifactRef`,
+   `supported`, and the operator's bounded summary. Operator re-entry after the
+   host exits confirms exact equality with the stored summary.
+4. Same-connection diagnostics and Store inspection observe one resume for the
+   exact request, `agent_workflow_result_replayed=true`, no second request or
+   resolution, and later consumption of the exact resolution ref. Because the
+   live cell retains no host transcript, it does not directly prove that the
+   resumed response omitted the raw summary. That negative assertion remains
+   with focused schema and adapter regression tests; the live cell proves replay
+   and ref consumption.
+5. Store inspection compares the consuming Run, one evidence observation,
+   producer and relevance anchors, exact artifact, Core-derived observation
+   time, required-criterion coverage, and request-resolution-Run event order
+   with the `record_run` and state-schema owners linked above. These are
+   observed owner-conformance assertions, not definitions supplied by this
+   checklist.
+6. Fresh status follows `AuthorityReceipt.latest_run_ref` to the consuming Run.
+   The cell compares the observed ready state and empty blocker set with the
+   status and state owners. It also requires one new Task-bound Detective Stop
+   `allow` event after the pre-host cursor and exact equality among the stored
+   Stop receipt, fresh status receipt, and the complete receipt copied from the
+   separate host-owned managed UI.
+7. The closed, bounded external JSON records
+   `kind=live_host_evidence_observation_release_validation`, safe validation
+   coordinates, owner-comparison results, and only an exact-match Boolean and
+   bounded character count for the operator summary. It must not contain the
+   consent URL, bearer token, raw summary, prompt or transcript content,
+   screenshots or recordings, credentials, secrets, or private operator input.
+
+The result recorder first writes a bounded `result=running` record. A missing
+host executable or non-interactive TTY is recorded as `result=unavailable`.
+Fixture setup failure, abnormal termination of a selected host, or a stored
+state, Stop, receipt, or result-validator invariant failure is recorded as
+`result=failed` with only a safe stage identifier. Authentication and browser
+failures cannot always be classified before host launch; if they cause the
+selected host run to fail, the result is `failed`, not `unavailable`. Only an
+unexpected unwind retains `result=failed_before_completion`. Treat a surviving
+`running` record, every non-`passed` result, a test merely reported as ignored,
+or a run without its opt-in variable as not passed.
+
+Both host-specific cells must pass before a release claim covers both
+maintained hosts. This cell proves only the observed evidence-observation
+local-web path. It does not satisfy, and cannot be satisfied by, the native
+Judgment, executable CLI-fallback, host-configuration, or final-output cells.
+Keep the bounded results and release approver's checklist outside the source
+repository. Do not commit them or any Runtime Home. The evidence applies only
+to the observed host, release candidate, and environment; it is not portable
+host conformance, a security proof, native elicitation evidence, product
+acceptance, close readiness, or a general correctness claim.
+
 <a id="live-host-cli-fallback-release-validation"></a>
 ## Live-Host CLI-Fallback Release Validation
 
@@ -493,10 +600,11 @@ For each host, confirm all of these observations against the release candidate:
    identical, the first resolution must advance state once, and the retry plus
    fresh status must preserve the committed `state_version`.
 3. The stored resolution has one resolution ID,
-   `actor_source=local_user`, `channel_kind=cli`, and
-   `verification_basis=cli_direct_user_channel`. Its selected option must equal
-   the operator choice. A path-free command template or `--help` result does not
-   meet this item.
+   `resolved_by_actor_source=local_user`, `channel_kind=cli`, and a
+   `resolved_verification_basis` recognized for the actual CLI User Channel
+   path by the resolution owner. Its selected option must equal the operator
+   choice. A path-free command template or `--help` result does not meet this
+   item.
 4. The installed host starts on the prepared Agent Connection and calls
    `volicord.request_user_action` with `request.operation=resume` for the exact
    request ID. Same-connection diagnostics must observe replay of the

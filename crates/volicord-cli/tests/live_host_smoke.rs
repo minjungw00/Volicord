@@ -23,14 +23,24 @@ mod unix {
     use volicord_store::{
         agent_connections::{agent_connection_record_read_only, VERIFIED_STATUS_COMPLETE},
         bootstrap::list_projects,
-        diagnostics::diagnostics_db_path,
+        diagnostics::{
+            diagnostics_db_path, record_diagnostic_event, start_diagnostic_session,
+            DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
+            DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
+        },
         sqlite::open_project_state_database_read_only,
     };
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
     use volicord_types::{
-        canonical_json_string, AuthorityReceipt, StateRecordKind, StatusCloseState, StatusResult,
-        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        canonical_json_string, ArtifactRef, AuthorityReceipt, EvidenceCoverageItem,
+        EvidenceCoverageState, EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceTarget,
+        PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
+        PersistedUserActionRequest, StateRecordKind, StateRecordRef, StatusCloseState,
+        StatusResult, UserActionBasis, UserActionInboxForm, UserActionPresentationPlan,
+        UserActionPresentationSafety, UserActionRequestBody, UserActionResolutionBody,
+        USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+        VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
 
     use crate::support::fake_hosts::{write_fake_claude_code, write_fake_codex};
@@ -47,10 +57,16 @@ mod unix {
         "VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE";
     const CODEX_USER_ACTION_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_USER_ACTION_SMOKE";
     const CLAUDE_USER_ACTION_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE";
+    const CODEX_EVIDENCE_OBSERVATION_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE";
+    const CLAUDE_EVIDENCE_OBSERVATION_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE";
     const CODEX_CLI_FALLBACK_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE";
     const CLAUDE_CLI_FALLBACK_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE";
     const LIVE_HOST_RESULT_PATH_ENV: &str = "VOLICORD_LIVE_HOST_RESULT_PATH";
     const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
+    const LIVE_EVIDENCE_OBSERVATION_RESULT_KIND: &str =
+        "live_host_evidence_observation_release_validation";
     const LIVE_CLI_FALLBACK_RESULT_KIND: &str = "live_host_cli_fallback_release_validation";
     const LIVE_FINAL_OUTPUT_RESULT_KIND: &str = "live_host_final_output_release_validation";
     const USER_ACTION_ROUTE_ALPHA_OPTION_ID: &str = "route_alpha";
@@ -60,6 +76,17 @@ mod unix {
     const USER_ACTION_ROUTE_BETA_RUN_MARKER: &str =
         "VOLICORD_LIVE_HOST_USER_ACTION_CONSUMED_ROUTE_BETA";
     const LIVE_HOST_BASELINE_REF: &str = "baseline_live_host_user_action";
+    const LIVE_EVIDENCE_OBSERVATION_BASELINE_REF: &str = "baseline_live_host_evidence_observation";
+    const LIVE_EVIDENCE_OBSERVATION_RUN_MARKER: &str =
+        "VOLICORD_LIVE_HOST_EVIDENCE_OBSERVATION_CONSUMED_SUPPORTED";
+    const LIVE_EVIDENCE_CALLER_OBSERVED_AT: &str = "2000-01-01T00:00:00Z";
+    const LIVE_EVIDENCE_REQUEST_QUESTION: &str =
+        "Do the exact registered fixture bytes support the required criterion?";
+    const LIVE_EVIDENCE_REQUEST_CONTEXT: &str =
+        "Review the exact benign fixture bytes through the user-only local consent path.";
+    const LIVE_EVIDENCE_ARTIFACT_DISPLAY_NAME: &str = "credential-routing-fixture.txt";
+    const LIVE_EVIDENCE_ARTIFACT_BYTES: &str = "Deterministic benign local-consent fixture bytes.";
+    const LIVE_EVIDENCE_RELATION_HINT: &str = "local-consent-routing-fixture";
     const LIVE_CLI_FALLBACK_BASELINE_REF: &str = "baseline_live_host_cli_fallback";
     const LIVE_INBOX_COMMAND_TEMPLATE: &str =
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
@@ -147,6 +174,355 @@ mod unix {
         );
         assert!(parse_native_user_action_choice("route_alpha").is_err());
         assert!(parse_native_user_action_choice("choice:unrecognized").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn operator_evidence_summary_confirmation_is_bounded_and_explicit() -> Result<(), Box<dyn Error>>
+    {
+        assert_eq!(
+            parse_live_evidence_summary_confirmation("summary:reviewed exact fixture bytes")?,
+            "reviewed exact fixture bytes"
+        );
+        assert!(parse_live_evidence_summary_confirmation("reviewed exact fixture bytes").is_err());
+        assert!(parse_live_evidence_summary_confirmation("summary:").is_err());
+        assert!(parse_live_evidence_summary_confirmation("summary:line\nbreak").is_err());
+        assert!(parse_live_evidence_summary_confirmation(&format!(
+            "summary:{}",
+            "x".repeat(USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS + 1)
+        ))
+        .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn authenticated_host_launch_removes_inherited_volicord_control_environment() {
+        let control_names = [
+            "VOLICORD_MCP_VERIFICATION",
+            "VOLICORD_MCP_LAUNCH",
+            "VOLICORD_MCP_HOST",
+            "VOLICORD_MCP_CONNECTION_ID",
+            "VOLICORD_MCP_PROJECT_ID",
+            "VOLICORD_LOCAL_WEB_CONSENT",
+        ];
+        let mut command = Command::new("host-fixture");
+        for name in control_names {
+            command.env(name, "inherited-value");
+        }
+        LiveSmokeFixture::remove_inherited_host_control_env(&mut command);
+        for name in control_names {
+            assert!(command
+                .get_envs()
+                .any(|(key, value)| { key.to_string_lossy() == name && value.is_none() }));
+        }
+    }
+
+    #[test]
+    fn evidence_observation_result_shape_rejects_false_pass_mutations() -> Result<(), Box<dyn Error>>
+    {
+        let result = evidence_observation_result_shape_fixture();
+        validate_live_evidence_observation_result_shape(&result)?;
+        assert!(serialize_live_host_result(&result)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
+
+        for (path, replacement) in [
+            (
+                &["local_web_user_channel", "resolution", "channel_kind"][..],
+                Value::String("mcp_elicitation".to_owned()),
+            ),
+            (
+                &["local_web_user_channel", "resolution", "verification_basis"][..],
+                Value::String(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL.to_owned()),
+            ),
+            (
+                &["local_web_user_channel", "resolution", "actor_source"][..],
+                Value::String("agent_connection:CONN-live".to_owned()),
+            ),
+            (
+                &["evidence_consumption", "producer_anchor", "producer_kind"][..],
+                Value::String("unverified_caller".to_owned()),
+            ),
+            (
+                &["evidence_consumption", "relevance_assessment", "status"][..],
+                Value::String("contradicted".to_owned()),
+            ),
+            (
+                &["evidence_consumption", "observed_at_matches_resolution"][..],
+                Value::Bool(false),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "resolution",
+                    "summary_character_count",
+                ][..],
+                Value::from(0),
+            ),
+            (
+                &["local_web_user_channel", "resolution", "target"][..],
+                serde_json::json!({
+                    "target_kind": "acceptance_criterion",
+                    "acceptance_criterion_id": "AC-other"
+                }),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "host_resume",
+                    "committed_record_run_calls",
+                ][..],
+                Value::from(0),
+            ),
+            (
+                &["local_web_user_channel", "host_resume", "status_calls"][..],
+                Value::from(2),
+            ),
+            (
+                &[
+                    "local_web_user_channel",
+                    "host_resume",
+                    "diagnostic_event_ordered",
+                ][..],
+                Value::Bool(false),
+            ),
+            (
+                &["evidence_consumption", "input_resolution_ref_id"][..],
+                Value::String("URES-other".to_owned()),
+            ),
+            (
+                &["evidence_consumption", "product_file_write_observed"][..],
+                Value::Bool(true),
+            ),
+            (
+                &["evidence_consumption", "source_kind"][..],
+                Value::String("agent_report".to_owned()),
+            ),
+            (
+                &["authority_events", "user_action_resolved_event_seq"][..],
+                Value::from(9),
+            ),
+            (
+                &["stop_hook", "decision"][..],
+                Value::String("block".to_owned()),
+            ),
+            (
+                &["authority_receipt", "latest_run_id"][..],
+                Value::String("RUN-other".to_owned()),
+            ),
+            (
+                &["evidence_scope", "native_judgment_cell"][..],
+                Value::Bool(true),
+            ),
+            (
+                &["sensitive_payloads", "raw_summary_recorded"][..],
+                Value::Bool(true),
+            ),
+        ] {
+            let mut mutated = result.clone();
+            set_nested_value(&mut mutated, path, replacement)?;
+            assert!(
+                validate_live_evidence_observation_result_shape(&mutated).is_err(),
+                "false-pass mutation at {path:?} was accepted"
+            );
+        }
+
+        for forbidden in [
+            "raw_url",
+            "bearer_token",
+            "token",
+            "raw_summary",
+            "user_summary",
+            "observation_summary",
+            "operator_text",
+            "prompt",
+            "transcript",
+        ] {
+            let mut leaked = result.clone();
+            leaked[forbidden] = Value::String("must-not-be-recorded".to_owned());
+            assert!(validate_live_evidence_observation_result_shape(&leaked).is_err());
+        }
+        let mut nested_alias = result.clone();
+        nested_alias["local_web_user_channel"]["resolution"]["operator_text"] =
+            Value::String("must-not-be-recorded".to_owned());
+        assert!(validate_live_evidence_observation_result_shape(&nested_alias).is_err());
+        let mut uppercase_url = result.clone();
+        uppercase_url["host"]["version"] =
+            Value::String("HTTPS://LOCALHOST/consent?TOKEN=private".to_owned());
+        assert!(validate_live_evidence_observation_result_shape(&uppercase_url).is_err());
+
+        for (stage, expected_result) in [
+            ("host_executable", "unavailable"),
+            ("interactive_terminal", "unavailable"),
+            ("fixture_setup", "failed"),
+            ("host_process", "failed"),
+            ("stored_resolution", "failed"),
+            ("authority_receipt", "failed"),
+            ("stop_and_diagnostics", "failed"),
+            ("managed_receipt_ui", "failed"),
+            ("result_validation", "failed"),
+        ] {
+            let incomplete = live_evidence_observation_incomplete_summary("codex", stage);
+            assert_eq!(incomplete["result"], expected_result);
+            validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
+            assert!(serialize_live_host_result(&incomplete)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
+        }
+        let unknown_stage = live_evidence_observation_incomplete_summary("codex", "raw-error-text");
+        assert!(
+            validate_live_evidence_observation_incomplete_result_shape(&unknown_stage).is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_observation_fixture_prepares_no_request_before_the_live_host(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("evidence-observation-setup")?;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for evidence setup fixture", &init);
+        let init_json = json_stdout(&init)?;
+        let connection_id = init_json["connection"]["connection_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("evidence setup init returned no connection id"))?;
+        let prepared = prepare_live_evidence_observation_authority(
+            &fixture,
+            connection_id,
+            "VOLICORD_LIVE_EVIDENCE_SETUP_FIXTURE",
+        )?;
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == prepared.project_id)
+            .ok_or_else(|| io::Error::other("evidence setup project is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let counts: (u64, u64, u64, u64) = conn.query_row(
+            "SELECT
+                 (SELECT COUNT(*) FROM user_action_requests WHERE task_id = ?1),
+                 (SELECT COUNT(*) FROM runs WHERE task_id = ?1),
+                 (SELECT COUNT(*) FROM artifacts WHERE task_id = ?1),
+                 (SELECT COUNT(*) FROM evidence_observations WHERE task_id = ?1)",
+            [&prepared.task_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        assert_eq!(counts, (0, 1, 1, 0));
+        assert_eq!(
+            prepared.artifact_ref.display_name,
+            LIVE_EVIDENCE_ARTIFACT_DISPLAY_NAME
+        );
+        let presentation =
+            UserActionPresentationPlan::from_form(&UserActionInboxForm::EvidenceObservation {
+                target_candidates: vec![prepared.target.clone()],
+                artifact_candidates: vec![prepared.artifact_ref.clone()],
+                relevance_options: vec![
+                    EvidenceRelevanceStatus::Supported,
+                    EvidenceRelevanceStatus::Contradicted,
+                ],
+                summary_max_chars: USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64,
+            })?;
+        assert_eq!(
+            presentation.agent_facing_input_safety(
+                LIVE_EVIDENCE_REQUEST_QUESTION,
+                LIVE_EVIDENCE_REQUEST_CONTEXT,
+            )?,
+            UserActionPresentationSafety::UserOnlyInputRequired
+        );
+        let mut marker_free_artifact = prepared.artifact_ref.clone();
+        marker_free_artifact.display_name = "local-consent-routing-fixture.txt".to_owned();
+        let marker_free_presentation =
+            UserActionPresentationPlan::from_form(&UserActionInboxForm::EvidenceObservation {
+                target_candidates: vec![prepared.target.clone()],
+                artifact_candidates: vec![marker_free_artifact],
+                relevance_options: vec![
+                    EvidenceRelevanceStatus::Supported,
+                    EvidenceRelevanceStatus::Contradicted,
+                ],
+                summary_max_chars: USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64,
+            })?;
+        assert_eq!(
+            marker_free_presentation.agent_facing_input_safety(
+                LIVE_EVIDENCE_REQUEST_QUESTION,
+                LIVE_EVIDENCE_REQUEST_CONTEXT,
+            )?,
+            UserActionPresentationSafety::AgentFacingInputAllowed
+        );
+        assert!(live_evidence_observation_prompt(&prepared)
+            .contains(LIVE_EVIDENCE_OBSERVATION_RUN_MARKER));
+        Ok(())
+    }
+
+    #[test]
+    fn local_web_evidence_diagnostic_query_requires_one_ordered_status(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("evidence-diagnostic-query")?;
+        let connection_id = "CONN-evidence-diagnostic-query";
+        let project_id = "PRJ-evidence-diagnostic-query";
+        let session_id = "SESSION-evidence-diagnostic-query";
+        start_diagnostic_session(
+            &fixture.runtime_home_path,
+            DiagnosticSessionStart {
+                session_id,
+                connection_id: Some(connection_id),
+                project_id: Some(project_id),
+                transport: DiagnosticTransport::McpStdio,
+                host_kind: Some(DiagnosticHostKind::Codex),
+                package_version: env!("CARGO_PKG_VERSION"),
+                build_id: "live-evidence-diagnostic-query-fixture",
+            },
+        )?;
+        let record =
+            |tool_name, core_committed, replayed, fallback_kind| -> Result<(), Box<dyn Error>> {
+                record_diagnostic_event(
+                    &fixture.runtime_home_path,
+                    DiagnosticEvent {
+                        session_id,
+                        event_kind: DiagnosticEventKind::McpToolCall,
+                        tool_name: Some(tool_name),
+                        latency_micros: 1,
+                        request_bytes: 1,
+                        response_bytes: 1,
+                        validation_failure: false,
+                        core_reached: true,
+                        core_committed,
+                        replayed,
+                        user_channel_kind: None,
+                        fallback_kind,
+                        product_file_write_count: 0,
+                        authoritative_refresh_failure: false,
+                        outcome: DiagnosticOutcome::Success,
+                    },
+                )?;
+                Ok(())
+            };
+        record(
+            "volicord.request_user_action",
+            true,
+            false,
+            Some(DiagnosticFallbackKind::LocalWebConsent),
+        )?;
+        record("volicord.request_user_action", false, true, None)?;
+        record("volicord.record_run", true, false, None)?;
+        record("volicord.status", false, false, None)?;
+
+        let observed = assert_local_web_evidence_diagnostic(&fixture, connection_id, project_id)?;
+        assert_eq!(observed.create_calls, 1);
+        assert_eq!(observed.resume_calls, 1);
+        assert_eq!(observed.record_run_calls, 1);
+        assert_eq!(observed.committed_record_run_calls, 1);
+        assert_eq!(observed.status_calls, 1);
+        assert_eq!(observed.successful_status_calls, 1);
+        assert!(observed.ordered);
+
+        record("volicord.status", false, false, None)?;
+        assert!(assert_local_web_evidence_diagnostic(&fixture, connection_id, project_id).is_err());
         Ok(())
     }
 
@@ -1066,6 +1442,28 @@ mod unix {
             "claude-code",
             "claude",
             CLAUDE_USER_ACTION_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Codex host, a local browser, and VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1"]
+    fn codex_live_evidence_observation_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_evidence_observation_round_trip(
+            "codex",
+            "codex",
+            CODEX_EVIDENCE_OBSERVATION_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host, a local browser, and VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1"]
+    fn claude_code_live_evidence_observation_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_evidence_observation_round_trip(
+            "claude-code",
+            "claude",
+            CLAUDE_EVIDENCE_OBSERVATION_SMOKE_ENV,
             "project_approval_required",
         )
     }
@@ -2177,6 +2575,432 @@ mod unix {
         )
     }
 
+    fn live_evidence_observation_round_trip(
+        host: &str,
+        executable_name: &str,
+        selector_env: &str,
+        expected_host_action: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if !smoke_enabled(selector_env) {
+            return Err(io::Error::other(format!(
+                "set {selector_env}=1 before running the ignored {host} evidence-observation smoke test"
+            ))
+            .into());
+        }
+
+        // The external result path is deliberately acquired before executable and
+        // terminal checks so every selected live cell has one bounded run record.
+        let mut result_recorder =
+            LiveResultRecorder::from_env_for_kind(host, LIVE_EVIDENCE_OBSERVATION_RESULT_KIND)?;
+        let mut stage = "preflight";
+        let outcome = live_evidence_observation_round_trip_inner(
+            host,
+            executable_name,
+            expected_host_action,
+            &mut stage,
+        );
+        match outcome {
+            Ok(summary) => {
+                stage = "result_validation";
+                if let Err(error) = validate_live_evidence_observation_result_shape(&summary) {
+                    let incomplete = live_evidence_observation_incomplete_summary(host, stage);
+                    validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
+                    result_recorder.record_final(&incomplete)?;
+                    return Err(error);
+                }
+                result_recorder.record_final(&summary)
+            }
+            Err(error) => {
+                let incomplete = live_evidence_observation_incomplete_summary(host, stage);
+                validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
+                result_recorder.record_final(&incomplete)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn live_evidence_observation_round_trip_inner(
+        host: &str,
+        executable_name: &str,
+        expected_host_action: &str,
+        stage: &mut &'static str,
+    ) -> Result<Value, Box<dyn Error>> {
+        *stage = "host_executable";
+        let executable = find_executable(executable_name).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("`{executable_name}` was not found on PATH"),
+            )
+        })?;
+        *stage = "interactive_terminal";
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+            return Err(io::Error::other(
+                "authenticated live evidence-observation validation requires interactive terminal stdin and stdout",
+            )
+            .into());
+        }
+
+        *stage = "fixture_setup";
+        let fixture = LiveSmokeFixture::new(&format!("{host}-evidence-observation"))?;
+        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
+        require_success(
+            &format!("{executable_name} --version"),
+            &host_version_output,
+        )?;
+        let host_version = host_version_summary(&host_version_output)?;
+        let volicord_build_id = bounded_identity(
+            "Volicord build_id",
+            &volicord_mcp::build_id(),
+            MAX_BUILD_ID_CHARS,
+        )?;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            host,
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        require_success("volicord init for live evidence-observation smoke", &init)?;
+        let init_json = json_stdout(&init)?;
+        require_live_init_reported_action_required(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+            expected_host_action,
+        )?;
+        let connection_id = bounded_identity(
+            "Agent Connection id",
+            init_json["connection"]["connection_id"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
+            MAX_CONNECTION_ID_CHARS,
+        )?;
+        let identity = LiveHostIdentity {
+            host: host.to_owned(),
+            host_version,
+            volicord_build_id,
+            connection_id,
+        };
+        let marker = format!(
+            "VOLICORD_LIVE_HOST_EVIDENCE_OBSERVATION_{}",
+            host.replace('-', "_").to_ascii_uppercase()
+        );
+        let prepared = prepare_live_evidence_observation_authority(
+            &fixture,
+            &identity.connection_id,
+            &marker,
+        )?;
+        let stop_cursor = stop_event_cursor(&fixture, &prepared.project_id)?;
+        let prompt = live_evidence_observation_prompt(&prepared);
+        println!(
+            "\n=== Volicord live {host} evidence-observation smoke ===\nThe installed host must create one evidence-observation request on its configured Agent Connection. Volicord will intentionally route the complete form to a loopback-only local consent page. Open only the URL shown by Volicord, select the sole target and artifact, choose `supported`, enter a non-secret one-line summary, submit it yourself, and then tell the same host session that submission is complete. Do not enter credentials, secrets, tokens, or private keys. Exit the host only after it reports final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
+        );
+
+        *stage = "host_process";
+        let status =
+            fixture.run_authenticated_interactive_host_with_local_web(&executable, &prompt)?;
+        smoke_note(
+            host,
+            format!("interactive host exited with {}", status_text(status)),
+        );
+        if !status.success() {
+            return Err(io::Error::other(format!(
+                "the interactive {host} process exited unsuccessfully with {}",
+                status_text(status)
+            ))
+            .into());
+        }
+
+        *stage = "stored_resolution";
+        assert_live_connection_verified(&fixture, &identity.connection_id)?;
+        let observation =
+            inspect_live_evidence_observation(&fixture, &prepared, &identity.connection_id)?;
+        let operator_summary = confirm_live_evidence_summary(host)?;
+        if operator_summary != observation.summary {
+            return Err(io::Error::other(
+                "the operator-confirmed evidence summary does not equal the stored local-web resolution summary",
+            )
+            .into());
+        }
+        let operator_summary_character_count = operator_summary.chars().count();
+        drop(operator_summary);
+
+        *stage = "authority_receipt";
+        let task_observation = observation.task_observation();
+        let status_output = fixture.run_volicord([
+            "status",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &observation.task_id,
+            "--json",
+        ])?;
+        require_success(
+            "volicord status after live evidence observation",
+            &status_output,
+        )?;
+        let receipt = verify_fresh_authority_receipt(
+            json_stdout(&status_output)?,
+            &task_observation,
+            LIVE_EVIDENCE_OBSERVATION_RUN_MARKER,
+        )?;
+        let (consumption, authority_event_order) = inspect_live_evidence_consumption(
+            &fixture,
+            &observation,
+            &receipt.latest_run_id,
+            &identity.connection_id,
+        )?;
+
+        *stage = "stop_and_diagnostics";
+        let stop_observation = verify_live_stop_guard_event(
+            &fixture.runtime_home_path,
+            &identity.connection_id,
+            &task_observation,
+            &receipt,
+            stop_cursor,
+        )?;
+        let diagnostic = assert_local_web_evidence_diagnostic(
+            &fixture,
+            &identity.connection_id,
+            &observation.project_id,
+        )?;
+
+        *stage = "managed_receipt_ui";
+        confirm_final_output_ui(
+            host,
+            IntegrationProfile::Detective,
+            FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                canonical_json: canonical_json_string(&receipt.canonical_receipt)?,
+            },
+        )?;
+
+        *stage = "completed";
+        Ok(live_evidence_observation_completed_summary(
+            LiveEvidenceCompletedSummaryInput {
+                identity: &identity,
+                observation: &observation,
+                operator_summary_character_count,
+                consumption: &consumption,
+                diagnostic: &diagnostic,
+                authority_event_order: &authority_event_order,
+                stop_observation: &stop_observation,
+                receipt: &receipt,
+            },
+        ))
+    }
+
+    struct PreparedEvidenceObservation {
+        project_id: String,
+        task_id: String,
+        change_unit_id: String,
+        target: EvidenceTarget,
+        artifact_ref: ArtifactRef,
+    }
+
+    fn prepare_live_evidence_observation_authority(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        marker: &str,
+    ) -> Result<PreparedEvidenceObservation, Box<dyn Error>> {
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let intake = adapter.call_tool(
+            "volicord.intake",
+            serde_json::json!({
+                "detail": "full",
+                "plain_language_request": marker,
+                "requested_mode": "advisor",
+                "resume_policy": "create_new",
+                "acceptance_policy": null,
+                "lineage": null,
+                "initial_scope": {
+                    "boundary": "Validate one user-owned evidence observation without Product Repository writes.",
+                    "non_goals": [],
+                    "acceptance_criteria": [{
+                        "statement": "The exact registered fixture bytes are supported by a user-owned observation.",
+                        "evidence_requirement": "required"
+                    }]
+                }
+            }),
+        )?;
+        if intake.response_value["base"]["response_kind"] != "result" {
+            return Err(
+                io::Error::other("evidence-observation setup intake was not committed").into(),
+            );
+        }
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("evidence setup intake returned no Task id"))?
+            .to_owned();
+        let scope = adapter.call_tool(
+            "volicord.update_scope",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": LIVE_EVIDENCE_OBSERVATION_BASELINE_REF,
+                "change_unit": {
+                    "operation": "create_current",
+                    "scope_summary": "No-write live-host local consent evidence-observation validation.",
+                    "affected_paths": []
+                },
+                "related_scope_decision_refs": []
+            }),
+        )?;
+        let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("evidence setup returned no Change Unit id"))?
+            .to_owned();
+        let criterion_id = scope.response_value["state"]["acceptance_criteria"]
+            .as_array()
+            .filter(|criteria| criteria.len() == 1)
+            .and_then(|criteria| criteria[0]["acceptance_criterion_id"].as_str())
+            .ok_or_else(|| {
+                io::Error::other("evidence setup did not preserve exactly one criterion")
+            })?
+            .to_owned();
+        let target: EvidenceTarget = serde_json::from_value(serde_json::json!({
+            "target_kind": "acceptance_criterion",
+            "acceptance_criterion_id": criterion_id
+        }))?;
+        let staged = adapter.call_tool(
+            "volicord.stage_artifact",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "display_name": LIVE_EVIDENCE_ARTIFACT_DISPLAY_NAME,
+                "content_type": "text/plain",
+                "redaction_state": "none",
+                "safe_bytes_or_notice": LIVE_EVIDENCE_ARTIFACT_BYTES
+            }),
+        )?;
+        if staged.response_value["base"]["response_kind"] != "result" {
+            return Err(io::Error::other(
+                "evidence setup did not stage the deterministic safe artifact",
+            )
+            .into());
+        }
+        let staged_handle = staged.response_value["staged_artifact_handle"].clone();
+        let recorded = adapter.call_tool(
+            "volicord.record_run",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "change_unit_id": change_unit_id,
+                "kind": "shaping_update",
+                "run_id": null,
+                "baseline_ref": LIVE_EVIDENCE_OBSERVATION_BASELINE_REF,
+                "write_ticket_id": null,
+                "summary": "Register exact bytes for the live evidence-observation User Channel.",
+                "observed_changes": {
+                    "changed_paths": [],
+                    "product_file_write_observed": false,
+                    "sensitive_categories": [],
+                    "baseline_ref": LIVE_EVIDENCE_OBSERVATION_BASELINE_REF
+                },
+                "artifact_inputs": [{
+                    "artifact_input_id": "artifact_input_live_evidence_observation",
+                    "source_kind": "staged_artifact",
+                    "staged_artifact_handle": staged_handle,
+                    "existing_artifact_ref": null,
+                    "relation_hint": LIVE_EVIDENCE_RELATION_HINT,
+                    "evidence_target": target,
+                    "expected_sha256": null,
+                    "expected_size_bytes": null,
+                    "redaction_state": "none"
+                }],
+                "evidence_updates": [],
+                "evidence_observations": [],
+                "close_assessment": null
+            }),
+        )?;
+        if recorded.response_value["base"]["response_kind"] != "result"
+            || recorded.response_value["run_summary"]["kind"] != "shaping_update"
+            || recorded.response_value["run_summary"]["observed_changes"]
+                ["product_file_write_observed"]
+                != false
+            || recorded.response_value["run_summary"]["observed_changes"]["changed_paths"]
+                != serde_json::json!([])
+        {
+            return Err(io::Error::other(
+                "evidence setup did not record the exact no-write shaping Run",
+            )
+            .into());
+        }
+        let artifact_ref: ArtifactRef = recorded.response_value["registered_artifacts"]
+            .as_array()
+            .filter(|artifacts| artifacts.len() == 1)
+            .and_then(|artifacts| artifacts.first())
+            .cloned()
+            .ok_or_else(|| io::Error::other("evidence setup did not register exactly one artifact"))
+            .and_then(|value| serde_json::from_value(value).map_err(io::Error::other))?;
+        let project_id = live_fixture_project_id(fixture)?;
+        let created_by_run_ref = artifact_ref.created_by_run_ref.as_ref().ok_or_else(|| {
+            io::Error::other("registered evidence artifact has no creating Run ref")
+        })?;
+        if artifact_ref.project_id.as_str() != project_id
+            || artifact_ref.task_id.as_str() != task_id
+            || serde_json::to_value(artifact_ref.integrity_status)? != "verified"
+            || serde_json::to_value(artifact_ref.availability)? != "available"
+            || serde_json::to_value(artifact_ref.redaction_state)? != "none"
+            || created_by_run_ref.record_kind != StateRecordKind::Run
+            || artifact_ref
+                .created_by_actor_source
+                .as_ref()
+                .map(|actor| actor.to_canonical_string())
+                != Some(format!("agent_connection:{connection_id}"))
+        {
+            return Err(io::Error::other(
+                "registered evidence artifact is not the exact verified available setup artifact",
+            )
+            .into());
+        }
+        Ok(PreparedEvidenceObservation {
+            project_id,
+            task_id,
+            change_unit_id,
+            target,
+            artifact_ref,
+        })
+    }
+
+    fn live_evidence_observation_prompt(prepared: &PreparedEvidenceObservation) -> String {
+        let target = serde_json::to_string(&prepared.target)
+            .expect("prepared evidence target must serialize");
+        format!(
+            concat!(
+                "Continue the prepared Volicord evidence-observation validation using the MCP server named `volicord`. ",
+                "Do not edit files, run shell commands, prepare a write, open the consent URL yourself, or answer on the user's behalf. The fixture contains no real credential or secret; its display metadata contains a routing marker solely so Volicord requires a user-only local consent page.\n\n",
+                "1. Call `volicord.request_user_action` exactly once with `detail=full` and nested `request.operation=create`. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `request.action.action_type=evidence_observation`, question `{question}`, context summary `{context_summary}`, `target_candidates=[{target}]`, `artifact_candidate_ids=[\"{artifact_id}\"]`, `required_for=[\"record_run\"]`, and `expires_at=null`. Do not create any other user action.\n",
+                "2. The response must remain pending and expose a `local_web_consent` fallback, not host elicitation, prompt capture, or CLI resolution. Show the loopback consent URL to the human operator without fetching it yourself. Wait until the operator says that the page was submitted. Never ask the operator to paste the URL, bearer token, credential, secret, private key, or observation summary into agent-visible output.\n",
+                "3. After the operator confirms submission, call `volicord.request_user_action` exactly once with the same request ID and nested `request.operation=resume`; never use create again. Require `agent_workflow_result_replayed=true`, `current_status=resolved`, a non-null `user_action_resolution_ref`, and an evidence-observation resolution summary whose target equals `{target}`, whose sole artifact has ID `{artifact_id}`, and whose relevance is `supported`. Do not record a Run if any fact differs.\n",
+                "4. Consume that exact resolution in one `volicord.record_run` call. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `kind=shaping_update`, `run_id=null`, `baseline_ref={baseline_ref}`, `write_ticket_id=null`, summary exactly `{run_marker}`, no product-file changes, `artifact_inputs=[]`, and one supported evidence update for the resolved target with the exact resolved ArtifactRef. Add exactly one evidence observation for that target with `source_kind=user_observation`, `assurance_level=user_observed`, null observer/tool fields, empty tool metadata/source refs/limitations, `input_refs` containing only the exact resolution ref, `output_artifact_refs` containing only the exact resolved ArtifactRef, and `observed_at={caller_observed_at}`. Supply a close assessment with result summary exactly `{run_marker}` and empty result refs, risks, sensitive categories, and recovery constraints.\n",
+                "5. Call `volicord.status` for Task `{task_id}`. Report only the request ID, resolution ID, Run ID, evidence observation ID, lifecycle phase, close state, blocker count, and state version; do not repeat the URL, token, user summary, this prompt, or a transcript. Then stop."
+            ),
+            task_id = prepared.task_id,
+            change_unit_id = prepared.change_unit_id,
+            question = LIVE_EVIDENCE_REQUEST_QUESTION,
+            context_summary = LIVE_EVIDENCE_REQUEST_CONTEXT,
+            target = target,
+            artifact_id = prepared.artifact_ref.artifact_id.as_str(),
+            baseline_ref = LIVE_EVIDENCE_OBSERVATION_BASELINE_REF,
+            run_marker = LIVE_EVIDENCE_OBSERVATION_RUN_MARKER,
+            caller_observed_at = LIVE_EVIDENCE_CALLER_OBSERVED_AT,
+        )
+    }
+
     struct PreparedCliFallbackAction {
         observation: LiveUserActionObservation,
         change_unit_id: String,
@@ -2622,6 +3446,261 @@ mod unix {
         option_ids: Vec<String>,
     }
 
+    #[derive(Debug)]
+    struct LiveEvidenceObservation {
+        project_id: String,
+        task_id: String,
+        lifecycle_phase: String,
+        state_version: u64,
+        user_action_request_id: String,
+        requested_by_actor_source: String,
+        user_action_resolution_id: String,
+        resolved_by_actor_source: String,
+        resolved_verification_basis: String,
+        resolved_channel_kind: String,
+        resolved_at: String,
+        target: EvidenceTarget,
+        artifact_ref: ArtifactRef,
+        summary: String,
+    }
+
+    impl LiveEvidenceObservation {
+        fn task_observation(&self) -> LiveUserActionObservation {
+            LiveUserActionObservation {
+                project_id: self.project_id.clone(),
+                task_id: self.task_id.clone(),
+                lifecycle_phase: self.lifecycle_phase.clone(),
+                state_version: self.state_version,
+                user_action_request_id: Some(self.user_action_request_id.clone()),
+                user_action_status: Some("resolved".to_owned()),
+                requested_by_actor_source: Some(self.requested_by_actor_source.clone()),
+                user_action_resolution_id: Some(self.user_action_resolution_id.clone()),
+                resolved_by_actor_source: Some(self.resolved_by_actor_source.clone()),
+                resolved_verification_basis: Some(self.resolved_verification_basis.clone()),
+                resolved_channel_kind: Some(self.resolved_channel_kind.clone()),
+                selected_option_id: None,
+                option_ids: Vec::new(),
+            }
+        }
+    }
+
+    fn inspect_live_evidence_observation(
+        fixture: &LiveSmokeFixture,
+        prepared: &PreparedEvidenceObservation,
+        connection_id: &str,
+    ) -> Result<LiveEvidenceObservation, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == prepared.project_id)
+            .ok_or_else(|| io::Error::other("live evidence project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let (lifecycle_phase, state_version): (String, u64) = conn.query_row(
+            "SELECT t.lifecycle_phase, ps.state_version
+               FROM tasks t
+               JOIN project_state ps ON ps.project_id = t.project_id
+              WHERE t.project_id = ?1 AND t.task_id = ?2",
+            rusqlite::params![prepared.project_id, prepared.task_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        let mut request_statement = conn.prepare(
+            "SELECT user_action_request_id, change_unit_id, request_json, basis_json,
+                    basis_status, required_for_json, requested_by_actor_source, source_method
+               FROM user_action_requests
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND action_kind = 'evidence_observation'",
+        )?;
+        let request_rows = request_statement
+            .query_map(
+                rusqlite::params![prepared.project_id, prepared.task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let [request_row] = request_rows.as_slice() else {
+            return Err(io::Error::other(format!(
+                "the authenticated host must create exactly one evidence-observation request; found {}",
+                request_rows.len()
+            ))
+            .into());
+        };
+        let (
+            user_action_request_id,
+            request_change_unit_id,
+            request_json,
+            basis_json,
+            basis_status,
+            required_for_json,
+            requested_by_actor_source,
+            source_method,
+        ) = request_row;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
+        let connection_request_count: u64 = conn.query_row(
+            "SELECT COUNT(*)
+               FROM user_action_requests
+              WHERE project_id = ?1
+                AND requested_by_actor_source = ?2
+                AND source_method = 'volicord.request_user_action'",
+            rusqlite::params![prepared.project_id, expected_actor_source],
+            |row| row.get(0),
+        )?;
+        if request_change_unit_id.as_deref() != Some(prepared.change_unit_id.as_str())
+            || basis_status != "current"
+            || requested_by_actor_source != &expected_actor_source
+            || source_method != "volicord.request_user_action"
+            || connection_request_count != 1
+        {
+            return Err(io::Error::other(
+                "the evidence-observation request is not bound to the prepared Change Unit and exact Agent Connection",
+            )
+            .into());
+        }
+
+        let stored_request: PersistedUserActionRequest = serde_json::from_str(request_json)?;
+        let UserActionRequestBody::EvidenceObservation(request_body) = &stored_request.body else {
+            return Err(io::Error::other(
+                "the stored evidence-observation request has a non-observation body",
+            )
+            .into());
+        };
+        let required_for: Value = serde_json::from_str(required_for_json)?;
+        if request_body.question != LIVE_EVIDENCE_REQUEST_QUESTION
+            || request_body.context_summary != LIVE_EVIDENCE_REQUEST_CONTEXT
+            || request_body.target_candidates.as_slice() != [prepared.target.clone()]
+            || request_body.artifact_candidates.as_slice() != [prepared.artifact_ref.clone()]
+            || serde_json::to_value(&stored_request.required_for)?
+                != serde_json::json!(["record_run"])
+            || required_for != serde_json::json!(["record_run"])
+        {
+            return Err(io::Error::other(
+                "the evidence-observation request does not preserve the exact marker-free prose, sole target, artifact, and record_run requirement",
+            )
+            .into());
+        }
+
+        let basis: UserActionBasis = serde_json::from_str(basis_json)?;
+        let UserActionBasis::EvidenceObservation(evidence_basis) = &basis else {
+            return Err(io::Error::other(
+                "the stored evidence-observation request has a non-observation basis",
+            )
+            .into());
+        };
+        let coordinates = &evidence_basis.coordinates;
+        if coordinates.task_id.as_str() != prepared.task_id
+            || coordinates
+                .change_unit_id
+                .as_ref()
+                .map(|value| value.as_str())
+                != Some(prepared.change_unit_id.as_str())
+            || coordinates
+                .baseline_ref
+                .as_ref()
+                .map(|value| value.as_str())
+                != Some(LIVE_EVIDENCE_OBSERVATION_BASELINE_REF)
+            || serde_json::to_value(coordinates.compatibility_status)? != "current"
+            || evidence_basis.target_candidates.as_slice() != [prepared.target.clone()]
+            || evidence_basis.artifact_candidates.as_slice() != [prepared.artifact_ref.clone()]
+        {
+            return Err(io::Error::other(
+                "the evidence-observation basis is not the exact current prepared authority basis",
+            )
+            .into());
+        }
+
+        let resolution_row = conn
+            .query_row(
+                "SELECT user_action_resolution_id, channel_kind, resolution_json,
+                        resolved_by_actor_source, resolved_verification_basis, resolved_at
+                   FROM user_action_resolutions
+                  WHERE project_id = ?1
+                    AND user_action_request_id = ?2
+                    AND action_kind = 'evidence_observation'",
+                rusqlite::params![prepared.project_id, user_action_request_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| {
+                io::Error::other(
+                    "the sole live evidence-observation request has no stored resolution",
+                )
+            })?;
+        let (
+            user_action_resolution_id,
+            resolved_channel_kind,
+            resolution_json,
+            resolved_by_actor_source,
+            resolved_verification_basis,
+            resolved_at,
+        ) = resolution_row;
+        let resolution: UserActionResolutionBody = serde_json::from_str(&resolution_json)?;
+        let UserActionResolutionBody::EvidenceObservation { observation } = resolution else {
+            return Err(io::Error::other(
+                "the stored live evidence resolution has a non-observation body",
+            )
+            .into());
+        };
+        if resolved_channel_kind != "local_web_consent"
+            || resolved_by_actor_source != "local_user"
+            || resolved_verification_basis != VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
+            || observation.target != prepared.target
+            || observation.relevance_status != EvidenceRelevanceStatus::Supported
+            || observation.output_artifact_refs.as_slice() != [prepared.artifact_ref.clone()]
+            || observation.summary.trim().is_empty()
+            || observation.summary.chars().count() > USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS
+        {
+            return Err(io::Error::other(
+                "the local-web resolution does not preserve the exact user-owned supported observation",
+            )
+            .into());
+        }
+        bounded_identity("evidence resolution id", &user_action_resolution_id, 256)?;
+        bounded_identity(
+            "evidence resolution timestamp",
+            &resolved_at,
+            MAX_RECORDED_AT_CHARS,
+        )?;
+        Ok(LiveEvidenceObservation {
+            project_id: prepared.project_id.clone(),
+            task_id: prepared.task_id.clone(),
+            lifecycle_phase,
+            state_version,
+            user_action_request_id: user_action_request_id.clone(),
+            requested_by_actor_source: requested_by_actor_source.clone(),
+            user_action_resolution_id,
+            resolved_by_actor_source,
+            resolved_verification_basis,
+            resolved_channel_kind,
+            resolved_at,
+            target: observation.target,
+            artifact_ref: observation
+                .output_artifact_refs
+                .into_iter()
+                .next()
+                .ok_or_else(|| io::Error::other("resolved evidence artifact disappeared"))?,
+            summary: observation.summary,
+        })
+    }
+
     fn inspect_live_user_action(
         fixture: &LiveSmokeFixture,
         marker: &str,
@@ -2961,6 +4040,409 @@ mod unix {
             AuthorityEventOrder {
                 user_action_requested_event_seq: requested_event_seq,
                 user_action_resolved_event_seq: recorded_event_seq,
+                run_recorded_event_seq: run_event_seq,
+            },
+        ))
+    }
+
+    #[derive(Debug)]
+    struct LiveEvidenceConsumption {
+        run: LiveRunObservation,
+        evidence_observation_id: String,
+        resolution_ref: StateRecordRef,
+        observation_ref: StateRecordRef,
+        observed_by_actor_source: String,
+        producer_kind: String,
+        producer_verification_basis: String,
+        relevance_status: String,
+        assessed_by_actor_source: String,
+        coverage_state: String,
+        observed_at_matches_resolution: bool,
+    }
+
+    fn inspect_live_evidence_consumption(
+        fixture: &LiveSmokeFixture,
+        observation: &LiveEvidenceObservation,
+        run_id: &str,
+        connection_id: &str,
+    ) -> Result<(LiveEvidenceConsumption, AuthorityEventOrder), Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == observation.project_id)
+            .ok_or_else(|| io::Error::other("live evidence project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let run_row = conn
+            .query_row(
+                "SELECT run_id, kind, status, summary_json, observed_changes_json,
+                        created_by_actor_source, write_ticket_id, evidence_updates_json
+                   FROM runs
+                  WHERE project_id = ?1 AND task_id = ?2 AND run_id = ?3",
+                rusqlite::params![observation.project_id, observation.task_id, run_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, String>(7)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "fresh evidence AuthorityReceipt names missing Run {run_id}"
+                ))
+            })?;
+        let (
+            stored_run_id,
+            kind,
+            status,
+            summary_json,
+            observed_changes_json,
+            created_by_actor_source,
+            write_ticket_id,
+            evidence_updates_json,
+        ) = run_row;
+        let run = live_run_observation(
+            &stored_run_id,
+            &kind,
+            &summary_json,
+            &observed_changes_json,
+            &created_by_actor_source,
+        )?;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
+        let evidence_updates: Value = serde_json::from_str(&evidence_updates_json)?;
+        let expected_update = serde_json::json!([{
+            "target": observation.target,
+            "coverage_state": "supported",
+            "supporting_run_refs": [],
+            "observation_refs": [],
+            "supporting_artifact_refs": [observation.artifact_ref],
+            "gap_refs": []
+        }]);
+        if status != "recorded"
+            || run.kind != "shaping_update"
+            || run.summary != LIVE_EVIDENCE_OBSERVATION_RUN_MARKER
+            || run.created_by_actor_source != expected_actor_source
+            || run.product_file_write_observed
+            || !run.changed_paths.is_empty()
+            || write_ticket_id.is_some()
+            || evidence_updates != expected_update
+        {
+            return Err(io::Error::other(
+                "the consuming Run does not preserve the exact no-write supported evidence update",
+            )
+            .into());
+        }
+
+        let mut observation_statement = conn.prepare(
+            "SELECT evidence_observation_id, acceptance_criterion_id, evidence_claim_id,
+                    source_kind, assurance_level, observed_by_actor_source, tool_name,
+                    tool_invocation_id, tool_metadata_json, input_refs_json,
+                    source_refs_json, output_artifact_refs_json, limitations_json,
+                    observed_at, metadata_json
+               FROM evidence_observations
+              WHERE project_id = ?1 AND task_id = ?2 AND run_id = ?3",
+        )?;
+        let stored_observations = observation_statement
+            .query_map(
+                rusqlite::params![observation.project_id, observation.task_id, run_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, String>(13)?,
+                        row.get::<_, String>(14)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let [stored_observation] = stored_observations.as_slice() else {
+            return Err(io::Error::other(format!(
+                "the consuming Run must own exactly one evidence observation; found {}",
+                stored_observations.len()
+            ))
+            .into());
+        };
+        let (
+            evidence_observation_id,
+            acceptance_criterion_id,
+            evidence_claim_id,
+            source_kind,
+            assurance_level,
+            observed_by_actor_source,
+            tool_name,
+            tool_invocation_id,
+            tool_metadata_json,
+            input_refs_json,
+            source_refs_json,
+            output_artifact_refs_json,
+            limitations_json,
+            observed_at,
+            metadata_json,
+        ) = stored_observation;
+        let EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: expected_criterion_id,
+        } = &observation.target
+        else {
+            return Err(io::Error::other(
+                "the prepared live evidence target is not an acceptance criterion",
+            )
+            .into());
+        };
+        let input_refs: Vec<StateRecordRef> = serde_json::from_str(input_refs_json)?;
+        let output_artifact_refs: Vec<ArtifactRef> =
+            serde_json::from_str(output_artifact_refs_json)?;
+        let [resolution_ref] = input_refs.as_slice() else {
+            return Err(io::Error::other(
+                "the user evidence observation must contain only the exact resolution input ref",
+            )
+            .into());
+        };
+        if resolution_ref.record_kind != StateRecordKind::UserActionResolution
+            || resolution_ref.record_id.as_str() != observation.user_action_resolution_id
+            || resolution_ref.project_id.as_str() != observation.project_id
+            || resolution_ref.task_id.as_ref().map(|value| value.as_str())
+                != Some(observation.task_id.as_str())
+            || acceptance_criterion_id.as_deref() != Some(expected_criterion_id.as_str())
+            || evidence_claim_id.is_some()
+            || source_kind != "user_observation"
+            || assurance_level != "user_observed"
+            || observed_by_actor_source.as_deref() != Some("local_user")
+            || tool_name.is_some()
+            || tool_invocation_id.is_some()
+            || serde_json::from_str::<Value>(tool_metadata_json)? != serde_json::json!({})
+            || serde_json::from_str::<Value>(source_refs_json)? != serde_json::json!([])
+            || output_artifact_refs.as_slice() != [observation.artifact_ref.clone()]
+            || serde_json::from_str::<Value>(limitations_json)? != serde_json::json!([])
+            || observed_at != &observation.resolved_at
+            || observed_at == LIVE_EVIDENCE_CALLER_OBSERVED_AT
+        {
+            return Err(io::Error::other(
+                "the stored evidence observation is not the exact Core-derived local-user observation",
+            )
+            .into());
+        }
+
+        let authority: PersistedEvidenceObservationAuthority = serde_json::from_str(metadata_json)?;
+        let producer_ref = authority
+            .producer_anchor
+            .producer_ref
+            .as_ref()
+            .ok_or_else(|| io::Error::other("user evidence producer has no resolution ref"))?;
+        let assessment_ref = authority
+            .relevance_assessment
+            .assessment_ref
+            .as_ref()
+            .ok_or_else(|| io::Error::other("user evidence relevance has no resolution ref"))?;
+        let assessed_by_actor_source = authority
+            .relevance_assessment
+            .assessed_by_actor_source
+            .as_ref()
+            .map(|actor| actor.to_canonical_string())
+            .ok_or_else(|| io::Error::other("user evidence relevance has no actor"))?;
+        if authority.recorded_by_run_id.as_str() != run_id
+            || authority.invocation_verification_basis
+                != VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+            || authority.producer_anchor.producer_kind
+                != EvidenceProducerKind::UserChannelObservation
+            || producer_ref != resolution_ref
+            || authority.producer_anchor.output_artifact_refs.as_slice()
+                != [observation.artifact_ref.clone()]
+            || authority
+                .producer_anchor
+                .verification_basis
+                .as_ref()
+                .map(String::as_str)
+                != Some(VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB)
+            || authority.relevance_assessment.status != EvidenceRelevanceStatus::Supported
+            || assessment_ref != resolution_ref
+            || assessed_by_actor_source != "local_user"
+        {
+            return Err(io::Error::other(
+                "the evidence producer and relevance assessment are not anchored to the same local-web resolution",
+            )
+            .into());
+        }
+
+        let mut coverage_statement = conn.prepare(
+            "SELECT status, coverage_json, metadata_json
+               FROM evidence_summaries
+              WHERE project_id = ?1 AND task_id = ?2",
+        )?;
+        let coverage_rows = coverage_statement
+            .query_map(
+                rusqlite::params![observation.project_id, observation.task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut consuming_coverage = Vec::new();
+        for (status, coverage_json, metadata_json) in coverage_rows {
+            let metadata: PersistedEvidenceMetadata = serde_json::from_str(&metadata_json)?;
+            if metadata.updated_by_run_id.as_str() == run_id {
+                consuming_coverage.push((status, coverage_json));
+            }
+        }
+        let [(coverage_status, coverage_json)] = consuming_coverage.as_slice() else {
+            return Err(io::Error::other(format!(
+                "the consuming Run must own exactly one evidence summary; found {}",
+                consuming_coverage.len()
+            ))
+            .into());
+        };
+        let coverage_items: Vec<EvidenceCoverageItem> = serde_json::from_str(coverage_json)?;
+        let [coverage] = coverage_items.as_slice() else {
+            return Err(io::Error::other(
+                "the consuming Run did not produce exactly one evidence coverage item",
+            )
+            .into());
+        };
+        let [observation_ref] = coverage.observation_refs.as_slice() else {
+            return Err(io::Error::other(
+                "supported coverage does not name exactly one evidence observation",
+            )
+            .into());
+        };
+        let [supporting_run_ref] = coverage.supporting_run_refs.as_slice() else {
+            return Err(io::Error::other(
+                "supported coverage does not name exactly one supporting Run",
+            )
+            .into());
+        };
+        if coverage_status != "sufficient"
+            || coverage.target != observation.target
+            || coverage.coverage_state != EvidenceCoverageState::Supported
+            || observation_ref.record_kind != StateRecordKind::EvidenceObservation
+            || observation_ref.record_id.as_str() != evidence_observation_id
+            || observation_ref.project_id.as_str() != observation.project_id
+            || observation_ref.task_id.as_ref().map(|value| value.as_str())
+                != Some(observation.task_id.as_str())
+            || supporting_run_ref.record_kind != StateRecordKind::Run
+            || supporting_run_ref.record_id.as_str() != run_id
+            || coverage.supporting_artifact_refs.as_slice() != [observation.artifact_ref.clone()]
+            || !coverage.gap_refs.is_empty()
+        {
+            return Err(io::Error::other(
+                "the latest supported coverage is not bound to the consuming Run, observation, target, and artifact",
+            )
+            .into());
+        }
+
+        let mut event_statement = conn.prepare(
+            "SELECT event_seq, event_type, payload_json
+               FROM authority_events
+              WHERE project_id = ?1 AND task_id = ?2
+                AND event_type IN ('user_action_requested', 'user_action_resolved', 'run_recorded')
+              ORDER BY event_seq",
+        )?;
+        let event_rows = event_statement.query_map(
+            rusqlite::params![observation.project_id, observation.task_id],
+            |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )?;
+        let mut requested_events = Vec::new();
+        let mut resolved_events = Vec::new();
+        let mut run_events = Vec::new();
+        for row in event_rows {
+            let (event_seq, event_type, payload_json) = row?;
+            let payload: Value = serde_json::from_str(&payload_json)?;
+            match event_type.as_str() {
+                "user_action_requested"
+                    if payload["user_action_request_id"] == observation.user_action_request_id =>
+                {
+                    if payload["action_kind"] != "evidence_observation" {
+                        return Err(io::Error::other(
+                            "matching request authority event has the wrong action kind",
+                        )
+                        .into());
+                    }
+                    requested_events.push(event_seq);
+                }
+                "user_action_resolved"
+                    if payload["user_action_request_id"] == observation.user_action_request_id =>
+                {
+                    if payload["user_action_resolution_id"] != observation.user_action_resolution_id
+                        || payload["action_kind"] != "evidence_observation"
+                        || payload["channel_kind"] != "local_web_consent"
+                    {
+                        return Err(io::Error::other(
+                            "matching resolution authority event does not preserve the local-web observation",
+                        )
+                        .into());
+                    }
+                    resolved_events.push(event_seq);
+                }
+                "run_recorded" if payload["run_id"] == run_id => {
+                    if payload["kind"] != "shaping_update"
+                        || payload["product_file_write_observed"] != false
+                        || payload["evidence_observation_ids"]
+                            != serde_json::json!([evidence_observation_id])
+                    {
+                        return Err(io::Error::other(
+                            "matching Run authority event does not preserve the sole evidence observation",
+                        )
+                        .into());
+                    }
+                    run_events.push(event_seq);
+                }
+                _ => {}
+            }
+        }
+        let requested_event_seq =
+            exactly_one_event_seq("evidence user_action_requested", &requested_events)?;
+        let resolved_event_seq =
+            exactly_one_event_seq("evidence user_action_resolved", &resolved_events)?;
+        let run_event_seq = exactly_one_event_seq("evidence run_recorded", &run_events)?;
+        if !(requested_event_seq < resolved_event_seq && resolved_event_seq < run_event_seq) {
+            return Err(io::Error::other(
+                "the evidence request, resolution, and consuming Run authority events are out of order",
+            )
+            .into());
+        }
+
+        Ok((
+            LiveEvidenceConsumption {
+                run,
+                evidence_observation_id: evidence_observation_id.clone(),
+                resolution_ref: resolution_ref.clone(),
+                observation_ref: observation_ref.clone(),
+                observed_by_actor_source: "local_user".to_owned(),
+                producer_kind: "user_channel_observation".to_owned(),
+                producer_verification_basis: VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB.to_owned(),
+                relevance_status: "supported".to_owned(),
+                assessed_by_actor_source,
+                coverage_state: "supported".to_owned(),
+                observed_at_matches_resolution: true,
+            },
+            AuthorityEventOrder {
+                user_action_requested_event_seq: requested_event_seq,
+                user_action_resolved_event_seq: resolved_event_seq,
                 run_recorded_event_seq: run_event_seq,
             },
         ))
@@ -3385,6 +4867,39 @@ mod unix {
         Ok(selected.to_owned())
     }
 
+    fn confirm_live_evidence_summary(host: &str) -> Result<String, Box<dyn Error>> {
+        print!(
+            "\nConfirm the exact non-secret one-line evidence summary you personally submitted in the {host} local consent page. Type `summary:` followed by that summary: "
+        );
+        io::stdout().flush()?;
+        let mut confirmation = String::new();
+        if io::stdin().read_line(&mut confirmation)? == 0 {
+            return Err(io::Error::other(
+                "no operator confirmation was received for the local-web evidence summary",
+            )
+            .into());
+        }
+        parse_live_evidence_summary_confirmation(confirmation.trim_end_matches(['\r', '\n']))
+    }
+
+    fn parse_live_evidence_summary_confirmation(
+        confirmation: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let summary = confirmation.strip_prefix("summary:").ok_or_else(|| {
+            io::Error::other("operator evidence confirmation must start with `summary:`")
+        })?;
+        if summary.is_empty()
+            || summary.chars().any(char::is_control)
+            || summary.chars().count() > USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS
+        {
+            return Err(io::Error::other(format!(
+                "operator evidence summary must be one non-empty printable line of at most {USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS} characters"
+            ))
+            .into());
+        }
+        Ok(summary.to_owned())
+    }
+
     #[derive(Clone, Debug)]
     enum FinalOutputUiExpectation {
         ManagedSurface,
@@ -3461,6 +4976,817 @@ mod unix {
             .into());
         }
         parse_final_output_ui_confirmation(confirmation.trim(), &expectation)?;
+        Ok(())
+    }
+
+    struct LiveEvidenceCompletedSummaryInput<'a> {
+        identity: &'a LiveHostIdentity,
+        observation: &'a LiveEvidenceObservation,
+        operator_summary_character_count: usize,
+        consumption: &'a LiveEvidenceConsumption,
+        diagnostic: &'a LiveEvidenceDiagnosticObservation,
+        authority_event_order: &'a AuthorityEventOrder,
+        stop_observation: &'a VerifiedStopObservation,
+        receipt: &'a VerifiedLiveReceipt,
+    }
+
+    fn live_evidence_observation_completed_summary(
+        input: LiveEvidenceCompletedSummaryInput<'_>,
+    ) -> Value {
+        let LiveEvidenceCompletedSummaryInput {
+            identity,
+            observation,
+            operator_summary_character_count,
+            consumption,
+            diagnostic,
+            authority_event_order,
+            stop_observation,
+            receipt,
+        } = input;
+        serde_json::json!({
+            "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+            "result": "passed",
+            "host": {
+                "kind": identity.host,
+                "version": identity.host_version
+            },
+            "volicord": {
+                "build_id": identity.volicord_build_id
+            },
+            "connection": {
+                "connection_id": identity.connection_id
+            },
+            "task": {
+                "project_id": observation.project_id,
+                "task_id": observation.task_id,
+                "lifecycle_phase": observation.lifecycle_phase,
+                "state_version": observation.state_version
+            },
+            "local_web_user_channel": {
+                "request": {
+                    "user_action_request_id": observation.user_action_request_id,
+                    "action_kind": "evidence_observation",
+                    "requested_by_actor_source": observation.requested_by_actor_source,
+                    "target": observation.target,
+                    "artifact_id": observation.artifact_ref.artifact_id
+                },
+                "resolution": {
+                    "user_action_resolution_id": observation.user_action_resolution_id,
+                    "actor_source": observation.resolved_by_actor_source,
+                    "channel_kind": observation.resolved_channel_kind,
+                    "verification_basis": observation.resolved_verification_basis,
+                    "target": observation.target,
+                    "artifact_id": observation.artifact_ref.artifact_id,
+                    "relevance_status": "supported",
+                    "operator_summary_exact_match": true,
+                    "summary_character_count": operator_summary_character_count
+                },
+                "host_resume": {
+                    "create_calls": diagnostic.create_calls,
+                    "resume_calls": diagnostic.resume_calls,
+                    "same_agent_connection": true,
+                    "agent_workflow_result_replayed": diagnostic.resume_calls == 1,
+                    "additional_evidence_observation_request_created": false,
+                    "record_run_calls": diagnostic.record_run_calls,
+                    "committed_record_run_calls": diagnostic.committed_record_run_calls,
+                    "status_calls": diagnostic.status_calls,
+                    "successful_status_calls": diagnostic.successful_status_calls,
+                    "diagnostic_event_ordered": diagnostic.ordered
+                }
+            },
+            "evidence_consumption": {
+                "run_id": consumption.run.run_id,
+                "run_kind": consumption.run.kind,
+                "run_marker": consumption.run.summary,
+                "created_by_actor_source": consumption.run.created_by_actor_source,
+                "product_file_write_observed": consumption.run.product_file_write_observed,
+                "changed_path_count": consumption.run.changed_paths.len(),
+                "evidence_observation_id": consumption.evidence_observation_id,
+                "observation_ref_id": consumption.observation_ref.record_id,
+                "target": observation.target,
+                "artifact_id": observation.artifact_ref.artifact_id,
+                "source_kind": "user_observation",
+                "assurance_level": "user_observed",
+                "observed_by_actor_source": consumption.observed_by_actor_source,
+                "input_resolution_ref_id": consumption.resolution_ref.record_id,
+                "producer_anchor": {
+                    "producer_kind": consumption.producer_kind,
+                    "producer_ref_id": consumption.resolution_ref.record_id,
+                    "verification_basis": consumption.producer_verification_basis
+                },
+                "relevance_assessment": {
+                    "status": consumption.relevance_status,
+                    "assessment_ref_id": consumption.resolution_ref.record_id,
+                    "assessed_by_actor_source": consumption.assessed_by_actor_source
+                },
+                "coverage_state": consumption.coverage_state,
+                "observed_at_matches_resolution": consumption.observed_at_matches_resolution,
+                "caller_observed_at_replaced": true
+            },
+            "authority_events": {
+                "user_action_requested_event_seq": authority_event_order.user_action_requested_event_seq,
+                "user_action_resolved_event_seq": authority_event_order.user_action_resolved_event_seq,
+                "run_recorded_event_seq": authority_event_order.run_recorded_event_seq,
+                "ordered": authority_event_order.user_action_requested_event_seq
+                    < authority_event_order.user_action_resolved_event_seq
+                    && authority_event_order.user_action_resolved_event_seq
+                        < authority_event_order.run_recorded_event_seq
+            },
+            "stop_hook": {
+                "guard_event_id": stop_observation.guard_event_id,
+                "session_id": stop_observation.session_id,
+                "connection_id": stop_observation.connection_id,
+                "decision": stop_observation.decision,
+                "receipt_state_version": stop_observation.state_version,
+                "latest_run_id": stop_observation.latest_run_id
+            },
+            "authority_receipt": {
+                "project_id": receipt.project_id,
+                "task_id": receipt.task_id,
+                "state_version": receipt.state_version,
+                "latest_run_id": receipt.latest_run_id,
+                "close_state": receipt.close_state,
+                "close_blocker_count": receipt.close_blocker_count,
+                "complete_managed_ui_confirmed": true
+            },
+            "evidence_scope": {
+                "live_evidence_observation_cell": true,
+                "native_judgment_cell": false,
+                "cli_fallback_cell": false,
+                "final_output_matrix_cell": false
+            },
+            "sensitive_payloads": {
+                "raw_url_recorded": false,
+                "bearer_token_recorded": false,
+                "raw_summary_recorded": false,
+                "prompt_recorded": false,
+                "transcript_recorded": false,
+                "secret_material_recorded": false
+            }
+        })
+    }
+
+    fn live_evidence_observation_incomplete_summary(host: &str, stage: &str) -> Value {
+        let result = match stage {
+            "host_executable" | "interactive_terminal" => "unavailable",
+            _ => "failed",
+        };
+        serde_json::json!({
+            "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+            "result": result,
+            "host": { "kind": host },
+            "stage": stage,
+            "evidence_scope": {
+                "live_evidence_observation_cell": true,
+                "native_judgment_cell": false,
+                "cli_fallback_cell": false,
+                "final_output_matrix_cell": false
+            },
+            "sensitive_payloads": {
+                "raw_url_recorded": false,
+                "bearer_token_recorded": false,
+                "raw_summary_recorded": false,
+                "prompt_recorded": false,
+                "transcript_recorded": false,
+                "secret_material_recorded": false
+            }
+        })
+    }
+
+    fn evidence_observation_result_shape_fixture() -> Value {
+        serde_json::json!({
+            "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+            "result": "passed",
+            "host": { "kind": "codex", "version": "fixture-version" },
+            "volicord": { "build_id": "fixture-build" },
+            "connection": { "connection_id": "CONN-live" },
+            "task": {
+                "project_id": "PRJ-live",
+                "task_id": "TASK-live",
+                "lifecycle_phase": "ready_to_close",
+                "state_version": 7
+            },
+            "local_web_user_channel": {
+                "request": {
+                    "user_action_request_id": "UAR-live",
+                    "action_kind": "evidence_observation",
+                    "requested_by_actor_source": "agent_connection:CONN-live",
+                    "target": {
+                        "target_kind": "acceptance_criterion",
+                        "acceptance_criterion_id": "AC-live"
+                    },
+                    "artifact_id": "ART-live"
+                },
+                "resolution": {
+                    "user_action_resolution_id": "URES-live",
+                    "actor_source": "local_user",
+                    "channel_kind": "local_web_consent",
+                    "verification_basis": VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+                    "target": {
+                        "target_kind": "acceptance_criterion",
+                        "acceptance_criterion_id": "AC-live"
+                    },
+                    "artifact_id": "ART-live",
+                    "relevance_status": "supported",
+                    "operator_summary_exact_match": true,
+                    "summary_character_count": 29
+                },
+                "host_resume": {
+                    "create_calls": 1,
+                    "resume_calls": 1,
+                    "same_agent_connection": true,
+                    "agent_workflow_result_replayed": true,
+                    "additional_evidence_observation_request_created": false,
+                    "record_run_calls": 1,
+                    "committed_record_run_calls": 1,
+                    "status_calls": 1,
+                    "successful_status_calls": 1,
+                    "diagnostic_event_ordered": true
+                }
+            },
+            "evidence_consumption": {
+                "run_id": "RUN-live",
+                "run_kind": "shaping_update",
+                "run_marker": LIVE_EVIDENCE_OBSERVATION_RUN_MARKER,
+                "created_by_actor_source": "agent_connection:CONN-live",
+                "product_file_write_observed": false,
+                "changed_path_count": 0,
+                "evidence_observation_id": "EOBS-live",
+                "observation_ref_id": "EOBS-live",
+                "target": {
+                    "target_kind": "acceptance_criterion",
+                    "acceptance_criterion_id": "AC-live"
+                },
+                "artifact_id": "ART-live",
+                "source_kind": "user_observation",
+                "assurance_level": "user_observed",
+                "observed_by_actor_source": "local_user",
+                "input_resolution_ref_id": "URES-live",
+                "producer_anchor": {
+                    "producer_kind": "user_channel_observation",
+                    "producer_ref_id": "URES-live",
+                    "verification_basis": VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
+                },
+                "relevance_assessment": {
+                    "status": "supported",
+                    "assessment_ref_id": "URES-live",
+                    "assessed_by_actor_source": "local_user"
+                },
+                "coverage_state": "supported",
+                "observed_at_matches_resolution": true,
+                "caller_observed_at_replaced": true
+            },
+            "authority_events": {
+                "user_action_requested_event_seq": 2,
+                "user_action_resolved_event_seq": 3,
+                "run_recorded_event_seq": 4,
+                "ordered": true
+            },
+            "stop_hook": {
+                "guard_event_id": "GE-live",
+                "session_id": "SESSION-live",
+                "connection_id": "CONN-live",
+                "decision": "allow",
+                "receipt_state_version": 7,
+                "latest_run_id": "RUN-live"
+            },
+            "authority_receipt": {
+                "project_id": "PRJ-live",
+                "task_id": "TASK-live",
+                "state_version": 7,
+                "latest_run_id": "RUN-live",
+                "close_state": "ready",
+                "close_blocker_count": 0,
+                "complete_managed_ui_confirmed": true
+            },
+            "evidence_scope": {
+                "live_evidence_observation_cell": true,
+                "native_judgment_cell": false,
+                "cli_fallback_cell": false,
+                "final_output_matrix_cell": false
+            },
+            "sensitive_payloads": {
+                "raw_url_recorded": false,
+                "bearer_token_recorded": false,
+                "raw_summary_recorded": false,
+                "prompt_recorded": false,
+                "transcript_recorded": false,
+                "secret_material_recorded": false
+            }
+        })
+    }
+
+    fn require_exact_live_evidence_result_keys(
+        value: &Value,
+        pointer: &str,
+        expected: &[&str],
+    ) -> Result<(), Box<dyn Error>> {
+        let selected = if pointer.is_empty() {
+            value
+        } else {
+            value.pointer(pointer).ok_or_else(|| {
+                io::Error::other(format!("live evidence result has no object at {pointer}"))
+            })?
+        };
+        let object = selected.as_object().ok_or_else(|| {
+            io::Error::other(format!(
+                "live evidence result value at {pointer:?} is not an object"
+            ))
+        })?;
+        if object.len() != expected.len() || !expected.iter().all(|key| object.contains_key(*key)) {
+            let mut actual = object.keys().map(String::as_str).collect::<Vec<_>>();
+            actual.sort_unstable();
+            return Err(io::Error::other(format!(
+                "live evidence result object at {pointer:?} has non-canonical keys {actual:?}"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn validate_live_evidence_observation_passed_result_keys(
+        value: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        require_exact_live_evidence_result_keys(
+            value,
+            "",
+            &[
+                "kind",
+                "result",
+                "host",
+                "volicord",
+                "connection",
+                "task",
+                "local_web_user_channel",
+                "evidence_consumption",
+                "authority_events",
+                "stop_hook",
+                "authority_receipt",
+                "evidence_scope",
+                "sensitive_payloads",
+            ],
+        )?;
+        for (pointer, keys) in [
+            ("/host", &["kind", "version"][..]),
+            ("/volicord", &["build_id"][..]),
+            ("/connection", &["connection_id"][..]),
+            (
+                "/task",
+                &["project_id", "task_id", "lifecycle_phase", "state_version"][..],
+            ),
+            (
+                "/local_web_user_channel",
+                &["request", "resolution", "host_resume"][..],
+            ),
+            (
+                "/local_web_user_channel/request",
+                &[
+                    "user_action_request_id",
+                    "action_kind",
+                    "requested_by_actor_source",
+                    "target",
+                    "artifact_id",
+                ][..],
+            ),
+            (
+                "/local_web_user_channel/request/target",
+                &["target_kind", "acceptance_criterion_id"][..],
+            ),
+            (
+                "/local_web_user_channel/resolution",
+                &[
+                    "user_action_resolution_id",
+                    "actor_source",
+                    "channel_kind",
+                    "verification_basis",
+                    "target",
+                    "artifact_id",
+                    "relevance_status",
+                    "operator_summary_exact_match",
+                    "summary_character_count",
+                ][..],
+            ),
+            (
+                "/local_web_user_channel/resolution/target",
+                &["target_kind", "acceptance_criterion_id"][..],
+            ),
+            (
+                "/local_web_user_channel/host_resume",
+                &[
+                    "create_calls",
+                    "resume_calls",
+                    "same_agent_connection",
+                    "agent_workflow_result_replayed",
+                    "additional_evidence_observation_request_created",
+                    "record_run_calls",
+                    "committed_record_run_calls",
+                    "status_calls",
+                    "successful_status_calls",
+                    "diagnostic_event_ordered",
+                ][..],
+            ),
+            (
+                "/evidence_consumption",
+                &[
+                    "run_id",
+                    "run_kind",
+                    "run_marker",
+                    "created_by_actor_source",
+                    "product_file_write_observed",
+                    "changed_path_count",
+                    "evidence_observation_id",
+                    "observation_ref_id",
+                    "target",
+                    "artifact_id",
+                    "source_kind",
+                    "assurance_level",
+                    "observed_by_actor_source",
+                    "input_resolution_ref_id",
+                    "producer_anchor",
+                    "relevance_assessment",
+                    "coverage_state",
+                    "observed_at_matches_resolution",
+                    "caller_observed_at_replaced",
+                ][..],
+            ),
+            (
+                "/evidence_consumption/target",
+                &["target_kind", "acceptance_criterion_id"][..],
+            ),
+            (
+                "/evidence_consumption/producer_anchor",
+                &["producer_kind", "producer_ref_id", "verification_basis"][..],
+            ),
+            (
+                "/evidence_consumption/relevance_assessment",
+                &["status", "assessment_ref_id", "assessed_by_actor_source"][..],
+            ),
+            (
+                "/authority_events",
+                &[
+                    "user_action_requested_event_seq",
+                    "user_action_resolved_event_seq",
+                    "run_recorded_event_seq",
+                    "ordered",
+                ][..],
+            ),
+            (
+                "/stop_hook",
+                &[
+                    "guard_event_id",
+                    "session_id",
+                    "connection_id",
+                    "decision",
+                    "receipt_state_version",
+                    "latest_run_id",
+                ][..],
+            ),
+            (
+                "/authority_receipt",
+                &[
+                    "project_id",
+                    "task_id",
+                    "state_version",
+                    "latest_run_id",
+                    "close_state",
+                    "close_blocker_count",
+                    "complete_managed_ui_confirmed",
+                ][..],
+            ),
+        ] {
+            require_exact_live_evidence_result_keys(value, pointer, keys)?;
+        }
+        validate_live_evidence_observation_common_result_keys(value)
+    }
+
+    fn validate_live_evidence_observation_incomplete_result_keys(
+        value: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        require_exact_live_evidence_result_keys(
+            value,
+            "",
+            &[
+                "kind",
+                "result",
+                "host",
+                "stage",
+                "evidence_scope",
+                "sensitive_payloads",
+            ],
+        )?;
+        require_exact_live_evidence_result_keys(value, "/host", &["kind"])?;
+        validate_live_evidence_observation_common_result_keys(value)
+    }
+
+    fn validate_live_evidence_observation_common_result_keys(
+        value: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        require_exact_live_evidence_result_keys(
+            value,
+            "/evidence_scope",
+            &[
+                "live_evidence_observation_cell",
+                "native_judgment_cell",
+                "cli_fallback_cell",
+                "final_output_matrix_cell",
+            ],
+        )?;
+        require_exact_live_evidence_result_keys(
+            value,
+            "/sensitive_payloads",
+            &[
+                "raw_url_recorded",
+                "bearer_token_recorded",
+                "raw_summary_recorded",
+                "prompt_recorded",
+                "transcript_recorded",
+                "secret_material_recorded",
+            ],
+        )
+    }
+
+    fn validate_live_evidence_observation_result_shape(
+        value: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        validate_live_evidence_observation_passed_result_keys(value)?;
+        reject_forbidden_live_evidence_result_fields(value)?;
+        required_result_string(value, "/host/kind")?;
+        required_result_string(value, "/host/version")?;
+        required_result_string(value, "/volicord/build_id")?;
+        let connection_id = required_result_string(value, "/connection/connection_id")?;
+        let project_id = required_result_string(value, "/task/project_id")?;
+        let task_id = required_result_string(value, "/task/task_id")?;
+        required_result_string(value, "/task/lifecycle_phase")?;
+        let request_id = required_result_string(
+            value,
+            "/local_web_user_channel/request/user_action_request_id",
+        )?;
+        let resolution_id = required_result_string(
+            value,
+            "/local_web_user_channel/resolution/user_action_resolution_id",
+        )?;
+        let run_id = required_result_string(value, "/evidence_consumption/run_id")?;
+        let evidence_observation_id =
+            required_result_string(value, "/evidence_consumption/evidence_observation_id")?;
+        let requested_event_seq =
+            required_result_u64(value, "/authority_events/user_action_requested_event_seq")?;
+        let resolved_event_seq =
+            required_result_u64(value, "/authority_events/user_action_resolved_event_seq")?;
+        let run_event_seq = required_result_u64(value, "/authority_events/run_recorded_event_seq")?;
+        let task_state_version = required_result_u64(value, "/task/state_version")?;
+        let summary_character_count = required_result_u64(
+            value,
+            "/local_web_user_channel/resolution/summary_character_count",
+        )?;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
+        let request_target = value
+            .pointer("/local_web_user_channel/request/target")
+            .ok_or_else(|| io::Error::other("evidence result has no request target"))?;
+        if !matches!(
+            serde_json::from_value::<EvidenceTarget>(request_target.clone())?,
+            EvidenceTarget::AcceptanceCriterion { .. }
+        ) {
+            return Err(io::Error::other(
+                "live evidence result target is not an acceptance criterion",
+            )
+            .into());
+        }
+        let request_artifact_id =
+            required_result_string(value, "/local_web_user_channel/request/artifact_id")?;
+        required_result_string(value, "/stop_hook/guard_event_id")?;
+        required_result_string(value, "/stop_hook/session_id")?;
+        if value["kind"] != LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
+            || value["result"] != "passed"
+            || request_id.is_empty()
+            || resolution_id.is_empty()
+            || evidence_observation_id.is_empty()
+            || value["local_web_user_channel"]["request"]["action_kind"] != "evidence_observation"
+            || value["local_web_user_channel"]["request"]["requested_by_actor_source"]
+                != expected_actor_source
+            || value["local_web_user_channel"]["resolution"]["actor_source"] != "local_user"
+            || value["local_web_user_channel"]["resolution"]["channel_kind"] != "local_web_consent"
+            || value["local_web_user_channel"]["resolution"]["verification_basis"]
+                != VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
+            || value["local_web_user_channel"]["resolution"]["target"] != *request_target
+            || value["evidence_consumption"]["target"] != *request_target
+            || value["local_web_user_channel"]["resolution"]["artifact_id"] != request_artifact_id
+            || value["evidence_consumption"]["artifact_id"] != request_artifact_id
+            || value["local_web_user_channel"]["resolution"]["relevance_status"] != "supported"
+            || value["local_web_user_channel"]["resolution"]["operator_summary_exact_match"] != true
+            || summary_character_count == 0
+            || summary_character_count > USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64
+            || value["local_web_user_channel"]["host_resume"]["create_calls"] != 1
+            || value["local_web_user_channel"]["host_resume"]["resume_calls"] != 1
+            || value["local_web_user_channel"]["host_resume"]["same_agent_connection"] != true
+            || value["local_web_user_channel"]["host_resume"]["agent_workflow_result_replayed"]
+                != true
+            || value["local_web_user_channel"]["host_resume"]
+                ["additional_evidence_observation_request_created"]
+                != false
+            || value["local_web_user_channel"]["host_resume"]["record_run_calls"] != 1
+            || value["local_web_user_channel"]["host_resume"]["committed_record_run_calls"] != 1
+            || value["local_web_user_channel"]["host_resume"]["status_calls"] != 1
+            || value["local_web_user_channel"]["host_resume"]["successful_status_calls"] != 1
+            || value["local_web_user_channel"]["host_resume"]["diagnostic_event_ordered"] != true
+            || value["evidence_consumption"]["run_kind"] != "shaping_update"
+            || value["evidence_consumption"]["run_marker"] != LIVE_EVIDENCE_OBSERVATION_RUN_MARKER
+            || value["evidence_consumption"]["created_by_actor_source"] != expected_actor_source
+            || value["evidence_consumption"]["product_file_write_observed"] != false
+            || value["evidence_consumption"]["changed_path_count"] != 0
+            || value["evidence_consumption"]["observation_ref_id"] != evidence_observation_id
+            || value["evidence_consumption"]["source_kind"] != "user_observation"
+            || value["evidence_consumption"]["assurance_level"] != "user_observed"
+            || value["evidence_consumption"]["observed_by_actor_source"] != "local_user"
+            || value["evidence_consumption"]["input_resolution_ref_id"] != resolution_id
+            || value["evidence_consumption"]["producer_anchor"]["producer_kind"]
+                != "user_channel_observation"
+            || value["evidence_consumption"]["producer_anchor"]["producer_ref_id"] != resolution_id
+            || value["evidence_consumption"]["producer_anchor"]["verification_basis"]
+                != VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB
+            || value["evidence_consumption"]["relevance_assessment"]["status"] != "supported"
+            || value["evidence_consumption"]["relevance_assessment"]["assessment_ref_id"]
+                != resolution_id
+            || value["evidence_consumption"]["relevance_assessment"]["assessed_by_actor_source"]
+                != "local_user"
+            || value["evidence_consumption"]["coverage_state"] != "supported"
+            || value["evidence_consumption"]["observed_at_matches_resolution"] != true
+            || value["evidence_consumption"]["caller_observed_at_replaced"] != true
+            || requested_event_seq == 0
+            || !(requested_event_seq < resolved_event_seq && resolved_event_seq < run_event_seq)
+            || value["authority_events"]["ordered"] != true
+            || value["stop_hook"]["connection_id"] != connection_id
+            || value["stop_hook"]["decision"] != "allow"
+            || value["stop_hook"]["latest_run_id"] != run_id
+            || value["authority_receipt"]["project_id"] != project_id
+            || value["authority_receipt"]["task_id"] != task_id
+            || value["authority_receipt"]["state_version"] != task_state_version
+            || value["stop_hook"]["receipt_state_version"] != task_state_version
+            || value["authority_receipt"]["latest_run_id"] != run_id
+            || value["authority_receipt"]["close_state"] != "ready"
+            || value["authority_receipt"]["close_blocker_count"] != 0
+            || value["authority_receipt"]["complete_managed_ui_confirmed"] != true
+            || value["evidence_scope"]["live_evidence_observation_cell"] != true
+            || value["evidence_scope"]["native_judgment_cell"] != false
+            || value["evidence_scope"]["cli_fallback_cell"] != false
+            || value["evidence_scope"]["final_output_matrix_cell"] != false
+            || !live_evidence_sensitive_payload_flags_are_false(value)
+        {
+            return Err(io::Error::other(
+                "passing evidence-observation result does not preserve the exact separated live evidence",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn validate_live_evidence_observation_incomplete_result_shape(
+        value: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        validate_live_evidence_observation_incomplete_result_keys(value)?;
+        reject_forbidden_live_evidence_result_fields(value)?;
+        required_result_string(value, "/host/kind")?;
+        let stage = required_result_string(value, "/stage")?;
+        let expected_result = match stage {
+            "host_executable" | "interactive_terminal" => "unavailable",
+            "fixture_setup"
+            | "host_process"
+            | "stored_resolution"
+            | "authority_receipt"
+            | "stop_and_diagnostics"
+            | "managed_receipt_ui"
+            | "result_validation" => "failed",
+            _ => {
+                return Err(io::Error::other(
+                    "incomplete evidence-observation result has an unknown safe stage",
+                )
+                .into());
+            }
+        };
+        if value["kind"] != LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
+            || value["result"] != expected_result
+            || value["evidence_scope"]["live_evidence_observation_cell"] != true
+            || value["evidence_scope"]["native_judgment_cell"] != false
+            || value["evidence_scope"]["cli_fallback_cell"] != false
+            || value["evidence_scope"]["final_output_matrix_cell"] != false
+            || !live_evidence_sensitive_payload_flags_are_false(value)
+        {
+            return Err(io::Error::other(
+                "incomplete evidence-observation result is not a bounded separated cell result",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn required_result_string<'a>(
+        value: &'a Value,
+        pointer: &str,
+    ) -> Result<&'a str, Box<dyn Error>> {
+        value
+            .pointer(pointer)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty() && !value.chars().any(char::is_control))
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "live evidence result has no bounded string at {pointer}"
+                ))
+                .into()
+            })
+    }
+
+    fn required_result_u64(value: &Value, pointer: &str) -> Result<u64, Box<dyn Error>> {
+        value
+            .pointer(pointer)
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "live evidence result has no unsigned integer at {pointer}"
+                ))
+                .into()
+            })
+    }
+
+    fn live_evidence_sensitive_payload_flags_are_false(value: &Value) -> bool {
+        let expected_fields = [
+            "raw_url_recorded",
+            "bearer_token_recorded",
+            "raw_summary_recorded",
+            "prompt_recorded",
+            "transcript_recorded",
+            "secret_material_recorded",
+        ];
+        value["sensitive_payloads"]
+            .as_object()
+            .is_some_and(|object| {
+                object.len() == expected_fields.len()
+                    && expected_fields
+                        .into_iter()
+                        .all(|field| object.get(field) == Some(&Value::Bool(false)))
+            })
+    }
+
+    fn reject_forbidden_live_evidence_result_fields(value: &Value) -> Result<(), Box<dyn Error>> {
+        fn visit(value: &Value) -> Option<&str> {
+            match value {
+                Value::Object(object) => object.iter().find_map(|(key, value)| {
+                    matches!(
+                        key.as_str(),
+                        "raw_url"
+                            | "bearer_token"
+                            | "raw_summary"
+                            | "prompt"
+                            | "transcript"
+                            | "screenshot"
+                            | "recording"
+                            | "credential"
+                            | "credentials"
+                            | "secret"
+                            | "secrets"
+                    )
+                    .then_some(key.as_str())
+                    .or_else(|| visit(value))
+                }),
+                Value::Array(values) => values.iter().find_map(visit),
+                Value::String(text) => {
+                    let normalized = text.to_ascii_lowercase();
+                    (normalized.contains("http://")
+                        || normalized.contains("https://")
+                        || normalized.contains("token="))
+                    .then_some("URL-or-token-like string")
+                }
+                _ => None,
+            }
+        }
+        if let Some(field) = visit(value) {
+            return Err(io::Error::other(format!(
+                "live evidence result contains forbidden sensitive payload field or value {field:?}"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn set_nested_value(
+        value: &mut Value,
+        path: &[&str],
+        replacement: Value,
+    ) -> Result<(), Box<dyn Error>> {
+        let (field, parents) = path
+            .split_last()
+            .ok_or_else(|| io::Error::other("nested result mutation path is empty"))?;
+        let mut current = value;
+        for parent in parents {
+            current = current
+                .get_mut(*parent)
+                .ok_or_else(|| io::Error::other("nested result mutation parent is missing"))?;
+        }
+        let object = current
+            .as_object_mut()
+            .ok_or_else(|| io::Error::other("nested result mutation parent is not an object"))?;
+        if !object.contains_key(*field) {
+            return Err(io::Error::other("nested result mutation field is missing").into());
+        }
+        object.insert((*field).to_owned(), replacement);
         Ok(())
     }
 
@@ -5053,6 +7379,143 @@ mod unix {
         Ok(())
     }
 
+    struct LiveEvidenceDiagnosticObservation {
+        create_calls: u64,
+        resume_calls: u64,
+        record_run_calls: u64,
+        committed_record_run_calls: u64,
+        status_calls: u64,
+        successful_status_calls: u64,
+        ordered: bool,
+    }
+
+    fn assert_local_web_evidence_diagnostic(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        project_id: &str,
+    ) -> Result<LiveEvidenceDiagnosticObservation, Box<dyn Error>> {
+        let conn = rusqlite::Connection::open_with_flags(
+            diagnostics_db_path(&fixture.runtime_home_path),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let observed = conn.query_row(
+            "SELECT
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND e.core_committed = 1
+                        AND e.replayed = 0
+                        AND e.user_channel_kind IS NULL
+                        AND e.fallback_kind = 'local_web_consent'
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND e.core_committed = 0
+                        AND e.replayed = 1
+                        AND e.user_channel_kind IS NULL
+                        AND e.fallback_kind IS NULL
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND (e.user_channel_kind IS NOT NULL
+                          OR (e.fallback_kind IS NOT NULL
+                            AND e.fallback_kind != 'local_web_consent'))
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.record_run'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.record_run'
+                        AND e.core_committed = 1
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.status'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.status'
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 MIN(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND e.core_committed = 1
+                        AND e.replayed = 0
+                        AND e.fallback_kind = 'local_web_consent'
+                       THEN e.event_id END),
+                 MIN(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND e.core_committed = 0
+                        AND e.replayed = 1
+                       THEN e.event_id END),
+                 MIN(CASE
+                       WHEN e.tool_name = 'volicord.record_run'
+                        AND e.core_committed = 1
+                        AND e.outcome = 'success'
+                       THEN e.event_id END),
+                 MAX(CASE
+                       WHEN e.tool_name = 'volicord.status'
+                        AND e.outcome = 'success'
+                       THEN e.event_id END)
+               FROM diagnostic_sessions s
+               JOIN diagnostic_events e ON e.session_id = s.session_id
+              WHERE s.connection_id = ?1 AND s.project_id = ?2",
+            [connection_id, project_id],
+            |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, u64>(2)?,
+                    row.get::<_, u64>(3)?,
+                    row.get::<_, u64>(4)?,
+                    row.get::<_, u64>(5)?,
+                    row.get::<_, u64>(6)?,
+                    row.get::<_, u64>(7)?,
+                    row.get::<_, Option<u64>>(8)?,
+                    row.get::<_, Option<u64>>(9)?,
+                    row.get::<_, Option<u64>>(10)?,
+                    row.get::<_, Option<u64>>(11)?,
+                ))
+            },
+        )?;
+        let diagnostic_ordered = observed
+            .8
+            .zip(observed.9)
+            .zip(observed.10)
+            .zip(observed.11)
+            .is_some_and(|(((create, resume), record_run), status)| {
+                create < resume && resume < record_run && record_run < status
+            });
+        if observed.0 != 2
+            || observed.1 != 1
+            || observed.2 != 1
+            || observed.3 != 0
+            || observed.4 != 1
+            || observed.5 != 1
+            || observed.6 != 1
+            || observed.7 != 1
+            || !diagnostic_ordered
+        {
+            return Err(io::Error::other(format!(
+                "same-connection local-web evidence diagnostics were not exact: request_user_action={}, create_local_web={}, resume_replayed={}, disallowed_channel={}, record_run={}, committed_record_run={}, status={}, successful_status={}, ordered={diagnostic_ordered}",
+                observed.0, observed.1, observed.2, observed.3, observed.4, observed.5, observed.6, observed.7
+            ))
+            .into());
+        }
+        Ok(LiveEvidenceDiagnosticObservation {
+            create_calls: observed.1,
+            resume_calls: observed.2,
+            record_run_calls: observed.4,
+            committed_record_run_calls: observed.5,
+            status_calls: observed.6,
+            successful_status_calls: observed.7,
+            ordered: diagnostic_ordered,
+        })
+    }
+
     struct LiveSmokeFixture {
         _runtime_home: TempRuntimeHome,
         runtime_home_path: PathBuf,
@@ -5150,7 +7613,41 @@ mod unix {
                 .stdin(Stdio::inherit())
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
+            Self::remove_inherited_host_control_env(&mut command);
             Ok(command.status()?)
+        }
+
+        fn run_authenticated_interactive_host_with_local_web(
+            &self,
+            program: &Path,
+            prompt: &str,
+        ) -> Result<ExitStatus, Box<dyn Error>> {
+            let mut command = Command::new(program);
+            command
+                .arg(prompt)
+                .current_dir(&self.repo_root)
+                .env("VOLICORD_HOME", &self.runtime_home_path)
+                .env("PATH", &self.env_path)
+                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+            Self::remove_inherited_host_control_env(&mut command);
+            command.env("VOLICORD_LOCAL_WEB_CONSENT", "1");
+            Ok(command.status()?)
+        }
+
+        fn remove_inherited_host_control_env(command: &mut Command) {
+            for name in [
+                "VOLICORD_MCP_VERIFICATION",
+                "VOLICORD_MCP_LAUNCH",
+                "VOLICORD_MCP_HOST",
+                "VOLICORD_MCP_CONNECTION_ID",
+                "VOLICORD_MCP_PROJECT_ID",
+                "VOLICORD_LOCAL_WEB_CONSENT",
+            ] {
+                command.env_remove(name);
+            }
         }
 
         fn apply_isolated_env(&self, command: &mut Command) {
@@ -5632,6 +8129,64 @@ mod unix {
             stdout(output),
             stderr(output)
         );
+    }
+
+    fn require_success(command: &str, output: &TimedOutput) -> Result<(), Box<dyn Error>> {
+        if output.timed_out {
+            return Err(io::Error::other(format!("{command} timed out")).into());
+        }
+        if !output.output.status.success() {
+            return Err(io::Error::other(format!(
+                "{command} failed with status {}",
+                status_text(output.output.status)
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn require_live_init_reported_action_required(
+        value: &Value,
+        host: &str,
+        profile: IntegrationProfile,
+        host_action: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let actions = value["actions"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("live init actions are not an array"))?;
+        let has_action = |expected: &str| actions.iter().any(|action| action["id"] == expected);
+        let expected_disclosure = serde_json::json!({
+            "supported": true,
+            "configured": true,
+            "verified": true
+        });
+        let profile_state_matches = match profile {
+            IntegrationProfile::Record => {
+                value["states"]["hook_config"] == "disabled"
+                    && value["states"]["guard_effective"] == "inactive"
+                    && value["states"]["prompt_capture"] == "not_configured"
+            }
+            IntegrationProfile::Detective => {
+                value["states"]["guard_installation"] == "reload_required"
+                    && value["states"]["prompt_capture"] == "reload_required"
+                    && has_action(host_action)
+            }
+        };
+        if value["host"] != host
+            || value["selected_profile"] != profile.as_str()
+            || value["status"] != "action_required"
+            || value["states"]["host_reload_required"] != true
+            || value["states"]["final_output_authority_disclosure"] != expected_disclosure
+            || !profile_state_matches
+            || !has_action("reload_required")
+        {
+            return Err(io::Error::other(format!(
+                "{host}/{} live init did not preserve the required managed-host configuration state",
+                profile.as_str()
+            ))
+            .into());
+        }
+        Ok(())
     }
 
     fn assert_live_init_reported_action_required(

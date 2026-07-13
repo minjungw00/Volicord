@@ -29,7 +29,8 @@
 | 명시적으로 실행하는 실제 호스트 설정 스모크 테스트 | `volicord-cli` 패키지의 `live_host_smoke` 대상인 [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs). | 설치된 Codex 또는 Claude Code 실행 파일의 설정을 `VOLICORD_RUN_CODEX_SMOKE=1` 또는 `VOLICORD_RUN_CLAUDE_SMOKE=1`로 명시적으로 점검할 때. | 호스트가 최종 출력 이벤트를 전달했거나, 고정 UI를 표시했거나, User Judgment 왕복을 완료했다는 증거. |
 | 명시적으로 실행하는 실제 최종 출력 매트릭스 | `live_host_smoke`의 Codex/Claude Code와 Record/Detective 조합 네 개 테스트. | 관리 설정 픽스처, 생성 래퍼 직접 응답, 실제 호스트 이벤트, 실제 고정 UI, Detective 결정, 상태 명령 대체 안내, 정확한 재생 증거를 각각 기록할 때. | 픽스처나 래퍼 직접 출력을 실제 호스트 전달 또는 UI 증거로 취급하거나, 한 호스트·프로필 셀을 다른 셀의 증거로 취급하는 것. |
 | 명시적으로 실행하는 실제 Judgment 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_user_action_round_trip_is_opt_in` 테스트. | 인증된 환경에서 사람이 참여해 호스트 고유 Judgment 선택과 그 결과 권한 기록을 확인할 때. | 최종 출력 매트릭스 증거. Judgment elicitation과 최종 출력 고지는 서로 다른 검증 관심사입니다. |
-| 명시적으로 실행하는 실제 CLI 대체 경로 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_cli_fallback_round_trip_is_opt_in` 테스트. | 사람이 선택한 답을 실제 CLI User Channel로 제출하고, 정확한 CLI 재시도와 같은 Agent Connection의 설치된 호스트 재개를 확인할 때. | 호스트 고유 Judgment elicitation이나 최종 출력 매트릭스 증거. 세 릴리스 검증 표면은 서로 분리됩니다. |
+| 명시적으로 실행하는 실제 증거 관찰 로컬 웹 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_evidence_observation_round_trip_is_opt_in` 테스트. | 실제 설치 호스트가 증거 관찰 요청을 만들고 재개하는 동안 사람이 루프백 `local_web_consent` User Channel 경로로 정규 폼을 제출하는 과정을 확인할 때. | 호스트 고유 Judgment elicitation, CLI 복구, 최종 출력 매트릭스 증거. 각 항목은 서로 다른 릴리스 검증 셀입니다. |
+| 명시적으로 실행하는 실제 CLI 대체 경로 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_cli_fallback_round_trip_is_opt_in` 테스트. | 사람이 선택한 답을 실제 CLI User Channel로 제출하고, 정확한 CLI 재시도와 같은 Agent Connection의 설치된 호스트 재개를 확인할 때. | 호스트 고유 Judgment elicitation, 증거 관찰 로컬 웹, 최종 출력 매트릭스 증거. 모든 릴리스 검증 표면은 서로 분리됩니다. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, 작업 범주 파생, 도구 노출, 재실행 맥락 바인딩, MCP에서 보이는 저장소 효과 없음 분기. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 공개 계약 스냅샷 테스트 | `volicord-integration-tests` 패키지의 `public_contract_snapshots` 대상인 [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs). | 생성된 API 요청 스키마와 MCP 도구 계약 스냅샷이 현재 소스에서 생성한 계약과 어긋나는지 점검합니다. | 생성 스냅샷 직접 편집, 의미 기준 참조 검토, 공개 계약이 올바르다는 증명. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -202,6 +203,57 @@ Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `
 따릅니다. 이 체크리스트는 릴리스 후보에서 두 호스트별 실행을 모두 요구하고 외부 결과
 보존, UI 확인, 대체 경로, 건너뛴 검증 보고를 담당합니다. 호스트, 인증 환경, 대화형
 TTY, 고유 elicitation 표면을 사용할 수 없으면 통과한 왕복으로 취급하지 않습니다.
+
+### 증거 관찰 로컬 웹 왕복
+
+증거 관찰 점검은 호스트 고유 Judgment elicitation, 실행 가능한 CLI 복구, 호스트 설정
+스모크 테스트, 최종 출력 매트릭스와 각각 분리된 두 개의 호스트별 셀입니다.
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+각 셀은 픽스처 전용 준비로 폐기 가능한 시작 상태를 만든 뒤, 실제 설치 호스트가 준비된
+Agent Connection에서 증거 관찰 요청 하나를 만들고 재개하도록 요구합니다. 사람은 루프백
+consent 폼을 열어 준비된 대상과 아티팩트, `supported`, 크기가 제한된 비밀값 없는 요약을
+제출합니다. 이어서 호스트가 그 해결을 Run에서 소비해야 합니다. Store 검사, 권한 이벤트
+순서, 새 상태, Task 결속 Stop 이벤트, 완전한 관리 UI receipt 확인이 계층 간 관찰
+단언을 제공합니다. 픽스처 준비와 어댑터 전용 점검은 별도로 구분하며 실제 설치 호스트
+관찰을 대신할 수 없습니다.
+
+비밀값이 아닌 자격 증명 형태의 아티팩트 표식은 이 픽스처가 보수적인 User Channel 경로를
+일관되게 선택하도록 합니다. 셀은 로컬 웹 경로가 선택됐다는 사실만 관찰합니다. 비밀값
+탐지, 호스트 고유 elicitation, 외부 호스트의 보안을 증명하지 않습니다.
+
+이 내용은 릴리스 테스트 단언이며 두 번째 API 계약이 아닙니다. 정확한 요청과 재개 동작은
+[`volicord.request_user_action`](../reference/api/method-request-user-action.md), 해결 동작은
+[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md), 공통 요청과
+해결 형태는 [API 사용자 행동 스키마](../reference/api/schema-user-action.md), 소비 Run과
+증거 효과는 [`volicord.record_run`](../reference/api/method-record-run.md), 로컬 웹 경로는
+[MCP 전송](../reference/mcp-transport.md#local-web-consent-fallback)이 담당합니다. 새 상태와
+receipt 비교는 [상태 메서드](../reference/api/method-status.md)와
+[API 상태 스키마](../reference/api/schema-state.md)를 따릅니다.
+
+실제 셀은 호스트 대화 기록을 보존하지 않습니다. 같은 요청의 재생과 이후 해결 ref 소비를
+관찰하지만, 재개 응답에서 사용자 원문 요약이 빠졌는지 직접 검사하지는 않습니다. 원문
+요약 생략은 위 담당 문서를 기준으로 하는 집중 스키마 및 어댑터 회귀 테스트가 계속
+검증합니다.
+
+크기가 제한된 외부 결과에는 안전한 검증 좌표와 요약 일치 사실만 기록하며 consent URL,
+bearer token, 원문 요약, 프롬프트, 대화 기록은 담지 않습니다. 결과의 생명주기와 보존
+규칙은 아래에서 연결하는 대응 체크리스트가 관리합니다.
+
+이 무시된 셀을 실행하려면 설치된 호스트 실행 파일, 평소 인증 환경, 대화형 TTY, 사용할
+수 있는 로컬 브라우저, 호스트가 요구하는 신뢰나 승인, 새로운 외부 결과 경로가 필요합니다.
+일반 Cargo 실행에서 테스트가 무시됐다는 보고, 선택 변수를 설정하지 않은 실행, 필요한
+조건을 사용할 수 없는 실행은 통과가 아닙니다. 릴리스에서 이 경로를 지원한다고 명시하기
+전에는 대응하는
+[실제 호스트 증거 관찰 릴리스 검증 체크리스트](../maintain/validation.md#live-host-evidence-observation-release-validation)를
+따릅니다. 유지되는 두 호스트를 모두 지원한다고 명시하려면 두 호스트별 셀이 모두
+통과해야 합니다. 이 셀은 호스트 고유 Judgment, CLI 대체 경로, 설정, 최종 출력 셀을
+충족할 수 없고 그 반대도 마찬가지입니다. 정확한 제품 동작은 위에서 연결한 집중 담당
+문서에 남습니다.
 
 ### CLI 대체 경로 Judgment 왕복
 

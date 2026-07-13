@@ -30,7 +30,8 @@ policy.
 | Opt-in live host configuration smoke tests | [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs), target `live_host_smoke`, package `volicord-cli`. | Explicit configuration checks against an installed Codex or Claude Code executable, selected with `VOLICORD_RUN_CODEX_SMOKE=1` or `VOLICORD_RUN_CLAUDE_SMOKE=1`. | Evidence that the host delivered a final-output event, displayed fixed UI, or completed a User Judgment round trip. |
 | Opt-in live final-output matrix | The four Codex/Claude Code by Record/Detective tests in `live_host_smoke`. | Separately recording managed configuration-fixture, generated-wrapper wire, actual host event, actual fixed-UI, Detective decision, status-fallback, and exact-replay evidence. | Treating fixture or direct-wrapper output as proof of actual host delivery or UI, or treating one host/profile cell as proof of another. |
 | Opt-in live Judgment round trips | The Codex and Claude Code `*_live_user_action_round_trip_is_opt_in` tests in `live_host_smoke`. | Authenticated, human-in-the-loop host-native Judgment selection and its resulting authority records. | Final-output matrix evidence; Judgment elicitation and final-output disclosure are separate validation concerns. |
-| Opt-in live CLI-fallback round trips | The Codex and Claude Code `*_live_cli_fallback_round_trip_is_opt_in` tests in `live_host_smoke`. | A human-selected choice submitted by the actual CLI User Channel, exact CLI retry, and same-Agent-Connection host resume through the installed host. | Native Judgment elicitation or final-output matrix evidence; all three release-validation surfaces remain separate. |
+| Opt-in live evidence-observation local-web round trips | The Codex and Claude Code `*_live_evidence_observation_round_trip_is_opt_in` tests in `live_host_smoke`. | An actual installed host creates and resumes an evidence-observation request while a human submits the canonical form through the loopback `local_web_consent` User Channel path. | Native Judgment elicitation, CLI recovery, or final-output matrix evidence; each remains a separate release-validation cell. |
+| Opt-in live CLI-fallback round trips | The Codex and Claude Code `*_live_cli_fallback_round_trip_is_opt_in` tests in `live_host_smoke`. | A human-selected choice submitted by the actual CLI User Channel, exact CLI retry, and same-Agent-Connection host resume through the installed host. | Native Judgment elicitation, evidence-observation local-web, or final-output matrix evidence; all release-validation surfaces remain separate. |
 | MCP integration tests | [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs), target `mcp_connection`, package `volicord-integration-tests`. | Cross-layer MCP, Core, Store, connection binding, `operation_category` derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Public contract snapshot tests | [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs), target `public_contract_snapshots`, package `volicord-integration-tests`. | Generated API request-schema and MCP tool-contract snapshot drift against the current source projection. | Hand-edited generated snapshots, semantic Reference review, or proof that the public contract is correct. |
 | Conformance implementation tests | [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs), target `baseline`, package `volicord-conformance-tests`. | Baseline cross-method scenarios through Core-facing APIs, including replay, write tickets, artifacts, judgments, close readiness, error routing, and corruption handling. | Product acceptance, security proof, close readiness, or the sole source of a product rule. |
@@ -221,6 +222,68 @@ It requires both host-specific runs against the release candidate and owns
 external result retention, UI confirmation, fallback, and skipped-validation
 reporting. An unavailable host, authentication environment, interactive TTY,
 or native elicitation surface is not a passing round trip.
+
+### Evidence-observation local-web round trips
+
+The evidence-observation checks are two additional host cells, separate from
+native Judgment elicitation, executable CLI recovery, host-configuration
+smoke tests, and the final-output matrix:
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+Each cell uses fixture-only setup to establish disposable starting state, then
+requires the actual installed host to create and resume one evidence-observation
+request on the prepared Agent Connection. A human opens the loopback consent
+form and submits the prepared target and artifact, `supported`, and a bounded
+non-secret summary. The host must then consume the resulting resolution in a
+Run. Store inspection, authority-event order, fresh status, the Task-bound Stop
+event, and full managed-UI receipt confirmation provide the observed
+cross-layer assertions. Fixture setup and adapter-only checks remain identified
+separately and cannot stand in for the installed-host observations.
+
+The non-secret credential-shaped artifact marker makes the conservative
+User Channel route deterministic for this fixture. The cell observes that the
+local-web path was selected; it does not prove secret detection, native
+elicitation, or the security of the external host.
+
+These are release-test assertions, not a second API contract. Exact request and
+resume behavior belongs to
+[`volicord.request_user_action`](../reference/api/method-request-user-action.md),
+resolution behavior to
+[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md),
+common request and resolution shapes to
+[API User Action Schemas](../reference/api/schema-user-action.md), consuming Run
+and evidence effects to
+[`volicord.record_run`](../reference/api/method-record-run.md), and local-web
+routing to [MCP Transport](../reference/mcp-transport.md#local-web-consent-fallback).
+Fresh status and receipt comparisons use the
+[status method](../reference/api/method-status.md) and
+[API State Schemas](../reference/api/schema-state.md).
+
+The live cell intentionally retains no host transcript. It proves the observed
+same-request replay and downstream resolution-ref consumption, but it does not
+directly inspect the resumed response for omission of the user's raw summary.
+That omission remains covered by the focused schema and adapter regression
+tests against the owners linked above.
+
+The bounded external result records safe validation coordinates and summary
+match facts, never the consent URL, bearer token, raw summary, prompt, or
+transcript. Its result lifecycle and retention rules are maintained by the
+paired checklist linked below.
+
+These ignored cells require the installed host executable, its ordinary
+authentication environment, an interactive TTY, a usable local browser, host
+trust or approval where requested, and the fresh external result path. An
+ordinary Cargo report that the test was ignored, a run without the opt-in
+variable, or an unavailable prerequisite is not a pass. Follow the paired
+[live-host evidence-observation release-validation checklist](../maintain/validation.md#live-host-evidence-observation-release-validation)
+before making a release claim. Both host-specific cells must pass for a claim
+covering both maintained hosts, and neither cell can satisfy or be satisfied by
+a native Judgment, CLI-fallback, configuration, or final-output cell. Exact
+product behavior remains in the focused owners linked above.
 
 ### CLI-fallback Judgment round trips
 

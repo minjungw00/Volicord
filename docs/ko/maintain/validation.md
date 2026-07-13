@@ -409,6 +409,93 @@ Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `
 증거일 뿐이며 이식 가능한 호스트 적합성, 보안 증명, 제품 수락, 닫기 준비 상태,
 일반적인 정확성 주장이 아닙니다.
 
+<a id="live-host-evidence-observation-release-validation"></a>
+## 실제 호스트 증거 관찰 릴리스 검증
+
+유지되는 Codex 또는 Claude Code의 `local_web_consent` 증거 관찰 경로를 지원한다고
+명시하는 릴리스를 게시하기 전에 이 체크리스트를 사용합니다. 정확한 릴리스 후보에서
+인증된 환경과 사람의 참여로 수행하는 검증입니다. 실제 설치 호스트가 요청을 만들고
+재개해야 하며, 사람은 로컬 브라우저에서 정규 폼을 제출해야 합니다. 무시된 테스트,
+픽스처만 수행한 점검, 일반 워크스페이스 테스트, MCP 어댑터 직접 테스트, 호스트 고유
+Judgment 결과, CLI 대체 경로 결과, 최종 출력 결과는 이를 대신할 수 없습니다.
+
+정확한 요청과 재개 동작은
+[`volicord.request_user_action`](../reference/api/method-request-user-action.md), 해결 권한은
+[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md), 공통 요청과
+해결 필드는 [API 사용자 행동 스키마](../reference/api/schema-user-action.md), Run과 증거
+효과는 [`volicord.record_run`](../reference/api/method-record-run.md), 로컬 웹 경로 선택은
+[MCP 전송](../reference/mcp-transport.md#local-web-consent-fallback)이 계속 담당합니다.
+정확한 상태와 receipt 동작은 [상태 메서드](../reference/api/method-status.md)와
+[API 상태 스키마](../reference/api/schema-state.md)가 담당합니다. 이 체크리스트는 릴리스
+검증 실행, 증거 분리, 안전한 결과 보존만 담당합니다.
+
+소스 저장소 밖에서 승인된 릴리스 기록 위치를 준비하고 정확한 릴리스 후보와 설치된
+호스트의 식별 정보를 기록합니다. 로컬 브라우저에서 루프백 consent 수신기에 접근할 수
+있어야 합니다. 각 결과 경로는 부모 디렉터리가 이미 있는 서로 다른 새 절대 경로여야
+하며, 하네스는 기존 경로를 거부합니다. 평소 인증된 호스트 환경의 대화형 TTY에서 아래
+두 무시된 셀을 각각 실행합니다.
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
+
+1. Store 검사에서 호스트 실행 전에는 `UserActionRequest`가 없고, 실행 뒤에는 실제 설치
+   호스트가 준비된 Agent Connection으로 만든 요청 하나만 관찰되어야 합니다. 대상,
+   아티팩트 후보, `required_for` 사실을 위에서 연결한 요청 및 스키마 담당 문서와
+   대조합니다.
+2. 준비된 아티팩트에는 비밀값이 아닌 자격 증명 형태의 경로 선택 표식이 있습니다. 셀은
+   전체 표시 내용 분류가 `local_web_consent`를 제공했는지 관찰합니다. 에이전트나
+   하네스가 아닌 사람 운영자가 루프백 폼을 열고 준비된 대상과 아티팩트, `supported`,
+   크기가 제한된 비밀값 없는 요약을 제출해야 합니다. 이 단언은 선택된 경로와 사람의
+   참여만 확인하며 비밀값 탐지나 호스트 고유 elicitation을 증명하지 않습니다.
+3. Store 검사에서 변경할 수 없는 해결 하나를 관찰하고 집중 해결 및 스키마 담당 문서와
+   대조합니다. 정확한 영속 필드는 `resolved_by_actor_source=local_user`,
+   `channel_kind=local_web_consent`, 그리고 User Channel 어댑터가 제공하는 인식된 로컬 웹
+   근거와 같은 `resolved_verification_basis`입니다. 이 체크리스트는 새로운 안정 basis
+   값을 정의하지 않습니다. 저장 본문은 준비된 대상과 `ArtifactRef`, `supported`,
+   운영자의 크기 제한 요약과 일치해야 합니다. 호스트 종료 뒤 운영자가 같은 요약을 다시
+   입력하면 하네스가 저장 값과 정확히 같은지 확인합니다.
+4. 같은 연결의 진단과 Store 검사는 정확한 요청을 대상으로 한 재개 하나,
+   `agent_workflow_result_replayed=true`, 추가 요청이나 해결 없음, 이후 정확한 해결 ref
+   소비를 관찰합니다. 실제 셀은 호스트 대화 기록을 보존하지 않으므로 재개 응답에서 원문
+   요약이 빠졌는지 직접 증명하지 않습니다. 이 부정 단언은 집중 스키마 및 어댑터 회귀
+   테스트가 담당하고, 실제 셀은 재생과 ref 소비를 증명합니다.
+5. Store 검사는 소비 Run, 증거 관찰 하나, 생산자와 관련성 앵커, 정확한 아티팩트,
+   Core가 파생한 관찰 시각, 필수 기준 coverage, 요청-해결-Run 이벤트 순서를 위에서
+   연결한 `record_run` 및 상태 스키마 담당 문서와 대조합니다. 이는 담당 문서가 정의한
+   사실을 관찰하는 단언이며 이 체크리스트가 동작을 새로 정의하는 것이 아닙니다.
+6. 새 상태는 `AuthorityReceipt.latest_run_ref`를 따라 소비 Run을 가리켜야 합니다. 셀은
+   관찰한 ready 상태와 빈 차단 사유 집합을 상태 및 스키마 담당 문서와 대조합니다. 또한
+   호스트 실행 전 커서 뒤의 새 Task 결속 Detective Stop `allow` 이벤트 하나와, 저장된
+   Stop receipt, 새 상태 receipt, 별도의 호스트 소유 관리 UI에서 복사한 완전한 receipt
+   사이의 정확한 일치를 요구합니다.
+7. 폐쇄형이며 크기가 제한된 외부 JSON에는
+   `kind=live_host_evidence_observation_release_validation`, 안전한 검증 좌표, 담당 문서
+   대조 결과, 운영자 요약의 정확한 일치 여부와 제한된 문자 수만 기록합니다. consent URL,
+   bearer token, 원문 요약, 프롬프트나 대화 기록 내용, 스크린샷이나 녹화, 자격 증명,
+   비밀값, 비공개 운영자 입력을 담으면 안 됩니다.
+
+결과 기록기는 먼저 크기가 제한된 `result=running` 기록을 씁니다. 호스트 실행 파일이
+없거나 TTY가 대화형이 아니면 `result=unavailable`을 기록합니다. 픽스처 준비 실패,
+선택된 호스트의 비정상 종료, 저장 상태·Stop·receipt·결과 검증기 invariant 실패는 안전한
+단계 식별자만 포함한 `result=failed`로 기록합니다. 인증과 브라우저 실패는 호스트 실행
+전에 항상 분류할 수 없습니다. 선택된 호스트 실행이 그 이유로 실패하더라도 결과는
+`unavailable`이 아니라 `failed`입니다. 예기치 않은 unwind에만
+`result=failed_before_completion`이 남습니다. `running` 기록이 남아 있거나 결과가
+`passed`가 아니거나, 테스트가 단지 무시된 것으로 보고됐거나, 선택 변수 없이 실행했으면
+통과가 아닙니다.
+
+유지되는 두 호스트를 모두 지원한다고 명시하려면 두 호스트별 셀이 모두 통과해야 합니다.
+이 셀은 관찰된 증거 관찰 로컬 웹 경로만 검증합니다. 호스트 고유 Judgment, 실행 가능한
+CLI 대체 경로, 호스트 설정, 최종 출력 셀을 충족할 수 없고 그 반대도 마찬가지입니다.
+크기가 제한된 결과와 릴리스 승인자의 체크리스트는 소스 저장소 밖에 보존합니다. 결과나
+Runtime Home을 커밋하지 않습니다. 이 증거는 관찰한 호스트, 릴리스 후보, 환경에만
+적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 elicitation 증거, 제품
+수락, 닫기 준비 상태, 일반적인 정확성 주장이 아닙니다.
+
 <a id="live-host-cli-fallback-release-validation"></a>
 ## 실제 호스트 CLI 대체 경로 릴리스 검증
 
@@ -442,10 +529,10 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-cli
    뒤, 정확히 같은 명령과 인수를 다시 실행합니다. 두 JSON byte가 같고, 첫 해결만 상태를
    한 번 전진시키며, 재시도와 새 status가 커밋된 `state_version`을 그대로 보존해야
    합니다.
-3. 저장된 해결은 resolution ID 하나, `actor_source=local_user`, `channel_kind=cli`,
-   `verification_basis=cli_direct_user_channel`을 가지며 선택된 option이 운영자의 선택과
-   같아야 합니다. 임시 경로 없는 명령 템플릿이나 `--help` 결과는 이 항목을 충족하지
-   않습니다.
+3. 저장된 해결은 resolution ID 하나, `resolved_by_actor_source=local_user`,
+   `channel_kind=cli`, 해결 담당 문서가 실제 CLI User Channel 경로에 대해 인정하는
+   `resolved_verification_basis`를 가지며 선택된 option이 운영자의 선택과 같아야 합니다.
+   임시 경로 없는 명령 템플릿이나 `--help` 결과는 이 항목을 충족하지 않습니다.
 4. 설치된 호스트가 준비된 Agent Connection으로 시작해 정확한 요청 ID에 대해
    `request.operation=resume`으로 `volicord.request_user_action`을 호출합니다. 같은 연결의
    진단이 최초 결과의 재생을 관찰해야 하며 Task에는 product-decision 요청이 정확히 하나만
