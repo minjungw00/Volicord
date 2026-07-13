@@ -250,6 +250,112 @@ proves only the machine-checkable properties it owns, Rust tests prove only
 implementation checks, and an agent desk review proves only that a maintainer
 reviewed the documents for objective blockers.
 
+<a id="live-host-final-output-release-validation"></a>
+## Live-Host Final-Output Release Validation
+
+Use this checklist before publishing a release that claims managed final-output
+authority disclosure for Codex or Claude Code in the Record or Detective
+profile. This is authenticated, human-in-the-loop validation against the exact
+release candidate. Host-configuration fixtures, direct generated-wrapper
+output, ordinary workspace tests, and Judgment round trips cannot replace it.
+Exact product behavior remains with [Agent Connection](../reference/agent-connection.md#managed-final-output-authority-disclosure),
+[Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure),
+and their focused dependencies; this checklist owns release-validation
+execution and evidence separation only.
+
+Prepare an approved release-record location outside the source repository and
+record the release-candidate identity and installed host identities. Every
+`VOLICORD_LIVE_HOST_RESULT_PATH` must be a different new absolute path with an
+existing parent directory. Run all four ignored host/profile tests separately:
+
+| Host | Record profile | Detective profile |
+|---|---|---|
+| Codex | `codex_record_live_final_output_is_opt_in` | `codex_detective_live_final_output_is_opt_in` |
+| Claude Code | `claude_code_record_live_final_output_is_opt_in` | `claude_code_detective_live_final_output_is_opt_in` |
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
+```
+
+For each cell, inspect a bounded result with the matching `host` and `profile`.
+It must keep these evidence fields separate; no field can be inferred from or
+replaced by another:
+
+1. `config_fixture` identifies the managed host configuration checked for that
+   profile. A passing fixture does not show that the installed host loaded the
+   configuration.
+2. `generated_wrapper_direct_wire.status_fallback` and
+   `generated_wrapper_direct_wire.authority_receipt` check the exact generated
+   wrapper through direct invocation and keep the two complete bounded response
+   branches separate. Both must be `verified`, but neither shows that the
+   installed host delivered an event or displayed UI.
+3. `actual_host_event.status_fallback_event` and
+   `actual_host_event.authority_receipt_event` separately record actual host
+   delivery to the handler for both branches.
+   Record intentionally creates no persistent Guard observation, so its event
+   entries cite the authenticated host-owned managed-UI delivery while the
+   count check proves that no Guard event or Agent Session was added. This is
+   delivery evidence, not an invented durable observation.
+   `actual_host_fixed_ui.authority_receipt` separately records the complete
+   active-Task receipt on the host-owned fixed UI, distinct from model prose,
+   and binds its Project, Task, `state_version`, latest Run, close state, and
+   blocker count. `actual_host_fixed_ui.status_fallback` independently records
+   the no-active-Task fixed-UI confirmation. Both nested statuses must be
+   `verified` for the cell.
+4. `detective_decision` is `not_applicable` for Record only when the result also
+   confirms `non_observing` and `non_gating` and finds no Guard event or
+   decision. For Detective it must cover both `allow` and `block`; an `allow`
+   result cannot stand in for `block`.
+5. The top-level `status_fallback` separately binds the no-active-Task UI
+   confirmation to the generated `volicord status --json` command and absence
+   of a task-bound command. Direct-wrapper fallback wire does not establish the
+   UI observation. The operator copies the complete taskless message from the
+   managed UI, and the harness requires exact equality so a task-bound variant
+   cannot be confirmed by a command-only token. Each cell must verify this
+   evidence and both branches under
+   `actual_host_fixed_ui`; none replaces another.
+6. `exact_replay.generated_wrapper_identical_payload` records identical-payload
+   replay through the generated wrapper, while
+   `exact_replay.actual_host_replay` records replay through an actual host entry
+   point. For Record, repeated delivery remains non-observing and non-gating
+   while refreshing the read-only display. For Detective, actual replay leaves
+   the immutable historical Guard event and decision unchanged while the
+   separate UI reads current authority again. The generated-wrapper check
+   advances Task authority between identical deliveries and requires a newer
+   current receipt while the stored historical event remains byte-for-byte
+   unchanged.
+
+Evidence statuses are `verified`, `unavailable`, `not_applicable`, or `failed`.
+These are validation-harness facts rather than product response fields. A cell
+passes only when every applicable evidence item is `verified`; the Record-only
+Detective decision is the sole expected `not_applicable` case. If the installed
+host has no safe `block` entry, no actual-host replay entry point, no active-Task
+receipt UI, or no no-active-Task fallback UI, record the corresponding evidence
+as `unavailable` and keep the overall `result=incomplete`. Generated-wrapper
+identical-payload replay cannot replace actual-host replay.
+
+An unavailable executable, authentication environment, interactive TTY,
+event-delivery surface, active-Task receipt UI, no-active-Task fallback UI, safe
+Detective `block` entry, or actual-host replay entry is never a pass. Preserve
+the structured `unavailable` or `incomplete` result where the harness can write
+one, then report the release-validation outcome as `SKIP` or `FAIL`. Do not
+upgrade it from fixture, direct-wire, or another matrix cell. All four cells
+must pass before a release claim covers both maintained hosts and both profiles.
+
+The result recorder first writes a bounded `result=running` record and replaces
+it atomically with the final result. Treat a surviving `running` record as
+interrupted, and `result=incomplete` as incomplete evidence, never as a pass.
+Keep the bounded results and release approver's checklist outside the source
+repository. Do not commit result files, Runtime Homes, screenshots,
+transcripts, recordings, credentials, secrets, full prompts, or private
+operator input. The evidence applies only to the observed host, profile,
+release candidate, and environment; it is not portable host conformance, a
+security proof, product acceptance, close readiness, or a general correctness
+claim.
+
 <a id="live-host-judgment-release-validation"></a>
 ## Live-Host Judgment Release Validation
 
@@ -257,6 +363,8 @@ Use this checklist before publishing a release that claims the maintained Codex
 or Claude Code Judgment path. This is an authenticated, human-in-the-loop release
 validation against the exact release candidate. It is not replaced by schema
 checks, fixtures, ordinary workspace tests, or a live test reported as ignored.
+It is also separate from the four-cell final-output checklist above: evidence
+from either checklist cannot satisfy the other.
 Exact status and receipt behavior remains with the [status method](../reference/api/method-status.md)
 and [API State Schemas](../reference/api/schema-state.md); this checklist owns
 release-validation execution and evidence handling only.
@@ -298,26 +406,24 @@ For each host, confirm all of these observations against the release candidate:
    `run_recorded` authority-event payloads preserve the request, resolution,
    selected option, Run, kind, and no-write fact, and their event sequences prove
    that the selected resolution was recorded before that Run.
-5. The persisted final Stop guard event for the exact Agent Connection returned
-   by `init`, the same Task, and a non-null host session has `decision=allow`, no
-   reasons or close blockers, and the historical `AuthorityReceipt` used for
-   that immutable Stop decision. After the final model answer, the supported
-   Codex or Claude Code Stop hook visibly presents its separate Volicord
-   `systemMessage` UI surface containing the complete freshly refreshed
-   `AuthorityReceipt`. After the host exits, enter `receipt:<state_version>`
-   only when that separate surface's receipt `state_version` matches a fresh CLI
-   status receipt. This token confirms UI presentation only. An exact Stop-event
-   replay must leave the durable guard event and decision unchanged while
-   refreshing the separate UI again; if state advanced, the historical stored
-   receipt and current displayed receipt may intentionally differ.
+5. Exactly one new Task-bound Detective Stop event appears after the run's
+   pre-host cursor, records `allow` with no reasons or close blockers, and stores
+   the same complete `AuthorityReceipt` as fresh status. The operator copies the
+   complete canonical receipt JSON from the separate host-owned managed UI; the
+   harness requires exact equality, not a state-version-only confirmation.
 6. The bounded JSON result reports a unique validation `run_id`, start and
    record times, host version, Volicord `build_id`, exact Agent Connection ID,
    operator-confirmed and stored choice, authority-event order, consumed Run,
-   observed Stop allow, historical stored receipt coordinates, fresh UI receipt
-   binding, UI confirmations, and final `result=passed` without
-   including a transcript or prompt body. The external file is replaced through
-   a same-directory temporary file and rename, so readers do not observe a
-   partially written final JSON object.
+   and final `result=passed` without including a transcript or prompt body. The
+   external file is replaced through a same-directory temporary file and rename,
+   so readers do not observe a partially written final JSON object.
+
+The Task-bound Stop event and complete fresh receipt UI in item 5 are required
+Judgment-completion evidence for this test. They still do not fill any evidence
+item in the four-cell final-output matrix, whose host/profile, no-active-Task
+fallback, Record behavior, block behavior, and replay checks remain separate.
+Other final-output observations made during the Judgment test are diagnostic
+only for that run.
 
 If native elicitation is unavailable, the test must verify that the pending item
 is visible in `volicord inbox` and that the current `volicord inbox resolve`
@@ -325,14 +431,18 @@ command shape is available. It emits bounded command templates without the
 fixture's temporary paths or IDs, writes `result=failed_native_elicitation`, and
 fails. The disposable Runtime Home is deleted after the test, so those templates
 are not runnable recovery commands. Preserve that failed result for diagnosis,
-but do not count the CLI fallback as a successful native round trip.
-An unavailable executable, authentication environment, trust/approval surface,
-native selector, or Stop-hook `systemMessage` receipt surface is `SKIP` or
-`FAIL`, never `PASS`.
+but do not count the CLI fallback as a successful native round trip. This
+Judgment inbox fallback is User Channel recovery evidence, not final-output
+`status_fallback` evidence. Executable CLI recovery is owned by the separate
+[live-host CLI-fallback checklist](#live-host-cli-fallback-release-validation)
+below and cannot upgrade this native cell.
+
+An unavailable executable, authentication environment, interactive TTY,
+trust/approval surface, or native selector is `SKIP` or `FAIL`, never `PASS`.
 Both host-specific validations must pass for a release claim that covers both
 maintained hosts.
 
-When an external path is configured, the harness first writes a bounded
+The harness requires the external result path and first writes a bounded
 `result=running` record. Any ordinary early return or panic before an explicit
 final result atomically replaces it with `result=failed_before_completion`.
 Treat a surviving `running` record as an interrupted test, never as a pass.
@@ -345,6 +455,87 @@ the source repository. The structured result is release-validation evidence for
 the observed host and environment only; it is not portable host conformance, a
 security proof, product acceptance, close readiness, or a general correctness
 claim.
+
+<a id="live-host-cli-fallback-release-validation"></a>
+## Live-Host CLI-Fallback Release Validation
+
+Use this checklist before publishing a release that claims executable CLI User
+Channel recovery for the maintained Codex or Claude Code host path. This is an
+authenticated, human-in-the-loop release validation against the exact release
+candidate. It is separate from both the native Judgment cells and the four-cell
+final-output matrix. A command template, ordinary CLI integration test, native
+elicitation result, or final-output result cannot satisfy this checklist.
+Exact CLI and resume behavior remains with [Administrative CLI](../reference/admin-cli.md#user-channel-commands),
+[Agent Connection](../reference/agent-connection.md), and
+[`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md);
+this checklist owns release-validation execution and evidence separation only.
+
+Prepare an approved release-record location outside the source repository and
+record the exact release-candidate and installed-host identities. Each result
+path must be a different new absolute path with an existing parent directory.
+Run both ignored cells separately:
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+For each host, confirm all of these observations against the release candidate:
+
+1. The harness prepares one current pending two-option product-decision request
+   for an `advisor` Task, current Change Unit, baseline, and the exact Detective
+   Agent Connection that the installed host will use. The human operator—not
+   the Agent—chooses `route_alpha` or `route_beta`.
+2. The actual `volicord inbox --json` result shows that exact request once. The
+   harness submits the human choice through the actual
+   `volicord inbox resolve ... --choice ... --json` command, then runs the exact
+   same command and arguments again. The two JSON byte sequences must be
+   identical, the first resolution must advance state once, and the retry plus
+   fresh status must preserve the committed `state_version`.
+3. The stored resolution has one resolution ID,
+   `actor_source=local_user`, `channel_kind=cli`, and
+   `verification_basis=cli_direct_user_channel`. Its selected option must equal
+   the operator choice. A path-free command template or `--help` result does not
+   meet this item.
+4. The installed host starts on the prepared Agent Connection and calls
+   `volicord.request_user_action` with `request.operation=resume` for the exact
+   request ID. Same-connection diagnostics must observe replay of the
+   originating result, and the Task must still contain exactly one
+   product-decision request. The host then records exactly one option-mapped
+   no-product-write `shaping_update` Run whose `created_by_actor_source` names
+   that Agent Connection.
+5. Matching `user_action_requested`, `user_action_resolved`, and `run_recorded`
+   authority events bind the request, resolution, CLI channel, exact Run, kind,
+   and no-write fact in request-before-resolution-before-Run order. Fresh status
+   must follow its `AuthorityReceipt.latest_run_ref` to that Run and report
+   `close_state=ready` with no blockers.
+6. Exactly one new Task-bound Detective Stop event after the pre-host cursor
+   records `allow` with no reasons or close blockers and stores the same complete
+   receipt as fresh status. The operator copies the complete canonical receipt
+   from the separate host-owned managed UI, and the harness requires exact
+   equality rather than a state-version-only token.
+7. The bounded JSON result has
+   `kind=live_host_cli_fallback_release_validation`, `result=passed`, the CLI
+   basis and exact-retry facts, same-connection resume evidence, mapped Run and
+   event order, Stop coordinates, receipt coordinates, and complete managed-UI
+   confirmation. Its evidence scope explicitly identifies this CLI-fallback
+   cell and excludes native Judgment and final-output matrix cells.
+
+The result path is mandatory. The recorder writes `result=running` before the
+host launches and atomically replaces it with the bounded final or
+`failed_before_completion` record. Treat a surviving `running` record, any
+non-`passed` result, an unavailable executable, authentication environment,
+interactive TTY, same-connection resume path, Task-bound Stop, or complete
+receipt UI as `SKIP` or `FAIL`, never as a pass. Both host-specific cells must
+pass before a release claim covers both maintained hosts.
+
+Keep the bounded results and release approver's checklist outside the source
+repository. Do not commit result files, Runtime Homes, screenshots, transcripts,
+recordings, credentials, secrets, full prompts, or private operator input. This
+evidence applies only to the observed host, release candidate, and environment;
+it is not portable host conformance, a security proof, native Judgment
+elicitation evidence, final-output matrix evidence, product acceptance, close
+readiness, or a general correctness claim.
 
 ## Rust Implementation Validation
 

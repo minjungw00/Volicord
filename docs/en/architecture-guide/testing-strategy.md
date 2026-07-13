@@ -27,7 +27,10 @@ policy.
 | Guard command tests | [`crates/volicord-cli/tests/guard_command.rs`](../../../crates/volicord-cli/tests/guard_command.rs), target `guard_command`, package `volicord-cli`. | Guard hook lifecycle behavior for session start, pre-tool, post-tool, prompt capture, and stop; recorded observations; expected-write matching; write-ticket coverage; host-native rendering; prompt-capture command handling; and guarded lifecycle fixtures. | A security proof, human approval record, product acceptance record, or replacement for Core method tests. |
 | Binary tests for MCP transport | [`crates/volicord-cli/tests/mcp_transport.rs`](../../../crates/volicord-cli/tests/mcp_transport.rs), target `mcp_transport`, package `volicord-cli`. | The `volicord mcp` subcommand, help/version, `--check`, stdio framing, JSON-RPC behavior, reconnect cases, and response wrapping. | Core method semantics. |
 | Local HTTP serve transport tests | [`crates/volicord-cli/tests/serve_transport.rs`](../../../crates/volicord-cli/tests/serve_transport.rs), target `serve_transport`, package `volicord-cli`. | The `volicord serve --transport local-http` process path, loopback listener startup, token and origin checks, HTTP session behavior, defensive headers, and MCP request routing through the local HTTP transport. | A general MCP method test or security proof. |
-| Opt-in live host smoke tests | [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs), target `live_host_smoke`, package `volicord-cli`. | Explicit checks against an installed Codex or Claude Code executable in an environment prepared for that host. Configuration checks use `VOLICORD_RUN_*_SMOKE=1`; interactive user-action round trips use `VOLICORD_RUN_*_USER_ACTION_SMOKE=1`. Every live check is ignored by default. | A default workspace-test signal, portable host conformance, host trust, credential availability, network availability, or a security proof. |
+| Opt-in live host configuration smoke tests | [`crates/volicord-cli/tests/live_host_smoke.rs`](../../../crates/volicord-cli/tests/live_host_smoke.rs), target `live_host_smoke`, package `volicord-cli`. | Explicit configuration checks against an installed Codex or Claude Code executable, selected with `VOLICORD_RUN_CODEX_SMOKE=1` or `VOLICORD_RUN_CLAUDE_SMOKE=1`. | Evidence that the host delivered a final-output event, displayed fixed UI, or completed a User Judgment round trip. |
+| Opt-in live final-output matrix | The four Codex/Claude Code by Record/Detective tests in `live_host_smoke`. | Separately recording managed configuration-fixture, generated-wrapper wire, actual host event, actual fixed-UI, Detective decision, status-fallback, and exact-replay evidence. | Treating fixture or direct-wrapper output as proof of actual host delivery or UI, or treating one host/profile cell as proof of another. |
+| Opt-in live Judgment round trips | The Codex and Claude Code `*_live_user_action_round_trip_is_opt_in` tests in `live_host_smoke`. | Authenticated, human-in-the-loop host-native Judgment selection and its resulting authority records. | Final-output matrix evidence; Judgment elicitation and final-output disclosure are separate validation concerns. |
+| Opt-in live CLI-fallback round trips | The Codex and Claude Code `*_live_cli_fallback_round_trip_is_opt_in` tests in `live_host_smoke`. | A human-selected choice submitted by the actual CLI User Channel, exact CLI retry, and same-Agent-Connection host resume through the installed host. | Native Judgment elicitation or final-output matrix evidence; all three release-validation surfaces remain separate. |
 | MCP integration tests | [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs), target `mcp_connection`, package `volicord-integration-tests`. | Cross-layer MCP, Core, Store, connection binding, `operation_category` derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Public contract snapshot tests | [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs), target `public_contract_snapshots`, package `volicord-integration-tests`. | Generated API request-schema and MCP tool-contract snapshot drift against the current source projection. | Hand-edited generated snapshots, semantic Reference review, or proof that the public contract is correct. |
 | Conformance implementation tests | [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs), target `baseline`, package `volicord-conformance-tests`. | Baseline cross-method scenarios through Core-facing APIs, including replay, write tickets, artifacts, judgments, close readiness, error routing, and corruption handling. | Product acceptance, security proof, close readiness, or the sole source of a product rule. |
@@ -53,16 +56,109 @@ Reference owner for the fact being checked.
 
 ## Opt-in live host smoke tests
 
-`live_host_smoke` is a normal Cargo test target whose four live checks carry
-`#[ignore]`, so an ordinary workspace test run reports those checks as ignored.
-Its pure result-path and operator-token checks and its disposable MCP-to-Core
-advisor/Stop-readiness regression are not ignored and run in ordinary CI.
-Run one host check only in an environment where that host executable is
-installed and the matching opt-in variable is set:
+`live_host_smoke` is a normal Cargo test target whose live host checks carry
+`#[ignore]`, so an ordinary workspace test run reports them as ignored. Its
+pure result-path and operator-token checks and its disposable MCP-to-Core
+regressions are not ignored and run in ordinary CI. Run a live check only in an
+environment where that host executable is installed and the matching opt-in
+variable is set.
+
+The host-configuration checks remain separate:
 
 ```sh
 VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_smoke_is_opt_in -- --ignored --nocapture
 VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
+```
+
+### Final-output host/profile matrix
+
+The final-output checks form an explicit four-cell matrix. Each cell has its
+own opt-in variable and test; a result from one cell cannot satisfy another.
+
+| Host | Record profile | Detective profile |
+|---|---|---|
+| Codex | `codex_record_live_final_output_is_opt_in` with `VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1` | `codex_detective_live_final_output_is_opt_in` with `VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1` |
+| Claude Code | `claude_code_record_live_final_output_is_opt_in` with `VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1` | `claude_code_detective_live_final_output_is_opt_in` with `VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1` |
+
+The four commands are:
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-record.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-detective.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-record.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-detective.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
+```
+
+Each bounded result names its `host`, `profile`, and overall `result`, then
+keeps `config_fixture`, `generated_wrapper_direct_wire`, `actual_host_event`,
+`actual_host_fixed_ui`, `detective_decision`, `status_fallback`, and
+`exact_replay` as independent evidence. The evidence statuses are `verified`,
+`unavailable`, `not_applicable`, or `failed`; these are validation-harness
+facts, not a product response schema.
+
+The evidence layers are deliberately non-substitutable:
+
+- `config_fixture` checks the managed configuration shape. It does not prove
+  that an installed host loaded it or delivered an event.
+- `generated_wrapper_direct_wire.status_fallback` and
+  `generated_wrapper_direct_wire.authority_receipt` invoke the generated
+  wrapper directly and keep the two bounded host-response branches separate.
+  Both must be verified, but neither proves actual host dispatch or fixed-UI
+  presentation.
+- `actual_host_event.status_fallback_event` and
+  `actual_host_event.authority_receipt_event` separately record both deliveries
+  by the installed host, while
+  `actual_host_fixed_ui.authority_receipt` separately requires a complete
+  active-Task receipt on fixed UI rather than model prose. Neither proves the
+  other. `actual_host_fixed_ui.status_fallback` independently confirms the
+  no-active-Task fixed-UI branch.
+  Record deliberately has no persistent Guard observation; its event entries
+  identify authenticated host-owned UI delivery, while before/after counts
+  prove that no Guard event or Agent Session was created. This does not invent
+  a durable Record observation.
+- The top-level `status_fallback` evidence binds that no-active-Task UI
+  confirmation to the exact generated `volicord status --json` fallback.
+  Direct-wire output cannot replace the UI observation, and a fixed-UI receipt
+  cannot replace the fallback. The operator copies the complete taskless
+  managed-UI message and the harness checks exact equality, including absence
+  of a task-bound command. Every cell must verify both branches under
+  `actual_host_fixed_ui` and the separate command evidence.
+- `exact_replay.generated_wrapper_identical_payload` records repeated identical
+  payload delivery through the generated wrapper, while
+  `exact_replay.actual_host_replay` records replay through an actual host entry
+  point. The generated-wrapper check advances Task authority between the two
+  identical deliveries, requires a newer current receipt on the second wire,
+  and for Detective requires the stored historical Stop row to remain exactly
+  unchanged. A direct wrapper replay cannot be reported as actual host replay.
+
+For the Record profile, the final-output path is non-gating and non-observing.
+Its `detective_decision` evidence is `not_applicable` only when the result also
+confirms the absence of a Guard event or decision and confirms that final
+output was not gated. Repeated delivery must refresh the read-only display
+without creating an observation.
+
+For the Detective profile, decision evidence covers both `allow` and `block`. An
+exact replay preserves the immutable historical Guard event and decision while
+the separate fixed UI refreshes current authority; a later current receipt may
+therefore differ from the historical receipt. If the installed host exposes no
+safe `block` entry or no actual-host exact-replay entry point, the corresponding
+evidence is `unavailable` and the overall result remains `incomplete`. The same
+applies when the executable, authentication environment, interactive TTY,
+event-delivery surface, active-Task receipt UI, or no-active-Task fallback UI
+cannot be used. Such a run remains `incomplete` and is reported as `SKIP` or
+`FAIL`, never `PASS`; fixture or generated-wrapper evidence does not upgrade it.
+
+Use the paired [live-host final-output release-validation checklist](../maintain/validation.md#live-host-final-output-release-validation)
+before a release claim covers these host/profile paths. Exact final-output,
+receipt, replay, and fallback behavior remains in the applicable Reference
+owners, including [Agent Connection](../reference/agent-connection.md#managed-final-output-authority-disclosure)
+and [Administrative CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure).
+
+### Judgment round trips
+
+The Judgment checks remain separate from the final-output matrix:
+
+```sh
 VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 ```
@@ -97,32 +193,90 @@ live-native check into a pass.
 The Judgment variants also capture the host's `--version` output and Volicord
 `build_id`, read a fresh CLI status, and require its `authority_receipt` to bind
 the same Project, Task, exact Run, ready close state, empty blocker set, and
-`state_version`. It binds native-channel diagnostics and the durable final Stop
-guard event to the exact Agent Connection returned by `init`, requires a
-non-null Stop host session and an allow decision, and requires that event's
-receipt to equal the fresh status receipt. After the host
-exits, the operator confirms only the separate Volicord Stop-hook
-`systemMessage` UI shown after the final model answer by entering its receipt's
-state-version token. A bounded JSON summary is printed. Setting
-`VOLICORD_LIVE_HOST_RESULT_PATH` uses a new absolute approved path outside the
-source repository: the harness rejects an existing file, writes a run-identified
+`state_version`. They also require exactly one new Task-bound Detective Stop
+event after the pre-host cursor, an `allow` decision with no reasons or close
+blockers, and a stored receipt equal to fresh status. The operator must copy the
+complete canonical receipt JSON from the separate host-owned managed UI, and
+the harness checks exact equality rather than accepting a state-version-only
+token. A bounded JSON summary is printed. Every authenticated live-host test
+requires `VOLICORD_LIVE_HOST_RESULT_PATH` to name a new absolute approved path
+outside the source repository; omitting it fails before the host is launched.
+The harness rejects an existing file, writes a run-identified
 `running` record, and atomically replaces it with the bounded final or
 early-failure record. It contains validation facts, not a transcript,
 credential, secret, or full prompt.
+
+The Task-bound Stop event and complete receipt UI are required evidence that the
+Judgment run reached its authoritative completion state. They cannot fill a
+cell or evidence field in the four-cell final-output matrix, and final-output
+matrix evidence cannot establish native Judgment elicitation. Other
+final-output, fallback, or replay observations made during the Judgment run are
+diagnostic only for that run.
+The Judgment inbox fallback is User Channel recovery evidence, not final-output
+`status_fallback` evidence.
 
 Before publishing a release that claims either maintained host Judgment path,
 follow the paired [live-host Judgment release-validation checklist](../maintain/validation.md#live-host-judgment-release-validation).
 It requires both host-specific runs against the release candidate and owns
 external result retention, UI confirmation, fallback, and skipped-validation
-reporting. An unavailable host, authentication environment, native elicitation
-surface, or Stop-hook `systemMessage` receipt surface is not a passing round
-trip.
+reporting. An unavailable host, authentication environment, interactive TTY,
+or native elicitation surface is not a passing round trip.
 
-An explicitly selected check fails when its opt-in variable or host executable
-is unavailable. Passing confirms only the assertions that the installed host
-and local test environment allowed the smoke test to observe. It does not
-prove portable host behavior, host trust, approval, credential availability,
-network availability, security enforcement, or general product correctness.
+### CLI-fallback Judgment round trips
+
+The executable CLI-fallback checks are two additional host cells, separate from
+both native Judgment elicitation and the four-cell final-output matrix:
+
+```sh
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+```
+
+Each cell prepares an `advisor` Task, current Change Unit, baseline, and current
+pending two-option product-decision request for the selected Detective Agent
+Connection. The human operator chooses `route_alpha` or `route_beta`; the
+harness verifies the request in the actual `volicord inbox --json` result and
+submits that choice through the actual
+`volicord inbox resolve ... --choice ... --json` command. It repeats that exact
+command and requires byte-identical JSON plus an unchanged `state_version`.
+This is an executed User Channel resolution, not the path-free command-template
+diagnostic emitted by a failed native Judgment cell.
+
+The harness then launches the installed host on the same prepared Agent
+Connection. The host must call `volicord.request_user_action` with
+`request.operation=resume` and the exact request ID, consume the CLI-selected
+option without creating another product-decision request, and record the mapped
+no-product-write `shaping_update` Run through that Agent Connection. Fresh CLI
+status must bind the exact Run in a ready `AuthorityReceipt` with no blockers.
+The same live host path must also produce one new Task-bound Detective Stop
+`allow` event whose stored receipt equals fresh status, and the operator must
+copy the complete canonical receipt from the separate host-owned managed UI for
+exact confirmation.
+
+The bounded external result uses
+`kind=live_host_cli_fallback_release_validation` and records the CLI resolution
+ID, `actor_source=local_user`, `channel_kind=cli`,
+`verification_basis=cli_direct_user_channel`, both CLI state versions, exact
+retry facts, same-connection resume evidence, mapped Run and authority-event
+order, Stop coordinates, fresh receipt, and managed-UI confirmation. It also
+marks the native Judgment and final-output matrix scopes false. A result from
+this cell cannot satisfy either of those surfaces, and their evidence cannot
+satisfy this cell.
+
+Before a release claim covers executable CLI recovery for either maintained
+host, use the paired [live-host CLI-fallback release-validation checklist](../maintain/validation.md#live-host-cli-fallback-release-validation).
+Both host-specific cells must pass for a claim covering both hosts. An
+unavailable executable, authentication environment, interactive TTY, same-
+connection resume path, Task-bound Stop, or complete receipt UI is `SKIP` or
+`FAIL`, never a passing fallback.
+
+An explicitly selected check cannot pass when its opt-in variable, host
+executable, or another required live prerequisite is unavailable. Report the
+case as `SKIP` or `FAIL` under the applicable checklist. Passing confirms only
+the assertions that the installed host and local test environment allowed the
+smoke test to observe. It does not prove portable host behavior, host trust,
+approval, credential availability, network availability, security enforcement,
+or general product correctness.
 
 ## Generated output and documentation validation
 

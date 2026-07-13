@@ -820,7 +820,8 @@ documents:
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
   summary: Explanation of test-layer selection, fixture and support structure, generated-output
-    drift checks, durable contract-test authoring, and validation responsibilities.
+    drift checks, durable contract-test authoring, live-host release-cell separation, and validation
+    responsibilities.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -2753,7 +2754,8 @@ documents:
   kind: maintenance
   summary: Maintenance policy for structural checks including root README pair validation, durable
     test and audit boundaries, human semantic review, onboarding usability validation, live-host
-    User Action and final-output replay release validation, Rust validation, and result reporting.
+    native User Action, CLI-fallback, and final-output replay release validation, Rust validation,
+    and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -2776,9 +2778,9 @@ documents:
   - Durable repository-test and one-time audit boundary guidance for documentation validation and
     implementation-check reporting.
   - Representative-user onboarding usability validation policy and reporting boundaries.
-  - Release-candidate live Codex and Claude Code User Action, historical Stop decision, fresh
-    final-output replay UI validation, external result retention, and unavailable-host reporting
-    boundaries.
+  - Release-candidate live Codex and Claude Code native User Action, executable CLI-fallback,
+    historical Stop decision, fresh final-output replay UI validation, external result retention,
+    and unavailable-host reporting boundaries.
   - Rust validation routing for documentation work that also changes implementation files.
   depends_on:
   - maintain.documentation-policy

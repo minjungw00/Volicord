@@ -9,7 +9,7 @@ mod unix {
         error::Error,
         ffi::OsString,
         fs::{self, OpenOptions},
-        io::{self, Write},
+        io::{self, IsTerminal, Write},
         os::unix::fs::PermissionsExt,
         path::{Path, PathBuf},
         process::{Command, ExitStatus, Output, Stdio},
@@ -21,22 +21,38 @@ mod unix {
     use serde_json::Value;
     use volicord_mcp::{McpAdapter, McpConnectionContext};
     use volicord_store::{
-        bootstrap::list_projects, diagnostics::diagnostics_db_path,
+        agent_connections::{agent_connection_record_read_only, VERIFIED_STATUS_COMPLETE},
+        bootstrap::list_projects,
+        diagnostics::diagnostics_db_path,
         sqlite::open_project_state_database_read_only,
     };
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
     use volicord_types::{
-        AuthorityReceipt, StateRecordKind, StatusCloseState, StatusResult,
+        canonical_json_string, AuthorityReceipt, StateRecordKind, StatusCloseState, StatusResult,
+        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
 
-    use crate::support::fake_hosts::write_fake_codex;
+    use crate::support::fake_hosts::{write_fake_claude_code, write_fake_codex};
 
     const CODEX_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_SMOKE";
     const CLAUDE_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_SMOKE";
+    const CODEX_RECORD_FINAL_OUTPUT_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE";
+    const CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE";
+    const CLAUDE_RECORD_FINAL_OUTPUT_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE";
+    const CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE";
     const CODEX_USER_ACTION_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_USER_ACTION_SMOKE";
     const CLAUDE_USER_ACTION_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE";
+    const CODEX_CLI_FALLBACK_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE";
+    const CLAUDE_CLI_FALLBACK_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE";
     const LIVE_HOST_RESULT_PATH_ENV: &str = "VOLICORD_LIVE_HOST_RESULT_PATH";
+    const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
+    const LIVE_CLI_FALLBACK_RESULT_KIND: &str = "live_host_cli_fallback_release_validation";
+    const LIVE_FINAL_OUTPUT_RESULT_KIND: &str = "live_host_final_output_release_validation";
     const USER_ACTION_ROUTE_ALPHA_OPTION_ID: &str = "route_alpha";
     const USER_ACTION_ROUTE_BETA_OPTION_ID: &str = "route_beta";
     const USER_ACTION_ROUTE_ALPHA_RUN_MARKER: &str =
@@ -44,6 +60,7 @@ mod unix {
     const USER_ACTION_ROUTE_BETA_RUN_MARKER: &str =
         "VOLICORD_LIVE_HOST_USER_ACTION_CONSUMED_ROUTE_BETA";
     const LIVE_HOST_BASELINE_REF: &str = "baseline_live_host_user_action";
+    const LIVE_CLI_FALLBACK_BASELINE_REF: &str = "baseline_live_host_cli_fallback";
     const LIVE_INBOX_COMMAND_TEMPLATE: &str =
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
     const LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE: &str = "VOLICORD_HOME=<runtime-home> volicord inbox resolve <user-action-request-id> --choice <option-id> --repo <repo> --json";
@@ -84,6 +101,11 @@ mod unix {
         assert!(atomic_write_live_host_result(&result_path, "{}", "different-run").is_err());
 
         assert!(LiveResultRecorder::new("codex", Some(result_path.clone())).is_err());
+        assert!(required_live_result_path(None).is_err());
+        assert_eq!(
+            required_live_result_path(Some(result_dir.join("required.json").into_os_string()))?,
+            result_dir.join("required.json")
+        );
         assert!(validate_external_result_path(Path::new("relative-result.json"), true).is_err());
         assert!(validate_external_result_path(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("live-result.json"),
@@ -125,6 +147,432 @@ mod unix {
         );
         assert!(parse_native_user_action_choice("route_alpha").is_err());
         assert!(parse_native_user_action_choice("choice:unrecognized").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn cli_fallback_result_shape_keeps_release_cells_separate() -> Result<(), Box<dyn Error>> {
+        let result = cli_fallback_result_shape_fixture();
+        validate_live_cli_fallback_result_shape(&result)?;
+
+        let mut native_substitution = result.clone();
+        native_substitution["evidence_scope"]["native_judgment_cell"] = Value::Bool(true);
+        assert!(validate_live_cli_fallback_result_shape(&native_substitution).is_err());
+
+        let mut missing_retry = result.clone();
+        missing_retry["cli_user_channel"]["exact_retry"]["stdout_byte_identical"] =
+            Value::Bool(false);
+        assert!(validate_live_cli_fallback_result_shape(&missing_retry).is_err());
+
+        let mut skipped_state_version = result.clone();
+        skipped_state_version["cli_user_channel"]["resolution"]["committed_state_version"] =
+            Value::from(5);
+        skipped_state_version["cli_user_channel"]["exact_retry"]["state_version"] = Value::from(5);
+        assert!(validate_live_cli_fallback_result_shape(&skipped_state_version).is_err());
+
+        let mut receipt_run_mismatch = result.clone();
+        receipt_run_mismatch["authority_receipt"]["latest_run_id"] =
+            Value::String("RUN-other".to_owned());
+        assert!(validate_live_cli_fallback_result_shape(&receipt_run_mismatch).is_err());
+
+        let mut stop_run_mismatch = result.clone();
+        stop_run_mismatch["stop_hook"]["latest_run_id"] = Value::String("RUN-other".to_owned());
+        assert!(validate_live_cli_fallback_result_shape(&stop_run_mismatch).is_err());
+
+        let mut stop_version_mismatch = result.clone();
+        stop_version_mismatch["stop_hook"]["receipt_state_version"] = Value::from(6);
+        assert!(validate_live_cli_fallback_result_shape(&stop_version_mismatch).is_err());
+
+        let mut empty_project = result.clone();
+        empty_project["task"]["project_id"] = Value::String(String::new());
+        assert!(validate_live_cli_fallback_result_shape(&empty_project).is_err());
+
+        let mut empty_task = result.clone();
+        empty_task["task"]["task_id"] = Value::String(String::new());
+        assert!(validate_live_cli_fallback_result_shape(&empty_task).is_err());
+
+        let mut empty_connection = result.clone();
+        empty_connection["connection"]["connection_id"] = Value::String(String::new());
+        assert!(validate_live_cli_fallback_result_shape(&empty_connection).is_err());
+
+        let mut receipt_project_mismatch = result.clone();
+        receipt_project_mismatch["authority_receipt"]["project_id"] =
+            Value::String("PRJ-other".to_owned());
+        assert!(validate_live_cli_fallback_result_shape(&receipt_project_mismatch).is_err());
+
+        let mut receipt_task_mismatch = result.clone();
+        receipt_task_mismatch["authority_receipt"]["task_id"] =
+            Value::String("TASK-other".to_owned());
+        assert!(validate_live_cli_fallback_result_shape(&receipt_task_mismatch).is_err());
+
+        let mut receipt_version_mismatch = result.clone();
+        receipt_version_mismatch["authority_receipt"]["state_version"] = Value::from(6);
+        assert!(validate_live_cli_fallback_result_shape(&receipt_version_mismatch).is_err());
+
+        let mut zero_event_sequence = result.clone();
+        zero_event_sequence["authority_events"]["user_action_requested_event_seq"] = Value::from(0);
+        assert!(validate_live_cli_fallback_result_shape(&zero_event_sequence).is_err());
+
+        let mut misleading_event_order = result;
+        misleading_event_order["authority_events"]["user_action_resolved_event_seq"] =
+            Value::from(13);
+        assert!(validate_live_cli_fallback_result_shape(&misleading_event_order).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn final_output_confirmation_and_result_shape_are_strict() -> Result<(), Box<dyn Error>> {
+        assert_eq!(
+            parse_final_output_ui_confirmation(
+                "surface:managed-final-output",
+                &FinalOutputUiExpectation::ManagedSurface,
+            )?,
+            "surface:managed-final-output"
+        );
+        let complete_status_fallback = "No active Task is available. Run `volicord status --json`.";
+        assert_eq!(
+            parse_final_output_ui_confirmation(
+                &format!("status-ui:{complete_status_fallback}"),
+                &FinalOutputUiExpectation::NoActiveTaskStatus {
+                    complete_message: complete_status_fallback.to_owned(),
+                },
+            )?,
+            format!("status-ui:{complete_status_fallback}")
+        );
+        let complete_receipt = r#"{"project_id":"PRJ-live","state_version":42,"task_ref":{"record_id":"TASK-live","version":1}}"#;
+        assert_eq!(
+            parse_final_output_ui_confirmation(
+                &format!("receipt-json:{complete_receipt}"),
+                &FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                    canonical_json: complete_receipt.to_owned(),
+                },
+            )?,
+            format!("receipt-json:{complete_receipt}")
+        );
+        assert!(parse_final_output_ui_confirmation(
+            "receipt-json:{\"state_version\":42}",
+            &FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                canonical_json: complete_receipt.to_owned(),
+            },
+        )
+        .is_err());
+        assert!(parse_final_output_ui_confirmation(
+            "status-ui:Run `volicord status --json --task TASK-hidden`.",
+            &FinalOutputUiExpectation::NoActiveTaskStatus {
+                complete_message: complete_status_fallback.to_owned(),
+            },
+        )
+        .is_err());
+
+        let record = final_output_result_shape_fixture(IntegrationProfile::Record);
+        validate_final_output_result_shape(&record, IntegrationProfile::Record)?;
+        let detective = final_output_result_shape_fixture(IntegrationProfile::Detective);
+        validate_final_output_result_shape(&detective, IntegrationProfile::Detective)?;
+        for profile in [IntegrationProfile::Record, IntegrationProfile::Detective] {
+            let unavailable = final_output_unavailable_summary(
+                "fixture",
+                profile,
+                "fixture prerequisite missing",
+            );
+            validate_final_output_result_shape(&unavailable, profile)?;
+            assert_eq!(
+                unavailable["evidence"]["detective_decision"]["status"],
+                "unavailable"
+            );
+        }
+
+        let mut false_pass = detective.clone();
+        false_pass["result"] = Value::String("passed".to_owned());
+        assert!(
+            validate_final_output_result_shape(&false_pass, IntegrationProfile::Detective).is_err()
+        );
+        let mut block_false_pass = detective.clone();
+        block_false_pass["result"] = Value::String("passed".to_owned());
+        block_false_pass["evidence"]["exact_replay"]["status"] =
+            Value::String("verified".to_owned());
+        block_false_pass["evidence"]["exact_replay"]["actual_host_replay"]["status"] =
+            Value::String("verified".to_owned());
+        assert!(validate_final_output_result_shape(
+            &block_false_pass,
+            IntegrationProfile::Detective
+        )
+        .is_err());
+        let mut incomplete_fallback_confirmation = record.clone();
+        incomplete_fallback_confirmation["evidence"]["actual_host_fixed_ui"]["status_fallback"]
+            ["complete_taskless_message_operator_confirmed"] = Value::Bool(false);
+        assert!(validate_final_output_result_shape(
+            &incomplete_fallback_confirmation,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut collapsed = detective;
+        collapsed["evidence"]
+            .as_object_mut()
+            .expect("fixture evidence should be an object")
+            .remove("actual_host_event");
+        assert!(
+            validate_final_output_result_shape(&collapsed, IntegrationProfile::Detective).is_err()
+        );
+        let mut substituted = record;
+        substituted["evidence"]["actual_host_fixed_ui"]["authority_receipt"]["status"] =
+            Value::String("unavailable".to_owned());
+        assert!(
+            validate_final_output_result_shape(&substituted, IntegrationProfile::Record).is_err()
+        );
+        let unavailable = final_output_unavailable_summary(
+            "claude-code",
+            IntegrationProfile::Detective,
+            "host executable unavailable",
+        );
+        assert_eq!(unavailable["result"], "incomplete");
+        assert_eq!(
+            unavailable["evidence"]["actual_host_event"]["status"],
+            "unavailable"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generated_final_output_matrix_layers_are_exercised_without_live_hosts(
+    ) -> Result<(), Box<dyn Error>> {
+        for (host, profile, expected_host_action) in [
+            ("codex", IntegrationProfile::Record, "host_trust_required"),
+            (
+                "codex",
+                IntegrationProfile::Detective,
+                "host_trust_required",
+            ),
+            (
+                "claude-code",
+                IntegrationProfile::Record,
+                "project_approval_required",
+            ),
+            (
+                "claude-code",
+                IntegrationProfile::Detective,
+                "project_approval_required",
+            ),
+        ] {
+            let fixture = LiveSmokeFixture::new(&format!(
+                "direct-final-output-{}-{}",
+                host.replace('-', "_"),
+                profile.as_str()
+            ))?;
+            let live_bin = fixture.runtime_home_path.join("live-bin");
+            match host {
+                "codex" => {
+                    write_fake_codex(&live_bin)?;
+                }
+                "claude-code" => {
+                    write_fake_claude_code(&live_bin)?;
+                }
+                _ => unreachable!("the direct matrix has only maintained hosts"),
+            }
+            let init = fixture.run_volicord([
+                "init",
+                "--shared",
+                "--host",
+                host,
+                "--repo",
+                fixture.repo_arg(),
+                "--profile",
+                profile.as_str(),
+                "--home",
+                fixture.runtime_home_arg(),
+                "--json",
+            ])?;
+            assert_success("volicord init for direct final-output matrix", &init);
+            let init_json = json_stdout(&init)?;
+            assert_direct_matrix_init_report(&init_json, host, profile, expected_host_action);
+            let connection_id = init_json["connection"]["connection_id"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("matrix init returned no connection id"))?;
+            let config_fixture = verify_final_output_config_fixture(
+                &fixture, host, profile, &init_json,
+            )
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "{host}/{} generated config verification failed: {error}",
+                    profile.as_str()
+                ))
+            })?;
+            assert_eq!(config_fixture["status"], "verified");
+            let project_id = live_fixture_project_id(&fixture)?;
+
+            let no_active_private_prose = "private matrix no-active prose";
+            let no_active_event = live_final_output_event(
+                host,
+                &fixture.repo_root,
+                &format!("direct_no_active_{}_{}", host, profile.as_str()),
+                no_active_private_prose,
+            )?;
+            let before_no_active = guard_observation_counts(&fixture, &project_id)?;
+            let first_no_active = run_generated_final_output_handler(
+                &fixture.runtime_home_path,
+                &fixture.repo_root,
+                &fixture.env_path,
+                host,
+                &no_active_event,
+            )?;
+            verify_no_active_status_wire(&first_no_active, no_active_private_prose)?;
+            let after_first_no_active = guard_observation_counts(&fixture, &project_id)?;
+            let second_no_active = run_generated_final_output_handler(
+                &fixture.runtime_home_path,
+                &fixture.repo_root,
+                &fixture.env_path,
+                host,
+                &no_active_event,
+            )?;
+            verify_no_active_status_wire(&second_no_active, no_active_private_prose)?;
+            let after_second_no_active = guard_observation_counts(&fixture, &project_id)?;
+            assert_eq!(first_no_active.stdout, second_no_active.stdout);
+            match profile {
+                IntegrationProfile::Record => {
+                    assert_eq!(before_no_active, after_first_no_active);
+                    assert_eq!(after_first_no_active, after_second_no_active);
+                }
+                IntegrationProfile::Detective => {
+                    assert_eq!(
+                        after_first_no_active.guard_events,
+                        before_no_active.guard_events + 1
+                    );
+                    assert_eq!(
+                        after_second_no_active.guard_events,
+                        after_first_no_active.guard_events
+                    );
+                }
+            }
+
+            let prepared = prepare_live_final_authority(
+                &fixture,
+                connection_id,
+                &format!("DIRECT_FINAL_AUTHORITY_{}_{}", host, profile.as_str()),
+            )
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "{host}/{} final authority preparation failed: {error}",
+                    profile.as_str()
+                ))
+            })?;
+            let canonical_receipt = canonical_json_string(&prepared.receipt.canonical_receipt)?;
+            parse_final_output_ui_confirmation(
+                &format!("receipt-json:{canonical_receipt}"),
+                &FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                    canonical_json: canonical_receipt.clone(),
+                },
+            )?;
+            let active_session_id = format!("direct_active_{}_{}", host, profile.as_str());
+            let active_private_prose = "private matrix active prose";
+            let active_event = live_final_output_event(
+                host,
+                &fixture.repo_root,
+                &active_session_id,
+                active_private_prose,
+            )?;
+            let before_active = guard_observation_counts(&fixture, &project_id)?;
+            let first_active = run_generated_final_output_handler(
+                &fixture.runtime_home_path,
+                &fixture.repo_root,
+                &fixture.env_path,
+                host,
+                &active_event,
+            )?;
+            let expected_continue = profile == IntegrationProfile::Record
+                || prepared.receipt.close_state == StatusCloseState::Ready;
+            verify_authority_receipt_wire(
+                &first_active,
+                &prepared.receipt,
+                expected_continue,
+                active_private_prose,
+            )
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "{host}/{} first active direct receipt failed: {error}",
+                    profile.as_str()
+                ))
+            })?;
+            let first_active_wire: Value = serde_json::from_slice(&first_active.stdout)?;
+            assert_eq!(
+                first_active_wire["systemMessage"],
+                format!("Volicord authority receipt: {canonical_receipt}")
+            );
+            let after_first_active = guard_observation_counts(&fixture, &project_id)?;
+            let first_historical = if profile == IntegrationProfile::Detective {
+                Some(stored_stop_snapshot_for_session(
+                    &fixture,
+                    &project_id,
+                    &active_session_id,
+                )?)
+            } else {
+                None
+            };
+            let replayed_authority = advance_live_final_authority(
+                &fixture,
+                connection_id,
+                &prepared,
+                &format!(
+                    "DIRECT_FINAL_AUTHORITY_ADVANCED_{}_{}",
+                    host,
+                    profile.as_str()
+                ),
+            )?;
+            assert!(replayed_authority.receipt.state_version > prepared.receipt.state_version);
+            let replayed_canonical_receipt =
+                canonical_json_string(&replayed_authority.receipt.canonical_receipt)?;
+            let second_active = run_generated_final_output_handler(
+                &fixture.runtime_home_path,
+                &fixture.repo_root,
+                &fixture.env_path,
+                host,
+                &active_event,
+            )?;
+            let replayed_continue = profile == IntegrationProfile::Record
+                || replayed_authority.receipt.close_state == StatusCloseState::Ready;
+            verify_authority_receipt_wire(
+                &second_active,
+                &replayed_authority.receipt,
+                replayed_continue,
+                active_private_prose,
+            )
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "{host}/{} replayed active direct receipt failed: {error}",
+                    profile.as_str()
+                ))
+            })?;
+            let second_active_wire: Value = serde_json::from_slice(&second_active.stdout)?;
+            assert_eq!(
+                second_active_wire["systemMessage"],
+                format!("Volicord authority receipt: {replayed_canonical_receipt}")
+            );
+            let after_second_active = guard_observation_counts(&fixture, &project_id)?;
+            assert_ne!(first_active.stdout, second_active.stdout);
+            match profile {
+                IntegrationProfile::Record => {
+                    assert_eq!(before_active, after_first_active);
+                    assert_eq!(after_first_active, after_second_active);
+                }
+                IntegrationProfile::Detective => {
+                    assert_eq!(
+                        after_first_active.guard_events,
+                        before_active.guard_events + 1
+                    );
+                    assert_eq!(
+                        after_second_active.guard_events,
+                        after_first_active.guard_events
+                    );
+                    assert_eq!(
+                        stored_stop_snapshot_for_session(
+                            &fixture,
+                            &project_id,
+                            &active_session_id,
+                        )?,
+                        first_historical
+                            .expect("Detective replay should capture a historical Stop")
+                    );
+                }
+            }
+        }
         Ok(())
     }
 
@@ -255,8 +703,11 @@ mod unix {
             state_version,
             user_action_request_id: None,
             user_action_status: None,
+            requested_by_actor_source: None,
+            user_action_resolution_id: None,
             resolved_by_actor_source: None,
             resolved_verification_basis: None,
+            resolved_channel_kind: None,
             selected_option_id: None,
             option_ids: Vec::new(),
         };
@@ -401,7 +852,12 @@ mod unix {
         ])?;
         assert_success("volicord init --host codex --profile detective", &init);
         let init_json = json_stdout(&init)?;
-        assert_guarded_init_reported_action_required(&init_json, "codex", "host_trust_required");
+        assert_live_init_reported_action_required(
+            &init_json,
+            "codex",
+            IntegrationProfile::Detective,
+            "host_trust_required",
+        );
         assert_eq!(init_json["states"]["hook_config"], "created");
         assert_eq!(init_json["states"]["required_hook_phases"], "configured");
         assert_file_contains(
@@ -500,9 +956,10 @@ mod unix {
             &init,
         );
         let init_json = json_stdout(&init)?;
-        assert_guarded_init_reported_action_required(
+        assert_live_init_reported_action_required(
             &init_json,
             "claude-code",
+            IntegrationProfile::Detective,
             "project_approval_required",
         );
         assert_eq!(init_json["states"]["hook_config"], "created");
@@ -544,6 +1001,54 @@ mod unix {
     }
 
     #[test]
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1"]
+    fn codex_record_live_final_output_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_final_output_matrix_cell(
+            "codex",
+            "codex",
+            IntegrationProfile::Record,
+            CODEX_RECORD_FINAL_OUTPUT_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1"]
+    fn codex_detective_live_final_output_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_final_output_matrix_cell(
+            "codex",
+            "codex",
+            IntegrationProfile::Detective,
+            CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1"]
+    fn claude_code_record_live_final_output_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_final_output_matrix_cell(
+            "claude-code",
+            "claude",
+            IntegrationProfile::Record,
+            CLAUDE_RECORD_FINAL_OUTPUT_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1"]
+    fn claude_code_detective_live_final_output_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_final_output_matrix_cell(
+            "claude-code",
+            "claude",
+            IntegrationProfile::Detective,
+            CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    #[test]
     #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1"]
     fn codex_live_user_action_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
         live_user_action_round_trip(
@@ -565,6 +1070,810 @@ mod unix {
         )
     }
 
+    #[test]
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1"]
+    fn codex_live_cli_fallback_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_cli_fallback_round_trip(
+            "codex",
+            "codex",
+            CODEX_CLI_FALLBACK_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1"]
+    fn claude_code_live_cli_fallback_round_trip_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_cli_fallback_round_trip(
+            "claude-code",
+            "claude",
+            CLAUDE_CLI_FALLBACK_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum IntegrationProfile {
+        Record,
+        Detective,
+    }
+
+    impl IntegrationProfile {
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::Record => "record",
+                Self::Detective => "detective",
+            }
+        }
+    }
+
+    fn live_final_output_matrix_cell(
+        host: &str,
+        executable_name: &str,
+        profile: IntegrationProfile,
+        selector_env: &str,
+        expected_host_action: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if !smoke_enabled(selector_env) {
+            return Err(io::Error::other(format!(
+                "set {selector_env}=1 before running the ignored {host}/{} final-output smoke test",
+                profile.as_str()
+            ))
+            .into());
+        }
+        let recorder_host = format!("{host}-{}-final-output", profile.as_str());
+        let mut result_recorder =
+            LiveResultRecorder::from_env_for_kind(&recorder_host, LIVE_FINAL_OUTPUT_RESULT_KIND)?;
+        let executable = match find_executable(executable_name) {
+            Some(executable) => executable,
+            None => {
+                let summary = final_output_unavailable_summary(
+                    host,
+                    profile,
+                    &format!("`{executable_name}` was not found on PATH"),
+                );
+                validate_final_output_result_shape(&summary, profile)?;
+                result_recorder.record_final(&summary)?;
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("`{executable_name}` was not found on PATH"),
+                )
+                .into());
+            }
+        };
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+            let reason = "authenticated live final-output validation requires interactive terminal stdin and stdout";
+            let summary = final_output_unavailable_summary(host, profile, reason);
+            validate_final_output_result_shape(&summary, profile)?;
+            result_recorder.record_final(&summary)?;
+            return Err(io::Error::other(reason).into());
+        }
+        let fixture = LiveSmokeFixture::new(&recorder_host)?;
+        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
+        assert_success(
+            &format!("{executable_name} --version"),
+            &host_version_output,
+        );
+        let host_version = host_version_summary(&host_version_output)?;
+        let volicord_build_id = bounded_identity(
+            "Volicord build_id",
+            &volicord_mcp::build_id(),
+            MAX_BUILD_ID_CHARS,
+        )?;
+
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            host,
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            profile.as_str(),
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for live final-output smoke", &init);
+        let init_json = json_stdout(&init)?;
+        assert_live_init_reported_action_required(&init_json, host, profile, expected_host_action);
+        let connection_id = bounded_identity(
+            "Agent Connection id",
+            init_json["connection"]["connection_id"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
+            MAX_CONNECTION_ID_CHARS,
+        )?;
+        let identity = LiveHostIdentity {
+            host: host.to_owned(),
+            host_version,
+            volicord_build_id,
+            connection_id,
+        };
+        let project_id = live_fixture_project_id(&fixture)?;
+        let config_fixture =
+            verify_final_output_config_fixture(&fixture, host, profile, &init_json)?;
+
+        let no_active_private_prose =
+            "private direct-wrapper model prose must not become authority";
+        let direct_event = live_final_output_event(
+            host,
+            &fixture.repo_root,
+            &format!(
+                "live_final_output_direct_session_{}_{}",
+                host.replace('-', "_"),
+                profile.as_str()
+            ),
+            no_active_private_prose,
+        )?;
+        let before_direct = guard_observation_counts(&fixture, &project_id)?;
+        let first_direct = run_generated_final_output_handler(
+            &fixture.runtime_home_path,
+            &fixture.repo_root,
+            &fixture.env_path,
+            host,
+            &direct_event,
+        )?;
+        let first_wire = verify_no_active_status_wire(&first_direct, no_active_private_prose)?;
+        let after_first_direct = guard_observation_counts(&fixture, &project_id)?;
+        let second_direct = run_generated_final_output_handler(
+            &fixture.runtime_home_path,
+            &fixture.repo_root,
+            &fixture.env_path,
+            host,
+            &direct_event,
+        )?;
+        let second_wire = verify_no_active_status_wire(&second_direct, no_active_private_prose)?;
+        let after_second_direct = guard_observation_counts(&fixture, &project_id)?;
+        if first_direct.stdout != second_direct.stdout {
+            return Err(io::Error::other(
+                "identical generated-wrapper payloads did not produce the same no-active-Task wire response",
+            )
+            .into());
+        }
+        match profile {
+            IntegrationProfile::Record => {
+                if before_direct != after_first_direct || after_first_direct != after_second_direct
+                {
+                    return Err(io::Error::other(
+                        "Record generated final-output handling must not persist GuardEvent or AgentSession observations",
+                    )
+                    .into());
+                }
+            }
+            IntegrationProfile::Detective => {
+                if after_first_direct.guard_events != before_direct.guard_events + 1
+                    || after_second_direct.guard_events != after_first_direct.guard_events
+                {
+                    return Err(io::Error::other(
+                        "Detective identical-payload replay must preserve one immutable historical GuardEvent",
+                    )
+                    .into());
+                }
+            }
+        }
+
+        let before_actual_host = after_second_direct;
+        let no_active_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
+        let prompt = concat!(
+            "Use only the MCP server named `volicord` to call `volicord.status` once with `detail=full` and no task_id. ",
+            "Confirm that it reports no active Task, then reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_NO_ACTIVE_TASK and stop. ",
+            "Do not call any other tool, shell command, or edit files."
+        );
+        println!(
+            "\n=== Volicord live {host}/{} final-output smoke ===\nThis first authenticated host turn intentionally has no active Volicord Task. After the host answer, inspect the host-native final-output surface. Do not enter credentials into this test process.\n=== end instruction ===\n",
+            profile.as_str()
+        );
+        let host_status = fixture.run_authenticated_interactive_host(&executable, prompt)?;
+        if !host_status.success() {
+            return Err(io::Error::other(format!(
+                "the interactive {host} process exited unsuccessfully with {}",
+                status_text(host_status)
+            ))
+            .into());
+        }
+        assert_live_connection_verified(&fixture, &identity.connection_id)?;
+        confirm_final_output_ui(host, profile, FinalOutputUiExpectation::ManagedSurface)?;
+        confirm_final_output_ui(
+            host,
+            profile,
+            FinalOutputUiExpectation::NoActiveTaskStatus {
+                complete_message: first_wire.system_message.clone(),
+            },
+        )?;
+        let after_actual_host = guard_observation_counts(&fixture, &project_id)?;
+
+        let no_active_actual_event = match profile {
+            IntegrationProfile::Record => {
+                if after_actual_host != before_actual_host {
+                    return Err(io::Error::other(
+                        "Record actual-host final-output handling persisted a GuardEvent or AgentSession observation",
+                    )
+                    .into());
+                }
+                serde_json::json!({
+                    "status": "verified",
+                    "source": "authenticated_host_owned_surface_delivery",
+                    "delivery_evidence": "managed_final_output_ui",
+                    "persistent_guard_event": false,
+                    "non_observing": true
+                })
+            }
+            IntegrationProfile::Detective => {
+                if after_actual_host.guard_events <= before_actual_host.guard_events {
+                    return Err(io::Error::other(
+                        "Detective actual-host final-output handling did not persist a new Stop GuardEvent",
+                    )
+                    .into());
+                }
+                let historical = live_stop_decision_after(
+                    &fixture,
+                    &project_id,
+                    &identity.connection_id,
+                    no_active_stop_cursor,
+                )?;
+                if historical.decision != "allow" {
+                    return Err(io::Error::other(format!(
+                        "Detective no-active-Task Stop decision was {:?}, expected allow",
+                        historical.decision
+                    ))
+                    .into());
+                }
+                serde_json::json!({
+                    "status": "verified",
+                    "source": "persisted_guard_event",
+                    "guard_event_id": historical.guard_event_id,
+                    "session_id": historical.session_id,
+                    "decision": historical.decision
+                })
+            }
+        };
+
+        let authority_marker = format!(
+            "VOLICORD_LIVE_FINAL_OUTPUT_AUTHORITY_{}_{}",
+            host.replace('-', "_").to_ascii_uppercase(),
+            profile.as_str().to_ascii_uppercase()
+        );
+        let prepared =
+            prepare_live_final_authority(&fixture, &identity.connection_id, &authority_marker)?;
+        let before_receipt_host = guard_observation_counts(&fixture, &project_id)?;
+        let receipt_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
+        println!(
+            "\n=== Volicord live {host}/{} AuthorityReceipt UI turn ===\nA disposable no-write advisor Task is active at initial state_version {}. Reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_RECEIPT and stop without calling tools. Host lifecycle events may advance authority before Stop, so inspect and copy the complete current receipt from the separate managed final-output UI.\n=== end instruction ===\n",
+            profile.as_str(),
+            prepared.receipt.state_version
+        );
+        let receipt_host_status = fixture.run_authenticated_interactive_host(
+            &executable,
+            concat!(
+                "Reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_RECEIPT and then stop. ",
+                "Do not call tools, MCP servers, shell commands, or edit files."
+            ),
+        )?;
+        if !receipt_host_status.success() {
+            return Err(io::Error::other(format!(
+                "the AuthorityReceipt interactive {host} process exited unsuccessfully with {}",
+                status_text(receipt_host_status)
+            ))
+            .into());
+        }
+        let prepared = read_live_final_authority(
+            &fixture,
+            &identity.connection_id,
+            &prepared.observation.task_id,
+            &prepared.change_unit_id,
+            &authority_marker,
+        )?;
+        confirm_final_output_ui(host, profile, FinalOutputUiExpectation::ManagedSurface)?;
+        confirm_final_output_ui(
+            host,
+            profile,
+            FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                canonical_json: canonical_json_string(&prepared.receipt.canonical_receipt)?,
+            },
+        )?;
+        let after_receipt_host = guard_observation_counts(&fixture, &project_id)?;
+        let (receipt_actual_event, detective_decision) = match profile {
+            IntegrationProfile::Record => {
+                if after_receipt_host != before_receipt_host {
+                    return Err(io::Error::other(
+                        "Record actual-host AuthorityReceipt handling persisted a GuardEvent or AgentSession observation",
+                    )
+                    .into());
+                }
+                (
+                    serde_json::json!({
+                        "status": "verified",
+                        "source": "authenticated_host_owned_surface_delivery",
+                        "delivery_evidence": "managed_final_output_ui",
+                        "persistent_guard_event": false,
+                        "non_observing": true
+                    }),
+                    serde_json::json!({
+                        "status": "not_applicable",
+                        "non_observing": true,
+                        "non_gating": true
+                    }),
+                )
+            }
+            IntegrationProfile::Detective => {
+                if after_receipt_host.guard_events <= before_receipt_host.guard_events {
+                    return Err(io::Error::other(
+                        "Detective actual-host AuthorityReceipt handling did not persist a new Stop GuardEvent",
+                    )
+                    .into());
+                }
+                let stop = verify_live_stop_guard_event(
+                    &fixture.runtime_home_path,
+                    &identity.connection_id,
+                    &prepared.observation,
+                    &prepared.receipt,
+                    receipt_stop_cursor,
+                )?;
+                (
+                    serde_json::json!({
+                        "status": "verified",
+                        "source": "persisted_guard_event",
+                        "guard_event_id": stop.guard_event_id,
+                        "session_id": stop.session_id,
+                        "decision": stop.decision
+                    }),
+                    serde_json::json!({
+                        "status": "verified",
+                        "historical_decision": {
+                            "source": "persisted_guard_event",
+                            "decision": stop.decision,
+                            "receipt_state_version": stop.state_version,
+                            "status": "verified"
+                        },
+                        "fresh_display": {
+                            "source": "host_native_system_message",
+                            "receipt_state_version": prepared.receipt.state_version,
+                            "status": "verified"
+                        },
+                        "allow": { "status": "verified" },
+                        "block": {
+                            "status": "unavailable",
+                            "reason": "the installed host exposes no safe authenticated block-only finalization entry point"
+                        }
+                    }),
+                )
+            }
+        };
+
+        let active_direct_session_id = format!(
+            "live_final_output_active_direct_session_{}_{}",
+            host.replace('-', "_"),
+            profile.as_str()
+        );
+        let active_private_prose =
+            "private active direct-wrapper model prose must not become authority";
+        let active_direct_event = live_final_output_event(
+            host,
+            &fixture.repo_root,
+            &active_direct_session_id,
+            active_private_prose,
+        )?;
+        let before_active_direct = after_receipt_host;
+        let first_active_direct = run_generated_final_output_handler(
+            &fixture.runtime_home_path,
+            &fixture.repo_root,
+            &fixture.env_path,
+            host,
+            &active_direct_event,
+        )?;
+        let first_active_wire = verify_authority_receipt_wire(
+            &first_active_direct,
+            &prepared.receipt,
+            true,
+            active_private_prose,
+        )?;
+        let after_first_active_direct = guard_observation_counts(&fixture, &project_id)?;
+        let first_direct_historical = if profile == IntegrationProfile::Detective {
+            Some(stored_stop_snapshot_for_session(
+                &fixture,
+                &project_id,
+                &active_direct_session_id,
+            )?)
+        } else {
+            None
+        };
+        let replayed_authority = advance_live_final_authority(
+            &fixture,
+            &identity.connection_id,
+            &prepared,
+            &format!("{authority_marker}_REPLAY_REFRESH"),
+        )?;
+        if replayed_authority.receipt.state_version <= prepared.receipt.state_version {
+            return Err(io::Error::other(
+                "generated-wrapper replay fixture did not advance current authority state",
+            )
+            .into());
+        }
+        let second_active_direct = run_generated_final_output_handler(
+            &fixture.runtime_home_path,
+            &fixture.repo_root,
+            &fixture.env_path,
+            host,
+            &active_direct_event,
+        )?;
+        let second_active_wire = verify_authority_receipt_wire(
+            &second_active_direct,
+            &replayed_authority.receipt,
+            true,
+            active_private_prose,
+        )?;
+        let after_second_active_direct = guard_observation_counts(&fixture, &project_id)?;
+        if first_active_direct.stdout == second_active_direct.stdout {
+            return Err(io::Error::other(
+                "identical generated-wrapper payload replay did not refresh the current AuthorityReceipt after state advanced",
+            )
+            .into());
+        }
+        match profile {
+            IntegrationProfile::Record => {
+                if before_active_direct != after_first_active_direct
+                    || after_first_active_direct != after_second_active_direct
+                {
+                    return Err(io::Error::other(
+                        "Record active-Task direct-wire handling persisted GuardEvent or AgentSession observations",
+                    )
+                    .into());
+                }
+            }
+            IntegrationProfile::Detective => {
+                if after_first_active_direct.guard_events != before_active_direct.guard_events + 1
+                    || after_second_active_direct.guard_events
+                        != after_first_active_direct.guard_events
+                {
+                    return Err(io::Error::other(
+                        "Detective active-Task identical replay did not preserve one immutable historical GuardEvent",
+                    )
+                    .into());
+                }
+                if stored_stop_snapshot_for_session(
+                    &fixture,
+                    &project_id,
+                    &active_direct_session_id,
+                )? != first_direct_historical
+                    .expect("Detective replay should have a historical direct Stop snapshot")
+                {
+                    return Err(io::Error::other(
+                        "Detective replay changed the immutable historical Stop decision payload",
+                    )
+                    .into());
+                }
+            }
+        }
+        let actual_host_event = serde_json::json!({
+            "status": "verified",
+            "status_fallback_event": no_active_actual_event,
+            "authority_receipt_event": receipt_actual_event
+        });
+
+        let summary = serde_json::json!({
+            "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
+            "result": "incomplete",
+            "host": {
+                "kind": identity.host,
+                "version": identity.host_version
+            },
+            "profile": profile.as_str(),
+            "volicord": { "build_id": identity.volicord_build_id },
+            "connection": { "connection_id": identity.connection_id },
+            "evidence": {
+                "config_fixture": config_fixture,
+                "generated_wrapper_direct_wire": {
+                    "status": "verified",
+                    "status_fallback": {
+                        "status": "verified",
+                        "first_response_bytes": first_wire.response_bytes,
+                        "second_response_bytes": second_wire.response_bytes,
+                        "private_model_prose_absent": first_wire.private_model_prose_absent
+                            && second_wire.private_model_prose_absent
+                    },
+                    "authority_receipt": {
+                        "status": "verified",
+                        "first_state_version": prepared.receipt.state_version,
+                        "refreshed_state_version": replayed_authority.receipt.state_version,
+                        "first_response_bytes": first_active_wire.response_bytes,
+                        "second_response_bytes": second_active_wire.response_bytes,
+                        "private_model_prose_absent": first_active_wire.private_model_prose_absent
+                            && second_active_wire.private_model_prose_absent
+                    },
+                    "identical_payload_reinvoked": true,
+                    "wire_responses_equal": false,
+                    "current_receipt_refreshed_after_state_advance": true
+                },
+                "actual_host_event": actual_host_event,
+                "actual_host_fixed_ui": {
+                    "status": "verified",
+                    "status_fallback": {
+                        "status": "verified",
+                        "operator_confirmed": true,
+                        "complete_taskless_message_operator_confirmed": true
+                    },
+                    "authority_receipt": {
+                        "status": "verified",
+                        "operator_confirmed": true,
+                        "complete_canonical_receipt_operator_confirmed": true,
+                        "project_id": prepared.receipt.project_id,
+                        "task_id": prepared.receipt.task_id,
+                        "state_version": prepared.receipt.state_version,
+                        "latest_run_id": prepared.receipt.latest_run_id,
+                        "close_state": prepared.receipt.close_state,
+                        "close_blocker_count": prepared.receipt.close_blocker_count
+                    }
+                },
+                "detective_decision": detective_decision,
+                "status_fallback": {
+                    "status": "verified",
+                    "no_active_task": true,
+                    "generated_wire_command": "volicord status --json",
+                    "operator_confirmed_actual_host_ui": true,
+                    "complete_taskless_message_operator_confirmed": true,
+                    "task_bound_command_absent": true
+                },
+                "exact_replay": {
+                    "status": "unavailable",
+                    "generated_wrapper_identical_payload": {
+                        "status": "verified",
+                        "state_advanced_between_deliveries": true,
+                        "first_receipt_state_version": prepared.receipt.state_version,
+                        "refreshed_receipt_state_version":
+                            replayed_authority.receipt.state_version,
+                        "fresh_current_receipt_displayed": true,
+                        "record_non_observing_preserved":
+                            profile == IntegrationProfile::Record,
+                        "detective_historical_guard_event_preserved":
+                            profile == IntegrationProfile::Detective
+                    },
+                    "actual_host_replay": {
+                        "status": "unavailable",
+                        "reason": "the installed host exposes no authenticated exact-replay entry point"
+                    }
+                }
+            }
+        });
+        validate_final_output_result_shape(&summary, profile)?;
+        result_recorder.record_final(&summary)?;
+        Err(io::Error::other(format!(
+            "{host}/{} final-output evidence is incomplete: the actual host exposes no authenticated exact-replay entry point{}",
+            profile.as_str(),
+            if profile == IntegrationProfile::Detective {
+                " and no safe block-only finalization entry point"
+            } else {
+                ""
+            }
+        ))
+        .into())
+    }
+
+    fn live_cli_fallback_round_trip(
+        host: &str,
+        executable_name: &str,
+        selector_env: &str,
+        expected_host_action: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if !smoke_enabled(selector_env) {
+            return Err(io::Error::other(format!(
+                "set {selector_env}=1 before running the ignored {host} CLI-fallback smoke test"
+            ))
+            .into());
+        }
+        let recorder_host = format!("{host}-cli-fallback");
+        let mut result_recorder =
+            LiveResultRecorder::from_env_for_kind(&recorder_host, LIVE_CLI_FALLBACK_RESULT_KIND)?;
+        let executable = find_executable(executable_name).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("`{executable_name}` was not found on PATH"),
+            )
+        })?;
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+            return Err(io::Error::other(
+                "authenticated live CLI-fallback validation requires interactive terminal stdin and stdout",
+            )
+            .into());
+        }
+
+        let fixture = LiveSmokeFixture::new(&recorder_host)?;
+        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
+        assert_success(
+            &format!("{executable_name} --version"),
+            &host_version_output,
+        );
+        let host_version = host_version_summary(&host_version_output)?;
+        let volicord_build_id = bounded_identity(
+            "Volicord build_id",
+            &volicord_mcp::build_id(),
+            MAX_BUILD_ID_CHARS,
+        )?;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            host,
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for live CLI-fallback smoke", &init);
+        let init_json = json_stdout(&init)?;
+        assert_live_init_reported_action_required(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+            expected_host_action,
+        );
+        let connection_id = bounded_identity(
+            "Agent Connection id",
+            init_json["connection"]["connection_id"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
+            MAX_CONNECTION_ID_CHARS,
+        )?;
+        let identity = LiveHostIdentity {
+            host: host.to_owned(),
+            host_version,
+            volicord_build_id,
+            connection_id,
+        };
+        let marker = format!(
+            "VOLICORD_LIVE_HOST_CLI_FALLBACK_ROUND_TRIP_{}",
+            host.replace('-', "_").to_ascii_uppercase()
+        );
+        let prepared =
+            prepare_live_cli_fallback_action(&fixture, &identity.connection_id, &marker)?;
+        if prepared.observation.user_action_status.as_deref() != Some("pending") {
+            return Err(io::Error::other(
+                "the prepared CLI-fallback user action was not current and pending",
+            )
+            .into());
+        }
+        let user_action_request_id = prepared
+            .observation
+            .user_action_request_id
+            .as_deref()
+            .ok_or_else(|| io::Error::other("prepared CLI-fallback request id is missing"))?;
+        let operator_choice_id = confirm_cli_fallback_choice(host, user_action_request_id)?;
+        let cli_resolution =
+            resolve_live_user_action_via_cli(&fixture, &prepared.observation, &operator_choice_id)?;
+        let expected_run_marker = run_marker_for_selected_option(&operator_choice_id)
+            .ok_or_else(|| io::Error::other("operator selected an unsupported fallback option"))?;
+        let stop_cursor = stop_event_cursor(&fixture, &prepared.observation.project_id)?;
+        let prompt = live_cli_fallback_resume_prompt(
+            user_action_request_id,
+            &prepared.observation.task_id,
+            &prepared.change_unit_id,
+        );
+        println!(
+            "\n=== Volicord live {host} CLI-fallback smoke ===\nThe pending choice was resolved by the human operator through the actual `volicord inbox resolve --json` User Channel. The installed host must now resume that exact request through the same Agent Connection, consume the selected option, record its mapped no-write Run, read fresh status, and stop. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
+        );
+        let status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
+        smoke_note(
+            host,
+            format!("interactive host exited with {}", status_text(status)),
+        );
+        if !status.success() {
+            return Err(io::Error::other(format!(
+                "the interactive {host} process exited unsuccessfully with {}",
+                status_text(status)
+            ))
+            .into());
+        }
+
+        assert_live_connection_verified(&fixture, &identity.connection_id)?;
+        let observation = inspect_live_user_action(&fixture, &marker)?
+            .ok_or_else(|| io::Error::other("the prepared CLI-fallback Task disappeared"))?;
+        if observation.user_action_request_id.as_deref() != Some(user_action_request_id)
+            || observation.user_action_resolution_id.as_deref()
+                != Some(cli_resolution.user_action_resolution_id.as_str())
+            || observation.user_action_status.as_deref() != Some("resolved")
+            || observation.selected_option_id.as_deref() != Some(operator_choice_id.as_str())
+            || observation.resolved_by_actor_source.as_deref() != Some("local_user")
+            || observation.resolved_verification_basis.as_deref()
+                != Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL)
+            || observation.resolved_channel_kind.as_deref() != Some("cli")
+        {
+            return Err(io::Error::other(
+                "the stored CLI User Channel resolution does not match the prepared request and operator choice",
+            )
+            .into());
+        }
+        assert_single_live_product_decision_request(&fixture, &observation)?;
+
+        let status_output = fixture.run_volicord([
+            "status",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &observation.task_id,
+            "--json",
+        ])?;
+        assert_success("volicord status after live CLI fallback", &status_output);
+        let receipt = verify_fresh_authority_receipt(
+            json_stdout(&status_output)?,
+            &observation,
+            expected_run_marker,
+        )?;
+        let (latest_run, authority_event_order) =
+            inspect_live_choice_consumption(&fixture, &observation, &receipt.latest_run_id)?;
+        let expected_actor_source = format!("agent_connection:{}", identity.connection_id);
+        if latest_run.kind != "shaping_update"
+            || latest_run.summary != expected_run_marker
+            || latest_run.product_file_write_observed
+            || !latest_run.changed_paths.is_empty()
+            || latest_run.created_by_actor_source != expected_actor_source
+        {
+            return Err(io::Error::other(
+                "the resumed host did not record the option-mapped no-write shaping Run through the expected Agent Connection",
+            )
+            .into());
+        }
+        let stop_observation = verify_live_stop_guard_event(
+            &fixture.runtime_home_path,
+            &identity.connection_id,
+            &observation,
+            &receipt,
+            stop_cursor,
+        )?;
+        assert_cli_fallback_resume_diagnostic(
+            &fixture,
+            &identity.connection_id,
+            &observation.project_id,
+        )?;
+        if let Err(error) = confirm_final_output_ui(
+            host,
+            IntegrationProfile::Detective,
+            FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                canonical_json: canonical_json_string(&receipt.canonical_receipt)?,
+            },
+        ) {
+            result_recorder.record_final(&live_cli_fallback_completed_summary(
+                LiveCliFallbackSummaryInput {
+                    result: "failed_receipt_ui_confirmation",
+                    identity: &identity,
+                    observation: &observation,
+                    operator_choice_id: &operator_choice_id,
+                    cli_resolution: &cli_resolution,
+                    latest_run: &latest_run,
+                    authority_event_order: &authority_event_order,
+                    stop_observation: &stop_observation,
+                    receipt: &receipt,
+                    stop_receipt_ui_confirmed: false,
+                },
+            ))?;
+            return Err(error);
+        }
+        let summary = live_cli_fallback_completed_summary(LiveCliFallbackSummaryInput {
+            result: "passed",
+            identity: &identity,
+            observation: &observation,
+            operator_choice_id: &operator_choice_id,
+            cli_resolution: &cli_resolution,
+            latest_run: &latest_run,
+            authority_event_order: &authority_event_order,
+            stop_observation: &stop_observation,
+            receipt: &receipt,
+            stop_receipt_ui_confirmed: true,
+        });
+        validate_live_cli_fallback_result_shape(&summary)?;
+        result_recorder.record_final(&summary)?;
+        smoke_note(
+            host,
+            format!(
+                "verified CLI fallback request {}, choice {}, exact CLI retry, same-connection resume, mapped Run {}, Task-bound Stop, and complete receipt UI",
+                user_action_request_id, operator_choice_id, expected_run_marker
+            ),
+        );
+        Ok(())
+    }
+
     fn live_user_action_round_trip(
         host: &str,
         executable_name: &str,
@@ -584,6 +1893,12 @@ mod unix {
                 format!("`{executable_name}` was not found on PATH"),
             )
         })?;
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+            return Err(io::Error::other(
+                "authenticated live Judgment validation requires interactive terminal stdin and stdout",
+            )
+            .into());
+        }
         let fixture = LiveSmokeFixture::new(&format!("{host}-user-action"))?;
         let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
         assert_success(
@@ -611,7 +1926,12 @@ mod unix {
         ])?;
         assert_success("volicord init for live user-action smoke", &init);
         let init_json = json_stdout(&init)?;
-        assert_guarded_init_reported_action_required(&init_json, host, expected_host_action);
+        assert_live_init_reported_action_required(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+            expected_host_action,
+        );
         let connection_id = bounded_identity(
             "Agent Connection id",
             init_json["connection"]["connection_id"]
@@ -638,6 +1958,8 @@ mod unix {
             host.replace('-', "_").to_ascii_uppercase()
         );
         let prompt = live_user_action_prompt(&marker);
+        let project_id = live_fixture_project_id(&fixture)?;
+        let judgment_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
         println!(
             "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
         );
@@ -774,15 +2096,20 @@ mod unix {
             &identity.connection_id,
             &observation,
             &receipt,
+            judgment_stop_cursor,
         )?;
         assert_native_channel_diagnostic(
             &fixture,
             &identity.connection_id,
             &observation.project_id,
         )?;
-        if let Err(error) =
-            confirm_stop_system_message_authority_receipt(host, receipt.state_version)
-        {
+        if let Err(error) = confirm_final_output_ui(
+            host,
+            IntegrationProfile::Detective,
+            FinalOutputUiExpectation::CompleteAuthorityReceipt {
+                canonical_json: canonical_json_string(&receipt.canonical_receipt)?,
+            },
+        ) {
             result_recorder.record_final(&live_host_completed_summary(
                 LiveCompletedSummaryInput {
                     result: "failed_receipt_ui_confirmation",
@@ -850,6 +2177,416 @@ mod unix {
         )
     }
 
+    struct PreparedCliFallbackAction {
+        observation: LiveUserActionObservation,
+        change_unit_id: String,
+    }
+
+    fn prepare_live_cli_fallback_action(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        marker: &str,
+    ) -> Result<PreparedCliFallbackAction, Box<dyn Error>> {
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let intake = adapter.call_tool(
+            "volicord.intake",
+            serde_json::json!({
+                "detail": "full",
+                "plain_language_request": marker,
+                "requested_mode": "advisor",
+                "resume_policy": "create_new",
+                "acceptance_policy": null,
+                "lineage": null,
+                "initial_scope": {
+                    "boundary": "Validate one no-write live-host CLI User Channel fallback.",
+                    "non_goals": [],
+                    "acceptance_criteria": [{
+                        "statement": "The resumed host records the selected no-write route.",
+                        "evidence_requirement": "not_required"
+                    }]
+                }
+            }),
+        )?;
+        if intake.response_value["base"]["response_kind"] != "result" {
+            return Err(io::Error::other("CLI-fallback setup intake was not committed").into());
+        }
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI-fallback setup intake returned no Task id"))?
+            .to_owned();
+        let scope = adapter.call_tool(
+            "volicord.update_scope",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": LIVE_CLI_FALLBACK_BASELINE_REF,
+                "change_unit": {
+                    "operation": "create_current",
+                    "scope_summary": "No-write live-host CLI User Channel fallback validation.",
+                    "affected_paths": []
+                },
+                "related_scope_decision_refs": []
+            }),
+        )?;
+        let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| {
+                io::Error::other("CLI-fallback setup update_scope returned no Change Unit id")
+            })?
+            .to_owned();
+        let scope_state_version = scope.response_value["base"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| {
+                io::Error::other("CLI-fallback setup update_scope returned no state_version")
+            })?;
+        let project_id = live_fixture_project_id(fixture)?;
+        let requested = adapter.call_tool(
+            "volicord.request_user_action",
+            serde_json::json!({
+                "detail": "full",
+                "request": {
+                    "operation": "create",
+                    "task_id": task_id,
+                    "change_unit_id": change_unit_id,
+                    "action": {
+                        "action_type": "choice",
+                        "judgment_kind": "product_decision",
+                        "presentation": "short",
+                        "question": "Which live CLI-fallback route must the host consume?",
+                        "options": [
+                            {
+                                "option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+                                "label": "Route alpha",
+                                "description": "Select the alpha live CLI-fallback route.",
+                                "consequence": "The host records the alpha choice-consumption Run marker.",
+                                "is_default": false
+                            },
+                            {
+                                "option_id": USER_ACTION_ROUTE_BETA_OPTION_ID,
+                                "label": "Route beta",
+                                "description": "Select the beta live CLI-fallback route.",
+                                "consequence": "The host records the beta choice-consumption Run marker.",
+                                "is_default": false
+                            }
+                        ],
+                        "context": {
+                            "summary": "A human operator must resolve this prepared request through the CLI User Channel.",
+                            "related_refs": [],
+                            "artifact_refs": [],
+                            "visible_risks": [],
+                            "constraints": ["The answer covers only this prepared fallback request."]
+                        },
+                        "affected_refs": [{
+                            "record_kind": "task",
+                            "record_id": task_id,
+                            "project_id": project_id,
+                            "task_id": task_id,
+                            "produced_at_state_version": scope_state_version
+                        }],
+                        "sensitive_action_scope": null
+                    },
+                    "required_for": ["close_complete"],
+                    "expires_at": null
+                }
+            }),
+        )?;
+        if requested.response_value["base"]["response_kind"] != "result"
+            || requested.response_value["user_action_request"]["status"] != "pending"
+        {
+            return Err(
+                io::Error::other("CLI-fallback setup did not create a pending request").into(),
+            );
+        }
+        let requested_id = requested.response_value["user_action_request_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI-fallback setup returned no request id"))?;
+        let observation = inspect_live_user_action(fixture, marker)?
+            .ok_or_else(|| io::Error::other("CLI-fallback setup Task was not stored"))?;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
+        if observation.user_action_request_id.as_deref() != Some(requested_id)
+            || observation.user_action_status.as_deref() != Some("pending")
+            || observation.option_ids
+                != [
+                    USER_ACTION_ROUTE_ALPHA_OPTION_ID.to_owned(),
+                    USER_ACTION_ROUTE_BETA_OPTION_ID.to_owned(),
+                ]
+            || observation.requested_by_actor_source.as_deref()
+                != Some(expected_actor_source.as_str())
+        {
+            return Err(io::Error::other(
+                "CLI-fallback setup did not preserve the current request, options, and originating Agent Connection",
+            )
+            .into());
+        }
+        Ok(PreparedCliFallbackAction {
+            observation,
+            change_unit_id,
+        })
+    }
+
+    fn live_cli_fallback_resume_prompt(
+        user_action_request_id: &str,
+        task_id: &str,
+        change_unit_id: &str,
+    ) -> String {
+        format!(
+            concat!(
+                "Continue the prepared Volicord CLI User Channel fallback using the MCP server named `volicord`. ",
+                "Do not edit files, run shell commands, create or resolve another user action, prepare a write, or answer on the user's behalf.\n\n",
+                "1. Call `volicord.request_user_action` exactly once with nested `request.operation=resume` and `request.user_action_request_id={user_action_request_id}`. Do not use `request.operation=create`. The request was created by this same Agent Connection and has already been resolved by the human operator through `volicord inbox resolve --json`.\n",
+                "2. Require the resumed result to report `current_status=resolved`, `agent_workflow_result_replayed=true`, and a non-null `user_channel_resolution.resolution_summary.selected_option_id`. Consume that selected option; do not infer it from this instruction.\n",
+                "3. If the selected option is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, use summary exactly `{beta_run_marker}`. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `baseline_ref={baseline_ref}`, `kind=shaping_update`, `run_id=null`, `write_ticket_id=null`, `artifact_inputs=[]`, `evidence_updates=[]`, and `evidence_observations=[]`. Report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`. Supply a non-null `close_assessment` whose `result_summary` is exactly the chosen Run marker and whose `result_refs`, `residual_risks`, `sensitive_categories`, and `recovery_constraints` are empty arrays. Do not record a Run if resume is pending or the option is absent or unrecognized.\n",
+                "4. Call `volicord.status` for Task `{task_id}` and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop."
+            ),
+            user_action_request_id = user_action_request_id,
+            alpha_option_id = USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+            beta_option_id = USER_ACTION_ROUTE_BETA_OPTION_ID,
+            alpha_run_marker = USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+            beta_run_marker = USER_ACTION_ROUTE_BETA_RUN_MARKER,
+            task_id = task_id,
+            change_unit_id = change_unit_id,
+            baseline_ref = LIVE_CLI_FALLBACK_BASELINE_REF,
+        )
+    }
+
+    struct PreparedFinalAuthority {
+        observation: LiveUserActionObservation,
+        receipt: VerifiedLiveReceipt,
+        change_unit_id: String,
+    }
+
+    fn prepare_live_final_authority(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        marker: &str,
+    ) -> Result<PreparedFinalAuthority, Box<dyn Error>> {
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let intake = adapter.call_tool(
+            "volicord.intake",
+            serde_json::json!({
+                "detail": "full",
+                "plain_language_request": marker,
+                "requested_mode": "advisor",
+                "resume_policy": "create_new",
+                "acceptance_policy": null,
+                "lineage": null,
+                "initial_scope": {
+                    "boundary": "Validate one no-write live-host final-output receipt.",
+                    "non_goals": [],
+                    "acceptance_criteria": [{
+                        "statement": "The no-write Run establishes a final-output close basis.",
+                        "evidence_requirement": "not_required"
+                    }]
+                }
+            }),
+        )?;
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("final-output setup intake returned no Task id"))?
+            .to_owned();
+        let scope = adapter.call_tool(
+            "volicord.update_scope",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": "baseline_live_final_output_matrix",
+                "change_unit": {
+                    "operation": "create_current",
+                    "scope_summary": "No-write live-host final-output validation.",
+                    "affected_paths": []
+                },
+                "related_scope_decision_refs": []
+            }),
+        )?;
+        let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| {
+                io::Error::other("final-output setup update_scope returned no Change Unit id")
+            })?
+            .to_owned();
+        let run = adapter.call_tool(
+            "volicord.record_run",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "change_unit_id": change_unit_id,
+                "kind": "shaping_update",
+                "run_id": null,
+                "baseline_ref": "baseline_live_final_output_matrix",
+                "write_ticket_id": null,
+                "summary": marker,
+                "observed_changes": {
+                    "changed_paths": [],
+                    "product_file_write_observed": false,
+                    "sensitive_categories": [],
+                    "baseline_ref": "baseline_live_final_output_matrix"
+                },
+                "artifact_inputs": [],
+                "evidence_updates": [],
+                "evidence_observations": [],
+                "close_assessment": {
+                    "result_summary": marker,
+                    "result_refs": [],
+                    "residual_risks": [],
+                    "sensitive_categories": [],
+                    "recovery_constraints": []
+                }
+            }),
+        )?;
+        if run.response_value["base"]["response_kind"] != "result" {
+            return Err(io::Error::other("final-output setup Run was not recorded").into());
+        }
+        let status = adapter.call_tool(
+            "volicord.status",
+            serde_json::json!({ "task_id": task_id, "detail": "full" }),
+        )?;
+        let state_version = status.response_value["base"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("final-output setup status has no state_version"))?;
+        let observation = LiveUserActionObservation {
+            project_id: live_fixture_project_id(fixture)?,
+            task_id,
+            lifecycle_phase: status.response_value["active_task"]["lifecycle"]["lifecycle_phase"]
+                .as_str()
+                .unwrap_or("unknown")
+                .to_owned(),
+            state_version,
+            user_action_request_id: None,
+            user_action_status: None,
+            requested_by_actor_source: None,
+            user_action_resolution_id: None,
+            resolved_by_actor_source: None,
+            resolved_verification_basis: None,
+            resolved_channel_kind: None,
+            selected_option_id: None,
+            option_ids: Vec::new(),
+        };
+        let receipt = verify_current_final_authority_receipt(
+            status.response_value.clone(),
+            &observation,
+            marker,
+        )?;
+        Ok(PreparedFinalAuthority {
+            observation,
+            receipt,
+            change_unit_id,
+        })
+    }
+
+    fn read_live_final_authority(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        task_id: &str,
+        change_unit_id: &str,
+        marker: &str,
+    ) -> Result<PreparedFinalAuthority, Box<dyn Error>> {
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let status = adapter.call_tool(
+            "volicord.status",
+            serde_json::json!({ "task_id": task_id, "detail": "full" }),
+        )?;
+        let state_version = status.response_value["base"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| {
+                io::Error::other("refreshed final-output status has no state_version")
+            })?;
+        let observation = LiveUserActionObservation {
+            project_id: live_fixture_project_id(fixture)?,
+            task_id: task_id.to_owned(),
+            lifecycle_phase: status.response_value["active_task"]["lifecycle"]["lifecycle_phase"]
+                .as_str()
+                .unwrap_or("unknown")
+                .to_owned(),
+            state_version,
+            user_action_request_id: None,
+            user_action_status: None,
+            requested_by_actor_source: None,
+            user_action_resolution_id: None,
+            resolved_by_actor_source: None,
+            resolved_verification_basis: None,
+            resolved_channel_kind: None,
+            selected_option_id: None,
+            option_ids: Vec::new(),
+        };
+        let receipt =
+            verify_current_final_authority_receipt(status.response_value, &observation, marker)?;
+        Ok(PreparedFinalAuthority {
+            observation,
+            receipt,
+            change_unit_id: change_unit_id.to_owned(),
+        })
+    }
+
+    fn advance_live_final_authority(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        prepared: &PreparedFinalAuthority,
+        marker: &str,
+    ) -> Result<PreparedFinalAuthority, Box<dyn Error>> {
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let run = adapter.call_tool(
+            "volicord.record_run",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": prepared.observation.task_id,
+                "change_unit_id": prepared.change_unit_id,
+                "kind": "shaping_update",
+                "run_id": null,
+                "baseline_ref": "baseline_live_final_output_matrix",
+                "write_ticket_id": null,
+                "summary": marker,
+                "observed_changes": {
+                    "changed_paths": [],
+                    "product_file_write_observed": false,
+                    "sensitive_categories": [],
+                    "baseline_ref": "baseline_live_final_output_matrix"
+                },
+                "artifact_inputs": [],
+                "evidence_updates": [],
+                "evidence_observations": [],
+                "close_assessment": {
+                    "result_summary": marker,
+                    "result_refs": [],
+                    "residual_risks": [],
+                    "sensitive_categories": [],
+                    "recovery_constraints": []
+                }
+            }),
+        )?;
+        if run.response_value["base"]["response_kind"] != "result" {
+            return Err(
+                io::Error::other("final-output replay state advance was not recorded").into(),
+            );
+        }
+        read_live_final_authority(
+            fixture,
+            connection_id,
+            &prepared.observation.task_id,
+            &prepared.change_unit_id,
+            marker,
+        )
+    }
+
     fn run_marker_for_selected_option(selected_option_id: &str) -> Option<&'static str> {
         match selected_option_id {
             USER_ACTION_ROUTE_ALPHA_OPTION_ID => Some(USER_ACTION_ROUTE_ALPHA_RUN_MARKER),
@@ -865,6 +2602,7 @@ mod unix {
         summary: String,
         product_file_write_observed: bool,
         changed_paths: Vec<String>,
+        created_by_actor_source: String,
     }
 
     #[derive(Debug)]
@@ -875,8 +2613,11 @@ mod unix {
         state_version: u64,
         user_action_request_id: Option<String>,
         user_action_status: Option<String>,
+        requested_by_actor_source: Option<String>,
+        user_action_resolution_id: Option<String>,
         resolved_by_actor_source: Option<String>,
         resolved_verification_basis: Option<String>,
+        resolved_channel_kind: Option<String>,
         selected_option_id: Option<String>,
         option_ids: Vec<String>,
     }
@@ -901,8 +2642,11 @@ mod unix {
                           WHEN r.basis_status = 'superseded' THEN 'superseded'
                           ELSE 'pending'
                         END,
+                        r.requested_by_actor_source,
+                        s.user_action_resolution_id,
                         s.resolved_by_actor_source,
-                        s.resolved_verification_basis, r.request_json,
+                        s.resolved_verification_basis, s.channel_kind,
+                        r.request_json,
                         s.resolution_json
                    FROM tasks t
                    JOIN project_state ps ON ps.project_id = t.project_id
@@ -928,6 +2672,9 @@ mod unix {
                         row.get::<_, Option<String>>(6)?,
                         row.get::<_, Option<String>>(7)?,
                         row.get::<_, Option<String>>(8)?,
+                        row.get::<_, Option<String>>(9)?,
+                        row.get::<_, Option<String>>(10)?,
+                        row.get::<_, Option<String>>(11)?,
                     ))
                 },
             )
@@ -938,8 +2685,11 @@ mod unix {
             state_version,
             user_action_request_id,
             user_action_status,
+            requested_by_actor_source,
+            user_action_resolution_id,
             resolved_by_actor_source,
             resolved_verification_basis,
+            resolved_channel_kind,
             options_json,
             resolution_json,
         )) = row
@@ -969,8 +2719,11 @@ mod unix {
             state_version,
             user_action_request_id,
             user_action_status,
+            requested_by_actor_source,
+            user_action_resolution_id,
             resolved_by_actor_source,
             resolved_verification_basis,
+            resolved_channel_kind,
             selected_option_id,
             option_ids,
         }))
@@ -997,6 +2750,7 @@ mod unix {
         kind: &str,
         summary_json: &str,
         observed_changes_json: &str,
+        created_by_actor_source: &str,
     ) -> Result<LiveRunObservation, Box<dyn Error>> {
         let summary: Value = serde_json::from_str(summary_json)?;
         let observed_changes: Value = serde_json::from_str(observed_changes_json)?;
@@ -1028,6 +2782,7 @@ mod unix {
             summary,
             product_file_write_observed,
             changed_paths,
+            created_by_actor_source: created_by_actor_source.to_owned(),
         })
     }
 
@@ -1049,9 +2804,17 @@ mod unix {
             .find(|project| project.project_id == observation.project_id)
             .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
         let conn = open_project_state_database_read_only(&project.state_db_path)?;
-        let (stored_run_id, kind, status, summary_json, observed_changes_json) = conn
+        let (
+            stored_run_id,
+            kind,
+            status,
+            summary_json,
+            observed_changes_json,
+            created_by_actor_source,
+        ) = conn
             .query_row(
-                "SELECT run_id, kind, status, summary_json, observed_changes_json
+                "SELECT run_id, kind, status, summary_json, observed_changes_json,
+                        created_by_actor_source
                    FROM runs
                   WHERE project_id = ?1
                     AND task_id = ?2
@@ -1064,6 +2827,7 @@ mod unix {
                         row.get::<_, String>(2)?,
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
                     ))
                 },
             )
@@ -1079,13 +2843,28 @@ mod unix {
             ))
             .into());
         }
-        let run =
-            live_run_observation(&stored_run_id, &kind, &summary_json, &observed_changes_json)?;
+        let run = live_run_observation(
+            &stored_run_id,
+            &kind,
+            &summary_json,
+            &observed_changes_json,
+            &created_by_actor_source,
+        )?;
 
         let user_action_request_id = observation
             .user_action_request_id
             .as_deref()
             .ok_or_else(|| io::Error::other("resolved live user-action request id is missing"))?;
+        let user_action_resolution_id = observation
+            .user_action_resolution_id
+            .as_deref()
+            .ok_or_else(|| {
+                io::Error::other("resolved live user-action resolution id is missing")
+            })?;
+        let resolved_channel_kind = observation
+            .resolved_channel_kind
+            .as_deref()
+            .ok_or_else(|| io::Error::other("resolved live user-action channel kind is missing"))?;
         let mut statement = conn.prepare(
             "SELECT event_seq, event_type, payload_json
                FROM authority_events
@@ -1133,6 +2912,20 @@ mod unix {
                         .and_then(Value::as_str)
                         == Some(user_action_request_id) =>
                 {
+                    if payload
+                        .get("user_action_resolution_id")
+                        .and_then(Value::as_str)
+                        != Some(user_action_resolution_id)
+                        || payload.get("action_kind").and_then(Value::as_str)
+                            != Some("product_decision")
+                        || payload.get("channel_kind").and_then(Value::as_str)
+                            != Some(resolved_channel_kind)
+                    {
+                        return Err(io::Error::other(
+                            "matching user_action_resolved event does not preserve the stored resolution and User Channel",
+                        )
+                        .into());
+                    }
                     recorded.push(event_seq);
                 }
                 "run_recorded" if payload.get("run_id").and_then(Value::as_str) == Some(run_id) => {
@@ -1184,9 +2977,47 @@ mod unix {
         }
     }
 
+    fn assert_single_live_product_decision_request(
+        fixture: &LiveSmokeFixture,
+        observation: &LiveUserActionObservation,
+    ) -> Result<(), Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == observation.project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let (count, request_id): (u64, Option<String>) = conn.query_row(
+            "SELECT COUNT(*), MIN(user_action_request_id)
+               FROM user_action_requests
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND action_kind = 'product_decision'",
+            rusqlite::params![observation.project_id, observation.task_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if count != 1 || request_id.as_deref() != observation.user_action_request_id.as_deref() {
+            return Err(io::Error::other(format!(
+                "same-request resume must not create another product-decision request; found {count}"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
     struct LiveInboxFallback {
         inbox_command_template: &'static str,
         resolve_command_template: &'static str,
+    }
+
+    struct LiveCliResolutionEvidence {
+        user_action_resolution_id: String,
+        selected_option_id: String,
+        state_version_before_resolution: u64,
+        committed_state_version: u64,
+        exact_retry_state_version: u64,
+        inbox_request_visible: bool,
+        exact_retry_stdout_identical: bool,
+        exact_retry_no_state_change: bool,
     }
 
     struct LiveHostIdentity {
@@ -1194,6 +3025,149 @@ mod unix {
         host_version: String,
         volicord_build_id: String,
         connection_id: String,
+    }
+
+    fn resolve_live_user_action_via_cli(
+        fixture: &LiveSmokeFixture,
+        observation: &LiveUserActionObservation,
+        operator_choice_id: &str,
+    ) -> Result<LiveCliResolutionEvidence, Box<dyn Error>> {
+        let user_action_request_id = observation
+            .user_action_request_id
+            .as_deref()
+            .ok_or_else(|| io::Error::other("pending CLI-fallback request id is missing"))?;
+        if observation.user_action_status.as_deref() != Some("pending") {
+            return Err(io::Error::other(
+                "CLI fallback can resolve only the prepared pending request",
+            )
+            .into());
+        }
+        let inbox = fixture.run_volicord([
+            "inbox",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &observation.task_id,
+            "--json",
+        ])?;
+        assert_success("volicord inbox --json for live CLI fallback", &inbox);
+        let inbox_json = json_stdout(&inbox)?;
+        let inbox_items = inbox_json["pending_user_action_inbox_items"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("CLI inbox JSON has no pending item array"))?;
+        let matching_items = inbox_items
+            .iter()
+            .filter(|item| item["user_action_request_id"].as_str() == Some(user_action_request_id))
+            .collect::<Vec<_>>();
+        if matching_items.len() != 1 {
+            return Err(io::Error::other(format!(
+                "CLI inbox must show the prepared request exactly once; found {}",
+                matching_items.len()
+            ))
+            .into());
+        }
+        let choice_ids = matching_items[0]["form"]["choices"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("CLI inbox item has no choice form"))?
+            .iter()
+            .filter_map(|choice| choice["choice_id"].as_str())
+            .collect::<Vec<_>>();
+        if choice_ids
+            != [
+                USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+                USER_ACTION_ROUTE_BETA_OPTION_ID,
+            ]
+        {
+            return Err(io::Error::other(
+                "CLI inbox did not preserve the two prepared route choices in order",
+            )
+            .into());
+        }
+
+        let resolve_args = [
+            "inbox",
+            "resolve",
+            user_action_request_id,
+            "--choice",
+            operator_choice_id,
+            "--repo",
+            fixture.repo_arg(),
+            "--json",
+        ];
+        let resolved = fixture.run_volicord(resolve_args)?;
+        assert_success("volicord inbox resolve --json", &resolved);
+        let resolved_json = json_stdout(&resolved)?;
+        if resolved_json["base"]["response_kind"] != "result"
+            || resolved_json["user_action_resolution"]["body"]["selected_option_id"]
+                != operator_choice_id
+            || resolved_json["user_action_resolution"]["resolved_by_actor_source"] != "local_user"
+            || resolved_json["user_action_resolution"]["resolved_verification_basis"]
+                != VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+            || resolved_json["user_action_resolution"]["channel_kind"] != "cli"
+        {
+            return Err(io::Error::other(
+                "CLI resolve JSON did not preserve the operator choice and CLI User Channel basis",
+            )
+            .into());
+        }
+        let user_action_resolution_id = resolved_json["user_action_resolution_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI resolve JSON has no resolution id"))?
+            .to_owned();
+        let committed_state_version = resolved_json["base"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI resolve JSON has no state_version"))?;
+        let expected_committed_state_version = observation
+            .state_version
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("pre-resolution state_version cannot advance once"))?;
+        if committed_state_version != expected_committed_state_version {
+            return Err(io::Error::other(format!(
+                "the first CLI resolution must advance project state exactly once: before={}, committed={committed_state_version}",
+                observation.state_version
+            ))
+            .into());
+        }
+
+        let exact_retry = fixture.run_volicord(resolve_args)?;
+        assert_success("exact retry of volicord inbox resolve --json", &exact_retry);
+        let exact_retry_json = json_stdout(&exact_retry)?;
+        let exact_retry_state_version = exact_retry_json["base"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI exact retry JSON has no state_version"))?;
+        let exact_retry_stdout_identical = resolved.output.stdout == exact_retry.output.stdout;
+        let exact_retry_no_state_change = exact_retry_state_version == committed_state_version;
+        if !exact_retry_stdout_identical || !exact_retry_no_state_change {
+            return Err(io::Error::other(
+                "the identical CLI resolution retry changed its JSON bytes or state version",
+            )
+            .into());
+        }
+        let status = fixture.run_volicord([
+            "status",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &observation.task_id,
+            "--json",
+        ])?;
+        assert_success("volicord status after CLI exact retry", &status);
+        if json_stdout(&status)?["base"]["state_version"] != committed_state_version {
+            return Err(io::Error::other(
+                "fresh status changed after the exact CLI resolution retry",
+            )
+            .into());
+        }
+        Ok(LiveCliResolutionEvidence {
+            user_action_resolution_id,
+            selected_option_id: operator_choice_id.to_owned(),
+            state_version_before_resolution: observation.state_version,
+            committed_state_version,
+            exact_retry_state_version,
+            inbox_request_visible: true,
+            exact_retry_stdout_identical,
+            exact_retry_no_state_change,
+        })
     }
 
     fn verify_ephemeral_inbox_fallback_shape(
@@ -1260,6 +3234,23 @@ mod unix {
         observation: &LiveUserActionObservation,
         expected_result_summary: &str,
     ) -> Result<VerifiedLiveReceipt, Box<dyn Error>> {
+        verify_authority_receipt_binding(status_json, observation, expected_result_summary, true)
+    }
+
+    fn verify_current_final_authority_receipt(
+        status_json: Value,
+        observation: &LiveUserActionObservation,
+        expected_result_summary: &str,
+    ) -> Result<VerifiedLiveReceipt, Box<dyn Error>> {
+        verify_authority_receipt_binding(status_json, observation, expected_result_summary, false)
+    }
+
+    fn verify_authority_receipt_binding(
+        status_json: Value,
+        observation: &LiveUserActionObservation,
+        expected_result_summary: &str,
+        require_ready: bool,
+    ) -> Result<VerifiedLiveReceipt, Box<dyn Error>> {
         let status: StatusResult = serde_json::from_value(status_json)?;
         let state_version = status
             .base
@@ -1319,17 +3310,22 @@ mod unix {
             )
             .into());
         }
-        if receipt.close_state != StatusCloseState::Ready
-            || !receipt.close_blockers.is_empty()
-            || status.close_state != Some(StatusCloseState::Ready)
-            || status
-                .close_blockers
-                .as_ref()
-                .is_none_or(|blockers| !blockers.is_empty())
+        if require_ready
+            && (receipt.close_state != StatusCloseState::Ready
+                || !receipt.close_blockers.is_empty()
+                || status.close_state != Some(StatusCloseState::Ready)
+                || status
+                    .close_blockers
+                    .as_ref()
+                    .is_none_or(|blockers| !blockers.is_empty()))
         {
-            return Err(io::Error::other(
-                "fresh CLI status is not ready to close with an empty close-blocker set",
-            )
+            return Err(io::Error::other(format!(
+                "fresh CLI status is not ready to close with an empty close-blocker set: receipt close_state={:?}, receipt blockers={:?}, status close_state={:?}, status blockers={:?}",
+                receipt.close_state,
+                receipt.close_blockers,
+                status.close_state,
+                status.close_blockers
+            ))
             .into());
         }
 
@@ -1359,6 +3355,24 @@ mod unix {
         parse_native_user_action_choice(confirmation.trim())
     }
 
+    fn confirm_cli_fallback_choice(
+        host: &str,
+        user_action_request_id: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        print!(
+            "\nChoose the CLI User Channel answer for {host} request `{user_action_request_id}`. Type `choice:{USER_ACTION_ROUTE_ALPHA_OPTION_ID}` or `choice:{USER_ACTION_ROUTE_BETA_OPTION_ID}`; the harness will submit your selection through the actual `volicord inbox resolve --json` command: "
+        );
+        io::stdout().flush()?;
+        let mut confirmation = String::new();
+        if io::stdin().read_line(&mut confirmation)? == 0 {
+            return Err(io::Error::other(
+                "no operator selection was received for the CLI User Channel",
+            )
+            .into());
+        }
+        parse_native_user_action_choice(confirmation.trim())
+    }
+
     fn parse_native_user_action_choice(confirmation: &str) -> Result<String, Box<dyn Error>> {
         let selected = confirmation
             .strip_prefix("choice:")
@@ -1371,6 +3385,612 @@ mod unix {
         Ok(selected.to_owned())
     }
 
+    #[derive(Clone, Debug)]
+    enum FinalOutputUiExpectation {
+        ManagedSurface,
+        NoActiveTaskStatus { complete_message: String },
+        CompleteAuthorityReceipt { canonical_json: String },
+    }
+
+    fn parse_final_output_ui_confirmation(
+        confirmation: &str,
+        expectation: &FinalOutputUiExpectation,
+    ) -> Result<String, Box<dyn Error>> {
+        let expected = match expectation {
+            FinalOutputUiExpectation::ManagedSurface => "surface:managed-final-output",
+            FinalOutputUiExpectation::NoActiveTaskStatus { complete_message } => {
+                let observed = confirmation.strip_prefix("status-ui:").ok_or_else(|| {
+                    io::Error::other(
+                        "operator status-fallback confirmation must start with `status-ui:`",
+                    )
+                })?;
+                if observed != complete_message {
+                    return Err(io::Error::other(
+                        "operator status-fallback confirmation does not exactly match the complete taskless managed-UI message",
+                    )
+                    .into());
+                }
+                return Ok(confirmation.to_owned());
+            }
+            FinalOutputUiExpectation::CompleteAuthorityReceipt { canonical_json } => {
+                let observed = confirmation.strip_prefix("receipt-json:").ok_or_else(|| {
+                    io::Error::other(
+                        "operator receipt confirmation must start with `receipt-json:`",
+                    )
+                })?;
+                if observed != canonical_json {
+                    return Err(io::Error::other(
+                        "operator receipt confirmation does not exactly match the complete canonical AuthorityReceipt",
+                    )
+                    .into());
+                }
+                return Ok(confirmation.to_owned());
+            }
+        };
+        if confirmation != expected {
+            return Err(io::Error::other(format!(
+                "operator final-output confirmation must be exactly {expected:?}"
+            ))
+            .into());
+        }
+        Ok(expected.to_owned())
+    }
+
+    fn confirm_final_output_ui(
+        host: &str,
+        profile: IntegrationProfile,
+        expectation: FinalOutputUiExpectation,
+    ) -> Result<(), Box<dyn Error>> {
+        let instruction = match &expectation {
+            FinalOutputUiExpectation::ManagedSurface => "`surface:managed-final-output`".to_owned(),
+            FinalOutputUiExpectation::NoActiveTaskStatus { .. } =>
+                "`status-ui:` followed by the complete taskless fallback message copied from the managed UI".to_owned(),
+            FinalOutputUiExpectation::CompleteAuthorityReceipt { .. } =>
+                "`receipt-json:` followed by the complete canonical AuthorityReceipt JSON copied from the managed UI".to_owned(),
+        };
+        print!(
+            "\nReview the separate {host}/{} managed final-output UI. Type {instruction} only if that exact evidence was visible; type `missing` otherwise: ",
+            profile.as_str()
+        );
+        io::stdout().flush()?;
+        let mut confirmation = String::new();
+        if io::stdin().read_line(&mut confirmation)? == 0 {
+            return Err(io::Error::other(
+                "no operator confirmation was received for the managed final-output UI",
+            )
+            .into());
+        }
+        parse_final_output_ui_confirmation(confirmation.trim(), &expectation)?;
+        Ok(())
+    }
+
+    fn cli_fallback_result_shape_fixture() -> Value {
+        serde_json::json!({
+            "kind": LIVE_CLI_FALLBACK_RESULT_KIND,
+            "result": "passed",
+            "connection": { "connection_id": "CONN-cli-fallback-fixture" },
+            "task": {
+                "project_id": "PRJ-cli-fallback-fixture",
+                "task_id": "TASK-cli-fallback-fixture",
+                "state_version": 5
+            },
+            "cli_user_channel": {
+                "inbox": { "prepared_request_visible": true },
+                "resolution": {
+                    "user_action_request_id": "UAR-cli-fallback-fixture",
+                    "user_action_resolution_id": "UARES-cli-fallback-fixture",
+                    "operator_selected_option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+                    "stored_selected_option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+                    "actor_source": "local_user",
+                    "channel_kind": "cli",
+                    "verification_basis": VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                    "state_version_before_resolution": 3,
+                    "committed_state_version": 4
+                },
+                "exact_retry": {
+                    "same_command_and_arguments": true,
+                    "stdout_byte_identical": true,
+                    "state_version": 4,
+                    "state_version_unchanged": true
+                }
+            },
+            "host_resume": {
+                "request_operation": "resume",
+                "same_agent_connection": true,
+                "origin_result_replayed_in_host_diagnostics": true,
+                "resolved_choice_consumed": true,
+                "additional_product_decision_request_created": false
+            },
+            "choice_consumption": {
+                "run_id": "RUN-cli-fallback-fixture",
+                "run_kind": "shaping_update",
+                "run_marker": USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+                "created_by_actor_source": "agent_connection:CONN-cli-fallback-fixture",
+                "product_file_write_observed": false,
+                "changed_path_count": 0
+            },
+            "authority_events": {
+                "user_action_requested_event_seq": 10,
+                "user_action_resolved_event_seq": 11,
+                "run_recorded_event_seq": 12,
+                "ordered": true
+            },
+            "stop_hook": {
+                "connection_id": "CONN-cli-fallback-fixture",
+                "decision": "allow",
+                "receipt_state_version": 5,
+                "latest_run_id": "RUN-cli-fallback-fixture"
+            },
+            "authority_receipt": {
+                "project_id": "PRJ-cli-fallback-fixture",
+                "task_id": "TASK-cli-fallback-fixture",
+                "state_version": 5,
+                "latest_run_id": "RUN-cli-fallback-fixture",
+                "close_state": "ready",
+                "close_blocker_count": 0,
+                "complete_managed_ui_confirmed": true
+            },
+            "evidence_scope": {
+                "cli_fallback_release_cell": true,
+                "native_judgment_cell": false,
+                "final_output_matrix_cell": false
+            }
+        })
+    }
+
+    fn final_output_result_shape_fixture(profile: IntegrationProfile) -> Value {
+        let detective_decision = match profile {
+            IntegrationProfile::Record => serde_json::json!({
+                "status": "not_applicable",
+                "non_observing": true,
+                "non_gating": true
+            }),
+            IntegrationProfile::Detective => serde_json::json!({
+                "status": "verified",
+                "historical_decision": { "status": "verified" },
+                "fresh_display": { "status": "verified" },
+                "allow": { "status": "verified" },
+                "block": { "status": "unavailable" }
+            }),
+        };
+        let actual_event_branch = match profile {
+            IntegrationProfile::Record => serde_json::json!({
+                "status": "verified",
+                "source": "authenticated_host_owned_surface_delivery",
+                "delivery_evidence": "managed_final_output_ui",
+                "persistent_guard_event": false,
+                "non_observing": true
+            }),
+            IntegrationProfile::Detective => serde_json::json!({
+                "status": "verified",
+                "source": "persisted_guard_event",
+                "persistent_guard_event": true
+            }),
+        };
+        serde_json::json!({
+            "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
+            "result": "incomplete",
+            "host": { "kind": "fixture" },
+            "profile": profile.as_str(),
+            "evidence": {
+                "config_fixture": { "status": "verified" },
+                "generated_wrapper_direct_wire": {
+                    "status": "verified",
+                    "status_fallback": { "status": "verified" },
+                    "authority_receipt": {
+                        "status": "verified",
+                        "first_state_version": 42,
+                        "refreshed_state_version": 43
+                    }
+                },
+                "actual_host_event": {
+                    "status": "verified",
+                    "status_fallback_event": actual_event_branch.clone(),
+                    "authority_receipt_event": actual_event_branch
+                },
+                "actual_host_fixed_ui": {
+                    "status": "verified",
+                    "status_fallback": {
+                        "status": "verified",
+                        "complete_taskless_message_operator_confirmed": true
+                    },
+                    "authority_receipt": {
+                        "status": "verified",
+                        "complete_canonical_receipt_operator_confirmed": true,
+                        "project_id": "PRJ-fixture",
+                        "task_id": "TASK-fixture",
+                        "state_version": 42,
+                        "latest_run_id": "RUN-fixture",
+                        "close_state": "ready",
+                        "close_blocker_count": 0
+                    }
+                },
+                "detective_decision": detective_decision,
+                "status_fallback": {
+                    "status": "verified",
+                    "no_active_task": true,
+                    "generated_wire_command": "volicord status --json",
+                    "operator_confirmed_actual_host_ui": true,
+                    "complete_taskless_message_operator_confirmed": true,
+                    "task_bound_command_absent": true
+                },
+                "exact_replay": {
+                    "status": "unavailable",
+                    "generated_wrapper_identical_payload": {
+                        "status": "verified",
+                        "state_advanced_between_deliveries": true,
+                        "first_receipt_state_version": 42,
+                        "refreshed_receipt_state_version": 43,
+                        "fresh_current_receipt_displayed": true,
+                        "record_non_observing_preserved": profile == IntegrationProfile::Record,
+                        "detective_historical_guard_event_preserved": profile == IntegrationProfile::Detective
+                    },
+                    "actual_host_replay": {
+                        "status": "unavailable",
+                        "reason": "the installed host exposes no authenticated replay entry point"
+                    }
+                }
+            }
+        })
+    }
+
+    fn final_output_unavailable_summary(
+        host: &str,
+        profile: IntegrationProfile,
+        reason: &str,
+    ) -> Value {
+        let unavailable = || serde_json::json!({ "status": "unavailable", "reason": reason });
+        let detective_decision = unavailable();
+        serde_json::json!({
+            "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
+            "result": "incomplete",
+            "host": { "kind": host },
+            "profile": profile.as_str(),
+            "evidence": {
+                "config_fixture": unavailable(),
+                "generated_wrapper_direct_wire": {
+                    "status": "unavailable",
+                    "reason": reason,
+                    "status_fallback": unavailable(),
+                    "authority_receipt": unavailable()
+                },
+                "actual_host_event": unavailable(),
+                "actual_host_fixed_ui": {
+                    "status": "unavailable",
+                    "reason": reason,
+                    "status_fallback": unavailable(),
+                    "authority_receipt": unavailable()
+                },
+                "detective_decision": detective_decision,
+                "status_fallback": unavailable(),
+                "exact_replay": {
+                    "status": "unavailable",
+                    "generated_wrapper_identical_payload": unavailable(),
+                    "actual_host_replay": unavailable()
+                }
+            }
+        })
+    }
+
+    fn validate_final_output_result_shape(
+        value: &Value,
+        profile: IntegrationProfile,
+    ) -> Result<(), Box<dyn Error>> {
+        fn status<'a>(value: &'a Value, label: &str) -> Result<&'a str, io::Error> {
+            let status = value
+                .get("status")
+                .and_then(Value::as_str)
+                .ok_or_else(|| io::Error::other(format!("evidence {label:?} has no status")))?;
+            if !matches!(
+                status,
+                "verified" | "unavailable" | "not_applicable" | "failed"
+            ) {
+                return Err(io::Error::other(format!(
+                    "evidence {label:?} has unsupported status {status:?}"
+                )));
+            }
+            Ok(status)
+        }
+
+        if value["kind"] != LIVE_FINAL_OUTPUT_RESULT_KIND || value["profile"] != profile.as_str() {
+            return Err(io::Error::other(
+                "live final-output result kind/profile does not match the selected matrix cell",
+            )
+            .into());
+        }
+        let result = value["result"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live final-output result has no result status"))?;
+        if !matches!(result, "passed" | "incomplete") {
+            return Err(io::Error::other(format!(
+                "live final-output result has unsupported result status {result:?}"
+            ))
+            .into());
+        }
+        let evidence = value["evidence"]
+            .as_object()
+            .ok_or_else(|| io::Error::other("live final-output result has no evidence object"))?;
+        for key in [
+            "config_fixture",
+            "generated_wrapper_direct_wire",
+            "actual_host_event",
+            "actual_host_fixed_ui",
+            "detective_decision",
+            "status_fallback",
+            "exact_replay",
+        ] {
+            status(
+                evidence
+                    .get(key)
+                    .ok_or_else(|| io::Error::other(format!("evidence {key:?} is missing")))?,
+                key,
+            )?;
+        }
+        let replay = evidence
+            .get("exact_replay")
+            .ok_or_else(|| io::Error::other("exact_replay evidence is missing"))?;
+        let generated_replay_status = status(
+            replay
+                .get("generated_wrapper_identical_payload")
+                .ok_or_else(|| {
+                    io::Error::other("generated-wrapper exact replay evidence is missing")
+                })?,
+            "exact_replay.generated_wrapper_identical_payload",
+        )?;
+        let actual_replay_status = status(
+            replay
+                .get("actual_host_replay")
+                .ok_or_else(|| io::Error::other("actual-host exact replay evidence is missing"))?,
+            "exact_replay.actual_host_replay",
+        )?;
+        if status(replay, "exact_replay")? == "verified"
+            && (generated_replay_status != "verified" || actual_replay_status != "verified")
+        {
+            return Err(io::Error::other(
+                "verified exact replay requires both generated-wrapper and actual-host replay evidence",
+            )
+            .into());
+        }
+        if generated_replay_status == "verified" {
+            let generated = &replay["generated_wrapper_identical_payload"];
+            let first_state_version = generated["first_receipt_state_version"]
+                .as_u64()
+                .ok_or_else(|| {
+                    io::Error::other("generated-wrapper replay has no first receipt state_version")
+                })?;
+            let refreshed_state_version = generated["refreshed_receipt_state_version"]
+                .as_u64()
+                .ok_or_else(|| {
+                    io::Error::other(
+                        "generated-wrapper replay has no refreshed receipt state_version",
+                    )
+                })?;
+            if generated["state_advanced_between_deliveries"] != true
+                || generated["fresh_current_receipt_displayed"] != true
+                || refreshed_state_version <= first_state_version
+                || evidence["generated_wrapper_direct_wire"]["authority_receipt"]
+                    ["first_state_version"]
+                    != first_state_version
+                || evidence["generated_wrapper_direct_wire"]["authority_receipt"]
+                    ["refreshed_state_version"]
+                    != refreshed_state_version
+            {
+                return Err(io::Error::other(
+                    "verified generated-wrapper replay must advance state and display the fresh current receipt without collapsing its two receipt versions",
+                )
+                .into());
+            }
+            let profile_invariant = match profile {
+                IntegrationProfile::Record => "record_non_observing_preserved",
+                IntegrationProfile::Detective => "detective_historical_guard_event_preserved",
+            };
+            if generated[profile_invariant] != true {
+                return Err(io::Error::other(format!(
+                    "verified generated-wrapper replay does not preserve {profile_invariant}"
+                ))
+                .into());
+            }
+        }
+        for surface in ["generated_wrapper_direct_wire", "actual_host_fixed_ui"] {
+            for branch in ["status_fallback", "authority_receipt"] {
+                let branch_status = status(
+                    evidence[surface].get(branch).ok_or_else(|| {
+                        io::Error::other(format!("{surface}.{branch} evidence is missing"))
+                    })?,
+                    &format!("{surface}.{branch}"),
+                )?;
+                if evidence[surface]["status"] == "verified" && branch_status != "verified" {
+                    return Err(io::Error::other(format!(
+                        "verified {surface} evidence requires a verified {branch} branch"
+                    ))
+                    .into());
+                }
+            }
+        }
+        if evidence["actual_host_event"]["status"] == "verified" {
+            for branch in ["status_fallback_event", "authority_receipt_event"] {
+                if status(
+                    evidence["actual_host_event"].get(branch).ok_or_else(|| {
+                        io::Error::other(format!(
+                            "verified actual-host event evidence has no {branch:?} branch"
+                        ))
+                    })?,
+                    &format!("actual_host_event.{branch}"),
+                )? != "verified"
+                {
+                    return Err(io::Error::other(format!(
+                        "verified actual-host event evidence requires verified {branch} evidence"
+                    ))
+                    .into());
+                }
+            }
+        }
+        if evidence["actual_host_fixed_ui"]["status"] == "verified"
+            && evidence["actual_host_fixed_ui"]["authority_receipt"]
+                ["complete_canonical_receipt_operator_confirmed"]
+                != true
+        {
+            return Err(io::Error::other(
+                "verified actual-host receipt UI requires exact operator confirmation of the complete canonical AuthorityReceipt",
+            )
+            .into());
+        }
+        if evidence["actual_host_fixed_ui"]["status"] == "verified"
+            && evidence["actual_host_fixed_ui"]["status_fallback"]
+                ["complete_taskless_message_operator_confirmed"]
+                != true
+        {
+            return Err(io::Error::other(
+                "verified actual-host fallback UI requires exact operator confirmation of the complete taskless message",
+            )
+            .into());
+        }
+        if evidence["actual_host_fixed_ui"]["status"] == "verified" {
+            let receipt = &evidence["actual_host_fixed_ui"]["authority_receipt"];
+            for field in ["project_id", "task_id", "latest_run_id", "close_state"] {
+                if receipt[field].as_str().is_none_or(str::is_empty) {
+                    return Err(io::Error::other(format!(
+                        "verified actual-host receipt UI has no {field:?} coordinate"
+                    ))
+                    .into());
+                }
+            }
+            for field in ["state_version", "close_blocker_count"] {
+                if receipt[field].as_u64().is_none() {
+                    return Err(io::Error::other(format!(
+                        "verified actual-host receipt UI has no numeric {field:?} coordinate"
+                    ))
+                    .into());
+                }
+            }
+        }
+        if evidence["status_fallback"]["status"] == "verified"
+            && (evidence["status_fallback"]["no_active_task"] != true
+                || evidence["status_fallback"]["generated_wire_command"]
+                    != "volicord status --json"
+                || evidence["status_fallback"]["operator_confirmed_actual_host_ui"] != true
+                || evidence["status_fallback"]["complete_taskless_message_operator_confirmed"]
+                    != true
+                || evidence["status_fallback"]["task_bound_command_absent"] != true)
+        {
+            return Err(io::Error::other(
+                "verified status fallback must bind the taskless generated command to actual-host UI confirmation",
+            )
+            .into());
+        }
+        match profile {
+            IntegrationProfile::Record => {
+                match evidence["detective_decision"]["status"].as_str() {
+                    Some("not_applicable") => {
+                        if evidence["detective_decision"]["non_observing"] != true
+                            || evidence["detective_decision"]["non_gating"] != true
+                        {
+                            return Err(io::Error::other(
+                                "observed Record evidence must be explicitly non-observing and non-gating",
+                            )
+                            .into());
+                        }
+                    }
+                    Some("unavailable" | "failed") if result == "incomplete" => {}
+                    _ => {
+                        return Err(io::Error::other(
+                            "Record decision evidence must be observed non-applicable evidence or an explicit incomplete-run limitation",
+                        )
+                        .into())
+                    }
+                }
+                if evidence["actual_host_event"]["status"] == "verified" {
+                    for branch in ["status_fallback_event", "authority_receipt_event"] {
+                        let event = &evidence["actual_host_event"][branch];
+                        if event["source"] != "authenticated_host_owned_surface_delivery"
+                            || event["delivery_evidence"] != "managed_final_output_ui"
+                            || event["persistent_guard_event"] != false
+                            || event["non_observing"] != true
+                        {
+                            return Err(io::Error::other(format!(
+                                "verified Record {branch} must identify host-owned UI delivery without claiming a persistent observation"
+                            ))
+                            .into());
+                        }
+                    }
+                }
+            }
+            IntegrationProfile::Detective => {
+                if evidence["detective_decision"]["status"] == "not_applicable" {
+                    return Err(io::Error::other(
+                        "Detective evidence must report its historical decision status",
+                    )
+                    .into());
+                }
+                if evidence["detective_decision"]["status"] == "verified" {
+                    for item in ["historical_decision", "fresh_display", "allow", "block"] {
+                        status(
+                            evidence["detective_decision"].get(item).ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "verified Detective decision evidence has no {item:?} item"
+                                ))
+                            })?,
+                            &format!("detective_decision.{item}"),
+                        )?;
+                    }
+                }
+                if evidence["actual_host_event"]["status"] == "verified" {
+                    for branch in ["status_fallback_event", "authority_receipt_event"] {
+                        if evidence["actual_host_event"][branch]["source"]
+                            != "persisted_guard_event"
+                            || evidence["actual_host_event"][branch]["persistent_guard_event"]
+                                != true
+                        {
+                            return Err(io::Error::other(format!(
+                                "verified Detective {branch} must be backed by a persisted GuardEvent"
+                            ))
+                            .into());
+                        }
+                    }
+                }
+            }
+        }
+        if result == "passed" {
+            for key in [
+                "config_fixture",
+                "generated_wrapper_direct_wire",
+                "actual_host_event",
+                "actual_host_fixed_ui",
+                "status_fallback",
+                "exact_replay",
+            ] {
+                if evidence[key]["status"] != "verified" {
+                    return Err(io::Error::other(format!(
+                        "passing final-output validation requires verified {key} evidence"
+                    ))
+                    .into());
+                }
+            }
+            if generated_replay_status != "verified" || actual_replay_status != "verified" {
+                return Err(io::Error::other(
+                    "passing final-output validation requires both replay layers",
+                )
+                .into());
+            }
+            if profile == IntegrationProfile::Detective {
+                for item in ["historical_decision", "fresh_display", "allow", "block"] {
+                    if evidence["detective_decision"][item]["status"] != "verified" {
+                        return Err(io::Error::other(format!(
+                            "passing Detective validation requires verified {item} evidence"
+                        ))
+                        .into());
+                    }
+                }
+            } else if evidence["detective_decision"]["status"] != "not_applicable" {
+                return Err(io::Error::other(
+                    "passing Record validation requires observed non-gating/non-observing evidence",
+                )
+                .into());
+            }
+        }
+        Ok(())
+    }
+
     struct VerifiedStopObservation {
         guard_event_id: String,
         session_id: String,
@@ -1380,11 +4000,108 @@ mod unix {
         latest_run_id: String,
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct GuardObservationCounts {
+        guard_events: u64,
+        agent_sessions: u64,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct StopEventCursor(i64);
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct StoredStopSnapshot {
+        guard_event_id: String,
+        decision: String,
+        result_json: String,
+    }
+
+    fn guard_observation_counts(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+    ) -> Result<GuardObservationCounts, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        Ok(GuardObservationCounts {
+            guard_events: conn
+                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
+            agent_sessions: conn
+                .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?,
+        })
+    }
+
+    fn stop_event_cursor(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+    ) -> Result<StopEventCursor, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        Ok(StopEventCursor(conn.query_row(
+            "SELECT COALESCE(MAX(rowid), 0)
+               FROM guard_events
+              WHERE project_id = ?1 AND event_kind = 'stop'",
+            [project_id],
+            |row| row.get(0),
+        )?))
+    }
+
+    fn assert_live_connection_verified(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let connection =
+            agent_connection_record_read_only(&fixture.runtime_home_path, connection_id)?
+                .ok_or_else(|| io::Error::other("live Agent Connection record is missing"))?;
+        if connection.last_verification_status != VERIFIED_STATUS_COMPLETE {
+            return Err(io::Error::other(format!(
+                "the authenticated host MCP round trip did not complete Agent Connection verification: observed {:?}",
+                connection.last_verification_status
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn stored_stop_snapshot_for_session(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+        session_id: &str,
+    ) -> Result<StoredStopSnapshot, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        conn.query_row(
+            "SELECT guard_event_id, decision, result_json
+               FROM guard_events
+              WHERE project_id = ?1
+                AND session_id = ?2
+                AND event_kind = 'stop'",
+            rusqlite::params![project_id, session_id],
+            |row| {
+                Ok(StoredStopSnapshot {
+                    guard_event_id: row.get(0)?,
+                    decision: row.get(1)?,
+                    result_json: row.get(2)?,
+                })
+            },
+        )
+        .map_err(Into::into)
+    }
+
     fn verify_live_stop_guard_event(
         runtime_home: &Path,
         connection_id: &str,
         observation: &LiveUserActionObservation,
         receipt: &VerifiedLiveReceipt,
+        cursor: StopEventCursor,
     ) -> Result<VerifiedStopObservation, Box<dyn Error>> {
         let projects = list_projects(runtime_home)?;
         let project = projects
@@ -1398,10 +4115,11 @@ mod unix {
               WHERE project_id = ?1
                 AND event_kind = 'stop'
                 AND connection_internal_id = ?2
+                AND rowid > ?3
               ORDER BY rowid DESC",
         )?;
         let rows = statement.query_map(
-            rusqlite::params![observation.project_id, connection_id],
+            rusqlite::params![observation.project_id, connection_id, cursor.0],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -1412,6 +4130,7 @@ mod unix {
                 ))
             },
         )?;
+        let mut matched = None;
         for row in rows {
             let (guard_event_id, session_id, stored_connection_id, decision, result_json) = row?;
             let result: Value = serde_json::from_str(&result_json)?;
@@ -1461,7 +4180,13 @@ mod unix {
             let session_id = session_id.ok_or_else(|| {
                 io::Error::other("the live Stop allow event is not bound to a host session")
             })?;
-            return Ok(VerifiedStopObservation {
+            if matched.is_some() {
+                return Err(io::Error::other(
+                    "the authenticated host produced more than one matching Stop event after the validation cursor",
+                )
+                .into());
+            }
+            matched = Some(VerifiedStopObservation {
                 guard_event_id,
                 session_id,
                 connection_id: stored_connection_id,
@@ -1470,32 +4195,267 @@ mod unix {
                 latest_run_id: stop_latest_run.record_id.as_str().to_owned(),
             });
         }
-        Err(io::Error::other(
-            "no Stop hook event for the live Task was recorded; the host did not provide the required final Stop-hook round trip",
-        )
-        .into())
+        matched.ok_or_else(|| {
+            io::Error::other(
+                "no new Stop hook event for the live Task was recorded after the validation cursor",
+            )
+            .into()
+        })
     }
 
-    fn confirm_stop_system_message_authority_receipt(
-        host: &str,
-        state_version: u64,
-    ) -> Result<(), Box<dyn Error>> {
-        let expected = format!("receipt:{state_version}");
-        print!(
-            "\nReview the separate Volicord Stop-hook `systemMessage` shown after the final {host} answer. Type `{expected}` only if that supported host UI surface showed the complete fresh AuthorityReceipt with state_version {state_version}. Type `missing` otherwise: "
-        );
-        io::stdout().flush()?;
-        let mut confirmation = String::new();
-        if io::stdin().read_line(&mut confirmation)? == 0 {
+    struct LiveCliFallbackSummaryInput<'a> {
+        result: &'a str,
+        identity: &'a LiveHostIdentity,
+        observation: &'a LiveUserActionObservation,
+        operator_choice_id: &'a str,
+        cli_resolution: &'a LiveCliResolutionEvidence,
+        latest_run: &'a LiveRunObservation,
+        authority_event_order: &'a AuthorityEventOrder,
+        stop_observation: &'a VerifiedStopObservation,
+        receipt: &'a VerifiedLiveReceipt,
+        stop_receipt_ui_confirmed: bool,
+    }
+
+    fn live_cli_fallback_completed_summary(input: LiveCliFallbackSummaryInput<'_>) -> Value {
+        let LiveCliFallbackSummaryInput {
+            result,
+            identity,
+            observation,
+            operator_choice_id,
+            cli_resolution,
+            latest_run,
+            authority_event_order,
+            stop_observation,
+            receipt,
+            stop_receipt_ui_confirmed,
+        } = input;
+        serde_json::json!({
+            "kind": LIVE_CLI_FALLBACK_RESULT_KIND,
+            "result": result,
+            "host": {
+                "kind": identity.host,
+                "version": identity.host_version
+            },
+            "volicord": {
+                "build_id": identity.volicord_build_id
+            },
+            "connection": {
+                "connection_id": identity.connection_id
+            },
+            "task": {
+                "project_id": observation.project_id,
+                "task_id": observation.task_id,
+                "lifecycle_phase": observation.lifecycle_phase,
+                "state_version": observation.state_version
+            },
+            "cli_user_channel": {
+                "inbox": {
+                    "command_surface": "volicord inbox --json",
+                    "prepared_request_visible": cli_resolution.inbox_request_visible
+                },
+                "resolution": {
+                    "command_surface": "volicord inbox resolve <user-action-request-id> --choice <option-id> --json",
+                    "user_action_request_id": observation.user_action_request_id,
+                    "user_action_resolution_id": cli_resolution.user_action_resolution_id,
+                    "operator_selected_option_id": operator_choice_id,
+                    "stored_selected_option_id": cli_resolution.selected_option_id,
+                    "actor_source": observation.resolved_by_actor_source,
+                    "channel_kind": observation.resolved_channel_kind,
+                    "verification_basis": observation.resolved_verification_basis,
+                    "state_version_before_resolution": cli_resolution.state_version_before_resolution,
+                    "committed_state_version": cli_resolution.committed_state_version
+                },
+                "exact_retry": {
+                    "same_command_and_arguments": true,
+                    "stdout_byte_identical": cli_resolution.exact_retry_stdout_identical,
+                    "state_version": cli_resolution.exact_retry_state_version,
+                    "state_version_unchanged": cli_resolution.exact_retry_no_state_change
+                }
+            },
+            "host_resume": {
+                "request_operation": "resume",
+                "same_agent_connection": true,
+                "origin_result_replayed_in_host_diagnostics": true,
+                "resolved_choice_consumed": true,
+                "additional_product_decision_request_created": false
+            },
+            "choice_consumption": {
+                "run_id": latest_run.run_id,
+                "run_kind": latest_run.kind,
+                "run_marker": latest_run.summary,
+                "created_by_actor_source": latest_run.created_by_actor_source,
+                "product_file_write_observed": latest_run.product_file_write_observed,
+                "changed_path_count": latest_run.changed_paths.len()
+            },
+            "authority_events": {
+                "user_action_requested_event_seq": authority_event_order.user_action_requested_event_seq,
+                "user_action_resolved_event_seq": authority_event_order.user_action_resolved_event_seq,
+                "run_recorded_event_seq": authority_event_order.run_recorded_event_seq,
+                "ordered": authority_event_order.user_action_requested_event_seq
+                    < authority_event_order.user_action_resolved_event_seq
+                    && authority_event_order.user_action_resolved_event_seq
+                        < authority_event_order.run_recorded_event_seq
+            },
+            "stop_hook": {
+                "guard_event_id": stop_observation.guard_event_id,
+                "session_id": stop_observation.session_id,
+                "connection_id": stop_observation.connection_id,
+                "decision": stop_observation.decision,
+                "receipt_state_version": stop_observation.state_version,
+                "latest_run_id": stop_observation.latest_run_id
+            },
+            "authority_receipt": {
+                "project_id": receipt.project_id,
+                "task_id": receipt.task_id,
+                "state_version": receipt.state_version,
+                "latest_run_id": receipt.latest_run_id,
+                "close_state": receipt.close_state,
+                "close_blocker_count": receipt.close_blocker_count,
+                "complete_managed_ui_confirmed": stop_receipt_ui_confirmed
+            },
+            "evidence_scope": {
+                "cli_fallback_release_cell": true,
+                "native_judgment_cell": false,
+                "final_output_matrix_cell": false
+            }
+        })
+    }
+
+    fn validate_live_cli_fallback_result_shape(value: &Value) -> Result<(), Box<dyn Error>> {
+        if value["kind"] != LIVE_CLI_FALLBACK_RESULT_KIND || value["result"] != "passed" {
             return Err(io::Error::other(
-                "no operator confirmation was received for the Stop-hook AuthorityReceipt systemMessage",
+                "passing CLI-fallback result has the wrong validation kind or result",
             )
             .into());
         }
-        if confirmation.trim() != expected {
-            return Err(io::Error::other(format!(
-                "the operator did not confirm the Stop-hook AuthorityReceipt systemMessage bound to state_version {state_version}"
-            ))
+        let request_id = value["cli_user_channel"]["resolution"]["user_action_request_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no request id"))?;
+        let resolution_id = value["cli_user_channel"]["resolution"]["user_action_resolution_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no resolution id"))?;
+        let operator_choice = value["cli_user_channel"]["resolution"]
+            ["operator_selected_option_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no operator choice"))?;
+        let stored_choice = value["cli_user_channel"]["resolution"]["stored_selected_option_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no stored choice"))?;
+        let before = value["cli_user_channel"]["resolution"]["state_version_before_resolution"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no pre-resolution version"))?;
+        let committed = value["cli_user_channel"]["resolution"]["committed_state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no committed version"))?;
+        let retry = value["cli_user_channel"]["exact_retry"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no retry version"))?;
+        let expected_committed = before.checked_add(1).ok_or_else(|| {
+            io::Error::other("CLI-fallback pre-resolution version cannot advance once")
+        })?;
+        let project_id = value["task"]["project_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no project id"))?;
+        let task_id = value["task"]["task_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no task id"))?;
+        let task_state_version = value["task"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no Task state version"))?;
+        let run_id = value["choice_consumption"]["run_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no consumed Run id"))?;
+        let requested_event_seq = value["authority_events"]["user_action_requested_event_seq"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no request event sequence"))?;
+        let resolved_event_seq = value["authority_events"]["user_action_resolved_event_seq"]
+            .as_u64()
+            .ok_or_else(|| {
+                io::Error::other("CLI-fallback result has no resolution event sequence")
+            })?;
+        let run_event_seq = value["authority_events"]["run_recorded_event_seq"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no Run event sequence"))?;
+        let stop_receipt_state_version = value["stop_hook"]["receipt_state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no Stop receipt version"))?;
+        let stop_latest_run_id = value["stop_hook"]["latest_run_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no Stop latest Run id"))?;
+        let receipt_project_id = value["authority_receipt"]["project_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no receipt project id"))?;
+        let receipt_task_id = value["authority_receipt"]["task_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no receipt Task id"))?;
+        let receipt_state_version = value["authority_receipt"]["state_version"]
+            .as_u64()
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no receipt state version"))?;
+        let receipt_latest_run_id = value["authority_receipt"]["latest_run_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no receipt latest Run id"))?;
+        let expected_run_marker = run_marker_for_selected_option(stored_choice)
+            .ok_or_else(|| io::Error::other("CLI-fallback result stores an unknown choice"))?;
+        let connection_id = value["connection"]["connection_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| io::Error::other("CLI-fallback result has no connection id"))?;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
+        if request_id.is_empty()
+            || resolution_id.is_empty()
+            || operator_choice != stored_choice
+            || value["cli_user_channel"]["inbox"]["prepared_request_visible"] != true
+            || value["cli_user_channel"]["resolution"]["actor_source"] != "local_user"
+            || value["cli_user_channel"]["resolution"]["channel_kind"] != "cli"
+            || value["cli_user_channel"]["resolution"]["verification_basis"]
+                != VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+            || committed != expected_committed
+            || retry != committed
+            || value["cli_user_channel"]["exact_retry"]["same_command_and_arguments"] != true
+            || value["cli_user_channel"]["exact_retry"]["stdout_byte_identical"] != true
+            || value["cli_user_channel"]["exact_retry"]["state_version_unchanged"] != true
+            || value["host_resume"]["request_operation"] != "resume"
+            || value["host_resume"]["same_agent_connection"] != true
+            || value["host_resume"]["origin_result_replayed_in_host_diagnostics"] != true
+            || value["host_resume"]["resolved_choice_consumed"] != true
+            || value["host_resume"]["additional_product_decision_request_created"] != false
+            || value["choice_consumption"]["run_kind"] != "shaping_update"
+            || value["choice_consumption"]["run_marker"] != expected_run_marker
+            || value["choice_consumption"]["created_by_actor_source"] != expected_actor_source
+            || value["choice_consumption"]["product_file_write_observed"] != false
+            || value["choice_consumption"]["changed_path_count"] != 0
+            || requested_event_seq == 0
+            || resolved_event_seq == 0
+            || run_event_seq == 0
+            || !(requested_event_seq < resolved_event_seq && resolved_event_seq < run_event_seq)
+            || value["authority_events"]["ordered"] != true
+            || value["stop_hook"]["connection_id"] != connection_id
+            || value["stop_hook"]["decision"] != "allow"
+            || receipt_project_id != project_id
+            || receipt_task_id != task_id
+            || receipt_state_version != task_state_version
+            || stop_receipt_state_version != receipt_state_version
+            || receipt_latest_run_id != run_id
+            || stop_latest_run_id != run_id
+            || value["authority_receipt"]["close_state"] != "ready"
+            || value["authority_receipt"]["close_blocker_count"] != 0
+            || value["authority_receipt"]["complete_managed_ui_confirmed"] != true
+            || value["evidence_scope"]["cli_fallback_release_cell"] != true
+            || value["evidence_scope"]["native_judgment_cell"] != false
+            || value["evidence_scope"]["final_output_matrix_cell"] != false
+        {
+            return Err(io::Error::other(
+                "passing CLI-fallback result does not preserve the required separated evidence",
+            )
             .into());
         }
         Ok(())
@@ -1689,6 +4649,7 @@ mod unix {
 
     struct LiveResultRecorder {
         host: String,
+        result_kind: &'static str,
         result_path: Option<PathBuf>,
         run_id: String,
         started_at: String,
@@ -1698,11 +4659,27 @@ mod unix {
 
     impl LiveResultRecorder {
         fn from_env(host: &str) -> Result<Self, Box<dyn Error>> {
-            let result_path = env::var_os(LIVE_HOST_RESULT_PATH_ENV).map(PathBuf::from);
-            Self::new(host, result_path)
+            let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
+            Self::new(host, Some(result_path))
+        }
+
+        fn from_env_for_kind(
+            host: &str,
+            result_kind: &'static str,
+        ) -> Result<Self, Box<dyn Error>> {
+            let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
+            Self::new_for_kind(host, result_kind, Some(result_path))
         }
 
         fn new(host: &str, result_path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
+            Self::new_for_kind(host, LIVE_USER_ACTION_RESULT_KIND, result_path)
+        }
+
+        fn new_for_kind(
+            host: &str,
+            result_kind: &'static str,
+            result_path: Option<PathBuf>,
+        ) -> Result<Self, Box<dyn Error>> {
             if let Some(path) = result_path.as_deref() {
                 validate_external_result_path(path, true)?;
             }
@@ -1719,6 +4696,7 @@ mod unix {
             )?;
             let mut recorder = Self {
                 host: host.to_owned(),
+                result_kind,
                 result_path,
                 run_id,
                 started_at,
@@ -1728,7 +4706,7 @@ mod unix {
             if recorder.result_path.is_some() {
                 recorder.write_external_summary(
                     &serde_json::json!({
-                        "kind": "live_host_user_action_release_validation",
+                        "kind": result_kind,
                         "result": "running",
                         "host": { "kind": host }
                     }),
@@ -1784,6 +4762,15 @@ mod unix {
         }
     }
 
+    fn required_live_result_path(value: Option<OsString>) -> Result<PathBuf, Box<dyn Error>> {
+        value.map(PathBuf::from).ok_or_else(|| {
+            io::Error::other(format!(
+                "{LIVE_HOST_RESULT_PATH_ENV} must name a new absolute result path outside the source repository"
+            ))
+            .into()
+        })
+    }
+
     impl Drop for LiveResultRecorder {
         fn drop(&mut self) {
             if !self.started || self.finalized || self.result_path.is_none() {
@@ -1791,7 +4778,7 @@ mod unix {
             }
             let _ = self.write_external_summary(
                 &serde_json::json!({
-                    "kind": "live_host_user_action_release_validation",
+                    "kind": self.result_kind,
                     "result": "failed_before_completion",
                     "host": { "kind": self.host }
                 }),
@@ -2018,6 +5005,54 @@ mod unix {
         Ok(())
     }
 
+    fn assert_cli_fallback_resume_diagnostic(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        project_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let conn = rusqlite::Connection::open_with_flags(
+            diagnostics_db_path(&fixture.runtime_home_path),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let observed = conn.query_row(
+            "SELECT
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND e.replayed = 1
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.record_run'
+                        AND e.core_committed = 1
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.status'
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0)
+               FROM diagnostic_sessions s
+               JOIN diagnostic_events e ON e.session_id = s.session_id
+              WHERE s.connection_id = ?1
+                AND s.project_id = ?2",
+            [connection_id, project_id],
+            |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, u64>(2)?,
+                ))
+            },
+        )?;
+        if observed.0 < 1 || observed.1 != 1 || observed.2 < 1 {
+            return Err(io::Error::other(format!(
+                "the authenticated host diagnostics did not show one same-connection resume path: replayed request_user_action={}, committed record_run={}, status={}",
+                observed.0, observed.1, observed.2
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
     struct LiveSmokeFixture {
         _runtime_home: TempRuntimeHome,
         runtime_home_path: PathBuf,
@@ -2036,7 +5071,7 @@ mod unix {
             let runtime_home = TempRuntimeHome::new(&format!("live-host-smoke-{prefix}"))?;
             let runtime_home_path = runtime_home.path().to_path_buf();
             let repo_root = runtime_home.create_product_repo("product-repo")?;
-            fs::create_dir_all(repo_root.join(".git"))?;
+            initialize_git_repository(&repo_root)?;
             fs::write(
                 repo_root.join("README.md"),
                 "Volicord live smoke repository\n",
@@ -2173,7 +5208,17 @@ mod unix {
         path: &OsString,
         event: &Value,
     ) -> Result<Output, Box<dyn Error>> {
-        let mut child = Command::new(repo_root.join(".codex/hooks/volicord-stop.sh"))
+        run_generated_final_output_handler(runtime_home, repo_root, path, "codex", event)
+    }
+
+    fn run_generated_final_output_handler(
+        runtime_home: &Path,
+        repo_root: &Path,
+        path: &OsString,
+        host: &str,
+        event: &Value,
+    ) -> Result<Output, Box<dyn Error>> {
+        let mut child = Command::new(generated_stop_wrapper_path(repo_root, host)?)
             .env("VOLICORD_HOME", runtime_home)
             .env("PATH", path)
             .current_dir(repo_root)
@@ -2186,7 +5231,334 @@ mod unix {
             .as_mut()
             .ok_or("Stop hook stdin should be piped")?
             .write_all(event.to_string().as_bytes())?;
-        Ok(child.wait_with_output()?)
+        drop(child.stdin.take());
+        let deadline = Instant::now() + COMMAND_TIMEOUT;
+        loop {
+            if child.try_wait()?.is_some() {
+                return Ok(child.wait_with_output()?);
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let output = child.wait_with_output()?;
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "generated final-output wrapper timed out after {} seconds: {}",
+                        COMMAND_TIMEOUT.as_secs(),
+                        stderr_output(&output)
+                    ),
+                )
+                .into());
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    fn generated_stop_wrapper_path(
+        repo_root: &Path,
+        host: &str,
+    ) -> Result<PathBuf, Box<dyn Error>> {
+        let relative = match host {
+            "codex" => ".codex/hooks/volicord-stop.sh",
+            "claude-code" => ".claude/hooks/volicord-stop.sh",
+            _ => {
+                return Err(io::Error::other(format!(
+                    "unsupported live final-output host {host:?}"
+                ))
+                .into())
+            }
+        };
+        Ok(repo_root.join(relative))
+    }
+
+    fn live_final_output_event(
+        host: &str,
+        repo_root: &Path,
+        session_id: &str,
+        last_assistant_message: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        let common = serde_json::json!({
+            "session_id": session_id,
+            "transcript_path": format!("/tmp/{session_id}.jsonl"),
+            "cwd": path_text(repo_root),
+            "permission_mode": "default",
+            "hook_event_name": "Stop",
+            "stop_hook_active": false,
+            "last_assistant_message": last_assistant_message
+        });
+        let mut object = common
+            .as_object()
+            .cloned()
+            .ok_or_else(|| io::Error::other("live final-output event must be an object"))?;
+        match host {
+            "codex" => {
+                object.insert("model".to_owned(), Value::String("gpt-5.5".to_owned()));
+                object.insert(
+                    "turn_id".to_owned(),
+                    Value::String("live-final-output-turn".to_owned()),
+                );
+            }
+            "claude-code" => {
+                object.insert("background_tasks".to_owned(), Value::Array(Vec::new()));
+                object.insert("session_crons".to_owned(), Value::Array(Vec::new()));
+            }
+            _ => {
+                return Err(io::Error::other(format!(
+                    "unsupported live final-output host {host:?}"
+                ))
+                .into())
+            }
+        }
+        Ok(Value::Object(object))
+    }
+
+    struct NoActiveStatusWire {
+        response_bytes: usize,
+        private_model_prose_absent: bool,
+        system_message: String,
+    }
+
+    fn verify_no_active_status_wire(
+        output: &Output,
+        forbidden_private_prose: &str,
+    ) -> Result<NoActiveStatusWire, Box<dyn Error>> {
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "generated final-output wrapper failed: {}",
+                stderr_output(output)
+            ))
+            .into());
+        }
+        if output.stdout.len() > 8_192 {
+            return Err(io::Error::other(
+                "generated final-output wrapper exceeded the 8192-byte host response budget",
+            )
+            .into());
+        }
+        let wire: Value = serde_json::from_slice(&output.stdout)?;
+        if wire["continue"] != true {
+            return Err(io::Error::other(
+                "no-active-Task final-output wire must allow host finalization",
+            )
+            .into());
+        }
+        let message = wire["systemMessage"].as_str().ok_or_else(|| {
+            io::Error::other("no-active-Task final-output wire has no systemMessage")
+        })?;
+        if !message.contains("no active Task is available")
+            || !message.contains("`volicord status --json`")
+            || message.contains("volicord status --task")
+        {
+            return Err(io::Error::other(
+                "no-active-Task final-output wire did not carry only the taskless status fallback",
+            )
+            .into());
+        }
+        if String::from_utf8_lossy(&output.stdout).contains(forbidden_private_prose) {
+            return Err(io::Error::other(
+                "generated no-active-Task final-output wire leaked private model prose",
+            )
+            .into());
+        }
+        Ok(NoActiveStatusWire {
+            response_bytes: output.stdout.len(),
+            private_model_prose_absent: true,
+            system_message: message.to_owned(),
+        })
+    }
+
+    fn verify_authority_receipt_wire(
+        output: &Output,
+        expected: &VerifiedLiveReceipt,
+        expected_continue: bool,
+        forbidden_private_prose: &str,
+    ) -> Result<NoActiveStatusWire, Box<dyn Error>> {
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "generated active-Task final-output wrapper failed: {}",
+                stderr_output(output)
+            ))
+            .into());
+        }
+        if output.stdout.len() > 8_192 {
+            return Err(io::Error::other(
+                "generated AuthorityReceipt wrapper exceeded the 8192-byte host response budget",
+            )
+            .into());
+        }
+        let wire: Value = serde_json::from_slice(&output.stdout)?;
+        if expected_continue {
+            if wire["continue"] != true || wire.get("decision").is_some() {
+                return Err(io::Error::other(format!(
+                    "active-Task final-output allow wire {:?} did not continue as expected",
+                    wire
+                ))
+                .into());
+            }
+        } else if wire["decision"] != "block"
+            || wire["reason"]
+                .as_str()
+                .is_none_or(|reason| !reason.contains("close_readiness_blocked"))
+        {
+            return Err(io::Error::other(format!(
+                "active-Task final-output block wire {:?} did not preserve the expected close-readiness decision",
+                wire
+            ))
+            .into());
+        }
+        let message = wire["systemMessage"].as_str().ok_or_else(|| {
+            io::Error::other("active-Task final-output wire has no systemMessage")
+        })?;
+        let receipt: AuthorityReceipt = serde_json::from_str(
+            message
+                .strip_prefix("Volicord authority receipt: ")
+                .ok_or_else(|| {
+                    io::Error::other(
+                        "active-Task final-output wire does not contain a complete AuthorityReceipt",
+                    )
+                })?,
+        )?;
+        if receipt != expected.canonical_receipt {
+            return Err(io::Error::other(
+                "generated final-output AuthorityReceipt does not exactly match fresh Core status",
+            )
+            .into());
+        }
+        if String::from_utf8_lossy(&output.stdout).contains(forbidden_private_prose) {
+            return Err(io::Error::other(
+                "generated active-Task final-output wire leaked private model prose",
+            )
+            .into());
+        }
+        Ok(NoActiveStatusWire {
+            response_bytes: output.stdout.len(),
+            private_model_prose_absent: true,
+            system_message: message.to_owned(),
+        })
+    }
+
+    fn live_fixture_project_id(fixture: &LiveSmokeFixture) -> Result<String, Box<dyn Error>> {
+        list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.repo_root == fixture.repo_root)
+            .map(|project| project.project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing").into())
+    }
+
+    fn verify_final_output_config_fixture(
+        fixture: &LiveSmokeFixture,
+        host: &str,
+        profile: IntegrationProfile,
+        init: &Value,
+    ) -> Result<Value, Box<dyn Error>> {
+        if init["states"]["final_output_authority_disclosure"]
+            != serde_json::json!({
+                "supported": true,
+                "configured": true,
+                "verified": true
+            })
+        {
+            return Err(io::Error::other(
+                "init did not verify final-output authority disclosure capability",
+            )
+            .into());
+        }
+        let wrapper_path = generated_stop_wrapper_path(&fixture.repo_root, host)?;
+        let wrapper = fs::read_to_string(&wrapper_path)?;
+        let expected_command = match profile {
+            IntegrationProfile::Record => "exec volicord _final-output",
+            IntegrationProfile::Detective => "exec volicord _hook stop",
+        };
+        if !wrapper.contains(expected_command)
+            || !wrapper.contains(&format!("--integration-profile {}", profile.as_str()))
+        {
+            return Err(io::Error::other(format!(
+                "generated Stop wrapper does not match the {} profile",
+                profile.as_str()
+            ))
+            .into());
+        }
+        let host_config = match host {
+            "codex" => fixture.repo_root.join(".codex/hooks.json"),
+            "claude-code" => fixture.repo_root.join(".claude/settings.json"),
+            _ => return Err(io::Error::other("unsupported final-output host").into()),
+        };
+        let config_text = fs::read_to_string(&host_config)?;
+        let expected_config_route = match (host, profile) {
+            ("codex", IntegrationProfile::Detective) => "volicord-dispatch.sh",
+            _ => "volicord-stop.sh",
+        };
+        if !config_text.contains("Stop") || !config_text.contains(expected_config_route) {
+            return Err(io::Error::other(
+                "generated host config has no profile-appropriate managed Stop final-output entry",
+            )
+            .into());
+        }
+        Ok(serde_json::json!({
+            "status": "verified",
+            "host_config": host_config.strip_prefix(&fixture.repo_root)?.display().to_string(),
+            "generated_wrapper": wrapper_path.strip_prefix(&fixture.repo_root)?.display().to_string(),
+            "profile_command_verified": true,
+            "capability_supported": true,
+            "capability_configured": true,
+            "capability_verified": true
+        }))
+    }
+
+    struct LatestLiveStopDecision {
+        guard_event_id: String,
+        session_id: String,
+        decision: String,
+    }
+
+    fn live_stop_decision_after(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+        connection_id: &str,
+        cursor: StopEventCursor,
+    ) -> Result<LatestLiveStopDecision, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let mut statement = conn.prepare(
+            "SELECT guard_event_id, session_id, decision, result_json
+               FROM guard_events
+              WHERE project_id = ?1
+                AND connection_internal_id = ?2
+                AND event_kind = 'stop'
+                AND rowid > ?3
+              ORDER BY rowid ASC",
+        )?;
+        let mut rows = statement.query(rusqlite::params![project_id, connection_id, cursor.0])?;
+        let row = rows.next()?.ok_or_else(|| {
+            io::Error::other("actual host produced no new Stop event after the validation cursor")
+        })?;
+        let guard_event_id = row.get::<_, String>(0)?;
+        let session_id = row.get::<_, Option<String>>(1)?;
+        let decision = row.get::<_, String>(2)?;
+        let result_json = row.get::<_, String>(3)?;
+        if rows.next()?.is_some() {
+            return Err(io::Error::other(
+                "actual host produced more than one Stop event after the validation cursor",
+            )
+            .into());
+        }
+        let result: Value = serde_json::from_str(&result_json)?;
+        if result["decision"] != decision || result["allowed"] != true {
+            return Err(io::Error::other(
+                "latest Detective Stop GuardEvent has inconsistent historical decision fields",
+            )
+            .into());
+        }
+        Ok(LatestLiveStopDecision {
+            guard_event_id,
+            session_id: session_id.ok_or_else(|| {
+                io::Error::other("latest actual-host Stop GuardEvent has no session binding")
+            })?,
+            decision,
+        })
     }
 
     fn initialize_git_repository(repo_root: &Path) -> Result<(), Box<dyn Error>> {
@@ -2262,15 +5634,94 @@ mod unix {
         );
     }
 
-    fn assert_guarded_init_reported_action_required(value: &Value, host: &str, host_action: &str) {
-        assert_eq!(value["host"], host);
-        assert_eq!(value["selected_profile"], "detective");
-        assert_eq!(value["status"], "action_required");
+    fn assert_live_init_reported_action_required(
+        value: &Value,
+        host: &str,
+        profile: IntegrationProfile,
+        host_action: &str,
+    ) {
+        assert_eq!(value["host"], host, "unexpected live init host: {value}");
+        assert_eq!(
+            value["selected_profile"],
+            profile.as_str(),
+            "unexpected live init profile: {value}"
+        );
+        assert_eq!(
+            value["status"],
+            "action_required",
+            "{host}/{} live init did not reach action_required: {value}",
+            profile.as_str()
+        );
         assert_eq!(value["states"]["host_reload_required"], true);
-        assert_eq!(value["states"]["guard_installation"], "reload_required");
-        assert_eq!(value["states"]["prompt_capture"], "reload_required");
+        assert_eq!(
+            value["states"]["final_output_authority_disclosure"],
+            serde_json::json!({
+                "supported": true,
+                "configured": true,
+                "verified": true
+            })
+        );
+        match profile {
+            IntegrationProfile::Record => {
+                assert_eq!(value["states"]["hook_config"], "disabled");
+                assert_eq!(value["states"]["guard_effective"], "inactive");
+                assert_eq!(value["states"]["prompt_capture"], "not_configured");
+            }
+            IntegrationProfile::Detective => {
+                assert_eq!(value["states"]["guard_installation"], "reload_required");
+                assert_eq!(value["states"]["prompt_capture"], "reload_required");
+                assert_action(value, host_action);
+            }
+        }
+
         assert_action(value, "reload_required");
-        assert_action(value, host_action);
+    }
+
+    fn assert_direct_matrix_init_report(
+        value: &Value,
+        host: &str,
+        profile: IntegrationProfile,
+        host_action: &str,
+    ) {
+        assert_eq!(value["host"], host, "unexpected matrix init host: {value}");
+        assert_eq!(
+            value["selected_profile"],
+            profile.as_str(),
+            "unexpected matrix init profile: {value}"
+        );
+        assert!(
+            matches!(value["status"].as_str(), Some("action_required" | "failed")),
+            "{host}/{} direct matrix init has an unsupported status: {value}",
+            profile.as_str()
+        );
+        assert_eq!(value["states"]["host_reload_required"], true);
+        assert_eq!(
+            value["states"]["final_output_authority_disclosure"],
+            serde_json::json!({
+                "supported": true,
+                "configured": true,
+                "verified": true
+            })
+        );
+        let actions = value["actions"]
+            .as_array()
+            .expect("matrix init actions should be an array");
+        assert!(
+            actions.iter().any(|action| action["id"] == host_action)
+                || (host == "codex"
+                    && actions
+                        .iter()
+                        .any(|action| { action["id"] == "managed_host_startup_not_observed" })),
+            "{host}/{} direct matrix init has no expected host action: {actions:?}",
+            profile.as_str()
+        );
+        assert_action(value, "reload_required");
+        if value["status"] == "failed" {
+            assert_eq!(
+                value["states"]["mcp_config"], "missing",
+                "the direct matrix permits only the fake host's known MCP-discovery failure"
+            );
+        }
     }
 
     fn assert_action(value: &Value, expected: &str) {
