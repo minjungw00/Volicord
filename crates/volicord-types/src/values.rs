@@ -432,6 +432,13 @@ pub const VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING: &str = "mcp_stdio_con
 pub const VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING: &str =
     "mcp_local_http_connection_binding";
 
+/// Controlled adapter-binding basis for a registered managed host Stop/final-output hook.
+pub const VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING: &str =
+    "registered_host_stop_hook_connection_binding";
+
+/// Non-authorizing provenance for a defensive read from an unverified host-hook event.
+pub const VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT: &str = "unregistered_host_hook_event";
+
 /// Controlled adapter-binding basis value for direct CLI invocation.
 pub const VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL: &str = "cli_direct_user_channel";
 

@@ -298,6 +298,7 @@ pub(in crate::connection_command) fn connection_states_json(
         "control_surface": guard_state.control_surface_json(),
         "generated_config_verified": guard_state.generated_config_verified,
         "native_host_output_adapter_verified": guard_state.native_host_output_adapter_verified,
+        "final_output_authority_disclosure": guard_state.final_output_authority_disclosure.to_json(),
         "cooperative_pre_tool_warning_available": guard_state.cooperative_pre_tool_warning_available(),
         "cooperative_pre_tool_denial_available": guard_state.cooperative_pre_tool_denial_available(),
         "post_tool_correlation_available": guard_state.post_tool_correlation_available(),

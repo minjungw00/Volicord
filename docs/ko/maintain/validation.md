@@ -272,17 +272,19 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-use
    이벤트 payload가 요청, 해결, 선택지, Run, kind, 비쓰기 사실을 보존하고, event
    sequence가 선택 해결 기록 뒤에 해당 Run이 기록됐음을 증명합니다.
 5. `init`이 반환한 정확한 Agent Connection, 같은 Task, `null`이 아닌 호스트 세션의
-   마지막 Stop guard event가 `decision=allow`, 빈 reason과 close blocker, 최신 CLI
-   status의 `AuthorityReceipt`와 완전히 같은 영수증을 가집니다. 모델의 최종 답변 뒤에
-   지원되는 Codex 또는 Claude Code Stop 훅이 별도 Volicord
-   `systemMessage` UI 표면으로 완전한 최신 `AuthorityReceipt`를 분명히 표시합니다.
-   호스트 종료 뒤에는 그 별도 표면에 표시된 영수증의 `state_version`이 최신 CLI
-   상태의 영수증과 일치할 때만 `receipt:<state_version>`을 입력합니다. 이 토큰은 UI
-   표시만 확인하며, 하네스는 영속 저장된 guard event에서 Stop 결정과 영수증 결속을
-   직접 읽습니다.
+   마지막 Stop guard event가 `decision=allow`, 빈 reason과 close blocker, 그 변경 불가능한
+   Stop 결정에 사용한 과거 `AuthorityReceipt`를 가집니다. 모델의 최종 답변 뒤에 지원되는
+   Codex 또는 Claude Code Stop 훅이 별도 Volicord `systemMessage` UI 표면으로 다시 새로
+   읽은 `AuthorityReceipt` 전체를 분명히 표시합니다. 호스트 종료 뒤에는 그 별도 표면에
+   표시된 영수증의 `state_version`이 새 CLI 상태 영수증과 일치할 때만
+   `receipt:<state_version>`을 입력합니다. 이 토큰은 UI 표시만 확인합니다. 정확한 Stop
+   이벤트 재생은 영속 guard event와 결정을 바꾸지 않은 채 별도 UI를 다시 갱신해야 하며,
+   그 사이 상태가 전진했다면 저장된 과거 receipt와 현재 표시 receipt가 의도적으로 다를
+   수 있습니다.
 6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
    Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,
-   권한 이벤트 순서, 소비한 Run, 관찰한 Stop allow, 최신 영수증 결속, UI 확인,
+   권한 이벤트 순서, 소비한 Run, 관찰한 Stop allow, 저장된 과거 receipt 좌표, 최신 UI
+   receipt 결속, UI 확인,
    최종 `result=passed`를
    보고하며 대화 기록이나 프롬프트 본문은 포함하지 않습니다. 외부 파일은 같은
    디렉터리의 임시 파일을 rename해 교체하므로 읽는 쪽에 일부만 기록된 최종 JSON이

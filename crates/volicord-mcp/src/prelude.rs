@@ -15,10 +15,11 @@ pub(crate) use std::{
 pub(crate) use serde::Serialize;
 pub(crate) use serde_json::{json, Map, Value};
 pub(crate) use volicord_core::{
-    local_web_channel_submission_id, rejected_response, tool_error, Clock, CoreBoundary,
-    CorePipelineError, CoreService, CurrentUserActionProjection, GitWorkspaceContext,
-    InvocationContext, LocalWebConsentCompletionMetadata, LocalWebConsentUserActionRequest,
-    PipelineResponse, SystemClock,
+    local_web_channel_submission_id, rejected_response, tool_error, validate_authority_status,
+    AuthorityStatusExpectation, Clock, CoreBoundary, CorePipelineError, CoreService,
+    CurrentUserActionProjection, GitWorkspaceContext, InvocationContext,
+    LocalWebConsentCompletionMetadata, LocalWebConsentUserActionRequest, PipelineResponse,
+    SystemClock,
 };
 pub(crate) use volicord_store::{
     agent_connections::{
@@ -76,16 +77,16 @@ pub(crate) use volicord_types::{
     PrepareWriteRequest, PrepareWriteResult, ProjectId, ReconcileChangesRequest,
     ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult, RequestId,
     RequestUserActionRequest, RequestUserActionResponse, RequestUserActionResult, RequiredNullable,
-    ResolveUserActionRequest, ResponseKind, SessionWatchCoverageBasis, SessionWatchScanSummary,
+    ResolveUserActionRequest, SessionWatchCoverageBasis, SessionWatchScanSummary,
     SessionWatchStatus, StageArtifactRequest, StageArtifactResult, StateRecordKind, StateRecordRef,
-    StatusDetailLevel, StatusRequest, StatusResult, TaskId, ToolEnvelope, ToolResultBase,
-    UpdateScopeRequest, UserActionCapturePath, UserActionChannelKind, UserActionInboxForm,
-    UserActionInboxItem, UserActionOptionAction, UserActionPresentationForm,
-    UserActionPresentationPlan, UserActionPresentationSafety, UserActionRequest,
-    UserActionRequestBody, UserActionResolutionInput, UserActionStatus,
-    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
-    MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES, USER_ACTION_FORM_MAX_BYTES,
-    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    StatusDetailLevel, StatusRequest, TaskId, ToolEnvelope, ToolResultBase, UpdateScopeRequest,
+    UserActionCapturePath, UserActionChannelKind, UserActionInboxForm, UserActionInboxItem,
+    UserActionOptionAction, UserActionPresentationForm, UserActionPresentationPlan,
+    UserActionPresentationSafety, UserActionRequest, UserActionRequestBody,
+    UserActionResolutionInput, UserActionStatus, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
+    USER_ACTION_FORM_MAX_BYTES, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };

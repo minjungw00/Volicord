@@ -12,6 +12,8 @@ use volicord_types::{
     TypeBoundary, UserActionRequestId, UserActionStatus, UtcTimestamp,
 };
 
+mod authority_status;
+
 /// Closed adapter-owned completion metadata included in local-web replay identity.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,6 +28,10 @@ mod methods;
 pub mod pipeline;
 mod policy;
 
+pub use authority_status::{
+    validate_authority_status, AuthorityStatusExpectation, AuthorityStatusValidationError,
+    ValidatedAuthorityStatus,
+};
 pub use pipeline::{
     dry_run_response, method_result_base, method_result_value, rejected_response, tool_error,
     Clock, CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,

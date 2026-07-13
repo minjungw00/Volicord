@@ -15,6 +15,7 @@
 - 권한 효력이 있는 사용자 행동 resolution에서 User Channel과 Agent Connection의 경계
 - Agent Connection 계층의 저장소 루트 프로젝트 선택과 프로젝트 가용성 경계
 - 담당 결과와 Agent Connection 사이의 에이전트 맥락 전달 규칙
+- 관리되는 최종 출력 권한 고지 기능과 연결 경계
 - 선택된 Agent Connection이나 현재 연결 맥락을 사용할 수 없거나, 맞지 않거나,
   오래되었거나, 충분하지 않을 때의 대체 표시
 
@@ -43,6 +44,7 @@
 |---|---|---|
 | Agent Connection 의미, 연결 의도, Connection Projects 멤버십, 연결 모드, 현재 연결 맥락 경계 | `stable` | 로컬 통합 계약입니다. OS 권한이나 사용자 권한이 아닙니다. |
 | 관리 호스트 생명주기와 검증 관찰 | `beta` | 지원되지만 호스트와 사용 가능한 기능에 따라 달라집니다. |
+| 관리되는 최종 출력 권한 고지 기능 | `beta` | 지원되는 관리 Codex 및 Claude Code 어댑터는 새 receipt를 호스트 고정 UI에 상태 보기로 표시할 수 있습니다. 사용 가능 상태와 실제 호스트 표시는 호스트에 따라 달라집니다. |
 | 저장된 식별 정보, 프로세스 바인딩 값, 호스트 설정 키, 파생 호출 메타데이터 | `internal` | 공개 MCP 입력에서 호출자 소유 권한처럼 노출하면 안 됩니다. |
 | 사람이 읽는 상태, 검증, 대체 안내, 지침 문구 | `diagnostic` | 집중 담당 문서가 명시한 필드만 안정적인 계약입니다. |
 
@@ -328,6 +330,50 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
 - Volicord 관리 `AGENTS.md` 블록을 포함한 Product Repository 지침, 생성된 호스트 지침,
   호스트 규칙 파일, MCP 서버 지침은 도구 선택을 개선할 수 있지만 강제 메커니즘이 아니며
   모델이 항상 Volicord 도구를 선택한다고 보장할 수 없습니다.
+
+<a id="managed-final-output-authority-disclosure"></a>
+## 관리되는 최종 출력 권한 고지
+
+지원되는 관리 Codex 및 Claude Code 어댑터는 `record`와 `detective` 프로필 모두에
+최종 출력 전용 권한 고지 기능을 제공합니다. 이 기능은 모델이 작성한 최종 산문이 아니라
+호스트 어댑터에 속합니다. 최종 출력 이벤트 뒤에 호스트 소유 고정 UI 표면을 사용하며
+MCP 도구 맥락과 구분됩니다.
+
+상태를 새로 읽기 전에 어댑터는 활성 Agent Connection, 선택 프로젝트 멤버십, 고정된
+Product Repository, 호스트 종류, 설치 프로필을 읽기 전용으로 검증해야 합니다. 이벤트
+텍스트, 모델 텍스트, 복사된 `connection_id` 값, 생성된 설정은 그 바인딩을 공급하거나
+복구할 수 없습니다. 적격 바인딩은 현재 읽기 전용 상태 조회를 허용할 뿐 사용자 권한을
+부여하거나 새 권한 기록을 만들지 않습니다.
+어댑터는 이 점검을 모두 통과한 뒤에만 통제된 내부 검증 근거
+`registered_host_stop_hook_connection_binding`을 파생합니다. 이 값은 공개 요청 필드나
+User Channel 검증 근거가 아닙니다.
+검증되지 않았거나 직접 호출된 Detective Stop 이벤트는 방어적 읽기 전용 Stop 평가에만
+내부 출처 `unregistered_host_hook_event`를 사용할 수 있습니다. 이 출처는 관리 바인딩이
+아니고 고정 UI receipt 상태 보기의 적격 근거가 아니며, 위 점검을 어느 것도 대체할 수
+없습니다.
+
+프로필 경계는 아래와 같습니다.
+
+- `record`는 이 고지에 필요한 관리 최종 출력 처리기만 설치합니다. 다른 Detective
+  생명주기 처리기를 설치하거나, 세션 감시기를 실행하거나, Detective 상태를 활성화하거나,
+  guard 이벤트를 기록하거나, 최종 출력을 차단하지 않습니다. Codex 처리기는 Git 작업
+  트리 루트 해석을 사용합니다. Git 저장소가 아닌 Product Repository에서도 Codex
+  `record`는 사용할 수 있지만, 이 관리 고지 기능을 설치하거나 제공한다고 표시하지 않고
+  적용되는 `volicord status` 대체 경로를 보고합니다. Claude Code에는 이 Git 루트 전제
+  조건이 없습니다.
+- `detective`는 별도 Stop 결정과 관찰 경로에 더해 같은 고지 상태 보기를 사용합니다.
+  영속된 과거 Stop 결정은 표시되는 receipt의 원천이 아닙니다.
+
+정확한 재생을 포함해 전달할 때마다 새 읽기 전용 상태 갱신을 수행하고
+[상태 보기와 템플릿 표시 경계](projection-and-templates.md#managed-final-output-authority-disclosure)가
+담당하는 receipt 전체 또는 대체 안내 상태 보기를 사용합니다. `generic`, 사용자 관리,
+미지원, 누락, 비활성, 저하 어댑터는 이 관리 표시 기능을 주장하지 않습니다. 진단 출력은
+그 한계를 드러내고, 식별한 Task는 `volicord status --task TASK_ID --json`으로, 현재
+Task가 없는 경우는 `volicord status --json`으로 안내해야 합니다.
+
+생성된 어댑터 설정을 쓰거나 검증하는 것은 관리 설정 상태만 증명합니다. 외부 호스트가
+어댑터를 로드했거나, 최종 출력 이벤트를 전달했거나, 고정 UI 고지를 표시했다는 증명이
+아닙니다.
 
 <a id="current-connection-context"></a>
 ## 현재 연결 맥락

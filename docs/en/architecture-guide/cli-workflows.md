@@ -3,7 +3,8 @@
 This guide owns architecture-level execution-flow boundaries for local
 `volicord` administrative workflows. It explains how CLI orchestration combines
 Runtime Home setup, installation profile preparation, Agent Connection records,
-host adapters, guard integration, verification, diagnostics, and rendering.
+host adapters, guard integration, final-output authority disclosure,
+verification, diagnostics, and rendering.
 
 This page does not define command syntax, flags, stdout or stderr contracts,
 exit codes, JSON output schemas, public API behavior, storage effects, security
@@ -28,11 +29,12 @@ orchestration, not a separate public command family.
 |---|---|---|
 | Setup workflow | Runtime Home resolution, installation profile preparation, command discovery, optional interactive choice, link installation, shell startup file update, and report rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#runtime-home-selection) and [Runtime Boundaries](../reference/runtime-boundaries.md). |
 | Connection init/add | Project registration, Agent Connection registration, host plan construction, guard integration planning or application, verification, and rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#volicord-agent-install), [Agent Connection](../reference/agent-connection.md), and [MCP Transport](../reference/mcp-transport.md). |
-| Connection status/verify | Stored connection facts, current host diagnostics, CLI MCP preflight, optional stdio handshake, guard audit facts, and rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states), [Agent Connection](../reference/agent-connection.md), and [MCP Transport](../reference/mcp-transport.md). |
+| Connection status/verify | Stored connection facts, current host diagnostics, CLI MCP preflight, optional stdio handshake, guard audit facts, final-output disclosure capability diagnostics, and rendering boundaries. | [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states), [Agent Connection](../reference/agent-connection.md), and [MCP Transport](../reference/mcp-transport.md). |
 | Guard hook lifecycle | Hidden internal hook command orchestration across session-start, pre-tool, post-tool, prompt capture, and stop phases. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
+| Final-output authority disclosure | Fresh read-only status refresh, shared typed receipt validation, profile-independent disclosure planning, host-native fixed UI rendering, and bounded fallback boundaries separate from Stop enforcement. | [Projection and Templates](../reference/projection-and-templates.md), [Administrative CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
 | Doctor diagnostics | Read-only inspection of setup, profile, connection, host, guard, and privacy-footprint facts, then diagnostic rendering. | [Administrative CLI](../reference/admin-cli.md#runtime-home-selection), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md). |
 | Host integration | Host adapter planning, apply, verify, and remove responsibilities that the CLI orchestrates. | [Administrative CLI](../reference/admin-cli.md#external-host-configuration) and [Agent Connection](../reference/agent-connection.md). |
-| Guard integration | Generated file planning, application, capability metadata, and factual audit helpers used by init, status, verification, and doctor. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands) and [Security](../reference/security.md). |
+| Guard integration | Generated file planning and application for the profile-independent final-output handler subset and fuller Detective lifecycle, plus capability metadata and factual audit helpers used by init, status, verification, and doctor. | [Administrative CLI](../reference/admin-cli.md#guard-hook-commands) and [Security](../reference/security.md). |
 
 ## Setup workflow
 
@@ -128,7 +130,8 @@ Connection status is read-oriented. It selects one Agent Connection, reads its
 connected project membership and stored verification facts, reconstructs the
 managed host plan where possible, attaches current host diagnostics when the
 adapter can report them, gathers guard state, and renders the stored or derived
-status. It does not launch the host, rewrite host configuration, or refresh MCP
+status, including final-output disclosure capability and configuration facts.
+It does not launch the host, rewrite host configuration, or refresh MCP
 preflight.
 
 Connection verify is an active diagnostic workflow. It selects one Agent
@@ -136,7 +139,8 @@ Connection, reconstructs the host plan, runs host verification, runs CLI MCP
 preflight, optionally performs a direct stdio handshake and tool discovery, and
 updates the connection's last-known verification report. Verification output can
 combine stored connection facts, current host diagnostics, MCP command and
-preflight facts, managed host lifecycle observations, and guard audit facts.
+preflight facts, managed host lifecycle observations, final-output disclosure
+capability diagnostics, and guard audit facts.
 
 These workflows report observable facts and next actions. They do not prove
 that an external host loaded, trusted, approved, initialized, or exposed a
@@ -165,8 +169,10 @@ Phase handlers have distinct architecture responsibilities:
   Product Repository changes.
 - `prompt-capture` handles prompt metadata and strict chat command handling for
   User Channel action resolutions when prompt capture is available.
-- `stop` checks close-related facts and renders the host-native allow or deny
-  result for session completion.
+- `stop` checks close-related facts through the shared typed status/receipt
+  validation boundary and renders the host-native allow or deny result for
+  session completion. Stop enforcement does not own the general final-output
+  disclosure surface.
 
 The event timestamp remains observation metadata for guard recording and
 correlation. Current Task, write-ticket, pending UserAction, and prompt-command
@@ -183,6 +189,38 @@ not public Core methods, user-owned judgments by themselves, write tickets,
 host trust, shell approval, OS sandboxing, full write prevention, actor
 attribution proof, correctness proof, test sufficiency proof, or human review
 replacement.
+
+## Final-output authority disclosure
+
+Final-output disclosure is a profile-independent host-adapter workflow, not the
+Detective Stop enforcement decision. When a supported host reports a
+final-output event, the CLI requests a fresh read-only Core status for the
+selected project and Task.
+The shared Core-owned typed validator compares the status and candidate
+`AuthorityReceipt` under the owner-defined relationships. The CLI then builds
+one in-memory disclosure plan and asks the selected host adapter to render it
+on a fixed host-native UI surface.
+
+For a selected Task, the plan preserves the complete canonical receipt or a
+bounded Task-specific `volicord status` fallback; it does not truncate receipt
+JSON. Missing Task state, a failed refresh, or malformed or mismatched status
+becomes the explicit fallback or diagnostic path owned by the applicable
+Reference documents. Every final-output event repeats the read-only refresh,
+including an event that follows replay. A previous mutation response, Stop
+result, or model-authored answer is not cached as current authority.
+
+Record and Detective profiles share this disclosure workflow. Detective Stop
+may consume the same validation facts for its separate allow-or-deny decision,
+while Record disclosure remains non-blocking. Generic, user-managed,
+unsupported, inactive, or degraded host paths report only their supported
+fallback and diagnostic facts rather than claiming a fixed host UI surface.
+
+Renderer and generated-configuration fixtures verify adapter bytes and routing.
+They do not establish that an actual host loaded or displayed the surface. Live
+Codex and Claude Code observations belong in opt-in host integration validation.
+The implementation rationale is recorded in
+[Final-output authority disclosure](decisions/final-output-authority-disclosure.md);
+exact behavior remains in the focused Reference owners.
 
 ## Doctor diagnostics
 
@@ -206,6 +244,11 @@ capability declarations, and conflict detection. CLI workflows choose the host,
 intent, mode, profile, Runtime Home, project context, and Agent Connection
 facts, then call the adapter at the plan, apply, verify, or remove boundary.
 
+Profile-independent final-output capability contracts and validation also live
+at this boundary. Guard integration applies the host-specific generated handler
+plan, but the full Detective lifecycle remains distinct from the
+final-output-only subset.
+
 The CLI treats host configuration as an external integration surface. A
 successful host configuration write is distinct from host trust, host approval,
 host reload, active tool exposure, and model behavior. Generic external MCP host
@@ -215,13 +258,15 @@ host configuration.
 
 ## Guard integration boundary
 
-Guard integration plans generated files, policy JSON, host hook commands,
-capability metadata, prompt-capture availability, and factual audit inputs for
-detective-aware workflows. Application writes only the planned managed files or
-managed blocks. Managed-file application pins the Product Repository parent
-path, compares the planned target snapshot before commit, stages a sibling
-entry, uses the platform filesystem facade when a native namespace operation is
-needed, and verifies the participating entries after the operation. The CLI
+Guard integration plans generated files, policy JSON, host event commands,
+capability metadata, and factual audit inputs. Supported managed Record and
+Detective profile paths share the final-output handler subset; only Detective
+adds the remaining lifecycle handlers and prompt-capture observations.
+Application writes only the planned managed files or managed blocks. Managed-file
+application pins the Product Repository parent path, compares the planned
+target snapshot before commit, stages a sibling entry, uses the platform
+filesystem facade when a native namespace operation is needed, and verifies the
+participating entries after the operation. The CLI
 caller owns cleanup, recovery inspection, and diagnostic construction; the
 platform facade does not make those decisions. Audit reads recorded metadata
 and generated files to classify missing, stale, broken, unsafe, or unobserved

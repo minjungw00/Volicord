@@ -264,7 +264,9 @@ Must not claim:
 - `action_required` is a failed installation when configuration was installed but the host still requires user-controlled trust or approval.
 - Cwd-independent hook paths, wrapper verification, or `hook_path_safety=ok` provide OS sandboxing, global filesystem interception, broad command blocking, network blocking, secret blocking, or proof that no write can occur outside implemented host hooks.
 - Agent instructions, `AGENTS.md` blocks, `CLAUDE.md`, `.claude/rules/` files, or MCP server instructions are access control, security enforcement, user judgment, a write ticket, or proof that a model will follow them.
+- A written or verified final-output adapter configuration proves that the host loaded the adapter, delivered the event, or displayed its fixed UI output.
 
+<a id="generated-displays-and-text"></a>
 ### Generated displays and text
 
 Generated displays, rendered templates, chat text, connector prose, and agent memory can help readers understand source records.
@@ -272,6 +274,7 @@ Generated displays, rendered templates, chat text, connector prose, and agent me
 Must not claim:
 - A rendered display, `Projection`, status card, template output, chat message, connector description, or agent memory is a new authority source.
 - Displayed `ArtifactRef`, `UserActionRequest`, `UserActionResolution`, write-ticket identifier, or `connection_id` text creates the authority named by those identifiers.
+- A final-output `AuthorityReceipt` projection is a second authority record, a Core mutation, a host observation, or proof that model-authored final prose used current authority.
 
 ## Explicit non-guarantees
 

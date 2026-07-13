@@ -206,6 +206,8 @@ pub const REQUIRED_GUARD_PHASES: [HostLifecyclePhase; 5] = [
     HostLifecyclePhase::Stop,
 ];
 
+pub const FINAL_OUTPUT_PHASES: [HostLifecyclePhase; 1] = [HostLifecyclePhase::Stop];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostIntegrationFileKind {

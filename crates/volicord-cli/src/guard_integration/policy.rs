@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use serde_json::{json, Value};
 use volicord_types::IntegrationProfile;
@@ -56,6 +59,7 @@ pub(crate) struct LocalPolicyContext<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RecordedLocalPolicy {
     pub(crate) host: String,
+    pub(crate) repo_root: PathBuf,
     pub(crate) connection_intent: ConnectionIntent,
     pub(crate) selected_profile: IntegrationProfile,
     pub(crate) connection_id: String,
@@ -114,6 +118,7 @@ pub(crate) fn recorded_local_policy(
     };
     Ok(Some(RecordedLocalPolicy {
         host: required("host")?,
+        repo_root: PathBuf::from(required("repo_root")?),
         connection_intent,
         selected_profile,
         connection_id: required("connection_id")?,

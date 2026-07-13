@@ -11,9 +11,10 @@ use crate::{
     host_integration::{
         codex,
         contracts::{
-            contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
+            contract_for, hook_event_for_phase, validate_contract_config,
+            validate_final_output_contract_config, HostContractConfigKind,
         },
-        HostIntegrationFileKind, HostKind, HostLifecyclePhase, REQUIRED_GUARD_PHASES,
+        HostIntegrationFileKind, HostKind, HostLifecyclePhase, FINAL_OUTPUT_PHASES,
     },
 };
 
@@ -23,13 +24,14 @@ const CODEX_RULE_END_MARKER: &str = "# END VOLICORD MANAGED CODEX RULES";
 pub(crate) fn plan_codex_hook_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
+    phases: &[HostLifecyclePhase],
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let contract = contract_for(HostKind::Codex).ok_or_else(|| {
         GuardIntegrationError::runtime(
             "DETECTIVE_HOOKS_UNSUPPORTED: no Codex host integration contract is available",
         )
     })?;
-    let hooks = REQUIRED_GUARD_PHASES
+    let hooks = phases
         .iter()
         .map(|phase| {
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
@@ -69,13 +71,20 @@ pub(crate) fn plan_codex_hook_file(
     let value = json!({ "hooks": hooks });
     let text = serde_json::to_string_pretty(&value)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, &text).map_err(
-        |error| {
-            GuardIntegrationError::runtime(format!(
-                "generated Codex hook config does not match the verified contract: {error}"
-            ))
-        },
-    )?;
+    let validation = if phases == FINAL_OUTPUT_PHASES {
+        validate_final_output_contract_config(
+            HostKind::Codex,
+            HostContractConfigKind::HookConfig,
+            &text,
+        )
+    } else {
+        validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, &text)
+    };
+    validation.map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "generated Codex hook config does not match the verified contract: {error}"
+        ))
+    })?;
     plan_managed_exact_json_file(
         HostIntegrationFileKind::HostHookConfig,
         repo_root,

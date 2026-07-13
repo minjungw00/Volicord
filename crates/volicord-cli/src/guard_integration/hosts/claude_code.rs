@@ -14,10 +14,11 @@ use crate::{
     host_integration::{
         claude_code,
         contracts::{
-            contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
+            contract_for, hook_event_for_phase, validate_contract_config,
+            validate_final_output_contract_config, HostContractConfigKind,
         },
         ConnectionIntent, HostIntegrationFileKind, HostKind, HostLifecyclePhase,
-        ManagedServerEntry, REQUIRED_GUARD_PHASES,
+        ManagedServerEntry, FINAL_OUTPUT_PHASES,
     },
 };
 
@@ -40,16 +41,25 @@ pub(crate) fn plan_claude_project_settings_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
     connection_intent: ConnectionIntent,
+    phases: &[HostLifecyclePhase],
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
-    let value = claude_settings_hooks_projection(hook_commands)?;
+    let value = claude_settings_hooks_projection(hook_commands, phases)?;
     let text = serde_json::to_string_pretty(&value)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    validate_contract_config(
-        HostKind::ClaudeCode,
-        HostContractConfigKind::ProjectSettings,
-        &text,
-    )
-    .map_err(|error| {
+    let validation = if phases == FINAL_OUTPUT_PHASES {
+        validate_final_output_contract_config(
+            HostKind::ClaudeCode,
+            HostContractConfigKind::ProjectSettings,
+            &text,
+        )
+    } else {
+        validate_contract_config(
+            HostKind::ClaudeCode,
+            HostContractConfigKind::ProjectSettings,
+            &text,
+        )
+    };
+    validation.map_err(|error| {
         GuardIntegrationError::runtime(format!(
             "generated Claude Code settings hooks do not match the verified contract: {error}"
         ))
@@ -99,13 +109,14 @@ fn claude_mcp_projection(server_name: &str, entry: &ManagedServerEntry) -> Value
 
 fn claude_settings_hooks_projection(
     hook_commands: &BTreeMap<String, HostHookCommand>,
+    phases: &[HostLifecyclePhase],
 ) -> Result<Value, GuardIntegrationError> {
     let contract = contract_for(HostKind::ClaudeCode).ok_or_else(|| {
         GuardIntegrationError::runtime(
             "DETECTIVE_HOOKS_UNSUPPORTED: no Claude Code host integration contract is available",
         )
     })?;
-    let hooks = REQUIRED_GUARD_PHASES
+    let hooks = phases
         .iter()
         .map(|phase| {
             let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {

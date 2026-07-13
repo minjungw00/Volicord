@@ -14,9 +14,11 @@ use volicord_store::{
 
 use crate::host_integration::{
     contracts::{
-        contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
+        contract_for, hook_event_for_phase, validate_contract_config,
+        validate_final_output_contract_config, HostContractConfigKind,
     },
-    HostIntegrationFileKind, HostKind, HostLifecyclePhase, REQUIRED_GUARD_PHASES,
+    HostIntegrationFileKind, HostKind, HostLifecyclePhase, FINAL_OUTPUT_PHASES,
+    REQUIRED_GUARD_PHASES,
 };
 
 use super::policy::{required_guard_phase_names, validate_policy_schema};
@@ -108,6 +110,7 @@ pub(crate) struct GuardFileFindings {
     pub(crate) managed_bundle_hashes: Vec<String>,
     pub(crate) managed_verification_statuses: Vec<String>,
     pub(crate) native_host_output_adapter_verified_values: Vec<bool>,
+    pub(crate) final_output_authority_disclosure_supported_values: Vec<bool>,
     pub(crate) bash_shell_mutation_coverage_values: Vec<bool>,
     pub(crate) direct_file_write_matcher_coverage_values: Vec<bool>,
     pub(crate) missing_required_hooks: Vec<String>,
@@ -136,6 +139,8 @@ impl GuardFileFindings {
             .extend(other.managed_verification_statuses);
         self.native_host_output_adapter_verified_values
             .extend(other.native_host_output_adapter_verified_values);
+        self.final_output_authority_disclosure_supported_values
+            .extend(other.final_output_authority_disclosure_supported_values);
         self.bash_shell_mutation_coverage_values
             .extend(other.bash_shell_mutation_coverage_values);
         self.direct_file_write_matcher_coverage_values
@@ -294,6 +299,23 @@ impl GuardFileFindings {
     pub(crate) fn native_host_output_adapter_verified(&self) -> bool {
         self.generated_config_verified()
             && all_recorded_values_true(&self.native_host_output_adapter_verified_values)
+    }
+
+    pub(crate) fn final_output_authority_disclosure_supported(&self) -> bool {
+        all_recorded_values_true(&self.final_output_authority_disclosure_supported_values)
+    }
+
+    pub(crate) fn final_output_authority_disclosure_configured(&self) -> bool {
+        self.final_output_authority_disclosure_supported()
+            && self.kind_state(HostIntegrationFileKind::VolicordPolicy) == "installed"
+            && self.kind_state(HostIntegrationFileKind::HostHookConfig) == "installed"
+            && self.kind_state(HostIntegrationFileKind::HostHookWrapper) == "installed"
+    }
+
+    pub(crate) fn final_output_authority_disclosure_verified(&self) -> bool {
+        self.final_output_authority_disclosure_configured()
+            && all_recorded_values_true(&self.native_host_output_adapter_verified_values)
+            && self.hook_path_safety_ok()
     }
 
     pub(crate) fn bash_shell_mutation_coverage(&self) -> bool {
@@ -458,6 +480,19 @@ fn guard_file_findings_with_context(
             "native_host_output_adapter_verified",
         ));
     findings
+        .final_output_authority_disclosure_supported_values
+        .push(
+            value
+                .get("final_output_authority_disclosure_supported")
+                .and_then(Value::as_bool)
+                .unwrap_or_else(|| {
+                    value
+                        .get("native_host_output_adapter")
+                        .and_then(Value::as_str)
+                        .is_some_and(|adapter| adapter != "none")
+                }),
+        );
+    findings
         .bash_shell_mutation_coverage_values
         .push(bool_json_field(&value, "bash_shell_mutation_coverage"));
     findings
@@ -493,9 +528,7 @@ fn record_profile_ignores_detective_file(capability: &Value, file: &Value) -> bo
             .is_some_and(|kind| {
                 matches!(
                     kind,
-                    HostIntegrationFileKind::HostHookConfig
-                        | HostIntegrationFileKind::HostHookDispatch
-                        | HostIntegrationFileKind::HostHookWrapper
+                    HostIntegrationFileKind::HostHookDispatch
                         | HostIntegrationFileKind::HostRuleInstruction
                 )
             })
@@ -578,7 +611,10 @@ fn verify_recorded_hook_path_safety(
 
 fn capability_requires_hook_path_safety(capability: &Value) -> bool {
     match capability.get("selected_profile").and_then(Value::as_str) {
-        Some("record") => false,
+        Some("record") => capability
+            .get("native_host_output_adapter")
+            .and_then(Value::as_str)
+            .is_some_and(|adapter| adapter != "none"),
         Some("detective" | "mixed") => true,
         _ => capability
             .get("required_hook_phases")
@@ -658,7 +694,8 @@ fn verify_recorded_hook_command_path_safety(
         HookWrapperResolutionStatus::WrapperMissing,
         findings,
     );
-    if host_kind == HostKind::Codex.as_str() {
+    if host_kind == HostKind::Codex.as_str() && expected_wrapper_path != expected_phase_wrapper_path
+    {
         verify_recorded_hook_wrapper_path(
             expected_wrapper_path,
             HookWrapperResolutionStatus::DispatchMissing,
@@ -882,6 +919,12 @@ fn classify_codex_hook_command_path(
         if command_text.contains("git rev-parse --show-toplevel")
             && command_text.contains(CODEX_DISPATCH_WRAPPER)
             && command_text.contains(phase_command)
+        {
+            return HookWrapperResolutionStatus::Ok;
+        }
+        if expected_dispatch_path == expected_phase_wrapper_path
+            && command_text.contains("git rev-parse --show-toplevel")
+            && command_text.contains(&format!("$root/{relative_wrapper}"))
         {
             return HookWrapperResolutionStatus::Ok;
         }
@@ -1163,9 +1206,18 @@ fn verify_managed_json_file(
                 return;
             }
         };
-        if validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, text)
-            .is_err()
-        {
+        let final_output_only =
+            capability.get("selected_profile").and_then(Value::as_str) == Some("record");
+        let validation = if final_output_only {
+            validate_final_output_contract_config(
+                HostKind::Codex,
+                HostContractConfigKind::HookConfig,
+                text,
+            )
+        } else {
+            validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, text)
+        };
+        if validation.is_err() {
             findings.stale_files.push(path_text.to_owned());
             state = "stale";
         }
@@ -1294,8 +1346,17 @@ fn verify_managed_script_file(
         .get("host_output")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    let purpose = file
+        .get("purpose")
+        .and_then(Value::as_str)
+        .unwrap_or("detective_guard");
+    let command_entry = if purpose == "final_output_authority_disclosure" {
+        "volicord _final-output "
+    } else {
+        "volicord _hook "
+    };
     for required in [
-        "volicord _hook ",
+        command_entry,
         "--repo ",
         "--connection ",
         "--guard-installation ",
@@ -1335,6 +1396,7 @@ fn verify_managed_script_file(
     for key in [
         "host_kind",
         "phase",
+        "purpose",
         "connection_id",
         "guard_installation_id",
     ] {
@@ -1495,12 +1557,25 @@ fn verify_managed_json_projection_file(
             && serde_json::to_string(&actual_projection)
                 .ok()
                 .is_none_or(|text| {
-                    validate_contract_config(
-                        HostKind::ClaudeCode,
-                        HostContractConfigKind::ProjectSettings,
-                        &text,
-                    )
-                    .is_err()
+                    let final_output_only = desired
+                        .get("hooks")
+                        .and_then(Value::as_object)
+                        .is_some_and(|hooks| hooks.len() == 1 && hooks.contains_key("Stop"));
+                    if final_output_only {
+                        validate_final_output_contract_config(
+                            HostKind::ClaudeCode,
+                            HostContractConfigKind::ProjectSettings,
+                            &text,
+                        )
+                        .is_err()
+                    } else {
+                        validate_contract_config(
+                            HostKind::ClaudeCode,
+                            HostContractConfigKind::ProjectSettings,
+                            &text,
+                        )
+                        .is_err()
+                    }
                 })
         {
             findings.stale_files.push(path_text.to_owned());
@@ -1574,13 +1649,19 @@ fn claude_settings_hooks_projection_from_actual(
 ) -> Result<Option<Value>, ()> {
     let actual_hooks = actual.get("hooks").and_then(Value::as_object).ok_or(())?;
     let desired_hooks = desired.get("hooks").and_then(Value::as_object).ok_or(())?;
-    let mut projected_hooks = serde_json::Map::new();
     for phase in REQUIRED_GUARD_PHASES {
         let event_name = claude_event_name(phase)?;
-        let desired_groups = desired_hooks
-            .get(event_name)
-            .and_then(Value::as_array)
-            .ok_or(())?;
+        if !desired_hooks.contains_key(event_name)
+            && actual_hooks
+                .get(event_name)
+                .is_some_and(|groups| claude_event_has_volicord_phase_handler(groups, phase))
+        {
+            return Ok(None);
+        }
+    }
+    let mut projected_hooks = serde_json::Map::new();
+    for (event_name, desired_groups) in desired_hooks {
+        let desired_groups = desired_groups.as_array().ok_or(())?;
         let desired_group = desired_groups.first().ok_or(())?;
         let Some(actual_groups) = actual_hooks.get(event_name).and_then(Value::as_array) else {
             return Ok(None);
@@ -1593,11 +1674,35 @@ fn claude_settings_hooks_projection_from_actual(
             return Ok(None);
         }
         projected_hooks.insert(
-            event_name.to_owned(),
+            event_name.clone(),
             Value::Array(vec![desired_group.clone()]),
         );
     }
     Ok(Some(json!({ "hooks": projected_hooks })))
+}
+
+fn claude_event_has_volicord_phase_handler(groups: &Value, phase: HostLifecyclePhase) -> bool {
+    let relative_wrapper = format!(".claude/hooks/volicord-{}.sh", phase.command_name());
+    groups.as_array().is_some_and(|groups| {
+        groups.iter().any(|group| {
+            group
+                .get("hooks")
+                .and_then(Value::as_array)
+                .is_some_and(|handlers| {
+                    handlers.iter().any(|handler| {
+                        handler
+                            .get("command")
+                            .and_then(Value::as_str)
+                            .is_some_and(|command| {
+                                command.contains(&relative_wrapper)
+                                    || ((command.contains("volicord _hook")
+                                        || command.contains("volicord _final-output"))
+                                        && command.contains(phase.command_name()))
+                            })
+                    })
+                })
+        })
+    })
 }
 
 fn claude_event_name(phase: HostLifecyclePhase) -> Result<&'static str, ()> {
@@ -1649,10 +1754,15 @@ pub(crate) fn is_volicord_codex_hook_config(value: &Value) -> bool {
     let Some(contract) = contract_for(HostKind::Codex) else {
         return false;
     };
-    if hooks.len() != REQUIRED_GUARD_PHASES.len() {
-        return false;
-    }
-    REQUIRED_GUARD_PHASES.iter().all(|phase| {
+    let phases: &[HostLifecyclePhase] =
+        if hooks.len() == FINAL_OUTPUT_PHASES.len() && hooks.contains_key("Stop") {
+            &FINAL_OUTPUT_PHASES
+        } else if hooks.len() == REQUIRED_GUARD_PHASES.len() {
+            &REQUIRED_GUARD_PHASES
+        } else {
+            return false;
+        };
+    phases.iter().all(|phase| {
         let Some(event) = hook_event_for_phase(contract, *phase) else {
             return false;
         };
@@ -1761,6 +1871,37 @@ fn path_text(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_record_stop_wrapper_is_classified_as_git_root_safe() {
+        let wrapper = "/repo/.codex/hooks/volicord-stop.sh";
+        let command = "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-stop.sh\"'";
+        assert_eq!(
+            classify_codex_hook_command_path("stop", command, wrapper, wrapper),
+            HookWrapperResolutionStatus::Ok
+        );
+    }
+
+    #[test]
+    fn codex_owned_hook_config_accepts_final_output_only_but_not_arbitrary_subset() {
+        let final_output: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/host_contracts/codex/final_output_hooks.json"
+        ))
+        .expect("final-output fixture should be JSON");
+        assert!(is_volicord_codex_hook_config(&final_output));
+
+        let arbitrary_subset = json!({
+            "hooks": {
+                "SessionStart": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-session-start.sh\"'"
+                    }]
+                }]
+            }
+        });
+        assert!(!is_volicord_codex_hook_config(&arbitrary_subset));
+    }
     use serde_json::{json, Value};
 
     #[test]
@@ -1843,6 +1984,53 @@ mod tests {
         let actual_with_duplicate = json!({ "hooks": duplicate_hooks });
         assert_eq!(
             claude_settings_hooks_projection_from_actual(&actual_with_duplicate, &desired),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn claude_record_projection_rejects_retired_detective_handlers_but_allows_unmanaged_groups() {
+        let stop = HostLifecyclePhase::Stop;
+        let stop_event = claude_event_name(stop).expect("Stop should map to a Claude event");
+        let desired = json!({
+            "hooks": {
+                (stop_event): [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh",
+                        "args": [],
+                        "timeout": 30
+                    }]
+                }]
+            }
+        });
+        let pre_tool = HostLifecyclePhase::PreTool;
+        let pre_tool_event =
+            claude_event_name(pre_tool).expect("PreTool should map to a Claude event");
+        let mut actual = desired.clone();
+        actual["hooks"][pre_tool_event] = json!([{
+            "matcher": "Bash",
+            "hooks": [{
+                "type": "command",
+                "command": "./user-owned-pre-tool.sh"
+            }]
+        }]);
+        assert_eq!(
+            claude_settings_hooks_projection_from_actual(&actual, &desired),
+            Ok(Some(desired.clone()))
+        );
+
+        actual["hooks"][pre_tool_event] = json!([{
+            "matcher": "Bash",
+            "hooks": [{
+                "type": "command",
+                "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-pre-tool.sh",
+                "args": [],
+                "timeout": 30
+            }]
+        }]);
+        assert_eq!(
+            claude_settings_hooks_projection_from_actual(&actual, &desired),
             Ok(None)
         );
     }

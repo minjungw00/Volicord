@@ -300,20 +300,21 @@ For each host, confirm all of these observations against the release candidate:
    that the selected resolution was recorded before that Run.
 5. The persisted final Stop guard event for the exact Agent Connection returned
    by `init`, the same Task, and a non-null host session has `decision=allow`, no
-   reasons or close blockers, and an `AuthorityReceipt` exactly equal to the
-   fresh CLI status receipt. After the final model answer, the supported Codex
-   or Claude Code Stop hook
-   visibly presents its separate Volicord `systemMessage` UI surface containing
-   the complete fresh `AuthorityReceipt`. After the host exits, enter
-   `receipt:<state_version>` only when that separate surface's receipt
-   `state_version` matches the fresh CLI status receipt. This token confirms UI
-   presentation only; the harness reads the Stop decision and receipt binding
-   from the durable guard event.
+   reasons or close blockers, and the historical `AuthorityReceipt` used for
+   that immutable Stop decision. After the final model answer, the supported
+   Codex or Claude Code Stop hook visibly presents its separate Volicord
+   `systemMessage` UI surface containing the complete freshly refreshed
+   `AuthorityReceipt`. After the host exits, enter `receipt:<state_version>`
+   only when that separate surface's receipt `state_version` matches a fresh CLI
+   status receipt. This token confirms UI presentation only. An exact Stop-event
+   replay must leave the durable guard event and decision unchanged while
+   refreshing the separate UI again; if state advanced, the historical stored
+   receipt and current displayed receipt may intentionally differ.
 6. The bounded JSON result reports a unique validation `run_id`, start and
    record times, host version, Volicord `build_id`, exact Agent Connection ID,
    operator-confirmed and stored choice, authority-event order, consumed Run,
-   observed Stop allow, fresh
-   receipt binding, UI confirmations, and final `result=passed` without
+   observed Stop allow, historical stored receipt coordinates, fresh UI receipt
+   binding, UI confirmations, and final `result=passed` without
    including a transcript or prompt body. The external file is replaced through
    a same-directory temporary file and rename, so readers do not observe a
    partially written final JSON object.

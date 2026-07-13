@@ -22,10 +22,16 @@ use volicord_store::{
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, IntegrationProfile,
-    UtcTimestamp,
+    UtcTimestamp, VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
+    VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT,
 };
 
 use crate::disclosure::cooperative_host_decision_disclosure_json;
+use crate::final_output_command::{
+    managed_final_output_binding_is_verified, project_managed_final_authority,
+    read_final_authority_coordinates, render_final_authority_response,
+    FinalAuthorityFallbackReason, FinalAuthorityProjection, ManagedFinalOutputHost,
+};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -46,11 +52,14 @@ mod tool_observation;
 mod write_ticket;
 
 pub use args::guard_usage;
-use args::{parse_guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase};
+use args::{
+    parse_guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase, HostOutputMode,
+    OutputFormat,
+};
 use envelope::{event_path_field, event_string, guard_envelope, GuardEnvelope};
 use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
 use prompt_capture::handle_prompt_capture;
-use render::render_guard_output;
+use render::{render_guard_output, RenderedGuardOutput};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCommandOutcome {
@@ -155,9 +164,32 @@ where
     let input = read_guard_input(options.event_file.as_deref())?;
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
     let envelope = guard_envelope(phase, &options, &input, &project)?;
+    let subject = guard_subject(phase, &input, &envelope, &project);
+    if phase == GuardPhase::Stop {
+        if let Some(replayed) =
+            replayed_stop_phase_result(&runtime_home, &project, &envelope, phase, &subject)?
+        {
+            let rendered = render_guard_command_output(
+                phase,
+                replayed.decision,
+                &envelope,
+                replayed.result,
+                &options,
+                &runtime_home,
+                &project,
+            )?;
+            return Ok(GuardCommandOutcome {
+                stdout: rendered.stdout,
+                stderr: rendered.stderr,
+                exit_code: rendered.exit_code,
+            });
+        }
+    }
     ensure_required_session(&runtime_home, &project, &envelope, phase)?;
     let _activation =
         observe_guard_installation_activation(&runtime_home, &project, &envelope, phase, &options)?;
+    let stop_invocation_binding_basis = (phase == GuardPhase::Stop)
+        .then(|| stop_invocation_binding_basis(&runtime_home, &project, &envelope, &options));
     let mut phase_result = match phase {
         GuardPhase::SessionStart => {
             phase::session_start::handle_session_start(&runtime_home, &project, &envelope, &input)?
@@ -173,11 +205,17 @@ where
                 handle_prompt_capture(&runtime_home, &project, &envelope, &input)?;
             GuardPhaseResult::new(decision, result)
         }
-        GuardPhase::Stop => phase::stop::handle_stop(&runtime_home, &project, &envelope, &input)?,
+        GuardPhase::Stop => phase::stop::handle_stop(
+            &runtime_home,
+            &project,
+            &envelope,
+            &input,
+            stop_invocation_binding_basis
+                .expect("Stop phase always derives an invocation binding basis"),
+        )?,
     };
     attach_guard_disclosure(&mut phase_result.result);
 
-    let subject = guard_subject(phase, &input, &envelope, &project);
     persist_guard_event(
         &runtime_home,
         &project,
@@ -199,18 +237,220 @@ where
         input.raw_text.len() as u64,
         &phase_result.result,
     );
-    let rendered = render_guard_output(
+    let rendered = render_guard_command_output(
         phase,
         phase_result.decision,
         &envelope,
         phase_result.result,
-        options.output,
+        &options,
+        &runtime_home,
+        &project,
     )?;
     Ok(GuardCommandOutcome {
         stdout: rendered.stdout,
         stderr: rendered.stderr,
         exit_code: rendered.exit_code,
     })
+}
+
+fn render_guard_command_output(
+    phase: GuardPhase,
+    decision: GuardDecision,
+    envelope: &GuardEnvelope,
+    result: Value,
+    options: &GuardOptions,
+    runtime_home: &Path,
+    project: &ProjectRecord,
+) -> Result<RenderedGuardOutput, GuardCommandError> {
+    let mut rendered = render_guard_output(phase, decision, envelope, result, options.output)?;
+    let OutputFormat::HostNative(host_output) = options.output else {
+        return Ok(rendered);
+    };
+    if phase != GuardPhase::Stop {
+        return Ok(rendered);
+    }
+
+    let projection =
+        guard_final_authority_projection(runtime_home, project, envelope, options, host_output);
+    let base_response =
+        serde_json::from_str::<Value>(rendered.stdout.trim()).map_err(json_error)?;
+    match render_final_authority_response(&base_response, &projection) {
+        Ok(authority_output) => {
+            rendered.stdout = authority_output.stdout;
+        }
+        Err(_) => {
+            let minimal_base = match decision {
+                GuardDecision::Deny => json!({
+                    "decision": "block",
+                    "reason": "Volicord blocked this Stop event; inspect its stored GuardEvent for the historical decision."
+                }),
+                GuardDecision::Allow | GuardDecision::Warn | GuardDecision::InjectContext => {
+                    json!({"continue": true})
+                }
+            };
+            let safe_projection = FinalAuthorityProjection::fallback(
+                FinalAuthorityFallbackReason::RenderingUnavailable,
+                None,
+            );
+            rendered.stdout = render_final_authority_response(&minimal_base, &safe_projection)
+                .map_err(|error| {
+                    GuardCommandError::Runtime(format!(
+                        "failed to render the bounded final authority fallback: {error}"
+                    ))
+                })?
+                .stdout;
+        }
+    }
+    Ok(rendered)
+}
+
+fn guard_final_authority_projection(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    options: &GuardOptions,
+    host_output: HostOutputMode,
+) -> FinalAuthorityProjection {
+    let coordinates = read_final_authority_coordinates(runtime_home, project).ok();
+    let binding = match guard_final_output_binding_input(envelope, options, host_output) {
+        Ok(binding) => binding,
+        Err(reason) => return FinalAuthorityProjection::fallback(reason, coordinates),
+    };
+    project_managed_final_authority(
+        runtime_home,
+        &project.repo_root,
+        &envelope.connection_id,
+        binding.guard_installation_id,
+        binding.host,
+        IntegrationProfile::Detective,
+        binding.expected_policy_hash,
+        binding.output_host,
+        coordinates,
+    )
+}
+
+fn stop_invocation_binding_basis(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    options: &GuardOptions,
+) -> &'static str {
+    let OutputFormat::HostNative(host_output) = options.output else {
+        return VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT;
+    };
+    let Ok(binding) = guard_final_output_binding_input(envelope, options, host_output) else {
+        return VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT;
+    };
+    if managed_final_output_binding_is_verified(
+        runtime_home,
+        &project.repo_root,
+        &envelope.connection_id,
+        binding.guard_installation_id,
+        binding.host,
+        IntegrationProfile::Detective,
+        binding.expected_policy_hash,
+        binding.output_host,
+    ) {
+        VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING
+    } else {
+        VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT
+    }
+}
+
+struct GuardFinalOutputBindingInput<'a> {
+    host: ManagedFinalOutputHost,
+    output_host: ManagedFinalOutputHost,
+    guard_installation_id: &'a str,
+    expected_policy_hash: &'a str,
+}
+
+fn guard_final_output_binding_input<'a>(
+    envelope: &'a GuardEnvelope,
+    options: &'a GuardOptions,
+    host_output: HostOutputMode,
+) -> Result<GuardFinalOutputBindingInput<'a>, FinalAuthorityFallbackReason> {
+    let Some(host) = managed_final_output_host(&envelope.host_kind) else {
+        return Err(FinalAuthorityFallbackReason::BindingUnavailable);
+    };
+    let output_host = match host_output {
+        HostOutputMode::Codex => ManagedFinalOutputHost::Codex,
+        HostOutputMode::ClaudeCode => ManagedFinalOutputHost::ClaudeCode,
+    };
+    if envelope.guard_mode != IntegrationProfile::Detective.as_str() {
+        return Err(FinalAuthorityFallbackReason::BindingUnavailable);
+    }
+    let (Some(guard_installation_id), Some(expected_policy_hash)) = (
+        envelope.guard_installation_id.as_deref(),
+        options.policy_hash.as_deref(),
+    ) else {
+        return Err(FinalAuthorityFallbackReason::BindingUnavailable);
+    };
+    Ok(GuardFinalOutputBindingInput {
+        host,
+        output_host,
+        guard_installation_id,
+        expected_policy_hash,
+    })
+}
+
+fn managed_final_output_host(host_kind: &str) -> Option<ManagedFinalOutputHost> {
+    match host_kind {
+        "codex" => Some(ManagedFinalOutputHost::Codex),
+        "claude_code" => Some(ManagedFinalOutputHost::ClaudeCode),
+        _ => None,
+    }
+}
+
+fn replayed_stop_phase_result(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    phase: GuardPhase,
+    subject: &Value,
+) -> Result<Option<GuardPhaseResult>, GuardCommandError> {
+    let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)? else {
+        return Ok(None);
+    };
+    let existing_source = guard_event_source_payload_sha256(
+        existing.session_id.as_deref(),
+        &existing.connection_internal_id,
+        existing.guard_installation_id.as_deref(),
+        &existing.event_kind,
+        &existing.subject_json,
+    )?;
+    let requested_source = guard_event_source_payload_sha256(
+        envelope.session_id.as_deref(),
+        &envelope.connection_id,
+        envelope.guard_installation_id.as_deref(),
+        phase.event_kind(),
+        &object_text(subject.clone())?,
+    )?;
+    if existing_source != requested_source {
+        return Err(GuardCommandError::Runtime(format!(
+            "guard event {} conflicts with a different source payload hash",
+            envelope.event_id
+        )));
+    }
+    let decision = match existing.decision.as_str() {
+        "allow" => GuardDecision::Allow,
+        "deny" => GuardDecision::Deny,
+        "warn" => GuardDecision::Warn,
+        "inject_context" => GuardDecision::InjectContext,
+        _ => {
+            return Err(GuardCommandError::Runtime(format!(
+                "guard event {} contains an unsupported stored decision",
+                envelope.event_id
+            )))
+        }
+    };
+    let result = serde_json::from_str::<Value>(&existing.result_json).map_err(json_error)?;
+    if !result.is_object() {
+        return Err(GuardCommandError::Runtime(format!(
+            "guard event {} contains a malformed stored result",
+            envelope.event_id
+        )));
+    }
+    Ok(Some(GuardPhaseResult::new(decision, result)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -530,7 +770,6 @@ fn guard_event_insert_payload_sha256(
         &input.event_kind,
         &input.decision,
         &input.subject_json,
-        &input.occurred_at,
     )
 }
 
@@ -544,7 +783,6 @@ fn guard_event_record_payload_sha256(
         &record.event_kind,
         &record.decision,
         &record.subject_json,
-        &record.occurred_at,
     )
 }
 
@@ -555,7 +793,26 @@ fn guard_event_payload_sha256(
     event_kind: &str,
     decision: &str,
     subject_json: &str,
-    occurred_at: &str,
+) -> Result<String, GuardCommandError> {
+    let source_sha256 = guard_event_source_payload_sha256(
+        session_id,
+        connection_id,
+        guard_installation_id,
+        event_kind,
+        subject_json,
+    )?;
+    Ok(canonical_value_sha256(&json!({
+        "source_sha256": source_sha256,
+        "decision": decision,
+    })))
+}
+
+fn guard_event_source_payload_sha256(
+    session_id: Option<&str>,
+    connection_id: &str,
+    guard_installation_id: Option<&str>,
+    event_kind: &str,
+    subject_json: &str,
 ) -> Result<String, GuardCommandError> {
     let subject: Value = serde_json::from_str(subject_json).map_err(json_error)?;
     let raw_event_sha256 = subject
@@ -571,9 +828,7 @@ fn guard_event_payload_sha256(
         "connection_id": connection_id,
         "guard_installation_id": guard_installation_id,
         "event_kind": event_kind,
-        "decision": decision,
         "raw_event_sha256": raw_event_sha256,
-        "occurred_at": occurred_at,
     })))
 }
 
@@ -606,7 +861,16 @@ fn redact_event_value(value: &Value) -> Value {
 fn prompt_like_key(key: &str) -> bool {
     matches!(
         key,
-        "prompt" | "user_prompt" | "message" | "messages" | "content" | "transcript"
+        "prompt"
+            | "user_prompt"
+            | "message"
+            | "messages"
+            | "content"
+            | "transcript"
+            | "last_assistant_message"
+            | "assistant_message"
+            | "lastAssistantMessage"
+            | "assistantMessage"
     )
 }
 
@@ -668,6 +932,22 @@ mod replay_tests {
     use super::*;
 
     #[test]
+    fn final_model_prose_is_redacted_from_guard_subjects() {
+        let sentinel = "FORGED_AUTHORITY_RECEIPT_SENTINEL";
+        let redacted = redact_event_value(&json!({
+            "last_assistant_message": sentinel,
+            "assistant_message": sentinel,
+            "nested": {"transcript": sentinel}
+        }));
+        let serialized = serde_json::to_string(&redacted).expect("redacted event serializes");
+
+        assert!(!serialized.contains(sentinel));
+        assert_eq!(redacted["last_assistant_message"]["omitted"], true);
+        assert_eq!(redacted["assistant_message"]["omitted"], true);
+        assert_eq!(redacted["nested"]["transcript"]["omitted"], true);
+    }
+
+    #[test]
     fn guard_event_replay_hash_is_idempotent_for_same_source_and_conflicts_for_changed_payload() {
         let first = GuardEventInsert {
             guard_event_id: "guard_event_replay".to_owned(),
@@ -687,6 +967,7 @@ mod replay_tests {
         };
         let mut same_source = first.clone();
         same_source.result_json = json!({"state": "later-render"}).to_string();
+        same_source.occurred_at = "2026-07-13T00:00:01Z".to_owned();
         assert_eq!(
             guard_event_insert_payload_sha256(&first).expect("first replay hash"),
             guard_event_insert_payload_sha256(&same_source).expect("same-source replay hash")
@@ -706,6 +987,25 @@ mod replay_tests {
 
         let mut changed_decision = first.clone();
         changed_decision.decision = "deny".to_owned();
+        assert_eq!(
+            guard_event_source_payload_sha256(
+                first.session_id.as_deref(),
+                &first.connection_internal_id,
+                first.guard_installation_id.as_deref(),
+                &first.event_kind,
+                &first.subject_json,
+            )
+            .expect("first source hash"),
+            guard_event_source_payload_sha256(
+                changed_decision.session_id.as_deref(),
+                &changed_decision.connection_internal_id,
+                changed_decision.guard_installation_id.as_deref(),
+                &changed_decision.event_kind,
+                &changed_decision.subject_json,
+            )
+            .expect("changed-decision source hash"),
+            "an exact Stop replay reuses the immutable historical decision"
+        );
         assert_ne!(
             guard_event_insert_payload_sha256(&first).expect("first replay hash"),
             guard_event_insert_payload_sha256(&changed_decision)

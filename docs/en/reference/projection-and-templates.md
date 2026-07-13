@@ -66,11 +66,40 @@ Display output must:
 - link back to the relevant owner when a reader needs the authority record
 - treat hand-edited or stale display as display to discard or recompute, not as Core repair input
 
+<a id="managed-final-output-authority-disclosure"></a>
+## Managed final-output authority disclosure
+
+The managed final-output authority disclosure is a read-only `Projection` of a
+fresh `volicord.status` result. On every supported managed-host final-output
+delivery, including an exact host-event replay, the adapter must obtain and
+validate a new status result. It must not reuse a receipt cached in model prose,
+a mutation response, a prior Stop result, a persisted guard event, or an earlier
+display.
+
+The projection must validate the result/read-only/non-dry-run branch and the
+receipt's project, Task, Task reference version, `state_version`, scope revision,
+current Change Unit, evidence gate, close state, complete close-blocker set, and
+next action against the refreshed status source. It either displays that complete
+canonical receipt or displays the bounded fallback owned by
+[Template Bodies](template-bodies.md#final-output-authority-disclosure-body). It
+must never truncate, splice, summarize, or partially emit receipt JSON.
+
+The final-output refresh and projection do not mutate Core state, advance a
+version, append an event, create a replay row, or record a host observation.
+Detective may separately record and enforce its owner-defined Stop decision;
+that separate effect does not make the final-output projection authoritative.
+Model-authored final prose and host event text are never projection inputs.
+
+Supported host capability, setup, replay, and fallback routing belong to
+[Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure) and
+[Agent Connection](agent-connection.md#managed-final-output-authority-disclosure).
+
 ## Template and label boundary
 
 [Template Bodies](template-bodies.md) owns current rendered body guidance for
-status cards, judgment requests, run/evidence summaries, close results, agent
-context packets, and public-error display labels.
+status cards, judgment requests, run/evidence summaries, close results,
+final-output authority disclosure, agent context packets, and public-error
+display labels.
 
 This document may classify a view as authority or display. It does not define
 the view's exact wording, body sections, or localized labels.

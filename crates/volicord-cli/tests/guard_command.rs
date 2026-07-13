@@ -2874,6 +2874,8 @@ fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(
 #[test]
 fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Error>> {
     let blocked = GuardCliFixture::new("guard-host-stop-block")?;
+    let (blocked_installation_id, blocked_policy_hash) =
+        blocked.install_guard_policy_for_host("codex")?;
     let blocked_task_id = blocked.create_active_task()?;
     let blocked_event = json!({
         "event_id": "guard_host_stop_block",
@@ -2890,6 +2892,14 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
             "stop",
             "--repo",
             blocked.repo_arg(),
+            "--guard-installation",
+            &blocked_installation_id,
+            "--host",
+            "codex",
+            "--integration-profile",
+            "detective",
+            "--policy-hash",
+            &blocked_policy_hash,
             "--host-output",
             "codex",
         ],
@@ -2906,7 +2916,7 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
         .as_str()
         .expect("active Stop output should display the fresh authority receipt");
     let receipt_json = receipt_message
-        .strip_prefix("Volicord fresh AuthorityReceipt: ")
+        .strip_prefix("Volicord authority receipt: ")
         .expect("fresh authority receipt should use the dedicated UI prefix");
     let receipt: Value = serde_json::from_str(receipt_json)?;
     assert_eq!(receipt["project_id"], blocked.project_id());
@@ -2915,13 +2925,17 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
         receipt["task_ref"]["produced_at_state_version"],
         receipt["state_version"]
     );
-    assert!(receipt_message.len() <= 8 * 1024);
+    assert!(blocked_output.stdout.len() <= 8 * 1024);
 
     let allowed = GuardCliFixture::new("guard-host-stop-allow")?;
+    let allowed_connection_id = "connection_guard_host_stop_allow_claude";
+    allowed.register_extra_connection_for_host(allowed_connection_id, "claude_code")?;
+    let (allowed_installation_id, allowed_policy_hash) = allowed
+        .install_guard_policy_for_connection_and_host(allowed_connection_id, "claude_code")?;
     let allowed_event = json!({
         "event_id": "guard_host_stop_allow",
         "session_id": "guard_host_stop_allow_session",
-        "connection_id": allowed.connection_id(),
+        "connection_id": allowed_connection_id,
         "host_kind": "claude_code",
         "message": "Nothing active."
     });
@@ -2933,6 +2947,14 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
             "stop",
             "--repo",
             allowed.repo_arg(),
+            "--guard-installation",
+            &allowed_installation_id,
+            "--host",
+            "claude-code",
+            "--integration-profile",
+            "detective",
+            "--policy-hash",
+            &allowed_policy_hash,
             "--host-output",
             "claude-code",
         ],
@@ -2941,7 +2963,13 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
     assert_success(&allowed_output);
     let allowed_value = json_stdout(&allowed_output)?;
     assert_eq!(allowed_value["continue"], true);
-    assert!(allowed_value.get("systemMessage").is_none());
+    let allowed_message = allowed_value["systemMessage"]
+        .as_str()
+        .expect("no-active-Task output should use the fixed UI fallback");
+    assert!(allowed_message.contains("no active Task is available"));
+    assert!(allowed_message.contains("volicord status --json"));
+    assert!(!allowed_message.contains("status --task"));
+    assert!(allowed_output.stdout.len() <= 8 * 1024);
     assert!(stderr(&allowed_output).is_empty());
     Ok(())
 }
@@ -2952,12 +2980,16 @@ fn guard_stop_host_output_reports_status_fallback_when_refresh_fails() -> Result
     const CORRUPT_OWNER_VALUE: &str =
         "{\"private_refresh_body\":\"must-not-appear-in-host-stop-output\"";
     let fixture = GuardCliFixture::new("guard-host-stop-refresh-fallback")?;
+    let connection_id = "connection_guard_host_stop_refresh_claude";
+    fixture.register_extra_connection_for_host(connection_id, "claude_code")?;
+    let (guard_installation_id, policy_hash) =
+        fixture.install_guard_policy_for_connection_and_host(connection_id, "claude_code")?;
     let task_id = fixture.create_active_task()?;
     fixture.corrupt_current_close_basis(&task_id, CORRUPT_OWNER_VALUE)?;
     let event = json!({
         "event_id": "guard_host_stop_refresh_fallback",
         "session_id": "guard_host_stop_refresh_fallback_session",
-        "connection_id": fixture.connection_id(),
+        "connection_id": connection_id,
         "host_kind": "claude_code",
         "message": "All done."
     });
@@ -2970,6 +3002,14 @@ fn guard_stop_host_output_reports_status_fallback_when_refresh_fails() -> Result
             "stop",
             "--repo",
             fixture.repo_arg(),
+            "--guard-installation",
+            &guard_installation_id,
+            "--host",
+            "claude-code",
+            "--integration-profile",
+            "detective",
+            "--policy-hash",
+            &policy_hash,
             "--host-output",
             "claude-code",
         ],
@@ -2989,10 +3029,103 @@ fn guard_stop_host_output_reports_status_fallback_when_refresh_fails() -> Result
     assert!(message.contains(&format!("task_id={task_id}")));
     assert!(message.contains("state_version="));
     assert!(message.contains(&format!("volicord status --task {task_id} --json")));
-    assert!(!message.contains("AuthorityReceipt: {"));
+    assert!(!message.contains("authority receipt: {"));
     assert!(!message.contains(CORRUPT_OWNER_VALUE));
     assert!(!message.contains("private_refresh_body"));
-    assert!(message.len() <= 8 * 1024);
+    assert!(output.stdout.len() <= 8 * 1024);
+    Ok(())
+}
+
+#[test]
+fn guard_stop_exact_replay_preserves_history_but_refreshes_current_authority(
+) -> Result<(), Box<dyn Error>> {
+    const PRIVATE_FINAL_PROSE: &str =
+        "private-final-model-prose-must-not-become-authority-or-durable-guard-data";
+    let fixture = GuardCliFixture::new("guard-host-stop-fresh-replay")?;
+    let (guard_installation_id, policy_hash) = fixture.install_guard_policy_for_host("codex")?;
+    let first_task_id = fixture.create_active_task()?;
+    let event = json!({
+        "session_id": "guard_host_stop_fresh_replay_session",
+        "connection_id": fixture.connection_id(),
+        "guard_installation_id": guard_installation_id,
+        "host_kind": "codex",
+        "last_assistant_message": PRIVATE_FINAL_PROSE
+    });
+    let args = [
+        "_hook",
+        "stop",
+        "--repo",
+        fixture.repo_arg(),
+        "--guard-installation",
+        guard_installation_id.as_str(),
+        "--host",
+        "codex",
+        "--integration-profile",
+        "detective",
+        "--policy-hash",
+        policy_hash.as_str(),
+        "--host-output",
+        "codex",
+    ];
+
+    let first_output = run_guard(fixture.runtime_home(), fixture.repo_root(), args, &event)?;
+    assert_success(&first_output);
+    let first_value = json_stdout(&first_output)?;
+    let first_message = first_value["systemMessage"]
+        .as_str()
+        .expect("first Stop should display a fresh authority receipt");
+    let first_receipt: Value = serde_json::from_str(
+        first_message
+            .strip_prefix("Volicord authority receipt: ")
+            .expect("first Stop should use the complete receipt prefix"),
+    )?;
+    assert_eq!(first_receipt["task_ref"]["record_id"], first_task_id);
+    assert!(!stdout(&first_output).contains(PRIVATE_FINAL_PROSE));
+
+    let guard_event_id = fixture.only_guard_event_id("stop")?;
+    let stored_before = guard_event(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        &guard_event_id,
+    )?
+    .expect("first Stop should persist one historical GuardEvent");
+    assert!(!stored_before.subject_json.contains(PRIVATE_FINAL_PROSE));
+    assert!(!stored_before.result_json.contains(PRIVATE_FINAL_PROSE));
+
+    let current_task_id = fixture.create_additional_active_task("stop_fresh_replay")?;
+    let before_replay = fixture.replay_effect_snapshot()?;
+    assert_eq!(before_replay.2.as_deref(), Some(current_task_id.as_str()));
+
+    let replay_output = run_guard(fixture.runtime_home(), fixture.repo_root(), args, &event)?;
+    assert_success(&replay_output);
+    let replay_value = json_stdout(&replay_output)?;
+    assert_eq!(replay_value["decision"], first_value["decision"]);
+    let replay_message = replay_value["systemMessage"]
+        .as_str()
+        .expect("exact replay should display a freshly read authority receipt");
+    let replay_receipt: Value = serde_json::from_str(
+        replay_message
+            .strip_prefix("Volicord authority receipt: ")
+            .expect("replay should use the complete receipt prefix"),
+    )?;
+    assert_eq!(replay_receipt["task_ref"]["record_id"], current_task_id);
+    assert_ne!(
+        replay_receipt["task_ref"]["record_id"],
+        first_receipt["task_ref"]["record_id"]
+    );
+    assert!(replay_receipt["state_version"].as_u64() > first_receipt["state_version"].as_u64());
+    assert!(replay_output.stdout.len() <= 8 * 1024);
+    assert!(!stdout(&replay_output).contains(PRIVATE_FINAL_PROSE));
+    assert_eq!(fixture.replay_effect_snapshot()?, before_replay);
+    assert_eq!(
+        guard_event(
+            fixture.runtime_home(),
+            fixture.project_id(),
+            &guard_event_id,
+        )?
+        .expect("exact replay should retain the historical GuardEvent"),
+        stored_before
+    );
     Ok(())
 }
 

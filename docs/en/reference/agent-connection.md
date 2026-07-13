@@ -18,6 +18,7 @@ This document owns:
 - repository-root project selection and project availability boundaries at the
   Agent Connection layer
 - agent context transfer rules between owner results and an Agent Connection
+- managed final-output authority-disclosure capability and connection boundary
 - fallback display when the selected Agent Connection or current connection
   context is unavailable, mismatched, stale, or insufficient
 
@@ -52,6 +53,7 @@ Labels follow the canonical vocabulary in
 |---|---|---|
 | Agent Connection meaning, connection intents, Connection Projects membership, connection modes, and current connection context boundaries | `stable` | These are local integration contracts, not OS permissions or user authority. |
 | Managed host lifecycle and verification observations | `beta` | The observations are supported but remain host- and capability-dependent. |
+| Managed final-output authority disclosure capability | `beta` | Supported managed Codex and Claude Code adapters can project a fresh receipt in fixed host UI; availability and actual host display remain host-dependent. |
 | Stored identities, process-binding values, host configuration keys, and derived invocation metadata | `internal` | Public MCP inputs must not expose these details as caller-owned authority. |
 | Human-readable status, verification, fallback, and guidance text | `diagnostic` | Exact fields are stable only where a focused owner explicitly defines them. |
 
@@ -389,6 +391,56 @@ Rules:
   generated host instructions, host rule files, and MCP server instructions can
   improve tool selection, but they are not enforcement mechanisms and cannot
   guarantee that a model will choose Volicord tools.
+
+<a id="managed-final-output-authority-disclosure"></a>
+## Managed final-output authority disclosure
+
+Supported managed Codex and Claude Code adapters provide a final-output-only
+authority-disclosure capability for both `record` and `detective` profiles. The
+capability belongs to the host adapter, not to model-authored final prose. It
+uses a host-owned fixed UI surface after a final-output event and is separate
+from MCP tool context.
+
+Before refreshing status, the adapter must read-only verify the enabled Agent
+Connection, its selected-project membership, the pinned Product Repository,
+host kind, and installed profile. Event text, model text, copied
+`connection_id` values, and generated configuration cannot supply or repair that
+binding. An eligible binding permits the current read-only status lookup; it
+does not grant user authority or create a new authority record.
+The adapter derives the controlled internal verification basis
+`registered_host_stop_hook_connection_binding` only after those checks. That
+value is not a public request field or a User Channel verification basis.
+An unverified or directly invoked Detective Stop event may use the internal
+`unregistered_host_hook_event` provenance only for a defensive read-only Stop
+assessment. That provenance is not a managed binding, is never eligible for
+the fixed-UI receipt projection, and cannot replace any check above.
+
+Profile boundaries:
+
+- `record` installs only the managed final-output handler needed for this
+  disclosure. It does not install the other Detective lifecycle handlers, run a
+  session watcher, activate Detective state, record a guard event, or gate the
+  final output. The Codex handler uses Git work-tree root resolution; in a
+  non-Git Product Repository, Codex `record` remains available but does not
+  install or claim this managed disclosure capability and instead reports the
+  applicable `volicord status` fallback. Claude Code does not have this Git-root
+  prerequisite.
+- `detective` uses the same disclosure projection in addition to its separate
+  Stop decision and observation path. The persisted historical Stop decision is
+  not the source of a displayed receipt.
+
+Every delivery, including an exact replay, performs a new read-only status
+refresh and uses the complete-receipt-or-fallback projection owned by
+[Projection and template display boundaries](projection-and-templates.md#managed-final-output-authority-disclosure).
+`generic`, user-managed, unsupported, missing, inactive, or degraded adapters do
+not claim this managed display capability. Their diagnostic output must expose
+the limitation and route an identified Task to
+`volicord status --task TASK_ID --json`, or a no-active-Task case to
+`volicord status --json`.
+
+Writing or verifying generated adapter configuration proves only the managed
+configuration state. It does not prove that the external host loaded the
+adapter, delivered a final-output event, or showed the fixed UI disclosure.
 
 <a id="current-connection-context"></a>
 ## Current Connection Context

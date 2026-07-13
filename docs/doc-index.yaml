@@ -692,7 +692,7 @@ documents:
   path_en: docs/en/architecture-guide/cli-workflows.md
   path_ko: docs/ko/architecture-guide/cli-workflows.md
   kind: explanation
-  summary: Administrative CLI workflow boundary explanation for local setup, connection provisioning, verification, diagnostics, host integration, and guard integration.
+  summary: Administrative CLI workflow boundary explanation for local setup, connection provisioning, verification, diagnostics, host integration, guard integration, and final-output authority disclosure.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -713,9 +713,11 @@ documents:
   depends_on:
   - architecture-guide.architecture
   - architecture-guide.source-map
+  - architecture-guide.decision.final-output-authority-disclosure
   - reference.admin-cli
   - reference.agent-connection
   - reference.mcp-transport
+  - reference.projection-and-templates
   - reference.runtime-boundaries
   - reference.security
 - doc_id: architecture-guide.request-lifecycle
@@ -866,6 +868,7 @@ documents:
   depends_on:
   - architecture-guide.decision.agent-connection-routing
   - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.unified-user-action-request-resolution
@@ -903,6 +906,39 @@ documents:
   - reference.mcp-transport
   - reference.admin-cli
   - reference.agent-connection
+- doc_id: architecture-guide.decision.final-output-authority-disclosure
+  path_en: docs/en/architecture-guide/decisions/final-output-authority-disclosure.md
+  path_ko: docs/ko/architecture-guide/decisions/final-output-authority-disclosure.md
+  kind: explanation
+  summary: Architecture decision explaining fresh profile-independent final-output authority disclosure separated from Detective Stop enforcement.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-13'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.core-adapter-boundary
+  - reference.scope
+  - reference.api.method-status
+  - reference.api.schema-state
+  - reference.projection-and-templates
+  - reference.template-bodies
+  - reference.agent-connection
+  - reference.admin-cli
+  - reference.security
+  - reference.system-requirements
+  - reference.conformance
 - doc_id: architecture-guide.decision.operation-result-retrieval
   path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
   path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
@@ -1255,6 +1291,7 @@ documents:
   - executable layout and discovery prerequisites for `volicord` and its `mcp` subcommand
   - Runtime Home, Product Repository, and host configuration access prerequisites
   - host compatibility check policy when no stable Codex or Claude Code minimum version is defined
+  - managed final-output fixed-UI authority-disclosure environment applicability and fallback boundary
   - stop criteria for unsupported or unverified installation environments
   depends_on:
   - reference.runtime-boundaries
@@ -1289,6 +1326,7 @@ documents:
   - profile-gated boundary
   - reserved behavior boundary
   - scope-level guarantee boundary
+  - managed final-output authority-disclosure baseline capability boundary
 - doc_id: reference.core-model
   path_en: docs/en/reference/core-model.md
   path_ko: docs/ko/reference/core-model.md
@@ -1382,6 +1420,8 @@ documents:
   - administrative Agent Connection and User Channel registration command behavior
   - agent connection connect, connections, status, verify, mode, and remove commands
   - local `volicord host-hook` lifecycle hook command behavior
+  - managed final-output authority-disclosure handler setup, refresh, rendering, byte-budget,
+    and fallback behavior
   - host-reported `occurred_at` observation-only boundary from canonical Core time
   - local `volicord serve` command-line startup and safety-gate behavior
   - Codex and Claude Code host setup intent support, user-managed generic MCP configuration
@@ -1472,6 +1512,7 @@ documents:
   - operation_category security meaning and non-claims
   - Agent Connection and actor_source authority non-inference
   - host trust, host approval, and guidance non-guarantees
+  - generated final-output display and model-authored text non-authority boundary
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
   path_ko: docs/ko/reference/glossary.md
@@ -2375,6 +2416,8 @@ documents:
   - agent context transfer boundaries
   - Agent Connection meaning and Connection Projects rules
   - managed host configuration state meaning and host trust boundary
+  - managed final-output authority-disclosure capability, connection binding, profile, replay,
+    and fallback boundaries
   - per-call MCP project selection authority
   - agent guidance and MCP server instruction boundaries
 - doc_id: reference.projection-and-templates
@@ -2386,8 +2429,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2402,6 +2445,8 @@ documents:
   - Core authoritative records vs projected/status/template views
   - derived display boundaries
   - display labels are not canonical schema values
+  - managed final-output authority-disclosure freshness, validation, complete-receipt, and
+    non-mutating Projection boundaries
 - doc_id: reference.template-bodies
   path_en: docs/en/reference/template-bodies.md
   path_ko: docs/ko/reference/template-bodies.md
@@ -2411,8 +2456,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2427,6 +2472,7 @@ documents:
   - user-facing label wording
   - display phrasing
   - public-error display labels
+  - final-output authority-disclosure receipt and bounded fallback body
   - display wording versus Core authority record boundary
   - display wording versus API error semantics boundary
 - doc_id: reference.conformance
@@ -2438,8 +2484,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: quality_conformance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-13'
+  last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2453,6 +2499,8 @@ documents:
   - conformance terminology
   - documentation-level conformance criteria
   - assertion authority boundaries
+  - managed final-output current-authority refresh and bounded status-fallback representative
+    conformance criteria
 - doc_id: reference.design-quality
   path_en: docs/en/reference/design-quality.md
   path_ko: docs/ko/reference/design-quality.md
@@ -2705,7 +2753,7 @@ documents:
   kind: maintenance
   summary: Maintenance policy for structural checks including root README pair validation, durable
     test and audit boundaries, human semantic review, onboarding usability validation, live-host
-    Judgment release validation, Rust validation, and result reporting.
+    User Action and final-output replay release validation, Rust validation, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -2728,8 +2776,9 @@ documents:
   - Durable repository-test and one-time audit boundary guidance for documentation validation and
     implementation-check reporting.
   - Representative-user onboarding usability validation policy and reporting boundaries.
-  - Release-candidate live Codex and Claude Code Judgment validation, external result retention,
-    and unavailable-host reporting boundaries.
+  - Release-candidate live Codex and Claude Code User Action, historical Stop decision, fresh
+    final-output replay UI validation, external result retention, and unavailable-host reporting
+    boundaries.
   - Rust validation routing for documentation work that also changes implementation files.
   depends_on:
   - maintain.documentation-policy

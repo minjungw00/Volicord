@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod support;
+
 #[cfg(unix)]
 mod unix {
     use std::{
@@ -27,6 +29,8 @@ mod unix {
         AuthorityReceipt, StateRecordKind, StatusCloseState, StatusResult,
         VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
+
+    use crate::support::fake_hosts::write_fake_codex;
 
     const CODEX_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_SMOKE";
     const CLAUDE_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_SMOKE";
@@ -125,7 +129,7 @@ mod unix {
     }
 
     #[test]
-    fn advisor_shaping_close_basis_allows_active_task_stop_with_fresh_receipt(
+    fn advisor_shaping_close_basis_projects_record_final_output_without_guard_observation(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("live-advisor-stop-ready")?;
         initialize_git_repository(&fixture.product_repo_path())?;
@@ -272,35 +276,73 @@ mod unix {
             verify_fresh_authority_receipt(mismatched_close_basis, &observation, marker).is_err()
         );
 
+        let bin_dir = fixture.runtime_home_path().join("record-final-output-bin");
+        write_fake_codex(&bin_dir)?;
+        write_volicord_shim(&bin_dir, Path::new(volicord_bin()))?;
+        let path = path_with_prefix(&bin_dir)?;
+        let init = Command::new(volicord_bin())
+            .args([
+                "init",
+                "--shared",
+                "--host",
+                "codex",
+                "--repo",
+                &path_text(&fixture.product_repo_path()),
+                "--profile",
+                "record",
+                "--json",
+            ])
+            .env("VOLICORD_HOME", fixture.runtime_home_path())
+            .env("PATH", &path)
+            .current_dir(fixture.product_repo_path())
+            .output()?;
+        assert!(
+            init.status.success(),
+            "Record init failed: {}",
+            stderr_output(&init)
+        );
+        let init_json: Value = serde_json::from_slice(&init.stdout)?;
+        assert_eq!(
+            init_json["states"]["final_output_authority_disclosure"],
+            serde_json::json!({
+                "supported": true,
+                "configured": true,
+                "verified": true
+            })
+        );
         let event = serde_json::json!({
             "event_id": "live_advisor_stop_ready",
             "session_id": "live_advisor_stop_ready_session",
-            "connection_id": fixture.connection_id(),
             "host_kind": "codex",
-            "message": "Advisor validation complete."
+            "last_assistant_message": "private final model prose must not become authority"
         });
-        let stop = run_stop_hook(
+        let before_final_output = fixture.counts()?;
+        let final_output = run_record_final_output_handler(
             fixture.runtime_home_path(),
             &fixture.product_repo_path(),
+            &path,
             &event,
         )?;
         assert!(
-            stop.status.success(),
-            "Stop hook failed: {}",
-            stderr_output(&stop)
+            final_output.status.success(),
+            "Record final-output handler failed: {}",
+            stderr_output(&final_output)
         );
-        let stop_json: Value = serde_json::from_slice(&stop.stdout)?;
+        assert_eq!(fixture.counts()?, before_final_output);
+        let stop_json: Value = serde_json::from_slice(&final_output.stdout)?;
         assert_eq!(
             stop_json["continue"], true,
-            "unexpected Stop output: {stop_json:#}"
+            "unexpected final-output response: {stop_json:#}"
         );
+        assert!(!String::from_utf8_lossy(&final_output.stdout)
+            .contains("private final model prose must not become authority"));
         let message = stop_json["systemMessage"]
             .as_str()
-            .ok_or("active ready Stop should render the fresh AuthorityReceipt")?;
+            .ok_or("active ready final output should render the fresh AuthorityReceipt")?;
         let stop_receipt: AuthorityReceipt = serde_json::from_str(
             message
-                .strip_prefix("Volicord fresh AuthorityReceipt: ")
-                .ok_or("Stop systemMessage should use the fresh receipt prefix")?,
+                .strip_prefix("Volicord authority receipt: ")
+                .ok_or("final-output systemMessage should use the receipt prefix")?,
         )?;
         assert_eq!(stop_receipt.project_id.as_str(), fixture.project_id());
         assert_eq!(stop_receipt.task_ref.record_id.as_str(), task_id);
@@ -313,15 +355,17 @@ mod unix {
             Some(receipt.latest_run_id.as_str())
         );
         assert!(stop_receipt.close_blockers.is_empty());
-        let stored_stop = verify_live_stop_guard_event(
-            fixture.runtime_home_path(),
-            fixture.connection_id(),
-            &observation,
-            &receipt,
+        let project = list_projects(fixture.runtime_home_path())?
+            .into_iter()
+            .find(|project| project.project_id == fixture.project_id())
+            .ok_or("Record final-output fixture project should remain registered")?;
+        let state = open_project_state_database_read_only(&project.state_db_path)?;
+        let observation_count: u64 = state.query_row(
+            "SELECT (SELECT COUNT(*) FROM guard_events) + (SELECT COUNT(*) FROM agent_sessions)",
+            [],
+            |row| row.get(0),
         )?;
-        assert_eq!(stored_stop.decision, "allow");
-        assert_eq!(stored_stop.state_version, receipt.state_version);
-        assert_eq!(stored_stop.latest_run_id, receipt.latest_run_id);
+        assert_eq!(observation_count, 0);
         Ok(())
     }
 
@@ -2123,23 +2167,15 @@ mod unix {
         }
     }
 
-    fn run_stop_hook(
+    fn run_record_final_output_handler(
         runtime_home: &Path,
         repo_root: &Path,
+        path: &OsString,
         event: &Value,
     ) -> Result<Output, Box<dyn Error>> {
-        let mut child = Command::new(volicord_bin())
-            .args([
-                "_hook",
-                "stop",
-                "--repo",
-                &path_text(repo_root),
-                "--host-output",
-                "codex",
-                "--integration-profile",
-                "record",
-            ])
+        let mut child = Command::new(repo_root.join(".codex/hooks/volicord-stop.sh"))
             .env("VOLICORD_HOME", runtime_home)
+            .env("PATH", path)
             .current_dir(repo_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

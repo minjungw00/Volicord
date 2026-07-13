@@ -1570,7 +1570,7 @@ fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition
     )?;
     assert_success(&personal);
 
-    let personal_only_path = repo_root.join(".codex/hooks.json");
+    let personal_only_path = repo_root.join(".codex/rules/volicord.rules");
     fs::create_dir_all(
         personal_only_path
             .parent()
@@ -1604,7 +1604,7 @@ fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition
     let shared_excludes = fs::read_to_string(&exclude_path)?;
     assert!(shared_excludes.contains("/.volicord/"));
     assert!(shared_excludes.contains("/.codex/hooks/volicord-pre-tool.sh"));
-    assert!(!shared_excludes.contains("/.codex/hooks.json"));
+    assert!(!shared_excludes.contains("/.codex/rules/volicord.rules"));
 
     let protected = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
     assert_success(&protected);
@@ -1624,7 +1624,7 @@ fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition
         .as_array()
         .expect("unignored paths")
         .iter()
-        .any(|finding| finding["path"] == "/.codex/hooks.json"));
+        .any(|finding| finding["path"] == "/.codex/rules/volicord.rules"));
 
     fs::write(&exclude_path, "")?;
     let unprotected = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
@@ -1645,7 +1645,7 @@ fn doctor_uses_effective_local_policy_intent_after_personal_to_shared_transition
         .any(|finding| finding["path"] == "/.volicord/"));
     assert!(unignored_paths
         .iter()
-        .any(|finding| finding["path"] == "/.codex/hooks.json"));
+        .any(|finding| finding["path"] == "/.codex/rules/volicord.rules"));
     Ok(())
 }
 
@@ -2681,6 +2681,44 @@ fn init_defaults_to_personal_claude_code_connection() -> Result<(), Box<dyn Erro
         format!("claude cwd={}", repo_root.display())
     );
     assert!(!repo_root.join(".mcp.json").exists());
+    assert_eq!(value["states"]["hook_config"], "disabled");
+    assert_eq!(
+        value["states"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["control_surface"]["session_watcher_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["final_output_authority_disclosure"],
+        json!({
+            "supported": true,
+            "configured": true,
+            "verified": true
+        })
+    );
+    let settings: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".claude/settings.local.json"),
+    )?)?;
+    assert_eq!(
+        settings["hooks"]
+            .as_object()
+            .expect("hooks should be an object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec!["Stop".to_owned()]
+    );
+    let stop_wrapper = fs::read_to_string(repo_root.join(".claude/hooks/volicord-stop.sh"))?;
+    assert!(stop_wrapper.contains("# purpose=final_output_authority_disclosure"));
+    assert!(stop_wrapper.contains("exec volicord _final-output"));
+    assert!(stop_wrapper.contains("--integration-profile record"));
+    assert!(stop_wrapper.contains("--host-output claude-code"));
+    assert!(!repo_root
+        .join(".claude/hooks/volicord-pre-tool.sh")
+        .exists());
+    assert!(!repo_root.join(".claude/rules/volicord.md").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
     let exclude = fs::read_to_string(repo_root.join(".git/info/exclude"))?;
@@ -2739,6 +2777,14 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert_eq!(value["states"]["hook_path_safety"], "ok");
     assert_eq!(value["states"]["hook_commands_cwd_independent"], true);
     assert_eq!(value["states"]["hook_commands_subdirectory_safe"], true);
+    assert_eq!(
+        value["states"]["final_output_authority_disclosure"],
+        json!({
+            "supported": true,
+            "configured": true,
+            "verified": true
+        })
+    );
     let connection_id = value["connection"]["connection_id"]
         .as_str()
         .expect("connection_id should be present");
@@ -2815,6 +2861,14 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert_eq!(value["states"]["hook_path_safety"], "ok");
     assert_eq!(value["states"]["hook_commands_cwd_independent"], true);
     assert_eq!(value["states"]["hook_commands_subdirectory_safe"], true);
+    assert_eq!(
+        value["states"]["final_output_authority_disclosure"],
+        json!({
+            "supported": true,
+            "configured": true,
+            "verified": true
+        })
+    );
     assert!(repo_root.join(".mcp.json").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
@@ -3141,7 +3195,7 @@ fn connection_status_downgrades_relative_codex_hook_command() -> Result<(), Box<
 
 #[cfg(unix)]
 #[test]
-fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
+fn init_codex_record_profile_installs_only_final_output_handler() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-record")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -3174,6 +3228,8 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     assert!(init_text.contains(&format!("Repository:\n  {}", repo_root.display())));
     assert!(init_text.contains("Repo file changes:"));
     assert!(init_text.contains("created .codex/config.toml"));
+    assert!(init_text.contains("created .codex/hooks.json"));
+    assert!(init_text.contains("created .codex/hooks/volicord-stop.sh"));
     assert!(init_text.contains("created .volicord/policy.json"));
     assert!(init_text.contains("updated AGENTS.md"));
     assert!(init_text.contains(&format!(
@@ -3259,6 +3315,14 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     assert_eq!(value["states"]["prompt_capture"], "not_configured");
     assert_eq!(value["states"]["guard_effective"], "inactive");
     assert_eq!(
+        value["states"]["final_output_authority_disclosure"],
+        json!({
+            "supported": true,
+            "configured": true,
+            "verified": true
+        })
+    );
+    assert_eq!(
         value["states"]["cooperative_pre_tool_denial_available"],
         false
     );
@@ -3267,7 +3331,27 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     assert!(repo_root.join(".codex/config.toml").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
-    assert!(!repo_root.join(".codex/hooks.json").exists());
+    let hooks: Value =
+        serde_json::from_str(&fs::read_to_string(repo_root.join(".codex/hooks.json"))?)?;
+    assert_eq!(
+        hooks["hooks"]
+            .as_object()
+            .expect("hooks should be an object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec!["Stop".to_owned()]
+    );
+    assert!(hooks.to_string().contains("volicord-stop.sh"));
+    assert!(!hooks.to_string().contains("volicord-dispatch.sh"));
+    let stop_wrapper = fs::read_to_string(repo_root.join(".codex/hooks/volicord-stop.sh"))?;
+    assert!(stop_wrapper.contains("# purpose=final_output_authority_disclosure"));
+    assert!(stop_wrapper.contains("exec volicord _final-output"));
+    assert!(stop_wrapper.contains("--guard-installation"));
+    assert!(stop_wrapper.contains("--integration-profile record"));
+    assert!(stop_wrapper.contains("--policy-hash"));
+    assert!(stop_wrapper.contains("--host-output codex"));
+    assert!(!repo_root.join(".codex/hooks/volicord-dispatch.sh").exists());
     assert!(!repo_root.join(".codex/rules/volicord.rules").exists());
 
     let connection_id = value["connection"]["connection_id"]
@@ -3283,6 +3367,22 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
     assert_eq!(guard_installations[0].guard_mode, "record");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
     assert_eq!(capability["selected_profile"], "record");
+    assert_eq!(capability["native_host_output_adapter"], "codex");
+    assert_eq!(
+        capability["final_output_authority_disclosure_supported"],
+        true
+    );
+    assert_eq!(
+        capability["host_hook_commands"]
+            .as_array()
+            .expect("host command inventory should be an array")
+            .len(),
+        1
+    );
+    assert_eq!(
+        capability["host_hook_commands"][0]["purpose"],
+        "final_output_authority_disclosure"
+    );
     assert_eq!(capability["prompt_capture"], true);
     assert!(capability["missing_required_hooks"]
         .as_array()
@@ -3350,8 +3450,8 @@ fn init_codex_record_profile_skips_host_hooks() -> Result<(), Box<dyn Error>> {
 
 #[cfg(unix)]
 #[test]
-fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<(), Box<dyn Error>>
-{
+fn init_codex_record_profile_succeeds_without_detective_hooks_or_watcher(
+) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-init-record-without-detective-prereqs")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -3382,9 +3482,235 @@ fn init_codex_record_profile_succeeds_without_host_hooks_or_watcher() -> Result<
     assert_eq!(value["selected_profile"], "record");
     assert_eq!(value["states"]["hook_config"], "disabled");
     assert_eq!(value["states"]["guard_effective"], "inactive");
+    assert_eq!(
+        value["states"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["control_surface"]["session_watcher_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["final_output_authority_disclosure"],
+        json!({
+            "supported": true,
+            "configured": true,
+            "verified": true
+        })
+    );
     assert!(repo_root.join(".codex/config.toml").exists());
-    assert!(!repo_root.join(".codex/hooks.json").exists());
+    assert!(repo_root.join(".codex/hooks.json").exists());
+    assert!(repo_root.join(".codex/hooks/volicord-stop.sh").exists());
+    assert!(!repo_root.join(".codex/hooks/volicord-pre-tool.sh").exists());
     assert!(!repo_root.join(".codex/rules/volicord.rules").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_record_detective_profile_migration_reconciles_managed_phases() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-codex-profile-migration")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    for profile in ["record", "detective", "record"] {
+        let output = run_with_home_env(
+            runtime_home.path(),
+            [
+                "init",
+                "--shared",
+                "--host",
+                "codex",
+                "--repo",
+                path_text(&repo_root).as_str(),
+                "--profile",
+                profile,
+                "--json",
+            ],
+            &env,
+        )?;
+        assert_success(&output);
+    }
+
+    let hooks: Value =
+        serde_json::from_str(&fs::read_to_string(repo_root.join(".codex/hooks.json"))?)?;
+    assert_eq!(
+        hooks["hooks"]
+            .as_object()
+            .expect("hooks should be an object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec!["Stop".to_owned()]
+    );
+    assert!(
+        fs::read_to_string(repo_root.join(".codex/hooks/volicord-stop.sh"))?
+            .contains("volicord _final-output")
+    );
+    for retired in [
+        ".codex/hooks/volicord-dispatch.sh",
+        ".codex/hooks/volicord-session-start.sh",
+        ".codex/hooks/volicord-pre-tool.sh",
+        ".codex/hooks/volicord-post-tool.sh",
+        ".codex/hooks/volicord-prompt-capture.sh",
+        ".codex/rules/volicord.rules",
+    ] {
+        assert!(
+            !repo_root.join(retired).exists(),
+            "{retired} should be retired"
+        );
+    }
+    let policy: Value = serde_json::from_str(&fs::read_to_string(
+        repo_root.join(".volicord/policy.json"),
+    )?)?;
+    assert_eq!(policy["selected_profile"], "record");
+    assert_eq!(policy["host_hook"]["enabled"], false);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn claude_record_detective_profile_migration_preserves_unrelated_hooks(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-claude-profile-migration")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let settings_path = repo_root.join(".claude/settings.json");
+    fs::create_dir_all(settings_path.parent().expect("settings parent"))?;
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&json!({
+            "theme": "dark",
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "./user-owned-pre-tool.sh"
+                    }]
+                }]
+            }
+        }))? + "\n",
+    )?;
+
+    for profile in ["record", "detective", "record"] {
+        let output = run_with_home_env(
+            runtime_home.path(),
+            [
+                "init",
+                "--shared",
+                "--host",
+                "claude-code",
+                "--repo",
+                path_text(&repo_root).as_str(),
+                "--profile",
+                profile,
+                "--json",
+            ],
+            &env,
+        )?;
+        assert_success(&output);
+    }
+
+    let settings: Value = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
+    assert_eq!(settings["theme"], "dark");
+    assert_eq!(
+        settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+        "./user-owned-pre-tool.sh"
+    );
+    assert_eq!(
+        settings["hooks"]["Stop"]
+            .as_array()
+            .expect("Stop groups should be an array")
+            .len(),
+        1
+    );
+    assert!(!settings.to_string().contains("volicord-pre-tool"));
+    assert!(!settings.to_string().contains("volicord-session-start"));
+    assert!(
+        fs::read_to_string(repo_root.join(".claude/hooks/volicord-stop.sh"))?
+            .contains("volicord _final-output")
+    );
+    assert!(!repo_root.join(".claude/rules/volicord.md").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn record_final_output_status_degrades_without_activating_detective_hooks(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-record-final-output-degraded")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let init = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&init);
+    fs::remove_file(repo_root.join(".codex/hooks/volicord-stop.sh"))?;
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&status);
+    let value = json_stdout(&status)?;
+    assert_eq!(
+        value["states"]["final_output_authority_disclosure"],
+        json!({
+            "supported": true,
+            "configured": false,
+            "verified": false
+        })
+    );
+    assert_eq!(value["states"]["hook_config"], "disabled");
+    assert_eq!(
+        value["states"]["control_surface"]["host_hooks_active"],
+        false
+    );
+    assert_eq!(
+        value["states"]["control_surface"]["session_watcher_active"],
+        false
+    );
     Ok(())
 }
 
@@ -4276,6 +4602,58 @@ fn init_codex_guarded_rejects_unmanaged_hook_config() -> Result<(), Box<dyn Erro
     assert!(!runtime_home.registry_db_path().exists());
     assert!(!repo_root.join(".codex/config.toml").exists());
     assert!(!repo_root.join("AGENTS.md").exists());
+    assert!(!repo_root.join(".volicord/policy.json").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_codex_record_rejects_unmanaged_stop_config() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-init-codex-record-hook-conflict")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let hooks_path = repo_root.join(".codex/hooks.json");
+    fs::create_dir_all(hooks_path.parent().expect("hook path should have parent"))?;
+    let unmanaged = json!({
+        "hooks": {
+            "Stop": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": "echo user-owned-stop"
+                }]
+            }]
+        }
+    });
+    fs::write(
+        &hooks_path,
+        serde_json::to_string_pretty(&unmanaged)? + "\n",
+    )?;
+
+    let output = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &[("PATH", path_env(&[bin_dir.as_path()]))],
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("host_hook_config already exists with unmanaged content"));
+    assert_eq!(
+        serde_json::from_str::<Value>(&fs::read_to_string(&hooks_path)?)?,
+        unmanaged
+    );
+    assert!(!runtime_home.registry_db_path().exists());
     assert!(!repo_root.join(".volicord/policy.json").exists());
     Ok(())
 }

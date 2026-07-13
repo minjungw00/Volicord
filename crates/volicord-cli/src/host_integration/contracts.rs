@@ -567,6 +567,42 @@ pub fn validate_contract_config(
     }
 }
 
+pub(crate) fn validate_final_output_contract_config(
+    host_kind: HostKind,
+    kind: HostContractConfigKind,
+    text: &str,
+) -> Result<(), HostContractValidationError> {
+    let contract = contract_for(host_kind).ok_or_else(|| {
+        HostContractValidationError::new(format!(
+            "no host integration contract is defined for {}",
+            host_kind.as_str()
+        ))
+    })?;
+    match (contract.host_kind, kind) {
+        (HostKind::Codex, HostContractConfigKind::HookConfig) => {
+            validate_json_hook_config_for_phases(contract, text, &super::FINAL_OUTPUT_PHASES)
+        }
+        (HostKind::ClaudeCode, HostContractConfigKind::ProjectSettings)
+        | (HostKind::ClaudeCode, HostContractConfigKind::HookConfig) => {
+            let value = parse_json_value(text, "Claude Code final-output settings")?;
+            if kind == HostContractConfigKind::ProjectSettings {
+                let object = value.as_object().ok_or_else(|| {
+                    HostContractValidationError::new(
+                        "Claude Code project settings must be an object",
+                    )
+                })?;
+                validate_claude_project_settings_fields(object)?;
+            }
+            validate_json_hook_value_for_phases(contract, &value, &super::FINAL_OUTPUT_PHASES)
+        }
+        _ => Err(HostContractValidationError::new(format!(
+            "{} does not support final-output {} contract config",
+            host_kind.as_str(),
+            kind.as_str()
+        ))),
+    }
+}
+
 pub fn validate_hook_event_fixture(
     host_kind: HostKind,
     phase: HostLifecyclePhase,
@@ -921,6 +957,16 @@ fn validate_claude_project_settings(
     let object = value.as_object().ok_or_else(|| {
         HostContractValidationError::new("Claude Code project settings must be an object")
     })?;
+    validate_claude_project_settings_fields(object)?;
+    if object.get("hooks").is_some() {
+        validate_json_hook_value(contract, &value)?;
+    }
+    Ok(())
+}
+
+fn validate_claude_project_settings_fields(
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), HostContractValidationError> {
     if let Some(schema) = object.get("$schema") {
         require_string(Some(schema), "$schema")?;
     }
@@ -930,9 +976,6 @@ fn validate_claude_project_settings(
                 "Claude Code permissions must be an object",
             ));
         }
-    }
-    if object.get("hooks").is_some() {
-        validate_json_hook_value(contract, &value)?;
     }
     Ok(())
 }
@@ -945,9 +988,26 @@ fn validate_json_hook_config(
     validate_json_hook_value(contract, &value)
 }
 
+fn validate_json_hook_config_for_phases(
+    contract: &HostIntegrationContract,
+    text: &str,
+    phases: &[HostLifecyclePhase],
+) -> Result<(), HostContractValidationError> {
+    let value = parse_json_value(text, "host hook config")?;
+    validate_json_hook_value_for_phases(contract, &value, phases)
+}
+
 fn validate_json_hook_value(
     contract: &HostIntegrationContract,
     value: &Value,
+) -> Result<(), HostContractValidationError> {
+    validate_json_hook_value_for_phases(contract, value, contract.required_lifecycle_phases)
+}
+
+fn validate_json_hook_value_for_phases(
+    contract: &HostIntegrationContract,
+    value: &Value,
+    phases: &[HostLifecyclePhase],
 ) -> Result<(), HostContractValidationError> {
     let root = value
         .as_object()
@@ -961,7 +1021,14 @@ fn validate_json_hook_value(
                 contract.hook_config_shape.root_key
             ))
         })?;
-    for event in contract.hook_config_shape.events {
+    for phase in phases {
+        let event = hook_event_for_phase(contract, *phase).ok_or_else(|| {
+            HostContractValidationError::new(format!(
+                "{} has no hook event for {}",
+                contract.host_kind.as_str(),
+                phase.capability_name()
+            ))
+        })?;
         let groups = hooks
             .get(event.event_name)
             .and_then(Value::as_array)
@@ -1275,6 +1342,8 @@ mod tests {
     const CODEX_PROJECT_CONFIG: &str =
         include_str!("../../tests/fixtures/host_contracts/codex/project_config.toml");
     const CODEX_HOOKS: &str = include_str!("../../tests/fixtures/host_contracts/codex/hooks.json");
+    const CODEX_FINAL_OUTPUT_HOOKS: &str =
+        include_str!("../../tests/fixtures/host_contracts/codex/final_output_hooks.json");
     const CODEX_RULES: &str =
         include_str!("../../tests/fixtures/host_contracts/codex/rules/volicord.rules");
     const CLAUDE_MCP: &str =
@@ -1283,6 +1352,8 @@ mod tests {
         include_str!("../../tests/fixtures/host_contracts/claude_code/project_settings.json");
     const CLAUDE_HOOKS: &str =
         include_str!("../../tests/fixtures/host_contracts/claude_code/hooks.json");
+    const CLAUDE_FINAL_OUTPUT_SETTINGS: &str =
+        include_str!("../../tests/fixtures/host_contracts/claude_code/final_output_settings.json");
     const CLAUDE_RULES: &str =
         include_str!("../../tests/fixtures/host_contracts/claude_code/rules/volicord.md");
 
@@ -1428,6 +1499,35 @@ mod tests {
             CLAUDE_RULES,
         )
         .expect("Claude Code rule fixture should validate");
+    }
+
+    #[test]
+    fn final_output_config_fixtures_validate_only_the_stop_contract() {
+        validate_final_output_contract_config(
+            HostKind::Codex,
+            HostContractConfigKind::HookConfig,
+            CODEX_FINAL_OUTPUT_HOOKS,
+        )
+        .expect("Codex final-output hook fixture should validate");
+        validate_final_output_contract_config(
+            HostKind::ClaudeCode,
+            HostContractConfigKind::ProjectSettings,
+            CLAUDE_FINAL_OUTPUT_SETTINGS,
+        )
+        .expect("Claude Code final-output settings fixture should validate");
+
+        assert!(validate_contract_config(
+            HostKind::Codex,
+            HostContractConfigKind::HookConfig,
+            CODEX_FINAL_OUTPUT_HOOKS,
+        )
+        .is_err());
+        assert!(validate_contract_config(
+            HostKind::ClaudeCode,
+            HostContractConfigKind::ProjectSettings,
+            CLAUDE_FINAL_OUTPUT_SETTINGS,
+        )
+        .is_err());
     }
 
     #[test]

@@ -99,6 +99,7 @@ pub(crate) fn host_hook_capability_json(
         "connection_intent": plan.connection_intent,
         "native_host_output_adapter": plan.native_host_output_adapter,
         "native_host_output_adapter_verified": plan.native_host_output_adapter_verified,
+        "final_output_authority_disclosure_supported": plan.native_host_output_adapter != "none",
         "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,
         "direct_file_write_matcher_coverage": plan.direct_file_write_matcher_coverage,
         "host_capabilities": capabilities,
@@ -239,6 +240,7 @@ pub(crate) fn generated_files_json(files: &[GeneratedFilePlan]) -> Value {
                         for key in [
                             "host_kind",
                             "phase",
+                            "purpose",
                             "connection_id",
                             "guard_installation_id",
                             "policy_hash",
@@ -273,6 +275,7 @@ pub(crate) fn host_hook_commands_json(commands: &[HostHookCommand]) -> Value {
                 json!({
                     "host_kind": command.host_kind.as_str(),
                     "phase": command.phase.capability_name(),
+                    "purpose": command.purpose.as_str(),
                     "policy_key": command.phase.policy_key(),
                     "command_shape": command.command_shape_name(),
                     "command": command_text,

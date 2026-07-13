@@ -3,8 +3,8 @@
 이 문서는 로컬 `volicord` 관리 및 초기 설정 CLI를 정의합니다. CLI는
 `Volicord Runtime Home`을 준비하고, 저장소 루트에서 프로젝트를 등록하며, Agent
 Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설정·연결 진단을
-제공합니다. 숨겨진 훅 명령은 생성된 호스트 통합 래퍼에서만 사용합니다. 이 명령들은
-공개 Volicord API 메서드가 아닙니다.
+제공합니다. 숨겨진 생명주기 및 최종 출력 명령은 생성된 호스트 통합 래퍼에서만
+사용합니다. 이 명령들은 공개 Volicord API 메서드가 아닙니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -17,6 +17,7 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 - 로컬 `serve` 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 시작 종료 코드
 - 생성된 호스트 래퍼를 위한 숨겨진 내부 훅 생명주기 명령 이름, 옵션, 결정, 출력,
   이벤트 기록 동작
+- 생성된 호스트 어댑터의 관리 최종 출력 권한 고지 계획, 렌더링, 대체 동작
 - 로컬 `volicord changes` 복구 명령 이름과 출력
 - 로컬 `User Channel` 명령 이름과 명령 출력
 - 진단 상태, 필요한 사용자 동작, `--dry-run` 미리보기 동작, JSON 출력, 비대화식 동작
@@ -44,6 +45,7 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 | 표면 | 안정성 | 비고 |
 |---|---|---|
 | 지원되는 관리 명령 이름, 옵션, stdout/stderr 처리, 프로세스 종료 코드, `--dry-run` 미리보기 동작, 로컬 User Channel 명령 이름 | `stable` | 로컬 CLI 계약이며 공개 Volicord API 메서드가 아닙니다. |
+| 지원되는 Codex 및 Claude Code 어댑터의 관리 최종 출력 권한 고지 | `beta` | 읽기 전용 상태 보기는 관리되는 `record` 및 `detective` 프로필에서 지원됩니다. 실제 호스트 표시는 호스트에 따라 달라집니다. |
 | `detective` 프로필 설정, 호스트 훅 관찰, 세션 감시기 관찰, 로컬 consent URL 사용 가능 상태, 호스트별 통합 기능 보고 | `beta` | 기능 조건과 담당 문서가 정한 비보장 안에서 지원됩니다. |
 | 숨겨진 훅 생명주기 명령군, 생성 래퍼 세부사항, 관찰 훅 통합의 조건부 커밋과 복구용 보조 항목 이름, 내부 식별 정보, 호스트 설정 키, 프로세스 바인딩 값 | `internal` | 생성된 호스트 통합을 위한 세부사항입니다. 일반 사용자 입력이나 안정적인 복구 파일 이름이 아닙니다. |
 | 사람이 읽는 초기 설정 요약, 상태 요약, 진단 보고서, 연결 검증 보고서, 간결한 요약 카드, 다음 행동 문구, 진단 고지 | `diagnostic` | 이 문서가 명시한 JSON 필드와 안정적인 ID만 계약입니다. 텍스트 서식은 공개 API 스키마가 아닙니다. |
@@ -136,8 +138,9 @@ volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --
   옵션이 아닙니다.
 - 관리 명령은 공개 Volicord API 메서드가 아니며 공개 메서드 목록에 추가되면
   안 됩니다.
-- 숨겨진 훅 명령은 협력적 탐지 명령이며 OS 수준 샌드박싱이나 보안 집행 증명이
-  아닙니다. 일반 최상위 도움말에는 표시되지 않습니다.
+- 숨겨진 Detective 생명주기 명령은 협력적 신호이며 OS 수준 샌드박싱이나 보안 집행
+  증명이 아닙니다. 숨겨진 최종 출력 명령은 Detective 신호가 아니라 읽기 전용 표시
+  경로입니다. 어느 쪽도 일반 최상위 도움말에는 표시되지 않습니다.
 - 텍스트 모드 사용자 흐름은 `project_internal_id`, `connection_internal_id`,
   호스트 설정 키, 프로토콜 래퍼, 저장된 레지스트리 필드를 사용자가 입력하도록 요구하면
   안 됩니다.
@@ -527,9 +530,11 @@ Doctor는 파일이나 Git index를 바꾸지 않으며, index 정리는 작업 
 
 `--profile`은 공개 통합 프로필을 선택합니다.
 
-- `record`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록, 정책 메타데이터를
-  써서 호스트 생명주기 훅이나 세션 감시기 없이 MCP를 통한 협력적 Volicord 작업 흐름
-  기록을 지원합니다.
+- `record`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록, 정책 메타데이터와,
+  지원되는 관리 Codex 또는 Claude Code 어댑터에서는 권한 고지에 쓰는 최소 최종 출력
+  처리기를 씁니다. 다른 호스트 생명주기 훅이나 세션 감시기 없이 MCP를 통한 협력적
+  Volicord 작업 흐름 기록을 지원합니다. 이 최종 출력 처리기는 읽기 전용이고 Detective
+  상태를 활성화하거나 guard 이벤트를 기록하거나 최종 출력을 차단하지 않습니다.
 - `detective`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, `.volicord/policy.json` 훅 명령
   정책, 지원되는 프로젝트 로컬 호스트 훅 및 규칙 파일을 쓰고 호스트 훅과 세션 감시기
   관찰 상태를 기록합니다.
@@ -541,8 +546,11 @@ Doctor는 파일이나 Git index를 바꾸지 않으며, index 정리는 작업 
 `host_hooks_active`, `session_watcher_active`,
 `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
-`actor_identity_provable`, `os_enforced`를 포함합니다. 현재 Volicord 출력은
-`os_enforced=false`와 `actor_identity_provable=false`를 보고해야 합니다.
+`actor_identity_provable`, `os_enforced`를 포함합니다. 별도
+`final_output_authority_disclosure` 진단 객체는 `supported`, `configured`, `verified`
+boolean을 담습니다. 이 값들은 어댑터 기능과 관리 설정만 나타내며 호스트가 고정 UI를
+표시했다는 관찰이 아닙니다. 현재 Volicord 출력은 `os_enforced=false`와
+`actor_identity_provable=false`를 보고해야 합니다.
 
 `detective` 초기화에는 선택한 호스트 어댑터가 모든 필수 생명주기 훅인
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 지원을 선언하고
@@ -553,8 +561,9 @@ Doctor는 파일이나 Git index를 바꾸지 않으며, index 정리는 작업 
 감시기가 선택한 저장소의 스냅샷을 만들 수 없으면 init은
 `DETECTIVE_WATCHER_UNSUPPORTED`로 실패합니다. 복구 방법은 기록 전용 설정에는
 `--profile record`를 사용하거나, `detective`를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
-저장소 설정을 준비하는 것입니다. `record`는 훅 설치나 세션 감시기 설정을
-요구하지 않습니다.
+저장소 설정을 준비하는 것입니다. `record`는 Detective 생명주기 훅 설치나 세션 감시기
+설정을 요구하지 않습니다. 지원되는 관리 최종 출력 처리기는 프로필과 독립된 별도 표시
+기능입니다.
 
 네이티브 Windows에서는 init이 탐지용 호스트 훅 파일을 계획하거나 쓰기 전에
 `--profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. 네이티브 Windows는
@@ -947,14 +956,20 @@ Codex에서는 활성 세션이 도구 스냅샷을 캐시했거나 `volicord.*`
   주장하면 안 됩니다.
 
 <a id="guard-hook-commands"></a>
-## 내부 탐지 훅 생명주기 명령
+## 내부 호스트 생명주기와 최종 출력 명령
 
-숨겨진 내부 훅 명령군은 에이전트 생명주기 이벤트 때 명령을 실행하는 생성 호스트 래퍼의
-로컬 진입점입니다. 일반 최상위 도움말에는 표시되지 않고 일반 사용자 대상 명령군도
-아닙니다. 훅 명령은 등록된 프로젝트 상태를 검사하고 호스트 관찰 이벤트를 기록하며 기계
-판독 가능한 로컬 결정을 반환합니다. Core 메서드, 사용자
-소유 판단, 쓰기 티켓, 닫기 준비 상태 점검, 호스트 신뢰, 셸 승인, OS 수준 sandboxing을
-대체하지 않습니다.
+숨겨진 내부 통합 명령군은 에이전트 생명주기 또는 최종 출력 이벤트 때 명령을 실행하는
+생성 호스트 래퍼의 로컬 진입점입니다. 일반 최상위 도움말에는 표시되지 않고 일반 사용자
+대상 명령군도 아닙니다. Detective 생명주기 명령은 등록된 프로젝트 상태를 검사하고 호스트
+관찰 이벤트를 기록하며 기계 판독 가능한 로컬 결정을 반환합니다. 최종 출력 전용 경로는
+별도로 정의된 읽기 전용 권한 고지를 수행하며 관찰을 기록하지 않습니다. 어느 경로도 Core
+메서드, 사용자 소유 판단, 쓰기 티켓, 닫기 준비 상태 점검, 호스트 신뢰, 셸 승인, OS 수준
+sandboxing을 대체하지 않습니다.
+
+생성된 최종 출력 전용 래퍼는 저장소, Agent Connection, guard installation, 호스트,
+프로필, 정책 hash, 호스트 출력 인자를 고정해 숨겨진 `_final-output` 명령을 호출합니다.
+이 값들은 생성된 프로세스 바인딩 입력이며 일반 사용자 명령이나 공개 API 요청 형태가
+아닙니다.
 
 각 호스트 훅 명령은 기본적으로 stdin에서 JSON 훅 이벤트 하나를 읽습니다. `--file PATH`는
 테스트나 이벤트를 파일에 준비하는 호스트 통합을 위해 그 파일에서 JSON 이벤트를
@@ -1133,21 +1148,54 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
   사용자 소유 판단이 대기 중이거나, 미해결 미기록 변경이 남아 있으면 `deny`를 반환하고,
   그렇지 않으면 `allow`를 반환합니다.
 
-생성된 Codex 및 Claude Code Stop 훅에서 탐지 프로필이 `active`이면, 호스트 고유 Stop
-JSON은 검증한 최신 `AuthorityReceipt`를 최상위 `systemMessage` 사용자 인터페이스
-표면에도 넣습니다. 전체 메시지가 고정 8 KiB 바이트 예산 안에 들어오면, 공백이 없고
-결정적인 기준 JSON으로 receipt 전체를 담습니다. 렌더러는 receipt JSON 객체를 자르거나
-일부분만 출력하지 않습니다. 전체 receipt가 예산에 맞지 않으면 프로젝트, Task,
-`state_version` 좌표와 정확한 `volicord status --task TASK_ID --json` 대체 확인 명령만
-표시합니다. receipt가 없는 갱신 실패 거절도 같은 제한된 status 대체 확인 경로를
-표시합니다.
+<a id="managed-final-output-authority-disclosure"></a>
+### 관리되는 최종 출력 권한 고지
 
-`systemMessage`는 별도의 호스트 UI 경고 표면입니다. 모델 맥락이 아니며, 모델의 최종
-산문에 텍스트를 주입하지 않고, 여러 호스트에 걸친 최종 답변 계약을 만들지도 않습니다.
-기록 프로필, `generic` 또는 그 밖의 사용자 관리·미지원 호스트, 비활성·저하·누락 Stop
-훅에는 이 지원되는 Stop 훅 receipt 표면이 없습니다. 그런 경로에서는
-`volicord status --task active --json`으로 기준 receipt를 직접 확인하거나 `active`를
-표시된 Task ID로 바꿉니다.
+생성된 Codex 및 Claude Code 어댑터는 어댑터의 플랫폼 및 루트 해석 전제 조건을 사용할 수
+있을 때 `record`와 `detective` 모두에 최종 출력 권한 고지 처리기를 설치합니다. Codex
+처리기에는 로컬 Git 작업 트리가 필요합니다. Git 저장소가 아닌 곳에서 Codex `record`
+초기화는 계속 성공하지만, 이 기능을 사용할 수 없다고 기록하고 최종 출력 처리기를
+설치하지 않으며 적용되는 `volicord status` 대체 경로로 안내합니다. Claude Code에는 이
+Git 루트 전제 조건이 없습니다. 처리기는 호스트 고유 최종 출력 이벤트를 사용하며 그
+이벤트가 기대하는 호스트 응답만 씁니다. `record`에서는 관찰하거나 차단하지 않는 읽기
+경로입니다. `detective`에서는 위에서 설명한 별도 Stop 결정과 함께 실행되며, 영속 guard
+결과를 receipt 원천으로 사용하지 않습니다.
+
+정확한 이벤트 재생을 포함해 전달할 때마다 처리기는 아래 순서로 동작합니다.
+
+1. 활성 Agent Connection, 선택 프로젝트 멤버십, 고정된 Product Repository, 호스트 종류,
+   설치 프로필을 읽기 전용으로 검증합니다.
+2. 닫기 데이터를 포함한 새 Core 상태를 읽습니다.
+3. 공유 Core 검증기로 result, `read_only`, non-dry-run 응답을 요구하고 receipt의 프로젝트,
+   Task, Task 참조 버전, `state_version`, 범위 revision, 현재 Change Unit, 증거 gate, 닫기
+   상태, 전체 닫기 차단 사유 집합, 다음 행동이 그 상태 결과와 일치하는지 확인합니다.
+4. [템플릿 본문](template-bodies.md#final-output-authority-disclosure-body)의 receipt 전체 또는
+   대체 안내 규칙에 따라 결과를 상태 보기로 만듭니다.
+
+receipt 분기는 검증한 `AuthorityReceipt` 전체를 결정적이고 공백 없는 기준 JSON으로 만들어
+최상위 `systemMessage` 고정 UI 표면에 넣습니다. 8 KiB 제한은 내부 메시지만이 아니라 바깥
+JSON 이스케이프를 적용하고 끝의 LF까지 포함한 완성된 직렬화 호스트 고유 JSON 응답에
+적용됩니다. 정확히 8,192 bytes는 허용하고 8,193 bytes부터 대체 안내를 사용합니다. 대체
+안내도 같은 제한에 맞는지 별도로 측정합니다. 어느 분기도 receipt JSON을 자르거나 일부만
+내보내지 않습니다.
+
+receipt 크기 초과, 갱신 실패, 거부되거나 잘못된 결과, 연결·어댑터 불일치,
+사용 불가·저하 어댑터는 크기가 제한된 안전한 대체 안내만 만듭니다. Task를 식별했으면
+안전하게 사용할 수 있는 프로젝트, Task, `state_version` 좌표와 정확한
+`volicord status --task TASK_ID --json` 명령을 표시합니다. 현재 Task가 없으면 그 사실을
+명시하고 `volicord status --json`을 표시합니다. Core 오류 메시지나 세부사항, 요청·응답
+본문, 원시 호스트 이벤트 텍스트, 모델이 작성한 최종 산문을 복사하지 않습니다.
+
+갱신과 렌더링 경로는 Core 상태나 버전 변경, 이벤트, 재생 행, guard 이벤트, Agent
+Session, 설치 활성화, 감시기 상태, 호스트 관찰을 만들지 않습니다. 정확한 Detective
+재생은 변경 불가능한 과거 Stop 결정을 재사용하지만, 이와 별도인 표시는 현재 권한을
+다시 새로 읽습니다. 모델의 최종 산문, 변경 receipt, 캐시된 Stop 결과, 생성된 설정은
+현재 권한 입력이 아닙니다.
+
+`systemMessage`는 별도의 호스트 고정 UI 표면입니다. 모델 맥락이 아니며 모델의 최종
+산문에 텍스트를 주입하지 않습니다. `generic`, 사용자 관리, 미지원, 누락, 비활성,
+저하 어댑터는 이 기능을 사용할 수 없다고 보고하고 적용되는 상태 대체 경로를 보여 줘야
+합니다. 생성된 파일만으로 호스트가 receipt를 표시했다고 주장하면 안 됩니다.
 
 ## 변경 조정 명령
 

@@ -24,7 +24,8 @@ use crate::{
     },
     host_integration::{
         contracts::{
-            contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
+            contract_for, hook_event_for_phase, validate_contract_config,
+            validate_final_output_contract_config, HostContractConfigKind,
         },
         HostIntegrationFileKind, HostKind, HostLifecyclePhase, REQUIRED_GUARD_PHASES,
     },
@@ -3179,7 +3180,7 @@ pub(crate) fn managed_json_projection_merge(
         }
         ManagedJsonProjection::ClaudeCodeMcpEntry => merge_claude_mcp_entry(current, desired),
     }?;
-    validate_managed_json_projection_config(projection, &merged)?;
+    validate_managed_json_projection_config(projection, &merged, desired)?;
     Ok(merged)
 }
 
@@ -3201,6 +3202,7 @@ fn canonical_json_text(value: &Value) -> Result<String, GuardIntegrationError> {
 fn validate_managed_json_projection_config(
     projection: ManagedJsonProjection,
     value: &Value,
+    desired: &Value,
 ) -> Result<(), GuardIntegrationError> {
     let text = serde_json::to_string(value)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
@@ -3214,7 +3216,17 @@ fn validate_managed_json_projection_config(
             "merged Claude Code MCP config",
         ),
     };
-    validate_contract_config(HostKind::ClaudeCode, kind, &text).map_err(|error| {
+    let final_output_only = projection == ManagedJsonProjection::ClaudeCodeSettingsHooks
+        && desired
+            .get("hooks")
+            .and_then(Value::as_object)
+            .is_some_and(|hooks| hooks.len() == 1 && hooks.contains_key("Stop"));
+    let validation = if final_output_only {
+        validate_final_output_contract_config(HostKind::ClaudeCode, kind, &text)
+    } else {
+        validate_contract_config(HostKind::ClaudeCode, kind, &text)
+    };
+    validation.map_err(|error| {
         GuardIntegrationError::runtime(format!(
             "{label} do not match the verified contract: {error}"
         ))
@@ -3267,20 +3279,6 @@ fn merge_claude_settings_hooks(
         })?;
     for phase in REQUIRED_GUARD_PHASES {
         let event_name = claude_event_name(phase)?;
-        let desired_groups = desired_hooks
-            .get(event_name)
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                GuardIntegrationError::runtime(format!(
-                    "managed Claude Code hook projection is missing {event_name}"
-                ))
-            })?;
-        let desired_group = desired_groups.first().cloned().ok_or_else(|| {
-            GuardIntegrationError::runtime(format!(
-                "managed Claude Code hook projection has no {event_name} group"
-            ))
-        })?;
-        let desired_handler = claude_managed_group_signature(&desired_group, event_name)?;
         let existing_groups = hooks
             .remove(event_name)
             .map(|value| {
@@ -3293,17 +3291,102 @@ fn merge_claude_settings_hooks(
             .transpose()?
             .unwrap_or_default();
         let mut preserved_groups = Vec::new();
-        for group in existing_groups {
-            if let Some(group) =
-                remove_claude_managed_handlers(phase, event_name, &desired_handler, group)?
-            {
-                preserved_groups.push(group);
+        if let Some(desired_groups) = desired_hooks.get(event_name) {
+            let desired_group = desired_groups
+                .as_array()
+                .and_then(|groups| groups.first())
+                .cloned()
+                .ok_or_else(|| {
+                    GuardIntegrationError::runtime(format!(
+                        "managed Claude Code hook projection has no {event_name} group"
+                    ))
+                })?;
+            let desired_handler = claude_managed_group_signature(&desired_group, event_name)?;
+            for group in existing_groups {
+                if let Some(group) =
+                    remove_claude_managed_handlers(phase, event_name, &desired_handler, group)?
+                {
+                    preserved_groups.push(group);
+                }
+            }
+            preserved_groups.push(desired_group);
+        } else {
+            for group in existing_groups {
+                if let Some(group) =
+                    remove_retired_claude_managed_handlers(phase, event_name, group)?
+                {
+                    preserved_groups.push(group);
+                }
             }
         }
-        preserved_groups.push(desired_group);
-        hooks.insert(event_name.to_owned(), Value::Array(preserved_groups));
+        if !preserved_groups.is_empty() {
+            hooks.insert(event_name.to_owned(), Value::Array(preserved_groups));
+        }
     }
     Ok(Value::Object(root))
+}
+
+fn remove_retired_claude_managed_handlers(
+    phase: HostLifecyclePhase,
+    event_name: &str,
+    group: Value,
+) -> Result<Option<Value>, GuardIntegrationError> {
+    let mut object = group.as_object().cloned().ok_or_else(|| {
+        GuardIntegrationError::runtime(format!(
+            "Claude Code settings hook group for {event_name} must be an object"
+        ))
+    })?;
+    let handlers = object
+        .remove("hooks")
+        .and_then(|value| value.as_array().cloned())
+        .ok_or_else(|| {
+            GuardIntegrationError::runtime(format!(
+                "Claude Code settings hook group for {event_name} must contain a hooks array"
+            ))
+        })?;
+    let mut kept = Vec::new();
+    for handler in handlers {
+        if is_generated_claude_wrapper_handler(phase, &handler) {
+            continue;
+        }
+        if looks_like_claude_managed_phase_handler(phase, &handler) {
+            return Err(GuardIntegrationError::runtime(format!(
+                "Claude Code settings contain a conflicting Volicord-managed {event_name} hook entry"
+            )));
+        }
+        kept.push(handler);
+    }
+    if kept.is_empty() {
+        return Ok(None);
+    }
+    object.insert("hooks".to_owned(), Value::Array(kept));
+    Ok(Some(Value::Object(object)))
+}
+
+fn is_generated_claude_wrapper_handler(phase: HostLifecyclePhase, handler: &Value) -> bool {
+    let expected = format!(
+        "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/volicord-{}.sh",
+        phase.command_name()
+    );
+    handler.as_object().is_some_and(|object| {
+        object.get("type").and_then(Value::as_str) == Some("command")
+            && object.get("command").and_then(Value::as_str) == Some(expected.as_str())
+            && hook_handler_args(object).is_some_and(|args| args.is_empty())
+    })
+}
+
+fn looks_like_claude_managed_phase_handler(phase: HostLifecyclePhase, handler: &Value) -> bool {
+    handler
+        .get("command")
+        .and_then(Value::as_str)
+        .is_some_and(|command| {
+            command.contains(&format!(
+                ".claude/hooks/volicord-{}.sh",
+                phase.command_name()
+            )) || ((command.contains("volicord _hook")
+                || command.contains("volicord _final-output"))
+                && command.contains(phase.command_name()))
+        })
 }
 
 fn remove_claude_managed_handlers(
@@ -3529,6 +3612,22 @@ mod tests {
         Ok(json!({ "hooks": hooks }))
     }
 
+    fn claude_final_output_settings_projection() -> Result<Value, GuardIntegrationError> {
+        let phase = HostLifecyclePhase::Stop;
+        Ok(json!({
+            "hooks": {
+                (claude_event_name(phase)?): [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-stop.sh",
+                        "args": [],
+                        "timeout": 30
+                    }]
+                }]
+            }
+        }))
+    }
+
     fn claude_settings_retirement_capability(
         path: &Path,
         desired: &Value,
@@ -3579,6 +3678,52 @@ mod tests {
 
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0]["hooks"][0]["command"], "./user-owned-pre-tool.sh");
+        Ok(())
+    }
+
+    #[test]
+    fn claude_profile_transition_keeps_unmanaged_hooks_and_changes_only_managed_phases(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let detective = claude_settings_projection()?;
+        let pre_tool = claude_event_name(HostLifecyclePhase::PreTool)?;
+        let mut current = detective.clone();
+        current["hooks"][pre_tool]
+            .as_array_mut()
+            .expect("PreToolUse groups should be an array")
+            .insert(
+                0,
+                json!({
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "./user-owned-pre-tool.sh"
+                    }]
+                }),
+            );
+
+        let record = claude_final_output_settings_projection()?;
+        let migrated_to_record = merge_claude_settings_hooks(&current, &record)?;
+        assert_eq!(
+            migrated_to_record["hooks"][pre_tool][0]["hooks"][0]["command"],
+            "./user-owned-pre-tool.sh"
+        );
+        assert_eq!(migrated_to_record["hooks"]["Stop"], record["hooks"]["Stop"]);
+        assert!(!migrated_to_record.to_string().contains("volicord-pre-tool"));
+        assert!(!migrated_to_record
+            .to_string()
+            .contains("volicord-session-start"));
+
+        let migrated_back = merge_claude_settings_hooks(&migrated_to_record, &detective)?;
+        assert_eq!(
+            migrated_back["hooks"][pre_tool][0]["hooks"][0]["command"],
+            "./user-owned-pre-tool.sh"
+        );
+        for phase in REQUIRED_GUARD_PHASES {
+            let event = claude_event_name(phase)?;
+            assert!(migrated_back["hooks"][event]
+                .as_array()
+                .is_some_and(|groups| !groups.is_empty()));
+        }
         Ok(())
     }
 

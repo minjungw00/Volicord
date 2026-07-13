@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use serde_json::{json, Value};
-use volicord_core::{CoreService, InvocationContext};
+use volicord_core::{
+    validate_authority_status, AuthorityStatusExpectation, CoreService, InvocationContext,
+};
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{
-    ActorSource, AuthorityReceipt, EffectKind, ErrorCode, GuardDecision, OperationCategory,
-    ProjectId, RequestId, ResponseKind, StateRecordKind, StateRecordRef, StatusInclude,
-    StatusRequest, StatusResult, TaskId, ToolEnvelope,
-    VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+    ActorSource, ChangeUnitId, ErrorCode, GuardDecision, OperationCategory, ProjectId, RequestId,
+    ResponseKind, StatusInclude, StatusRequest, StatusResult, TaskId, ToolEnvelope,
 };
 
 use super::GuardPhaseResult;
@@ -24,10 +24,16 @@ pub(in crate::guard_command) fn handle_stop(
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
+    invocation_binding_basis: &str,
 ) -> Result<GuardPhaseResult, GuardCommandError> {
     let summary = guard_state_summary(runtime_home, project, envelope, input)?;
-    let (decision, reasons, close_status) =
-        stop_decision(runtime_home, project, envelope, &summary)?;
+    let (decision, reasons, close_status) = stop_decision(
+        runtime_home,
+        project,
+        envelope,
+        &summary,
+        invocation_binding_basis,
+    )?;
     Ok(GuardPhaseResult::new(
         decision,
         json!({
@@ -46,6 +52,7 @@ fn stop_decision(
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     summary: &GuardStateSummary,
+    invocation_binding_basis: &str,
 ) -> Result<(GuardDecision, Vec<GuardReason>, Value), GuardCommandError> {
     let Some(task_id) = summary.active_task_id.as_deref() else {
         return Ok((
@@ -82,7 +89,7 @@ fn stop_decision(
             ProjectId::new(&project.project_id),
             ActorSource::agent_connection(envelope.connection_id.clone()),
             OperationCategory::Read,
-            VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING,
+            invocation_binding_basis,
         ),
     )?;
     let mut reasons = Vec::new();
@@ -167,94 +174,24 @@ fn authoritative_status_result(
     task_id: &str,
     summary: &GuardStateSummary,
 ) -> Option<StatusResult> {
-    let result = parse_authoritative_status_result(response)?;
-    let receipt = result.authority_receipt.as_ref()?;
-    if !authority_receipt_matches_fresh_status(receipt, &result, project, task_id, summary) {
-        return None;
-    }
-    Some(result)
-}
-
-fn parse_authoritative_status_result(response: &Value) -> Option<StatusResult> {
-    let result = serde_json::from_value::<StatusResult>(response.clone()).ok()?;
-    if result.base.response_kind != ResponseKind::Result
-        || result.base.effect_kind != EffectKind::ReadOnly
-        || result.base.dry_run
-        || result.close_state.is_none()
-        || result.close_blockers.is_none()
+    let expectation =
+        AuthorityStatusExpectation::new(ProjectId::new(&project.project_id), TaskId::new(task_id))
+            .with_state_version(summary.state_version)
+            .with_current_change_unit(
+                summary
+                    .active_change_unit_id
+                    .as_deref()
+                    .map(ChangeUnitId::new),
+            );
+    let result = validate_authority_status(response, &expectation)
+        .ok()?
+        .into_status();
+    if summary.pending_user_action_count != result.pending_user_actions.len()
+        || summary.active_blocker_count != result.blocker_refs.len()
     {
         return None;
     }
     Some(result)
-}
-
-fn authority_receipt_matches_fresh_status(
-    receipt: &AuthorityReceipt,
-    result: &StatusResult,
-    project: &ProjectRecord,
-    task_id: &str,
-    summary: &GuardStateSummary,
-) -> bool {
-    let Some(state_version) = result.base.state_version else {
-        return false;
-    };
-    let Some(active_task) = result.active_task.as_ref() else {
-        return false;
-    };
-    let Some(active_task_ref) = active_task.task_ref.as_ref() else {
-        return false;
-    };
-    receipt.project_id.as_str() == project.project_id
-        && receipt.task_ref.project_id.as_str() == project.project_id
-        && receipt.task_ref.record_id.as_str() == task_id
-        && receipt.task_ref.task_id.as_ref().map(TaskId::as_str) == Some(task_id)
-        && receipt.task_ref.produced_at_state_version.as_ref() == Some(&state_version)
-        && receipt.state_version == state_version
-        && summary.state_version == state_version
-        && summary.active_task_id.as_deref() == Some(task_id)
-        && summary.active_change_unit_id.as_deref()
-            == receipt
-                .change_unit_ref
-                .as_ref()
-                .map(|record| record.record_id.as_str())
-        && summary.pending_user_action_count == result.pending_user_actions.len()
-        && summary.active_blocker_count == result.blocker_refs.len()
-        && active_task.project_id.as_str() == project.project_id
-        && active_task.state_version == state_version
-        && active_task_ref == &receipt.task_ref
-        && active_task.scope_revision == receipt.scope_revision
-        && change_unit_receipt_matches_current_status(
-            active_task.active_change_unit_ref.as_ref(),
-            receipt.change_unit_ref.as_ref(),
-            state_version,
-        )
-        && result.close_state == Some(receipt.close_state)
-        && result.close_blockers.as_ref() == Some(&receipt.close_blockers)
-        && result.evidence_gate.as_ref().and_then(|gate| gate.as_ref())
-            == receipt.evidence_gate.as_ref()
-        && receipt
-            .next_action
-            .as_ref()
-            .is_none_or(|action| result.next_actions.contains(action))
-}
-
-fn change_unit_receipt_matches_current_status(
-    active_change_unit_ref: Option<&StateRecordRef>,
-    receipt_change_unit_ref: Option<&StateRecordRef>,
-    state_version: u64,
-) -> bool {
-    match (active_change_unit_ref, receipt_change_unit_ref) {
-        (None, None) => true,
-        (Some(active), Some(receipt)) => {
-            receipt.record_kind == StateRecordKind::ChangeUnit
-                && active.record_kind == receipt.record_kind
-                && active.record_id == receipt.record_id
-                && active.project_id == receipt.project_id
-                && active.task_id == receipt.task_id
-                && receipt.produced_at_state_version.as_ref() == Some(&state_version)
-        }
-        (None, Some(_)) | (Some(_), None) => false,
-    }
 }
 
 fn recognized_response_kind(response: &Value) -> Option<ResponseKind> {
@@ -302,7 +239,13 @@ mod tests {
             ]
         });
 
-        assert!(parse_authoritative_status_result(&malformed).is_none());
+        let expectation = AuthorityStatusExpectation::new(
+            ProjectId::new("project_malformed"),
+            TaskId::new("task_malformed"),
+        );
+        let validation_error = validate_authority_status(&malformed, &expectation)
+            .expect_err("malformed status must not be authoritative");
+        assert!(!validation_error.to_string().contains("sensitive"));
         assert_eq!(recognized_response_kind(&malformed), None);
         assert_eq!(public_error_codes(&malformed), ["MCP_UNAVAILABLE"]);
     }
@@ -313,52 +256,14 @@ mod tests {
             "base": {"response_kind": "result"}
         });
 
-        assert!(parse_authoritative_status_result(&incomplete).is_none());
+        let expectation = AuthorityStatusExpectation::new(
+            ProjectId::new("project_incomplete"),
+            TaskId::new("task_incomplete"),
+        );
+        assert!(validate_authority_status(&incomplete, &expectation).is_err());
         assert_eq!(
             recognized_response_kind(&incomplete),
             Some(ResponseKind::Result)
         );
-    }
-
-    #[test]
-    fn current_change_unit_receipt_accepts_historical_active_ref_only_by_identity() {
-        let active: StateRecordRef = serde_json::from_value(json!({
-            "record_kind": "change_unit",
-            "record_id": "cu_ready",
-            "project_id": "project_ready",
-            "task_id": "task_ready",
-            "produced_at_state_version": 2
-        }))
-        .expect("active Change Unit ref fixture");
-        let receipt: StateRecordRef = serde_json::from_value(json!({
-            "record_kind": "change_unit",
-            "record_id": "cu_ready",
-            "project_id": "project_ready",
-            "task_id": "task_ready",
-            "produced_at_state_version": 3
-        }))
-        .expect("receipt Change Unit ref fixture");
-
-        assert!(change_unit_receipt_matches_current_status(
-            Some(&active),
-            Some(&receipt),
-            3,
-        ));
-
-        let mut wrong_identity = receipt.clone();
-        wrong_identity.record_id = volicord_types::RecordId::new("cu_other");
-        assert!(!change_unit_receipt_matches_current_status(
-            Some(&active),
-            Some(&wrong_identity),
-            3,
-        ));
-
-        let mut stale_receipt = receipt;
-        stale_receipt.produced_at_state_version = Some(2).into();
-        assert!(!change_unit_receipt_matches_current_status(
-            Some(&active),
-            Some(&stale_receipt),
-            3,
-        ));
     }
 }

@@ -577,6 +577,12 @@ fn resolve_init_repo_root(
     match resolve_connection_repo_root(current_dir, Some(repo)) {
         Ok(repo_root) => Ok(repo_root),
         Err(ConnectionCommandError::Runtime(message))
+            if init_mode == InitMode::Record
+                && message.contains("no Git repository root found") =>
+        {
+            resolve_explicit_record_repo_root(current_dir, repo)
+        }
+        Err(ConnectionCommandError::Runtime(message))
             if init_mode == InitMode::Detective
                 && message.contains("no Git repository root found") =>
         {
@@ -586,6 +592,36 @@ fn resolve_init_repo_root(
         }
         Err(error) => Err(error),
     }
+}
+
+fn resolve_explicit_record_repo_root(
+    current_dir: &Path,
+    repo: &Path,
+) -> Result<PathBuf, ConnectionCommandError> {
+    let absolute = if repo.is_absolute() {
+        repo.to_path_buf()
+    } else {
+        current_dir.join(repo)
+    };
+    let canonical = fs::canonicalize(&absolute).map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "repository path is not accessible: {} ({error})",
+            absolute.display()
+        ))
+    })?;
+    let metadata = fs::metadata(&canonical).map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "repository path is not accessible: {} ({error})",
+            canonical.display()
+        ))
+    })?;
+    if !metadata.is_dir() {
+        return Err(ConnectionCommandError::runtime(format!(
+            "record-profile Product Repository path must be a directory: {}",
+            canonical.display()
+        )));
+    }
+    Ok(canonical)
 }
 
 fn connection_intent_from_flags(
@@ -1180,6 +1216,7 @@ struct GuardOperationalState {
     effective_state: String,
     generated_config_verified: bool,
     native_host_output_adapter_verified: bool,
+    final_output_authority_disclosure: FinalOutputAuthorityDisclosureState,
     hook_path_safety_state: String,
     hook_commands_cwd_independent: bool,
     hook_commands_subdirectory_safe: bool,
@@ -1205,6 +1242,75 @@ struct GuardOperationalState {
     unresolved_blockers: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FinalOutputAuthorityDisclosureState {
+    supported: bool,
+    configured: bool,
+    verified: bool,
+}
+
+impl FinalOutputAuthorityDisclosureState {
+    const fn unavailable() -> Self {
+        Self {
+            supported: false,
+            configured: false,
+            verified: false,
+        }
+    }
+
+    fn from_integration(integration: &GuardIntegrationPlan, applied: bool) -> Self {
+        let supported = integration.native_host_output_adapter != "none";
+        let has_config = integration.generated_files.iter().any(|file| {
+            file.kind == HostIntegrationFileKind::HostHookConfig
+                && (!applied
+                    || matches!(
+                        file.status,
+                        FilePlanStatus::Unchanged
+                            | FilePlanStatus::Created
+                            | FilePlanStatus::Updated
+                    ))
+        });
+        let has_wrapper = integration.generated_files.iter().any(|file| {
+            file.kind == HostIntegrationFileKind::HostHookWrapper
+                && (!applied
+                    || matches!(
+                        file.status,
+                        FilePlanStatus::Unchanged
+                            | FilePlanStatus::Created
+                            | FilePlanStatus::Updated
+                    ))
+        });
+        let configured = supported && applied && has_config && has_wrapper;
+        let verified = configured
+            && integration.native_host_output_adapter_verified
+            && integration
+                .host_hook_commands
+                .iter()
+                .all(|command| command.cwd_independent && command.subdirectory_safe);
+        Self {
+            supported,
+            configured,
+            verified,
+        }
+    }
+
+    fn from_findings(findings: &GuardFileFindings) -> Self {
+        Self {
+            supported: findings.final_output_authority_disclosure_supported(),
+            configured: findings.final_output_authority_disclosure_configured(),
+            verified: findings.final_output_authority_disclosure_verified(),
+        }
+    }
+
+    fn to_json(self) -> Value {
+        json!({
+            "supported": self.supported,
+            "configured": self.configured,
+            "verified": self.verified,
+        })
+    }
+}
+
 impl GuardOperationalState {
     fn not_configured() -> Self {
         Self {
@@ -1216,6 +1322,7 @@ impl GuardOperationalState {
             effective_state: "inactive".to_owned(),
             generated_config_verified: false,
             native_host_output_adapter_verified: false,
+            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::unavailable(),
             hook_path_safety_state: "not_checked".to_owned(),
             hook_commands_cwd_independent: false,
             hook_commands_subdirectory_safe: false,
@@ -1267,6 +1374,8 @@ impl GuardOperationalState {
             effective_state,
             generated_config_verified: false,
             native_host_output_adapter_verified: integration.native_host_output_adapter_verified,
+            final_output_authority_disclosure:
+                FinalOutputAuthorityDisclosureState::from_integration(integration, false),
             hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
             hook_commands_cwd_independent: integration
                 .host_hook_commands
@@ -1346,6 +1455,8 @@ impl GuardOperationalState {
                     .iter()
                     .all(|file| file.status == FilePlanStatus::Unchanged),
             native_host_output_adapter_verified: integration.native_host_output_adapter_verified,
+            final_output_authority_disclosure:
+                FinalOutputAuthorityDisclosureState::from_integration(integration, true),
             hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
             hook_commands_cwd_independent: integration
                 .host_hook_commands
@@ -1409,6 +1520,7 @@ impl GuardOperationalState {
             "effective_health": &self.effective_state,
             "generated_config_verified": self.generated_config_verified,
             "native_host_output_adapter_verified": self.native_host_output_adapter_verified,
+            "final_output_authority_disclosure": self.final_output_authority_disclosure.to_json(),
             "hook_path_safety": &self.hook_path_safety_state,
             "hook_commands_cwd_independent": self.hook_commands_cwd_independent,
             "hook_commands_subdirectory_safe": self.hook_commands_subdirectory_safe,
@@ -1717,11 +1829,15 @@ fn guard_state_for_connection(
     } else {
         file_findings.hook_path_safety_state()
     };
-    let hook_commands_cwd_independent =
-        all_recorded_values_true(&file_findings.hook_cwd_independent_values);
-    let hook_commands_subdirectory_safe =
-        all_recorded_values_true(&file_findings.hook_subdirectory_safe_values);
-    let hook_path_safety_details = file_findings.hook_path_safety_details.clone();
+    let hook_commands_cwd_independent = !prompt_capture_disabled
+        && all_recorded_values_true(&file_findings.hook_cwd_independent_values);
+    let hook_commands_subdirectory_safe = !prompt_capture_disabled
+        && all_recorded_values_true(&file_findings.hook_subdirectory_safe_values);
+    let hook_path_safety_details = if prompt_capture_disabled {
+        Vec::new()
+    } else {
+        file_findings.hook_path_safety_details.clone()
+    };
 
     if !file_findings.broken_files.is_empty() {
         let mode_state = guard_mode_state(&installations);
@@ -1751,6 +1867,9 @@ fn guard_state_for_connection(
             generated_config_verified: false,
             native_host_output_adapter_verified: file_findings
                 .native_host_output_adapter_verified(),
+            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
+                &file_findings,
+            ),
             hook_path_safety_state: hook_path_safety_state.clone(),
             hook_commands_cwd_independent,
             hook_commands_subdirectory_safe,
@@ -1817,6 +1936,9 @@ fn guard_state_for_connection(
             generated_config_verified: false,
             native_host_output_adapter_verified: file_findings
                 .native_host_output_adapter_verified(),
+            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
+                &file_findings,
+            ),
             hook_path_safety_state: hook_path_safety_state.clone(),
             hook_commands_cwd_independent,
             hook_commands_subdirectory_safe,
@@ -1879,6 +2001,9 @@ fn guard_state_for_connection(
             generated_config_verified: false,
             native_host_output_adapter_verified: file_findings
                 .native_host_output_adapter_verified(),
+            final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
+                &file_findings,
+            ),
             hook_path_safety_state: hook_path_safety_state.clone(),
             hook_commands_cwd_independent,
             hook_commands_subdirectory_safe,
@@ -1995,6 +2120,9 @@ fn guard_state_for_connection(
         effective_state,
         generated_config_verified: file_findings.generated_config_verified(),
         native_host_output_adapter_verified: file_findings.native_host_output_adapter_verified(),
+        final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
+            &file_findings,
+        ),
         hook_path_safety_state,
         hook_commands_cwd_independent,
         hook_commands_subdirectory_safe,
@@ -2715,6 +2843,38 @@ mod tests {
         assert!(!repo.join(".codex/hooks.json").exists());
         assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
 
+        Ok(())
+    }
+
+    #[test]
+    fn codex_record_integration_without_git_keeps_init_and_reports_final_output_unavailable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex record non git")?;
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        let plan = plan_guard_integration_for_test(
+            HostKind::Codex,
+            InitMode::Record,
+            &repo,
+            "conn_alpha",
+            "guard_installation_alpha",
+            &entry,
+        )?;
+
+        assert_eq!(plan.native_host_output_adapter, "none");
+        assert!(!plan.native_host_output_adapter_verified);
+        assert!(plan.host_hook_commands.is_empty());
+        assert!(!plan.generated_files.iter().any(|file| {
+            matches!(
+                file.kind,
+                HostIntegrationFileKind::HostHookConfig
+                    | HostIntegrationFileKind::HostHookWrapper
+                    | HostIntegrationFileKind::HostHookDispatch
+            )
+        }));
+        assert!(plan
+            .generated_files
+            .iter()
+            .any(|file| file.kind == HostIntegrationFileKind::VolicordPolicy));
         Ok(())
     }
 

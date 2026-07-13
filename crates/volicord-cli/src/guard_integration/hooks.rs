@@ -27,6 +27,7 @@ pub(crate) struct GuardCommandSpec {
 pub(crate) struct HostHookCommand {
     pub(crate) host_kind: HostKind,
     pub(crate) phase: HostLifecyclePhase,
+    pub(crate) purpose: HostHookPurpose,
     pub(crate) generated_command_shape: HostHookCommandShape,
     pub(crate) expected_wrapper_path: PathBuf,
     pub(crate) expected_phase_wrapper_path: PathBuf,
@@ -36,6 +37,21 @@ pub(crate) struct HostHookCommand {
     pub(crate) subdirectory_safe: bool,
     pub(crate) wrapper_resolution_status: HookWrapperResolutionStatus,
     pub(crate) verification: HostHookCommandVerification,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostHookPurpose {
+    DetectiveGuard,
+    FinalOutputAuthorityDisclosure,
+}
+
+impl HostHookPurpose {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::DetectiveGuard => "detective_guard",
+            Self::FinalOutputAuthorityDisclosure => "final_output_authority_disclosure",
+        }
+    }
 }
 
 impl HostHookCommand {
@@ -103,8 +119,10 @@ pub(crate) fn plan_hook_wrapper_files(
     repo_root: &Path,
     host_kind: HostKind,
     guard_commands: &BTreeMap<String, GuardCommandSpec>,
+    phases: &[HostLifecyclePhase],
+    purpose: HostHookPurpose,
 ) -> Result<Vec<GeneratedFilePlan>, GuardIntegrationError> {
-    REQUIRED_GUARD_PHASES
+    phases
         .iter()
         .map(|phase| {
             let guard_command = guard_commands.get(phase.policy_key()).ok_or_else(|| {
@@ -113,7 +131,7 @@ pub(crate) fn plan_hook_wrapper_files(
                     phase.policy_key()
                 ))
             })?;
-            plan_hook_wrapper_file(repo_root, host_kind, *phase, guard_command)
+            plan_hook_wrapper_file(repo_root, host_kind, *phase, purpose, guard_command)
         })
         .collect()
 }
@@ -122,11 +140,12 @@ pub(crate) fn plan_hook_wrapper_file(
     repo_root: &Path,
     host_kind: HostKind,
     phase: HostLifecyclePhase,
+    purpose: HostHookPurpose,
     guard_command: &GuardCommandSpec,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
     let path = repo_root.join(&relative_path);
-    let content = hook_wrapper_script_content(host_kind, phase, guard_command);
+    let content = hook_wrapper_script_content(host_kind, phase, purpose, guard_command);
     plan_managed_script_file(
         repo_root,
         &path,
@@ -151,16 +170,19 @@ pub(crate) fn plan_codex_dispatch_wrapper_file(
 pub(crate) fn host_hook_command_specs(
     host_kind: HostKind,
     repo_root: &Path,
+    phases: &[HostLifecyclePhase],
+    purpose: HostHookPurpose,
 ) -> Result<BTreeMap<String, HostHookCommand>, GuardIntegrationError> {
-    if host_kind == HostKind::Codex && !repo_has_git_marker(repo_root)? {
+    if host_kind == HostKind::Codex && !codex_hook_root_available(repo_root)? {
         return Err(GuardIntegrationError::runtime(
-            observe_hook_root_unsupported_message(host_kind, repo_root),
+            hook_root_unsupported_message(host_kind, repo_root, purpose),
         ));
     }
-    REQUIRED_GUARD_PHASES
-        .into_iter()
+    phases
+        .iter()
+        .copied()
         .map(|phase| {
-            let command = host_hook_command_spec(host_kind, repo_root, phase)?;
+            let command = host_hook_command_spec(host_kind, repo_root, phase, purpose)?;
             Ok((phase.policy_key().to_owned(), command))
         })
         .collect()
@@ -170,6 +192,7 @@ pub(crate) fn host_hook_command_spec(
     host_kind: HostKind,
     repo_root: &Path,
     phase: HostLifecyclePhase,
+    purpose: HostHookPurpose,
 ) -> Result<HostHookCommand, GuardIntegrationError> {
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
     let relative = path_text(&relative_path);
@@ -177,15 +200,26 @@ pub(crate) fn host_hook_command_spec(
         HostKind::Codex => {
             let dispatch_relative = codex_dispatch_wrapper_relative_path();
             let dispatch_relative_text = path_text(&dispatch_relative);
-            let expected_wrapper_path = repo_root.join(&dispatch_relative);
             let expected_phase_wrapper_path = repo_root.join(&relative_path);
-            let script = format!(
-                "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
-                phase.command_name()
-            );
+            let (expected_wrapper_path, script) = match purpose {
+                HostHookPurpose::DetectiveGuard => (
+                    repo_root.join(&dispatch_relative),
+                    format!(
+                        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
+                        phase.command_name()
+                    ),
+                ),
+                HostHookPurpose::FinalOutputAuthorityDisclosure => (
+                    expected_phase_wrapper_path.clone(),
+                    format!(
+                        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{relative}\""
+                    ),
+                ),
+            };
             Ok(HostHookCommand {
                 host_kind,
                 phase,
+                purpose,
                 generated_command_shape: HostHookCommandShape::ShellCommandString(format!(
                     "sh -c {}",
                     shell_word(&script)
@@ -208,6 +242,7 @@ pub(crate) fn host_hook_command_spec(
             Ok(HostHookCommand {
                 host_kind,
                 phase,
+                purpose,
                 generated_command_shape: HostHookCommandShape::Exec {
                     command: format!("${{CLAUDE_PROJECT_DIR}}/{relative}"),
                     args: Vec::new(),
@@ -285,6 +320,45 @@ pub(crate) fn guard_command_specs(
         .collect()
 }
 
+pub(crate) fn final_output_command_specs(
+    repo_root: &Path,
+    connection_id: &str,
+    guard_installation_id: &str,
+    host_kind: HostKind,
+    profile: IntegrationProfile,
+    policy_hash: &str,
+) -> BTreeMap<String, GuardCommandSpec> {
+    let host_output = match host_kind {
+        HostKind::Codex => "codex",
+        HostKind::ClaudeCode => "claude-code",
+        HostKind::Generic => "volicord-json",
+    };
+    let args = vec![
+        "_final-output".to_owned(),
+        "--repo".to_owned(),
+        path_text(repo_root),
+        "--connection".to_owned(),
+        connection_id.to_owned(),
+        "--guard-installation".to_owned(),
+        guard_installation_id.to_owned(),
+        "--host".to_owned(),
+        public_host_label(host_kind).to_owned(),
+        "--integration-profile".to_owned(),
+        profile.as_str().to_owned(),
+        "--policy-hash".to_owned(),
+        policy_hash.to_owned(),
+        "--host-output".to_owned(),
+        host_output.to_owned(),
+    ];
+    BTreeMap::from([(
+        HostLifecyclePhase::Stop.policy_key().to_owned(),
+        GuardCommandSpec {
+            command: DEFAULT_MCP_COMMAND.to_owned(),
+            args,
+        },
+    )])
+}
+
 pub(crate) fn host_hook_command_lines(
     commands: &BTreeMap<String, HostHookCommand>,
 ) -> Vec<(String, String)> {
@@ -323,6 +397,23 @@ pub(crate) fn observe_hook_root_unsupported_message(
     )
 }
 
+fn hook_root_unsupported_message(
+    host_kind: HostKind,
+    repo_root: &Path,
+    purpose: HostHookPurpose,
+) -> String {
+    match purpose {
+        HostHookPurpose::DetectiveGuard => {
+            observe_hook_root_unsupported_message(host_kind, repo_root)
+        }
+        HostHookPurpose::FinalOutputAuthorityDisclosure => format!(
+            "FINAL_OUTPUT_HOOK_ROOT_UNSUPPORTED: {} record init requires a Git work tree root for managed final-output disclosure, but no Git repository root was found from {}. Prepare the registered Product Repository as a Git work tree or use a host without a managed final-output adapter.",
+            public_host_label(host_kind),
+            repo_root.display()
+        ),
+    }
+}
+
 fn hook_wrapper_relative_path(
     host_kind: HostKind,
     phase: HostLifecyclePhase,
@@ -343,7 +434,7 @@ fn codex_dispatch_wrapper_relative_path() -> PathBuf {
     PathBuf::from(CODEX_DISPATCH_WRAPPER)
 }
 
-fn repo_has_git_marker(repo_root: &Path) -> Result<bool, GuardIntegrationError> {
+pub(crate) fn codex_hook_root_available(repo_root: &Path) -> Result<bool, GuardIntegrationError> {
     repo_root.join(".git").try_exists().map_err(|error| {
         GuardIntegrationError::runtime(format!(
             "failed to inspect Git repository marker {}: {error}",
@@ -355,6 +446,7 @@ fn repo_has_git_marker(repo_root: &Path) -> Result<bool, GuardIntegrationError> 
 fn hook_wrapper_script_content(
     host_kind: HostKind,
     phase: HostLifecyclePhase,
+    purpose: HostHookPurpose,
     guard_command: &GuardCommandSpec,
 ) -> String {
     let command_line = guard_command_line(guard_command);
@@ -364,9 +456,10 @@ fn hook_wrapper_script_content(
     let policy_hash = arg_after(&guard_command.args, "--policy-hash").unwrap_or("unknown");
     let host_output = arg_after(&guard_command.args, "--host-output").unwrap_or("none");
     format!(
-        "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\nexec {command_line}\n",
+        "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# purpose={purpose}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\nexec {command_line}\n",
         public_host_label(host_kind),
         phase.policy_key(),
+        purpose = purpose.as_str(),
     )
 }
 

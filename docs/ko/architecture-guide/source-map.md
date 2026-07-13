@@ -79,6 +79,7 @@
 | 소스 경로 | 책임 |
 |---|---|
 | `crates/volicord-core/src/lib.rs` | Core 쪽 서비스와 어댑터 독립 메서드 진입점의 공개 크레이트 표면. |
+| `crates/volicord-core/src/authority_status.rs` | MCP, CLI Stop, 최종 출력 고지 소비자를 위해 담당 문서가 정의한 status/`AuthorityReceipt` 대응 관계를 검증하는 Core 소유 형식 검증. |
 | `crates/volicord-core/src/pipeline.rs` | `CoreService`, 호출 맥락, 공통 사전 점검, 요청 해시, Store 열기, 재실행 처리, 효과 경로 선택, 응답 구성, Core 커밋 조율. |
 | `crates/volicord-core/src/methods/` | 메서드별 검증, 계획, 저장소 변이 목록, 이벤트 페이로드, `dry-run` 미리보기 요약, 결과 필드. |
 | `crates/volicord-core/src/methods/status.rs` | `volicord.status` 계획과 읽기 전용 결과 구성. |
@@ -101,20 +102,22 @@
 | `crates/volicord-cli/src/main.rs` | `volicord` 프로세스 진입, 관리 명령 디스패치, `volicord mcp`와 로컬 HTTP 프로세스 모드 인계, 설정 완료 여부 점검, 바이너리 종료 동작. |
 | `crates/volicord-cli/src/lib.rs` | 재사용 명령 모듈을 위한 공유 관리 CLI 크레이트 표면. |
 | `crates/volicord-cli/src/setup_command.rs`와 `crates/volicord-cli/src/setup_command/` | 설정 명령 진입점, 설정 작업 흐름 실행, 실행 파일 탐색, 명령 링크와 셸 시작 계획, 대화형 선택, 설정 결과 표시. |
-| `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`의 파싱, 구성, 선택, 검증, MCP 프로세스 점검, 결과 표시. `connection_command/service.rs`는 Store 부트스트랩과 Agent Connection 도우미를 통해 프로젝트와 Agent Connection 구성을 조율합니다. |
-| `crates/volicord-cli/src/guard_command.rs`와 `crates/volicord-cli/src/guard_command/` | `guard` 훅 명령 디스패치, 인수 파싱, 호스트 이벤트 정규화, 도구 관찰 추출, 변경 분류, 단계 처리, 프롬프트 캡처와 사용자 행동 명령, 쓰기 티켓 점검, 훅 결과 표시. |
-| `crates/volicord-cli/src/guard_integration/` | `guard` 통합 계획, 생성 파일 적용, 역량 메타데이터와 정책 도우미, 호스트별 훅 계획, 연결 상태와 진단에 쓰는 사실 감사 도우미. |
+| `crates/volicord-cli/src/connection_command.rs`와 `crates/volicord-cli/src/connection_command/` | `volicord init`, `volicord connection add`, `volicord connection list`, `volicord connection status/verify/mode/remove`의 파싱, 구성, 선택, 검증, MCP 프로세스 점검, 최종 출력 고지 역량 진단, 결과 표시. `connection_command/service.rs`는 Store 부트스트랩과 Agent Connection 도우미를 통해 프로젝트와 Agent Connection 구성을 조율합니다. |
+| `crates/volicord-cli/src/final_output_command.rs` | 숨겨진 관리 최종 출력 명령, 읽기 전용 바인딩 검증, 새 상태 보기, 완전한 정규 receipt 또는 fallback 계획, Record 최종 출력과 Detective Stop 전달·재생이 공유하는 전체 호스트 응답 바이트 예산 렌더링. |
+| `crates/volicord-cli/src/guard_command.rs`와 `crates/volicord-cli/src/guard_command/` | 숨겨진 호스트 이벤트 명령 디스패치, 인수 파싱, 이벤트 정규화, 도구 관찰 추출, 변경 분류, 단계 처리, 프롬프트 캡처와 사용자 행동 명령, 쓰기 티켓 점검, 분리된 Detective Stop 집행과 불변 재생, 과거 Stop 결정과 공유 최신 최종 출력 상태 보기의 합성. |
+| `crates/volicord-cli/src/guard_integration/` | `guard` 통합 계획, 생성 파일 적용, 역량 메타데이터와 정책 도우미, 프로필과 무관한 최종 출력 처리기 계획, 더 넓은 Detective 생명주기 계획, 연결 상태와 진단에 쓰는 사실 감사 도우미. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` | 호스트 역량, 프로필, 프로젝트, 런타임 사실을 바탕으로 `guard` 통합 계획 조립. |
 | `crates/volicord-cli/src/guard_integration/files.rs` | 생성된 `guard` 파일과 관리 정책 파일 계획, 고정된 Product Repository 경로 순회, 대상 스냅샷, 조건부 동일 디렉터리 교체, 연산 후 복구 검사. |
 | `crates/volicord-cli/src/guard_integration/apply.rs` | 계획된 `guard` 파일과 관리 상태 보기의 렌더링 및 적용 디스패치. |
 | `crates/volicord-cli/src/guard_integration/capability.rs` | 역량 메타데이터와 기록된 `guard` 설치 메타데이터 도우미. |
 | `crates/volicord-cli/src/guard_integration/policy.rs` | `guard` 정책 값과 생명주기 단계 도우미. |
-| `crates/volicord-cli/src/guard_integration/hooks.rs`와 `crates/volicord-cli/src/guard_integration/hosts/` | 호스트 훅 명령 계획과 호스트별 생성 파일 계획. |
+| `crates/volicord-cli/src/guard_integration/hooks.rs`와 `crates/volicord-cli/src/guard_integration/hosts/` | 최종 출력 전용 단계 부분 집합과 더 넓은 Detective 생명주기를 위한 호스트 이벤트 명령 및 호스트별 생성 파일 계획. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 기록된 역량 메타데이터, 생성 파일, 래퍼 스크립트, 훅 명령 경로, 관리 상태 보기에 대한 사실 점검. 이 사실은 진단 관찰이지 보안 보장, 사용자 승인 기록, 정확성 증명이 아닙니다. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 보고를 위한 설치, 연결, 호스트, `guard` 사실 수집. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | 내용이 없는 session diagnostics aggregate 선택과 text/JSON 출력. |
 | `crates/volicord-cli/src/user_command.rs` | 로컬 User Channel 상태와 `volicord inbox` 명령 파싱 및 조율. 로컬 사용자 호출 사실을 Core의 판단 기록 경로에 전달합니다. |
-| `crates/volicord-cli/src/host_integration/` | 공통 호스트 종류, 범위, 역량, 생명주기 단계, 설정 편집, 통합 계약, 범용 호스트 안내, 진단 상태 타입. |
+| `crates/volicord-cli/src/host_integration/` | 공통 호스트 종류, 범위, 역량, 생명주기 단계, 설정 편집, 통합 계약, 프로필과 무관한 최종 출력 고지 역량 계약과 검증, 범용 호스트 fallback 안내, 진단 상태 타입. |
+| `crates/volicord-cli/src/host_integration/contracts.rs` | 지원 호스트 통합 계약 메타데이터와 픽스처·설정 검증. Record profile과 Detective profile이 공유하는 최종 출력 전용 단계 부분 집합을 포함합니다. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 어댑터 내부 구현. 설정 계획, 실행 파일 점검, 관리 대상 식별 정보, 신뢰 사실, 검증. |
 | `crates/volicord-cli/src/host_integration/claude_code/` | Claude Code 어댑터 내부 구현. CLI 명령과 설정 계획, 관리 대상 식별 정보 점검, 호스트 고유 출력 파싱, 검증. |
 | `crates/volicord-cli/src/registration.rs` | Runtime Home 기록을 초기화할 때 쓰는 공유 관리 작업 생성자 메타데이터. |
@@ -133,7 +136,7 @@
 | `crates/volicord-mcp/src/repository_discovery.rs` | 형식이 지정된 호스트 선택자와 복제본에서 그대로 쓸 수 있는 정확한 저장소 MCP 기술 정보의 생성 및 검증. |
 | `crates/volicord-mcp/src/routing.rs` | Agent Connection 시작 검사, 정규화된 Git 저장소 발견, 고유한 로컬 공유 연결 해석, 프로젝트 가용성과 허용 목록 점검, 요청 시점 프로젝트 선택 도우미. |
 | `crates/volicord-mcp/src/adapter.rs` | 형식화된 공개 `tools/call` 디코딩, 어댑터 보조 호출, `operation_category`와 `actor_source` 파생, Core 호출, 응답 래핑 도우미. |
-| `crates/volicord-mcp/src/stdio.rs` | JSON-RPC 표준 입출력 프레이밍, 초기화, 응답 래핑, 사용자 입력 요청 처리, 명시적 바인딩 및 저장소 발견 표준 입출력 시작, `volicord mcp`가 쓰는 사전 점검 실행기. |
+| `crates/volicord-mcp/src/stdio.rs` | JSON-RPC 표준 입출력 프레이밍, 초기화, 응답 래핑, 사용자 입력 요청 처리, 공유 검증을 거친 권한 새로 고침 사용, 명시적 바인딩 및 저장소 발견 표준 입출력 시작, `volicord mcp`가 쓰는 사전 점검 실행기. |
 | `crates/volicord-mcp/src/local_http.rs` | 로컬 루프백 HTTP 서버 설정, 엔드포인트 처리 경로, 토큰 처리, 로컬 HTTP MCP 제공. |
 | `crates/volicord-mcp/src/local_web_consent.rs` | User Channel 답변을 위한 로컬 웹 동의 요청과 완료 처리. |
 | `crates/volicord-mcp/src/http.rs` | 공통 HTTP 파싱과 응답 도우미. |
@@ -148,11 +151,12 @@
 |---|---|
 | `crates/volicord-test-support/src/lib.rs` | 폐기 가능한 Runtime Home과 Product Repository 설정, Core용 요청 빌더, 픽스처 전용 Store 검사 도우미, 구현 테스트용 공유 단언. |
 | `crates/volicord-cli/tests/support/` | CLI 통합 테스트용 바이너리 픽스처, 모의 호스트와 MCP 프로세스, JSON 도우미, 단언, `guard` 생명주기 픽스처. |
-| `crates/volicord-cli/tests/binary_admin.rs` | 설정, 프로젝트, 연결, 상태, 받은 편지함, 사전 점검, 호스트 설정 동작을 바이너리 수준에서 검증. |
-| `crates/volicord-cli/tests/guard_command.rs` | `guard` 훅 생명주기, 프롬프트 캡처, 관찰된 변경, 예상 쓰기, 쓰기 티켓 일치, 보호된 초기화와 상태를 검증. |
+| `crates/volicord-cli/tests/binary_admin.rs` | 설정, 프로젝트, 연결, 상태, 받은 편지함, 사전 점검, 프로필과 무관한 최종 출력 설정, 호스트 설정 동작을 바이너리 수준에서 검증. |
+| `crates/volicord-cli/tests/guard_command.rs` | `guard` 훅 생명주기, 프롬프트 캡처, 관찰된 변경, 예상 쓰기, 쓰기 티켓 일치, 공유 권한 검증, 최종 출력 고지와 fallback, 분리된 Stop 집행, 보호된 초기화와 상태를 검증. |
+| `crates/volicord-cli/tests/final_output_command.rs` | 최종 출력 이벤트 drain, 개인정보 경계, 최신 권한 상태 보기, 비관찰 Record 동작을 바이너리 수준에서 검증. |
 | `crates/volicord-cli/tests/mcp_transport.rs` | `volicord mcp` 하위 명령, `--check`, 표준 입출력 프레이밍, 재연결, MCP 응답 래핑을 검증. |
 | `crates/volicord-cli/tests/serve_transport.rs` | 로컬 HTTP 서비스 명령과 전송을 검증. |
-| `crates/volicord-cli/tests/live_host_smoke.rs` | 테스트 환경에서 사용할 수 있을 때 실행하는 호스트 스모크 테스트. |
+| `crates/volicord-cli/tests/live_host_smoke.rs` | 픽스처와 렌더러 테스트가 확립할 수 없는 UI 관찰을 포함해 테스트 환경에서 사용할 수 있을 때 실행하는 선택적 실제 호스트 스모크 테스트. |
 | `tests/conformance/baseline.rs` | Core 쪽 API를 통한 교차 메서드 기준 시나리오. |
 | `tests/integration/mcp_connection.rs` | MCP, Core, Store, Agent Connection을 가로지르는 동작 검증. |
 | `tests/integration/public_contract_snapshots.rs`와 `tests/integration/snapshots/` | 공개 스키마와 MCP 도구 계약 스냅샷 검증. |

@@ -1663,63 +1663,12 @@ fn validated_authority_refresh(
     context: &MutationRefreshContext,
     response: &PipelineResponse,
 ) -> Result<(AuthorityReceipt, Vec<NextActionSummary>), ()> {
-    let status =
-        serde_json::from_value::<StatusResult>(response.response_value.clone()).map_err(|_| ())?;
-    if status.base.response_kind != ResponseKind::Result
-        || status.base.effect_kind != EffectKind::ReadOnly
-        || status.base.dry_run
-    {
-        return Err(());
-    }
-    let state_version = status.base.state_version.ok_or(())?;
-    let receipt = status.authority_receipt.clone().ok_or(())?;
-    let active_task = status.active_task.as_ref().ok_or(())?;
-    let active_task_ref = active_task.task_ref.as_ref().ok_or(())?;
-    if receipt.project_id != context.project_id
-        || receipt.task_ref.project_id != context.project_id
-        || receipt.task_ref.record_id.as_str() != context.task_id.as_str()
-        || receipt.task_ref.task_id.as_ref() != Some(&context.task_id)
-        || receipt.state_version != state_version
-        || receipt.task_ref.produced_at_state_version.as_ref() != Some(&state_version)
-        || active_task.project_id != context.project_id
-        || active_task.state_version != state_version
-        || active_task_ref != &receipt.task_ref
-        || active_task.scope_revision != receipt.scope_revision
-        || !optional_state_record_identity_matches(
-            active_task.active_change_unit_ref.as_ref(),
-            receipt.change_unit_ref.as_ref(),
-        )
-        || status.close_state != Some(receipt.close_state)
-        || status.close_blockers.as_ref() != Some(&receipt.close_blockers)
-        || status
-            .evidence_gate
-            .as_ref()
-            .and_then(RequiredNullable::as_ref)
-            != receipt.evidence_gate.as_ref()
-        || receipt
-            .next_action
-            .as_ref()
-            .is_some_and(|action| !status.next_actions.contains(action))
-    {
-        return Err(());
-    }
-    Ok((receipt, status.next_actions))
-}
-
-fn optional_state_record_identity_matches(
-    left: Option<&StateRecordRef>,
-    right: Option<&StateRecordRef>,
-) -> bool {
-    match (left, right) {
-        (None, None) => true,
-        (Some(left), Some(right)) => {
-            left.record_kind == right.record_kind
-                && left.record_id == right.record_id
-                && left.project_id == right.project_id
-                && left.task_id == right.task_id
-        }
-        _ => false,
-    }
+    validate_authority_status(
+        &response.response_value,
+        &AuthorityStatusExpectation::new(context.project_id.clone(), context.task_id.clone()),
+    )
+    .map_err(|_| ())
+    .map(|validated| validated.into_authority_projection())
 }
 
 fn authority_receipt_compatibility_text(
@@ -4263,6 +4212,7 @@ mod mutation_output_tests {
         let oversized_blockers = Value::Array(vec![blocker]);
         refreshed.response_value["authority_receipt"]["close_blockers"] =
             oversized_blockers.clone();
+        refreshed.response_value["active_task"]["close_blockers"] = oversized_blockers.clone();
         refreshed.response_value["close_blockers"] = oversized_blockers;
         refreshed.response_json = serde_json::to_string(&refreshed.response_value)?;
 
@@ -4802,6 +4752,7 @@ mod mutation_output_tests {
         blocker["message"] = Value::String("x".repeat(MAX_MCP_FULL_MUTATION_RESULT_BYTES * 2));
         let blockers = Value::Array(vec![blocker]);
         refreshed.response_value["authority_receipt"]["close_blockers"] = blockers.clone();
+        refreshed.response_value["active_task"]["close_blockers"] = blockers.clone();
         refreshed.response_value["close_blockers"] = blockers;
         refreshed.response_json = serde_json::to_string(&refreshed.response_value)?;
 

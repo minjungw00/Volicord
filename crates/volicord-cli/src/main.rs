@@ -12,6 +12,7 @@ use volicord_cli::{
     doctor_command::{doctor_usage, run_doctor_command, DoctorCommandError},
     evidence_command::{evidence_usage, run_evidence_command, EvidenceCommandError},
     export_command::{export_usage, run_export_command, ExportCommandError},
+    final_output_command::{run_final_output_command, FinalOutputCommandError},
     guard_command::{run_guard_command, GuardCommandError},
     project_context::{project_usage, run_project_command, ProjectCommandError},
     serve_command::{run_serve_command, serve_usage, ServeCommand, ServeCommandError},
@@ -126,6 +127,11 @@ where
             }
             guard_command_outcome(run_guard_command(&args[2..], env_var, current_dir)?)
         }
+        "_final-output" => final_output_command_outcome(run_final_output_command(
+            &args[2..],
+            env_var,
+            current_dir,
+        )?),
         "connection" => {
             if !connection_help_requested(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
@@ -236,6 +242,20 @@ fn command_outcome(outcome: CommandOutcome) -> Result<String, CliError> {
 
 fn guard_command_outcome(
     outcome: volicord_cli::guard_command::GuardCommandOutcome,
+) -> Result<String, CliError> {
+    if outcome.exit_code == 0 && outcome.stderr.is_empty() {
+        Ok(outcome.stdout)
+    } else {
+        Err(CliError::ProcessOutput {
+            stdout: outcome.stdout,
+            stderr: outcome.stderr,
+            exit_code: outcome.exit_code,
+        })
+    }
+}
+
+fn final_output_command_outcome(
+    outcome: volicord_cli::final_output_command::FinalOutputCommandOutcome,
 ) -> Result<String, CliError> {
     if outcome.exit_code == 0 && outcome.stderr.is_empty() {
         Ok(outcome.stdout)
@@ -690,6 +710,14 @@ impl From<GuardCommandError> for CliError {
     }
 }
 
+impl From<FinalOutputCommandError> for CliError {
+    fn from(error: FinalOutputCommandError) -> Self {
+        match error {
+            FinalOutputCommandError::Usage(message) => Self::Usage(message),
+        }
+    }
+}
+
 impl From<EvidenceCommandError> for CliError {
     fn from(error: EvidenceCommandError) -> Self {
         match error {
@@ -787,6 +815,21 @@ mod tests {
         assert!(!output.contains("\nvolicord connection verify"));
         assert!(!output.contains("\nvolicord inbox"));
         assert!(!output.contains("volicord _hook"));
+        assert!(!output.contains("volicord _final-output"));
+    }
+
+    #[test]
+    fn hidden_final_output_help_dispatches_without_setup_or_stdin() {
+        let output = run_cli(
+            ["volicord", "_final-output", "--help"],
+            |_| None,
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("hidden final-output help should not require setup");
+
+        assert!(output.starts_with("volicord _final-output"));
+        assert!(output.contains("--guard-installation ID"));
+        assert!(output.contains("--host-output codex|claude-code"));
     }
 
     #[test]

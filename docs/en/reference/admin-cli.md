@@ -3,9 +3,9 @@
 This document defines the local `volicord` administrative and bootstrap CLI.
 The CLI prepares the `Volicord Runtime Home`, registers repository-root
 projects, manages Agent Connections, provides the local `User Channel` command
-path, and reports setup or connection diagnostics. Hidden hook commands exist
-only for generated host-integration wrappers. None of these commands are public
-Volicord API methods.
+path, and reports setup or connection diagnostics. Hidden lifecycle and
+final-output commands exist only for generated host-integration wrappers. None
+of these commands are public Volicord API methods.
 
 ## Owns / does not own
 
@@ -20,6 +20,8 @@ This document owns:
   routing, and startup exit codes
 - hidden internal hook lifecycle command names, options, decisions, output, and
   event-recording behavior for generated host wrappers
+- managed final-output authority-disclosure planning, rendering, and fallback
+  behavior for generated host adapters
 - local `volicord changes` recovery command names and output
 - local `User Channel` command names and command output
 - diagnostic status, required user actions, dry-run behavior, JSON output, and
@@ -49,6 +51,7 @@ Labels follow the canonical vocabulary in
 | Surface | Stability | Notes |
 |---|---|---|
 | Supported administrative command names, options, stdout/stderr routing, process exit codes, dry-run behavior, and local User Channel command names | `stable` | These are local CLI contracts, not public Volicord API methods. |
+| Managed final-output authority disclosure for supported Codex and Claude Code adapters | `beta` | The read-only projection is supported for managed `record` and `detective` profiles; actual host display remains host-dependent. |
 | `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are supported cooperative observation surfaces with capability gates and owner-defined non-guarantees. |
 | Hidden hook lifecycle namespace, generated wrapper details, conditional guard-integration staging and recovery sibling names, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs or stable recovery-file names. |
 | Human-readable init onboarding summaries, status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
@@ -143,8 +146,9 @@ Not supported:
   it is not a public host-interface or remote serving option.
 - Administrative commands are not public Volicord API methods and must not be
   added to the public method list.
-- Hidden hook commands are cooperative detective signal commands, not OS-level
-  sandboxing or a security-enforcement proof, and they are not shown in normal
+- Hidden Detective lifecycle commands are cooperative signals, not OS-level
+  sandboxing or a security-enforcement proof. The hidden final-output command is
+  a read-only display path, not a Detective signal. Neither is shown in normal
   top-level help.
 - Text-mode user flows must not require users to type `project_internal_id`,
   `connection_internal_id`, host config keys, protocol envelopes, or stored
@@ -581,9 +585,12 @@ that must not delete working-tree files.
 `--profile` selects the public integration profile:
 
 - `record` is the default. It writes MCP configuration, the managed `AGENTS.md`
-  guidance block, and policy metadata to support cooperative Volicord workflow
-  recording through MCP without requiring host lifecycle hooks or a session
-  watcher.
+  guidance block, policy metadata, and, for a supported managed Codex or Claude
+  Code adapter, the minimal final-output handler used for authority disclosure.
+  It supports cooperative Volicord workflow recording through MCP without the
+  other host lifecycle hooks or a session watcher. Its final-output handler is
+  read-only, does not activate Detective state, does not record a guard event,
+  and does not gate final output.
 - `detective` writes MCP configuration, the managed `AGENTS.md` guidance block,
   `.volicord/policy.json` hook command policy, supported project-local host hook
   and rule files, and records the host-hook/session-watcher observation state.
@@ -597,8 +604,11 @@ raw diagnostic dump. JSON diagnostics carry the exact `selected_profile`,
 `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`,
 `unrecorded_changes_detectable`, `actor_identity_provable`, and
-`os_enforced`. Current Volicord output must report `os_enforced=false` and
-`actor_identity_provable=false`.
+`os_enforced`. The separate `final_output_authority_disclosure` diagnostic
+object contains `supported`, `configured`, and `verified` booleans. These
+booleans describe adapter capability and managed configuration only, not an
+observation that the host displayed the fixed UI. Current Volicord output must
+report `os_enforced=false` and `actor_identity_provable=false`.
 
 Detective initialization requires the selected host adapter to declare and verify
 support for every required lifecycle hook:
@@ -610,8 +620,10 @@ required phase, init fails with `DETECTIVE_HOOKS_UNSUPPORTED`. If the session
 watcher cannot snapshot the selected repository, init fails with
 `DETECTIVE_WATCHER_UNSUPPORTED`. The recovery is to use `--profile record` for
 record-only setup or prepare a supported host, platform, and repository
-configuration for detective before rerunning init. `record` does not require hook
-installation or session watcher setup.
+configuration for detective before rerunning init. `record` does not require
+Detective lifecycle-hook installation or session watcher setup. Its supported
+managed final-output handler is a separate profile-independent display
+capability.
 
 On native Windows, init rejects `--profile detective` with
 `DETECTIVE_WINDOWS_UNSUPPORTED` before planning or writing detective host hook files.
@@ -1059,15 +1071,22 @@ Rules:
   approved, initialized, or exposed a user-managed configuration.
 
 <a id="guard-hook-commands"></a>
-## Internal detective hook lifecycle commands
+## Internal host lifecycle and final-output commands
 
-The hidden internal hook namespace is a local entry point for generated host
-wrappers that can run a command during agent lifecycle events. It is not shown
-in normal top-level help and is not a general user-facing command group. Hook
-commands inspect registered project state, record host-observation events, and
-return a machine-readable local decision. They do not replace Core methods,
-user-owned judgments, write tickets, close-readiness checks, host trust, shell
-approval, or OS-level sandboxing.
+The hidden internal integration namespace is a local entry point for generated
+host wrappers that can run a command during agent lifecycle or final-output
+events. It is not shown in normal top-level help and is not a general
+user-facing command group. Detective lifecycle commands inspect registered
+project state, record host-observation events, and return a machine-readable
+local decision. The final-output-only path performs the separately defined
+read-only authority disclosure and records no observation. Neither path
+replaces Core methods, user-owned judgments, write tickets, close-readiness
+checks, host trust, shell approval, or OS-level sandboxing.
+
+Generated final-output-only wrappers invoke the hidden `_final-output` command
+with pinned repository, Agent Connection, guard-installation, host, profile,
+policy-hash, and host-output arguments. These are generated process-binding
+inputs, not a normal user command or public API request shape.
 
 Each host-hook command reads one JSON hook event from stdin by default. `--file PATH`
 reads that JSON event from a file for tests or host integrations that stage
@@ -1272,25 +1291,62 @@ Lifecycle behavior:
   pending, or unresolved unrecorded changes remain; otherwise it returns
   `allow`.
 
-For generated Codex and Claude Code Stop hooks in an `active` Detective
-profile, host-native Stop JSON also places the validated fresh
-`AuthorityReceipt` in the top-level `systemMessage` user-interface surface.
-When the complete message fits the fixed 8 KiB byte budget, it contains the
-whole receipt as deterministic whitespace-free canonical JSON. The renderer
-never truncates or emits a partial receipt JSON object. If the complete receipt
-does not fit, the message instead reports the project, Task, and `state_version`
-coordinates and gives the exact `volicord status --task TASK_ID --json`
-fallback. A refresh-failure denial with no receipt gives the same bounded status
-fallback.
+<a id="managed-final-output-authority-disclosure"></a>
+### Managed final-output authority disclosure
 
-`systemMessage` is a separate host UI warning surface. It is not model context,
-does not inject text into the model's final prose, and does not establish a
-cross-host final-answer contract. Record profiles, `generic` or other
-user-managed and unsupported hosts, and inactive, degraded, or missing Stop
-hooks do not have this supported Stop-hook receipt surface. On those paths,
-inspect the canonical receipt directly with
-`volicord status --task active --json`, or replace `active` with the displayed
-Task ID.
+Generated Codex and Claude Code adapters install a final-output authority-
+disclosure handler for both `record` and `detective` when the adapter's platform
+and root-resolution prerequisites are available. The Codex handler requires a
+local Git work tree. A non-Git Codex `record` initialization remains successful,
+records this capability as unavailable, installs no final-output handler, and
+routes the user to the applicable `volicord status` fallback. Claude Code does
+not have this Git-root prerequisite. The handler uses the host-native
+final-output event and writes only the host response expected for that event.
+In `record` it is a non-observing, non-gating read path. In `detective` it runs
+alongside the separate Stop decision described above; its receipt source is
+never the persisted guard result.
+
+For every delivery, including an exact event replay, the handler:
+
+1. read-only verifies the enabled Agent Connection, selected-project
+   membership, pinned Product Repository, host kind, and installed profile;
+2. performs a new Core status read with close data;
+3. uses the shared Core validator to require a result, `read_only`, non-dry-run
+   response and to match the receipt's project, Task, Task reference version,
+   `state_version`, scope revision, current Change Unit, evidence gate, close
+   state, complete close-blocker set, and next action to that status result; and
+4. projects the result under the complete-receipt-or-fallback rule in
+   [Template Bodies](template-bodies.md#final-output-authority-disclosure-body).
+
+The receipt branch places the complete validated `AuthorityReceipt` as
+deterministic whitespace-free canonical JSON in the top-level `systemMessage`
+fixed UI surface. The 8 KiB limit applies to the complete serialized host-native
+JSON response after outer JSON escaping and including its terminating LF, not
+merely to the inner message. Exactly 8,192 bytes is allowed; 8,193 bytes uses the
+fallback. The fallback is independently measured against the same limit. No
+branch truncates or partially emits receipt JSON.
+
+An oversized receipt, failed refresh, rejected or malformed result, connection
+or adapter mismatch, or unavailable/degraded adapter produces only a bounded
+safe fallback. When a Task is identified, it reports safely available project,
+Task, and `state_version` coordinates and the exact
+`volicord status --task TASK_ID --json` command. When there is no active Task,
+it explicitly says so and gives `volicord status --json`. It does not copy Core
+error messages or details, request or response bodies, raw host event text, or
+model-authored final prose.
+
+The refresh and rendering path creates no Core state or version change, event,
+replay row, guard event, Agent Session, installation activation, watcher state,
+or host observation. An exact Detective replay reuses the immutable historical
+Stop decision while this separate display refreshes current authority again.
+The model's final prose, a mutation receipt, a cached Stop result, and generated
+configuration are never current-authority inputs.
+
+`systemMessage` is a separate host fixed UI surface. It is not model context and
+does not inject text into the model's final prose. `generic`, user-managed,
+unsupported, missing, inactive, or degraded adapters must report the capability
+as unavailable and show the applicable status fallback; they must not claim
+that a generated file proves the host displayed the receipt.
 
 ## Change reconciliation command
 

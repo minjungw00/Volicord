@@ -9,6 +9,7 @@
 - 판단 요청
 - 실행/증거 요약
 - 닫기 결과
+- 최종 출력 권한 고지
 - 에이전트 맥락 패킷
 
 이 문서는 렌더링 본문 지침, 사용자 표시 라벨, 표시 문구만 담당합니다.
@@ -20,6 +21,7 @@
 이 문서는 표시 표현만 담당합니다.
 
 - 현재 상태 표시와 지원 표시를 위한 렌더링 템플릿 본문 지침과 표시용 패킷/본문 형태
+- 관리되는 최종 출력 권한 고지의 receipt 전체 및 크기 제한 대체 안내 본문 지침
 - 그 본문의 사용자 표시 라벨, 표시 문구, 지역화 라벨, 해결 안내
 - 표시 문구로서의 공개 오류 표시 라벨
 - 본문 자리 표시자에서 스키마 및 권한 담당 문서로 가는 링크
@@ -290,6 +292,54 @@
 해결 안내:
 - 가능하면 특정 검증기나 확인 결과를 보여 줍니다.
 - 더 분명한 타입 있는 공개 코드가 없을 때만 이 대체 라벨을 사용합니다.
+
+<a id="final-output-authority-disclosure-body"></a>
+## 최종 출력 권한 고지 본문
+
+### 입력 상태
+
+- [상태 보기와 템플릿 표시 경계](projection-and-templates.md#managed-final-output-authority-disclosure)에
+  따라 검증한 새 `volicord.status` 결과.
+- 사용할 수 있을 때 관리 호스트 종류와 현재 프로젝트 및 Task 좌표.
+- JSON 이스케이프와 끝의 LF를 포함한 최종 직렬화 호스트 고유 응답.
+
+### 반드시 표시할 것
+
+- receipt 분기에서는 검증한 `AuthorityReceipt`의 결정적이고 공백 없는 기준 JSON 전체.
+- Task를 식별한 대체 분기에서는 안전하게 사용할 수 있는 프로젝트, Task,
+  `state_version` 좌표와 정확한 `volicord status --task TASK_ID --json` 명령.
+- 현재 Task가 없으면 현재 Task가 없다는 사실과 정확한 `volicord status --json` 명령.
+- 갱신, 검증, 어댑터 가용성, receipt 전체 렌더링 중 하나라도 실패하면 receipt 대신
+  대체 안내.
+
+바깥 JSON 이스케이프를 적용하고 끝의 LF를 포함한 완성된 호스트 고유 응답은 8 KiB
+(8,192 bytes) 이하여야 합니다. 렌더러는 먼저 receipt 전체 분기를 만들고 그 최종 wire
+형태를 측정하며, 제한을 넘으면 크기가 제한된 대체 분기를 사용합니다. 대체 분기 자체도
+같은 제한 안에 들어와야 합니다.
+
+### 표시하거나 암시하면 안 되는 것
+
+- 일부만 있거나, 잘렸거나, 요약됐거나, 이어 붙였거나, 캐시된 receipt JSON.
+- Core 오류 메시지, 오류 세부사항, 요청·응답 본문, 모델이 작성한 최종 산문, 원시
+  호스트 이벤트 텍스트.
+- 생성된 설정만으로 호스트가 이 고지를 표시했다는 의미.
+- 이 고지가 권한을 만들거나, Core 상태를 바꾸거나, 호스트 관찰을 기록하거나,
+  Detective 닫기 관문을 대체한다는 의미.
+
+### 사용자에게 보이는 문구
+
+기준 receipt와 모델이 작성한 산문을 구분하는 간결한 고정 UI 라벨을 사용합니다.
+receipt 분기는 `Volicord authority receipt:` 뒤에 기준 JSON 전체를 표시할 수 있습니다.
+대체 분기는 비공개 오류 텍스트를 복사하지 않고 안전한 실패 종류를 밝힌 뒤, 같은 크기
+제한 표면에 적용되는 정확한 상태 명령을 제시합니다.
+
+### 담당 문서 링크
+
+- [관리 CLI](admin-cli.md#managed-final-output-authority-disclosure): 관리 어댑터 동작과
+  대체 경로.
+- [Agent Connection](agent-connection.md#managed-final-output-authority-disclosure): 호스트
+  기능과 연결 경계.
+- [보안](security.md#generated-displays-and-text): 표시의 비권한 경계.
 
 <a id="status-card-body"></a>
 ## 상태 카드 본문

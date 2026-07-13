@@ -17,8 +17,11 @@ use crate::{
             GUIDANCE_START_MARKER, VOLICORD_POLICY_FILE,
         },
         git_exclude::{plan_git_excludes, plan_git_excludes_with_personal_protection},
-        hooks::{guard_command_specs, host_hook_command_specs, HostHookCommand},
-        hosts::plan_host_generated_files,
+        hooks::{
+            codex_hook_root_available, final_output_command_specs, guard_command_specs,
+            host_hook_command_specs, HostHookCommand, HostHookPurpose,
+        },
+        hosts::{plan_host_generated_files, HostGeneratedFilesRequest},
         policy::{
             lifecycle_phase_names, policy_json, recorded_local_policy, LocalPolicyContext,
             RecordedLocalPolicy,
@@ -27,7 +30,7 @@ use crate::{
     },
     host_integration::{
         host_capabilities, ConnectionIntent, HostCapabilities, HostIntegrationFileKind, HostKind,
-        HostLifecyclePhase, ManagedServerEntry,
+        HostLifecyclePhase, ManagedServerEntry, FINAL_OUTPUT_PHASES, REQUIRED_GUARD_PHASES,
     },
 };
 
@@ -128,13 +131,49 @@ pub(crate) fn plan_guard_integration(
         profile,
         Some(&policy_hash),
     );
-    let host_hook_commands = if profile != IntegrationProfile::Record
-        && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
-    {
-        host_hook_command_specs(host_kind, repo_root)?
-    } else {
-        BTreeMap::new()
-    };
+    let final_output_supported = managed_final_output_supported(host_kind, repo_root)?;
+    let (generated_host_commands, host_hook_commands, generated_phases, command_purpose) =
+        if profile == IntegrationProfile::Record && final_output_supported {
+            (
+                final_output_command_specs(
+                    repo_root,
+                    connection_id,
+                    guard_installation_id,
+                    host_kind,
+                    profile,
+                    &policy_hash,
+                ),
+                host_hook_command_specs(
+                    host_kind,
+                    repo_root,
+                    &FINAL_OUTPUT_PHASES,
+                    HostHookPurpose::FinalOutputAuthorityDisclosure,
+                )?,
+                FINAL_OUTPUT_PHASES.as_slice(),
+                HostHookPurpose::FinalOutputAuthorityDisclosure,
+            )
+        } else if profile == IntegrationProfile::Detective
+            && matches!(host_kind, HostKind::Codex | HostKind::ClaudeCode)
+        {
+            (
+                guard_commands.clone(),
+                host_hook_command_specs(
+                    host_kind,
+                    repo_root,
+                    &REQUIRED_GUARD_PHASES,
+                    HostHookPurpose::DetectiveGuard,
+                )?,
+                REQUIRED_GUARD_PHASES.as_slice(),
+                HostHookPurpose::DetectiveGuard,
+            )
+        } else {
+            (
+                BTreeMap::new(),
+                BTreeMap::new(),
+                &[][..],
+                HostHookPurpose::FinalOutputAuthorityDisclosure,
+            )
+        };
     let prior_policy = recorded_local_policy(repo_root)?;
     let git_exclude_plan = plan_git_excludes(repo_root, connection_intent, profile)?;
     let mut generated_files = Vec::new();
@@ -153,15 +192,17 @@ pub(crate) fn plan_guard_integration(
     )?);
     let policy_path = repo_root.join(VOLICORD_POLICY_FILE);
     generated_files.push(plan_policy_file(repo_root, &policy_path, &policy)?);
-    generated_files.extend(plan_host_generated_files(
+    generated_files.extend(plan_host_generated_files(HostGeneratedFilesRequest {
         host_kind,
         profile,
         connection_intent,
         repo_root,
         mcp_entry,
-        &guard_commands,
-        &host_hook_commands,
-    )?);
+        commands: &generated_host_commands,
+        host_commands: &host_hook_commands,
+        phases: generated_phases,
+        purpose: command_purpose,
+    })?);
     let retired_files = plan_retired_files(
         runtime_home,
         repo_root,
@@ -207,9 +248,11 @@ pub(crate) fn plan_guard_integration(
         managed_source: managed_source_for_profile(profile).to_owned(),
         managed_bundle_hash: None,
         managed_verification_status: managed_status.to_owned(),
-        native_host_output_adapter: native_host_output_adapter(host_kind, profile).to_owned(),
+        native_host_output_adapter: native_host_output_adapter(host_kind, final_output_supported)
+            .to_owned(),
         native_host_output_adapter_verified: native_host_output_adapter_verified(
-            host_kind, profile,
+            host_kind,
+            final_output_supported,
         ),
         bash_shell_mutation_coverage: bash_shell_mutation_coverage(host_kind, profile),
         direct_file_write_matcher_coverage: direct_file_write_matcher_coverage(host_kind, profile),
@@ -230,29 +273,34 @@ fn plan_retired_files(
     let Some(prior) = prior_policy else {
         return Ok(Vec::new());
     };
-    if prior.host == public_host_label(host_kind)
-        && prior.connection_intent == connection_intent
-        && prior.selected_profile == profile
-    {
-        return Ok(Vec::new());
-    }
-    if prior.selected_profile == IntegrationProfile::Record {
-        return Ok(Vec::new());
-    }
     let installation = guard_installation(runtime_home, &prior.guard_installation_id)
-        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?
-        .ok_or_else(|| {
-            GuardIntegrationError::runtime(format!(
-                "INTEGRATION_MIGRATION_INVENTORY_MISSING: prior detective integration {} has no ownership inventory; restore or remove it explicitly before changing host, intent, or profile",
-                prior.guard_installation_id
-            ))
-        })?;
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
+    let Some(installation) = installation else {
+        if prior.host == public_host_label(host_kind)
+            && prior.connection_intent == connection_intent
+            && prior.selected_profile == profile
+        {
+            return Ok(Vec::new());
+        }
+        return Err(GuardIntegrationError::runtime(format!(
+            "INTEGRATION_MIGRATION_INVENTORY_MISSING: prior managed integration {} has no ownership inventory; restore or remove it explicitly before changing the managed file set",
+            prior.guard_installation_id
+        )));
+    };
     let capability =
         serde_json::from_str::<Value>(&installation.host_capability_json).map_err(|error| {
             GuardIntegrationError::runtime(format!(
                 "prior integration ownership inventory is invalid: {error}"
             ))
         })?;
+    plan_retired_files_from_capability(repo_root, &capability, generated_files)
+}
+
+fn plan_retired_files_from_capability(
+    repo_root: &Path,
+    capability: &Value,
+    generated_files: &[GeneratedFilePlan],
+) -> Result<Vec<ManagedFileRetirementPlan>, GuardIntegrationError> {
     let files = capability
         .get("files")
         .and_then(Value::as_array)
@@ -315,16 +363,33 @@ fn managed_status_for_profile(profile: IntegrationProfile) -> &'static str {
     }
 }
 
-fn native_host_output_adapter(host_kind: HostKind, profile: IntegrationProfile) -> &'static str {
-    match (host_kind, profile) {
-        (HostKind::Codex, IntegrationProfile::Detective) => "codex",
-        (HostKind::ClaudeCode, IntegrationProfile::Detective) => "claude-code",
+fn native_host_output_adapter(host_kind: HostKind, final_output_supported: bool) -> &'static str {
+    if !final_output_supported {
+        return "none";
+    }
+    match host_kind {
+        HostKind::Codex => "codex",
+        HostKind::ClaudeCode => "claude-code",
         _ => "none",
     }
 }
 
-fn native_host_output_adapter_verified(host_kind: HostKind, profile: IntegrationProfile) -> bool {
-    native_host_output_adapter(host_kind, profile) != "none"
+fn native_host_output_adapter_verified(host_kind: HostKind, final_output_supported: bool) -> bool {
+    native_host_output_adapter(host_kind, final_output_supported) != "none"
+}
+
+fn managed_final_output_supported(
+    host_kind: HostKind,
+    repo_root: &Path,
+) -> Result<bool, GuardIntegrationError> {
+    if cfg!(windows) {
+        return Ok(false);
+    }
+    match host_kind {
+        HostKind::Codex => codex_hook_root_available(repo_root),
+        HostKind::ClaudeCode => Ok(true),
+        HostKind::Generic => Ok(false),
+    }
 }
 
 fn bash_shell_mutation_coverage(host_kind: HostKind, profile: IntegrationProfile) -> bool {
@@ -368,4 +433,73 @@ fn agents_guidance_block() -> String {
     format!(
         "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Check Volicord status before planning: `volicord.status`.\n- Start a task before planning implementation: `volicord.intake`.\n- Prepare write before product-file changes: `volicord.prepare_write`.\n- Request a user action through Volicord: `volicord.request_user_action`; the user resolves it through the `User Channel`.\n- Check close before claiming completion: `volicord.check_close`.\n- If Volicord tools are unavailable, say so explicitly and do not imply Volicord state was updated.\n{GUIDANCE_END_MARKER}\n"
     )
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{collections::BTreeSet, fs};
+
+    use super::*;
+    use crate::guard_integration::{
+        apply::apply_guard_integration,
+        capability::host_hook_capability_json,
+        files::{apply_managed_file_retirement, RetirementPlanStatus},
+    };
+    use volicord_test_support::TempRuntimeHome;
+
+    #[test]
+    fn codex_record_capability_transition_retires_git_only_final_output_files(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("codex-record-capability-transition")?;
+        let repo_root = fixture.create_product_repo("product-repo")?;
+        let runtime_home = fixture.path().to_path_buf();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let mcp_entry = ManagedServerEntry::new("conn_record", Path::new("volicord"), None);
+        let request = || GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: &runtime_home,
+            repo_root: &repo_root,
+            connection_id: "conn_record",
+            guard_installation_id: "guard_record",
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        };
+
+        let installed = apply_guard_integration(plan_guard_integration(request())?)?;
+        assert_eq!(installed.native_host_output_adapter, "codex");
+        let capability: Value = serde_json::from_str(&host_hook_capability_json(&installed)?)?;
+        let hooks_path = repo_root.join(".codex/hooks.json");
+        let stop_wrapper_path = repo_root.join(".codex/hooks/volicord-stop.sh");
+        assert!(hooks_path.exists());
+        assert!(stop_wrapper_path.exists());
+
+        fs::rename(repo_root.join(".git"), repo_root.join(".git.removed"))?;
+        let policy_path = repo_root.join(VOLICORD_POLICY_FILE);
+        let policy_text = fs::read_to_string(&policy_path)?;
+        fs::remove_file(&policy_path)?;
+        let non_git = plan_guard_integration(request())?;
+        fs::write(&policy_path, policy_text)?;
+        assert_eq!(non_git.native_host_output_adapter, "none");
+
+        let mut retired =
+            plan_retired_files_from_capability(&repo_root, &capability, &non_git.generated_files)?;
+        let retired_paths = retired
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            retired_paths,
+            BTreeSet::from([hooks_path.clone(), stop_wrapper_path.clone()])
+        );
+        for file in &mut retired {
+            file.status = apply_managed_file_retirement(file)?;
+            assert_eq!(file.status, RetirementPlanStatus::Removed);
+        }
+        assert!(!hooks_path.exists());
+        assert!(!stop_wrapper_path.exists());
+        assert!(repo_root.join(AGENTS_FILE).exists());
+        assert!(policy_path.exists());
+        Ok(())
+    }
 }

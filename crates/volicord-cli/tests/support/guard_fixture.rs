@@ -167,6 +167,24 @@ impl GuardCliFixture {
         Ok((self.inner.counts()?, updated_at, active_task_id))
     }
 
+    pub(crate) fn only_guard_event_id(&self, event_kind: &str) -> Result<String, Box<dyn Error>> {
+        let connection = self.inner.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT guard_event_id FROM guard_events WHERE event_kind = ?1 ORDER BY guard_event_id",
+        )?;
+        let ids = statement
+            .query_map([event_kind], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        match ids.as_slice() {
+            [id] => Ok(id.clone()),
+            _ => Err(format!(
+                "expected exactly one {event_kind} GuardEvent, found {}",
+                ids.len()
+            )
+            .into()),
+        }
+    }
+
     pub(crate) fn corrupt_current_close_basis(
         &self,
         task_id: &str,
@@ -639,11 +657,19 @@ impl GuardCliFixture {
         &self,
         connection_id: &str,
     ) -> Result<(), Box<dyn Error>> {
+        self.register_extra_connection_for_host(connection_id, HOST_KIND_CODEX)
+    }
+
+    pub(crate) fn register_extra_connection_for_host(
+        &self,
+        connection_id: &str,
+        host_kind: &str,
+    ) -> Result<(), Box<dyn Error>> {
         ensure_agent_connection(
             self.runtime_home(),
             AgentConnectionRegistration {
                 connection_internal_id: connection_id.to_owned(),
-                host_kind: HOST_KIND_CODEX.to_owned(),
+                host_kind: host_kind.to_owned(),
                 intent: CONNECTION_INTENT_SHARED.to_owned(),
                 host_scope: HOST_SCOPE_PROJECT.to_owned(),
                 server_name: format!("volicord-test-{connection_id}"),
@@ -682,6 +708,20 @@ impl GuardCliFixture {
     ) -> Result<(String, String), Box<dyn Error>> {
         self.install_guard_policy_for_connection_with_host(
             self.connection_id(),
+            host_kind,
+            true,
+            true,
+            "configured",
+        )
+    }
+
+    pub(crate) fn install_guard_policy_for_connection_and_host(
+        &self,
+        connection_id: &str,
+        host_kind: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        self.install_guard_policy_for_connection_with_host(
+            connection_id,
             host_kind,
             true,
             true,
@@ -728,13 +768,29 @@ impl GuardCliFixture {
         installation_status: &str,
     ) -> Result<(String, String), Box<dyn Error>> {
         let guard_installation_id = format!("guard_installation_cli_activation_{connection_id}");
+        let policy_host = match host_kind {
+            "claude_code" => "claude-code",
+            other => other,
+        };
+        let commands = json!({
+            "session_start": {"command": "volicord", "args": ["_hook", "session-start"]},
+            "pre_tool": {"command": "volicord", "args": ["_hook", "pre-tool"]},
+            "post_tool": {"command": "volicord", "args": ["_hook", "post-tool"]},
+            "prompt_capture": {"command": "volicord", "args": ["_hook", "prompt-capture"]},
+            "stop": {"command": "volicord", "args": ["_hook", "stop"]}
+        });
         let policy = json!({
             "schema": "volicord-policy-v1",
             "managed_by": "volicord",
-            "host": host_kind,
+            "storage_scope": "local_overlay",
+            "connection_intent": "shared",
+            "host": policy_host,
+            "repo_root": self.repo_root.display().to_string(),
             "selected_profile": "detective",
             "connection_id": connection_id,
-            "guard_installation_id": guard_installation_id
+            "guard_installation_id": guard_installation_id,
+            "mcp": {"command": "volicord", "args": ["mcp", "--stdio"], "env": {}},
+            "host_hook": {"enabled": true, "commands": commands}
         });
         let policy_hash = sha256_text(&serde_json::to_string(&policy)?);
         let policy_dir = self.repo_root.join(".volicord");
@@ -754,6 +810,10 @@ impl GuardCliFixture {
                 host_capability_json: json!({
                     "schema": "volicord-host-hook-capability-v1",
                     "policy_hash": policy_hash.clone(),
+                    "selected_profile": "detective",
+                    "native_host_output_adapter": policy_host,
+                    "native_host_output_adapter_verified": true,
+                    "final_output_authority_disclosure_supported": true,
                     "host_capabilities": {
                         "user_prompt_submit_hook": host_supports_prompt_capture
                     },
