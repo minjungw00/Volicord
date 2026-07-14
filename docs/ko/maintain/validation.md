@@ -264,11 +264,17 @@ Codex 또는 Claude Code의 Record profile이나 Detective profile에서 관리�
 | Claude Code | `claude_code_record_live_final_output_is_opt_in` | `claude_code_detective_live_final_output_is_opt_in` |
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
 ```
+
+Codex 최종 출력 기능은 정적으로 `unsupported_by_host`이므로 해당 셀은
+`VOLICORD_RELEASE_REQUEST_VERIFIED=0`이어야 하며 인증된 호스트 turn 없이
+`not_applicable`로 끝납니다. 이 변수에 `1`을 지정하면 구조 오류입니다. 구현된 기능에서
+`1`은 설치 호스트를 사용할 수 없어도 릴리스 주장을 유지하므로 게이트를 실패시킵니다.
+의도적으로 보고할 제외에만 `0`을 사용합니다.
 
 각 셀에서는 `host`와 `profile`이 일치하는 크기 제한 결과를 검사합니다. 아래 증거 필드는
 서로 분리되어야 하며, 어느 필드도 다른 필드에서 추론하거나 다른 필드로 대신할 수
@@ -335,9 +341,10 @@ Task가 없을 때의 대체 안내 UI, 안전한 Detective `block` 진입점, �
 픽스처, 래퍼 직접 응답, 다른 매트릭스 셀을 근거로 결과를 올리면 안 됩니다. 유지되는 두
 호스트와 두 프로필을 모두 지원한다고 명시하려면 네 셀이 모두 통과해야 합니다.
 
-결과 기록기는 먼저 크기가 제한된 `result=running` 기록을 쓰고 최종 결과로 원자
-교체합니다. 남아 있는 `running` 기록은 중단된 실행으로, `result=incomplete`는 불완전한
-증거로 취급하며 통과로 세지 않습니다. 크기가 제한된 결과와 릴리스 승인자의
+결과 목적지는 기록기가 크기가 제한된 종단 셀 하나를 만들 때까지 존재하지 않습니다.
+일반적인 조기 반환이나 unwind는 `failed_before_completion`을 만들며 기존 목적지는
+덮어쓰지 않습니다. `result=incomplete`와 그 밖의 통과하지 않은 모든 종단 결과는
+불완전한 증거이며 통과로 세지 않습니다. 크기가 제한된 결과와 릴리스 승인자의
 체크리스트는 소스 저장소 밖에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화
 기록, 녹화, 자격 증명, 비밀값, 전체 프롬프트, 비공개 운영자 입력을 커밋하지 않습니다.
 이 증거는 관찰한 호스트, 프로필, 릴리스 후보, 환경에만 적용됩니다. 이식 가능한 호스트
@@ -362,17 +369,20 @@ Task가 없을 때의 대체 안내 UI, 안전한 Detective `block` 진입점, �
 `result=passed`를 이후 실행 결과로 오인하지 않도록 하네스는 기존 경로를 거부합니다.
 
 ```sh
-volicord --version
+/absolute/candidate_path/from/CANDIDATE.json --version
 codex --version
 claude --version
 ```
+
+후보 설명자와 다이제스트가 기준입니다. PATH에서 찾은 `volicord`는 `candidate_path`와 다른
+revision일 수 있으므로 대신 사용하면 안 됩니다.
 
 두 호스트의 무시된 판단 테스트를 각각 실행합니다. 승인된 외부 위치에서 테스트마다
 서로 다른 절대 결과 경로를 지정합니다.
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
@@ -398,8 +408,8 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-use
 6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
    Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,
    권한 이벤트 순서, 소비한 Run, 최종 `result=passed`를 보고하며 대화 기록이나 프롬프트
-   본문은 포함하지 않습니다. 외부 파일은 같은 디렉터리의 임시 파일을 rename해
-   교체하므로 읽는 쪽에 일부만 기록된 최종 JSON이 노출되지 않습니다.
+   본문은 포함하지 않습니다. 외부 셀은 크기가 제한된 종단 파일로만 새로 만들며 기존
+   목적지를 교체하지 않습니다.
 
 5번의 Task 결속 Stop 이벤트와 완전한 최신 receipt UI는 이 테스트의 Judgment 완료에
 필수인 증거입니다. 그러나 이 증거는 네 셀 최종 출력 매트릭스의 어떤 항목도 채우지
@@ -422,10 +432,10 @@ Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `
 아니라 `SKIP` 또는 `FAIL`입니다. 유지되는 두 호스트를 모두 지원한다고 명시하는
 릴리스에서는 두 호스트별 검증이 모두 통과해야 합니다.
 
-하네스는 외부 결과 경로를 필수로 요구하고 먼저 크기가 제한된 `result=running` 기록을 씁니다.
-명시적인 최종 결과 전에 일반적인 조기 반환이나 panic이 발생하면 이를 원자적으로
-`result=failed_before_completion`으로 교체합니다. `running` 기록이 남아 있으면 통과가
-아니라 중단된 테스트로 처리합니다.
+하네스는 새 외부 결과 경로를 필수로 요구하며 임시 `running` 파일을 만들지 않습니다.
+명시적인 최종 결과 전에 일반적인 조기 반환이나 unwind가 발생하면 크기가 제한된
+`result=failed_before_completion` 종단 셀 하나를 만듭니다. 기존 목적지는 덮어쓰지
+않습니다.
 
 크기가 제한된 각 JSON 결과와 릴리스 승인자의 체크리스트 기록은 소스 저장소 밖의
 승인된 릴리스 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화 기록,
@@ -462,9 +472,14 @@ Judgment 결과, CLI 대체 경로 결과, 최종 출력 결과는 이를 대신
 두 무시된 셀을 각각 실행합니다.
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
 ```
+
+운영 관리 호스트에는 local-web capability를 획득할 신뢰 경로가 없으므로 유지 릴리스
+실행은 이 구현 셀을 명시적 `requested_verified=false` 제외로 기록합니다. 이 셀은 하향
+조정으로 남으며 fixture capability 데이터나 신뢰되지 않은 경로의 브라우저 성공으로
+승격할 수 없습니다.
 
 각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
 
@@ -516,17 +531,16 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evi
    bearer token, raw tool body, 원문 요약, 프롬프트나 대화 기록 내용, 스크린샷이나 녹화, 자격 증명,
    비밀값, 비공개 운영자 입력을 담으면 안 됩니다.
 
-결과 기록기는 먼저 크기가 제한된 `result=running` 기록을 씁니다. 호스트 실행 파일이
+기록기는 새 목적지에 크기가 제한된 종단 결과 하나만 만듭니다. 호스트 실행 파일이
 없거나 TTY가 대화형이 아니거나, 정확한 capability가 누락되거나 잘못됐거나, host 전용
 표시 표면이 없거나, host 전용 `_meta`와 모델 가시 결과 데이터를 구별할 수 없으면
 `result=unavailable`을 기록합니다. 픽스처 준비 실패,
 선택된 호스트의 비정상 종료, 저장 상태·Stop·receipt·결과 검증기 invariant 실패는 안전한
 단계 식별자만 포함한 `result=failed`로 기록합니다. 인증과 브라우저 실패는 호스트 실행
 전에 항상 분류할 수 없습니다. 선택된 호스트 실행이 그 이유로 실패하더라도 결과는
-`unavailable`이 아니라 `failed`입니다. 예기치 않은 unwind에만
-`result=failed_before_completion`이 남습니다. `running` 기록이 남아 있거나 결과가
-`passed`가 아니거나, 테스트가 단지 무시된 것으로 보고됐거나, 선택 변수 없이 실행했으면
-통과가 아닙니다.
+`unavailable`이 아니라 `failed`입니다. 예기치 않은 unwind는
+`result=failed_before_completion`을 만듭니다. 결과가 `passed`가 아니거나, 테스트가
+단지 무시된 것으로 보고됐거나, 선택 변수 없이 실행했으면 통과가 아닙니다.
 
 유지되는 두 호스트를 모두 지원한다고 명시하려면 두 호스트별 셀이 모두 통과해야 합니다.
 이 셀은 관찰된 증거 관찰 로컬 웹 경로만 검증합니다. 호스트 고유 Judgment, 실행 가능한
@@ -535,6 +549,34 @@ CLI 대체 경로, 호스트 설정, 최종 출력 셀을 충족할 수 없고 �
 Runtime Home을 커밋하지 않습니다. 이 증거는 관찰한 호스트, 릴리스 후보, 환경에만
 적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 elicitation 증거, 제품
 수락, 닫기 준비 상태, 일반적인 정확성 주장이 아닙니다.
+
+<a id="live-host-evidence-producer-release-validation"></a>
+## 실제 호스트 증거 생산자 릴리스 검증
+
+설치된 각 유지 호스트에서 생산자 기능 두 개를 한 번씩 실행합니다. 각 명령은 셀을 정확한
+후보 설명자에 결속하고 12개 셀 디렉터리 안의 서로 다른 새 경로를 사용합니다.
+
+```sh
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-verified-tool-producer.json VOLICORD_RUN_CODEX_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-verified-tool-producer.json VOLICORD_RUN_CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-registered-connection-observation.json VOLICORD_RUN_CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-registered-connection-observation.json VOLICORD_RUN_CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
+```
+
+선택한 각 셀에서 필수 assertion 계열 일곱 개를 모두 확인합니다. 인증된 실제 호스트는 먼저
+정확한 `volicord.prepare_evidence_capture` intent 하나를 커밋한 뒤 같은 불투명 관리
+세션에서 정확한 benign Bash pre/post 이벤트 쌍 또는 intent 이후의 실제 Stop 이벤트
+하나를 만듭니다. 하네스는 정확한 capture를 받기 전에 의도적으로 불일치시킨 capture를
+영속 효과 없이 거부해야 합니다. 같은 등록 연결에서 실행하는 두 번째 실제 호스트 turn은
+receipt에 결속된 생산자, 아티팩트, Strong Evidence 관찰, criterion coverage, Run, 현재
+status receipt, close 결과를 정확히 하나씩 완결해야 합니다.
+
+크기가 제한된 증거 sidecar에는 identifier, 개수, digest, 담당 계약 적합성 boolean만
+기록합니다. 프롬프트, 대화 기록, 원본 tool 입력·출력, 원본 native session 또는
+invocation identifier, URL, token, credential, 인증 cache를 보존하면 안 됩니다. 호스트가
+없으면 실제 null 정체성 ignored 셀로 표현합니다. 주장이 필요하면
+`VOLICORD_RELEASE_REQUEST_VERIFIED=1`을 유지하여 부재가 게이트를 실패시키게 합니다. 실행
+전에 의도적으로 보고할 제외를 결정한 경우에만 `0`을 선택합니다.
 
 <a id="live-host-cli-fallback-release-validation"></a>
 ## 실제 호스트 CLI 대체 경로 릴리스 검증
@@ -554,8 +596,8 @@ Runtime Home을 커밋하지 않습니다. 이 증거는 관찰한 호스트, �
 새 절대 경로여야 합니다. 아래 두 무시된 셀을 각각 실행합니다.
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 각 호스트에서 릴리스 후보를 기준으로 다음 관찰을 모두 확인합니다.
@@ -593,9 +635,9 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-cli
    CLI 대체 경로 셀임을 명시하고 호스트 고유 Judgment와 최종 출력 매트릭스 셀을
    제외합니다.
 
-결과 경로는 필수입니다. 기록기는 호스트를 실행하기 전에 `result=running`을 쓰고,
-크기가 제한된 최종 기록이나 `failed_before_completion` 기록으로 원자 교체합니다. 남아
-있는 `running` 기록, `passed`가 아닌 모든 결과, 사용할 수 없는 실행 파일, 인증 환경,
+결과 경로는 필수입니다. 기록기는 크기가 제한된 종단 기록 또는
+`failed_before_completion` 기록만 만들며 기존 경로를 덮어쓰지 않습니다. `passed`가 아닌
+모든 결과, 사용할 수 없는 실행 파일, 인증 환경,
 대화형 TTY, 같은 연결의 재개 경로, Task 결속 Stop, 완전한 receipt UI는 통과가 아니라
 `SKIP` 또는 `FAIL`로 처리합니다. 유지되는 두 호스트를 모두 지원한다고 명시하려면 두
 호스트별 셀이 모두 통과해야 합니다.
@@ -606,6 +648,49 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-cli
 적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 Judgment elicitation
 증거, 최종 출력 매트릭스 증거, 제품 수락, 닫기 준비 상태, 일반적인 정확성 주장이
 아닙니다.
+
+## 정확한 호스트 릴리스 증거 게이트
+
+기준 스키마, 행렬, 평가기, 최신성, 판정, audit, 관리 세션 규칙은
+[호스트 릴리스 증거](../reference/host-release-evidence.md)가 담당합니다. 유지관리자는
+실행 절차에서 이 계약을 다시 정의하거나 CLI 텍스트로 릴리스 주장을 추론하지 않습니다.
+
+테스트 전용 `tests/release-validation` 패키지가 있으면 다음을 실행합니다.
+
+```sh
+cargo test -p volicord-release-validation-tests
+cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
+cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
+```
+
+깨끗한 소스 revision에서 정확한 profile의 후보를 한 번만 빌드하고
+`CANDIDATE.json`이 이름 붙인 외부 경로에 둔 다음 12개 셀 모두에 같은 바이너리를
+사용합니다. 모든 행렬 명령은 `VOLICORD_RELEASE_CANDIDATE_PATH`로 그 설명자를 지정하고,
+`VOLICORD_RELEASE_REQUEST_VERIFIED=0|1`로 주장을 명시적으로 선택하며, 서로 다른 새 셀
+경로를 사용해야 합니다. 증거 sidecar는 `CELL_DIR` 밖에 둡니다. 그 디렉터리에는 `.json`
+셀 파일 정확히 12개만 두고 다른 항목을 두면 안 됩니다.
+
+설치된 호스트 버전과 실행 파일 digest는 그 호스트의 여섯 셀에서 같아야 합니다. 호스트를
+사용할 수 없어도 유지되는 각 셀 생산자를 호출하여 실제 null 정체성 셀을 만듭니다.
+구현된 셀은 증거를 가진 `ignored`이고 정적 미지원 셀은 null 증거를 가진
+`not_applicable`입니다. 주장이 계속 필요하면 `requested_verified=1`을 사용하여 정직한
+부재가 실패하게 하고, 의도적으로 보고할 제외에만 `0`을 사용하여 하향 조정되게 합니다.
+호스트 버전이나 digest를 꾸며내거나 누락 파일을 합성하면 안 됩니다.
+
+게이트 출력과 audit 출력은 외부에 새로 만드는 크기 제한 파일입니다. Audit이 원본 셀
+파일 12개를 독립적으로 엄격하게 읽고 manifest, 후보, 셀 아티팩트, 불변조건, finding,
+exclusion, 상태, 판정을 별도 프로세스에서 다시 열고 계산하도록 게이트 프로세스를 끝낸 뒤
+audit을 시작합니다. 셀 또는 증거 파일이 없거나 잘못된 형식이면 하향 조정이 아니라
+manifest를 만들지 않는 구조적 명령 실패입니다.
+
+후보·소스·바이너리 좌표, 두 호스트의 가용성 좌표, 각 도출 셀 상태, 요청한 검증됨 주장,
+하향 조정, 게이트 판정, manifest SHA-256, audit 셀 입력 SHA-256, audit 판정, 모든
+finding과 exclusion을 보고합니다. 호스트 버전을 합치거나 ignored, running, 오래됨,
+불일치 셀을 생략하지 않습니다. 구조적으로 누락된 셀은 실패한 게이트 호출로 보고합니다.
+패키지가 존재하고 모든 필수 주장이 통과하기 전에는 담당 계약을 실행 결과로
+간주하지 말고 구현 검증을 사용할 수 없음 또는 실패로 보고합니다. 운영 local-web 획득은
+계속 사용할 수 없고 외부 릴리스 아티팩트는 런타임 신뢰 입력이 아니며 CLI fallback은
+보조 수단일 뿐입니다.
 
 ## Rust 구현 검증
 

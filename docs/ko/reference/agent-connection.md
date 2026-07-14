@@ -16,6 +16,7 @@
 - Agent Connection 계층의 저장소 루트 프로젝트 선택과 프로젝트 가용성 경계
 - 담당 결과와 Agent Connection 사이의 에이전트 맥락 전달 규칙
 - 관리되는 최종 출력 권한 고지 기능과 연결 경계
+- 관리 MCP 관찰과 호스트 훅 관찰에 공통으로 쓰는 관리 호스트 세션 결속
 - 선택된 Agent Connection이나 현재 연결 맥락을 사용할 수 없거나, 맞지 않거나,
   오래되었거나, 충분하지 않을 때의 대체 표시
 
@@ -33,6 +34,8 @@
 - 보안 보장 의미나 접근 경계 표현: [보안](security.md)
 - 권한과 파생 표시의 구분 규칙: [상태 보기와 템플릿 표시 경계](projection-and-templates.md)
 - 렌더링 본문 문구, 공개 표시 라벨, 템플릿 표현: [템플릿 본문](template-bodies.md)
+- 릴리스 후보, 셀, manifest, audit, native session 해시 스키마:
+  [호스트 릴리스 증거](host-release-evidence.md)
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -182,6 +185,19 @@ Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_
 저장 기록 계열과 DDL은 [저장소 기록](storage-records.md)과 [저장소 DDL](storage-ddl.md)이
 담당합니다. 관리 생성, 갱신, 검증, 모드, 제거 명령은 [관리 CLI](admin-cli.md)가
 담당합니다.
+
+## 관리 호스트 세션 결속
+
+관리 Codex 및 Claude Code 관찰은
+[호스트 릴리스 증거](host-release-evidence.md)가 정의하는 불투명
+`managed_host_session_id` 매핑 하나를 사용합니다. 관리 MCP 경로와 호스트 훅 경로는
+관찰 세션 하나에 같은 매핑 값을 제시해야 합니다. 원본 `native_session_id`는 검증 및 해시
+입력으로만 쓰며 연결 상태, 로그, 진단, 증거, 릴리스 아티팩트에 넣으면 안 됩니다. 결속이
+원본 native event, tool-call, capture, turn, invocation identifier에도 같은 금지가
+적용됩니다. `mhs_` namespace는 예약되며 매핑의 호스트나 등록 연결을 바꿀 수 없습니다.
+결속이 없거나, 값이 잘못됐거나, 일치하지 않으면 Strong Evidence를 만들 수 없고 잘못된
+marker의 영속 상태를 만들면 안 되며, 다른 세션 식별자를 조용히 만들어 보정하면 안
+됩니다. 이 상관관계는 사용자 신원, host attestation, 권한이 아닙니다.
 
 ## 연결 의도
 

@@ -13,6 +13,7 @@ use std::{
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Serialize;
+use volicord_types::{validate_managed_host_session_id, MANAGED_HOST_SESSION_ID_PREFIX};
 
 use crate::{sqlite::enable_foreign_keys, StoreError, StoreResult};
 
@@ -302,14 +303,11 @@ pub fn start_diagnostic_session(
     runtime_home: impl AsRef<Path>,
     input: DiagnosticSessionStart<'_>,
 ) -> StoreResult<()> {
-    validate_identifier("session_id", input.session_id)?;
-    validate_optional_identifier("connection_id", input.connection_id)?;
-    validate_optional_identifier("project_id", input.project_id)?;
-    validate_build_value("package_version", input.package_version, 128)?;
-    validate_build_value("build_id", input.build_id, 2_048)?;
+    validate_diagnostic_session_start_shape(&input)?;
 
     let mut conn = open_diagnostics_database(runtime_home)?;
-    let tx = conn.transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    validate_managed_diagnostic_session_binding(&tx, &input)?;
     tx.execute(
         "INSERT INTO diagnostic_sessions (
              session_id, connection_id, project_id, transport, host_kind,
@@ -344,6 +342,93 @@ pub fn start_diagnostic_session(
     )?;
     prune_diagnostics(&tx)?;
     tx.commit()?;
+    Ok(())
+}
+
+/// Validates a diagnostic session start without creating or updating diagnostics storage.
+pub fn validate_diagnostic_session_start(
+    runtime_home: impl AsRef<Path>,
+    input: DiagnosticSessionStart<'_>,
+) -> StoreResult<()> {
+    validate_diagnostic_session_start_shape(&input)?;
+    let path = diagnostics_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(());
+    }
+    let conn = open_diagnostics_database_read_only(&path)?;
+    validate_managed_diagnostic_session_binding(&conn, &input)
+}
+
+fn validate_diagnostic_session_start_shape(input: &DiagnosticSessionStart<'_>) -> StoreResult<()> {
+    validate_identifier("session_id", input.session_id)?;
+    validate_optional_identifier("connection_id", input.connection_id)?;
+    validate_optional_identifier("project_id", input.project_id)?;
+    validate_build_value("package_version", input.package_version, 128)?;
+    validate_build_value("build_id", input.build_id, 2_048)?;
+    if input.session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX) {
+        validate_managed_host_session_id(input.session_id).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: error.to_string(),
+            }
+        })?;
+    }
+    if input.session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX)
+        && (input.connection_id.is_none()
+            || !matches!(
+                input.host_kind,
+                Some(DiagnosticHostKind::Codex | DiagnosticHostKind::ClaudeCode)
+            )
+            || !matches!(
+                input.transport,
+                DiagnosticTransport::McpStdio | DiagnosticTransport::GuardHook
+            ))
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "mhs_ diagnostic sessions require a managed built-in host, connection, and managed transport"
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_managed_diagnostic_session_binding(
+    conn: &Connection,
+    input: &DiagnosticSessionStart<'_>,
+) -> StoreResult<()> {
+    if !input.session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX) {
+        return Ok(());
+    }
+    let existing = conn
+        .query_row(
+            "SELECT connection_id, host_kind
+               FROM diagnostic_sessions
+              WHERE session_id = ?1",
+            [input.session_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((existing_connection_id, existing_host_kind)) = existing else {
+        return Ok(());
+    };
+    let expected_connection_id = input.connection_id.map(str::to_owned);
+    let expected_host_kind = input
+        .host_kind
+        .map(DiagnosticHostKind::as_str)
+        .map(str::to_owned);
+    if existing_connection_id != expected_connection_id || existing_host_kind != expected_host_kind
+    {
+        return Err(StoreError::Conflict {
+            entity: "diagnostic_session",
+            id: input.session_id.to_owned(),
+            detail: "managed-host session diagnostics are already bound to a different connection or host"
+                .to_owned(),
+        });
+    }
     Ok(())
 }
 
@@ -733,6 +818,7 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
     use volicord_test_support::TempRuntimeHome;
+    use volicord_types::managed_host_session_id;
 
     fn start<'a>(session_id: &'a str) -> DiagnosticSessionStart<'a> {
         DiagnosticSessionStart {
@@ -839,6 +925,72 @@ mod tests {
         )
         .expect_err("content must not fit tool field");
         assert!(matches!(error, StoreError::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn managed_session_diagnostics_are_coordinate_immutable_and_exactly_idempotent() {
+        let fixture = TempRuntimeHome::new("diagnostics-managed-binding").expect("fixture");
+        let session_id = managed_host_session_id("codex", "connection_test", "native-session")
+            .expect("managed test coordinates should bind");
+        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initial start");
+        record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
+            .expect("initial event");
+
+        start_diagnostic_session(fixture.path(), start(&session_id))
+            .expect("an exact managed binding is idempotent");
+        let exact = read_diagnostic_session(fixture.path(), Some(&session_id))
+            .expect("read exact binding")
+            .expect("managed diagnostics session");
+        assert_eq!(exact.connection_id.as_deref(), Some("connection_test"));
+        assert_eq!(exact.host_kind.as_deref(), Some("codex"));
+        assert_eq!(exact.totals.event_count, 1);
+
+        let mut cross_connection = start(&session_id);
+        cross_connection.connection_id = Some("connection_other");
+        let error = start_diagnostic_session(fixture.path(), cross_connection)
+            .expect_err("cross-connection managed reuse must fail");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+
+        let mut cross_host = start(&session_id);
+        cross_host.host_kind = Some(DiagnosticHostKind::ClaudeCode);
+        let error = start_diagnostic_session(fixture.path(), cross_host)
+            .expect_err("cross-host managed reuse must fail");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+
+        let unchanged = read_diagnostic_session(fixture.path(), Some(&session_id))
+            .expect("read unchanged binding")
+            .expect("managed diagnostics session");
+        assert_eq!(unchanged.connection_id.as_deref(), Some("connection_test"));
+        assert_eq!(unchanged.host_kind.as_deref(), Some("codex"));
+        assert_eq!(unchanged.totals.event_count, 1);
+    }
+
+    #[test]
+    fn managed_session_prefix_is_rejected_for_generic_or_unmanaged_diagnostics() {
+        let fixture = TempRuntimeHome::new("diagnostics-managed-prefix").expect("fixture");
+        let session_id = managed_host_session_id("codex", "connection_test", "native-session")
+            .expect("managed test coordinates should bind");
+
+        let mut generic = start(&session_id);
+        generic.host_kind = Some(DiagnosticHostKind::Generic);
+        assert!(matches!(
+            start_diagnostic_session(fixture.path(), generic),
+            Err(StoreError::InvalidInput { .. })
+        ));
+
+        let mut local_http = start(&session_id);
+        local_http.transport = DiagnosticTransport::LocalHttp;
+        assert!(matches!(
+            start_diagnostic_session(fixture.path(), local_http),
+            Err(StoreError::InvalidInput { .. })
+        ));
+
+        let malformed = start("mhs_not-a-canonical-binding");
+        assert!(matches!(
+            start_diagnostic_session(fixture.path(), malformed),
+            Err(StoreError::InvalidInput { .. })
+        ));
+        assert!(!diagnostics_db_path(fixture.path()).exists());
     }
 
     #[test]

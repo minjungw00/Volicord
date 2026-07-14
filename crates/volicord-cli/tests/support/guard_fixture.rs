@@ -22,9 +22,10 @@ use volicord_test_support::core_fixtures::{
     ObservationUserActionFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserActionFixture,
 };
 use volicord_types::{
-    chat_user_action_verification_code, ActorSource, ChangeUnitOperation, JudgmentKind,
-    OperationCategory, ProjectId, UtcTimestamp, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING, VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
+    chat_user_action_verification_code, managed_host_session_id, ActorSource, ChangeUnitOperation,
+    JudgmentKind, OperationCategory, ProjectId, UtcTimestamp,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
 use super::{
@@ -1266,13 +1267,16 @@ impl GuardedLifecycleFixture {
     }
 
     fn invocation(&self, operation_category: OperationCategory) -> InvocationContext {
+        let managed_session_id =
+            managed_host_session_id("codex", self.connection_id(), self.session_id())
+                .expect("guarded lifecycle fixture session coordinates should be valid");
         InvocationContext::new(
             ProjectId::new(&self.project_id),
             ActorSource::agent_connection(self.connection_id.clone()),
             operation_category,
             VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
         )
-        .with_session_id(self.session_id().to_owned())
+        .with_session_id(managed_session_id)
     }
 
     fn user_invocation(&self) -> InvocationContext {
@@ -1917,6 +1921,25 @@ pub(crate) fn host_fixture_event(
     Ok(event)
 }
 
+pub(crate) fn expected_managed_session_id(
+    fixture: &GuardCliFixture,
+    event: &Value,
+) -> Result<String, Box<dyn Error>> {
+    let host_kind = event["host_kind"]
+        .as_str()
+        .ok_or("managed fixture event should contain host_kind")?;
+    let native_session_id = event
+        .get("session_id")
+        .or_else(|| event.get("thread_id"))
+        .and_then(Value::as_str)
+        .ok_or("managed fixture event should contain a native session id")?;
+    Ok(managed_host_session_id(
+        host_kind,
+        fixture.connection_id(),
+        native_session_id,
+    )?)
+}
+
 pub(crate) fn replace_repo_placeholder(value: &mut Value, repo_root: &str) {
     match value {
         Value::String(text) if text == "/repo" => {
@@ -2089,6 +2112,7 @@ pub(crate) fn run_host_guard(
     event: &Value,
     extra_env: &[(&str, &str)],
 ) -> Result<Output, Box<dyn Error>> {
+    let event = managed_test_event(event, Some(host_output));
     let mut command = Command::new(volicord_bin());
     command
         .args([
@@ -2123,6 +2147,10 @@ pub(crate) fn run_guard<const N: usize>(
     args: [&str; N],
     event: &Value,
 ) -> Result<Output, Box<dyn Error>> {
+    let configured_host = args
+        .windows(2)
+        .find_map(|pair| matches!(pair[0], "--host" | "--host-output").then_some(pair[1]));
+    let event = managed_test_event(event, configured_host);
     let mut child = Command::new(volicord_bin())
         .args(args)
         .env("VOLICORD_HOME", runtime_home)
@@ -2138,6 +2166,40 @@ pub(crate) fn run_guard<const N: usize>(
         .expect("stdin should be piped")
         .write_all(event.to_string().as_bytes())?;
     Ok(child.wait_with_output()?)
+}
+
+fn managed_test_event(event: &Value, configured_host: Option<&str>) -> Value {
+    let mut event = event.clone();
+    let event_host = event
+        .get("host_kind")
+        .and_then(Value::as_str)
+        .or_else(|| event.pointer("/host/kind").and_then(Value::as_str))
+        .or(configured_host)
+        .map(|host| match host {
+            "claude-code" => "claude_code",
+            other => other,
+        });
+    if !matches!(event_host, Some("codex" | "claude_code")) {
+        return event;
+    }
+    let Some(object) = event.as_object_mut() else {
+        return event;
+    };
+    if !object.contains_key("session_id") && !object.contains_key("thread_id") {
+        let native_session_id = object
+            .get("event_id")
+            .and_then(Value::as_str)
+            .filter(|value| {
+                !value.is_empty()
+                    && value.as_bytes().iter().all(|byte| {
+                        byte.is_ascii_alphanumeric() || matches!(*byte, b'.' | b'_' | b':' | b'-')
+                    })
+            })
+            .unwrap_or("managed-test-session")
+            .to_owned();
+        object.insert("session_id".to_owned(), Value::String(native_session_id));
+    }
+    event
 }
 
 pub(crate) fn run_guard_file<const N: usize>(

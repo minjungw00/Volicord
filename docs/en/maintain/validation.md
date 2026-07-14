@@ -291,11 +291,18 @@ existing parent directory. Run all four ignored host/profile tests separately:
 | Claude Code | `claude_code_record_live_final_output_is_opt_in` | `claude_code_detective_live_final_output_is_opt_in` |
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-record-final-output.json VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-detective-final-output.json VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_detective_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-record-final-output.json VOLICORD_RUN_CLAUDE_RECORD_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_record_live_final_output_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
 ```
+
+The Codex final-output features are statically `unsupported_by_host`, so their
+cells require `VOLICORD_RELEASE_REQUEST_VERIFIED=0` and finish
+`not_applicable` without an authenticated host turn. Setting the variable to
+`1` is a structural error. For an implemented feature, `1` retains the release
+claim even when the installed host is unavailable and therefore makes the gate
+fail; use `0` only for an intentional, reported exclusion.
 
 For each cell, inspect a bounded result with the matching `host` and `profile`.
 It must keep these evidence fields separate; no field can be inferred from or
@@ -373,9 +380,11 @@ one, then report the release-validation outcome as `SKIP` or `FAIL`. Do not
 upgrade it from fixture, direct-wire, or another matrix cell. All four cells
 must pass before a release claim covers both maintained hosts and both profiles.
 
-The result recorder first writes a bounded `result=running` record and replaces
-it atomically with the final result. Treat a surviving `running` record as
-interrupted, and `result=incomplete` as incomplete evidence, never as a pass.
+The result destination remains absent until the recorder creates one bounded
+terminal cell. An ordinary early return or unwind creates
+`failed_before_completion`; an existing destination is never overwritten.
+Treat `result=incomplete` or every other non-passing terminal result as
+incomplete evidence, never as a pass.
 Keep the bounded results and release approver's checklist outside the source
 repository. Do not commit result files, Runtime Homes, screenshots,
 transcripts, recordings, credentials, secrets, full prompts, or private
@@ -404,17 +413,20 @@ exist before the test starts; the harness rejects an existing path so a stale
 `result=passed` cannot be attributed to a later run.
 
 ```sh
-volicord --version
+/absolute/candidate_path/from/CANDIDATE.json --version
 codex --version
 claude --version
 ```
+
+The candidate descriptor and digest are authoritative. Do not substitute a
+PATH-resolved `volicord`; its revision can differ from `candidate_path`.
 
 Run both ignored Judgment tests separately. Give each test a different absolute
 result path in the approved external location:
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-user-action.json VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-user-action.json VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 For each host, confirm all of these observations against the release candidate:
@@ -443,8 +455,8 @@ For each host, confirm all of these observations against the release candidate:
    record times, host version, Volicord `build_id`, exact Agent Connection ID,
    operator-confirmed and stored choice, authority-event order, consumed Run,
    and final `result=passed` without including a transcript or prompt body. The
-   external file is replaced through a same-directory temporary file and rename,
-   so readers do not observe a partially written final JSON object.
+   external cell is created only as a bounded terminal file and an existing
+   destination is never replaced.
 
 The Task-bound Stop event and complete fresh receipt UI in item 5 are required
 Judgment-completion evidence for this test. They still do not fill any evidence
@@ -470,10 +482,10 @@ trust/approval surface, or native selector is `SKIP` or `FAIL`, never `PASS`.
 Both host-specific validations must pass for a release claim that covers both
 maintained hosts.
 
-The harness requires the external result path and first writes a bounded
-`result=running` record. Any ordinary early return or panic before an explicit
-final result atomically replaces it with `result=failed_before_completion`.
-Treat a surviving `running` record as an interrupted test, never as a pass.
+The harness requires a new external result path. It creates no provisional
+`running` file. Any ordinary early return or unwind before an explicit final
+result creates one bounded `result=failed_before_completion` terminal cell;
+an existing destination is never overwritten.
 
 Keep each bounded JSON result and the release approver's checklist record in the
 approved release location outside the source repository. Do not commit result
@@ -519,9 +531,14 @@ harness rejects an existing path. Run both ignored cells separately from an
 interactive TTY in the ordinary authenticated host environment:
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
 ```
+
+Production managed-host local-web capability acquisition is unavailable, so
+the maintained release run records these implemented cells as explicit
+`requested_verified=false` exclusions. They remain downgrades and cannot be
+promoted by fixture capability data or browser success on an untrusted path.
 
 For each host, confirm all of these observations against the release candidate:
 
@@ -585,18 +602,18 @@ For each host, confirm all of these observations against the release candidate:
    raw summary, prompt or transcript content, screenshots or recordings,
    credentials, secrets, or private operator input.
 
-The result recorder first writes a bounded `result=running` record. A missing
-host executable, non-interactive TTY, omitted or malformed exact capability,
+The recorder creates only one bounded terminal result at a new destination. A
+missing host executable, non-interactive TTY, omitted or malformed exact capability,
 missing host-only presentation surface, or inability to distinguish host-only
 `_meta` from model-visible result data is recorded as `result=unavailable`.
 Fixture setup failure, abnormal termination of a selected host, or a stored
 state, Stop, receipt, or result-validator invariant failure is recorded as
 `result=failed` with only a safe stage identifier. Authentication and browser
 failures cannot always be classified before host launch; if they cause the
-selected host run to fail, the result is `failed`, not `unavailable`. Only an
-unexpected unwind retains `result=failed_before_completion`. Treat a surviving
-`running` record, every non-`passed` result, a test merely reported as ignored,
-or a run without its opt-in variable as not passed.
+selected host run to fail, the result is `failed`, not `unavailable`. An
+unexpected unwind creates `result=failed_before_completion`. Treat every
+non-`passed` result, a test merely reported as ignored, or a run without its
+opt-in variable as not passed.
 
 Both host-specific cells must pass before a release claim covers both
 maintained hosts. This cell proves only the observed evidence-observation
@@ -607,6 +624,38 @@ repository. Do not commit them or any Runtime Home. The evidence applies only
 to the observed host, release candidate, and environment; it is not portable
 host conformance, a security proof, native elicitation evidence, product
 acceptance, close readiness, or a general correctness claim.
+
+<a id="live-host-evidence-producer-release-validation"></a>
+## Live-Host Evidence-Producer Release Validation
+
+Run the two producer features once for each installed maintained host. Each
+command binds the cell to the exact candidate descriptor and uses a different
+new path under the twelve-cell directory:
+
+```sh
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-verified-tool-producer.json VOLICORD_RUN_CODEX_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-verified-tool-producer.json VOLICORD_RUN_CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_verified_tool_producer_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-registered-connection-observation.json VOLICORD_RUN_CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-registered-connection-observation.json VOLICORD_RUN_CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_registered_connection_observation_is_opt_in -- --ignored --nocapture
+```
+
+For each selected cell, verify all seven required assertion families. The
+actual authenticated host first commits one exact
+`volicord.prepare_evidence_capture` intent and then, in the same opaque managed
+session, emits either the exact benign Bash pre/post event pair or one actual
+post-intent Stop event. The harness must reject a deliberately mismatched
+capture with zero durable effects before accepting the exact capture. A second
+actual-host turn on the same registered connection must finalize exactly one
+receipt-linked producer, artifact, Strong Evidence observation, criterion
+coverage, Run, current status receipt, and close result.
+
+The bounded evidence sidecar records only identifiers, counts, digests, and
+owner-conformance booleans. It must not retain the prompt, transcript, raw tool
+input or output, native session or invocation identifier, URL, token,
+credential, or authentication cache. A missing host is represented by a
+present null-identity ignored cell. Keep `VOLICORD_RELEASE_REQUEST_VERIFIED=1`
+when the claim is required, which makes that absence fail the gate; choose `0`
+before the run only for an intentional reported exclusion.
 
 <a id="live-host-cli-fallback-release-validation"></a>
 ## Live-Host CLI-Fallback Release Validation
@@ -628,8 +677,8 @@ path must be a different new absolute path with an existing parent directory.
 Run both ignored cells separately:
 
 ```sh
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
-VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
+VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/claude-code-cli-fallback.json VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
 For each host, confirm all of these observations against the release candidate:
@@ -674,10 +723,9 @@ For each host, confirm all of these observations against the release candidate:
    confirmation. Its evidence scope explicitly identifies this CLI-fallback
    cell and excludes native Judgment and final-output matrix cells.
 
-The result path is mandatory. The recorder writes `result=running` before the
-host launches and atomically replaces it with the bounded final or
-`failed_before_completion` record. Treat a surviving `running` record, any
-non-`passed` result, an unavailable executable, authentication environment,
+The result path is mandatory. The recorder creates only the bounded terminal or
+`failed_before_completion` record and never overwrites an existing path. Treat
+any non-`passed` result, an unavailable executable, authentication environment,
 interactive TTY, same-connection resume path, Task-bound Stop, or complete
 receipt UI as `SKIP` or `FAIL`, never as a pass. Both host-specific cells must
 pass before a release claim covers both maintained hosts.
@@ -689,6 +737,59 @@ evidence applies only to the observed host, release candidate, and environment;
 it is not portable host conformance, a security proof, native Judgment
 elicitation evidence, final-output matrix evidence, product acceptance, close
 readiness, or a general correctness claim.
+
+## Exact Host Release Evidence Gate
+
+The authoritative schemas, matrix, evaluator, freshness, verdict, audit, and
+managed-session rules belong to
+[Host Release Evidence](../reference/host-release-evidence.md). Maintainers do
+not redefine those contracts in a runbook or infer a release claim from CLI
+text.
+
+When the test-only `tests/release-validation` package is present, run:
+
+```sh
+cargo test -p volicord-release-validation-tests
+cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
+cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
+```
+
+Build the exact-profile candidate once from a clean source revision, stage it
+at the external path named by `CANDIDATE.json`, and use that same binary for all
+twelve cells. Every matrix command must name that descriptor through
+`VOLICORD_RELEASE_CANDIDATE_PATH`, choose the claim explicitly through
+`VOLICORD_RELEASE_REQUEST_VERIFIED=0|1`, and use a unique new cell path. Put
+evidence sidecars outside `CELL_DIR`; that directory contains exactly twelve
+`.json` cell files and no other entries.
+
+An installed host version and executable digest must agree across all six
+cells for that host. If a host is unavailable, still run or otherwise invoke
+each maintained cell producer so it creates a present null-identity cell: an
+implemented cell is `ignored` with evidence and a static unsupported cell is
+`not_applicable` with null evidence. Use `requested_verified=1` when the claim
+remains required, causing honest absence to fail; use `0` only for an explicit
+reported exclusion, yielding a downgrade. Do not fabricate a host version or
+digest, and do not synthesize a missing file.
+
+The gate output and audit output are create-new bounded external files. End the
+gate process before starting the audit so the audit independently strict-reads
+the original twelve cell files and reopens and recalculates the manifest,
+candidate, cell artifacts, invariants, findings, exclusions, statuses, and
+verdict in a separate process. A missing or malformed cell or evidence file is
+a structural command failure with no manifest, not a downgrade.
+
+Report the candidate/source/binary coordinates, both host availability
+coordinates, each
+derived cell status, requested verified claims, downgrades, gate verdict,
+manifest SHA-256, audit cell-input SHA-256, audit verdict, and every finding or
+exclusion. Do not combine host versions or omit ignored, running, stale, or
+mismatched cells; a structurally missing cell must be reported as a failed
+gate invocation.
+Until the package exists and all required claims pass, report implementation
+validation as unavailable or failed rather than treating the owner contract as
+an executed result. Production local-web acquisition remains unavailable;
+external release artifacts are not runtime trust inputs, and CLI fallback is
+auxiliary only.
 
 ## Rust Implementation Validation
 

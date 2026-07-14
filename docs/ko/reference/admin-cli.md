@@ -33,6 +33,8 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 - MCP 프로세스 시작, stdio와 HTTP 프레이밍, 와이어 동작, 응답 래핑, 종료:
   [MCP 전송](mcp-transport.md)
 - 외부 호스트 훅 프로토콜 스키마와 호스트별 응답 의미
+- 릴리스 후보, 셀, manifest, audit, 관리 세션 매핑 계약:
+  [호스트 릴리스 증거](host-release-evidence.md)
 - 저장소 기록 배치, SQLite DDL, 기준 저장소 스키마 정의, Core 권한 의미,
   보안 보장 의미
 
@@ -287,8 +289,11 @@ Doctor는 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연
 노출합니다. `metadata_source`는 `repository`, `environment`, `unknown` 중 하나입니다.
 `profile_exact=false`이면 Cargo의 `debug`/`release` 프로필 계열만 알려졌다는 뜻입니다. 빌드
 객체에는 최종 실행 파일 다이제스트나 릴리스 증거 다이제스트가 없으며 릴리스 증거
-manifest가 아닙니다. 호스트 역량 평가의 예상 `evidence_artifact_sha256`은 별도로 검증된
-외부 정확한 최종 아티팩트 릴리스 증거 manifest 또는 receipt에서 가져와야 합니다. JSON은
+manifest가 아닙니다. 정확한 외부 스키마와 게이트는
+[호스트 릴리스 증거](host-release-evidence.md)가 담당합니다. CLI와 Doctor 출력은 보조
+상태 보기이며 정규 평가기나 독립 audit을 대신할 수 없습니다. 호스트 역량 평가의 예상
+`evidence_artifact_sha256`에는 여전히 신뢰할 수 있는 운영 획득 경로가 필요하지만 현재는
+사용할 수 없습니다. JSON은
 `disclosure.guarantee_class=detective_observation`을 사용하고,
 `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`,
@@ -634,8 +639,9 @@ wrapper 없이 `host_feature_support`와 `final_output_authority_disclosure` 필
 있으면 해당 프로필의 정확한 형태를 사용합니다. init 이후 결과는 제품이 만든 init
 projection을 복사하고, 사전 점검에서 사용 불가인 결과는 설정 사실이 false인 중앙 기본
 projection을 사용합니다. 사용 불가는 정적 지원 상태를 지우거나 별도로 재분류하지
-않습니다. `result=running`은 이 필드에서 제외되는 유일한 비 terminal 기록기
-형태입니다. terminal `result=failed_before_completion` 산출물은 기록기가 가진 정확한
+않습니다. create-new 기록기는 terminal 셀 산출물만 출력하며 임시
+`result=running` 형태를 저장하지 않습니다. terminal
+`result=failed_before_completion` 산출물은 기록기가 가진 정확한
 프로필 힌트와 중앙 기본 projection을 사용합니다. 정확한 프로필이 없으면 세부정보는
 null이며 Record를 기본값으로 만들지 않습니다. Doctor는 `connection_id` 순으로 정렬한 배열을
 `states.host_feature_support_by_connection`에 출력하며 각 원소는 다음 필드만 정확히

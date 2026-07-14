@@ -413,6 +413,17 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 멤버십이 제거된 뒤 프로젝트 탐색은 사용 가능한 프로젝트가 없다고 보고할 수 있으며,
 프로젝트 라우팅이 필요한 공개 도구는 연결 프로젝트가 남아 있지 않으므로 거절됩니다.
 
+## 관리 호스트 세션 입력
+
+관리 Codex 및 Claude Code 시작에서 transport 코드는 native host session identifier를
+검증하고 즉시 [호스트 릴리스 증거](host-release-evidence.md)가 정의한 불투명
+`managed_host_session_id`로 매핑합니다. 매핑한 값만 Agent Connection 상태, 관리 MCP
+관찰, 훅 상관관계로 전달할 수 있습니다. `mhs_` namespace는 예약되며 기존 매핑의 호스트와
+등록 연결 좌표는 바꿀 수 없습니다. 원본 session 및 그 밖의 native 상관관계 identifier는
+영속 저장하거나 진단하지 않습니다. 잘못된 marker는 영속 진단 session, 프로토콜 상태,
+프로젝트 상태를 만들기 전에 거부합니다. 값이 없거나, 잘못됐거나, 일치하지 않으면 Strong
+Evidence를 만들 자격이 없으며 transport 코드가 대체 값을 합성하면 안 됩니다.
+
 ## Agent Connection에 묶인 프로세스
 
 `volicord mcp --stdio` 프로세스 하나는 아래 값에 묶입니다.
@@ -1260,13 +1271,15 @@ Listener 시작만으로는 이 경로를 선택하지 않습니다. Listener co
 `observed_at <= now < expires_at`을 만족하며, 활성화된 generic이 아닌 연결의 호스트 종류,
 관리 지문, 어댑터 프로필·버전, Volicord 빌드, source revision, target, 실행 파일
 다이제스트, 클라이언트 이름·버전, 크기가 제한된 실제 호스트 증거 다이제스트와 정확히
-일치해야 합니다. 예상 증거 다이제스트는 같은 역량, 호스트·클라이언트, 어댑터, 빌드,
-source, target, 실행 파일 다이제스트에 결속된, 별도로 검증한 외부 정확한 최종 아티팩트
-릴리스 증거 manifest 또는 receipt에서 가져와야 합니다. 행의
+일치해야 합니다. 예상 증거 다이제스트에는 [호스트 릴리스 증거](host-release-evidence.md)가
+담당하는 정확한 외부 `volicord-host-release-manifest-v1`을 신뢰해 획득하는 운영 경로가
+필요합니다. 그 manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target,
+실행 파일 다이제스트에 결속됩니다. 행의
 `evidence_artifact_sha256`은 그 예상값과 정확히 일치해야 하며 행, 빌드 설명자, 복사한 값이
 스스로 예상값을 제공할 수 없습니다. Manifest 입력이 없거나, 알 수 없거나, 잘못됐거나,
 검증되지 않았거나, 일치하지 않으면 닫힌 상태로 실패합니다. 현재 어댑터에는 그 manifest를
-신뢰해 획득하는 경로가 없으므로 운영 local-web 선택은 사용할 수 없고 CLI fallback을
+신뢰해 획득하는 경로가 없고 외부 릴리스 아티팩트 자체도 런타임 신뢰 입력이 아니므로 운영
+local-web 선택은 사용할 수 없고 CLI fallback을
 반환합니다. 수동 stdio, CLI 검증 probe, Local HTTP transport, generic 연결,
 유효하지 않거나 알 수 없는 관리 marker는 자격이 없습니다. 통과하는 source revision은
 정확한 소문자 40자리 또는 64자리 16진수이며 `unknown`은 통과할 수 없습니다. 내장 stdio

@@ -19,6 +19,7 @@ This document owns:
   Agent Connection layer
 - agent context transfer rules between owner results and an Agent Connection
 - managed final-output authority-disclosure capability and connection boundary
+- managed-host session binding use across managed MCP and host-hook observations
 - fallback display when the selected Agent Connection or current connection
   context is unavailable, mismatched, stale, or insufficient
 
@@ -42,6 +43,8 @@ This document does not own:
   [Projection and template display boundaries](projection-and-templates.md)
 - rendered body wording, public display labels, or template phrasing; see
   [Template Bodies](template-bodies.md)
+- release candidate, cell, manifest, audit, and native-session hashing schemas;
+  see [Host Release Evidence](host-release-evidence.md)
 
 <a id="surface-stability"></a>
 ## Surface Stability
@@ -219,6 +222,22 @@ Storage record families and DDL belong to [Storage Records](storage-records.md)
 and [Storage DDL](storage-ddl.md). Administrative creation, update,
 verification, mode, and removal commands belong to
 [Administrative CLI](admin-cli.md).
+
+## Managed-Host Session Binding
+
+Managed Codex and Claude Code observations use the single opaque
+`managed_host_session_id` mapping defined by
+[Host Release Evidence](host-release-evidence.md).
+The managed MCP path and host-hook path must present the same mapped value for
+one observed session. Raw `native_session_id` values are validation-and-hash
+inputs only and must not enter connection state, logs, diagnostics, evidence,
+or release artifacts; the same prohibition applies to raw native event,
+tool-call, capture, turn, and invocation identifiers. The `mhs_` namespace is
+reserved, and a mapping cannot change its host or registered connection.
+Missing, invalid, or mismatched binding cannot produce Strong Evidence, must
+create no durable state for an invalid marker, and must not be repaired by
+silently minting another session identifier. This correlation is not user
+identity, host attestation, or authority.
 
 ## Connection Intents
 

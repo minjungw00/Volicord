@@ -218,13 +218,14 @@ May claim:
   and current exact-match persisted host-capability state whose immutable
   result is `outcome=passed`, unexpired, and bounded by
   `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`.
-  Its `evidence_artifact_sha256` must exactly match the expected digest from a
-  separately verified exact-final-artifact release evidence manifest or
-  receipt outside the executable. That manifest must bind the same capability,
+  Its `evidence_artifact_sha256` would require trusted production acquisition
+  of the external `volicord-host-release-manifest-v1` defined by
+  [Host Release Evidence](host-release-evidence.md). That manifest must bind the same capability,
   host/client, adapter, build, source, target, and executable digest. A missing,
   unknown, malformed, unverified, or mismatched manifest fails closed; neither
   the persisted row nor build metadata can self-assert the expected value. The
-  current adapter has no trusted manifest acquisition path, so production
+  current adapter has no trusted manifest acquisition path, and the release
+  artifact is not itself a runtime trust input, so production
   local-web eligibility remains unavailable and uses CLI inbox.
   Twenty-four hours
   is only the maximum freshness window, not a default lifetime, identity proof,
@@ -264,6 +265,16 @@ Must not claim:
   runner is a cryptographic host signature, local-principal attestation,
   anti-forgery boundary, or actor-identity proof. These sources are cooperative
   local integration even when their exact digests and completeness are checked.
+
+Managed-host session correlation uses only the domain-separated opaque
+`managed_host_session_id` defined by
+[Host Release Evidence](host-release-evidence.md).
+Raw native session, event, tool-call, capture, turn, and invocation identifiers
+must not be persisted, logged, diagnosed, or attached to evidence. The `mhs_`
+namespace is reserved and bound immutably to one host and registered
+connection; invalid or conflicting markers fail without durable state. The
+mapped value is correlation metadata, not user identity, host attestation, or
+authority; missing or mismatched binding cannot produce Strong Evidence.
 
 <a id="historical-operation-result-access"></a>
 ### Historical operation-result access

@@ -39,6 +39,8 @@ This document does not own:
 - MCP process startup, stdio and HTTP framing, wire behavior, response wrapping, and
   shutdown; see [MCP Transport](mcp-transport.md)
 - external host hook protocol schemas and host-specific response semantics
+- release candidate, cell, manifest, audit, and managed-session mapping
+  contracts; see [Host Release Evidence](host-release-evidence.md)
 - storage record layout, SQLite DDL, canonical storage schema definitions,
   Core authority semantics, and security guarantee meanings
 
@@ -321,9 +323,11 @@ diagnostic disclosure, and a compact `summary_card`. The `build` object exposes
 `repository`, `environment`, or `unknown`; `profile_exact=false` means only the
 Cargo `debug`/`release` profile class is known. The build object contains
 neither the final executable digest nor a release evidence digest and is not a
-release evidence manifest. Expected `evidence_artifact_sha256` for
-host-capability evaluation must come from a separately verified external
-exact-final-artifact release evidence manifest or receipt. JSON uses
+release evidence manifest. The exact external schema and gate belong to
+[Host Release Evidence](host-release-evidence.md); CLI and Doctor output are
+auxiliary projections and cannot replace its canonical evaluator or independent
+audit. Expected `evidence_artifact_sha256` still requires a trusted production
+acquisition path, which is unavailable. JSON uses
 `disclosure.guarantee_class=detective_observation` and `non_guarantees` values
 such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`, `NotTestSufficiencyProof`,
@@ -707,11 +711,11 @@ The detail is null without an exact profile and otherwise uses the exact
 profile shape. A post-init result copies the product-produced init projection;
 a preflight-unavailable result uses the centralized default projection with
 configuration facts false. Unavailability does not erase or independently
-reclassify static support status. `result=running` is the only non-terminal
-recorder shape exempt from these fields. A terminal
-`result=failed_before_completion` artifact uses the recorder's exact profile
-hint and the centralized default projection; without an exact profile its
-detail is null and it does not default to Record. Doctor emits
+reclassify static support status. The create-new recorder emits only terminal
+cell artifacts; it does not persist a provisional `result=running` shape. A
+terminal `result=failed_before_completion` artifact uses the recorder's exact
+profile hint and the centralized default projection; without an exact profile
+its detail is null and it does not default to Record. Doctor emits
 `states.host_feature_support_by_connection` as an array ordered by
 `connection_id`; each element contains exactly:
 

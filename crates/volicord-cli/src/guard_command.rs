@@ -1,4 +1,4 @@
-use std::{ffi::OsString, fmt, fs, path::Path, time::Instant};
+use std::{collections::BTreeSet, ffi::OsString, fmt, fs, path::Path, time::Instant};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
@@ -8,9 +8,9 @@ use volicord_store::{
     bootstrap::{project_record_for_execution, ProjectRecord},
     core_pipeline::CoreProjectStore,
     diagnostics::{
-        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
-        DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
-        DiagnosticUserChannelKind,
+        record_diagnostic_event, start_diagnostic_session, validate_diagnostic_session_start,
+        DiagnosticEvent, DiagnosticEventKind, DiagnosticHostKind, DiagnosticOutcome,
+        DiagnosticSessionStart, DiagnosticTransport, DiagnosticUserChannelKind,
     },
     guards::{
         agent_session, guard_event, insert_agent_session, insert_guard_event,
@@ -56,7 +56,10 @@ use args::{
     parse_guard_options, read_guard_input, GuardInput, GuardOptions, GuardPhase, HostOutputMode,
     OutputFormat,
 };
-use envelope::{event_path_field, event_string, guard_envelope, GuardEnvelope};
+use envelope::{
+    event_path_field, event_string, guard_envelope, is_managed_builtin_host,
+    managed_native_session_id, GuardEnvelope,
+};
 use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
 use prompt_capture::handle_prompt_capture;
 use render::{render_guard_output, RenderedGuardOutput};
@@ -164,6 +167,9 @@ where
     let input = read_guard_input(options.event_file.as_deref())?;
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
     let envelope = guard_envelope(phase, &options, &input, &project)?;
+    let input = protect_managed_guard_input(input, &envelope)?;
+    validate_existing_managed_session_binding(&runtime_home, &project, &envelope)?;
+    validate_managed_guard_diagnostic_binding(&runtime_home, &project, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
     if phase == GuardPhase::Stop {
         if let Some(replayed) =
@@ -513,7 +519,7 @@ fn record_guard_diagnostic_best_effort(
     let host_kind = Some(DiagnosticHostKind::from_connection_host_kind(
         &envelope.host_kind,
     ));
-    let _ = start_diagnostic_session(
+    if start_diagnostic_session(
         runtime_home,
         DiagnosticSessionStart {
             session_id,
@@ -524,7 +530,11 @@ fn record_guard_diagnostic_best_effort(
             package_version: build.package_version,
             build_id: &build.build_id,
         },
-    );
+    )
+    .is_err()
+    {
+        return;
+    }
     let _ = record_diagnostic_event(
         runtime_home,
         DiagnosticEvent {
@@ -546,6 +556,35 @@ fn record_guard_diagnostic_best_effort(
             outcome,
         },
     );
+}
+
+fn validate_managed_guard_diagnostic_binding(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+) -> Result<(), GuardCommandError> {
+    if !is_managed_builtin_host(&envelope.host_kind) {
+        return Ok(());
+    }
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return Ok(());
+    };
+    let build = volicord_mcp::build_info();
+    validate_diagnostic_session_start(
+        runtime_home,
+        DiagnosticSessionStart {
+            session_id,
+            connection_id: Some(&envelope.connection_id),
+            project_id: Some(&project.project_id),
+            transport: DiagnosticTransport::GuardHook,
+            host_kind: Some(DiagnosticHostKind::from_connection_host_kind(
+                &envelope.host_kind,
+            )),
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    )?;
+    Ok(())
 }
 
 fn attach_guard_disclosure(result: &mut Value) {
@@ -589,6 +628,7 @@ fn ensure_required_session(
         return Ok(());
     };
     if agent_session(runtime_home, &project.project_id, session_id)?.is_some() {
+        validate_existing_managed_session_binding(runtime_home, project, envelope)?;
         return Ok(());
     }
     if matches!(phase, GuardPhase::SessionStart | GuardPhase::PromptCapture)
@@ -610,6 +650,31 @@ fn ensure_required_session(
                 .to_string(),
             },
         )?;
+    }
+    Ok(())
+}
+
+fn validate_existing_managed_session_binding(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+) -> Result<(), GuardCommandError> {
+    if !is_managed_builtin_host(&envelope.host_kind) {
+        return Ok(());
+    }
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return Ok(());
+    };
+    let Some(existing) = agent_session(runtime_home, &project.project_id, session_id)? else {
+        return Ok(());
+    };
+    if existing.connection_internal_id != envelope.connection_id
+        || existing.host_kind != envelope.host_kind
+    {
+        return Err(GuardCommandError::Runtime(
+            "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match this managed host connection"
+                .to_owned(),
+        ));
     }
     Ok(())
 }
@@ -737,6 +802,322 @@ fn guard_subject(
             .and_then(|bytes| u64::try_from(bytes.len()).ok()),
         "raw_event": input.redacted_value
     })
+}
+
+fn protect_managed_guard_input(
+    mut input: GuardInput,
+    envelope: &GuardEnvelope,
+) -> Result<GuardInput, GuardCommandError> {
+    if !is_managed_builtin_host(&envelope.host_kind) {
+        return Ok(input);
+    }
+    let native_session_id =
+        managed_native_session_id(&envelope.host_kind, &input.raw_value)?.to_owned();
+    let managed_session_id = envelope.session_id.as_deref().ok_or_else(|| {
+        GuardCommandError::Runtime(
+            "managed host event has no canonical managed session binding".to_owned(),
+        )
+    })?;
+    let replacements = managed_native_identifier_replacements(
+        &input.raw_value,
+        managed_session_id,
+        &envelope.event_id,
+        &envelope.connection_id,
+        &native_session_id,
+    );
+    let semantic_context = ManagedEventProtectionContext {
+        managed_session_id,
+        guard_event_id: &envelope.event_id,
+        connection_id: &envelope.connection_id,
+        protection: ManagedEventProtection::Semantic,
+        replacements: &replacements,
+    };
+    input.raw_value = protect_managed_event_value(&input.raw_value, None, None, &semantic_context);
+    let persistent_context = ManagedEventProtectionContext {
+        protection: ManagedEventProtection::Persistent,
+        ..semantic_context
+    };
+    input.redacted_value =
+        protect_managed_event_value(&input.redacted_value, None, None, &persistent_context);
+    Ok(input)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagedNativeIdentifierKind {
+    Session,
+    Event,
+    Correlation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManagedNativeIdentifierReplacement {
+    raw: String,
+    opaque: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagedEventProtection {
+    Semantic,
+    Persistent,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ManagedEventProtectionContext<'a> {
+    managed_session_id: &'a str,
+    guard_event_id: &'a str,
+    connection_id: &'a str,
+    protection: ManagedEventProtection,
+    replacements: &'a [ManagedNativeIdentifierReplacement],
+}
+
+fn managed_native_identifier_replacements(
+    value: &Value,
+    managed_session_id: &str,
+    guard_event_id: &str,
+    connection_id: &str,
+    native_session_id: &str,
+) -> Vec<ManagedNativeIdentifierReplacement> {
+    let mut session_ids = BTreeSet::from([native_session_id.to_owned()]);
+    let mut event_ids = BTreeSet::new();
+    let mut correlation_ids = BTreeSet::new();
+    collect_managed_native_identifiers(
+        value,
+        None,
+        None,
+        &mut session_ids,
+        &mut event_ids,
+        &mut correlation_ids,
+    );
+
+    let mut replacements = Vec::new();
+    let mut claimed = BTreeSet::new();
+    for (ids, kind) in [
+        (&session_ids, ManagedNativeIdentifierKind::Session),
+        (&event_ids, ManagedNativeIdentifierKind::Event),
+        (&correlation_ids, ManagedNativeIdentifierKind::Correlation),
+    ] {
+        for raw in ids {
+            if raw.is_empty() || !claimed.insert(raw.clone()) {
+                continue;
+            }
+            let opaque = opaque_managed_native_identifier(
+                kind,
+                raw,
+                managed_session_id,
+                guard_event_id,
+                connection_id,
+            );
+            replacements.push(ManagedNativeIdentifierReplacement {
+                raw: raw.clone(),
+                opaque,
+            });
+        }
+    }
+    replacements.sort_by(|left, right| {
+        right
+            .raw
+            .len()
+            .cmp(&left.raw.len())
+            .then_with(|| left.raw.cmp(&right.raw))
+    });
+    replacements
+}
+
+fn opaque_managed_native_identifier(
+    kind: ManagedNativeIdentifierKind,
+    raw: &str,
+    managed_session_id: &str,
+    guard_event_id: &str,
+    connection_id: &str,
+) -> String {
+    match kind {
+        ManagedNativeIdentifierKind::Session => managed_session_id.to_owned(),
+        ManagedNativeIdentifierKind::Event => guard_event_id.to_owned(),
+        ManagedNativeIdentifierKind::Correlation => stable_id(
+            "managed_native_id",
+            &[managed_session_id, connection_id, raw],
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_managed_native_identifiers(
+    value: &Value,
+    field: Option<&str>,
+    parent_field: Option<&str>,
+    session_ids: &mut BTreeSet<String>,
+    event_ids: &mut BTreeSet<String>,
+    correlation_ids: &mut BTreeSet<String>,
+) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                collect_managed_native_identifiers(
+                    value,
+                    Some(key),
+                    field,
+                    session_ids,
+                    event_ids,
+                    correlation_ids,
+                );
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                collect_managed_native_identifiers(
+                    value,
+                    field,
+                    parent_field,
+                    session_ids,
+                    event_ids,
+                    correlation_ids,
+                );
+            }
+        }
+        Value::String(text) if !text.is_empty() => {
+            match managed_native_identifier_kind(field, parent_field) {
+                Some(ManagedNativeIdentifierKind::Session) => {
+                    session_ids.insert(text.clone());
+                }
+                Some(ManagedNativeIdentifierKind::Event) => {
+                    event_ids.insert(text.clone());
+                }
+                Some(ManagedNativeIdentifierKind::Correlation) => {
+                    correlation_ids.insert(text.clone());
+                }
+                None => {}
+            }
+        }
+        _ => {}
+    }
+}
+
+fn managed_native_identifier_kind(
+    field: Option<&str>,
+    parent_field: Option<&str>,
+) -> Option<ManagedNativeIdentifierKind> {
+    match field {
+        Some("session_id" | "thread_id") => Some(ManagedNativeIdentifierKind::Session),
+        Some("guard_event_id" | "event_id" | "hook_event_id" | "native_event_id") => {
+            Some(ManagedNativeIdentifierKind::Event)
+        }
+        Some(
+            "tool_call_id"
+            | "tool_use_id"
+            | "tool_invocation_id"
+            | "host_invocation_id"
+            | "invocation_id"
+            | "call_id"
+            | "prompt_capture_id"
+            | "capture_id"
+            | "turn_id"
+            | "transcript_id"
+            | "conversation_id"
+            | "native_session_id"
+            | "native_tool_call_id"
+            | "native_capture_id"
+            | "native_turn_id"
+            | "native_invocation_id",
+        ) => Some(ManagedNativeIdentifierKind::Correlation),
+        Some("id") if parent_field == Some("session") => Some(ManagedNativeIdentifierKind::Session),
+        Some("id")
+            if matches!(
+                parent_field,
+                None | Some(
+                    "tool"
+                        | "tool_use"
+                        | "tool_result"
+                        | "result"
+                        | "event"
+                        | "turn"
+                        | "transcript"
+                        | "conversation"
+                        | "capture"
+                        | "prompt_capture"
+                )
+            ) =>
+        {
+            Some(ManagedNativeIdentifierKind::Correlation)
+        }
+        _ => None,
+    }
+}
+
+fn contains_managed_native_identifier(
+    text: &str,
+    replacements: &[ManagedNativeIdentifierReplacement],
+) -> bool {
+    replacements
+        .iter()
+        .any(|replacement| text.contains(&replacement.raw))
+}
+
+fn replace_managed_native_identifiers(
+    text: &str,
+    replacements: &[ManagedNativeIdentifierReplacement],
+) -> String {
+    replacements
+        .iter()
+        .fold(text.to_owned(), |rendered, replacement| {
+            rendered.replace(&replacement.raw, &replacement.opaque)
+        })
+}
+
+fn protect_managed_event_value(
+    value: &Value,
+    field: Option<&str>,
+    parent_field: Option<&str>,
+    context: &ManagedEventProtectionContext<'_>,
+) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .enumerate()
+                .map(|(index, (key, value))| {
+                    let redact_key = context.protection == ManagedEventProtection::Persistent
+                        && contains_managed_native_identifier(key, context.replacements);
+                    let redacted_key = if redact_key {
+                        format!("managed_host_field_{index}_omitted")
+                    } else {
+                        key.clone()
+                    };
+                    let opaque_value = if redact_key {
+                        json!({ "omitted": true })
+                    } else {
+                        protect_managed_event_value(value, Some(key), field, context)
+                    };
+                    (redacted_key, opaque_value)
+                })
+                .collect::<Map<_, _>>(),
+        ),
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(|value| protect_managed_event_value(value, field, parent_field, context))
+                .collect(),
+        ),
+        Value::String(text) => Value::String(
+            managed_native_identifier_kind(field, parent_field).map_or_else(
+                || match context.protection {
+                    ManagedEventProtection::Semantic => text.clone(),
+                    ManagedEventProtection::Persistent => {
+                        replace_managed_native_identifiers(text, context.replacements)
+                    }
+                },
+                |kind| {
+                    opaque_managed_native_identifier(
+                        kind,
+                        text,
+                        context.managed_session_id,
+                        context.guard_event_id,
+                        context.connection_id,
+                    )
+                },
+            ),
+        ),
+        other => other.clone(),
+    }
 }
 
 fn guard_event_tool_input(event: &Value) -> Option<&Value> {
@@ -945,6 +1326,91 @@ mod replay_tests {
         assert_eq!(redacted["last_assistant_message"]["omitted"], true);
         assert_eq!(redacted["assistant_message"]["omitted"], true);
         assert_eq!(redacted["nested"]["transcript"]["omitted"], true);
+    }
+
+    #[test]
+    fn managed_native_identifiers_are_opaque_across_every_event_value() {
+        let native_session_id = "native.session:secret-1";
+        let managed_session_id =
+            "mhs_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let mut event = json!({
+            "session_id": native_session_id,
+            "thread_id": native_session_id,
+            "event_id": "native-event-id",
+            "tool_call_id": "native-tool-id",
+            "host_invocation_id": "native-host-invocation-id",
+            "tool_result": {"tool_call_id": "native-tool-id"},
+            "tool": {"id": "native-tool-id"},
+            "project": {"id": "project_canonical"},
+            "connection": {"id": "connection_canonical"},
+            "prompt_capture_id": "native-capture-id",
+            "turn_id": "native-turn-id",
+            "transcript_path": format!("/tmp/{native_session_id}.jsonl"),
+            "repo_root": "/tmp/native-event-id/product-repositories/repo",
+            "nested": [
+                native_session_id,
+                {"value": native_session_id},
+                {"event_echo": "prefix-native-event-id-suffix"},
+                {"tool_echo": "prefix-native-tool-id-suffix"},
+                {"capture_echo": "prefix-native-capture-id-suffix"},
+                {"turn_echo": "prefix-native-turn-id-suffix"},
+                {"invocation_echo": "prefix-native-host-invocation-id-suffix"}
+            ],
+        });
+        event.as_object_mut().expect("managed event object").insert(
+            "dynamic-native-tool-id-key".to_owned(),
+            json!({"value": "must be omitted with its native identifier key"}),
+        );
+        let replacements = managed_native_identifier_replacements(
+            &event,
+            managed_session_id,
+            "guard_event_opaque",
+            "connection_test",
+            native_session_id,
+        );
+        let semantic_context = ManagedEventProtectionContext {
+            managed_session_id,
+            guard_event_id: "guard_event_opaque",
+            connection_id: "connection_test",
+            protection: ManagedEventProtection::Semantic,
+            replacements: &replacements,
+        };
+        let semantic = protect_managed_event_value(&event, None, None, &semantic_context);
+        let persistent_context = ManagedEventProtectionContext {
+            protection: ManagedEventProtection::Persistent,
+            ..semantic_context
+        };
+        let sanitized = protect_managed_event_value(&event, None, None, &persistent_context);
+        let serialized = serde_json::to_string(&sanitized).expect("sanitized event serializes");
+
+        assert_eq!(semantic["session_id"], managed_session_id);
+        assert_eq!(
+            semantic["transcript_path"],
+            format!("/tmp/{native_session_id}.jsonl")
+        );
+        assert_eq!(
+            semantic["repo_root"],
+            "/tmp/native-event-id/product-repositories/repo"
+        );
+        assert!(!serialized.contains(native_session_id));
+        for native_identifier in [
+            "native-event-id",
+            "native-tool-id",
+            "native-capture-id",
+            "native-turn-id",
+            "native-host-invocation-id",
+        ] {
+            assert!(!serialized.contains(native_identifier));
+        }
+        assert_eq!(sanitized["session_id"], sanitized["thread_id"]);
+        assert_eq!(sanitized["event_id"], "guard_event_opaque");
+        assert_eq!(
+            sanitized["tool_call_id"],
+            sanitized["tool_result"]["tool_call_id"]
+        );
+        assert_eq!(sanitized["tool_call_id"], sanitized["tool"]["id"]);
+        assert_eq!(sanitized["project"]["id"], "project_canonical");
+        assert_eq!(sanitized["connection"]["id"], "connection_canonical");
     }
 
     #[test]

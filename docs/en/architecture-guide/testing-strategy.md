@@ -32,6 +32,7 @@ policy.
 | Opt-in live Judgment round trips | The Codex and Claude Code `*_live_user_action_round_trip_is_opt_in` tests in `live_host_smoke`. | Authenticated, human-in-the-loop host-native Judgment selection and its resulting authority records. | Final-output matrix evidence; Judgment elicitation and final-output disclosure are separate validation concerns. |
 | Opt-in live evidence-observation local-web round trips | The Codex and Claude Code `*_live_evidence_observation_round_trip_is_opt_in` tests in `live_host_smoke`. | An installed host negotiates the exact model-invisible capability, presents the host-only `_meta` handoff outside model context, and lets a human submit the canonical loopback `local_web_consent` form while model-visible projections remain summary-only. | Native Judgment elicitation, CLI recovery, final-output matrix evidence, or a pass when the host cannot prove the model-invisible surface; each remains a separate release-validation cell. |
 | Opt-in live CLI-fallback round trips | The Codex and Claude Code `*_live_cli_fallback_round_trip_is_opt_in` tests in `live_host_smoke`. | A human-selected choice submitted by the actual CLI User Channel, exact CLI retry, and same-Agent-Connection host resume through the installed host. | Native Judgment elicitation, evidence-observation local-web, or final-output matrix evidence; all release-validation surfaces remain separate. |
+| Exact host release gate | `tests/release-validation`, Cargo package `volicord-release-validation-tests`. | One external exact-final candidate, fixed twelve cells, claimed-status-independent canonical derivation, create-new manifest, and separate-process recalculating audit under [Host Release Evidence](../reference/host-release-evidence.md). | Production runtime trust, Core evidence, host attestation, a sparse matrix, cross-host-version aggregation, or CLI output as the canonical evaluator. |
 | MCP integration tests | [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs), target `mcp_connection`, package `volicord-integration-tests`. | Cross-layer MCP, Core, Store, connection binding, `operation_category` derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Public contract snapshot tests | [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs), target `public_contract_snapshots`, package `volicord-integration-tests`. | Generated API request-schema and MCP tool-contract snapshot drift against the current source projection. | Hand-edited generated snapshots, semantic Reference review, or proof that the public contract is correct. |
 | Conformance implementation tests | [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs), target `baseline`, package `volicord-conformance-tests`. | Baseline cross-method scenarios through Core-facing APIs, including replay, write tickets, artifacts, judgments, close readiness, error routing, and corruption handling. | Product acceptance, security proof, close readiness, or the sole source of a product rule. |
@@ -40,6 +41,14 @@ policy.
 | Documentation maintenance tooling tests | [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs), package `xtask`. | The read-only documentation validator, metadata parsing, bilingual coverage, local link and anchor checks, terminology path and role checks, command-example validation, public-language checks, and temporary fixture behavior. | Semantic translation review, technical-accuracy review, or a product contract source. |
 
 ## Fixture and support structure
+
+The release-validation package must consume the owner-defined invariant
+families without making private test layout a contract. A missing or malformed
+required cell is a structural error that prevents manifest creation. A present
+implemented cell that is ignored, running, stale, or mismatched is a durable
+downgrade case; static `unsupported_by_host` remains distinct. Candidate, cell,
+manifest, and audit fixtures may protect parsing and derivation, but only the
+exact external live run can satisfy a requested verified release claim.
 
 Shared fixture structure is part of test strategy. `volicord-test-support`
 owns disposable Runtime Home fixtures, registered project and Agent Connection

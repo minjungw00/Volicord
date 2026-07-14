@@ -330,10 +330,11 @@ The machine-readable projections are exact:
   profile exists. Post-init cells copy the product-produced init projection;
   preflight-unavailable cells use the centralized default projection with
   configuration facts false, without erasing or reclassifying static support
-  status. `result=running` is the only exempt non-terminal recorder shape. A
-  terminal `result=failed_before_completion` artifact uses the recorder's exact
-  profile hint and the default projection, or null detail when no exact profile
-  is available; it never defaults to Record.
+  status. The create-new recorder emits only terminal cell artifacts and does
+  not persist a provisional `result=running` shape. A terminal
+  `result=failed_before_completion` artifact uses the recorder's exact profile
+  hint and the default projection, or null detail when no exact profile is
+  available; it never defaults to Record.
 
 Doctor emits an empty `host_feature_support_by_connection` array when the
 Registry has no readable connection rows; it does not synthesize a feature map

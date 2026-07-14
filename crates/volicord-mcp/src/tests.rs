@@ -13,7 +13,8 @@ use std::{
 use std::os::unix::fs::PermissionsExt;
 
 use crate::adapter::{
-    LocalWebConsentReadiness, McpUserChannelCapabilities, StartupObservationResult,
+    LocalWebConsentReadiness, ManagedLifecycleEvent, McpUserChannelCapabilities,
+    StartupObservationResult,
 };
 use crate::local_http::{
     validate_bearer_token_text, validate_local_http_server_config, LOCAL_HTTP_CONTAINER_WARNING,
@@ -46,7 +47,7 @@ use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     remove_connection_project, set_connection_enabled, AgentConnectionRegistration,
     ConnectionProjectRegistration, CONNECTION_INTENT_GLOBAL, CONNECTION_MODE_READ_ONLY,
-    HOST_KIND_GENERIC, HOST_SCOPE_EXPORT,
+    HOST_KIND_GENERIC, HOST_SCOPE_EXPORT, VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
@@ -1518,6 +1519,31 @@ fn direct_startup_watch_records_legacy_observation_without_managed_lifecycle(
 
 #[test]
 fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
+    fn classified(
+        markers: &[(&str, String)],
+        project_id: Option<&str>,
+        host_kind: Option<&str>,
+    ) -> McpLaunchOrigin {
+        classify_launch_origin(
+            |name| {
+                markers
+                    .iter()
+                    .find(|(marker, _)| *marker == name)
+                    .map(|(_, value)| OsString::from(value))
+            },
+            "conn_alpha",
+            project_id,
+            host_kind,
+        )
+    }
+
+    fn markers(values: &[(&'static str, &str)]) -> Vec<(&'static str, String)> {
+        values
+            .iter()
+            .map(|(name, value)| (*name, (*value).to_owned()))
+            .collect()
+    }
+
     assert_eq!(McpLaunchOrigin::Unknown.as_str(), "unknown");
     assert_eq!(
         classify_launch_origin(
@@ -1527,38 +1553,6 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
             Some("codex"),
         ),
         McpLaunchOrigin::CliVerification
-    );
-    assert_eq!(
-        classify_launch_origin(
-            |name| match name {
-                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_alpha")),
-                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
-                "CODEX_THREAD_ID" => Some(OsString::from("thread_alpha")),
-                _ => None,
-            },
-            "conn_alpha",
-            Some("project_alpha"),
-            Some("codex"),
-        ),
-        McpLaunchOrigin::ManagedHost
-    );
-    assert_eq!(
-        classify_launch_origin(
-            |name| match name {
-                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_alpha")),
-                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
-                _ => None,
-            },
-            "conn_alpha",
-            Some("project_alpha"),
-            Some("codex"),
-        ),
-        McpLaunchOrigin::InvalidManagedMarker,
-        "the Volicord marker tuple also requires matching host-native process evidence"
     );
     assert_eq!(
         classify_launch_origin(|_| None, "conn_alpha", Some("project_alpha"), Some("codex"),),
@@ -1574,15 +1568,198 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
         McpLaunchOrigin::ManualCli,
         "an ambient host-native marker is not a managed launch identity"
     );
+    let valid_codex = markers(&[
+        ("VOLICORD_MCP_LAUNCH", "managed_host"),
+        ("VOLICORD_MCP_HOST", "codex"),
+        ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+        ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+        ("CODEX_THREAD_ID", "thread_alpha"),
+    ]);
+    let valid_claude = markers(&[
+        ("VOLICORD_MCP_LAUNCH", "managed_host"),
+        ("VOLICORD_MCP_HOST", "claude_code"),
+        ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+        ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+        ("CLAUDECODE", "1"),
+        ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
+    ]);
+    assert_eq!(
+        classified(&valid_codex, Some("project_alpha"), Some("codex")),
+        McpLaunchOrigin::ManagedHost
+    );
+    assert_eq!(
+        classified(&valid_claude, Some("project_alpha"), Some("claude_code")),
+        McpLaunchOrigin::ManagedHost
+    );
+
+    let mut invalid_cases = vec![
+        (
+            "missing native marker",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "wrong launch",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "manual"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "wrong host",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "claude_code"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "wrong connection",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_beta"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "wrong project",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_beta"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "missing project marker",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "empty native id",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CODEX_THREAD_ID", ""),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "invalid native character",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CODEX_THREAD_ID", "thread alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "cross-host native markers",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "codex"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+                ("CLAUDECODE", "1"),
+                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
+            ]),
+            Some("codex"),
+        ),
+        (
+            "claude missing process marker",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "claude_code"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
+            ]),
+            Some("claude_code"),
+        ),
+        (
+            "claude wrong process marker",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "claude_code"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CLAUDECODE", "true"),
+                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
+            ]),
+            Some("claude_code"),
+        ),
+        (
+            "claude with Codex native marker",
+            markers(&[
+                ("VOLICORD_MCP_LAUNCH", "managed_host"),
+                ("VOLICORD_MCP_HOST", "claude_code"),
+                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
+                ("VOLICORD_MCP_PROJECT_ID", "project_alpha"),
+                ("CLAUDECODE", "1"),
+                ("CLAUDE_CODE_SESSION_ID", "claude.session:alpha"),
+                ("CODEX_THREAD_ID", "thread_alpha"),
+            ]),
+            Some("claude_code"),
+        ),
+    ];
+    let mut oversized = valid_codex.clone();
+    oversized
+        .iter_mut()
+        .find(|(name, _)| *name == "CODEX_THREAD_ID")
+        .expect("Codex marker")
+        .1 = "a".repeat(257);
+    invalid_cases.push(("oversized native id", oversized, Some("codex")));
+
+    for (label, marker_set, host_kind) in invalid_cases {
+        assert_eq!(
+            classified(&marker_set, Some("project_alpha"), host_kind),
+            McpLaunchOrigin::InvalidManagedMarker,
+            "{label}"
+        );
+    }
+    assert_eq!(
+        classified(&valid_codex, None, Some("codex")),
+        McpLaunchOrigin::InvalidManagedMarker,
+        "an unbound launch must not carry a project marker"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_managed_marker_is_invalid_instead_of_manual() {
+    use std::os::unix::ffi::OsStringExt;
+
     assert_eq!(
         classify_launch_origin(
-            |name| match name {
-                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_beta")),
-                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
-                "CODEX_THREAD_ID" => Some(OsString::from("thread_alpha")),
-                _ => None,
+            |name| {
+                (name == "VOLICORD_MCP_LAUNCH").then(|| OsString::from_vec(vec![0xff, 0xfe]))
             },
             "conn_alpha",
             Some("project_alpha"),
@@ -1596,6 +1773,7 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
 fn managed_stdio_launch_records_host_runtime_observation() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-managed-watch")?;
     let adapter = project_bound_adapter(&fixture)?;
+    let native_session_id = "thread_managed_watch";
     let input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
 
@@ -1608,18 +1786,21 @@ fn managed_stdio_launch_records_host_runtime_observation() -> Result<(), Box<dyn
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
             "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-            "CODEX_THREAD_ID" => Some(OsString::from("thread_managed_watch")),
+            "CODEX_THREAD_ID" => Some(OsString::from(native_session_id)),
             _ => None,
         },
     )?;
 
     assert!(output.is_empty());
+    let expected_session_id =
+        managed_host_session_id("codex", fixture.connection_id(), native_session_id)?;
     let baseline = latest_watch_baseline_for_connection(
         fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
     )?
     .expect("managed stdio startup should create a watch baseline");
+    assert_eq!(baseline.session_id, expected_session_id);
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
     assert_eq!(metadata["launch_origin"], "managed_host");
     assert_eq!(metadata["host_kind"], "codex");
@@ -1633,6 +1814,409 @@ fn managed_stdio_launch_records_host_runtime_observation() -> Result<(), Box<dyn
     assert_eq!(startup["storage_capability"], "read_write");
     assert_eq!(startup["effective_tool_mode"], "workflow");
     assert!(startup["timestamp"].is_string());
+    assert!(!baseline.metadata_json.contains(native_session_id));
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home_path(), Some(&expected_session_id))?
+            .expect("managed stdio should use the mapped diagnostic session id");
+    assert_eq!(diagnostics.session_id, expected_session_id);
+    assert!(!serde_json::to_string(&diagnostics)?.contains(native_session_id));
+    Ok(())
+}
+
+#[test]
+fn managed_claude_stdio_uses_the_same_native_session_binding() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-claude-binding")?;
+    let connection_id = "connection_fixture_claude";
+    ensure_agent_connection(
+        fixture.runtime_home_path(),
+        AgentConnectionRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            host_kind: "claude_code".to_owned(),
+            intent: CONNECTION_INTENT_SHARED.to_owned(),
+            host_scope: HOST_SCOPE_PROJECT.to_owned(),
+            server_name: "volicord-test-claude".to_owned(),
+            config_target: fixture
+                .runtime_home_path()
+                .join("agent-connections/claude")
+                .display()
+                .to_string(),
+            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            enabled: true,
+            managed_fingerprint: "fixture:claude".to_owned(),
+            last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+            last_verification_report_json: "{}".to_owned(),
+            last_user_actions_json: "[]".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    add_connection_project(
+        fixture.runtime_home_path(),
+        ConnectionProjectRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            project_id: fixture.project_id().to_owned(),
+        },
+    )?;
+    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?
+        .with_project_allowlist(vec![ProjectId::new(fixture.project_id())]);
+    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
+    let native_session_id = "claude.session:managed-1";
+    let client_version = "2.3.4";
+    let input = Cursor::new(json_lines(&[initialize_request_with_client_info(
+        1,
+        json!({}),
+        "claude-code",
+        client_version,
+    )])?);
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("claude_code")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(connection_id)),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            "CLAUDECODE" => Some(OsString::from("1")),
+            "CLAUDE_CODE_SESSION_ID" => Some(OsString::from(native_session_id)),
+            _ => None,
+        },
+    )?;
+
+    assert_eq!(stdio_responses(&output)?.len(), 1);
+    let expected_session_id =
+        managed_host_session_id("claude_code", connection_id, native_session_id)?;
+    let baseline = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &expected_session_id,
+    )?
+    .expect("Claude managed stdio should use the mapped session id");
+    assert_eq!(baseline.session_id, expected_session_id);
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["host_kind"], "claude_code");
+    assert_eq!(metadata["connection_id"], connection_id);
+    assert_eq!(metadata["project_id"], fixture.project_id());
+    let startup = lifecycle_event(&metadata, "managed_host_startup");
+    assert_eq!(startup["host_kind"], "claude_code");
+    assert_eq!(startup["connection_id"], connection_id);
+    assert_eq!(startup["project_id"], fixture.project_id());
+    let session = agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &expected_session_id,
+    )?
+    .expect("Claude managed stdio should create the mapped Agent Session");
+    assert_eq!(session.connection_internal_id, connection_id);
+    assert_eq!(session.host_kind, "claude_code");
+    assert!(!baseline.metadata_json.contains(native_session_id));
+    Ok(())
+}
+
+#[test]
+fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-preseed-exact")?;
+    let native_session_id = "thread_preseed_exact";
+    let session_id = managed_host_session_id("codex", fixture.connection_id(), native_session_id)?;
+    let seeded = insert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_kind: "codex".to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: "2026-07-14T00:00:00Z".to_owned(),
+            metadata_json: json!({"source": "managed_preseed_exact"}).to_string(),
+        },
+    )?;
+    let before_core = fixture.counts()?;
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(Cursor::new(Vec::<u8>::new())),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            "CODEX_THREAD_ID" => Some(OsString::from(native_session_id)),
+            _ => None,
+        },
+    )?;
+
+    assert!(output.is_empty());
+    assert_eq!(fixture.counts()?, before_core);
+    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
+    assert_eq!(
+        agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &session_id,
+        )?,
+        Some(seeded)
+    );
+    assert!(latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .is_some());
+    Ok(())
+}
+
+#[test]
+fn managed_stdio_preseed_conflicts_fail_before_any_effect() -> Result<(), Box<dyn Error>> {
+    for (label, existing_connection_id, existing_host_kind) in [
+        ("host", None, "generic"),
+        ("connection", Some("connection_fixture_other"), "codex"),
+    ] {
+        let fixture = CoreFixture::new(&format!("mcp-stdio-managed-preseed-{label}"))?;
+        let native_session_id = format!("thread_preseed_conflict_{label}");
+        let session_id =
+            managed_host_session_id("codex", fixture.connection_id(), native_session_id.as_str())?;
+        let existing_connection_id = existing_connection_id.unwrap_or(fixture.connection_id());
+        if existing_connection_id != fixture.connection_id() {
+            ensure_agent_connection(
+                fixture.runtime_home_path(),
+                AgentConnectionRegistration {
+                    connection_internal_id: existing_connection_id.to_owned(),
+                    host_kind: "codex".to_owned(),
+                    intent: CONNECTION_INTENT_SHARED.to_owned(),
+                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                    server_name: format!("volicord-test-{label}"),
+                    config_target: fixture
+                        .runtime_home_path()
+                        .join(format!("agent-connections/{label}"))
+                        .display()
+                        .to_string(),
+                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    enabled: true,
+                    managed_fingerprint: format!("fixture:{label}"),
+                    last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+                    last_verification_report_json: "{}".to_owned(),
+                    last_user_actions_json: "[]".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_connection_project(
+                fixture.runtime_home_path(),
+                ConnectionProjectRegistration {
+                    connection_internal_id: existing_connection_id.to_owned(),
+                    project_id: fixture.project_id().to_owned(),
+                },
+            )?;
+        }
+        insert_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            AgentSessionInsert {
+                session_id: session_id.clone(),
+                connection_internal_id: existing_connection_id.to_owned(),
+                guard_installation_id: None,
+                host_kind: existing_host_kind.to_owned(),
+                guard_mode: "record".to_owned(),
+                started_at: "2026-07-14T00:00:00Z".to_owned(),
+                metadata_json: json!({"source": "managed_preseed_conflict"}).to_string(),
+            },
+        )?;
+        let before_core = fixture.counts()?;
+        let before_state_version = read_only_state_version(&fixture)?;
+        let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+        let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+        let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(1, json!({})),
+            initialized_notification(),
+            tools_call(2, "volicord.status", json!({ "detail": "workflow" })),
+        ])?);
+        let mut output = Vec::new();
+
+        let error = run_stdio_with_env_marker(
+            project_bound_adapter(&fixture)?,
+            BufReader::new(input),
+            &mut output,
+            |name| match name {
+                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+                "CODEX_THREAD_ID" => Some(OsString::from(native_session_id.as_str())),
+                _ => None,
+            },
+        )
+        .expect_err("managed AgentSession coordinate conflicts must fail before startup");
+
+        assert!(output.is_empty(), "{label}");
+        assert!(
+            error
+                .to_string()
+                .contains("MANAGED_HOST_SESSION_BINDING_CONFLICT"),
+            "{label}: {error}"
+        );
+        assert!(!error.to_string().contains(native_session_id.as_str()));
+        assert_eq!(fixture.counts()?, before_core, "{label}");
+        assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+        assert_eq!(
+            read_only_table_count(&fixture, "agent_sessions")?,
+            before_agent_sessions
+        );
+        assert_eq!(
+            read_only_table_count(&fixture, "session_watch_baselines")?,
+            before_watch_baselines
+        );
+        assert_eq!(
+            read_only_table_count(&fixture, "tool_invocations")?,
+            before_tool_invocations
+        );
+        assert!(read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?.is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn managed_stdio_late_wrong_host_preseed_with_existing_baseline_has_zero_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-late-wrong-host")?;
+    let connection_id = "connection_fixture_late_managed";
+    ensure_agent_connection(
+        fixture.runtime_home_path(),
+        AgentConnectionRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            host_kind: "codex".to_owned(),
+            intent: CONNECTION_INTENT_SHARED.to_owned(),
+            host_scope: HOST_SCOPE_PROJECT.to_owned(),
+            server_name: "volicord-test-late-managed".to_owned(),
+            config_target: fixture
+                .runtime_home_path()
+                .join("agent-connections/late-managed")
+                .display()
+                .to_string(),
+            mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+            enabled: true,
+            managed_fingerprint: "fixture:late-managed".to_owned(),
+            last_verification_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+            last_verification_report_json: "{}".to_owned(),
+            last_user_actions_json: "[]".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    add_connection_project(
+        fixture.runtime_home_path(),
+        ConnectionProjectRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            project_id: fixture.project_id().to_owned(),
+        },
+    )?;
+    let context = McpConnectionContext::resolve(fixture.runtime_home_path(), connection_id)?;
+    assert!(remove_connection_project(
+        fixture.runtime_home_path(),
+        connection_id,
+        fixture.project_id(),
+    )?);
+    let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
+    let native_session_id = "thread_late_wrong_host";
+    let session_id = managed_host_session_id("codex", connection_id, native_session_id)?;
+
+    assert_eq!(
+        adapter.managed_lifecycle_observation_best_effort(
+            &session_id,
+            "managed_host",
+            ManagedLifecycleEvent::Startup,
+            None,
+        ),
+        StartupObservationResult::NotAttempted,
+        "a managed process with no connected project must not create project state"
+    );
+
+    add_connection_project(
+        fixture.runtime_home_path(),
+        ConnectionProjectRegistration {
+            connection_internal_id: connection_id.to_owned(),
+            project_id: fixture.project_id().to_owned(),
+        },
+    )?;
+    let seeded_session = insert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: connection_id.to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_GENERIC.to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: "2026-07-14T00:00:00Z".to_owned(),
+            metadata_json: json!({"source": "late_wrong_host_preseed"}).to_string(),
+        },
+    )?;
+    let now = fixture.store()?.current_timestamp()?;
+    let snapshot = snapshot_product_repository(
+        fixture.runtime_home_path(),
+        fixture.product_repo_path(),
+        WatchSnapshotOptions::default(),
+    )?;
+    let seeded_baseline = create_watch_baseline(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        WatchBaselineCreate {
+            watch_baseline_id: "watch_base_late_wrong_host".to_owned(),
+            session_id: session_id.clone(),
+            connection_internal_id: connection_id.to_owned(),
+            guard_installation_id: None,
+            status: StoreSessionWatchStatus::Active,
+            snapshot,
+            created_at: now,
+            metadata_json: json!({"source": "late_wrong_host_baseline"}).to_string(),
+        },
+    )?;
+    let before_core = fixture.counts()?;
+    let before_state_version = read_only_state_version(&fixture)?;
+    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+
+    let outcome = adapter.managed_lifecycle_observation_best_effort(
+        &session_id,
+        "managed_host",
+        ManagedLifecycleEvent::ToolsList,
+        None,
+    );
+
+    let reason = match outcome {
+        StartupObservationResult::FailedButNonfatal { reason } => reason,
+        other => panic!("late wrong-host reuse must fail without mutation, got {other:?}"),
+    };
+    assert!(reason.contains("MANAGED_HOST_SESSION_BINDING_CONFLICT"));
+    assert!(!reason.contains(native_session_id));
+    assert_eq!(fixture.counts()?, before_core);
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_agent_sessions
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_watch_baselines
+    );
+    assert_eq!(
+        agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &session_id,
+        )?,
+        Some(seeded_session)
+    );
+    assert_eq!(
+        latest_watch_baseline_for_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &session_id,
+        )?,
+        Some(seeded_baseline)
+    );
     Ok(())
 }
 
@@ -1751,34 +2335,60 @@ fn manual_stdio_launch_does_not_create_host_runtime_observation() -> Result<(), 
 }
 
 #[test]
-fn invalid_managed_marker_launch_does_not_create_host_runtime_observation(
+fn invalid_native_session_marker_does_not_create_host_runtime_observation(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-invalid-marker-watch-skip")?;
     let adapter = project_bound_adapter(&fixture)?;
-    let input = Cursor::new(Vec::<u8>::new());
+    let before_state_version = read_only_state_version(&fixture)?;
+    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, "volicord.status", json!({ "detail": "workflow" })),
+    ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
-        adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_wrong")),
-            "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-            "CODEX_THREAD_ID" => Some(OsString::from("thread_invalid_marker")),
-            _ => None,
-        },
-    )?;
+    let error =
+        run_stdio_with_env_marker(
+            adapter,
+            BufReader::new(input),
+            &mut output,
+            |name| match name {
+                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+                "CODEX_THREAD_ID" => Some(OsString::from("thread invalid marker")),
+                _ => None,
+            },
+        )
+        .expect_err("invalid managed markers must fail before transport startup");
 
     assert!(output.is_empty());
+    assert!(error.to_string().contains("INVALID_MANAGED_MARKER"));
+    assert!(!error.to_string().contains("thread invalid marker"));
     assert!(latest_watch_baseline_for_connection(
         fixture.runtime_home_path(),
         fixture.project_id(),
         fixture.connection_id(),
     )?
     .is_none());
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_agent_sessions
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_watch_baselines
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_tool_invocations
+    );
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
     Ok(())
 }
 
@@ -5211,13 +5821,7 @@ fn generic_connection_self_declaration_never_issues_local_web_handoff() -> Resul
         generic_adapter,
         BufReader::new(input),
         &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from(HOST_KIND_GENERIC)),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(generic_connection_id)),
-            "CODEX_THREAD_ID" => Some(OsString::from("ambient_generic_thread")),
-            _ => None,
-        },
+        |name| (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient_generic_thread")),
     )?;
 
     let values = stdio_responses(&output)?;

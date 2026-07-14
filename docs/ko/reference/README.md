@@ -7,6 +7,7 @@
 ## 먼저 볼 곳
 
 - 설치 전 환경 전제 조건: [시스템 요구사항](system-requirements.md).
+- 정확한 최종 아티팩트 관리 호스트 릴리스 검증: [호스트 릴리스 증거](host-release-evidence.md).
 - 실행 파일 준비와 검증 튜토리얼: [설치](../user-guide/installation.md).
 - 제품/시스템 경계: [범위](scope.md), [Core 모델](core-model.md), [런타임 경계](runtime-boundaries.md), [보안](security.md).
 - 첫 에이전트 호스트 설정: 가장 짧은 성공 경로는 [빠른 시작](../user-guide/quickstart.md)에, 전체 운영자 가이드는 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)에, 하나의 사용자 범위 Agent Connection이 여러 저장소를 처리하는 경로는 [다중 저장소 에이전트 설정](../user-guide/multi-repository-agent-setup.md)에 있습니다.
@@ -17,7 +18,7 @@
 - API 오류 묶음: [API 오류](api/errors.md). 오류 코드, 우선순위, 응답 처리 경로, 차단 사유 처리 경로, 기계 판독 세부사항으로 안내합니다.
 - 저장소 묶음: [저장소](storage.md). 기록, DDL, 효과, 아티팩트, 버전 관리로 안내합니다.
 - 연결, 상태 보기, 표시 경로: Agent Connection, Connection Projects, 현재 연결 맥락은 [Agent Connection 참조](agent-connection.md), User Channel과 런타임 위치 경계는 [런타임 경계](runtime-boundaries.md), 작업 범주 비보장은 [보안](security.md), 상태 보기는 [상태 보기와 템플릿](projection-and-templates.md), 렌더링 문구는 [템플릿 본문](template-bodies.md)에 있습니다.
-- 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 그리고 질문에 맞는 메서드 또는 Core 담당 문서.
+- 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 고정 릴리스 게이트와 독립 audit은 [호스트 릴리스 증거](host-release-evidence.md), 그 밖에는 질문에 맞는 메서드 또는 Core 담당 문서.
 
 ## 자주 갈리는 경로
 

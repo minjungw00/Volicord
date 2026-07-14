@@ -556,6 +556,15 @@ impl McpAdapter {
         let Some(project_id) = self.project_bound_startup_project()? else {
             return Ok(StartupObservationResult::NotAttempted);
         };
+        if self
+            .validate_managed_session_binding_for_project(&project_id, session_id)?
+            .is_none()
+        {
+            return Err(McpAdapterError::Environment(
+                "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires an opaque mhs_ session"
+                    .to_owned(),
+            ));
+        }
         self.ensure_session_watch_baseline(
             &project_id,
             session_id,
@@ -592,6 +601,8 @@ impl McpAdapter {
         coverage_basis: SessionWatchCoverageBasis,
         launch_origin: Option<&str>,
     ) -> Result<(), McpAdapterError> {
+        let managed_host_kind =
+            self.validate_managed_session_binding_for_project(project_id, session_id)?;
         if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
             .map_err(McpAdapterError::Store)?
             .is_some()
@@ -602,7 +613,12 @@ impl McpAdapter {
         let now = CoreProjectStore::open(&self.runtime_home, project_id)
             .and_then(|store| store.current_timestamp())
             .map_err(McpAdapterError::Store)?;
-        self.ensure_agent_session_for_watch(project_id, session_id, &now)?;
+        self.ensure_agent_session_for_watch(
+            project_id,
+            session_id,
+            &now,
+            managed_host_kind.as_deref(),
+        )?;
 
         if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
             .map_err(McpAdapterError::Store)?
@@ -679,6 +695,14 @@ impl McpAdapter {
         lifecycle_event: ManagedLifecycleEvent,
         tool_name: Option<&str>,
     ) -> Result<(), McpAdapterError> {
+        let host_kind = self
+            .validate_managed_session_binding_for_project(project_id, session_id)?
+            .ok_or_else(|| {
+                McpAdapterError::Environment(
+                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires an opaque mhs_ session"
+                        .to_owned(),
+                )
+            })?;
         let Some(baseline) =
             latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
                 .map_err(McpAdapterError::Store)?
@@ -696,7 +720,7 @@ impl McpAdapter {
         let object = metadata
             .as_object_mut()
             .expect("metadata was normalized to an object");
-        object.insert("host_kind".to_owned(), json!("codex"));
+        object.insert("host_kind".to_owned(), json!(&host_kind));
         object.insert("launch_origin".to_owned(), json!(launch_origin));
         object.insert(
             "connection_id".to_owned(),
@@ -709,8 +733,13 @@ impl McpAdapter {
         );
         object.insert("latest_lifecycle_observed_at".to_owned(), json!(&now));
 
-        let mut event =
-            self.managed_lifecycle_event_metadata(project_id, launch_origin, lifecycle_event, &now);
+        let mut event = self.managed_lifecycle_event_metadata(
+            project_id,
+            &host_kind,
+            launch_origin,
+            lifecycle_event,
+            &now,
+        );
         if let Some(tool_name) = tool_name {
             event["tool_name"] = json!(tool_name);
         }
@@ -727,6 +756,20 @@ impl McpAdapter {
             .push(event);
 
         let status = session_watch_status_from_storage(&baseline.status)?;
+        let final_host_kind = self
+            .validate_managed_session_binding_for_project(project_id, session_id)?
+            .ok_or_else(|| {
+                McpAdapterError::Environment(
+                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires an opaque mhs_ session"
+                        .to_owned(),
+                )
+            })?;
+        if final_host_kind != host_kind {
+            return Err(McpAdapterError::Environment(
+                "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle host binding changed before persistence"
+                    .to_owned(),
+            ));
+        }
         update_watch_status(
             &self.runtime_home,
             project_id.as_str(),
@@ -744,6 +787,7 @@ impl McpAdapter {
     fn managed_lifecycle_event_metadata(
         &self,
         project_id: &ProjectId,
+        host_kind: &str,
         launch_origin: &str,
         lifecycle_event: ManagedLifecycleEvent,
         timestamp: &str,
@@ -763,7 +807,7 @@ impl McpAdapter {
         json!({
             "connection_id": self.context.connection_internal_id.as_str(),
             "project_id": project_id.as_str(),
-            "host_kind": "codex",
+            "host_kind": host_kind,
             "launch_origin": launch_origin,
             "lifecycle_event": lifecycle_event.as_str(),
             "timestamp": timestamp,
@@ -797,11 +841,20 @@ impl McpAdapter {
         project_id: &ProjectId,
         session_id: &str,
         now: &str,
+        managed_host_kind: Option<&str>,
     ) -> Result<(), McpAdapterError> {
-        if agent_session(&self.runtime_home, project_id.as_str(), session_id)
+        if let Some(existing) = agent_session(&self.runtime_home, project_id.as_str(), session_id)
             .map_err(McpAdapterError::Store)?
-            .is_some()
         {
+            if managed_host_kind.is_some_and(|host_kind| {
+                existing.connection_internal_id != self.context.connection_internal_id.as_str()
+                    || existing.host_kind != host_kind
+            }) {
+                return Err(McpAdapterError::Environment(
+                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match this managed MCP connection"
+                        .to_owned(),
+                ));
+            }
             return Ok(());
         }
         let record = guard_health_record(
@@ -825,17 +878,19 @@ impl McpAdapter {
                     .map(|session| session.guard_mode.clone())
             })
             .unwrap_or_else(|| IntegrationProfile::Record.as_str().to_owned());
-        let host_kind = record
-            .guard_installation
-            .as_ref()
-            .map(|installation| installation.host_kind.clone())
-            .or_else(|| {
-                record
-                    .connection
-                    .as_ref()
-                    .map(|connection| connection.host_kind.clone())
-            })
-            .unwrap_or_else(|| "unknown".to_owned());
+        let host_kind = managed_host_kind.map(str::to_owned).unwrap_or_else(|| {
+            record
+                .guard_installation
+                .as_ref()
+                .map(|installation| installation.host_kind.clone())
+                .or_else(|| {
+                    record
+                        .connection
+                        .as_ref()
+                        .map(|connection| connection.host_kind.clone())
+                })
+                .unwrap_or_else(|| "unknown".to_owned())
+        });
 
         insert_agent_session(
             &self.runtime_home,
@@ -856,6 +911,52 @@ impl McpAdapter {
         )
         .map_err(McpAdapterError::Store)?;
         Ok(())
+    }
+
+    fn validate_managed_session_binding_for_project(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+    ) -> Result<Option<String>, McpAdapterError> {
+        if !session_id.starts_with(MANAGED_HOST_SESSION_ID_PREFIX) {
+            return Ok(None);
+        }
+        validate_managed_host_session_id(session_id).map_err(|_| {
+            McpAdapterError::Environment(
+                "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed lifecycle requires a canonical opaque mhs_ session"
+                    .to_owned(),
+            )
+        })?;
+        let connection = agent_connection_record_read_only(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| {
+            McpAdapterError::Environment(
+                "MANAGED_HOST_SESSION_BINDING_CONFLICT: active managed MCP connection is unavailable"
+                    .to_owned(),
+            )
+        })?;
+        if !matches!(connection.host_kind.as_str(), "codex" | "claude_code") {
+            return Err(McpAdapterError::Environment(
+                "MANAGED_HOST_SESSION_BINDING_CONFLICT: mhs_ sessions require a managed built-in host"
+                    .to_owned(),
+            ));
+        }
+        if let Some(existing) = agent_session(&self.runtime_home, project_id.as_str(), session_id)
+            .map_err(McpAdapterError::Store)?
+        {
+            if existing.connection_internal_id != self.context.connection_internal_id.as_str()
+                || existing.host_kind != connection.host_kind
+            {
+                return Err(McpAdapterError::Environment(
+                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match the current registered connection host"
+                        .to_owned(),
+                ));
+            }
+        }
+        Ok(Some(connection.host_kind))
     }
 
     fn selected_guard_installation_id(

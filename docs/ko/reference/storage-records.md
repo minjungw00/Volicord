@@ -122,6 +122,17 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `authority_events` | 권한 이벤트 흐름 | 커밋된 Core 권한 변경의 추가 전용 순서와 로컬 감사 흐름. |
 | `state.sqlite` | `tool_invocations` | 재실행 및 정확한 동작 결과 행 | [저장 효과](storage-effects.md)가 재실행 생성을 정의한 경우의 커밋된 `dry_run=false` Core 메서드 결과 재실행 행입니다. 변경 불가능한 `response_json`, 행위자 출처, 작업 범주, 선택적 검증 근거, 검증된 호출에서 포착한 선택적 정규 Git 작업 공간 맥락을 포함합니다. 조회할 수 있는 `operation_category=agent_workflow` 행은 `OperationResultRef`가 가리키는 저장 원본이기도 합니다. |
 
+관리 Codex 또는 Claude Code 상관관계가 세션 식별 정보를 제공할 때 저장소에는
+[호스트 릴리스 증거](host-release-evidence.md)가 정의한 불투명
+`managed_host_session_id`만 전달됩니다. `mhs_` namespace는 이 매핑에만 예약됩니다. 기존
+매핑 세션은 정확히 같은 등록 연결과 호스트 종류에서만 재사용할 수 있습니다. 다른 연결
+또는 호스트에서 재사용하려는 시도는 기존 행을 바꾸지 않고 거부하며 generic 또는 manual
+경로는 이 namespace를 미리 심을 수 없습니다. 원본 native session, event, tool-call,
+capture, turn, invocation identifier는 저장 기록, JSON 메타데이터, 로그 payload, 진단 세션
+식별자가 될 수 없습니다. 관리 수집은 영속화 전에 상관관계 identifier를 domain 분리
+불투명 값으로 바꿉니다. 매핑이 없거나 잘못됐거나 일치하지 않으면 그 상태로 남기며,
+저장소가 대체 값을 만들거나 잘못된 marker의 진단 상태를 만들면 안 됩니다.
+
 ## 기록 배치 규칙
 
 ### 식별자와 소유 관계

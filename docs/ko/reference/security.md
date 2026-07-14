@@ -210,12 +210,14 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
   `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`를 만족해야
   합니다. 24시간은 기본 수명, 신원 증명, attestation 기간이 아니라 최대 최신성 구간일
   뿐입니다.
-  `evidence_artifact_sha256`은 실행 파일 밖의 별도로 검증된 정확한 최종 아티팩트 릴리스
-  증거 manifest 또는 receipt가 제공하는 예상 다이제스트와 정확히 일치해야 합니다. 그
+  `evidence_artifact_sha256` 예상값에는 [호스트 릴리스 증거](host-release-evidence.md)가
+  정의한 외부 `volicord-host-release-manifest-v1`을 신뢰해 획득하는 운영 경로가
+  필요합니다. 그
   manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target, 실행 파일
   다이제스트에 결속되어야 합니다. Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지
   않았거나, 일치하지 않으면 닫힌 상태로 실패하며 영속 행이나 빌드 메타데이터가 예상값을
-  자기 선언할 수 없습니다. 현재 어댑터에는 신뢰된 manifest 획득 경로가 없으므로 운영
+  자기 선언할 수 없습니다. 현재 어댑터에는 신뢰된 manifest 획득 경로가 없고 릴리스
+  아티팩트 자체도 런타임 신뢰 입력이 아니므로 운영
   local-web 자격은 사용할 수 없고 CLI inbox를 사용합니다.
   V1 검증 `metadata_json`은 엄격한 정규 `{}`만 허용합니다. 임의 메타데이터가 다른 신뢰
   입력이 되거나 token, prompt, transcript, 원문 호스트 아티팩트, 비공개 운영자 데이터를
@@ -250,6 +252,14 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
   cryptographic host signature, local-principal attestation, 위조 방지 경계,
   actor-identity 증명이라는 주장. 정확한 digest와 완전성을 검사해도 이 source는
   협력적 local integration입니다.
+
+관리 호스트 세션 상관관계에는 [호스트 릴리스 증거](host-release-evidence.md)가 정의하는
+domain 분리 불투명 `managed_host_session_id`만 사용합니다. 원본 native session
+identifier와 event, tool-call, capture, turn, invocation identifier는 영속 저장, 로그,
+진단, 증거 첨부를 하지 않습니다. `mhs_` namespace는 예약되며 호스트 하나와 등록 연결
+하나에 변경 불가능하게 결속됩니다. 잘못되거나 충돌하는 marker는 영속 상태 없이
+실패합니다. 매핑 값은 상관관계 메타데이터일 뿐 사용자 신원, host attestation, 권한이
+아니며 결속이 없거나 일치하지 않으면 Strong Evidence를 만들 수 없습니다.
 
 <a id="historical-operation-result-access"></a>
 ### 과거 동작 결과 접근

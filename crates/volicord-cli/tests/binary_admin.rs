@@ -3582,9 +3582,13 @@ fn init_codex_guarded_hook_command_runs_from_subdirectory_with_spaces() -> Resul
     let value = assert_host_native_pre_tool_deny_output(&hook_output)?;
     assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
 
-    let stored = guard_event(runtime_home.path(), project_id, event_id)?
+    let opaque_event_id =
+        unique_guard_event_id_for_connection(&runtime_home, project_id, connection_id, "pre_tool")?;
+    assert_ne!(opaque_event_id, event_id);
+    let stored = guard_event(runtime_home.path(), project_id, &opaque_event_id)?
         .expect("generated Codex hook command should invoke volicord _hook");
     assert_eq!(stored.connection_internal_id, connection_id);
+    assert_eq!(stored.event_kind, "pre_tool");
     assert_eq!(stored.decision, "deny");
     let installations =
         list_guard_installations(runtime_home.path(), connection_id, Some(project_id))?;
@@ -3672,9 +3676,13 @@ fn init_claude_code_guarded_hook_command_runs_from_subdirectory_with_spaces(
     let value = assert_host_native_pre_tool_deny_output(&hook_output)?;
     assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
 
-    let stored = guard_event(runtime_home.path(), project_id, event_id)?
+    let opaque_event_id =
+        unique_guard_event_id_for_connection(&runtime_home, project_id, connection_id, "pre_tool")?;
+    assert_ne!(opaque_event_id, event_id);
+    let stored = guard_event(runtime_home.path(), project_id, &opaque_event_id)?
         .expect("generated Claude Code hook command should invoke volicord _hook");
     assert_eq!(stored.connection_internal_id, connection_id);
+    assert_eq!(stored.event_kind, "pre_tool");
     assert_eq!(stored.decision, "deny");
     let installations =
         list_guard_installations(runtime_home.path(), connection_id, Some(project_id))?;
@@ -10347,6 +10355,43 @@ fn assert_host_native_pre_tool_deny_output(output: &Output) -> Result<Value, Box
         .expect("deny reason should be a string")
         .contains("no_active_task"));
     Ok(value)
+}
+
+#[cfg(unix)]
+fn unique_guard_event_id_for_connection(
+    runtime_home: &TempRuntimeHome,
+    project_id: &str,
+    connection_id: &str,
+    event_kind: &str,
+) -> Result<String, Box<dyn Error>> {
+    let connection = rusqlite::Connection::open_with_flags(
+        runtime_home.project_state_db_path(project_id),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let mut statement = connection.prepare(
+        "SELECT guard_event_id
+           FROM guard_events
+          WHERE project_id = ?1
+            AND connection_internal_id = ?2
+            AND event_kind = ?3
+          ORDER BY guard_event_id",
+    )?;
+    let event_ids = statement
+        .query_map(
+            rusqlite::params![project_id, connection_id, event_kind],
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    match event_ids.as_slice() {
+        [event_id] => Ok(event_id.clone()),
+        _ => Err(format!(
+            "expected exactly one {event_kind} GuardEvent for project {project_id} and connection \
+             {connection_id}, found {}",
+            event_ids.len()
+        )
+        .into()),
+    }
 }
 
 #[cfg(unix)]

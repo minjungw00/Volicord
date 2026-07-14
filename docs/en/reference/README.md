@@ -7,6 +7,7 @@ This README is route-only. It does not define term meanings, terminology metadat
 ## Start Here
 
 - Environment prerequisites before installation: [System Requirements](system-requirements.md).
+- Exact-final-artifact managed-host release validation: [Host Release Evidence](host-release-evidence.md).
 - Executable preparation and verification tutorial: [Installation](../user-guide/installation.md).
 - Product/system boundaries: [Scope](scope.md), [Core Model](core-model.md), [Runtime Boundaries](runtime-boundaries.md), and [Security](security.md).
 - First-run agent host setup: [Quickstart](../user-guide/quickstart.md) for the shortest success path, then [Agent Host Setup](../user-guide/agent-host-setup.md) for the complete operator guide and [Multi-Repository Agent Setup](../user-guide/multi-repository-agent-setup.md) for one user-scope Agent Connection serving multiple repositories.
@@ -17,7 +18,7 @@ This README is route-only. It does not define term meanings, terminology metadat
 - API error families: [API Errors](api/errors.md), which routes to error codes, precedence, response routing, blocker routing, and machine-readable details.
 - Storage families: [Storage](storage.md), which routes to records, DDL, effects, artifacts, and versioning.
 - Connection, projection, and display routes: [Agent Connection Reference](agent-connection.md) for Agent Connection, Connection Projects, and current connection context, [Runtime Boundaries](runtime-boundaries.md) for User Channel and runtime-location boundaries, [Security](security.md) for operation-category non-guarantees, [Projection and Templates](projection-and-templates.md), and [Template Bodies](template-bodies.md).
-- Quality and verification routes: [Conformance](conformance.md), [Design Quality](design-quality.md), and the relevant method or Core owner for the question.
+- Quality and verification routes: [Conformance](conformance.md), [Design Quality](design-quality.md), [Host Release Evidence](host-release-evidence.md) for the fixed release gate and independent audit, and the relevant method or Core owner for the question.
 
 ## Common Crossings
 

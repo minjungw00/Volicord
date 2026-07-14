@@ -606,8 +606,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -628,7 +628,9 @@ documents:
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - architecture-guide.change-guide
+  - architecture-guide.decision.host-release-evidence-gate
   - reference.index
+  - reference.host-release-evidence
   - reference.api.methods
 - doc_id: architecture-guide.codebase-tour
   path_en: docs/en/architecture-guide/codebase-tour.md
@@ -687,6 +689,7 @@ documents:
   - implement
   depends_on:
   - architecture-guide.architecture
+  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.codebase-tour
   - architecture-guide.cli-workflows
@@ -694,6 +697,7 @@ documents:
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
   - reference.index
+  - reference.host-release-evidence
 - doc_id: architecture-guide.cli-workflows
   path_en: docs/en/architecture-guide/cli-workflows.md
   path_ko: docs/ko/architecture-guide/cli-workflows.md
@@ -721,6 +725,7 @@ documents:
   - architecture-guide.source-map
   - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.admin-cli
   - reference.agent-connection
@@ -853,10 +858,12 @@ documents:
   - architecture-guide.architecture
   - architecture-guide.change-guide
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.index
   - reference.conformance
   - reference.system-requirements
+  - reference.host-release-evidence
   - reference.mcp-transport
   - reference.api.method-record-run
   - reference.api.method-request-user-action
@@ -892,6 +899,7 @@ documents:
   - architecture-guide.decision.core-adapter-boundary
   - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
@@ -995,9 +1003,40 @@ documents:
   - reference.admin-cli
   - reference.security
   - reference.system-requirements
+  - reference.host-release-evidence
   - reference.storage-records
   - reference.storage-ddl
   - reference.storage-versioning
+- doc_id: architecture-guide.decision.host-release-evidence-gate
+  path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
+  path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
+  kind: explanation
+  summary: Architecture decision for build-once exact-final-artifact host release validation,
+    canonical twelve-cell evaluation, create-new external manifests, and separate-process audit.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-14'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - release maintainers
+  - reviewers
+  journeys:
+  - implement
+  - maintain
+  depends_on:
+  - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-feature-support-state-evaluation
+  - reference.host-release-evidence
+  - reference.system-requirements
+  - reference.agent-connection
+  - reference.security
+  - maintain.validation
 - doc_id: architecture-guide.decision.host-feature-support-state-evaluation
   path_en: docs/en/architecture-guide/decisions/host-feature-support-state-evaluation.md
   path_ko: docs/ko/architecture-guide/decisions/host-feature-support-state-evaluation.md
@@ -1284,11 +1323,13 @@ documents:
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - reference.index
   - reference.system-requirements
+  - reference.host-release-evidence
   - reference.admin-cli
   - reference.agent-connection
   - reference.api.schema-state
@@ -1324,6 +1365,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
+  - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decisions.index
   - architecture-guide.change-guide
@@ -1332,6 +1374,7 @@ documents:
   - reference.mcp-transport
   - reference.core-model
   - reference.security
+  - reference.host-release-evidence
   - reference.api.methods
   - reference.storage
   - reference.storage-effects
@@ -1345,8 +1388,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-02'
-  last_updated_on: '2026-07-05'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -1404,6 +1447,48 @@ documents:
   - reference.admin-cli
   - reference.mcp-transport
   - reference.agent-connection
+  - reference.host-release-evidence
+- doc_id: reference.host-release-evidence
+  path_en: docs/en/reference/host-release-evidence.md
+  path_ko: docs/ko/reference/host-release-evidence.md
+  kind: reference
+  summary: Exact-final-artifact managed-host release evidence schemas, fixed twelve-cell gate,
+    canonical evaluation, independent audit, and privacy-preserving session-binding contract.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: agent_connection
+  created_on: '2026-07-14'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  primary_audience:
+  - implementers
+  - agent integrators
+  - release maintainers
+  - reviewers
+  journeys:
+  - implement
+  - maintain
+  canonical_for:
+  - '`volicord-release-candidate-v1`, `volicord-host-release-cell-v1`, `volicord-host-release-manifest-v1`, and `volicord-host-release-audit-v1`'
+  - exact external candidate, clean source revision, `git_archive_tar_sha256_v1`, target, profile, environment, held-handle digest, and private-copy execution binding
+  - non-adversarial build-provenance and source-archive integrity boundary without reproducible-build or hostile-producer attestation
+  - fixed twelve-cell Codex and Claude Code host release validation matrix with explicit nullable host availability coordinates
+  - half-open 24-hour release-cell freshness and no cross-host-version aggregation
+  - canonical claimed-status-independent support derivation and release-gate verdicts
+  - create-new bounded external manifest and separate-process audit that reopens and digests the original twelve cell files
+  - privacy-preserving managed-host native correlation identifier validation, reserved namespace, and domain-separated mapping
+  - exact `tests/release-validation` validation command routes
+  depends_on:
+  - reference.system-requirements
+  - reference.agent-connection
+  - reference.mcp-transport
+  - reference.admin-cli
+  - reference.security
+  - reference.api.schema-value-sets
+  - maintain.validation
 - doc_id: reference.scope
   path_en: docs/en/reference/scope.md
   path_ko: docs/ko/reference/scope.md
@@ -1549,12 +1634,14 @@ documents:
   - CLI and doctor build-descriptor fields and their non-equivalence to an external release evidence manifest
   - administrative host-feature support diagnostics, profile-specific final-output subcapabilities, and configuration-only facts
   - exact six-key host_feature_support map and Doctor per-connection row projection
+  - auxiliary CLI and Doctor projection boundary from the canonical host release evidence gate and audit
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-connection
   - reference.mcp-transport
   - reference.api.methods
   - reference.api.schema-value-sets
+  - reference.host-release-evidence
 - doc_id: reference.mcp-transport
   path_en: docs/en/reference/mcp-transport.md
   path_ko: docs/ko/reference/mcp-transport.md
@@ -1598,6 +1685,7 @@ documents:
   - MCP process shutdown and reconnection behavior
   - centralized exact host-capability evaluation, external exact-final-artifact release evidence
     manifest requirement, and credential-bearing local-web handoff eligibility
+  - managed native host session input mapping before persistence or diagnostics
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -1605,6 +1693,7 @@ documents:
   - reference.api.schema-core
   - reference.api.schema-value-sets
   - reference.storage
+  - reference.host-release-evidence
 - doc_id: reference.security
   path_en: docs/en/reference/security.md
   path_ko: docs/ko/reference/security.md
@@ -1637,6 +1726,9 @@ documents:
   - generated final-output display and model-authored text non-authority boundary
   - host-capability evidence, external release-manifest trust boundary, credential-delivery trust
     boundary, and non-attestation wording
+  - managed native host session privacy and opaque-correlation non-authority boundary
+  depends_on:
+  - reference.host-release-evidence
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
   path_ko: docs/ko/reference/glossary.md
@@ -2409,6 +2501,9 @@ documents:
   - immutable host-capability verification history and current-pointer record families
   - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
   - local web consent token record family
+  - opaque managed-host session identifier persistence and raw native session identifier exclusion
+  depends_on:
+  - reference.host-release-evidence
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
   path_ko: docs/ko/reference/storage-ddl.md
@@ -2563,6 +2658,9 @@ documents:
   - immutable host-capability verification history, current state, freshness, external
     exact-final-artifact release evidence binding, and exact-match eligibility
   - canonical host-feature support status meaning, precedence, current host matrix, replay, and freshness boundaries
+  - managed MCP and host-hook use of one opaque managed-host session identifier
+  depends_on:
+  - reference.host-release-evidence
 - doc_id: reference.projection-and-templates
   path_en: docs/en/reference/projection-and-templates.md
   path_ko: docs/ko/reference/projection-and-templates.md
@@ -2923,6 +3021,8 @@ documents:
   - Release-candidate live Codex and Claude Code native Judgment, local-web evidence-observation,
     executable CLI-fallback, historical Stop decision, fresh final-output replay UI validation,
     external result retention, and unavailable-host reporting boundaries.
+  - Exact `tests/release-validation` package, fixed host release gate, separate-process audit,
+    and unavailable-implementation reporting command routes.
   - Rust validation routing for documentation work that also changes implementation files.
   depends_on:
   - maintain.documentation-policy
@@ -2932,6 +3032,7 @@ documents:
   - terminology.map
   - architecture-guide.testing-strategy
   - reference.mcp-transport
+  - reference.host-release-evidence
   - reference.api.method-record-run
   - reference.api.method-request-user-action
   - reference.api.method-resolve-user-action

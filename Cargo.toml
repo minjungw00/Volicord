@@ -9,6 +9,7 @@ members = [
     "crates/volicord-test-support",
     "tests/conformance",
     "tests/integration",
+    "tests/release-validation",
     "xtask",
 ]
 resolver = "2"

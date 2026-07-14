@@ -25,6 +25,7 @@ your task.
 | Follow an administrative workflow | [CLI Workflows](cli-workflows.md) -> [Source Map](source-map.md) | How setup, connection, host, guard, and diagnostic paths are assembled, then where each part lives. |
 | Follow a public method call | [Request Lifecycle](request-lifecycle.md) -> [Implementation Design Patterns](design-patterns.md) -> [Storage and Transactions](storage-and-transactions.md) | How MCP, Core, and Store cooperate, which structures recur, and where persistence begins. |
 | Plan a change | [Implementation Guide](change-guide.md) -> [Testing Strategy](testing-strategy.md) -> [Architecture Decisions](decisions/README.md) | Which owner and source area to inspect, which test layer to use, and why durable boundaries exist. |
+| Plan host release validation | [Host Release Evidence](../reference/host-release-evidence.md) -> [External host release evidence gate](decisions/host-release-evidence-gate.md) -> [Validation](../maintain/validation.md) | The exact external schemas and gate, the architecture rationale, and the maintained command route. |
 | Check exact behavior | [Reference Index](../reference/README.md) -> [API Methods](../reference/api/methods.md) | Which focused Reference document owns the API, schema, storage, security, runtime, error, or Core authority detail. |
 
 ## Source-reading shortcuts

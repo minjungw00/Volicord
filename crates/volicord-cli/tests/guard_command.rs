@@ -9,16 +9,93 @@ use support::{
     assertions::{assert_success, json_stdout, stderr, stdout},
     guard_fixture::*,
 };
-use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
-use volicord_store::guards::{
-    expected_write, guard_event, guard_health_record, guard_installation,
-    list_pending_expected_writes, list_unresolved_unrecorded_changes, prompt_capture,
-    prompt_capture_availability, unrecorded_change,
+use volicord_store::diagnostics::{
+    diagnostics_db_path, read_diagnostic_session, start_diagnostic_session, DiagnosticHostKind,
+    DiagnosticSessionStart, DiagnosticTransport,
 };
+use volicord_store::guards::{
+    agent_session, expected_write, guard_event, guard_health_record, guard_installation,
+    insert_agent_session, list_pending_expected_writes, list_unresolved_unrecorded_changes,
+    prompt_capture, prompt_capture_availability, unrecorded_change, AgentSessionInsert,
+};
+use volicord_store::session_watch::latest_watch_baseline_for_session;
 
 #[cfg(unix)]
 #[cfg(unix)]
 use support::assertions::{assert_close_blocker, assert_no_close_blocker, close_blocker_codes};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GuardDurableCounts {
+    agent_sessions: i64,
+    guard_events: i64,
+    watch_baselines: i64,
+    expected_writes: i64,
+    prompt_captures: i64,
+}
+
+fn guard_durable_counts(fixture: &GuardCliFixture) -> Result<GuardDurableCounts, Box<dyn Error>> {
+    let connection = rusqlite::Connection::open_with_flags(
+        fixture
+            .runtime_home()
+            .join("projects")
+            .join(fixture.project_id())
+            .join("state.sqlite"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let count = |table: &str| -> Result<i64, rusqlite::Error> {
+        let sql = match table {
+            "agent_sessions" => "SELECT COUNT(*) FROM agent_sessions",
+            "guard_events" => "SELECT COUNT(*) FROM guard_events",
+            "session_watch_baselines" => "SELECT COUNT(*) FROM session_watch_baselines",
+            "expected_writes" => "SELECT COUNT(*) FROM expected_writes",
+            "prompt_captures" => "SELECT COUNT(*) FROM prompt_captures",
+            _ => unreachable!("test helper uses a fixed table allowlist"),
+        };
+        connection.query_row(sql, [], |row| row.get(0))
+    };
+    Ok(GuardDurableCounts {
+        agent_sessions: count("agent_sessions")?,
+        guard_events: count("guard_events")?,
+        watch_baselines: count("session_watch_baselines")?,
+        expected_writes: count("expected_writes")?,
+        prompt_captures: count("prompt_captures")?,
+    })
+}
+
+fn assert_output_excludes(output: &std::process::Output, markers: &[&str]) {
+    let stdout = stdout(output);
+    let stderr = stderr(output);
+    for marker in markers {
+        assert!(!stdout.contains(marker), "stdout leaked {marker:?}");
+        assert!(!stderr.contains(marker), "stderr leaked {marker:?}");
+    }
+}
+
+fn assert_runtime_home_excludes(
+    path: &std::path::Path,
+    markers: &[&str],
+) -> Result<(), Box<dyn Error>> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let entry_path = entry.path();
+        if file_type.is_dir() {
+            assert_runtime_home_excludes(&entry_path, markers)?;
+        } else if file_type.is_file() {
+            let bytes = fs::read(&entry_path)?;
+            for marker in markers {
+                assert!(
+                    !bytes
+                        .windows(marker.len())
+                        .any(|window| window == marker.as_bytes()),
+                    "durable file {} leaked {marker:?}",
+                    entry_path.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
 
 #[test]
 fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn Error>> {
@@ -40,7 +117,14 @@ fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn
     let value = json_stdout(&output)?;
     assert_eq!(value["decision"], "inject_context");
     assert_eq!(value["allowed"], true);
-    assert_eq!(value["session_id"], "guard_session_a");
+    assert_eq!(
+        value["session_id"],
+        volicord_types::managed_host_session_id(
+            "codex",
+            fixture.connection_id(),
+            "guard_session_a",
+        )?
+    );
     assert_eq!(
         value["result"]["context"]["project_id"],
         fixture.project_id()
@@ -59,12 +143,12 @@ fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn
         .iter()
         .any(|reason| reason == "skipped_by_policy"));
 
-    let stored = guard_event(
-        fixture.runtime_home(),
-        fixture.project_id(),
-        "guard_session_start_event",
-    )?
-    .expect("host-hook event should be stored");
+    let guard_event_id = value["guard_event_id"]
+        .as_str()
+        .expect("managed guard event id should be returned");
+    assert_ne!(guard_event_id, "guard_session_start_event");
+    let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+        .expect("host-hook event should be stored");
     assert_eq!(stored.decision, "inject_context");
     assert_eq!(stored.event_kind, "session_start");
     Ok(())
@@ -96,7 +180,12 @@ fn guard_accepts_only_supported_integration_profiles() -> Result<(), Box<dyn Err
             &event,
         )?;
         assert_success(&output);
-        let stored = guard_event(fixture.runtime_home(), fixture.project_id(), &event_id)?
+        let value = json_stdout(&output)?;
+        let guard_event_id = value["guard_event_id"]
+            .as_str()
+            .expect("managed guard event id should be returned");
+        assert_ne!(guard_event_id, event_id);
+        let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
             .expect("supported profile should allow host-hook event persistence");
         assert_eq!(stored.event_kind, "session_start");
     }
@@ -241,12 +330,11 @@ fn guard_pre_tool_denies_product_write_without_active_task() -> Result<(), Box<d
     assert_cooperative_disclosure(&value["result"]);
     assert_reason(&value, "no_active_task");
 
-    let stored = guard_event(
-        fixture.runtime_home(),
-        fixture.project_id(),
-        "guard_pre_no_task",
-    )?
-    .expect("deny event should be stored");
+    let guard_event_id = value["guard_event_id"]
+        .as_str()
+        .expect("managed guard event id should be returned");
+    let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+        .expect("deny event should be stored");
     assert_eq!(stored.decision, "deny");
     Ok(())
 }
@@ -327,7 +415,7 @@ fn guard_pre_tool_codex_host_output_deny_is_native_json() -> Result<(), Box<dyn 
     let stored = guard_event(
         fixture.runtime_home(),
         fixture.project_id(),
-        "guard_host_codex_pre_deny",
+        &fixture.only_guard_event_id("pre_tool")?,
     )?
     .expect("host-native deny event should be stored");
     assert_eq!(stored.decision, "deny");
@@ -609,6 +697,599 @@ fn guard_claude_native_output_contract_uses_checked_in_hook_events() -> Result<(
 }
 
 #[test]
+fn guard_builtin_sessions_are_canonical_and_raw_native_ids_are_not_persisted(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-managed-session-binding")?;
+    let native_session_id = "codex.native:secret-1";
+    let event = json!({
+        "event_id": "guard_managed_session_binding",
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "transcript_path": format!("/tmp/{native_session_id}.jsonl")
+    });
+    let expected = expected_managed_session_id(&fixture, &event)?;
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        [
+            "_hook",
+            "session-start",
+            "--repo",
+            fixture.repo_arg(),
+            "--session",
+            expected.as_str(),
+        ],
+        &event,
+    )?;
+    assert_success(&output);
+    let output_value = json_stdout(&output)?;
+    assert_eq!(output_value["session_id"], expected);
+    let guard_event_id = output_value["guard_event_id"]
+        .as_str()
+        .expect("managed guard event id should be returned");
+    assert_ne!(guard_event_id, "guard_managed_session_binding");
+
+    let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+        .expect("managed guard event should be stored");
+    assert_eq!(stored.session_id.as_deref(), Some(expected.as_str()));
+    assert!(!stored.subject_json.contains(native_session_id));
+    let subject: Value = serde_json::from_str(&stored.subject_json)?;
+    assert_eq!(subject["raw_event"]["session_id"], expected);
+    assert_eq!(subject["raw_event"]["thread_id"], expected);
+    assert!(subject["raw_event"]["transcript_path"]
+        .as_str()
+        .is_some_and(|path| !path.contains(native_session_id)));
+    Ok(())
+}
+
+#[test]
+fn guard_managed_session_exact_preseed_and_replay_are_idempotent() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-managed-preseed-exact")?;
+    let native_session_id = "native.session:preseed-exact";
+    let session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        native_session_id,
+    )?;
+    let seeded = insert_agent_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_kind: "codex".to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: "2026-07-14T00:00:00Z".to_owned(),
+            metadata_json: json!({"source": "managed_preseed_exact"}).to_string(),
+        },
+    )?;
+    let event = json!({
+        "event_id": "native-event-preseed-exact",
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex"
+    });
+
+    let first = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_success(&first);
+    let first_value = json_stdout(&first)?;
+    assert_eq!(first_value["session_id"], session_id);
+    let after_first_core = fixture.core_effect_counts()?;
+    let after_first_durable = guard_durable_counts(&fixture)?;
+    let after_first_diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(session_id.as_str()))?
+            .expect("managed guard diagnostics should exist after the first event");
+    assert_eq!(
+        after_first_diagnostics.connection_id.as_deref(),
+        Some(fixture.connection_id())
+    );
+    assert_eq!(after_first_diagnostics.host_kind.as_deref(), Some("codex"));
+
+    let replay = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_success(&replay);
+    assert_eq!(json_stdout(&replay)?, first_value);
+    assert_eq!(fixture.core_effect_counts()?, after_first_core);
+    assert_eq!(guard_durable_counts(&fixture)?, after_first_durable);
+    let after_replay_diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(session_id.as_str()))?
+            .expect("managed guard diagnostics should remain available");
+    assert_eq!(
+        after_replay_diagnostics.connection_id,
+        after_first_diagnostics.connection_id
+    );
+    assert_eq!(
+        after_replay_diagnostics.host_kind,
+        after_first_diagnostics.host_kind
+    );
+    assert_eq!(
+        agent_session(
+            fixture.runtime_home(),
+            fixture.project_id(),
+            session_id.as_str(),
+        )?,
+        Some(seeded)
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_managed_session_preseed_conflict_has_zero_effects() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-managed-preseed-conflict")?;
+    let native_session_id = "native.session:preseed-conflict";
+    let session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        native_session_id,
+    )?;
+    let seeded = insert_agent_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_kind: "generic".to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: "2026-07-14T00:00:00Z".to_owned(),
+            metadata_json: json!({"source": "managed_preseed_conflict"}).to_string(),
+        },
+    )?;
+    let before_core = fixture.core_effect_counts()?;
+    let before_durable = guard_durable_counts(&fixture)?;
+    let event = json!({
+        "event_id": "native-event-preseed-conflict",
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex"
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout(&output).is_empty());
+    assert!(stderr(&output).contains("MANAGED_HOST_SESSION_BINDING_CONFLICT"));
+    assert_output_excludes(
+        &output,
+        &[native_session_id, "native-event-preseed-conflict"],
+    );
+    assert_eq!(fixture.core_effect_counts()?, before_core);
+    assert_eq!(guard_durable_counts(&fixture)?, before_durable);
+    assert_eq!(
+        agent_session(
+            fixture.runtime_home(),
+            fixture.project_id(),
+            session_id.as_str(),
+        )?,
+        Some(seeded)
+    );
+    assert!(read_diagnostic_session(fixture.runtime_home(), Some(session_id.as_str()))?.is_none());
+    Ok(())
+}
+
+#[test]
+fn guard_managed_diagnostic_preseed_conflict_has_zero_project_effects() -> Result<(), Box<dyn Error>>
+{
+    let fixture = GuardCliFixture::new("guard-managed-diagnostic-preseed-conflict")?;
+    let native_session_id = "native.session:diagnostic-preseed-conflict";
+    let session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        native_session_id,
+    )?;
+    start_diagnostic_session(
+        fixture.runtime_home(),
+        DiagnosticSessionStart {
+            session_id: session_id.as_str(),
+            connection_id: Some("connection_diagnostic_other"),
+            project_id: Some(fixture.project_id()),
+            transport: DiagnosticTransport::GuardHook,
+            host_kind: Some(DiagnosticHostKind::Codex),
+            package_version: "test",
+            build_id: "test",
+        },
+    )?;
+    let before_core = fixture.core_effect_counts()?;
+    let before_durable = guard_durable_counts(&fixture)?;
+    let event = json!({
+        "event_id": "native-event-diagnostic-preseed-conflict",
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex"
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert!(!output.status.success());
+    assert!(stdout(&output).is_empty());
+    assert!(stderr(&output).contains("already bound to a different connection or host"));
+    assert_output_excludes(
+        &output,
+        &[
+            native_session_id,
+            "native-event-diagnostic-preseed-conflict",
+        ],
+    );
+    assert_eq!(fixture.core_effect_counts()?, before_core);
+    assert_eq!(guard_durable_counts(&fixture)?, before_durable);
+    let unchanged = read_diagnostic_session(fixture.runtime_home(), Some(session_id.as_str()))?
+        .expect("conflicting diagnostic binding should remain unchanged");
+    assert_eq!(
+        unchanged.connection_id.as_deref(),
+        Some("connection_diagnostic_other")
+    );
+    assert_eq!(unchanged.host_kind.as_deref(), Some("codex"));
+    assert_eq!(unchanged.totals.event_count, 0);
+    Ok(())
+}
+
+#[test]
+fn guard_generic_sessions_cannot_claim_the_managed_prefix() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-generic-reserved-managed-prefix")?;
+    let reserved_session_id = format!("mhs_{}", "a".repeat(64));
+    let before_core = fixture.core_effect_counts()?;
+    let before_durable = guard_durable_counts(&fixture)?;
+    let event = json!({
+        "event_id": "generic-event-reserved-prefix",
+        "session_id": reserved_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "generic"
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+    assert!(stderr(&output).contains("reserved for managed Codex and Claude Code"));
+    assert_eq!(fixture.core_effect_counts()?, before_core);
+    assert_eq!(guard_durable_counts(&fixture)?, before_durable);
+    assert!(read_diagnostic_session(fixture.runtime_home(), None)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn guard_managed_native_ids_never_reach_output_or_durable_storage_and_correlation_survives(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::with_prompt_capture("guard-managed-native-id-privacy")?;
+    let task_id = fixture.create_active_task()?;
+    fixture.prepare_write(&task_id)?;
+    let native_session_id = "native.session:privacy-sentinel";
+    let native_start_event_id = "native-event-start-privacy-sentinel";
+    let native_pre_event_id = "native-event-pre-privacy-sentinel";
+    let native_post_event_id = "native-event-post-privacy-sentinel";
+    let native_prompt_event_id = "native-event-prompt-privacy-sentinel";
+    let native_hook_event_id = "native-hook-event-privacy-sentinel";
+    let native_tool_id = "native-tool-call-privacy-sentinel";
+    let native_capture_id = "native-prompt-capture-privacy-sentinel";
+    let native_turn_id = "native-turn-privacy-sentinel";
+    let native_transcript_id = "native-transcript-privacy-sentinel";
+    let native_bare_id = "native-bare-id-privacy-sentinel";
+    let native_ids = [
+        native_session_id,
+        native_start_event_id,
+        native_pre_event_id,
+        native_post_event_id,
+        native_prompt_event_id,
+        native_hook_event_id,
+        native_tool_id,
+        native_capture_id,
+        native_turn_id,
+        native_transcript_id,
+        native_bare_id,
+    ];
+    let expected_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        native_session_id,
+    )?;
+
+    let mut start_event = json!({
+        "event_id": native_start_event_id,
+        "hook_event_id": native_hook_event_id,
+        "id": native_bare_id,
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "transcript_id": native_transcript_id,
+        "turn_id": native_turn_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "metadata": {
+            "event_echo": format!("event:{native_start_event_id}"),
+            "hook_echo": format!("hook:{native_hook_event_id}"),
+            "turn_echo": format!("turn:{native_turn_id}"),
+            "transcript_echo": format!("transcript:{native_transcript_id}"),
+            "bare_echo": format!("bare:{native_bare_id}")
+        }
+    });
+    start_event["metadata"]
+        .as_object_mut()
+        .expect("start metadata object")
+        .insert(
+            format!("dynamic-{native_start_event_id}-key"),
+            json!("native event identifiers in keys must be omitted"),
+        );
+    let start_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &start_event,
+    )?;
+    assert_success(&start_output);
+    assert_output_excludes(&start_output, &native_ids);
+    let start_value = json_stdout(&start_output)?;
+    assert_eq!(start_value["session_id"], expected_session_id);
+
+    let mut pre_event = json!({
+        "event_id": native_pre_event_id,
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": native_tool_id,
+        "turn_id": native_turn_id,
+        "tool_input": {"command": "touch src/export.rs"},
+        "paths": ["src/export.rs"],
+        "metadata": {
+            "event_echo": format!("event:{native_pre_event_id}"),
+            "tool_echo": format!("tool:{native_tool_id}"),
+            "turn_echo": format!("turn:{native_turn_id}")
+        }
+    });
+    pre_event["metadata"]
+        .as_object_mut()
+        .expect("pre-tool metadata object")
+        .insert(
+            format!("dynamic-{native_tool_id}-key"),
+            json!("native tool identifiers in keys must be omitted"),
+        );
+    let pre_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &pre_event,
+    )?;
+    assert_success(&pre_output);
+    assert_output_excludes(&pre_output, &native_ids);
+    let pre_value = json_stdout(&pre_output)?;
+    let expected_write_id = pre_value["result"]["expected_write"]["expected_write_id"]
+        .as_str()
+        .expect("managed pre-tool event should create an ExpectedWrite");
+    let opaque_invocation_id = pre_value["result"]["expected_write"]["host_invocation_id"]
+        .as_str()
+        .expect("managed ExpectedWrite should preserve an opaque invocation coordinate");
+    assert_ne!(opaque_invocation_id, native_tool_id);
+
+    let post_event = json!({
+        "event_id": native_post_event_id,
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": native_tool_id,
+        "turn_id": native_turn_id,
+        "tool_input": {"command": "touch src/export.rs"},
+        "tool_result": {"tool_call_id": native_tool_id, "success": true},
+        "success": true,
+        "changed_paths": ["src/export.rs"],
+        "metadata": {
+            "event_echo": format!("event:{native_post_event_id}"),
+            "tool_echo": format!("tool:{native_tool_id}"),
+            "turn_echo": format!("turn:{native_turn_id}")
+        }
+    });
+    let post_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &post_event,
+    )?;
+    assert_success(&post_output);
+    assert_output_excludes(&post_output, &native_ids);
+    let post_value = json_stdout(&post_output)?;
+    assert_eq!(
+        post_value["result"]["matched_expected_writes"][0]["expected_write_id"],
+        expected_write_id
+    );
+    assert_eq!(
+        post_value["result"]["matched_expected_writes"][0]["host_invocation_id"],
+        opaque_invocation_id
+    );
+
+    let prompt_event = json!({
+        "event_id": native_prompt_event_id,
+        "prompt_capture_id": native_capture_id,
+        "session_id": native_session_id,
+        "thread_id": native_session_id,
+        "turn_id": native_turn_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "message": "Please keep working on the active task.",
+        "metadata": {
+            "event_echo": format!("event:{native_prompt_event_id}"),
+            "capture_echo": format!("capture:{native_capture_id}"),
+            "turn_echo": format!("turn:{native_turn_id}")
+        }
+    });
+    let prompt_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "prompt-capture", "--repo", fixture.repo_arg()],
+        &prompt_event,
+    )?;
+    assert_success(&prompt_output);
+    assert_output_excludes(&prompt_output, &native_ids);
+    let prompt_value = json_stdout(&prompt_output)?;
+    let opaque_capture_id = prompt_value["result"]["prompt_capture"]["prompt_capture_id"]
+        .as_str()
+        .expect("managed prompt capture should return an opaque coordinate");
+    assert_ne!(opaque_capture_id, native_capture_id);
+
+    let stored_expected = expected_write(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        expected_write_id,
+    )?
+    .expect("managed ExpectedWrite should remain queryable");
+    assert_eq!(
+        stored_expected.host_invocation_id.as_deref(),
+        Some(opaque_invocation_id)
+    );
+    assert_eq!(
+        stored_expected.matched_post_tool_guard_event_id.as_deref(),
+        post_value["guard_event_id"].as_str()
+    );
+    let stored_capture = prompt_capture(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        opaque_capture_id,
+    )?
+    .expect("managed PromptCapture should remain queryable");
+    assert_eq!(stored_capture.session_id, expected_session_id);
+    let baseline = latest_watch_baseline_for_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        expected_session_id.as_str(),
+    )?
+    .expect("managed session should retain a canonical watch baseline");
+    assert_eq!(baseline.session_id, expected_session_id);
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(expected_session_id.as_str()))?
+            .expect("managed session should retain canonical diagnostics");
+    assert_eq!(diagnostics.session_id, expected_session_id);
+
+    for value in [&start_value, &pre_value, &post_value, &prompt_value] {
+        let guard_event_id = value["guard_event_id"]
+            .as_str()
+            .expect("managed output should expose an opaque GuardEvent coordinate");
+        assert!(guard_event_id.starts_with("guard_event_"));
+        let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+            .expect("managed GuardEvent should remain queryable by its opaque coordinate");
+        let stored_text = format!("{stored:?}");
+        for native_id in native_ids {
+            assert!(!stored_text.contains(native_id));
+        }
+    }
+    for durable_text in [
+        format!("{stored_expected:?}"),
+        format!("{stored_capture:?}"),
+        format!("{baseline:?}"),
+        serde_json::to_string(&diagnostics)?,
+    ] {
+        for native_id in native_ids {
+            assert!(!durable_text.contains(native_id));
+        }
+    }
+    assert_runtime_home_excludes(fixture.runtime_home(), &native_ids)?;
+    Ok(())
+}
+
+#[test]
+fn guard_builtin_sessions_reject_missing_inconsistent_and_noncanonical_bindings(
+) -> Result<(), Box<dyn Error>> {
+    for (label, event) in [
+        (
+            "missing",
+            json!({
+                "event_id": "guard_managed_missing_session",
+                "session_id": null,
+                "host_kind": "codex"
+            }),
+        ),
+        (
+            "invalid",
+            json!({
+                "event_id": "guard_managed_invalid_session",
+                "session_id": "native session with space",
+                "host_kind": "codex"
+            }),
+        ),
+        (
+            "inconsistent",
+            json!({
+                "event_id": "guard_managed_inconsistent_session",
+                "session_id": "native-a",
+                "thread_id": "native-b",
+                "host_kind": "codex"
+            }),
+        ),
+    ] {
+        let fixture = GuardCliFixture::new(&format!("guard-managed-{label}"))?;
+        let mut event = event;
+        event["connection_id"] = json!(fixture.connection_id());
+        let output = run_guard(
+            fixture.runtime_home(),
+            fixture.repo_root(),
+            ["_hook", "session-start", "--repo", fixture.repo_arg()],
+            &event,
+        )?;
+        assert_eq!(output.status.code(), Some(2), "{label} should fail closed");
+        assert!(guard_event(
+            fixture.runtime_home(),
+            fixture.project_id(),
+            event["event_id"].as_str().expect("fixture event id"),
+        )?
+        .is_none());
+    }
+
+    let fixture = GuardCliFixture::new("guard-managed-raw-override")?;
+    let event = json!({
+        "event_id": "guard_managed_raw_override",
+        "session_id": "native-a",
+        "host_kind": "codex",
+        "connection_id": fixture.connection_id()
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        [
+            "_hook",
+            "session-start",
+            "--repo",
+            fixture.repo_arg(),
+            "--session",
+            "native-a",
+        ],
+        &event,
+    )?;
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("mhs_"));
+    Ok(())
+}
+
+#[test]
 fn guard_volicord_json_deny_is_not_host_native_output() -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-volicord-json-not-host-native")?;
     let event = host_fixture_event(
@@ -732,12 +1413,11 @@ fn guard_pre_tool_rejects_paths_outside_project_allowlist() -> Result<(), Box<dy
     assert_eq!(value["decision"], "deny");
     assert_reason(&value, "target_outside_project_allowlist");
 
-    let stored = guard_event(
-        fixture.runtime_home(),
-        fixture.project_id(),
-        "guard_pre_outside_project",
-    )?
-    .expect("outside-project host-hook event should be stored");
+    let guard_event_id = value["guard_event_id"]
+        .as_str()
+        .expect("managed guard event id should be returned");
+    let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+        .expect("outside-project host-hook event should be stored");
     assert_eq!(stored.decision, "deny");
     assert_eq!(stored.event_kind, "pre_tool");
     Ok(())
@@ -862,12 +1542,11 @@ fn guard_pre_tool_uses_core_clock_despite_future_host_timestamp() -> Result<(), 
         value["result"]["write_ticket_backing"]["status"],
         "ticket_backed"
     );
-    let stored = guard_event(
-        fixture.runtime_home(),
-        fixture.project_id(),
-        "guard_pre_future_host_clock",
-    )?
-    .expect("future-dated host event should remain stored as an observation");
+    let guard_event_id = value["guard_event_id"]
+        .as_str()
+        .expect("managed guard event id should be returned");
+    let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+        .expect("future-dated host event should remain stored as an observation");
     assert_eq!(stored.occurred_at, "2999-01-01T00:00:00Z");
     Ok(())
 }
@@ -907,16 +1586,21 @@ fn guard_post_tool_records_unrecorded_product_file_changes() -> Result<(), Box<d
     )?;
     assert_eq!(unresolved.len(), 1);
     assert_eq!(unresolved[0].task_id.as_deref(), Some(task_id.as_str()));
-    let stored = guard_event(
-        fixture.runtime_home(),
-        fixture.project_id(),
-        "guard_post_changed",
-    )?
-    .expect("post-tool host-hook event should be stored");
+    let guard_event_id = value["guard_event_id"]
+        .as_str()
+        .expect("managed guard event id should be returned");
+    let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
+        .expect("post-tool host-hook event should be stored");
     assert_eq!(stored.decision, "warn");
     assert_eq!(stored.event_kind, "post_tool");
-    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_post"))?
-        .expect("post-tool diagnostics");
+    let diagnostic_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        "guard_session_post",
+    )?;
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(&diagnostic_session_id))?
+            .expect("post-tool diagnostics");
     assert_eq!(diagnostics.totals.product_file_write_count, 1);
     Ok(())
 }
@@ -1108,7 +1792,7 @@ fn guard_post_tool_matches_expected_allowed_write() -> Result<(), Box<dyn Error>
     assert_eq!(stored_expected.tool_name.as_deref(), Some("Bash"));
     assert_eq!(
         stored_expected.matched_post_tool_guard_event_id.as_deref(),
-        Some("guard_post_expected")
+        post_value["guard_event_id"].as_str()
     );
     Ok(())
 }
@@ -1440,10 +2124,10 @@ fn guard_prompt_capture_hashes_prompt_and_omits_text() -> Result<(), Box<dyn Err
     assert_success(&output);
     let value = json_stdout(&output)?;
     assert_eq!(value["decision"], "allow");
-    assert_eq!(
-        value["result"]["prompt_capture"]["prompt_capture_id"],
-        "guard_prompt_capture_a"
-    );
+    let prompt_capture_id = value["result"]["prompt_capture"]["prompt_capture_id"]
+        .as_str()
+        .expect("managed prompt capture id should be returned");
+    assert_ne!(prompt_capture_id, "guard_prompt_capture_a");
     assert_eq!(
         value["result"]["prompt_capture"]["prompt_text_omitted"],
         true
@@ -1452,7 +2136,7 @@ fn guard_prompt_capture_hashes_prompt_and_omits_text() -> Result<(), Box<dyn Err
     let stored = prompt_capture(
         fixture.runtime_home(),
         fixture.project_id(),
-        "guard_prompt_capture_a",
+        prompt_capture_id,
     )?
     .expect("prompt capture should be stored");
     assert!(stored.prompt_text.is_none());
@@ -1746,8 +2430,9 @@ fn guard_user_actions_use_core_clock_despite_skewed_host_timestamps() -> Result<
             &event,
         )?;
         assert_success(&prompt_output);
+        let prompt_value = json_stdout(&prompt_output)?;
         assert_eq!(
-            json_stdout(&prompt_output)?["result"]["recognized_user_action_command"]["replayed"],
+            prompt_value["result"]["recognized_user_action_command"]["replayed"],
             false
         );
         fixture.assert_resolved_prompt_user_action(&request_id, "accepted", "accept")?;
@@ -1755,7 +2440,9 @@ fn guard_user_actions_use_core_clock_despite_skewed_host_timestamps() -> Result<
         let stored = guard_event(
             fixture.runtime_home(),
             fixture.project_id(),
-            &prompt_event_id,
+            prompt_value["guard_event_id"]
+                .as_str()
+                .expect("managed guard event id should be returned"),
         )?
         .expect("skewed host event should remain stored as an observation");
         assert_eq!(stored.occurred_at, host_timestamp);
@@ -1814,8 +2501,14 @@ fn guard_prompt_capture_resolves_choice_command() -> Result<(), Box<dyn Error>> 
         "active"
     );
     fixture.assert_resolved_prompt_user_action(&user_action_request_id, "accepted", "accept")?;
-    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_chat"))?
-        .expect("prompt hook diagnostics");
+    let diagnostic_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        "guard_session_chat",
+    )?;
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(&diagnostic_session_id))?
+            .expect("prompt hook diagnostics");
     assert_eq!(diagnostics.user_channel_counts["prompt_capture"], 1);
     assert_eq!(diagnostics.totals.core_reached_count, 1);
     assert_eq!(diagnostics.totals.core_committed_count, 1);
@@ -1839,8 +2532,9 @@ fn guard_prompt_capture_resolves_choice_command() -> Result<(), Box<dyn Error>> 
         replay_value["result"]["recognized_user_action_command"]["replayed"],
         true
     );
-    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_chat"))?
-        .expect("prompt hook replay diagnostics");
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(&diagnostic_session_id))?
+            .expect("prompt hook replay diagnostics");
     assert_eq!(diagnostics.user_channel_counts["prompt_capture"], 2);
     assert_eq!(diagnostics.totals.core_reached_count, 2);
     assert_eq!(diagnostics.totals.core_committed_count, 1);
@@ -1984,8 +2678,14 @@ fn guard_prompt_capture_resolves_canonical_evidence_observation_without_disclosi
         after.user_action_resolutions,
         before.user_action_resolutions + 1
     );
-    let diagnostics = read_diagnostic_session(fixture.runtime_home(), Some("guard_session_chat"))?
-        .expect("prompt hook should create bounded diagnostics");
+    let diagnostic_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        "guard_session_chat",
+    )?;
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(&diagnostic_session_id))?
+            .expect("prompt hook should create bounded diagnostics");
     assert_eq!(diagnostics.user_channel_counts["prompt_capture"], 1);
     assert_eq!(diagnostics.totals.core_reached_count, 1);
     assert_eq!(diagnostics.totals.core_committed_count, 1);
@@ -2865,11 +3565,14 @@ fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(
     assert!(!rendered.contains("Core storage is unavailable"));
     assert!(!rendered.contains("owner_state_error"));
     assert_eq!(fixture.core_effect_counts()?, before);
-    let diagnostics = read_diagnostic_session(
-        fixture.runtime_home(),
-        Some("guard_session_stop_rejected_refresh"),
-    )?
-    .expect("stop-hook diagnostics");
+    let diagnostic_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        "guard_session_stop_rejected_refresh",
+    )?;
+    let diagnostics =
+        read_diagnostic_session(fixture.runtime_home(), Some(&diagnostic_session_id))?
+            .expect("stop-hook diagnostics");
     assert_eq!(diagnostics.totals.authoritative_refresh_failures, 1);
     assert_eq!(diagnostics.totals.core_reached_count, 1);
     let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home()))?;

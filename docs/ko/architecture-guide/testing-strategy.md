@@ -31,6 +31,7 @@
 | 명시적으로 실행하는 실제 Judgment 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_user_action_round_trip_is_opt_in` 테스트. | 인증된 환경에서 사람이 참여해 호스트 고유 Judgment 선택과 그 결과 권한 기록을 확인할 때. | 최종 출력 매트릭스 증거. Judgment elicitation과 최종 출력 고지는 서로 다른 검증 관심사입니다. |
 | 명시적으로 실행하는 실제 증거 관찰 로컬 웹 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_evidence_observation_round_trip_is_opt_in` 테스트. | 설치된 호스트가 정확한 모델 비가시적 capability를 협상하고, 모델 맥락 밖의 host 전용 `_meta` handoff를 표시하며, 모델 가시 projection은 summary로만 유지한 채 사람이 정규 루프백 `local_web_consent` form을 제출하는 과정을 확인할 때. | 호스트 고유 Judgment elicitation, CLI 복구, 최종 출력 매트릭스 증거, 또는 호스트가 모델 비가시적 표면을 증명하지 못한 상태의 통과. 각 항목은 서로 다른 릴리스 검증 셀입니다. |
 | 명시적으로 실행하는 실제 CLI 대체 경로 왕복 | `live_host_smoke`의 Codex 및 Claude Code `*_live_cli_fallback_round_trip_is_opt_in` 테스트. | 사람이 선택한 답을 실제 CLI User Channel로 제출하고, 정확한 CLI 재시도와 같은 Agent Connection의 설치된 호스트 재개를 확인할 때. | 호스트 고유 Judgment elicitation, 증거 관찰 로컬 웹, 최종 출력 매트릭스 증거. 모든 릴리스 검증 표면은 서로 분리됩니다. |
+| 정확한 호스트 릴리스 게이트 | `tests/release-validation`, Cargo 패키지 `volicord-release-validation-tests`. | [호스트 릴리스 증거](../reference/host-release-evidence.md)에 따라 외부의 정확한 최종 후보 하나, 고정 12개 셀, 주장 상태와 독립적인 정규 도출, 새 manifest, 별도 프로세스 재계산 audit을 검증할 때. | 운영 런타임 신뢰, Core 증거, host attestation, 희소 행렬, 여러 호스트 버전 집계, CLI 출력을 정규 평가기로 사용하는 것. |
 | MCP 통합 테스트 | `volicord-integration-tests` 패키지의 `mcp_connection` 대상인 [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs). | MCP, Core, Store, Agent Connection 바인딩, 작업 범주 파생, 도구 노출, 재실행 맥락 바인딩, MCP에서 보이는 저장소 효과 없음 분기. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 공개 계약 스냅샷 테스트 | `volicord-integration-tests` 패키지의 `public_contract_snapshots` 대상인 [`tests/integration/public_contract_snapshots.rs`](../../../tests/integration/public_contract_snapshots.rs). | 생성된 API 요청 스키마와 MCP 도구 계약 스냅샷이 현재 소스에서 생성한 계약과 어긋나는지 점검합니다. | 생성 스냅샷 직접 편집, 의미 기준 참조 검토, 공개 계약이 올바르다는 증명. |
 | 적합성 구현 테스트 | `volicord-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 티켓, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
@@ -39,6 +40,13 @@
 | 문서 유지보수 도구 테스트 | `xtask` 패키지의 [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs). | 읽기 전용 문서 검증기, 메타데이터 파싱, 한영 대응 범위, 로컬 링크와 앵커 점검, 용어 경로와 역할 점검, 명령 예시 검증, 공개 언어 점검, 임시 픽스처 동작. | 의미 번역 검토, 기술 정확성 검토, 제품 계약 출처. |
 
 ## 픽스처와 지원 구조
+
+릴리스 검증 패키지는 비공개 테스트 배치를 계약으로 만들지 않고 담당 문서의 불변조건
+계열을 소비해야 합니다. 필수 셀이 없거나 형식이 잘못되면 manifest 생성을 막는 구조
+오류입니다. 존재하는 구현 셀이 ignored, running, 오래됨, 불일치이면 오래 유지되는
+하향 조정 사례이며 정적 `unsupported_by_host`와 구분합니다. 후보, 셀, manifest,
+audit fixture는 파싱과 도출을 보호할 수 있지만 요청한 검증됨 릴리스 주장은 정확한
+외부 실제 실행만 충족할 수 있습니다.
 
 공유 픽스처 구조는 테스트 전략에 속합니다. `volicord-test-support`는 Core,
 적합성, 통합 테스트가 사용하는 폐기 가능한 Runtime Home 픽스처, 등록된 프로젝트와

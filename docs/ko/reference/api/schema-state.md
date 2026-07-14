@@ -321,8 +321,9 @@ Record는 `required_subcapabilities`와 `subcapabilities`에
   프로필이 있으면 그 세부정보를 `final_output_authority_disclosure`에 두고, 없으면 null로
   둡니다. init 이후 셀은 제품이 만든 init projection을 복사하고, 사전 점검에서 사용
   불가인 셀은 설정 사실이 false인 중앙 기본 projection을 사용하며 정적 지원 상태를
-  지우거나 재분류하지 않습니다. `result=running`은 제외되는 유일한 비 terminal 기록기
-  형태입니다. terminal `result=failed_before_completion` 산출물은 기록기가 가진 정확한
+  지우거나 재분류하지 않습니다. create-new 기록기는 terminal 셀 산출물만 출력하며
+  임시 `result=running` 형태를 저장하지 않습니다. terminal
+  `result=failed_before_completion` 산출물은 기록기가 가진 정확한
   프로필 힌트와 기본 projection을 사용하고, 정확한 프로필이 없으면 세부정보를 null로
   두며 Record를 기본값으로 만들지 않습니다.
 

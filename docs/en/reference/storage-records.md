@@ -123,6 +123,20 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `authority_events` | Authority event trail | Append-only ordering and local audit trail for committed Core authority mutations. |
 | `state.sqlite` | `tool_invocations` | Replay and exact operation-result row | Replay rows for committed non-dry-run Core method results when [Storage Effects](storage-effects.md) says replay is created, including immutable `response_json`, actor source, operation category, optional verification basis, and the optional canonical Git workspace context captured from the verified invocation. Eligible `operation_category=agent_workflow` rows are also the storage source addressed by `OperationResultRef`. |
 
+When managed Codex or Claude Code correlation contributes a session identity,
+storage receives only the opaque `managed_host_session_id` defined by
+[Host Release Evidence](host-release-evidence.md).
+The `mhs_` namespace is reserved for that mapping. An existing mapped session
+is reusable only for the exact registered connection and host kind; an
+attempted cross-connection or cross-host reuse is rejected without changing
+the existing row, and generic or manual paths cannot preseed the namespace.
+Raw native session, event, tool-call, capture, turn, and invocation identifiers
+are never storage records, JSON metadata, log payloads, or diagnostic session
+identifiers. Managed ingestion replaces correlation identifiers with
+domain-separated opaque values before persistence. A missing, invalid, or
+mismatched mapping remains missing, invalid, or mismatched; storage must not
+manufacture a replacement or create diagnostic state for an invalid marker.
+
 ## Record Layout Rules
 
 ### Identity And Ownership

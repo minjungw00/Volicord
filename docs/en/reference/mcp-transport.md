@@ -478,6 +478,21 @@ for project routing. After the last membership is removed, project discovery
 may report no available project and public tools that require project routing
 reject because no connected project remains.
 
+## Managed-Host Session Input
+
+On managed Codex and Claude Code launches, transport code validates the native
+host session identifier and immediately maps it to the opaque
+`managed_host_session_id` defined by
+[Host Release Evidence](host-release-evidence.md).
+Only the mapped value may cross into Agent Connection state, managed MCP
+observations, or hook correlation. The `mhs_` namespace is reserved and an
+existing mapping's host and registered-connection coordinates are immutable.
+Raw session and other native correlation identifiers are never persisted or
+diagnosed. An invalid marker is rejected before a durable diagnostic session,
+protocol state, or project state is created. Missing, invalid, or mismatched
+values remain ineligible for Strong Evidence; transport code must not
+synthesize a replacement.
+
 ## Agent-Connection-Bound Process
 
 One `volicord mcp --stdio` process is bound to:
@@ -1447,13 +1462,15 @@ have `outcome=passed`, satisfy `observed_at <= now < expires_at`, and exactly
 match the enabled non-generic connection host kind, managed fingerprint,
 adapter profile/version, Volicord build, source revision, target and executable
 digest, client name/version, and bounded live-host evidence digest.
-The expected evidence digest must come from a separately verified external
-exact-final-artifact release evidence manifest or receipt that binds the same
-capability, host/client, adapter, build, source, target, and executable digest.
+The expected evidence digest would require trusted production acquisition of
+the exact external `volicord-host-release-manifest-v1` owned by
+[Host Release Evidence](host-release-evidence.md), binding the same capability,
+host/client, adapter, build, source, target, and executable digest.
 The row's `evidence_artifact_sha256` must exactly match that expected value;
 the row, build descriptor, or copied value cannot self-supply it. Missing,
 unknown, malformed, unverified, or mismatched manifest input fails closed. The
-current adapter has no trusted acquisition path for that manifest, so
+current adapter has no trusted acquisition path for that manifest, and the
+external release artifact is not itself a runtime trust input, so
 production local-web selection remains unavailable and returns CLI fallback.
 Manual stdio, CLI verification probes, Local HTTP transport, generic connections, and
 invalid or unknown managed markers are ineligible. A passing source revision

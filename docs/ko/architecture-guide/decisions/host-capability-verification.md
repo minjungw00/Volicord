@@ -22,8 +22,9 @@ lease, 정확한 클라이언트 선언, 만료되지 않은 변경 불가능한
 어댑터 프로필·버전, 관리 지문, Volicord 빌드, source revision, target, 실행 파일
 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트와 일치해야 합니다.
 
-예상 `evidence_artifact_sha256`은 실행 파일 밖에 있는, 별도로 검증된 정확한 최종
-아티팩트 릴리스 증거 manifest 또는 receipt에서 가져옵니다. 그 manifest는 현재 행과 같은
+예상 `evidence_artifact_sha256`에는 [호스트 릴리스 증거](../../reference/host-release-evidence.md)가
+정의한 외부 `volicord-host-release-manifest-v1`을 신뢰해 획득하는 운영 경로가 필요합니다.
+그 manifest는 현재 행과 같은
 역량, 호스트·클라이언트, 어댑터, Volicord 빌드, source revision, target, 실행 파일
 다이제스트뿐 아니라 예상 증거 아티팩트 다이제스트에도 결속되어야 합니다. 평가기는
 manifest를 검증하고 행의 `evidence_artifact_sha256`을 그 예상값과 정확히 일치시켜야
@@ -143,6 +144,8 @@ Local HTTP에는 전송 중심 테스트가 있습니다. 그러나 그 밖의 �
 
 참조 담당 문서:
 
+- [호스트 릴리스 증거](../../reference/host-release-evidence.md)와
+  [외부 게이트 결정](host-release-evidence-gate.md)
 - [Agent Connection](../../reference/agent-connection.md)
 - [MCP 전송](../../reference/mcp-transport.md)
 - [관리 CLI](../../reference/admin-cli.md)

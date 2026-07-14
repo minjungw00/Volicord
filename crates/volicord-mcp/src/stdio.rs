@@ -31,10 +31,11 @@ where
     run_stdio_with_options(adapter, reader, writer, StdioRunOptions::default())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct StdioRunOptions {
     startup_session_watch: bool,
     launch_origin: McpLaunchOrigin,
+    managed_host_session_id: Option<String>,
 }
 
 impl Default for StdioRunOptions {
@@ -42,6 +43,7 @@ impl Default for StdioRunOptions {
         Self {
             startup_session_watch: false,
             launch_origin: McpLaunchOrigin::ManualCli,
+            managed_host_session_id: None,
         }
     }
 }
@@ -56,24 +58,33 @@ where
     R: BufRead,
     W: Write,
 {
-    let mut state = ConnectionState::for_launch_origin(options.launch_origin);
-    start_transport_diagnostic_session_best_effort(&adapter, &state);
-    let _startup_observation =
-        if options.startup_session_watch && state.managed_host_lifecycle_observations {
-            adapter.managed_lifecycle_observation_best_effort(
-                &state.session_id,
-                options.launch_origin.as_str(),
-                ManagedLifecycleEvent::Startup,
-                None,
-            )
-        } else if options.startup_session_watch {
-            adapter.startup_session_watch_observation_best_effort_with_origin(
-                &state.session_id,
-                options.launch_origin.as_str(),
-            )
-        } else {
-            StartupObservationResult::SkippedVerificationProbe
-        };
+    reject_invalid_managed_marker(options.launch_origin)?;
+    let mut state =
+        ConnectionState::for_launch_origin(options.launch_origin, options.managed_host_session_id);
+    validate_managed_stdio_session_ownership(&adapter, &state)?;
+    if let Err(error) = start_transport_diagnostic_session(&adapter, &state) {
+        if state.managed_host_lifecycle_observations {
+            return Err(McpAdapterError::Store(error));
+        }
+    }
+    let _startup_observation = if options.startup_session_watch
+        && state.managed_host_lifecycle_observations
+    {
+        adapter.managed_lifecycle_observation_best_effort(
+            &state.session_id,
+            options.launch_origin.as_str(),
+            ManagedLifecycleEvent::Startup,
+            None,
+        )
+    } else if options.startup_session_watch && options.launch_origin != McpLaunchOrigin::ManagedHost
+    {
+        adapter.startup_session_watch_observation_best_effort_with_origin(
+            &state.session_id,
+            options.launch_origin.as_str(),
+        )
+    } else {
+        StartupObservationResult::SkippedVerificationProbe
+    };
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next() {
@@ -130,8 +141,17 @@ pub fn run_stdio_from_env(
         project_id,
         Some(&connection.host_kind),
     );
+    let managed_host_session_id = managed_host_session_id_from_env(
+        &process_env_var,
+        launch_origin,
+        &connection.host_kind,
+        connection_id,
+    );
     let startup_session_watch = launch_origin == McpLaunchOrigin::ManagedHost;
-    let local_web_consent = start_stdio_local_web_consent_listener(&runtime_home, &context).ok();
+    let local_web_consent =
+        start_optional_stdio_protocol_after_marker_validation(launch_origin, || {
+            start_stdio_local_web_consent_listener(&runtime_home, &context)
+        })?;
     let mut adapter = McpAdapter::new(runtime_home, context);
     if let Some(local_web_consent) = local_web_consent {
         adapter = adapter.with_local_web_consent_readiness(
@@ -148,6 +168,7 @@ pub fn run_stdio_from_env(
         StdioRunOptions {
             startup_session_watch,
             launch_origin,
+            managed_host_session_id,
         },
     )
 }
@@ -170,8 +191,16 @@ pub fn run_stdio_discover_repository_from_env(
         Some(resolution.host.registry_host_kind()),
         true,
     );
+    let managed_host_session_id = managed_host_session_id_from_env(
+        &process_env_var,
+        launch_origin,
+        resolution.host.registry_host_kind(),
+        resolution.context.connection_internal_id.as_str(),
+    );
     let local_web_consent =
-        start_stdio_local_web_consent_listener(&runtime_home, &resolution.context).ok();
+        start_optional_stdio_protocol_after_marker_validation(launch_origin, || {
+            start_stdio_local_web_consent_listener(&runtime_home, &resolution.context)
+        })?;
     let mut adapter = McpAdapter::new(runtime_home, resolution.context);
     if let Some(local_web_consent) = local_web_consent {
         adapter = adapter.with_local_web_consent_readiness(
@@ -188,8 +217,54 @@ pub fn run_stdio_discover_repository_from_env(
         StdioRunOptions {
             startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
             launch_origin,
+            managed_host_session_id,
         },
     )
+}
+
+fn reject_invalid_managed_marker(launch_origin: McpLaunchOrigin) -> Result<(), McpAdapterError> {
+    if launch_origin == McpLaunchOrigin::InvalidManagedMarker {
+        return Err(McpAdapterError::Environment(
+            "INVALID_MANAGED_MARKER: managed stdio launch markers are incomplete, invalid, or inconsistent"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn start_optional_stdio_protocol_after_marker_validation<T, F>(
+    launch_origin: McpLaunchOrigin,
+    start: F,
+) -> Result<Option<T>, McpAdapterError>
+where
+    F: FnOnce() -> Result<T, McpAdapterError>,
+{
+    reject_invalid_managed_marker(launch_origin)?;
+    Ok(start().ok())
+}
+
+#[cfg(test)]
+mod managed_marker_protocol_order_tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    #[test]
+    fn invalid_managed_marker_is_rejected_before_optional_protocol_start() {
+        let protocol_started = Cell::new(false);
+
+        let error = start_optional_stdio_protocol_after_marker_validation(
+            McpLaunchOrigin::InvalidManagedMarker,
+            || {
+                protocol_started.set(true);
+                Ok(())
+            },
+        )
+        .expect_err("an invalid managed marker must stop before protocol initialization");
+
+        assert!(!protocol_started.get());
+        assert!(error.to_string().contains("INVALID_MANAGED_MARKER"));
+    }
 }
 
 fn resolve_repository_discovery_runtime_home<F>(
@@ -233,6 +308,21 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     let launch_origin = classify_launch_origin_for_adapter(&adapter, &env_var);
+    let host_kind = agent_connection_record_read_only(
+        &adapter.runtime_home,
+        adapter.context.connection_internal_id.as_str(),
+    )
+    .ok()
+    .flatten()
+    .map(|connection| connection.host_kind);
+    let managed_host_session_id = host_kind.as_deref().and_then(|host_kind| {
+        managed_host_session_id_from_env(
+            &env_var,
+            launch_origin,
+            host_kind,
+            adapter.context.connection_internal_id.as_str(),
+        )
+    });
     run_stdio_with_options(
         adapter,
         reader,
@@ -240,6 +330,7 @@ where
         StdioRunOptions {
             startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
             launch_origin,
+            managed_host_session_id,
         },
     )
 }
@@ -416,10 +507,14 @@ where
     let host = env_text(&env_var, VOLICORD_MCP_HOST);
     let marker_connection_id = env_text(&env_var, VOLICORD_MCP_CONNECTION_ID);
     let marker_project_id = env_text(&env_var, VOLICORD_MCP_PROJECT_ID);
-    let volicord_marker_present = launch.is_some()
-        || host.is_some()
-        || marker_connection_id.is_some()
-        || marker_project_id.is_some();
+    let volicord_marker_present = [
+        VOLICORD_MCP_LAUNCH,
+        VOLICORD_MCP_HOST,
+        VOLICORD_MCP_CONNECTION_ID,
+        VOLICORD_MCP_PROJECT_ID,
+    ]
+    .into_iter()
+    .any(|name| env_var(name).is_some());
     let native_marker_present = host_native_marker_present(&env_var);
     if !volicord_marker_present && !native_marker_present {
         return McpLaunchOrigin::ManualCli;
@@ -487,7 +582,7 @@ where
 {
     [CODEX_THREAD_ID, CLAUDECODE, CLAUDE_CODE_SESSION_ID]
         .into_iter()
-        .any(|name| env_text(env_var, name).is_some())
+        .any(|name| env_var(name).is_some())
 }
 
 fn host_native_marker_matches<F>(env_var: &F, host_kind: &str) -> bool
@@ -496,15 +591,42 @@ where
 {
     match host_kind {
         CODEX_HOST_VALUE => {
-            env_text(env_var, CODEX_THREAD_ID).is_some_and(|value| !value.trim().is_empty())
+            env_var(CLAUDECODE).is_none()
+                && env_var(CLAUDE_CODE_SESSION_ID).is_none()
+                && env_text(env_var, CODEX_THREAD_ID)
+                    .is_some_and(|value| validate_managed_host_native_session_id(&value).is_ok())
         }
         CLAUDE_CODE_HOST_VALUE => {
-            env_text(env_var, CLAUDECODE).as_deref() == Some("1")
+            env_var(CODEX_THREAD_ID).is_none()
+                && env_text(env_var, CLAUDECODE).as_deref() == Some("1")
                 && env_text(env_var, CLAUDE_CODE_SESSION_ID)
-                    .is_some_and(|value| !value.trim().is_empty())
+                    .is_some_and(|value| validate_managed_host_native_session_id(&value).is_ok())
         }
         _ => false,
     }
+}
+
+fn managed_host_session_id_from_env<F>(
+    env_var: &F,
+    launch_origin: McpLaunchOrigin,
+    host_kind: &str,
+    connection_internal_id: &str,
+) -> Option<String>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    if launch_origin != McpLaunchOrigin::ManagedHost {
+        return None;
+    }
+    let native_session_id = match host_kind {
+        CODEX_HOST_VALUE => env_text(env_var, CODEX_THREAD_ID),
+        CLAUDE_CODE_HOST_VALUE if env_text(env_var, CLAUDECODE).as_deref() == Some("1") => {
+            env_text(env_var, CLAUDE_CODE_SESSION_ID)
+        }
+        _ => None,
+    }?;
+    validate_managed_host_native_session_id(&native_session_id).ok()?;
+    managed_host_session_id(host_kind, connection_internal_id, &native_session_id).ok()
 }
 
 fn env_text<F>(env_var: &F, name: &str) -> Option<String>
@@ -551,12 +673,20 @@ impl Default for ConnectionState {
 }
 
 impl ConnectionState {
-    fn for_launch_origin(launch_origin: McpLaunchOrigin) -> Self {
-        Self {
-            managed_host_lifecycle_observations: launch_origin == McpLaunchOrigin::ManagedHost,
+    fn for_launch_origin(
+        launch_origin: McpLaunchOrigin,
+        managed_host_session_id: Option<String>,
+    ) -> Self {
+        let mut state = Self {
+            managed_host_lifecycle_observations: launch_origin == McpLaunchOrigin::ManagedHost
+                && managed_host_session_id.is_some(),
             launch_origin: launch_origin.as_str(),
             ..Self::default()
+        };
+        if let Some(managed_host_session_id) = managed_host_session_id {
+            state.session_id = managed_host_session_id;
         }
+        state
     }
 
     fn user_channel_capabilities(&self) -> McpUserChannelCapabilities {
@@ -716,17 +846,16 @@ where
     let response_id = request.id.clone();
     let result = match request.method.as_str() {
         "initialize" => {
-            match validate_initialize_params(&response_id, request.params) {
-                Ok(capabilities) => {
-                    state.client_supports_elicitation = capabilities.elicitation;
-                    state.client_supports_model_invisible_user_surface =
-                        capabilities.model_invisible_user_surface;
-                    state.client_name = Some(capabilities.client_name);
-                    state.client_version = Some(capabilities.client_version);
-                    state.phase = ConnectionPhase::AwaitingInitialized;
-                }
+            let capabilities = match validate_initialize_params(&response_id, request.params) {
+                Ok(capabilities) => capabilities,
                 Err(error) => return Ok(error),
-            }
+            };
+            state.client_supports_elicitation = capabilities.elicitation;
+            state.client_supports_model_invisible_user_surface =
+                capabilities.model_invisible_user_surface;
+            state.client_name = Some(capabilities.client_name);
+            state.client_version = Some(capabilities.client_version);
+            state.phase = ConnectionPhase::AwaitingInitialized;
             record_managed_lifecycle_event(
                 adapter,
                 state,
@@ -2356,17 +2485,81 @@ fn bounded_mutation_compatibility_text(mut text: String) -> String {
     text
 }
 
-fn start_transport_diagnostic_session_best_effort(adapter: &McpAdapter, state: &ConnectionState) {
+fn validate_managed_stdio_session_ownership(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+) -> Result<(), McpAdapterError> {
+    if !state.managed_host_lifecycle_observations {
+        return Ok(());
+    }
+    if validate_managed_host_session_id(&state.session_id).is_err() {
+        return Err(McpAdapterError::Environment(
+            "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed stdio requires an opaque mhs_ session"
+                .to_owned(),
+        ));
+    }
     let connection = agent_connection_record_read_only(
         &adapter.runtime_home,
         adapter.context.connection_internal_id.as_str(),
     )
-    .ok()
-    .flatten();
-    let host_kind = connection
-        .as_ref()
-        .map(|record| DiagnosticHostKind::from_connection_host_kind(&record.host_kind));
-    let project_id = adapter
+    .map_err(McpAdapterError::Store)?
+    .ok_or_else(|| {
+        McpAdapterError::Environment(
+            "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed stdio connection is unavailable"
+                .to_owned(),
+        )
+    })?;
+    let project_ids = if let Some(project_ids) = adapter.context.project_allowlist.as_ref() {
+        project_ids
+            .iter()
+            .map(|project_id| project_id.as_str().to_owned())
+            .collect::<Vec<_>>()
+    } else {
+        list_connection_projects_read_only(
+            &adapter.runtime_home,
+            adapter.context.connection_internal_id.as_str(),
+        )
+        .map_err(McpAdapterError::Store)?
+        .into_iter()
+        .map(|project| project.project_id)
+        .collect::<Vec<_>>()
+    };
+    for project_id in project_ids {
+        if let Some(existing) = agent_session(&adapter.runtime_home, &project_id, &state.session_id)
+            .map_err(McpAdapterError::Store)?
+        {
+            if existing.connection_internal_id != adapter.context.connection_internal_id.as_str()
+                || existing.host_kind != connection.host_kind
+            {
+                return Err(McpAdapterError::Environment(
+                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: existing session ownership does not match this managed stdio connection"
+                        .to_owned(),
+                ));
+            }
+        }
+    }
+
+    let project_id = stdio_diagnostic_project_id(adapter);
+    let build = crate::build_info();
+    validate_diagnostic_session_start(
+        &adapter.runtime_home,
+        DiagnosticSessionStart {
+            session_id: &state.session_id,
+            connection_id: Some(adapter.context.connection_internal_id.as_str()),
+            project_id: project_id.as_deref(),
+            transport: DiagnosticTransport::McpStdio,
+            host_kind: Some(DiagnosticHostKind::from_connection_host_kind(
+                &connection.host_kind,
+            )),
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    )
+    .map_err(McpAdapterError::Store)
+}
+
+fn stdio_diagnostic_project_id(adapter: &McpAdapter) -> Option<String> {
+    adapter
         .context
         .project_allowlist
         .as_ref()
@@ -2381,14 +2574,30 @@ fn start_transport_diagnostic_session_best_effort(adapter: &McpAdapter, state: &
             .ok()
             .filter(|projects| projects.len() == 1)
             .and_then(|projects| projects.first().map(|project| project.project_id.clone()))
-        });
+        })
+}
+
+fn start_transport_diagnostic_session(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+) -> Result<(), StoreError> {
+    let connection = agent_connection_record_read_only(
+        &adapter.runtime_home,
+        adapter.context.connection_internal_id.as_str(),
+    )
+    .ok()
+    .flatten();
+    let host_kind = connection
+        .as_ref()
+        .map(|record| DiagnosticHostKind::from_connection_host_kind(&record.host_kind));
+    let project_id = stdio_diagnostic_project_id(adapter);
     let transport = if state.launch_origin == McpLaunchOrigin::Unknown.as_str() {
         DiagnosticTransport::LocalHttp
     } else {
         DiagnosticTransport::McpStdio
     };
     let build = crate::build_info();
-    let _ = start_diagnostic_session(
+    start_diagnostic_session(
         &adapter.runtime_home,
         DiagnosticSessionStart {
             session_id: &state.session_id,
@@ -2399,7 +2608,7 @@ fn start_transport_diagnostic_session_best_effort(adapter: &McpAdapter, state: &
             package_version: build.package_version,
             build_id: &build.build_id,
         },
-    );
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2419,7 +2628,9 @@ fn record_tool_diagnostic_best_effort(
         .and_then(|value| serde_json::to_vec(value).ok())
         .map(|bytes| bytes.len() as u64)
         .unwrap_or(0);
-    start_transport_diagnostic_session_best_effort(adapter, state);
+    if start_transport_diagnostic_session(adapter, state).is_err() {
+        return;
+    }
     let _ = record_diagnostic_event(
         &adapter.runtime_home,
         DiagnosticEvent {

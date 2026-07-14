@@ -8,20 +8,27 @@ mod unix {
         collections::BTreeSet,
         env,
         error::Error,
-        ffi::OsString,
+        ffi::{OsStr, OsString},
         fs::{self, OpenOptions},
-        io::{self, IsTerminal, Write},
+        io::{self, IsTerminal, Read, Write},
         os::unix::fs::PermissionsExt,
+        panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
         path::{Path, PathBuf},
         process::{Command, ExitStatus, Output, Stdio},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
+    use chrono::{DateTime, SecondsFormat, Utc};
     use rusqlite::OptionalExtension;
+    use serde::Deserialize;
     use serde_json::Value;
+    use sha2::{Digest, Sha256};
     use volicord_cli::host_integration::{
-        capability_status::{default_host_feature_support_json, HostFeatureDiagnosticProjection},
+        capability_status::{
+            default_host_feature_support_json, host_feature_implementation, HostFeature,
+            HostFeatureDiagnosticProjection, HostFeatureImplementation,
+        },
         HostKind,
     };
     use volicord_mcp::{McpAdapter, McpConnectionContext};
@@ -40,9 +47,11 @@ mod unix {
     };
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
     use volicord_types::{
-        canonical_json_string, ArtifactRef, AuthorityReceipt, EvidenceCoverageItem,
-        EvidenceCoverageState, EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceTarget,
-        IntegrationProfile, PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
+        canonical_json_bare_sha256, canonical_json_string, managed_host_session_id,
+        validate_managed_host_session_id, ArtifactRef, AuthorityReceipt, EvidenceCoverageItem,
+        EvidenceCoverageState, EvidenceProducer, EvidenceProducerKind, EvidenceRelevanceStatus,
+        EvidenceTarget, IntegrationProfile, PersistedEvidenceCaptureReceiptBody,
+        PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
         PersistedUserActionRequest, StateRecordKind, StateRecordRef, StatusCloseState,
         StatusResult, UserActionBasis, UserActionInboxForm, UserActionPresentationPlan,
         UserActionPresentationSafety, UserActionRequestBody, UserActionResolutionBody,
@@ -71,12 +80,29 @@ mod unix {
         "VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE";
     const CODEX_CLI_FALLBACK_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE";
     const CLAUDE_CLI_FALLBACK_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_CLI_FALLBACK_SMOKE";
+    const CODEX_VERIFIED_TOOL_PRODUCER_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CODEX_VERIFIED_TOOL_PRODUCER_SMOKE";
+    const CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE";
+    const CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE";
+    const CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE_ENV: &str =
+        "VOLICORD_RUN_CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE";
     const LIVE_HOST_RESULT_PATH_ENV: &str = "VOLICORD_LIVE_HOST_RESULT_PATH";
+    const RELEASE_CANDIDATE_PATH_ENV: &str = "VOLICORD_RELEASE_CANDIDATE_PATH";
+    const RELEASE_REQUEST_VERIFIED_ENV: &str = "VOLICORD_RELEASE_REQUEST_VERIFIED";
+    const RELEASE_CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
+    const RELEASE_CELL_SCHEMA: &str = "volicord-host-release-cell-v1";
+    const RELEASE_SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
     const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
     const LIVE_EVIDENCE_OBSERVATION_RESULT_KIND: &str =
         "live_host_evidence_observation_release_validation";
     const LIVE_CLI_FALLBACK_RESULT_KIND: &str = "live_host_cli_fallback_release_validation";
     const LIVE_FINAL_OUTPUT_RESULT_KIND: &str = "live_host_final_output_release_validation";
+    const LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND: &str =
+        "live_host_verified_tool_producer_release_validation";
+    const LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND: &str =
+        "live_host_registered_connection_observation_release_validation";
     const USER_ACTION_ROUTE_ALPHA_OPTION_ID: &str = "route_alpha";
     const USER_ACTION_ROUTE_BETA_OPTION_ID: &str = "route_beta";
     const USER_ACTION_ROUTE_ALPHA_RUN_MARKER: &str =
@@ -101,6 +127,13 @@ mod unix {
     const MODEL_VISIBLE_ABSENCE_CONFIRMATION: &str =
         "model-visible:none-url-token-form-question-request-ref";
     const LIVE_CLI_FALLBACK_BASELINE_REF: &str = "baseline_live_host_cli_fallback";
+    const LIVE_VERIFIED_TOOL_PRODUCER_BASELINE_REF: &str =
+        "baseline_live_host_verified_tool_producer";
+    const LIVE_REGISTERED_CONNECTION_OBSERVATION_BASELINE_REF: &str =
+        "baseline_live_host_registered_connection_observation";
+    const LIVE_VERIFIED_TOOL_NAME: &str = "Bash";
+    const LIVE_VERIFIED_TOOL_COMMAND: &str = "true";
+    const LIVE_PRODUCER_CALLER_OBSERVED_AT: &str = "2000-01-01T00:00:00Z";
     const LIVE_INBOX_COMMAND_TEMPLATE: &str =
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
     const LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE: &str = "VOLICORD_HOME=<runtime-home> volicord inbox resolve <user-action-request-id> --choice <option-id> --repo <repo> --json";
@@ -111,24 +144,21 @@ mod unix {
     const MAX_VALIDATION_RUN_ID_CHARS: usize = 192;
     const MAX_RECORDED_AT_CHARS: usize = 64;
     const MAX_LIVE_HOST_RESULT_BYTES: usize = 16 * 1_024;
+    const MAX_RELEASE_CANDIDATE_DESCRIPTOR_BYTES: usize = 64 * 1_024;
+    const MAX_RELEASE_CANDIDATE_BINARY_BYTES: u64 = 256 * 1024 * 1024;
     const MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN: u64 = 8;
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
 
     #[test]
-    fn live_result_helpers_reject_stale_paths_and_keep_bounded_atomic_results(
-    ) -> Result<(), Box<dyn Error>> {
+    fn live_result_helpers_create_one_bounded_immutable_result() -> Result<(), Box<dyn Error>> {
         let temp = TempRuntimeHome::new("live-result-recorder")?;
         let result_dir = temp.path().join("release-results");
         fs::create_dir_all(&result_dir)?;
         let result_path = result_dir.join("codex.json");
 
         let mut recorder = LiveResultRecorder::new("codex", Some(result_path.clone()))?;
-        let running: Value = serde_json::from_slice(&fs::read(&result_path)?)?;
-        assert_eq!(running["result"], "running");
-        let run_id = running["validation_run"]["run_id"]
-            .as_str()
-            .expect("running result should identify the validation run")
-            .to_owned();
+        assert!(!result_path.exists());
+        let run_id = recorder.run_id.clone();
         let diagnostics = canonical_release_host_feature_diagnostics(
             "codex",
             IntegrationProfile::Detective,
@@ -161,8 +191,6 @@ mod unix {
                 "host": { "kind": "codex" }
             }))
             .is_err());
-        assert!(atomic_write_live_host_result(&result_path, "{}", "different-run").is_err());
-
         assert!(LiveResultRecorder::new("codex", Some(result_path.clone())).is_err());
         assert!(required_live_result_path(None).is_err());
         assert_eq!(
@@ -200,6 +228,32 @@ mod unix {
         assert_eq!(
             early_failure["final_output_authority_disclosure"]["configured"],
             false
+        );
+
+        let observed_early_failure_path = result_dir.join("codex-observed-early-failure.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("codex", Some(observed_early_failure_path.clone()))?;
+            recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+                "codex fixture 1.0".to_owned(),
+                "e".repeat(64),
+                "fixture-build-observed-before-failure".to_owned(),
+            )?)?;
+        }
+        let observed_early_failure: Value =
+            serde_json::from_slice(&fs::read(&observed_early_failure_path)?)?;
+        assert_eq!(observed_early_failure["result"], "failed_before_completion");
+        assert_eq!(
+            observed_early_failure["host"]["version"],
+            "codex fixture 1.0"
+        );
+        assert_eq!(
+            observed_early_failure["host"]["executable_sha256"],
+            "e".repeat(64)
+        );
+        assert_eq!(
+            observed_early_failure["volicord"]["build_id"],
+            "fixture-build-observed-before-failure"
         );
 
         let final_record_failure_path = result_dir.join("codex-record-final-output.json");
@@ -242,6 +296,499 @@ mod unix {
                 .ok()
                 .is_some_and(|entry| !entry.file_name().to_string_lossy().ends_with(".tmp"))
         }));
+        Ok(())
+    }
+
+    #[test]
+    fn release_cell_recorder_binds_exact_candidate_and_closed_assertions(
+    ) -> Result<(), Box<dyn Error>> {
+        let temp = TempRuntimeHome::new("release-cell-recorder")?;
+        let candidate_path = temp.path().join("candidate-volicord");
+        fs::copy(volicord_bin(), &candidate_path)?;
+        let mut permissions = fs::metadata(&candidate_path)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&candidate_path, permissions)?;
+        let binary_sha256 = sha256_file(&candidate_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+        let candidate = ReleaseCandidate {
+            schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+            candidate_id: "candidate_release_cell_fixture".to_owned(),
+            candidate_path: path_text(&candidate_path),
+            source_revision: "a".repeat(40),
+            source_clean: true,
+            source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+            source_archive_sha256: "b".repeat(64),
+            target_triple: "fixture-target".to_owned(),
+            release_profile: "release".to_owned(),
+            binary_sha256: binary_sha256.clone(),
+            build_environment: ReleaseCandidateBuildEnvironment {
+                runner_os: "fixture-os".to_owned(),
+                runner_os_version: "fixture-version".to_owned(),
+                runner_arch: "fixture-arch".to_owned(),
+                git_version: "git fixture".to_owned(),
+                rustc_version: "rustc fixture".to_owned(),
+                cargo_version: "cargo fixture".to_owned(),
+            },
+            recorded_at: "2026-07-14T00:00:00Z".to_owned(),
+        };
+        candidate.validate()?;
+
+        let result_dir = temp.path().join("release-results");
+        fs::create_dir_all(&result_dir)?;
+        let cell_path = result_dir.join("claude-native-user-action.json");
+        let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
+        recorder.release_candidate = Some(candidate.clone());
+        recorder.release_feature = Some(HostFeature::NativeUserAction);
+        recorder.record_final(&native_user_action_result_shape_fixture(
+            "claude-code",
+            &binary_sha256,
+        ))?;
+
+        let cell: Value = serde_json::from_slice(&fs::read(&cell_path)?)?;
+        assert_eq!(cell["schema"], RELEASE_CELL_SCHEMA);
+        assert_eq!(cell["candidate_id"], "candidate_release_cell_fixture");
+        assert_eq!(cell["binary_sha256"], binary_sha256);
+        assert_eq!(cell["host_kind"], "claude_code");
+        assert_eq!(cell["feature"], "native_user_action");
+        assert_eq!(cell["requested_verified"], true);
+        assert_eq!(cell["claimed_status"], "verified");
+        assert_eq!(cell["run_state"], "completed");
+        let measured_runner = LiveRunnerEnvironment::measure()?;
+        assert_eq!(cell["environment"]["runner_os"], measured_runner.runner_os);
+        assert_eq!(
+            cell["environment"]["runner_os_version"],
+            measured_runner.runner_os_version
+        );
+        assert_eq!(
+            cell["environment"]["runner_arch"],
+            measured_runner.runner_arch
+        );
+        assert_ne!(cell["environment"]["runner_os"], "fixture-os");
+        assert_ne!(cell["environment"]["runner_os_version"], "fixture-version");
+        assert_ne!(cell["environment"]["runner_arch"], "fixture-arch");
+        let assertions = cell["assertions"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("release cell assertions must be an array"))?;
+        assert_eq!(assertions.len(), 5);
+        assert!(assertions
+            .iter()
+            .all(|assertion| assertion["passed"] == true));
+        let evidence_path = PathBuf::from(
+            cell["evidence_artifact_path"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("release cell has no evidence path"))?,
+        );
+        assert!(evidence_path.exists());
+        assert_ne!(evidence_path.parent(), cell_path.parent());
+        assert_eq!(
+            cell["evidence_artifact_sha256"],
+            sha256_file(&evidence_path, MAX_LIVE_HOST_RESULT_BYTES as u64 + 1)?
+        );
+        assert_eq!(
+            fs::read_dir(&result_dir)?
+                .filter_map(Result::ok)
+                .filter(|entry| entry
+                    .path()
+                    .extension()
+                    .is_some_and(|value| value == "json"))
+                .count(),
+            1,
+            "release-cell directory must contain only the release cell, not its evidence sidecar"
+        );
+
+        let forced_false_path = result_dir.join("claude-native-user-action-unrequested.json");
+        let mut forced_false =
+            LiveResultRecorder::new("claude-code", Some(forced_false_path.clone()))?;
+        forced_false.release_candidate = Some(candidate.clone());
+        forced_false.release_feature = Some(HostFeature::NativeUserAction);
+        forced_false.release_requested_verified = Some(false);
+        forced_false.record_final(&native_user_action_result_shape_fixture(
+            "claude-code",
+            &binary_sha256,
+        ))?;
+        let forced_false_cell: Value = serde_json::from_slice(&fs::read(&forced_false_path)?)?;
+        assert_eq!(forced_false_cell["requested_verified"], false);
+        assert_eq!(forced_false_cell["claimed_status"], "verified");
+
+        let unavailable_path = result_dir.join("claude-null-host-default-requested.json");
+        let mut unavailable =
+            LiveResultRecorder::new("claude-code", Some(unavailable_path.clone()))?;
+        unavailable.release_candidate = Some(candidate.clone());
+        unavailable.release_feature = Some(HostFeature::NativeUserAction);
+        unavailable.record_final(&live_user_action_unavailable_summary(
+            "claude-code",
+            "host_executable",
+            "fixture host unavailable",
+        ))?;
+        let unavailable_cell: Value = serde_json::from_slice(&fs::read(&unavailable_path)?)?;
+        assert_eq!(unavailable_cell["host_version"], Value::Null);
+        assert_eq!(
+            unavailable_cell["environment"]["host_executable_sha256"],
+            Value::Null
+        );
+        assert_eq!(unavailable_cell["requested_verified"], true);
+        assert_eq!(unavailable_cell["run_state"], "ignored");
+        assert_eq!(unavailable_cell["claimed_status"], "implemented_unverified");
+        assert!(unavailable_cell["adapter_version"].is_string());
+        assert!(unavailable_cell["evidence_artifact_path"].is_string());
+
+        let observed_failure_path = result_dir.join("claude-observed-host-failure.json");
+        let mut observed_failure =
+            LiveResultRecorder::new("claude-code", Some(observed_failure_path.clone()))?;
+        observed_failure.release_candidate = Some(candidate.clone());
+        observed_failure.release_feature = Some(HostFeature::NativeUserAction);
+        observed_failure.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            "fixture-observed-host 2.0".to_owned(),
+            "f".repeat(64),
+            "fixture-observed-build".to_owned(),
+        )?)?;
+        observed_failure.record_final(&live_user_action_unavailable_summary(
+            "claude-code",
+            "connection_observation",
+            "fixture post-preflight failure",
+        ))?;
+        let observed_failure_cell: Value =
+            serde_json::from_slice(&fs::read(&observed_failure_path)?)?;
+        assert_eq!(
+            observed_failure_cell["host_version"],
+            "fixture-observed-host 2.0"
+        );
+        assert_eq!(
+            observed_failure_cell["environment"]["host_executable_sha256"],
+            "f".repeat(64)
+        );
+        assert_eq!(
+            observed_failure_cell["adapter_version"],
+            "fixture-observed-build"
+        );
+        assert_eq!(observed_failure_cell["run_state"], "completed");
+
+        let excluded_null_path = result_dir.join("claude-null-host-unrequested.json");
+        let mut excluded_null =
+            LiveResultRecorder::new("claude-code", Some(excluded_null_path.clone()))?;
+        excluded_null.release_candidate = Some(candidate.clone());
+        excluded_null.release_feature = Some(HostFeature::NativeUserAction);
+        excluded_null.release_requested_verified = Some(false);
+        excluded_null.record_final(&live_user_action_unavailable_summary(
+            "claude-code",
+            "host_executable",
+            "fixture host unavailable",
+        ))?;
+        let excluded_null_cell: Value = serde_json::from_slice(&fs::read(&excluded_null_path)?)?;
+        assert_eq!(excluded_null_cell["host_version"], Value::Null);
+        assert_eq!(excluded_null_cell["requested_verified"], false);
+        assert_eq!(excluded_null_cell["run_state"], "ignored");
+
+        let static_final_path = result_dir.join("codex-record-final-output.json");
+        let mut static_final = LiveResultRecorder::new_for_kind_and_profile(
+            "codex-record-final-output",
+            "codex",
+            LIVE_FINAL_OUTPUT_RESULT_KIND,
+            Some(IntegrationProfile::Record),
+            Some(static_final_path.clone()),
+        )?;
+        static_final.release_candidate = Some(candidate.clone());
+        static_final.release_feature = Some(HostFeature::RecordFinalOutput);
+        let static_summary = final_output_unavailable_summary_with_host_identity(
+            "codex",
+            IntegrationProfile::Record,
+            "fixture static unsupported feature",
+            "fixture-host 1.0",
+            &binary_sha256,
+            "fixture-build-id",
+        );
+        validate_final_output_result_shape(&static_summary, IntegrationProfile::Record)?;
+        static_final.record_final(&static_summary)?;
+        let static_final_cell: Value = serde_json::from_slice(&fs::read(&static_final_path)?)?;
+        assert_eq!(static_final_cell["host_version"], "fixture-host 1.0");
+        assert_eq!(static_final_cell["requested_verified"], false);
+        assert_eq!(
+            static_final_cell["implementation_disposition"],
+            "unsupported_by_host"
+        );
+        assert_eq!(static_final_cell["claimed_status"], "unsupported_by_host");
+        assert_eq!(static_final_cell["run_state"], "not_applicable");
+        assert_eq!(static_final_cell["evidence_artifact_path"], Value::Null);
+
+        let forbidden_static_path = result_dir.join("codex-record-final-output-requested.json");
+        let mut forbidden_static = LiveResultRecorder::new_for_kind_and_profile(
+            "codex-record-final-output-requested",
+            "codex",
+            LIVE_FINAL_OUTPUT_RESULT_KIND,
+            Some(IntegrationProfile::Record),
+            Some(forbidden_static_path.clone()),
+        )?;
+        forbidden_static.release_candidate = Some(candidate.clone());
+        forbidden_static.release_feature = Some(HostFeature::RecordFinalOutput);
+        forbidden_static.release_requested_verified = Some(true);
+        assert!(forbidden_static.record_final(&static_summary).is_err());
+        assert!(!forbidden_static_path.exists());
+
+        let rejected_cell_path = result_dir.join("claude-native-user-action-mutated.json");
+        {
+            let mut rejected =
+                LiveResultRecorder::new("claude-code", Some(rejected_cell_path.clone()))?;
+            rejected.release_candidate = Some(candidate);
+            rejected.release_feature = Some(HostFeature::NativeUserAction);
+            let mut semantically_false =
+                native_user_action_result_shape_fixture("claude-code", &binary_sha256);
+            semantically_false["native_ui"]["operator_choice_confirmed"] = Value::Bool(false);
+            assert!(rejected.record_final(&semantically_false).is_err());
+            assert!(!rejected_cell_path.exists());
+        }
+        let rejected_cell: Value = serde_json::from_slice(&fs::read(&rejected_cell_path)?)?;
+        assert_ne!(rejected_cell["claimed_status"], "verified");
+        assert!(rejected_cell["assertions"]
+            .as_array()
+            .is_some_and(|assertions| assertions
+                .iter()
+                .all(|assertion| assertion["passed"] == false)));
+        assert!(LiveResultRecorder::new("claude-code", Some(cell_path)).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn candidate_digest_guards_reject_private_mutation_and_descriptor_path_replacement(
+    ) -> Result<(), Box<dyn Error>> {
+        fn candidate_fixture(path: &Path) -> Result<ReleaseCandidate, Box<dyn Error>> {
+            let binary_sha256 = sha256_file(path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+            Ok(ReleaseCandidate {
+                schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+                candidate_id: "candidate_integrity_fixture".to_owned(),
+                candidate_path: path_text(path),
+                source_revision: "1".repeat(40),
+                source_clean: true,
+                source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+                source_archive_sha256: "2".repeat(64),
+                target_triple: "fixture-target".to_owned(),
+                release_profile: "release".to_owned(),
+                binary_sha256,
+                build_environment: ReleaseCandidateBuildEnvironment {
+                    runner_os: "descriptor-build-os".to_owned(),
+                    runner_os_version: "descriptor-build-version".to_owned(),
+                    runner_arch: "descriptor-build-arch".to_owned(),
+                    git_version: "git fixture".to_owned(),
+                    rustc_version: "rustc fixture".to_owned(),
+                    cargo_version: "cargo fixture".to_owned(),
+                },
+                recorded_at: "2026-07-14T00:00:00Z".to_owned(),
+            })
+        }
+
+        let temp = TempRuntimeHome::new("candidate-integrity-guards")?;
+        let candidate_path = temp.path().join("candidate-volicord");
+        fs::copy(volicord_bin(), &candidate_path)?;
+        let mut permissions = fs::metadata(&candidate_path)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&candidate_path, permissions)?;
+        let candidate = candidate_fixture(&candidate_path)?;
+        candidate.validate()?;
+
+        let fixture = LiveSmokeFixture::new_with_release_candidate(
+            "candidate-private-integrity",
+            &candidate,
+        )?;
+        fixture.verify_private_candidate_digest()?;
+        assert_eq!(
+            fs::metadata(&fixture.volicord_path)?.permissions().mode() & 0o222,
+            0
+        );
+        let mut writable = fs::metadata(&fixture.volicord_path)?.permissions();
+        writable.set_mode(0o755);
+        fs::set_permissions(&fixture.volicord_path, writable)?;
+        OpenOptions::new()
+            .append(true)
+            .open(&fixture.volicord_path)?
+            .write_all(b"candidate-mutation")?;
+        let mut read_only = fs::metadata(&fixture.volicord_path)?.permissions();
+        read_only.set_mode(0o555);
+        fs::set_permissions(&fixture.volicord_path, read_only)?;
+        assert!(fixture.run_volicord(["--version"]).is_err());
+
+        let replacement_path = temp.path().join("replacement-candidate-volicord");
+        fs::copy(volicord_bin(), &replacement_path)?;
+        let mut replacement_permissions = fs::metadata(&replacement_path)?.permissions();
+        replacement_permissions.set_mode(0o755);
+        fs::set_permissions(&replacement_path, replacement_permissions)?;
+        let replacement_candidate = candidate_fixture(&replacement_path)?;
+        replacement_candidate.validate()?;
+        let result_path = temp.path().join("replacement-release-cell.json");
+        {
+            let mut recorder = LiveResultRecorder::new("claude-code", Some(result_path.clone()))?;
+            recorder.release_candidate = Some(replacement_candidate.clone());
+            recorder.release_feature = Some(HostFeature::NativeUserAction);
+            let original_path = temp.path().join("original-candidate-volicord");
+            fs::rename(&replacement_path, original_path)?;
+            fs::write(&replacement_path, b"#!/bin/sh\nexit 1\n")?;
+            let mut replacement_permissions = fs::metadata(&replacement_path)?.permissions();
+            replacement_permissions.set_mode(0o755);
+            fs::set_permissions(&replacement_path, replacement_permissions)?;
+            assert!(recorder
+                .record_final(&native_user_action_result_shape_fixture(
+                    "claude-code",
+                    &"3".repeat(64),
+                ))
+                .is_err());
+        }
+        assert!(
+            !result_path.exists(),
+            "candidate path replacement must not produce a passing release cell"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn installed_host_preflight_retains_real_coordinates_and_rejects_false_null_availability(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("installed-host-preflight")?;
+        let fake_host = fixture.runtime_home_path.join("fake-installed-host");
+        fs::write(
+            &fake_host,
+            "#!/bin/sh\nprintf 'fixture-host 1.0\\n'\nexit 7\n",
+        )?;
+        make_executable(&fake_host)?;
+
+        let mut recorder = LiveResultRecorder::new("codex", None)?;
+        assert!(fixture
+            .observe_and_bind_installed_host_identity(&mut recorder, "fake-host", &fake_host)
+            .is_err());
+        let enriched =
+            recorder.with_observed_host_identity(&recorder.failed_before_completion_summary())?;
+        assert_eq!(enriched["host"]["version"], "fixture-host 1.0");
+        assert_eq!(
+            enriched["host"]["executable_sha256"],
+            sha256_file(&fake_host, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?
+        );
+
+        let candidate = ReleaseCandidate {
+            schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+            candidate_id: "candidate_unresolved_installed_host".to_owned(),
+            candidate_path: path_text(&fixture.volicord_path),
+            source_revision: "4".repeat(40),
+            source_clean: true,
+            source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+            source_archive_sha256: "5".repeat(64),
+            target_triple: "fixture-target".to_owned(),
+            release_profile: "release".to_owned(),
+            binary_sha256: sha256_file(&fixture.volicord_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?,
+            build_environment: ReleaseCandidateBuildEnvironment {
+                runner_os: "fixture-os".to_owned(),
+                runner_os_version: "fixture-version".to_owned(),
+                runner_arch: "fixture-arch".to_owned(),
+                git_version: "git fixture".to_owned(),
+                rustc_version: "rustc fixture".to_owned(),
+                cargo_version: "cargo fixture".to_owned(),
+            },
+            recorded_at: "2026-07-14T00:00:00Z".to_owned(),
+        };
+        candidate.validate()?;
+
+        let successful_host = fixture.runtime_home_path.join("successful-installed-host");
+        fs::write(
+            &successful_host,
+            "#!/bin/sh\nprintf 'fixture-host 1.0\\n'\n",
+        )?;
+        make_executable(&successful_host)?;
+        let cell_dir = fixture.runtime_home_path.join("cells");
+        fs::create_dir(&cell_dir)?;
+        let terminal_path = cell_dir.join("installed-host-terminal-failure.json");
+        let mut terminal = LiveResultRecorder::new("codex", Some(terminal_path.clone()))?;
+        terminal.release_candidate = Some(candidate.clone());
+        terminal.release_feature = Some(HostFeature::NativeUserAction);
+        fixture.observe_and_bind_installed_host_identity(
+            &mut terminal,
+            "fake-host",
+            &successful_host,
+        )?;
+        terminal.record_final(&live_user_action_unavailable_summary(
+            "codex",
+            "interactive_terminal",
+            "fixture terminal unavailable after installed-host preflight",
+        ))?;
+        let terminal_cell: Value = serde_json::from_slice(&fs::read(&terminal_path)?)?;
+        assert_eq!(terminal_cell["host_version"], "fixture-host 1.0");
+        assert_eq!(
+            terminal_cell["environment"]["host_executable_sha256"],
+            sha256_file(&successful_host, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?
+        );
+        assert_eq!(terminal_cell["run_state"], "completed");
+
+        let unresolved_path = fixture
+            .runtime_home_path
+            .join("unresolved-installed-host-cell.json");
+        {
+            let mut unresolved = LiveResultRecorder::new("codex", Some(unresolved_path.clone()))?;
+            unresolved.release_candidate = Some(candidate);
+            unresolved.release_feature = Some(HostFeature::NativeUserAction);
+            unresolved.mark_installed_host_detected();
+            assert!(unresolved
+                .record_final(&live_user_action_unavailable_summary(
+                    "codex",
+                    "fixture_setup",
+                    "fixture installed identity unresolved",
+                ))
+                .is_err());
+        }
+        assert!(
+            !unresolved_path.exists(),
+            "an installed host with unresolved coordinates must not become a null-identity cell"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn every_fixture_host_invocation_guards_the_private_candidate_digest(
+    ) -> Result<(), Box<dyn Error>> {
+        fn write_mutating_host(
+            fixture: &LiveSmokeFixture,
+            name: &str,
+            output: &str,
+        ) -> Result<PathBuf, Box<dyn Error>> {
+            let host = fixture.runtime_home_path.join(name);
+            let candidate = shell_quote(&fixture.volicord_path);
+            fs::write(
+                &host,
+                format!(
+                    "#!/bin/sh\nchmod u+w {candidate}\nprintf mutation >> {candidate}\nprintf '%s\\n' {}\n",
+                    shell_quote(Path::new(output))
+                ),
+            )?;
+            make_executable(&host)?;
+            Ok(host)
+        }
+
+        let version_fixture = LiveSmokeFixture::new("guarded-host-version")?;
+        let version_host = write_mutating_host(
+            &version_fixture,
+            "mutating-version-host",
+            "fixture-host 1.0",
+        )?;
+        assert!(version_fixture
+            .run_host_command(&version_host, ["--version"])
+            .is_err());
+
+        let login_fixture = LiveSmokeFixture::new("guarded-login-status")?;
+        let login_host = write_mutating_host(
+            &login_fixture,
+            "mutating-login-host",
+            "Logged in using ChatGPT",
+        )?;
+        assert!(login_fixture
+            .require_codex_chatgpt_login_immediately_before_cell("codex", &login_host,)
+            .is_err());
+
+        let unwind_fixture = LiveSmokeFixture::new("guarded-host-unwind")?;
+        assert!(unwind_fixture
+            .with_private_candidate_digest_guard(|| -> Result<(), Box<dyn Error>> {
+                let mut permissions = fs::metadata(&unwind_fixture.volicord_path)?.permissions();
+                permissions.set_mode(0o755);
+                fs::set_permissions(&unwind_fixture.volicord_path, permissions)?;
+                OpenOptions::new()
+                    .append(true)
+                    .open(&unwind_fixture.volicord_path)?
+                    .write_all(b"candidate-mutation-before-unwind")?;
+                panic!("fixture host invocation unwind");
+            })
+            .is_err());
         Ok(())
     }
 
@@ -304,6 +851,9 @@ mod unix {
     #[test]
     fn authenticated_host_launch_removes_inherited_volicord_control_environment() {
         let control_names = [
+            LIVE_HOST_RESULT_PATH_ENV,
+            RELEASE_CANDIDATE_PATH_ENV,
+            RELEASE_REQUEST_VERIFIED_ENV,
             "VOLICORD_MCP_VERIFICATION",
             "VOLICORD_MCP_LAUNCH",
             "VOLICORD_MCP_HOST",
@@ -324,6 +874,215 @@ mod unix {
     }
 
     #[test]
+    fn authenticated_host_launch_removes_inherited_api_key_and_token_environment() {
+        let secret_names = [
+            "OPENAI_API_KEY",
+            "CODEX_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_API_KEY",
+        ];
+        let mut command = Command::new("host-fixture");
+        for name in secret_names {
+            command.env(name, "inherited-secret");
+        }
+        LiveSmokeFixture::remove_inherited_auth_secret_env(&mut command);
+        for name in secret_names {
+            assert!(command
+                .get_envs()
+                .any(|(key, value)| { key.to_string_lossy() == name && value.is_none() }));
+        }
+    }
+
+    #[test]
+    fn codex_login_status_requires_one_unambiguous_chatgpt_line() {
+        assert!(validate_codex_chatgpt_login_status("Logged in using ChatGPT\n", "").is_ok());
+        assert!(validate_codex_chatgpt_login_status(
+            "Logged in using ChatGPT\nambiguous additional identity\n",
+            ""
+        )
+        .is_err());
+        assert!(validate_codex_chatgpt_login_status(
+            "Logged in using ChatGPT\n",
+            "API key authentication is also configured"
+        )
+        .is_err());
+        assert!(validate_codex_chatgpt_login_status("Logged in using API key\n", "").is_err());
+    }
+
+    #[test]
+    fn release_requested_verified_claim_is_strict_and_availability_bounded(
+    ) -> Result<(), Box<dyn Error>> {
+        assert_eq!(parse_release_requested_verified_claim(None)?, None);
+        assert_eq!(
+            parse_release_requested_verified_claim(Some(OsStr::new("0")))?,
+            Some(false)
+        );
+        assert_eq!(
+            parse_release_requested_verified_claim(Some(OsStr::new("1")))?,
+            Some(true)
+        );
+        assert!(parse_release_requested_verified_claim(Some(OsStr::new("true"))).is_err());
+        assert!(parse_release_requested_verified_claim(Some(OsStr::new(""))).is_err());
+        assert!(resolve_release_requested_verified(None, false, true)?);
+        assert!(!resolve_release_requested_verified(
+            Some(false),
+            false,
+            true
+        )?);
+        assert!(resolve_release_requested_verified(None, false, false)?);
+        assert!(resolve_release_requested_verified(
+            Some(true),
+            false,
+            false
+        )?);
+        assert!(!resolve_release_requested_verified(
+            Some(false),
+            false,
+            false
+        )?);
+        assert!(!resolve_release_requested_verified(None, true, true)?);
+        assert!(resolve_release_requested_verified(Some(true), true, true).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn native_user_action_result_shape_rejects_false_pass_mutations() -> Result<(), Box<dyn Error>>
+    {
+        let result = native_user_action_result_shape_fixture("codex", &"a".repeat(64));
+        validate_live_user_action_result_shape(&result)?;
+        validate_release_cell_passed_summary(HostFeature::NativeUserAction, &result)?;
+        for path in [
+            &["user_action", "stored_choice_matches_operator"][..],
+            &["native_ui", "user_action_selector_confirmed"][..],
+            &["native_ui", "operator_choice_confirmed"][..],
+            &[
+                "native_ui",
+                "stop_system_message_authority_receipt_confirmed",
+            ][..],
+            &["stop_hook", "decision_observed_from_guard_event"][..],
+            &["authority_events", "ordered"][..],
+        ] {
+            let mut mutated = result.clone();
+            set_nested_value(&mut mutated, path, Value::Bool(false))?;
+            assert!(validate_live_user_action_result_shape(&mutated).is_err());
+            assert!(
+                validate_release_cell_passed_summary(HostFeature::NativeUserAction, &mutated)
+                    .is_err()
+            );
+        }
+        for (path, replacement) in [
+            (
+                &["stop_hook", "session_id"][..],
+                Value::String("SESSION-native-fixture".to_owned()),
+            ),
+            (
+                &["stop_hook", "guard_event_id"][..],
+                Value::String("GE-native-fixture".to_owned()),
+            ),
+        ] {
+            let mut mutated = result.clone();
+            set_nested_value(&mut mutated, path, replacement)?;
+            assert!(validate_live_user_action_result_shape(&mutated).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn producer_result_shape_rejects_false_pass_mutations() -> Result<(), Box<dyn Error>> {
+        for feature in [
+            HostFeature::VerifiedToolProducer,
+            HostFeature::RegisteredConnectionObservation,
+        ] {
+            let result = producer_result_shape_fixture(feature);
+            validate_live_producer_result_shape(&result, feature)?;
+            validate_release_cell_passed_summary(feature, &result)?;
+            assert!(serialize_live_host_result(&result)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
+
+            for path in [
+                &["assertions", "actual_host_event"][..],
+                &["assertions", "intent_precedes_source"][..],
+                &[
+                    "assertions",
+                    "exact_session_connection_actor_scope_baseline",
+                ][..],
+                &["assertions", "capture_receipt_bound"][..],
+                &["assertions", "strong_producer_chain"][..],
+                &["assertions", "criterion_coverage_projected"][..],
+                &["assertions", "negative_rejections_zero_effect"][..],
+                &["actual_host_event", "observed"][..],
+                &["capture_intent", "intent_precedes_source"][..],
+                &["capture_receipt", "bound"][..],
+                &["host_resume", "ordered"][..],
+                &["producer_chain", "strong"][..],
+                &["producer_chain", "criterion_coverage_projected"][..],
+                &["close", "ready"][..],
+            ] {
+                let mut mutated = result.clone();
+                set_nested_value(&mut mutated, path, Value::Bool(false))?;
+                assert!(validate_live_producer_result_shape(&mutated, feature).is_err());
+                assert!(validate_release_cell_passed_summary(feature, &mutated).is_err());
+            }
+
+            let mut nonzero_effect = result.clone();
+            nonzero_effect["negative_capture"]["receipt_delta"] = serde_json::json!(1);
+            assert!(validate_live_producer_result_shape(&nonzero_effect, feature).is_err());
+
+            let mut invalid_digest = result.clone();
+            invalid_digest["host"]["executable_sha256"] = Value::String("A".repeat(64));
+            assert!(validate_live_producer_result_shape(&invalid_digest, feature).is_err());
+
+            let mut blank_chain_id = result.clone();
+            blank_chain_id["producer_chain"]["producer_id"] = Value::String(String::new());
+            assert!(validate_live_producer_result_shape(&blank_chain_id, feature).is_err());
+
+            let mut invalid_invocation = result.clone();
+            invalid_invocation["actual_host_event"]["host_invocation_id"] =
+                if feature == HostFeature::VerifiedToolProducer {
+                    Value::Null
+                } else {
+                    Value::String("unexpected-tool-invocation".to_owned())
+                };
+            assert!(validate_live_producer_result_shape(&invalid_invocation, feature).is_err());
+            if feature == HostFeature::VerifiedToolProducer {
+                let mut raw_invocation = result.clone();
+                raw_invocation["actual_host_event"]["host_invocation_id"] =
+                    Value::String("tool-call-fixture".to_owned());
+                assert!(validate_live_producer_result_shape(&raw_invocation, feature).is_err());
+            }
+
+            let mut raw_session = result.clone();
+            raw_session["actual_host_event"]["opaque_session_id"] =
+                Value::String("SESSION-producer-fixture".to_owned());
+            assert!(validate_live_producer_result_shape(&raw_session, feature).is_err());
+
+            let mut raw_source_event = result.clone();
+            raw_source_event["actual_host_event"]["source_event_ids"][0] =
+                Value::String("GE-producer-fixture".to_owned());
+            assert!(validate_live_producer_result_shape(&raw_source_event, feature).is_err());
+
+            let mut stale_close = result.clone();
+            let intent_state_version =
+                stale_close["capture_intent"]["intent_state_version"].clone();
+            stale_close["close"]["state_version"] = intent_state_version;
+            assert!(validate_live_producer_result_shape(&stale_close, feature).is_err());
+
+            let mut forbidden_payload = result.clone();
+            forbidden_payload["host"]["version"] = Value::String("https://secret.invalid".into());
+            assert!(validate_live_producer_result_shape(&forbidden_payload, feature).is_err());
+
+            let mut missing_semantic = result.clone();
+            missing_semantic["assertions"]
+                .as_object_mut()
+                .expect("fixture assertions are an object")
+                .remove("capture_receipt_bound");
+            assert!(validate_release_cell_passed_summary(feature, &missing_semantic).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn evidence_observation_result_shape_rejects_false_pass_mutations() -> Result<(), Box<dyn Error>>
     {
         let result = evidence_observation_result_shape_fixture();
@@ -331,6 +1090,10 @@ mod unix {
         assert!(serialize_live_host_result(&result)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
 
         for (path, replacement) in [
+            (
+                &["host", "executable_sha256"][..],
+                Value::String("A".repeat(64)),
+            ),
             (
                 &["host_feature_support", "native_user_action"][..],
                 Value::String("verified".to_owned()),
@@ -464,6 +1227,14 @@ mod unix {
                 Value::String("block".to_owned()),
             ),
             (
+                &["stop_hook", "session_id"][..],
+                Value::String("SESSION-live".to_owned()),
+            ),
+            (
+                &["stop_hook", "guard_event_id"][..],
+                Value::String("GE-live".to_owned()),
+            ),
+            (
                 &["authority_receipt", "latest_run_id"][..],
                 Value::String("RUN-other".to_owned()),
             ),
@@ -513,6 +1284,7 @@ mod unix {
             ("interactive_terminal", "unavailable"),
             ("host_delivery_boundary", "unavailable"),
             ("fixture_setup", "failed"),
+            ("connection_observation", "failed"),
             ("host_process", "failed"),
             ("stored_resolution", "failed"),
             ("authority_receipt", "failed"),
@@ -533,6 +1305,27 @@ mod unix {
             live_evidence_observation_incomplete_summary("codex", "raw-error-text", None);
         assert!(
             validate_live_evidence_observation_incomplete_result_shape(&unknown_stage).is_err()
+        );
+        let mut observed_connection_failure =
+            LiveResultRecorder::new_for_kind("codex", LIVE_EVIDENCE_OBSERVATION_RESULT_KIND, None)?;
+        observed_connection_failure.bind_observed_host_identity(
+            ObservedReleaseHostIdentity::new(
+                "codex fixture 1.0".to_owned(),
+                "d".repeat(64),
+                "fixture-observed-build".to_owned(),
+            )?,
+        )?;
+        let observed_connection_failure = observed_connection_failure.with_observed_host_identity(
+            &live_evidence_observation_incomplete_summary("codex", "connection_observation", None),
+        )?;
+        validate_live_evidence_observation_incomplete_result_shape(&observed_connection_failure)?;
+        assert_eq!(
+            observed_connection_failure["host"]["executable_sha256"],
+            "d".repeat(64)
+        );
+        assert_eq!(
+            observed_connection_failure["volicord"]["build_id"],
+            "fixture-observed-build"
         );
         Ok(())
     }
@@ -1182,8 +1975,10 @@ mod unix {
         let multi_session = &mut bounded_multi_session_record["evidence"]["actual_host_event"]
             ["authority_receipt_event"]["managed_mcp_observation"];
         multi_session["agent_session_delta"] = Value::from(2);
-        multi_session["session_ids"] =
-            serde_json::json!(["SESSION-retry-fixture", "SESSION-receipt-fixture"]);
+        multi_session["session_ids"] = serde_json::json!([
+            format!("mhs_{}", "d".repeat(64)),
+            format!("mhs_{}", "a".repeat(64))
+        ]);
         validate_final_output_result_shape(
             &bounded_multi_session_record,
             IntegrationProfile::Record,
@@ -1208,8 +2003,10 @@ mod unix {
         let duplicate_managed = &mut duplicate_session_set["evidence"]["actual_host_event"]
             ["authority_receipt_event"]["managed_mcp_observation"];
         duplicate_managed["agent_session_delta"] = Value::from(2);
-        duplicate_managed["session_ids"] =
-            serde_json::json!(["SESSION-receipt-fixture", "SESSION-receipt-fixture"]);
+        duplicate_managed["session_ids"] = serde_json::json!([
+            format!("mhs_{}", "a".repeat(64)),
+            format!("mhs_{}", "a".repeat(64))
+        ]);
         assert!(validate_final_output_result_shape(
             &duplicate_session_set,
             IntegrationProfile::Record
@@ -1220,6 +2017,31 @@ mod unix {
             ["persistent_guard_event"] = Value::Bool(false);
         assert!(validate_final_output_result_shape(
             &missing_detective_persistence,
+            IntegrationProfile::Detective
+        )
+        .is_err());
+        let mut raw_record_session = record.clone();
+        raw_record_session["evidence"]["actual_host_event"]["status_fallback_event"]
+            ["managed_mcp_observation"]["session_ids"][0] =
+            Value::String("SESSION-status-fixture".to_owned());
+        assert!(validate_final_output_result_shape(
+            &raw_record_session,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut raw_detective_correlation = detective.clone();
+        raw_detective_correlation["evidence"]["actual_host_event"]["status_fallback_event"]
+            ["guard_event_id"] = Value::String("GE-status-fixture".to_owned());
+        assert!(validate_final_output_result_shape(
+            &raw_detective_correlation,
+            IntegrationProfile::Detective
+        )
+        .is_err());
+        let mut raw_detective_session = detective.clone();
+        raw_detective_session["evidence"]["actual_host_event"]["authority_receipt_event"]
+            ["session_id"] = Value::String("SESSION-receipt-fixture".to_owned());
+        assert!(validate_final_output_result_shape(
+            &raw_detective_session,
             IntegrationProfile::Detective
         )
         .is_err());
@@ -1325,22 +2147,12 @@ mod unix {
                 no_active_private_prose,
             )?;
             let before_no_active = guard_observation_counts(&fixture, &project_id)?;
-            let first_no_active = run_generated_final_output_handler(
-                &fixture.runtime_home_path,
-                &fixture.repo_root,
-                &fixture.env_path,
-                host,
-                &no_active_event,
-            )?;
+            let first_no_active =
+                fixture.run_generated_final_output_handler(host, &no_active_event)?;
             verify_no_active_status_wire(&first_no_active, no_active_private_prose)?;
             let after_first_no_active = guard_observation_counts(&fixture, &project_id)?;
-            let second_no_active = run_generated_final_output_handler(
-                &fixture.runtime_home_path,
-                &fixture.repo_root,
-                &fixture.env_path,
-                host,
-                &no_active_event,
-            )?;
+            let second_no_active =
+                fixture.run_generated_final_output_handler(host, &no_active_event)?;
             verify_no_active_status_wire(&second_no_active, no_active_private_prose)?;
             let after_second_no_active = guard_observation_counts(&fixture, &project_id)?;
             assert_eq!(first_no_active.stdout, second_no_active.stdout);
@@ -1388,13 +2200,7 @@ mod unix {
                 active_private_prose,
             )?;
             let before_active = guard_observation_counts(&fixture, &project_id)?;
-            let first_active = run_generated_final_output_handler(
-                &fixture.runtime_home_path,
-                &fixture.repo_root,
-                &fixture.env_path,
-                host,
-                &active_event,
-            )?;
+            let first_active = fixture.run_generated_final_output_handler(host, &active_event)?;
             let expected_continue = profile == IntegrationProfile::Record
                 || prepared.receipt.close_state == StatusCloseState::Ready;
             verify_authority_receipt_wire(
@@ -1416,9 +2222,11 @@ mod unix {
             );
             let after_first_active = guard_observation_counts(&fixture, &project_id)?;
             let first_historical = if profile == IntegrationProfile::Detective {
-                Some(stored_stop_snapshot_for_session(
+                Some(stored_stop_snapshot_for_native_session(
                     &fixture,
                     &project_id,
+                    host,
+                    connection_id,
                     &active_session_id,
                 )?)
             } else {
@@ -1437,13 +2245,7 @@ mod unix {
             assert!(replayed_authority.receipt.state_version > prepared.receipt.state_version);
             let replayed_canonical_receipt =
                 canonical_json_string(&replayed_authority.receipt.canonical_receipt)?;
-            let second_active = run_generated_final_output_handler(
-                &fixture.runtime_home_path,
-                &fixture.repo_root,
-                &fixture.env_path,
-                host,
-                &active_event,
-            )?;
+            let second_active = fixture.run_generated_final_output_handler(host, &active_event)?;
             let replayed_continue = profile == IntegrationProfile::Record
                 || replayed_authority.receipt.close_state == StatusCloseState::Ready;
             verify_authority_receipt_wire(
@@ -1480,9 +2282,11 @@ mod unix {
                         after_first_active.guard_events
                     );
                     assert_eq!(
-                        stored_stop_snapshot_for_session(
+                        stored_stop_snapshot_for_native_session(
                             &fixture,
                             &project_id,
+                            host,
+                            connection_id,
                             &active_session_id,
                         )?,
                         first_historical
@@ -1933,7 +2737,7 @@ mod unix {
     }
 
     #[test]
-    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1"]
+    #[ignore = "requires an installed Codex host and VOLICORD_RUN_CODEX_RECORD_FINAL_OUTPUT_SMOKE=1"]
     fn codex_record_live_final_output_is_opt_in() -> Result<(), Box<dyn Error>> {
         live_final_output_matrix_cell(
             "codex",
@@ -1945,7 +2749,7 @@ mod unix {
     }
 
     #[test]
-    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1"]
+    #[ignore = "requires an installed Codex host and VOLICORD_RUN_CODEX_DETECTIVE_FINAL_OUTPUT_SMOKE=1"]
     fn codex_detective_live_final_output_is_opt_in() -> Result<(), Box<dyn Error>> {
         live_final_output_matrix_cell(
             "codex",
@@ -2046,6 +2850,2060 @@ mod unix {
         )
     }
 
+    #[test]
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_VERIFIED_TOOL_PRODUCER_SMOKE=1"]
+    fn codex_live_verified_tool_producer_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_evidence_producer_matrix_cell(
+            "codex",
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            CODEX_VERIFIED_TOOL_PRODUCER_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE=1"]
+    fn claude_code_live_verified_tool_producer_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_evidence_producer_matrix_cell(
+            "claude-code",
+            "claude",
+            HostFeature::VerifiedToolProducer,
+            CLAUDE_VERIFIED_TOOL_PRODUCER_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Codex host and VOLICORD_RUN_CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1"]
+    fn codex_live_registered_connection_observation_is_opt_in() -> Result<(), Box<dyn Error>> {
+        live_evidence_producer_matrix_cell(
+            "codex",
+            "codex",
+            HostFeature::RegisteredConnectionObservation,
+            CODEX_REGISTERED_CONNECTION_OBSERVATION_SMOKE_ENV,
+            "host_trust_required",
+        )
+    }
+
+    #[test]
+    #[ignore = "requires an authenticated interactive Claude Code host and VOLICORD_RUN_CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE=1"]
+    fn claude_code_live_registered_connection_observation_is_opt_in() -> Result<(), Box<dyn Error>>
+    {
+        live_evidence_producer_matrix_cell(
+            "claude-code",
+            "claude",
+            HostFeature::RegisteredConnectionObservation,
+            CLAUDE_REGISTERED_CONNECTION_OBSERVATION_SMOKE_ENV,
+            "project_approval_required",
+        )
+    }
+
+    fn live_evidence_producer_matrix_cell(
+        host: &str,
+        executable_name: &str,
+        feature: HostFeature,
+        selector_env: &str,
+        expected_host_action: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if !smoke_enabled(selector_env) {
+            return Err(io::Error::other(format!(
+                "set {selector_env}=1 before running the ignored {host}/{} live producer cell",
+                feature.as_str()
+            ))
+            .into());
+        }
+        let (result_kind, baseline_ref) = match feature {
+            HostFeature::VerifiedToolProducer => (
+                LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+                LIVE_VERIFIED_TOOL_PRODUCER_BASELINE_REF,
+            ),
+            HostFeature::RegisteredConnectionObservation => (
+                LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND,
+                LIVE_REGISTERED_CONNECTION_OBSERVATION_BASELINE_REF,
+            ),
+            _ => {
+                return Err(io::Error::other(
+                    "live evidence producer cell requires a producer HostFeature",
+                )
+                .into())
+            }
+        };
+        let recorder_label = format!("{host}-{}", feature.as_str());
+        let mut result_recorder = LiveResultRecorder::from_env_for_kind_and_profile(
+            &recorder_label,
+            host,
+            result_kind,
+            Some(IntegrationProfile::Detective),
+        )?;
+        let release_candidate = result_recorder.release_candidate()?.clone();
+        let executable = find_executable(executable_name).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("`{executable_name}` was not found on PATH"),
+            )
+        })?;
+        result_recorder.mark_installed_host_detected();
+        let fixture =
+            LiveSmokeFixture::new_with_release_candidate(&recorder_label, &release_candidate)?;
+        let observed_identity = fixture.observe_and_bind_installed_host_identity(
+            &mut result_recorder,
+            executable_name,
+            &executable,
+        )?;
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+            return Err(io::Error::other(
+                "authenticated live producer validation requires interactive terminal stdin and stdout",
+            )
+            .into());
+        }
+        let ObservedReleaseHostIdentity {
+            host_version,
+            host_executable_sha256,
+            volicord_build_id,
+        } = observed_identity;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            host,
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        require_success("volicord init for live producer cell", &init)?;
+        let init_json = json_stdout(&init)?;
+        assert_live_init_reported_action_required(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+            expected_host_action,
+        );
+        let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+        )?;
+        let connection_id = bounded_identity(
+            "Agent Connection id",
+            init_json["connection"]["connection_id"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("producer init result has no connection id"))?,
+            MAX_CONNECTION_ID_CHARS,
+        )?;
+        let identity = LiveHostIdentity {
+            host: host.to_owned(),
+            host_version,
+            host_executable_sha256,
+            volicord_build_id,
+            connection_id,
+        };
+        observe_and_verify_live_connection_before_task(
+            &fixture,
+            host,
+            &executable,
+            &identity.connection_id,
+        )?;
+
+        let marker = format!(
+            "VOLICORD_LIVE_{}_{}",
+            feature.as_str().to_ascii_uppercase(),
+            host.replace('-', "_").to_ascii_uppercase()
+        );
+        let prepared = prepare_live_producer_authority_basis(
+            &fixture,
+            &identity.connection_id,
+            &marker,
+            baseline_ref,
+        )?;
+        let source_prompt = live_producer_source_prompt(&prepared, feature)?;
+        println!(
+            "\n=== Volicord live {host}/{} source turn ===\nThe authenticated host must prepare an exact short-lived capture intent before producing the registered source event in the same opaque managed session. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{source_prompt}\n=== end instruction ===\n",
+            feature.as_str()
+        );
+        let source_status =
+            fixture.run_authenticated_interactive_host(host, &executable, &source_prompt)?;
+        if !source_status.success() {
+            return Err(io::Error::other(format!(
+                "the live {host}/{} source turn exited unsuccessfully with {}",
+                feature.as_str(),
+                status_text(source_status)
+            ))
+            .into());
+        }
+
+        let captured_source = inspect_actual_live_producer_source(
+            &fixture,
+            &prepared,
+            &identity.connection_id,
+            feature,
+        )?;
+        let before_negative = live_capture_durable_snapshot(&fixture, &prepared.project_id)?;
+        let negative = run_mismatched_live_capture(&fixture, &captured_source, feature, &prepared)?;
+        let after_negative = live_capture_durable_snapshot(&fixture, &prepared.project_id)?;
+        if before_negative != after_negative {
+            return Err(io::Error::other(
+                "mismatched live capture changed durable receipt, staging, producer, artifact, authority-event, or state-version counts",
+            )
+            .into());
+        }
+
+        let capture_output =
+            run_exact_live_capture(&fixture, &captured_source, feature, &prepared)?;
+        let receipt = inspect_live_capture_receipt(
+            &fixture,
+            &prepared,
+            &captured_source,
+            feature,
+            &capture_output,
+        )?;
+        let resume_cursor = diagnostic_event_cursor(&fixture)?;
+        let resume_prompt = live_producer_resume_prompt(&prepared, &captured_source, feature)?;
+        println!(
+            "\n=== Volicord live {host}/{} producer finalization turn ===\nThe authenticated host must use the same registered Agent Connection to finalize the captured receipt into one Run, one Strong Evidence observation, criterion coverage, status, and check-close.\n\n{resume_prompt}\n=== end instruction ===\n",
+            feature.as_str()
+        );
+        let resume_status =
+            fixture.run_authenticated_interactive_host(host, &executable, &resume_prompt)?;
+        if !resume_status.success() {
+            return Err(io::Error::other(format!(
+                "the live {host}/{} producer finalization turn exited unsuccessfully with {}",
+                feature.as_str(),
+                status_text(resume_status)
+            ))
+            .into());
+        }
+        assert_live_connection_verified(&fixture, &identity.connection_id)?;
+        let host_resume = assert_live_producer_resume_diagnostic(
+            &fixture,
+            &identity.connection_id,
+            &prepared.project_id,
+            resume_cursor,
+        )?;
+        let chain = inspect_live_producer_chain(
+            &fixture,
+            &prepared,
+            &captured_source,
+            &receipt,
+            &identity.connection_id,
+            feature,
+            &marker,
+        )?;
+        let status_output = fixture.run_volicord([
+            "status",
+            "--repo",
+            fixture.repo_arg(),
+            "--task",
+            &prepared.task_id,
+            "--json",
+        ])?;
+        require_success(
+            "volicord status after live producer finalization",
+            &status_output,
+        )?;
+        let observation = LiveUserActionObservation {
+            project_id: prepared.project_id.clone(),
+            task_id: prepared.task_id.clone(),
+            lifecycle_phase: chain.lifecycle_phase.clone(),
+            state_version: chain.state_version,
+            user_action_request_id: None,
+            user_action_status: None,
+            requested_by_actor_source: None,
+            user_action_resolution_id: None,
+            resolved_by_actor_source: None,
+            resolved_verification_basis: None,
+            resolved_channel_kind: None,
+            selected_option_id: None,
+            option_ids: Vec::new(),
+        };
+        let authority_receipt =
+            verify_fresh_authority_receipt(json_stdout(&status_output)?, &observation, &marker)?;
+        if authority_receipt.latest_run_id != chain.run_id {
+            return Err(io::Error::other(
+                "fresh producer AuthorityReceipt does not name the producer-linked Run",
+            )
+            .into());
+        }
+
+        let assertions = LiveProducerAssertionFamilies {
+            actual_host_event: true,
+            intent_precedes_source: captured_source.intent_precedes_source,
+            exact_session_connection_actor_scope_baseline: captured_source
+                .exact_session_connection_actor_scope_baseline,
+            capture_receipt_bound: receipt.capture_receipt_bound,
+            strong_producer_chain: chain.strong_producer_chain,
+            criterion_coverage_projected: chain.criterion_coverage_projected,
+            negative_rejections_zero_effect: negative.rejected && before_negative == after_negative,
+        };
+        if !assertions.all_passed() {
+            return Err(io::Error::other(
+                "live producer cell did not close all seven assertion families",
+            )
+            .into());
+        }
+        let summary = live_producer_completed_summary(LiveProducerSummaryInput {
+            identity: &identity,
+            feature,
+            prepared: &prepared,
+            source: &captured_source,
+            negative: &negative,
+            receipt: &receipt,
+            host_resume: &host_resume,
+            chain: &chain,
+            authority_receipt: &authority_receipt,
+            assertions: &assertions,
+            host_feature_diagnostics: &host_feature_diagnostics,
+        });
+        validate_live_producer_result_shape(&summary, feature)?;
+        result_recorder.record_final(&summary)?;
+        Ok(())
+    }
+
+    struct PreparedLiveProducerBasis {
+        project_id: String,
+        task_id: String,
+        change_unit_id: String,
+        target: EvidenceTarget,
+        baseline_ref: String,
+        run_marker: String,
+    }
+
+    fn prepare_live_producer_authority_basis(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        marker: &str,
+        baseline_ref: &str,
+    ) -> Result<PreparedLiveProducerBasis, Box<dyn Error>> {
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let intake = adapter.call_tool(
+            "volicord.intake",
+            serde_json::json!({
+                "detail": "full",
+                "plain_language_request": marker,
+                "requested_mode": "advisor",
+                "resume_policy": "create_new",
+                "acceptance_policy": null,
+                "lineage": null,
+                "initial_scope": {
+                    "boundary": "Validate one registered live-host evidence producer without Product Repository writes.",
+                    "non_goals": [],
+                    "acceptance_criteria": [{
+                        "statement": "The registered live-host producer supplies current Strong Evidence.",
+                        "evidence_requirement": "required"
+                    }]
+                }
+            }),
+        )?;
+        if intake.response_value["base"]["response_kind"] != "result" {
+            return Err(io::Error::other("live producer setup intake was not committed").into());
+        }
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live producer setup returned no Task id"))?
+            .to_owned();
+        let scope = adapter.call_tool(
+            "volicord.update_scope",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "goal_summary": null,
+                "scope_update": null,
+                "scope_boundary": null,
+                "non_goals": null,
+                "acceptance_criteria": null,
+                "autonomy_boundary": null,
+                "baseline_ref": baseline_ref,
+                "change_unit": {
+                    "operation": "create_current",
+                    "scope_summary": "No-write registered live-host evidence producer validation.",
+                    "affected_paths": []
+                },
+                "related_scope_decision_refs": []
+            }),
+        )?;
+        if scope.response_value["base"]["response_kind"] != "result" {
+            return Err(
+                io::Error::other("live producer setup scope update was not committed").into(),
+            );
+        }
+        let change_unit_id = scope.response_value["state"]["active_change_unit_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live producer setup returned no Change Unit id"))?
+            .to_owned();
+        let criterion_id = scope.response_value["state"]["acceptance_criteria"]
+            .as_array()
+            .filter(|criteria| criteria.len() == 1)
+            .and_then(|criteria| criteria[0]["acceptance_criterion_id"].as_str())
+            .ok_or_else(|| {
+                io::Error::other("live producer setup did not preserve exactly one criterion")
+            })?
+            .to_owned();
+        Ok(PreparedLiveProducerBasis {
+            project_id: live_fixture_project_id(fixture)?,
+            task_id,
+            change_unit_id,
+            target: serde_json::from_value(serde_json::json!({
+                "target_kind": "acceptance_criterion",
+                "acceptance_criterion_id": criterion_id
+            }))?,
+            baseline_ref: baseline_ref.to_owned(),
+            run_marker: marker.to_owned(),
+        })
+    }
+
+    fn live_producer_source_prompt(
+        prepared: &PreparedLiveProducerBasis,
+        feature: HostFeature,
+    ) -> Result<String, Box<dyn Error>> {
+        let target = canonical_json_string(&prepared.target)?;
+        let capture = match feature {
+            HostFeature::VerifiedToolProducer => {
+                let input_sha256 = canonical_json_bare_sha256(&serde_json::json!({
+                    "command": LIVE_VERIFIED_TOOL_COMMAND
+                }))?;
+                serde_json::json!({
+                    "capture_kind": "verified_tool_invocation",
+                    "tool_name": LIVE_VERIFIED_TOOL_NAME,
+                    "tool_input_sha256": input_sha256,
+                    "expected_success": true
+                })
+            }
+            HostFeature::RegisteredConnectionObservation => serde_json::json!({
+                "capture_kind": "registered_connection_observation",
+                "source_selector": {
+                    "source_kind": "guard_event",
+                    "event_kind": "stop"
+                },
+                "expected_complete": true
+            }),
+            _ => {
+                return Err(io::Error::other(
+                    "live producer source prompt requires a producer feature",
+                )
+                .into())
+            }
+        };
+        let capture = canonical_json_string(&capture)?;
+        let source_step = match feature {
+            HostFeature::VerifiedToolProducer => format!(
+                "2. After the committed intent result is returned, invoke the host Bash tool exactly once with the exact input object `{{\"command\":\"{LIVE_VERIFIED_TOOL_COMMAND}\"}}`; do not add description, timeout, or any other input field. This benign command must complete successfully and must not write a Product Repository file."
+            ),
+            HostFeature::RegisteredConnectionObservation => "2. After the committed intent result is returned, call no further tool. Reply with exactly VOLICORD_LIVE_REGISTERED_CONNECTION_SOURCE and stop so the installed host emits its actual Stop event in this same session.".to_owned(),
+            _ => unreachable!("producer feature was validated above"),
+        };
+        Ok(format!(
+            concat!(
+                "Use only the MCP server named `volicord` for the Volicord call. {routing} ",
+                "Do not edit files, inspect authentication material, print a prompt or transcript, or use a fixture event.\n\n",
+                "1. Call `volicord.prepare_evidence_capture` exactly once with `detail=full`, `task_id={task_id}`, `change_unit_id={change_unit_id}`, `baseline_ref={baseline_ref}`, target `{target}`, and capture `{capture}`. Require a committed result and retain only its capture-intent ref.\n",
+                "{source_step}\n",
+                "3. Report only whether the intent and actual source completed, then stop. Do not print tool input, tool output, a prompt, transcript, URL, token, or credential."
+            ),
+            routing = live_project_routing_instruction(&prepared.project_id),
+            task_id = prepared.task_id,
+            change_unit_id = prepared.change_unit_id,
+            baseline_ref = prepared.baseline_ref,
+            target = target,
+            capture = capture,
+            source_step = source_step,
+        ))
+    }
+
+    struct ActualLiveProducerSource {
+        capture_intent_id: String,
+        capture_input_sha256: String,
+        intent_state_version: u64,
+        session_id: String,
+        guard_installation_id: String,
+        source_event_ids: Vec<String>,
+        mismatched_event_id: String,
+        host_invocation_id: Option<String>,
+        intent_precedes_source: bool,
+        exact_session_connection_actor_scope_baseline: bool,
+    }
+
+    fn inspect_actual_live_producer_source(
+        fixture: &LiveSmokeFixture,
+        prepared: &PreparedLiveProducerBasis,
+        connection_id: &str,
+        feature: HostFeature,
+    ) -> Result<ActualLiveProducerSource, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == prepared.project_id)
+            .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let capture_kind = match feature {
+            HostFeature::VerifiedToolProducer => "verified_tool_invocation",
+            HostFeature::RegisteredConnectionObservation => "registered_connection_observation",
+            _ => return Err(io::Error::other("unsupported live producer feature").into()),
+        };
+        let rows = conn
+            .prepare(
+                "SELECT evidence_capture_intent_id, scope_revision, baseline_ref,
+                        target_json, capture_spec_json, input_sha256,
+                        requested_by_actor_source, requesting_connection_internal_id,
+                        session_context_json, workspace_context_json, created_at
+                   FROM evidence_capture_intents
+                  WHERE project_id = ?1 AND task_id = ?2 AND capture_kind = ?3",
+            )?
+            .query_map(
+                rusqlite::params![prepared.project_id, prepared.task_id, capture_kind],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, u64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let [row] = rows.as_slice() else {
+            return Err(io::Error::other(format!(
+                "actual host must prepare exactly one {capture_kind} intent; found {}",
+                rows.len()
+            ))
+            .into());
+        };
+        let (
+            capture_intent_id,
+            scope_revision,
+            baseline_ref,
+            target_json,
+            capture_spec_json,
+            input_sha256,
+            requested_by_actor_source,
+            requesting_connection_internal_id,
+            session_context_json,
+            workspace_context_json,
+            intent_created_at,
+        ) = row;
+        let session_context: Value = serde_json::from_str(session_context_json)?;
+        let session_id = session_context["session_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("actual producer intent has no exact session id"))?
+            .to_owned();
+        let managed_digest = session_id.strip_prefix("mhs_").ok_or_else(|| {
+            io::Error::other("actual producer intent is not opaque-session bound")
+        })?;
+        validate_lower_hex("managed host session digest", managed_digest, &[64])?;
+        let target: EvidenceTarget = serde_json::from_str(target_json)?;
+        let capture_spec: Value = serde_json::from_str(capture_spec_json)?;
+        let workspace: Value = serde_json::from_str(workspace_context_json)?;
+        let expected_input_sha256 = match feature {
+            HostFeature::VerifiedToolProducer => canonical_json_bare_sha256(&serde_json::json!({
+                "command": LIVE_VERIFIED_TOOL_COMMAND
+            }))?,
+            HostFeature::RegisteredConnectionObservation => canonical_json_bare_sha256(
+                &serde_json::json!({"source_kind": "guard_event", "event_kind": "stop"}),
+            )?,
+            _ => unreachable!("producer feature was validated above"),
+        };
+        let expected_capture = match feature {
+            HostFeature::VerifiedToolProducer => {
+                capture_spec["tool_name"] == LIVE_VERIFIED_TOOL_NAME
+                    && capture_spec["tool_input_sha256"] == expected_input_sha256
+                    && capture_spec["expected_success"] == true
+            }
+            HostFeature::RegisteredConnectionObservation => {
+                capture_spec["source_selector"]
+                    == serde_json::json!({"source_kind": "guard_event", "event_kind": "stop"})
+                    && capture_spec["expected_complete"] == true
+            }
+            _ => unreachable!("producer feature was validated above"),
+        };
+        let event_rows = conn
+            .prepare(
+                "SELECT state_version, actor_source, payload_json
+                   FROM authority_events
+                  WHERE project_id = ?1 AND task_id = ?2
+                    AND event_type = 'evidence_capture_prepared'",
+            )?
+            .query_map(
+                rusqlite::params![prepared.project_id, prepared.task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, u64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let matching_events = event_rows
+            .into_iter()
+            .filter_map(|(state_version, actor, payload_json)| {
+                let payload = serde_json::from_str::<Value>(&payload_json).ok()?;
+                (payload["capture_intent_ref"]["record_id"] == *capture_intent_id)
+                    .then_some((state_version, actor))
+            })
+            .collect::<Vec<_>>();
+        let [(intent_state_version, authority_actor)] = matching_events.as_slice() else {
+            return Err(io::Error::other(
+                "actual producer intent has no unique matching authority event",
+            )
+            .into());
+        };
+        let expected_actor = format!("agent_connection:{connection_id}");
+        let watch_baseline = latest_watch_baseline_for_session(
+            &fixture.runtime_home_path,
+            &prepared.project_id,
+            &session_id,
+        )?
+        .ok_or_else(|| io::Error::other("actual producer session has no managed watch baseline"))?;
+        let watch_metadata: Value = serde_json::from_str(&watch_baseline.metadata_json)?;
+
+        let guard_rows = conn
+            .prepare(
+                "SELECT guard_event_id, event_kind, decision, subject_json,
+                        occurred_at, guard_installation_id
+                   FROM guard_events
+                  WHERE project_id = ?1 AND connection_internal_id = ?2
+                    AND session_id = ?3
+                  ORDER BY rowid",
+            )?
+            .query_map(
+                rusqlite::params![prepared.project_id, connection_id, session_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mismatched_event_id = match feature {
+            HostFeature::VerifiedToolProducer => guard_rows
+                .iter()
+                .find(|(_, event_kind, _, _, _, _)| event_kind != "pre_tool")
+                .map(|row| row.0.clone())
+                .ok_or_else(|| io::Error::other("actual tool session has no mismatched event"))?,
+            HostFeature::RegisteredConnectionObservation => conn
+                .query_row(
+                    "SELECT guard_event_id
+                       FROM guard_events
+                      WHERE project_id = ?1
+                        AND connection_internal_id = ?2
+                        AND event_kind = 'stop'
+                        AND (session_id <> ?3 OR occurred_at < ?4)
+                      ORDER BY rowid DESC
+                      LIMIT 1",
+                    rusqlite::params![
+                        prepared.project_id,
+                        connection_id,
+                        session_id,
+                        intent_created_at
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| {
+                    io::Error::other(
+                        "registered-connection negative capture has no prior actual-host Stop event with a stale or different session binding",
+                    )
+                })?,
+            _ => unreachable!("producer feature was validated above"),
+        };
+        let (source_event_ids, source_times, source_installation, host_invocation_id) =
+            match feature {
+                HostFeature::VerifiedToolProducer => {
+                    let mut matching = Vec::new();
+                    for (event_id, event_kind, decision, subject_json, occurred_at, installation) in
+                        &guard_rows
+                    {
+                        if !matches!(event_kind.as_str(), "pre_tool" | "post_tool") {
+                            continue;
+                        }
+                        let subject: Value = serde_json::from_str(subject_json)?;
+                        if subject["tool_input_sha256"] != expected_input_sha256
+                            || subject["raw_event"]["tool_name"] != LIVE_VERIFIED_TOOL_NAME
+                        {
+                            continue;
+                        }
+                        let invocation = host_event_invocation_id(&subject["raw_event"])?;
+                        matching.push((
+                            event_id.clone(),
+                            event_kind.clone(),
+                            decision.clone(),
+                            occurred_at.clone(),
+                            installation.clone(),
+                            invocation,
+                        ));
+                    }
+                    if matching.len() != 2
+                        || matching[0].1 != "pre_tool"
+                        || matching[1].1 != "post_tool"
+                        || matching[0].2 == "deny"
+                        || matching[0].5 != matching[1].5
+                    {
+                        return Err(io::Error::other(
+                            "actual host did not emit one allowed exact pre/post Bash event pair",
+                        )
+                        .into());
+                    }
+                    (
+                        matching.iter().map(|event| event.0.clone()).collect(),
+                        matching.iter().map(|event| event.3.clone()).collect(),
+                        matching[0].4.clone(),
+                        Some(matching[0].5.clone()),
+                    )
+                }
+                HostFeature::RegisteredConnectionObservation => {
+                    let matching = guard_rows
+                        .iter()
+                        .filter(|(_, event_kind, _, _, occurred_at, _)| {
+                            event_kind == "stop" && occurred_at >= intent_created_at
+                        })
+                        .collect::<Vec<_>>();
+                    let [event] = matching.as_slice() else {
+                        return Err(io::Error::other(format!(
+                            "actual host must emit exactly one post-intent Stop event; found {}",
+                            matching.len()
+                        ))
+                        .into());
+                    };
+                    (
+                        vec![event.0.clone()],
+                        vec![event.4.clone()],
+                        event.5.clone(),
+                        None,
+                    )
+                }
+                _ => unreachable!("producer feature was validated above"),
+            };
+        let guard_installation_id = source_installation.ok_or_else(|| {
+            io::Error::other("actual producer source has no registered guard installation")
+        })?;
+        let intent_precedes_source = source_times
+            .iter()
+            .all(|occurred_at| occurred_at >= intent_created_at);
+        let exact_basis = *scope_revision > 0
+            && baseline_ref == &prepared.baseline_ref
+            && target == prepared.target
+            && input_sha256 == &expected_input_sha256
+            && expected_capture
+            && requested_by_actor_source == &expected_actor
+            && authority_actor == &expected_actor
+            && requesting_connection_internal_id == connection_id
+            && workspace
+                .as_object()
+                .is_some_and(|object| !object.is_empty())
+            && watch_baseline.session_id == session_id
+            && watch_baseline.connection_internal_id == connection_id
+            && watch_baseline.status == "active"
+            && watch_metadata["launch_origin"] == "managed_host";
+        if !intent_precedes_source || !exact_basis {
+            return Err(io::Error::other(
+                "actual producer intent/source does not preserve exact time, session, connection, actor, scope, baseline, target, and workspace binding",
+            )
+            .into());
+        }
+        Ok(ActualLiveProducerSource {
+            capture_intent_id: capture_intent_id.clone(),
+            capture_input_sha256: input_sha256.clone(),
+            intent_state_version: *intent_state_version,
+            session_id,
+            guard_installation_id,
+            source_event_ids,
+            mismatched_event_id,
+            host_invocation_id,
+            intent_precedes_source,
+            exact_session_connection_actor_scope_baseline: exact_basis,
+        })
+    }
+
+    fn host_event_invocation_id(event: &Value) -> Result<String, Box<dyn Error>> {
+        for pointer in [
+            "/tool_use_id",
+            "/tool_invocation_id",
+            "/tool_call_id",
+            "/invocation_id",
+            "/call_id",
+            "/tool/id",
+            "/tool_use/id",
+        ] {
+            if let Some(value) = event.pointer(pointer).and_then(Value::as_str) {
+                if !value.trim().is_empty() {
+                    return Ok(value.trim().to_owned());
+                }
+            }
+        }
+        Err(io::Error::other("actual host tool event has no invocation id").into())
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct LiveCaptureDurableSnapshot {
+        state_version: u64,
+        authority_events: u64,
+        capture_receipts: u64,
+        staged_artifacts: u64,
+        artifacts: u64,
+        evidence_observations: u64,
+        evidence_producers: u64,
+    }
+
+    fn live_capture_durable_snapshot(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+    ) -> Result<LiveCaptureDurableSnapshot, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        conn.query_row(
+            "SELECT ps.state_version,
+                    (SELECT COUNT(*) FROM authority_events WHERE project_id = ps.project_id),
+                    (SELECT COUNT(*) FROM evidence_capture_receipts WHERE project_id = ps.project_id),
+                    (SELECT COUNT(*) FROM artifact_staging WHERE project_id = ps.project_id),
+                    (SELECT COUNT(*) FROM artifacts WHERE project_id = ps.project_id),
+                    (SELECT COUNT(*) FROM evidence_observations WHERE project_id = ps.project_id),
+                    (SELECT COUNT(*) FROM evidence_producers WHERE project_id = ps.project_id)
+               FROM project_state ps
+              WHERE ps.project_id = ?1",
+            [project_id],
+            |row| {
+                Ok(LiveCaptureDurableSnapshot {
+                    state_version: row.get(0)?,
+                    authority_events: row.get(1)?,
+                    capture_receipts: row.get(2)?,
+                    staged_artifacts: row.get(3)?,
+                    artifacts: row.get(4)?,
+                    evidence_observations: row.get(5)?,
+                    evidence_producers: row.get(6)?,
+                })
+            },
+        )
+        .map_err(Into::into)
+    }
+
+    struct NegativeLiveCapture {
+        rejected: bool,
+        exit_code: i32,
+    }
+
+    fn run_mismatched_live_capture(
+        fixture: &LiveSmokeFixture,
+        source: &ActualLiveProducerSource,
+        feature: HostFeature,
+        prepared: &PreparedLiveProducerBasis,
+    ) -> Result<NegativeLiveCapture, Box<dyn Error>> {
+        let output = match feature {
+            HostFeature::VerifiedToolProducer => {
+                let [pre_event, post_event] = source.source_event_ids.as_slice() else {
+                    return Err(io::Error::other(
+                        "verified-tool negative capture requires the exact source pair",
+                    )
+                    .into());
+                };
+                fixture.run_volicord([
+                    "evidence",
+                    "capture-tool",
+                    "--intent",
+                    &source.capture_intent_id,
+                    "--pre-event",
+                    post_event,
+                    "--post-event",
+                    pre_event,
+                    "--repo",
+                    fixture.repo_arg(),
+                    "--json",
+                ])?
+            }
+            HostFeature::RegisteredConnectionObservation => fixture.run_volicord([
+                "evidence",
+                "capture-connection",
+                "--intent",
+                &source.capture_intent_id,
+                "--guard-event",
+                &source.mismatched_event_id,
+                "--repo",
+                fixture.repo_arg(),
+                "--json",
+            ])?,
+            _ => return Err(io::Error::other("unsupported negative producer capture").into()),
+        };
+        if output.timed_out || output.output.status.success() {
+            return Err(io::Error::other(format!(
+                "mismatched {}/{} capture did not fail closed",
+                prepared.project_id,
+                feature.as_str()
+            ))
+            .into());
+        }
+        Ok(NegativeLiveCapture {
+            rejected: true,
+            exit_code: output.output.status.code().unwrap_or(-1),
+        })
+    }
+
+    struct LiveCaptureCommandOutput {
+        capture_intent_id: String,
+        capture_receipt_id: String,
+        staged_receipt_handle_id: String,
+        complete: bool,
+    }
+
+    fn run_exact_live_capture(
+        fixture: &LiveSmokeFixture,
+        source: &ActualLiveProducerSource,
+        feature: HostFeature,
+        _prepared: &PreparedLiveProducerBasis,
+    ) -> Result<LiveCaptureCommandOutput, Box<dyn Error>> {
+        let output = match feature {
+            HostFeature::VerifiedToolProducer => {
+                let [pre_event, post_event] = source.source_event_ids.as_slice() else {
+                    return Err(io::Error::other(
+                        "verified-tool capture requires the exact source pair",
+                    )
+                    .into());
+                };
+                fixture.run_volicord([
+                    "evidence",
+                    "capture-tool",
+                    "--intent",
+                    &source.capture_intent_id,
+                    "--pre-event",
+                    pre_event,
+                    "--post-event",
+                    post_event,
+                    "--repo",
+                    fixture.repo_arg(),
+                    "--json",
+                ])?
+            }
+            HostFeature::RegisteredConnectionObservation => {
+                let [guard_event] = source.source_event_ids.as_slice() else {
+                    return Err(io::Error::other(
+                        "registered-connection capture requires one exact source event",
+                    )
+                    .into());
+                };
+                fixture.run_volicord([
+                    "evidence",
+                    "capture-connection",
+                    "--intent",
+                    &source.capture_intent_id,
+                    "--guard-event",
+                    guard_event,
+                    "--repo",
+                    fixture.repo_arg(),
+                    "--json",
+                ])?
+            }
+            _ => return Err(io::Error::other("unsupported exact producer capture").into()),
+        };
+        require_success("exact release-candidate evidence capture", &output)?;
+        let value = json_stdout(&output)?;
+        let capture_intent_id = required_result_string(&value, "/capture_intent_id")?.to_owned();
+        let capture_receipt_id = required_result_string(&value, "/capture_receipt_id")?.to_owned();
+        let staged_receipt_handle_id =
+            required_result_string(&value, "/staged_receipt_handle_id")?.to_owned();
+        let complete = value["complete"] == true;
+        if capture_intent_id != source.capture_intent_id || !complete {
+            return Err(io::Error::other(
+                "exact evidence capture output does not name the complete selected intent",
+            )
+            .into());
+        }
+        Ok(LiveCaptureCommandOutput {
+            capture_intent_id,
+            capture_receipt_id,
+            staged_receipt_handle_id,
+            complete,
+        })
+    }
+
+    struct InspectedLiveCaptureReceipt {
+        capture_receipt_id: String,
+        staged_receipt_handle_id: String,
+        safe_receipt_sha256: String,
+        result_sha256: String,
+        source_claim_count: u64,
+        capture_receipt_bound: bool,
+    }
+
+    fn inspect_live_capture_receipt(
+        fixture: &LiveSmokeFixture,
+        prepared: &PreparedLiveProducerBasis,
+        source: &ActualLiveProducerSource,
+        feature: HostFeature,
+        output: &LiveCaptureCommandOutput,
+    ) -> Result<InspectedLiveCaptureReceipt, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == prepared.project_id)
+            .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let row = conn
+            .query_row(
+                "SELECT evidence_capture_receipt_id, evidence_capture_intent_id,
+                        staging_handle_id, capture_kind, input_sha256, result_sha256,
+                        safe_receipt_json, safe_receipt_sha256, safe_receipt_size_bytes,
+                        completeness
+                   FROM evidence_capture_receipts
+                  WHERE project_id = ?1 AND evidence_capture_intent_id = ?2",
+                rusqlite::params![prepared.project_id, source.capture_intent_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, u64>(8)?,
+                        row.get::<_, String>(9)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| io::Error::other("exact capture created no durable receipt"))?;
+        let (
+            receipt_id,
+            intent_id,
+            staging_handle_id,
+            capture_kind,
+            input_sha256,
+            result_sha256,
+            safe_receipt_json,
+            safe_receipt_sha256,
+            safe_receipt_size_bytes,
+            completeness,
+        ) = row;
+        validate_lower_hex("safe receipt sha256", &safe_receipt_sha256, &[64])?;
+        validate_lower_hex("capture result sha256", &result_sha256, &[64])?;
+        let body: PersistedEvidenceCaptureReceiptBody = serde_json::from_str(&safe_receipt_json)?;
+        let guard_event_ids = body
+            .source
+            .guard_event_ids
+            .iter()
+            .map(|value| value.as_str())
+            .collect::<Vec<_>>();
+        let expected_kind = match feature {
+            HostFeature::VerifiedToolProducer => "verified_tool_invocation",
+            HostFeature::RegisteredConnectionObservation => "registered_connection_observation",
+            _ => return Err(io::Error::other("unsupported producer receipt kind").into()),
+        };
+        let source_claim_count: u64 = conn.query_row(
+            "SELECT COUNT(*)
+               FROM evidence_capture_source_claims
+              WHERE project_id = ?1 AND evidence_capture_receipt_id = ?2",
+            rusqlite::params![prepared.project_id, receipt_id],
+            |row| row.get(0),
+        )?;
+        let expected_claim_count = if feature == HostFeature::VerifiedToolProducer {
+            3
+        } else {
+            1
+        };
+        let host_invocation_matches = match feature {
+            HostFeature::VerifiedToolProducer => {
+                body.source.host_invocation_id.as_ref().map(String::as_str)
+                    == source.host_invocation_id.as_deref()
+            }
+            HostFeature::RegisteredConnectionObservation => {
+                body.source.host_invocation_id.as_ref().is_none()
+            }
+            _ => false,
+        };
+        let bound = output.capture_intent_id == source.capture_intent_id
+            && output.capture_receipt_id == receipt_id
+            && output.staged_receipt_handle_id == staging_handle_id
+            && output.complete
+            && intent_id == source.capture_intent_id
+            && capture_kind == expected_kind
+            && input_sha256 == source.capture_input_sha256
+            && completeness == "complete"
+            && safe_receipt_size_bytes == u64::try_from(safe_receipt_json.len())?
+            && format!("{:x}", Sha256::digest(safe_receipt_json.as_bytes())) == safe_receipt_sha256
+            && body.capture_intent_id.as_str() == source.capture_intent_id
+            && evidence_producer_kind_text(body.capture_kind) == expected_kind
+            && body.input_sha256 == source.capture_input_sha256
+            && body.result_sha256 == result_sha256
+            && body.complete
+            && body.source.connection_id.as_str() == prepared_connection_id(fixture, prepared)?
+            && body.source.session_id.as_ref().map(|value| value.as_str())
+                == Some(source.session_id.as_str())
+            && body
+                .source
+                .guard_installation_id
+                .as_ref()
+                .map(|value| value.as_str())
+                == Some(source.guard_installation_id.as_str())
+            && guard_event_ids.as_slice()
+                == source
+                    .source_event_ids
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .as_slice()
+            && body.source.watch_observation_refs.is_empty()
+            && host_invocation_matches
+            && source_claim_count == expected_claim_count;
+        if !bound {
+            return Err(io::Error::other(
+                "durable capture receipt is not exactly bound to the live intent and source",
+            )
+            .into());
+        }
+        Ok(InspectedLiveCaptureReceipt {
+            capture_receipt_id: receipt_id,
+            staged_receipt_handle_id: staging_handle_id,
+            safe_receipt_sha256,
+            result_sha256,
+            source_claim_count,
+            capture_receipt_bound: bound,
+        })
+    }
+
+    fn prepared_connection_id(
+        fixture: &LiveSmokeFixture,
+        prepared: &PreparedLiveProducerBasis,
+    ) -> Result<String, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == prepared.project_id)
+            .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        conn.query_row(
+            "SELECT requesting_connection_internal_id
+               FROM evidence_capture_intents
+              WHERE project_id = ?1 AND task_id = ?2",
+            rusqlite::params![prepared.project_id, prepared.task_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
+    }
+
+    fn evidence_producer_kind_text(kind: EvidenceProducerKind) -> &'static str {
+        match kind {
+            EvidenceProducerKind::VerifiedToolInvocation => "verified_tool_invocation",
+            EvidenceProducerKind::RegisteredConnectionObservation => {
+                "registered_connection_observation"
+            }
+            EvidenceProducerKind::VerifiedCommandExecution => "verified_command_execution",
+            EvidenceProducerKind::UnverifiedCaller => "unverified_caller",
+            EvidenceProducerKind::UserChannelObservation => "user_channel_observation",
+            EvidenceProducerKind::ReusedEvidence => "reused_evidence",
+        }
+    }
+
+    fn live_producer_resume_prompt(
+        prepared: &PreparedLiveProducerBasis,
+        source: &ActualLiveProducerSource,
+        feature: HostFeature,
+    ) -> Result<String, Box<dyn Error>> {
+        let target = canonical_json_string(&prepared.target)?;
+        let intent_ref = canonical_json_string(&serde_json::json!({
+            "record_kind": "evidence_capture_intent",
+            "record_id": source.capture_intent_id,
+            "project_id": prepared.project_id,
+            "task_id": prepared.task_id,
+            "produced_at_state_version": source.intent_state_version
+        }))?;
+        let (source_kind, assurance_level) = match feature {
+            HostFeature::VerifiedToolProducer => ("external_tool", "external_tool_result"),
+            HostFeature::RegisteredConnectionObservation => {
+                ("connection_observation", "registered_connection_observed")
+            }
+            _ => return Err(io::Error::other("unsupported producer resume feature").into()),
+        };
+        Ok(format!(
+            concat!(
+                "Use only the MCP server named `volicord`. {routing} ",
+                "Do not edit files, run shell commands, inspect authentication material, or print tool bodies, prompts, transcripts, URLs, tokens, or credentials.\n\n",
+                "1. Call `volicord.record_run` exactly once with `detail=full`, `task_id={task_id}`, `change_unit_id={change_unit_id}`, `kind=shaping_update`, `run_id=null`, `baseline_ref={baseline_ref}`, `write_ticket_id=null`, and summary exactly `{marker}`. Set observed changes to `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline. Set `artifact_inputs=[]`. Set exactly one evidence observation with target `{target}`, `source_kind={source_kind}`, `assurance_level={assurance_level}`, null observer/tool fields, empty tool metadata/source refs/output artifact refs/limitations, `input_refs=[{intent_ref}]`, and `observed_at={caller_observed_at}`. Set exactly one supported evidence update for the same target with all caller-supplied supporting/gap ref arrays empty. Set a non-null close assessment with result summary exactly `{marker}` and empty result refs, residual risks, sensitive categories, and recovery constraints. Require a committed result with exactly one producer, one registered receipt artifact, and one evidence observation; stop on any mismatch.\n",
+                "2. Call `volicord.status` exactly once for Task `{task_id}` with `detail=full`. Require the producer-linked Run to be latest, evidence coverage supported/sufficient, close state ready, and zero close blockers.\n",
+                "3. Call `volicord.check_close` exactly once for Task `{task_id}`. Require `close_state=ready`, zero blockers, the same state version, and the same evidence gate. Report only IDs, counts, digests, and booleans, then stop."
+            ),
+            routing = live_project_routing_instruction(&prepared.project_id),
+            task_id = prepared.task_id,
+            change_unit_id = prepared.change_unit_id,
+            baseline_ref = prepared.baseline_ref,
+            marker = prepared.run_marker,
+            target = target,
+            source_kind = source_kind,
+            assurance_level = assurance_level,
+            intent_ref = intent_ref,
+            caller_observed_at = LIVE_PRODUCER_CALLER_OBSERVED_AT,
+        ))
+    }
+
+    struct LiveProducerHostResume {
+        record_run_calls: u64,
+        status_calls: u64,
+        check_close_calls: u64,
+        ordered: bool,
+    }
+
+    fn assert_live_producer_resume_diagnostic(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        project_id: &str,
+        cursor: DiagnosticEventCursor,
+    ) -> Result<LiveProducerHostResume, Box<dyn Error>> {
+        let conn = rusqlite::Connection::open_with_flags(
+            diagnostics_db_path(&fixture.runtime_home_path),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let observed = conn.query_row(
+            "SELECT
+                 COALESCE(SUM(CASE
+                   WHEN e.tool_name = 'volicord.record_run'
+                    AND e.core_committed = 1 AND e.outcome = 'success'
+                   THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                   WHEN e.tool_name = 'volicord.status'
+                    AND e.core_committed = 0 AND e.outcome = 'success'
+                   THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                   WHEN e.tool_name = 'volicord.check_close'
+                    AND e.core_committed = 0 AND e.outcome = 'success'
+                   THEN 1 ELSE 0 END), 0),
+                 MIN(CASE WHEN e.tool_name = 'volicord.record_run' THEN e.event_id END),
+                 MIN(CASE WHEN e.tool_name = 'volicord.status' THEN e.event_id END),
+                 MIN(CASE WHEN e.tool_name = 'volicord.check_close' THEN e.event_id END)
+               FROM diagnostic_sessions s
+               JOIN diagnostic_events e ON e.session_id = s.session_id
+              WHERE s.connection_id = ?1 AND s.project_id = ?2 AND e.event_id > ?3",
+            rusqlite::params![connection_id, project_id, cursor.0],
+            |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, u64>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                ))
+            },
+        )?;
+        let ordered = observed.3.zip(observed.4).zip(observed.5).is_some_and(
+            |((record_run, status), check_close)| record_run < status && status < check_close,
+        );
+        if observed.0 != 1 || observed.1 != 1 || observed.2 != 1 || !ordered {
+            return Err(io::Error::other(format!(
+                "actual producer resume diagnostics are not exact and ordered: record_run={}, status={}, check_close={}, ordered={ordered}",
+                observed.0, observed.1, observed.2
+            ))
+            .into());
+        }
+        Ok(LiveProducerHostResume {
+            record_run_calls: observed.0,
+            status_calls: observed.1,
+            check_close_calls: observed.2,
+            ordered,
+        })
+    }
+
+    struct InspectedLiveProducerChain {
+        producer_id: String,
+        artifact_id: String,
+        evidence_observation_id: String,
+        run_id: String,
+        state_version: u64,
+        lifecycle_phase: String,
+        strong_producer_chain: bool,
+        criterion_coverage_projected: bool,
+    }
+
+    fn inspect_live_producer_chain(
+        fixture: &LiveSmokeFixture,
+        prepared: &PreparedLiveProducerBasis,
+        source: &ActualLiveProducerSource,
+        receipt: &InspectedLiveCaptureReceipt,
+        connection_id: &str,
+        feature: HostFeature,
+        marker: &str,
+    ) -> Result<InspectedLiveProducerChain, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == prepared.project_id)
+            .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let producer_rows = conn
+            .prepare(
+                "SELECT p.evidence_producer_id, p.evidence_observation_id, p.artifact_id,
+                        p.run_id, p.scope_revision, p.baseline_ref, p.producer_kind,
+                        p.canonical_producer_json,
+                        o.source_kind, o.assurance_level, o.input_refs_json,
+                        o.output_artifact_refs_json, o.metadata_json,
+                        r.kind, r.status, r.summary_json, r.observed_changes_json,
+                        r.created_by_actor_source,
+                        a.integrity_status, a.availability, a.redaction_state
+                   FROM evidence_producers p
+                   JOIN evidence_observations o
+                     ON o.project_id = p.project_id
+                    AND o.evidence_observation_id = p.evidence_observation_id
+                   JOIN runs r ON r.project_id = p.project_id AND r.run_id = p.run_id
+                   JOIN artifacts a ON a.project_id = p.project_id AND a.artifact_id = p.artifact_id
+                  WHERE p.project_id = ?1 AND p.evidence_capture_intent_id = ?2",
+            )?
+            .query_map(
+                rusqlite::params![prepared.project_id, source.capture_intent_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, u64>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, String>(13)?,
+                        row.get::<_, String>(14)?,
+                        row.get::<_, String>(15)?,
+                        row.get::<_, String>(16)?,
+                        row.get::<_, String>(17)?,
+                        row.get::<_, String>(18)?,
+                        row.get::<_, String>(19)?,
+                        row.get::<_, String>(20)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let [row] = producer_rows.as_slice() else {
+            return Err(io::Error::other(format!(
+                "producer finalization must create exactly one chain; found {}",
+                producer_rows.len()
+            ))
+            .into());
+        };
+        let (
+            producer_id,
+            evidence_observation_id,
+            artifact_id,
+            run_id,
+            scope_revision,
+            baseline_ref,
+            producer_kind,
+            canonical_producer_json,
+            source_kind,
+            assurance_level,
+            input_refs_json,
+            output_artifact_refs_json,
+            observation_metadata_json,
+            run_kind,
+            run_status,
+            run_summary_json,
+            observed_changes_json,
+            created_by_actor_source,
+            artifact_integrity,
+            artifact_availability,
+            artifact_redaction,
+        ) = row;
+        let producer: EvidenceProducer = serde_json::from_str(canonical_producer_json)?;
+        let input_refs: Vec<StateRecordRef> = serde_json::from_str(input_refs_json)?;
+        let output_artifact_refs: Vec<ArtifactRef> =
+            serde_json::from_str(output_artifact_refs_json)?;
+        let authority: PersistedEvidenceObservationAuthority =
+            serde_json::from_str(observation_metadata_json)?;
+        let run = live_run_observation(
+            run_id,
+            run_kind,
+            run_summary_json,
+            observed_changes_json,
+            created_by_actor_source,
+        )?;
+        let expected_actor = format!("agent_connection:{connection_id}");
+        let expected_kind = match feature {
+            HostFeature::VerifiedToolProducer => EvidenceProducerKind::VerifiedToolInvocation,
+            HostFeature::RegisteredConnectionObservation => {
+                EvidenceProducerKind::RegisteredConnectionObservation
+            }
+            _ => return Err(io::Error::other("unsupported producer chain feature").into()),
+        };
+        let expected_kind_text = evidence_producer_kind_text(expected_kind);
+        let expected_source = match feature {
+            HostFeature::VerifiedToolProducer => ("external_tool", "external_tool_result"),
+            HostFeature::RegisteredConnectionObservation => {
+                ("connection_observation", "registered_connection_observed")
+            }
+            _ => unreachable!("producer feature was validated above"),
+        };
+        let expected_verification_basis = match feature {
+            HostFeature::VerifiedToolProducer => "registered_guard_exact_invocation_v1",
+            HostFeature::RegisteredConnectionObservation => "registered_connection_observation_v1",
+            _ => unreachable!("producer feature was validated above"),
+        };
+        let [intent_ref] = input_refs.as_slice() else {
+            return Err(io::Error::other(
+                "producer observation does not contain one exact capture-intent ref",
+            )
+            .into());
+        };
+        let [receipt_artifact] = producer.receipt_artifact_refs.as_slice() else {
+            return Err(io::Error::other(
+                "producer does not contain one exact receipt artifact ref",
+            )
+            .into());
+        };
+        let producer_ref = authority
+            .producer_anchor
+            .producer_ref
+            .as_ref()
+            .ok_or_else(|| io::Error::other("producer observation has no producer ref"))?;
+        let strong = producer_id == producer.evidence_producer_id.as_str()
+            && evidence_observation_id == producer.observation_ref.record_id.as_str()
+            && artifact_id == receipt_artifact.artifact_id.as_str()
+            && run_id == producer.run_ref.record_id.as_str()
+            && *scope_revision == producer.scope_revision
+            && baseline_ref == producer.baseline_ref.as_str()
+            && producer_kind == expected_kind_text
+            && producer.producer_kind == expected_kind
+            && producer.capture_intent_id.as_str() == source.capture_intent_id
+            && producer.capture_receipt_id.as_str() == receipt.capture_receipt_id
+            && producer.project_id.as_str() == prepared.project_id
+            && producer.task_id.as_str() == prepared.task_id
+            && producer.change_unit_id.as_str() == prepared.change_unit_id
+            && producer.baseline_ref.as_str() == prepared.baseline_ref
+            && producer.target == prepared.target
+            && producer.input_sha256 == source.capture_input_sha256
+            && producer.result_sha256 == receipt.result_sha256
+            && producer.connection_id.as_str() == connection_id
+            && producer.session_id.as_ref().map(|value| value.as_str())
+                == Some(source.session_id.as_str())
+            && producer.complete
+            && producer.observed_by_actor_source.to_canonical_string() == expected_actor
+            && source_kind == expected_source.0
+            && assurance_level == expected_source.1
+            && intent_ref.record_kind == StateRecordKind::EvidenceCaptureIntent
+            && intent_ref.record_id.as_str() == source.capture_intent_id
+            && intent_ref.produced_at_state_version.as_ref() == Some(&source.intent_state_version)
+            && output_artifact_refs.as_slice() == [receipt_artifact.clone()]
+            && authority.recorded_by_run_id.as_str() == run_id
+            && authority.invocation_verification_basis
+                == VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+            && authority.producer_anchor.producer_kind == expected_kind
+            && producer_ref.record_kind == StateRecordKind::EvidenceProducer
+            && producer_ref.record_id.as_str() == producer_id
+            && authority
+                .producer_anchor
+                .verification_basis
+                .as_ref()
+                .map(String::as_str)
+                == Some(expected_verification_basis)
+            && authority.relevance_assessment.status == EvidenceRelevanceStatus::Unassessed
+            && run.kind == "shaping_update"
+            && run_status == "recorded"
+            && run.summary == marker
+            && run.created_by_actor_source == expected_actor
+            && !run.product_file_write_observed
+            && run.changed_paths.is_empty()
+            && artifact_integrity == "verified"
+            && artifact_availability == "available"
+            && artifact_redaction == "redacted";
+
+        let mut summaries = conn.prepare(
+            "SELECT status, coverage_json, metadata_json
+               FROM evidence_summaries
+              WHERE project_id = ?1 AND task_id = ?2",
+        )?;
+        let coverage_rows = summaries
+            .query_map(
+                rusqlite::params![prepared.project_id, prepared.task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let matching_coverage = coverage_rows
+            .into_iter()
+            .filter_map(|(status, coverage_json, metadata_json)| {
+                let metadata =
+                    serde_json::from_str::<PersistedEvidenceMetadata>(&metadata_json).ok()?;
+                (metadata.updated_by_run_id.as_str() == run_id).then_some((status, coverage_json))
+            })
+            .collect::<Vec<_>>();
+        let [(coverage_status, coverage_json)] = matching_coverage.as_slice() else {
+            return Err(io::Error::other(
+                "producer-linked Run has no unique current evidence summary",
+            )
+            .into());
+        };
+        let coverage_items: Vec<EvidenceCoverageItem> = serde_json::from_str(coverage_json)?;
+        let [coverage] = coverage_items.as_slice() else {
+            return Err(io::Error::other(
+                "producer-linked evidence summary has no sole criterion coverage item",
+            )
+            .into());
+        };
+        let criterion_coverage = coverage_status == "sufficient"
+            && coverage.target == prepared.target
+            && coverage.coverage_state == EvidenceCoverageState::Supported
+            && coverage.supporting_run_refs.len() == 1
+            && coverage.supporting_run_refs[0].record_id.as_str() == run_id
+            && coverage.observation_refs.len() == 1
+            && coverage.observation_refs[0].record_id.as_str() == evidence_observation_id
+            && coverage.supporting_artifact_refs.as_slice() == [receipt_artifact.clone()]
+            && coverage.gap_refs.is_empty();
+        let (state_version, lifecycle_phase): (u64, String) = conn.query_row(
+            "SELECT ps.state_version, t.lifecycle_phase
+               FROM project_state ps
+               JOIN tasks t ON t.project_id = ps.project_id
+              WHERE ps.project_id = ?1 AND t.task_id = ?2",
+            rusqlite::params![prepared.project_id, prepared.task_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if !strong || !criterion_coverage {
+            return Err(io::Error::other(
+                "producer finalization is not a complete Strong Evidence chain with criterion coverage",
+            )
+            .into());
+        }
+        Ok(InspectedLiveProducerChain {
+            producer_id: producer_id.clone(),
+            artifact_id: artifact_id.clone(),
+            evidence_observation_id: evidence_observation_id.clone(),
+            run_id: run_id.clone(),
+            state_version,
+            lifecycle_phase,
+            strong_producer_chain: strong,
+            criterion_coverage_projected: criterion_coverage,
+        })
+    }
+
+    struct LiveProducerAssertionFamilies {
+        actual_host_event: bool,
+        intent_precedes_source: bool,
+        exact_session_connection_actor_scope_baseline: bool,
+        capture_receipt_bound: bool,
+        strong_producer_chain: bool,
+        criterion_coverage_projected: bool,
+        negative_rejections_zero_effect: bool,
+    }
+
+    impl LiveProducerAssertionFamilies {
+        fn all_passed(&self) -> bool {
+            self.actual_host_event
+                && self.intent_precedes_source
+                && self.exact_session_connection_actor_scope_baseline
+                && self.capture_receipt_bound
+                && self.strong_producer_chain
+                && self.criterion_coverage_projected
+                && self.negative_rejections_zero_effect
+        }
+    }
+
+    struct LiveProducerSummaryInput<'a> {
+        identity: &'a LiveHostIdentity,
+        feature: HostFeature,
+        prepared: &'a PreparedLiveProducerBasis,
+        source: &'a ActualLiveProducerSource,
+        negative: &'a NegativeLiveCapture,
+        receipt: &'a InspectedLiveCaptureReceipt,
+        host_resume: &'a LiveProducerHostResume,
+        chain: &'a InspectedLiveProducerChain,
+        authority_receipt: &'a VerifiedLiveReceipt,
+        assertions: &'a LiveProducerAssertionFamilies,
+        host_feature_diagnostics: &'a ReleaseHostFeatureDiagnostics,
+    }
+
+    fn live_producer_completed_summary(input: LiveProducerSummaryInput<'_>) -> Value {
+        let LiveProducerSummaryInput {
+            identity,
+            feature,
+            prepared,
+            source,
+            negative,
+            receipt,
+            host_resume,
+            chain,
+            authority_receipt,
+            assertions,
+            host_feature_diagnostics,
+        } = input;
+        let result_kind = match feature {
+            HostFeature::VerifiedToolProducer => LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            HostFeature::RegisteredConnectionObservation => {
+                LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND
+            }
+            _ => unreachable!("producer summary requires a producer feature"),
+        };
+        serde_json::json!({
+            "kind": result_kind,
+            "result": if assertions.all_passed() { "passed" } else { "failed" },
+            "host": {
+                "kind": identity.host,
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
+            },
+            "volicord": { "build_id": identity.volicord_build_id },
+            "connection": { "connection_id": identity.connection_id },
+            "host_feature_support": host_feature_diagnostics.host_feature_support,
+            "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
+            "actual_host_event": {
+                "observed": true,
+                "source_event_count": source.source_event_ids.len(),
+                "source_event_ids": source.source_event_ids,
+                "opaque_session_id": source.session_id,
+                "guard_installation_id": source.guard_installation_id,
+                "host_invocation_id": source.host_invocation_id
+            },
+            "capture_intent": {
+                "capture_intent_id": source.capture_intent_id,
+                "input_sha256": source.capture_input_sha256,
+                "intent_state_version": source.intent_state_version,
+                "task_id": prepared.task_id,
+                "change_unit_id": prepared.change_unit_id,
+                "baseline_ref": prepared.baseline_ref,
+                "intent_precedes_source": source.intent_precedes_source,
+                "exact_session_connection_actor_scope_baseline": source.exact_session_connection_actor_scope_baseline
+            },
+            "negative_capture": {
+                "rejected": negative.rejected,
+                "nonzero_exit": negative.exit_code != 0,
+                "receipt_delta": 0,
+                "staging_delta": 0,
+                "producer_delta": 0,
+                "artifact_delta": 0,
+                "authority_event_delta": 0,
+                "state_version_unchanged": true
+            },
+            "capture_receipt": {
+                "capture_receipt_id": receipt.capture_receipt_id,
+                "staged_receipt_handle_id": receipt.staged_receipt_handle_id,
+                "safe_receipt_sha256": receipt.safe_receipt_sha256,
+                "result_sha256": receipt.result_sha256,
+                "source_claim_count": receipt.source_claim_count,
+                "bound": receipt.capture_receipt_bound
+            },
+            "host_resume": {
+                "record_run_calls": host_resume.record_run_calls,
+                "status_calls": host_resume.status_calls,
+                "check_close_calls": host_resume.check_close_calls,
+                "ordered": host_resume.ordered,
+                "same_connection": true
+            },
+            "producer_chain": {
+                "producer_id": chain.producer_id,
+                "artifact_id": chain.artifact_id,
+                "evidence_observation_id": chain.evidence_observation_id,
+                "run_id": chain.run_id,
+                "strong": chain.strong_producer_chain,
+                "criterion_coverage_projected": chain.criterion_coverage_projected
+            },
+            "close": {
+                "project_id": authority_receipt.project_id,
+                "task_id": authority_receipt.task_id,
+                "state_version": authority_receipt.state_version,
+                "latest_run_id": authority_receipt.latest_run_id,
+                "ready": authority_receipt.close_state == StatusCloseState::Ready,
+                "blocker_count": authority_receipt.close_blocker_count
+            },
+            "assertions": {
+                "actual_host_event": assertions.actual_host_event,
+                "intent_precedes_source": assertions.intent_precedes_source,
+                "exact_session_connection_actor_scope_baseline": assertions.exact_session_connection_actor_scope_baseline,
+                "capture_receipt_bound": assertions.capture_receipt_bound,
+                "strong_producer_chain": assertions.strong_producer_chain,
+                "criterion_coverage_projected": assertions.criterion_coverage_projected,
+                "negative_rejections_zero_effect": assertions.negative_rejections_zero_effect
+            },
+            "sensitive_payloads": {
+                "prompt_recorded": false,
+                "tool_input_recorded": false,
+                "tool_output_recorded": false,
+                "transcript_recorded": false,
+                "token_recorded": false,
+                "url_recorded": false,
+                "native_session_id_recorded": false
+            }
+        })
+    }
+
+    fn validate_live_producer_result_shape(
+        value: &Value,
+        feature: HostFeature,
+    ) -> Result<(), Box<dyn Error>> {
+        validate_release_host_feature_diagnostics(
+            value,
+            Some(IntegrationProfile::Detective),
+            true,
+            true,
+        )?;
+        let expected_kind = match feature {
+            HostFeature::VerifiedToolProducer => LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            HostFeature::RegisteredConnectionObservation => {
+                LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND
+            }
+            _ => {
+                return Err(
+                    io::Error::other("producer result validator got non-producer feature").into(),
+                )
+            }
+        };
+        for (pointer, keys) in [
+            (
+                "",
+                &[
+                    "kind",
+                    "result",
+                    "host",
+                    "volicord",
+                    "connection",
+                    "host_feature_support",
+                    "final_output_authority_disclosure",
+                    "actual_host_event",
+                    "capture_intent",
+                    "negative_capture",
+                    "capture_receipt",
+                    "host_resume",
+                    "producer_chain",
+                    "close",
+                    "assertions",
+                    "sensitive_payloads",
+                ][..],
+            ),
+            ("/host", &["kind", "version", "executable_sha256"][..]),
+            ("/volicord", &["build_id"][..]),
+            ("/connection", &["connection_id"][..]),
+            (
+                "/actual_host_event",
+                &[
+                    "observed",
+                    "source_event_count",
+                    "source_event_ids",
+                    "opaque_session_id",
+                    "guard_installation_id",
+                    "host_invocation_id",
+                ][..],
+            ),
+            (
+                "/capture_intent",
+                &[
+                    "capture_intent_id",
+                    "input_sha256",
+                    "intent_state_version",
+                    "task_id",
+                    "change_unit_id",
+                    "baseline_ref",
+                    "intent_precedes_source",
+                    "exact_session_connection_actor_scope_baseline",
+                ][..],
+            ),
+            (
+                "/negative_capture",
+                &[
+                    "rejected",
+                    "nonzero_exit",
+                    "receipt_delta",
+                    "staging_delta",
+                    "producer_delta",
+                    "artifact_delta",
+                    "authority_event_delta",
+                    "state_version_unchanged",
+                ][..],
+            ),
+            (
+                "/capture_receipt",
+                &[
+                    "capture_receipt_id",
+                    "staged_receipt_handle_id",
+                    "safe_receipt_sha256",
+                    "result_sha256",
+                    "source_claim_count",
+                    "bound",
+                ][..],
+            ),
+            (
+                "/host_resume",
+                &[
+                    "record_run_calls",
+                    "status_calls",
+                    "check_close_calls",
+                    "ordered",
+                    "same_connection",
+                ][..],
+            ),
+            (
+                "/producer_chain",
+                &[
+                    "producer_id",
+                    "artifact_id",
+                    "evidence_observation_id",
+                    "run_id",
+                    "strong",
+                    "criterion_coverage_projected",
+                ][..],
+            ),
+            (
+                "/close",
+                &[
+                    "project_id",
+                    "task_id",
+                    "state_version",
+                    "latest_run_id",
+                    "ready",
+                    "blocker_count",
+                ][..],
+            ),
+            (
+                "/assertions",
+                &[
+                    "actual_host_event",
+                    "intent_precedes_source",
+                    "exact_session_connection_actor_scope_baseline",
+                    "capture_receipt_bound",
+                    "strong_producer_chain",
+                    "criterion_coverage_projected",
+                    "negative_rejections_zero_effect",
+                ][..],
+            ),
+            (
+                "/sensitive_payloads",
+                &[
+                    "prompt_recorded",
+                    "tool_input_recorded",
+                    "tool_output_recorded",
+                    "transcript_recorded",
+                    "token_recorded",
+                    "url_recorded",
+                    "native_session_id_recorded",
+                ][..],
+            ),
+        ] {
+            require_exact_live_evidence_result_keys(value, pointer, keys)?;
+        }
+        if value["kind"] != expected_kind || value["result"] != "passed" {
+            return Err(
+                io::Error::other("producer result has wrong kind or terminal status").into(),
+            );
+        }
+        validate_lower_hex(
+            "producer host executable digest",
+            required_result_string(value, "/host/executable_sha256")?,
+            &[64],
+        )?;
+        required_result_string(value, "/host/kind")?;
+        required_result_string(value, "/host/version")?;
+        required_result_string(value, "/volicord/build_id")?;
+        validate_lower_hex(
+            "producer capture input digest",
+            required_result_string(value, "/capture_intent/input_sha256")?,
+            &[64],
+        )?;
+        for pointer in [
+            "/capture_receipt/safe_receipt_sha256",
+            "/capture_receipt/result_sha256",
+        ] {
+            validate_lower_hex(
+                "producer receipt digest",
+                required_result_string(value, pointer)?,
+                &[64],
+            )?;
+        }
+        let session_id = required_result_string(value, "/actual_host_event/opaque_session_id")?;
+        validate_managed_summary_session_id("producer opaque session id", session_id)?;
+        let source_ids = value["actual_host_event"]["source_event_ids"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("producer result has no source event id array"))?;
+        for source_id in source_ids {
+            validate_domain_separated_correlation_id(
+                "producer source event id",
+                source_id
+                    .as_str()
+                    .ok_or_else(|| io::Error::other("producer source event id must be a string"))?,
+                "guard_event",
+            )?;
+        }
+        let unique_source_ids = source_ids
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>();
+        let expected_source_count = if feature == HostFeature::VerifiedToolProducer {
+            2
+        } else {
+            1
+        };
+        let expected_claim_count = if feature == HostFeature::VerifiedToolProducer {
+            3
+        } else {
+            1
+        };
+        let assertions = value["assertions"]
+            .as_object()
+            .ok_or_else(|| io::Error::other("producer assertions are not an object"))?;
+        let all_assertions = assertions.values().all(|assertion| assertion == true);
+        let negative = &value["negative_capture"];
+        let sensitive = value["sensitive_payloads"]
+            .as_object()
+            .ok_or_else(|| io::Error::other("producer sensitive flags are not an object"))?;
+        let all_sensitive_false = sensitive.values().all(|flag| flag == false);
+        let connection_id = required_result_string(value, "/connection/connection_id")?;
+        for pointer in [
+            "/actual_host_event/guard_installation_id",
+            "/capture_intent/capture_intent_id",
+            "/capture_intent/task_id",
+            "/capture_intent/change_unit_id",
+            "/capture_intent/baseline_ref",
+            "/capture_receipt/capture_receipt_id",
+            "/capture_receipt/staged_receipt_handle_id",
+            "/producer_chain/producer_id",
+            "/producer_chain/artifact_id",
+            "/producer_chain/evidence_observation_id",
+            "/producer_chain/run_id",
+            "/close/project_id",
+            "/close/task_id",
+            "/close/latest_run_id",
+        ] {
+            required_result_string(value, pointer)?;
+        }
+        let intent_state_version =
+            required_result_u64(value, "/capture_intent/intent_state_version")?;
+        let close_state_version = required_result_u64(value, "/close/state_version")?;
+        let host_invocation_exact = match feature {
+            HostFeature::VerifiedToolProducer => {
+                validate_domain_separated_correlation_id(
+                    "producer host invocation id",
+                    value["actual_host_event"]["host_invocation_id"]
+                        .as_str()
+                        .ok_or_else(|| {
+                            io::Error::other("producer host invocation id must be a string")
+                        })?,
+                    "managed_native_id",
+                )?;
+                true
+            }
+            HostFeature::RegisteredConnectionObservation => {
+                value["actual_host_event"]["host_invocation_id"].is_null()
+            }
+            _ => unreachable!("producer feature was validated above"),
+        };
+        if !all_assertions
+            || !all_sensitive_false
+            || !host_invocation_exact
+            || value["actual_host_event"]["observed"] != true
+            || value["actual_host_event"]["source_event_count"] != expected_source_count
+            || source_ids.len() != expected_source_count
+            || source_ids
+                .iter()
+                .any(|id| id.as_str().is_none_or(str::is_empty))
+            || unique_source_ids.len() != source_ids.len()
+            || intent_state_version == 0
+            || close_state_version <= intent_state_version
+            || value["capture_intent"]["intent_precedes_source"] != true
+            || value["capture_intent"]["exact_session_connection_actor_scope_baseline"] != true
+            || negative["rejected"] != true
+            || negative["nonzero_exit"] != true
+            || negative["receipt_delta"] != 0
+            || negative["staging_delta"] != 0
+            || negative["producer_delta"] != 0
+            || negative["artifact_delta"] != 0
+            || negative["authority_event_delta"] != 0
+            || negative["state_version_unchanged"] != true
+            || value["capture_receipt"]["bound"] != true
+            || value["capture_receipt"]["source_claim_count"] != expected_claim_count
+            || value["host_resume"]["record_run_calls"] != 1
+            || value["host_resume"]["status_calls"] != 1
+            || value["host_resume"]["check_close_calls"] != 1
+            || value["host_resume"]["ordered"] != true
+            || value["host_resume"]["same_connection"] != true
+            || value["producer_chain"]["strong"] != true
+            || value["producer_chain"]["criterion_coverage_projected"] != true
+            || value["close"]["project_id"]
+                .as_str()
+                .is_none_or(str::is_empty)
+            || value["close"]["task_id"] != value["capture_intent"]["task_id"]
+            || value["close"]["latest_run_id"] != value["producer_chain"]["run_id"]
+            || value["close"]["ready"] != true
+            || value["close"]["blocker_count"] != 0
+            || connection_id.is_empty()
+        {
+            return Err(io::Error::other(
+                "passing producer result does not close all seven semantic assertion families",
+            )
+            .into());
+        }
+        reject_forbidden_live_producer_fields(value)?;
+        if serialize_live_host_result(value)?.len() >= MAX_LIVE_HOST_RESULT_BYTES {
+            return Err(
+                io::Error::other("producer result exceeds its bounded summary budget").into(),
+            );
+        }
+        Ok(())
+    }
+
+    fn reject_forbidden_live_producer_fields(value: &Value) -> Result<(), Box<dyn Error>> {
+        fn walk(value: &Value) -> Result<(), io::Error> {
+            match value {
+                Value::Object(object) => {
+                    for (key, value) in object {
+                        let normalized = key.to_ascii_lowercase();
+                        if matches!(
+                            normalized.as_str(),
+                            "prompt"
+                                | "tool_input"
+                                | "tool_output"
+                                | "tool_response"
+                                | "command"
+                                | "transcript"
+                                | "transcript_path"
+                                | "token"
+                                | "url"
+                                | "native_session_id"
+                        ) {
+                            return Err(io::Error::other(format!(
+                                "producer result contains forbidden payload field {key:?}"
+                            )));
+                        }
+                        walk(value)?;
+                    }
+                }
+                Value::Array(values) => {
+                    for value in values {
+                        walk(value)?;
+                    }
+                }
+                Value::String(text) => {
+                    let normalized = text.to_ascii_lowercase();
+                    if normalized.contains("https://")
+                        || normalized.contains("http://")
+                        || normalized.contains("bearer ")
+                    {
+                        return Err(io::Error::other(
+                            "producer result contains forbidden URL or bearer payload text",
+                        ));
+                    }
+                }
+                Value::Null | Value::Bool(_) | Value::Number(_) => {}
+            }
+            Ok(())
+        }
+        walk(value).map_err(Into::into)
+    }
+
     fn live_final_output_matrix_cell(
         host: &str,
         executable_name: &str,
@@ -2067,6 +4925,7 @@ mod unix {
             LIVE_FINAL_OUTPUT_RESULT_KIND,
             Some(profile),
         )?;
+        let release_candidate = result_recorder.release_candidate()?.clone();
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -2084,25 +4943,56 @@ mod unix {
                 .into());
             }
         };
+        result_recorder.mark_installed_host_detected();
+        let fixture =
+            LiveSmokeFixture::new_with_release_candidate(&recorder_host, &release_candidate)?;
+        let ObservedReleaseHostIdentity {
+            host_version,
+            host_executable_sha256,
+            volicord_build_id,
+        } = fixture.observe_and_bind_installed_host_identity(
+            &mut result_recorder,
+            executable_name,
+            &executable,
+        )?;
+        let maintained_host_kind = match host {
+            "codex" => HostKind::Codex,
+            "claude-code" => HostKind::ClaudeCode,
+            _ => return Err(io::Error::other("unsupported managed final-output host").into()),
+        };
+        let feature = match profile {
+            IntegrationProfile::Record => HostFeature::RecordFinalOutput,
+            IntegrationProfile::Detective => HostFeature::DetectiveFinalOutput,
+        };
+        if host_feature_implementation(maintained_host_kind, feature)
+            == HostFeatureImplementation::UnsupportedByHost
+        {
+            let summary = final_output_unavailable_summary_with_host_identity(
+                host,
+                profile,
+                "the maintained host capability matrix statically marks this final-output feature unsupported",
+                &host_version,
+                &host_executable_sha256,
+                &volicord_build_id,
+            );
+            validate_final_output_result_shape(&summary, profile)?;
+            result_recorder.record_final(&summary)?;
+            return Ok(());
+        }
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             let reason = "authenticated live final-output validation requires interactive terminal stdin and stdout";
-            let summary = final_output_unavailable_summary(host, profile, reason);
+            let summary = final_output_unavailable_summary_with_host_identity(
+                host,
+                profile,
+                reason,
+                &host_version,
+                &host_executable_sha256,
+                &volicord_build_id,
+            );
             validate_final_output_result_shape(&summary, profile)?;
             result_recorder.record_final(&summary)?;
             return Err(io::Error::other(reason).into());
         }
-        let fixture = LiveSmokeFixture::new(&recorder_host)?;
-        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
-        assert_success(
-            &format!("{executable_name} --version"),
-            &host_version_output,
-        );
-        let host_version = host_version_summary(&host_version_output)?;
-        let volicord_build_id = bounded_identity(
-            "Volicord build_id",
-            &volicord_mcp::build_id(),
-            MAX_BUILD_ID_CHARS,
-        )?;
 
         let init = fixture.run_volicord([
             "init",
@@ -2130,6 +5020,7 @@ mod unix {
         let identity = LiveHostIdentity {
             host: host.to_owned(),
             host_version,
+            host_executable_sha256,
             volicord_build_id,
             connection_id,
         };
@@ -2150,22 +5041,10 @@ mod unix {
             no_active_private_prose,
         )?;
         let before_direct = guard_observation_counts(&fixture, &project_id)?;
-        let first_direct = run_generated_final_output_handler(
-            &fixture.runtime_home_path,
-            &fixture.repo_root,
-            &fixture.env_path,
-            host,
-            &direct_event,
-        )?;
+        let first_direct = fixture.run_generated_final_output_handler(host, &direct_event)?;
         let first_wire = verify_no_active_status_wire(&first_direct, no_active_private_prose)?;
         let after_first_direct = guard_observation_counts(&fixture, &project_id)?;
-        let second_direct = run_generated_final_output_handler(
-            &fixture.runtime_home_path,
-            &fixture.repo_root,
-            &fixture.env_path,
-            host,
-            &direct_event,
-        )?;
+        let second_direct = fixture.run_generated_final_output_handler(host, &direct_event)?;
         let second_wire = verify_no_active_status_wire(&second_direct, no_active_private_prose)?;
         let after_second_direct = guard_observation_counts(&fixture, &project_id)?;
         if first_direct.stdout != second_direct.stdout {
@@ -2203,7 +5082,7 @@ mod unix {
             "\n=== Volicord live {host}/{} final-output smoke ===\nThis first authenticated host turn intentionally has no active Volicord Task. After the host answer, inspect the host-native final-output surface. Do not enter credentials into this test process.\n=== end instruction ===\n",
             profile.as_str()
         );
-        let host_status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
+        let host_status = fixture.run_authenticated_interactive_host(host, &executable, &prompt)?;
         if !host_status.success() {
             return Err(io::Error::other(format!(
                 "the interactive {host} process exited unsuccessfully with {}",
@@ -2287,6 +5166,7 @@ mod unix {
             prepared.receipt.state_version
         );
         let receipt_host_status = fixture.run_authenticated_interactive_host(
+            host,
             &executable,
             concat!(
                 "Reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_RECEIPT and then stop. ",
@@ -2402,13 +5282,8 @@ mod unix {
             active_private_prose,
         )?;
         let before_active_direct = after_receipt_host;
-        let first_active_direct = run_generated_final_output_handler(
-            &fixture.runtime_home_path,
-            &fixture.repo_root,
-            &fixture.env_path,
-            host,
-            &active_direct_event,
-        )?;
+        let first_active_direct =
+            fixture.run_generated_final_output_handler(host, &active_direct_event)?;
         let first_active_wire = verify_authority_receipt_wire(
             &first_active_direct,
             &prepared.receipt,
@@ -2417,9 +5292,11 @@ mod unix {
         )?;
         let after_first_active_direct = guard_observation_counts(&fixture, &project_id)?;
         let first_direct_historical = if profile == IntegrationProfile::Detective {
-            Some(stored_stop_snapshot_for_session(
+            Some(stored_stop_snapshot_for_native_session(
                 &fixture,
                 &project_id,
+                host,
+                &identity.connection_id,
                 &active_direct_session_id,
             )?)
         } else {
@@ -2437,13 +5314,8 @@ mod unix {
             )
             .into());
         }
-        let second_active_direct = run_generated_final_output_handler(
-            &fixture.runtime_home_path,
-            &fixture.repo_root,
-            &fixture.env_path,
-            host,
-            &active_direct_event,
-        )?;
+        let second_active_direct =
+            fixture.run_generated_final_output_handler(host, &active_direct_event)?;
         let second_active_wire = verify_authority_receipt_wire(
             &second_active_direct,
             &replayed_authority.receipt,
@@ -2478,9 +5350,11 @@ mod unix {
                     )
                     .into());
                 }
-                if stored_stop_snapshot_for_session(
+                if stored_stop_snapshot_for_native_session(
                     &fixture,
                     &project_id,
+                    host,
+                    &identity.connection_id,
                     &active_direct_session_id,
                 )? != first_direct_historical
                     .expect("Detective replay should have a historical direct Stop snapshot")
@@ -2506,7 +5380,8 @@ mod unix {
             "result": "incomplete",
             "host": {
                 "kind": identity.host,
-                "version": identity.host_version
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
             },
             "profile": profile.as_str(),
             "volicord": { "build_id": identity.volicord_build_id },
@@ -2620,6 +5495,7 @@ mod unix {
             LIVE_CLI_FALLBACK_RESULT_KIND,
             Some(IntegrationProfile::Detective),
         )?;
+        let release_candidate = result_recorder.release_candidate()?.clone();
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -2636,6 +5512,18 @@ mod unix {
                 return Err(io::Error::new(io::ErrorKind::NotFound, reason).into());
             }
         };
+        result_recorder.mark_installed_host_detected();
+        let fixture =
+            LiveSmokeFixture::new_with_release_candidate(&recorder_host, &release_candidate)?;
+        let ObservedReleaseHostIdentity {
+            host_version,
+            host_executable_sha256,
+            volicord_build_id,
+        } = fixture.observe_and_bind_installed_host_identity(
+            &mut result_recorder,
+            executable_name,
+            &executable,
+        )?;
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             let reason = "authenticated live CLI-fallback validation requires interactive terminal stdin and stdout";
             let summary =
@@ -2649,19 +5537,6 @@ mod unix {
             result_recorder.record_final(&summary)?;
             return Err(io::Error::other(reason).into());
         }
-
-        let fixture = LiveSmokeFixture::new(&recorder_host)?;
-        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
-        assert_success(
-            &format!("{executable_name} --version"),
-            &host_version_output,
-        );
-        let host_version = host_version_summary(&host_version_output)?;
-        let volicord_build_id = bounded_identity(
-            "Volicord build_id",
-            &volicord_mcp::build_id(),
-            MAX_BUILD_ID_CHARS,
-        )?;
         let init = fixture.run_volicord([
             "init",
             "--shared",
@@ -2698,6 +5573,7 @@ mod unix {
         let identity = LiveHostIdentity {
             host: host.to_owned(),
             host_version,
+            host_executable_sha256,
             volicord_build_id,
             connection_id,
         };
@@ -2735,7 +5611,7 @@ mod unix {
         println!(
             "\n=== Volicord live {host} CLI-fallback smoke ===\nThe pending choice was resolved by the human operator through the actual `volicord inbox resolve --json` User Channel. The installed host must now resume that exact request through the same Agent Connection, consume the selected option, record its mapped no-write Run, read fresh status, and stop. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host(host, &executable, &prompt)?;
         smoke_note(
             host,
             format!("interactive host exited with {}", status_text(status)),
@@ -2876,6 +5752,7 @@ mod unix {
             .into());
         }
         let mut result_recorder = LiveResultRecorder::from_env(host)?;
+        let release_candidate = result_recorder.release_candidate()?.clone();
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -2892,6 +5769,20 @@ mod unix {
                 return Err(io::Error::new(io::ErrorKind::NotFound, reason).into());
             }
         };
+        result_recorder.mark_installed_host_detected();
+        let fixture = LiveSmokeFixture::new_with_release_candidate(
+            &format!("{host}-user-action"),
+            &release_candidate,
+        )?;
+        let ObservedReleaseHostIdentity {
+            host_version,
+            host_executable_sha256,
+            volicord_build_id,
+        } = fixture.observe_and_bind_installed_host_identity(
+            &mut result_recorder,
+            executable_name,
+            &executable,
+        )?;
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             let reason = "authenticated live Judgment validation requires interactive terminal stdin and stdout";
             let summary =
@@ -2905,18 +5796,6 @@ mod unix {
             result_recorder.record_final(&summary)?;
             return Err(io::Error::other(reason).into());
         }
-        let fixture = LiveSmokeFixture::new(&format!("{host}-user-action"))?;
-        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
-        assert_success(
-            &format!("{executable_name} --version"),
-            &host_version_output,
-        );
-        let host_version = host_version_summary(&host_version_output)?;
-        let volicord_build_id = bounded_identity(
-            "Volicord build_id",
-            &volicord_mcp::build_id(),
-            MAX_BUILD_ID_CHARS,
-        )?;
         let init = fixture.run_volicord([
             "init",
             "--shared",
@@ -2953,6 +5832,7 @@ mod unix {
         let identity = LiveHostIdentity {
             host: host.to_owned(),
             host_version,
+            host_executable_sha256,
             volicord_build_id,
             connection_id,
         };
@@ -2980,7 +5860,7 @@ mod unix {
         println!(
             "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host(host, &executable, &prompt)?;
         smoke_note(
             host,
             format!("interactive host exited with {}", status_text(status)),
@@ -3244,14 +6124,17 @@ mod unix {
         // terminal checks so every selected live cell has one bounded run record.
         let mut result_recorder =
             LiveResultRecorder::from_env_for_kind(host, LIVE_EVIDENCE_OBSERVATION_RESULT_KIND)?;
+        let release_candidate = result_recorder.release_candidate()?.clone();
         let mut stage = "preflight";
         let mut host_feature_diagnostics = None;
         let outcome = live_evidence_observation_round_trip_inner(
             host,
             executable_name,
             expected_host_action,
+            &release_candidate,
             &mut stage,
             &mut host_feature_diagnostics,
+            &mut result_recorder,
         );
         match outcome {
             Ok(summary) => {
@@ -3285,8 +6168,10 @@ mod unix {
         host: &str,
         executable_name: &str,
         expected_host_action: &str,
+        release_candidate: &ReleaseCandidate,
         stage: &mut &'static str,
         host_feature_diagnostics: &mut Option<ReleaseHostFeatureDiagnostics>,
+        result_recorder: &mut LiveResultRecorder,
     ) -> Result<Value, Box<dyn Error>> {
         *stage = "host_executable";
         let executable = find_executable(executable_name).ok_or_else(|| {
@@ -3295,6 +6180,21 @@ mod unix {
                 format!("`{executable_name}` was not found on PATH"),
             )
         })?;
+        result_recorder.mark_installed_host_detected();
+        *stage = "fixture_setup";
+        let fixture = LiveSmokeFixture::new_with_release_candidate(
+            &format!("{host}-evidence-observation"),
+            release_candidate,
+        )?;
+        let ObservedReleaseHostIdentity {
+            host_version,
+            host_executable_sha256,
+            volicord_build_id,
+        } = fixture.observe_and_bind_installed_host_identity(
+            result_recorder,
+            executable_name,
+            &executable,
+        )?;
         *stage = "interactive_terminal";
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             return Err(io::Error::other(
@@ -3302,20 +6202,6 @@ mod unix {
             )
             .into());
         }
-
-        *stage = "fixture_setup";
-        let fixture = LiveSmokeFixture::new(&format!("{host}-evidence-observation"))?;
-        let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
-        require_success(
-            &format!("{executable_name} --version"),
-            &host_version_output,
-        )?;
-        let host_version = host_version_summary(&host_version_output)?;
-        let volicord_build_id = bounded_identity(
-            "Volicord build_id",
-            &volicord_mcp::build_id(),
-            MAX_BUILD_ID_CHARS,
-        )?;
         let init = fixture.run_volicord([
             "init",
             "--shared",
@@ -3352,6 +6238,7 @@ mod unix {
         let identity = LiveHostIdentity {
             host: host.to_owned(),
             host_version,
+            host_executable_sha256,
             volicord_build_id,
             connection_id,
         };
@@ -3379,8 +6266,11 @@ mod unix {
         );
 
         *stage = "host_process";
-        let status =
-            fixture.run_authenticated_interactive_host_with_local_web(&executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host_with_local_web(
+            host,
+            &executable,
+            &prompt,
+        )?;
         smoke_note(
             host,
             format!("interactive host exited with {}", status_text(status)),
@@ -5223,6 +8113,7 @@ mod unix {
     struct LiveHostIdentity {
         host: String,
         host_version: String,
+        host_executable_sha256: String,
         volicord_build_id: String,
         connection_id: String,
     }
@@ -5789,7 +8680,8 @@ mod unix {
             "result": "passed",
             "host": {
                 "kind": identity.host,
-                "version": identity.host_version
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
             },
             "volicord": {
                 "build_id": identity.volicord_build_id
@@ -5972,6 +8864,198 @@ mod unix {
         })
     }
 
+    fn native_user_action_result_shape_fixture(host: &str, executable_sha256: &str) -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            host,
+            IntegrationProfile::Detective,
+            true,
+            true,
+        );
+        serde_json::json!({
+            "kind": LIVE_USER_ACTION_RESULT_KIND,
+            "result": "passed",
+            "host": {
+                "kind": host,
+                "version": "fixture-host 1.0",
+                "executable_sha256": executable_sha256
+            },
+            "volicord": { "build_id": "fixture-build-id" },
+            "connection": { "connection_id": "CONN-native-fixture" },
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
+            "task": {
+                "project_id": "PRJ-native-fixture",
+                "task_id": "TASK-native-fixture",
+                "lifecycle_phase": "ready_to_close",
+                "state_version": 5
+            },
+            "user_action": {
+                "user_action_request_id": "UAR-native-fixture",
+                "selected_option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+                "operator_confirmed_option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+                "stored_choice_matches_operator": true,
+                "user_channel_basis": VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+            },
+            "choice_consumption": {
+                "run_id": "RUN-native-fixture",
+                "run_kind": "shaping_update",
+                "run_marker": USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+                "product_file_write_observed": false,
+                "changed_path_count": 0
+            },
+            "authority_events": {
+                "user_action_requested_event_seq": 10,
+                "user_action_resolved_event_seq": 11,
+                "run_recorded_event_seq": 12,
+                "ordered": true
+            },
+            "native_ui": {
+                "user_action_selector_confirmed": true,
+                "operator_choice_confirmed": true,
+                "stop_system_message_authority_receipt_confirmed": true
+            },
+            "stop_hook": {
+                "guard_event_id": format!("guard_event_{}", "1".repeat(16)),
+                "session_id": format!("mhs_{}", "2".repeat(64)),
+                "connection_id": "CONN-native-fixture",
+                "decision": "allow",
+                "decision_observed_from_guard_event": true,
+                "receipt_state_version": 5,
+                "latest_run_id": "RUN-native-fixture"
+            },
+            "authority_receipt": {
+                "project_id": "PRJ-native-fixture",
+                "task_id": "TASK-native-fixture",
+                "state_version": 5,
+                "latest_run_id": "RUN-native-fixture",
+                "close_state": "ready",
+                "close_blocker_count": 0
+            },
+            "cli_fallback": { "verified": false }
+        })
+    }
+
+    fn producer_result_shape_fixture(feature: HostFeature) -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            "codex",
+            IntegrationProfile::Detective,
+            true,
+            true,
+        );
+        let (kind, source_event_ids, host_invocation_id, source_claim_count) = match feature {
+            HostFeature::VerifiedToolProducer => (
+                LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+                serde_json::json!([
+                    format!("guard_event_{}", "3".repeat(16)),
+                    format!("guard_event_{}", "4".repeat(16))
+                ]),
+                Value::String(format!("managed_native_id_{}", "5".repeat(16))),
+                3,
+            ),
+            HostFeature::RegisteredConnectionObservation => (
+                LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND,
+                serde_json::json!([format!("guard_event_{}", "6".repeat(16))]),
+                Value::Null,
+                1,
+            ),
+            _ => unreachable!("producer fixture requires a producer feature"),
+        };
+        let source_event_count = source_event_ids
+            .as_array()
+            .expect("fixture source event ids are an array")
+            .len();
+        serde_json::json!({
+            "kind": kind,
+            "result": "passed",
+            "host": {
+                "kind": "codex",
+                "version": "fixture-host 1.0",
+                "executable_sha256": "a".repeat(64)
+            },
+            "volicord": { "build_id": "fixture-build-id" },
+            "connection": { "connection_id": "CONN-producer-fixture" },
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
+            "actual_host_event": {
+                "observed": true,
+                "source_event_count": source_event_count,
+                "source_event_ids": source_event_ids,
+                "opaque_session_id": format!("mhs_{}", "b".repeat(64)),
+                "guard_installation_id": "GI-producer-fixture",
+                "host_invocation_id": host_invocation_id
+            },
+            "capture_intent": {
+                "capture_intent_id": "ECI-producer-fixture",
+                "input_sha256": "c".repeat(64),
+                "intent_state_version": 4,
+                "task_id": "TASK-producer-fixture",
+                "change_unit_id": "CU-producer-fixture",
+                "baseline_ref": "baseline_producer_fixture",
+                "intent_precedes_source": true,
+                "exact_session_connection_actor_scope_baseline": true
+            },
+            "negative_capture": {
+                "rejected": true,
+                "nonzero_exit": true,
+                "receipt_delta": 0,
+                "staging_delta": 0,
+                "producer_delta": 0,
+                "artifact_delta": 0,
+                "authority_event_delta": 0,
+                "state_version_unchanged": true
+            },
+            "capture_receipt": {
+                "capture_receipt_id": "ECR-producer-fixture",
+                "staged_receipt_handle_id": "STAGE-producer-fixture",
+                "safe_receipt_sha256": "d".repeat(64),
+                "result_sha256": "e".repeat(64),
+                "source_claim_count": source_claim_count,
+                "bound": true
+            },
+            "host_resume": {
+                "record_run_calls": 1,
+                "status_calls": 1,
+                "check_close_calls": 1,
+                "ordered": true,
+                "same_connection": true
+            },
+            "producer_chain": {
+                "producer_id": "EP-producer-fixture",
+                "artifact_id": "ART-producer-fixture",
+                "evidence_observation_id": "EOBS-producer-fixture",
+                "run_id": "RUN-producer-fixture",
+                "strong": true,
+                "criterion_coverage_projected": true
+            },
+            "close": {
+                "project_id": "PRJ-producer-fixture",
+                "task_id": "TASK-producer-fixture",
+                "state_version": 6,
+                "latest_run_id": "RUN-producer-fixture",
+                "ready": true,
+                "blocker_count": 0
+            },
+            "assertions": {
+                "actual_host_event": true,
+                "intent_precedes_source": true,
+                "exact_session_connection_actor_scope_baseline": true,
+                "capture_receipt_bound": true,
+                "strong_producer_chain": true,
+                "criterion_coverage_projected": true,
+                "negative_rejections_zero_effect": true
+            },
+            "sensitive_payloads": {
+                "prompt_recorded": false,
+                "tool_input_recorded": false,
+                "tool_output_recorded": false,
+                "transcript_recorded": false,
+                "token_recorded": false,
+                "url_recorded": false,
+                "native_session_id_recorded": false
+            }
+        })
+    }
+
     fn evidence_observation_result_shape_fixture() -> Value {
         let diagnostics = canonical_release_host_feature_diagnostics(
             "codex",
@@ -5982,7 +9066,11 @@ mod unix {
         serde_json::json!({
             "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
             "result": "passed",
-            "host": { "kind": "codex", "version": "fixture-version" },
+            "host": {
+                "kind": "codex",
+                "version": "fixture-version",
+                "executable_sha256": "a".repeat(64)
+            },
             "host_feature_support": diagnostics.host_feature_support,
             "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "volicord": { "build_id": "fixture-build" },
@@ -6087,8 +9175,8 @@ mod unix {
                 "ordered": true
             },
             "stop_hook": {
-                "guard_event_id": "GE-live",
-                "session_id": "SESSION-live",
+                "guard_event_id": format!("guard_event_{}", "7".repeat(16)),
+                "session_id": format!("mhs_{}", "8".repeat(64)),
                 "connection_id": "CONN-live",
                 "decision": "allow",
                 "receipt_state_version": 7,
@@ -6173,7 +9261,7 @@ mod unix {
             ],
         )?;
         for (pointer, keys) in [
-            ("/host", &["kind", "version"][..]),
+            ("/host", &["kind", "version", "executable_sha256"][..]),
             ("/volicord", &["build_id"][..]),
             ("/connection", &["connection_id"][..]),
             (
@@ -6332,21 +9420,55 @@ mod unix {
     fn validate_live_evidence_observation_incomplete_result_keys(
         value: &Value,
     ) -> Result<(), Box<dyn Error>> {
-        require_exact_live_evidence_result_keys(
-            value,
-            "",
-            &[
-                "kind",
-                "result",
-                "host",
-                "stage",
-                "host_feature_support",
-                "final_output_authority_disclosure",
-                "evidence_scope",
-                "sensitive_payloads",
-            ],
-        )?;
-        require_exact_live_evidence_result_keys(value, "/host", &["kind"])?;
+        let observed_identity = value.pointer("/host/version").is_some()
+            || value.pointer("/host/executable_sha256").is_some()
+            || value.pointer("/volicord/build_id").is_some();
+        if observed_identity {
+            require_exact_live_evidence_result_keys(
+                value,
+                "",
+                &[
+                    "kind",
+                    "result",
+                    "host",
+                    "volicord",
+                    "stage",
+                    "host_feature_support",
+                    "final_output_authority_disclosure",
+                    "evidence_scope",
+                    "sensitive_payloads",
+                ],
+            )?;
+            require_exact_live_evidence_result_keys(
+                value,
+                "/host",
+                &["kind", "version", "executable_sha256"],
+            )?;
+            require_exact_live_evidence_result_keys(value, "/volicord", &["build_id"])?;
+            required_result_string(value, "/host/version")?;
+            validate_lower_hex(
+                "incomplete evidence-observation host executable digest",
+                required_result_string(value, "/host/executable_sha256")?,
+                &[64],
+            )?;
+            required_result_string(value, "/volicord/build_id")?;
+        } else {
+            require_exact_live_evidence_result_keys(
+                value,
+                "",
+                &[
+                    "kind",
+                    "result",
+                    "host",
+                    "stage",
+                    "host_feature_support",
+                    "final_output_authority_disclosure",
+                    "evidence_scope",
+                    "sensitive_payloads",
+                ],
+            )?;
+            require_exact_live_evidence_result_keys(value, "/host", &["kind"])?;
+        }
         validate_live_evidence_observation_common_result_keys(value)
     }
 
@@ -6390,6 +9512,11 @@ mod unix {
         reject_forbidden_live_evidence_result_fields(value)?;
         required_result_string(value, "/host/kind")?;
         required_result_string(value, "/host/version")?;
+        validate_lower_hex(
+            "host executable_sha256",
+            required_result_string(value, "/host/executable_sha256")?,
+            &[64],
+        )?;
         required_result_string(value, "/volicord/build_id")?;
         let connection_id = required_result_string(value, "/connection/connection_id")?;
         let project_id = required_result_string(value, "/task/project_id")?;
@@ -6433,8 +9560,15 @@ mod unix {
             required_result_string(value, "/local_web_user_channel/request/artifact_id")?;
         let handoff_delivery = &value["local_web_user_channel"]["handoff_delivery"];
         let negative_observation = &handoff_delivery["negative_model_visible_observation"];
-        required_result_string(value, "/stop_hook/guard_event_id")?;
-        required_result_string(value, "/stop_hook/session_id")?;
+        validate_domain_separated_correlation_id(
+            "local-web guard event id",
+            required_result_string(value, "/stop_hook/guard_event_id")?,
+            "guard_event",
+        )?;
+        validate_managed_summary_session_id(
+            "local-web session id",
+            required_result_string(value, "/stop_hook/session_id")?,
+        )?;
         if value["kind"] != LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
             || value["result"] != "passed"
             || request_id.is_empty()
@@ -6567,6 +9701,7 @@ mod unix {
         let expected_result = match stage {
             "host_executable" | "interactive_terminal" | "host_delivery_boundary" => "unavailable",
             "fixture_setup"
+            | "connection_observation"
             | "host_process"
             | "stored_resolution"
             | "authority_receipt"
@@ -6840,7 +9975,7 @@ mod unix {
                         "source": "authenticated_host_owned_surface_delivery",
                         "delivery_evidence": "managed_final_output_ui",
                         "managed_mcp_observation": managed_mcp_observation(
-                            "SESSION-status-fixture",
+                            &format!("mhs_{}", "9".repeat(64)),
                             Some("volicord.status"),
                         ),
                         "persistent_guard_event": false,
@@ -6851,7 +9986,7 @@ mod unix {
                         "source": "authenticated_host_owned_surface_delivery",
                         "delivery_evidence": "managed_final_output_ui",
                         "managed_mcp_observation": managed_mcp_observation(
-                            "SESSION-receipt-fixture",
+                            &format!("mhs_{}", "a".repeat(64)),
                             None,
                         ),
                         "persistent_guard_event": false,
@@ -6863,7 +9998,10 @@ mod unix {
                 let event = serde_json::json!({
                     "status": "verified",
                     "source": "persisted_guard_event",
-                    "persistent_guard_event": true
+                    "persistent_guard_event": true,
+                    "guard_event_id": format!("guard_event_{}", "b".repeat(16)),
+                    "session_id": format!("mhs_{}", "c".repeat(64)),
+                    "decision": "allow"
                 });
                 (event.clone(), event)
             }
@@ -6988,6 +10126,24 @@ mod unix {
                 }
             }
         })
+    }
+
+    fn final_output_unavailable_summary_with_host_identity(
+        host: &str,
+        profile: IntegrationProfile,
+        reason: &str,
+        host_version: &str,
+        host_executable_sha256: &str,
+        volicord_build_id: &str,
+    ) -> Value {
+        let mut summary = final_output_unavailable_summary(host, profile, reason);
+        summary["host"] = serde_json::json!({
+            "kind": host,
+            "version": host_version,
+            "executable_sha256": host_executable_sha256
+        });
+        summary["volicord"] = serde_json::json!({ "build_id": volicord_build_id });
+        summary
     }
 
     fn validate_final_output_result_shape(
@@ -7311,6 +10467,16 @@ mod unix {
                             .iter()
                             .filter_map(Value::as_str)
                             .collect::<BTreeSet<_>>();
+                        for session_id in session_ids.iter().chain(complete_session_ids) {
+                            validate_managed_summary_session_id(
+                                &format!("verified Record {branch} session id"),
+                                session_id.as_str().ok_or_else(|| {
+                                    io::Error::other(format!(
+                                        "verified Record {branch} session id must be a string"
+                                    ))
+                                })?,
+                            )?;
+                        }
                         if session_ids.len() != usize::try_from(agent_session_delta)?
                             || session_ids
                                 .iter()
@@ -7398,8 +10564,27 @@ mod unix {
                 }
                 if evidence["actual_host_event"]["status"] == "verified" {
                     for branch in ["status_fallback_event", "authority_receipt_event"] {
-                        if evidence["actual_host_event"][branch]["source"]
-                            != "persisted_guard_event"
+                        let event = &evidence["actual_host_event"][branch];
+                        validate_domain_separated_correlation_id(
+                            &format!("verified Detective {branch} guard event id"),
+                            event["guard_event_id"].as_str().ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "verified Detective {branch} has no guard event id"
+                                ))
+                            })?,
+                            "guard_event",
+                        )?;
+                        validate_managed_summary_session_id(
+                            &format!("verified Detective {branch} session id"),
+                            event["session_id"].as_str().ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "verified Detective {branch} has no session id"
+                                ))
+                            })?,
+                        )?;
+                        if event["decision"].as_str().is_none_or(str::is_empty)
+                            || evidence["actual_host_event"][branch]["source"]
+                                != "persisted_guard_event"
                             || evidence["actual_host_event"][branch]["persistent_guard_event"]
                                 != true
                         {
@@ -7852,7 +11037,7 @@ mod unix {
         println!(
             "\n=== Volicord live {host} connection-observation probe ===\nThis authenticated host turn intentionally has no active Volicord Task. It must expose and call the installed Volicord MCP server before the administrative verification step can store a complete Agent Connection result. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host(host, executable, &prompt)?;
         smoke_note(
             host,
             format!(
@@ -7939,11 +11124,25 @@ mod unix {
         Ok(())
     }
 
-    fn stored_stop_snapshot_for_session(
+    fn stored_stop_snapshot_for_native_session(
         fixture: &LiveSmokeFixture,
         project_id: &str,
-        session_id: &str,
+        host: &str,
+        connection_id: &str,
+        native_session_id: &str,
     ) -> Result<StoredStopSnapshot, Box<dyn Error>> {
+        let normalized_host = match host {
+            "codex" => "codex",
+            "claude-code" | "claude_code" => "claude_code",
+            _ => {
+                return Err(io::Error::other(format!(
+                    "unsupported managed host kind {host:?} for Stop snapshot lookup"
+                ))
+                .into())
+            }
+        };
+        let session_id =
+            managed_host_session_id(normalized_host, connection_id, native_session_id)?;
         let project = list_projects(&fixture.runtime_home_path)?
             .into_iter()
             .find(|project| project.project_id == project_id)
@@ -7964,7 +11163,13 @@ mod unix {
                 })
             },
         )
-        .map_err(Into::into)
+        .optional()?
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "no stored Stop snapshot exists for project {project_id:?} and session {session_id:?}"
+            ))
+            .into()
+        })
     }
 
     fn verify_live_stop_guard_event(
@@ -8107,7 +11312,8 @@ mod unix {
             "result": result,
             "host": {
                 "kind": identity.host,
-                "version": identity.host_version
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
             },
             "volicord": {
                 "build_id": identity.volicord_build_id
@@ -8360,6 +11566,182 @@ mod unix {
         Ok(())
     }
 
+    fn validate_live_user_action_result_shape(value: &Value) -> Result<(), Box<dyn Error>> {
+        validate_release_host_feature_diagnostics(
+            value,
+            Some(IntegrationProfile::Detective),
+            true,
+            true,
+        )?;
+        for (pointer, keys) in [
+            (
+                "",
+                &[
+                    "kind",
+                    "result",
+                    "host",
+                    "volicord",
+                    "connection",
+                    "host_feature_support",
+                    "final_output_authority_disclosure",
+                    "task",
+                    "user_action",
+                    "choice_consumption",
+                    "authority_events",
+                    "native_ui",
+                    "stop_hook",
+                    "authority_receipt",
+                    "cli_fallback",
+                ][..],
+            ),
+            ("/host", &["kind", "version", "executable_sha256"][..]),
+            ("/volicord", &["build_id"][..]),
+            ("/connection", &["connection_id"][..]),
+            (
+                "/task",
+                &["project_id", "task_id", "lifecycle_phase", "state_version"][..],
+            ),
+            (
+                "/user_action",
+                &[
+                    "user_action_request_id",
+                    "selected_option_id",
+                    "operator_confirmed_option_id",
+                    "stored_choice_matches_operator",
+                    "user_channel_basis",
+                ][..],
+            ),
+            (
+                "/choice_consumption",
+                &[
+                    "run_id",
+                    "run_kind",
+                    "run_marker",
+                    "product_file_write_observed",
+                    "changed_path_count",
+                ][..],
+            ),
+            (
+                "/authority_events",
+                &[
+                    "user_action_requested_event_seq",
+                    "user_action_resolved_event_seq",
+                    "run_recorded_event_seq",
+                    "ordered",
+                ][..],
+            ),
+            (
+                "/native_ui",
+                &[
+                    "user_action_selector_confirmed",
+                    "operator_choice_confirmed",
+                    "stop_system_message_authority_receipt_confirmed",
+                ][..],
+            ),
+            (
+                "/stop_hook",
+                &[
+                    "guard_event_id",
+                    "session_id",
+                    "connection_id",
+                    "decision",
+                    "decision_observed_from_guard_event",
+                    "receipt_state_version",
+                    "latest_run_id",
+                ][..],
+            ),
+            (
+                "/authority_receipt",
+                &[
+                    "project_id",
+                    "task_id",
+                    "state_version",
+                    "latest_run_id",
+                    "close_state",
+                    "close_blocker_count",
+                ][..],
+            ),
+            ("/cli_fallback", &["verified"][..]),
+        ] {
+            require_exact_live_evidence_result_keys(value, pointer, keys)?;
+        }
+        if value["kind"] != LIVE_USER_ACTION_RESULT_KIND || value["result"] != "passed" {
+            return Err(io::Error::other(
+                "passing native-user-action result has the wrong kind or result",
+            )
+            .into());
+        }
+        required_result_string(value, "/host/kind")?;
+        required_result_string(value, "/host/version")?;
+        validate_lower_hex(
+            "native-user-action host executable digest",
+            required_result_string(value, "/host/executable_sha256")?,
+            &[64],
+        )?;
+        required_result_string(value, "/volicord/build_id")?;
+        let connection_id = required_result_string(value, "/connection/connection_id")?;
+        let project_id = required_result_string(value, "/task/project_id")?;
+        let task_id = required_result_string(value, "/task/task_id")?;
+        required_result_string(value, "/task/lifecycle_phase")?;
+        let task_state_version = required_result_u64(value, "/task/state_version")?;
+        required_result_string(value, "/user_action/user_action_request_id")?;
+        let selected_option = required_result_string(value, "/user_action/selected_option_id")?;
+        let operator_option =
+            required_result_string(value, "/user_action/operator_confirmed_option_id")?;
+        let expected_run_marker =
+            run_marker_for_selected_option(selected_option).ok_or_else(|| {
+                io::Error::other("native-user-action result stores an unknown choice")
+            })?;
+        let run_id = required_result_string(value, "/choice_consumption/run_id")?;
+        let requested_event_seq =
+            required_result_u64(value, "/authority_events/user_action_requested_event_seq")?;
+        let resolved_event_seq =
+            required_result_u64(value, "/authority_events/user_action_resolved_event_seq")?;
+        let run_event_seq = required_result_u64(value, "/authority_events/run_recorded_event_seq")?;
+        validate_domain_separated_correlation_id(
+            "native-user-action guard event id",
+            required_result_string(value, "/stop_hook/guard_event_id")?,
+            "guard_event",
+        )?;
+        validate_managed_summary_session_id(
+            "native-user-action session id",
+            required_result_string(value, "/stop_hook/session_id")?,
+        )?;
+        if selected_option != operator_option
+            || value["user_action"]["stored_choice_matches_operator"] != true
+            || value["user_action"]["user_channel_basis"]
+                != VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
+            || value["choice_consumption"]["run_kind"] != "shaping_update"
+            || value["choice_consumption"]["run_marker"] != expected_run_marker
+            || value["choice_consumption"]["product_file_write_observed"] != false
+            || value["choice_consumption"]["changed_path_count"] != 0
+            || requested_event_seq == 0
+            || !(requested_event_seq < resolved_event_seq && resolved_event_seq < run_event_seq)
+            || value["authority_events"]["ordered"] != true
+            || value["native_ui"]["user_action_selector_confirmed"] != true
+            || value["native_ui"]["operator_choice_confirmed"] != true
+            || value["native_ui"]["stop_system_message_authority_receipt_confirmed"] != true
+            || value["stop_hook"]["connection_id"] != connection_id
+            || value["stop_hook"]["decision"] != "allow"
+            || value["stop_hook"]["decision_observed_from_guard_event"] != true
+            || value["stop_hook"]["receipt_state_version"] != task_state_version
+            || value["stop_hook"]["latest_run_id"] != run_id
+            || value["authority_receipt"]["project_id"] != project_id
+            || value["authority_receipt"]["task_id"] != task_id
+            || value["authority_receipt"]["state_version"] != task_state_version
+            || value["authority_receipt"]["latest_run_id"] != run_id
+            || value["authority_receipt"]["close_state"] != "ready"
+            || value["authority_receipt"]["close_blocker_count"] != 0
+            || value["cli_fallback"]["verified"] != false
+        {
+            return Err(io::Error::other(
+                "passing native-user-action result does not preserve its exact semantic evidence",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     struct LiveCompletedSummaryInput<'a> {
         result: &'a str,
         identity: &'a LiveHostIdentity,
@@ -8393,7 +11775,8 @@ mod unix {
             "result": result,
             "host": {
                 "kind": identity.host,
-                "version": identity.host_version
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
             },
             "volicord": {
                 "build_id": identity.volicord_build_id
@@ -8472,7 +11855,8 @@ mod unix {
             "result": "failed_choice_mismatch",
             "host": {
                 "kind": identity.host,
-                "version": identity.host_version
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
             },
             "volicord": {
                 "build_id": identity.volicord_build_id
@@ -8519,7 +11903,8 @@ mod unix {
             "result": "failed_native_elicitation",
             "host": {
                 "kind": identity.host,
-                "version": identity.host_version
+                "version": identity.host_version,
+                "executable_sha256": identity.host_executable_sha256
             },
             "volicord": {
                 "build_id": identity.volicord_build_id
@@ -8574,6 +11959,94 @@ mod unix {
         })
     }
 
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ObservedReleaseHostCoordinates {
+        host_version: String,
+        host_executable_sha256: String,
+    }
+
+    impl ObservedReleaseHostCoordinates {
+        fn new(
+            host_version: String,
+            host_executable_sha256: String,
+        ) -> Result<Self, Box<dyn Error>> {
+            bounded_identity(
+                "observed host version",
+                &host_version,
+                MAX_HOST_VERSION_CHARS,
+            )?;
+            validate_lower_hex(
+                "observed host executable digest",
+                &host_executable_sha256,
+                &[64],
+            )?;
+            Ok(Self {
+                host_version,
+                host_executable_sha256,
+            })
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ObservedReleaseHostIdentity {
+        host_version: String,
+        host_executable_sha256: String,
+        volicord_build_id: String,
+    }
+
+    impl ObservedReleaseHostIdentity {
+        fn new(
+            host_version: String,
+            host_executable_sha256: String,
+            volicord_build_id: String,
+        ) -> Result<Self, Box<dyn Error>> {
+            ObservedReleaseHostCoordinates::new(
+                host_version.clone(),
+                host_executable_sha256.clone(),
+            )?;
+            bounded_identity(
+                "observed Volicord build id",
+                &volicord_build_id,
+                MAX_BUILD_ID_CHARS,
+            )?;
+            Ok(Self {
+                host_version,
+                host_executable_sha256,
+                volicord_build_id,
+            })
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct LiveRunnerEnvironment {
+        runner_os: String,
+        runner_os_version: String,
+        runner_arch: String,
+    }
+
+    impl LiveRunnerEnvironment {
+        fn measure() -> Result<Self, Box<dyn Error>> {
+            fn uname(flag: &str, label: &str) -> Result<String, Box<dyn Error>> {
+                let output = Command::new("uname").arg(flag).output()?;
+                if !output.status.success() {
+                    return Err(io::Error::other(format!(
+                        "could not measure live runner {label}: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    ))
+                    .into());
+                }
+                let value = String::from_utf8(output.stdout)?.trim().to_owned();
+                bounded_identity(label, &value, 256)
+            }
+
+            Ok(Self {
+                runner_os: uname("-s", "runner_os")?,
+                runner_os_version: uname("-r", "runner_os_version")?,
+                runner_arch: uname("-m", "runner_arch")?,
+            })
+        }
+    }
+
     struct LiveResultRecorder {
         result_host: String,
         profile: Option<IntegrationProfile>,
@@ -8583,12 +12056,22 @@ mod unix {
         started_at: String,
         started: bool,
         finalized: bool,
+        release_candidate: Option<ReleaseCandidate>,
+        release_feature: Option<HostFeature>,
+        release_requested_verified: Option<bool>,
+        installed_host_detected: bool,
+        observed_host_coordinates: Option<ObservedReleaseHostCoordinates>,
+        observed_volicord_build_id: Option<String>,
+        runner_environment: LiveRunnerEnvironment,
     }
 
     impl LiveResultRecorder {
         fn from_env(host: &str) -> Result<Self, Box<dyn Error>> {
             let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
-            Self::new(host, Some(result_path))
+            let mut recorder = Self::new(host, Some(result_path))?;
+            recorder.release_candidate = Some(ReleaseCandidate::from_env()?);
+            recorder.release_feature = Some(HostFeature::NativeUserAction);
+            Ok(recorder)
         }
 
         fn from_env_for_kind(
@@ -8596,7 +12079,10 @@ mod unix {
             result_kind: &'static str,
         ) -> Result<Self, Box<dyn Error>> {
             let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
-            Self::new_for_kind(host, result_kind, Some(result_path))
+            let mut recorder = Self::new_for_kind(host, result_kind, Some(result_path))?;
+            recorder.release_candidate = Some(ReleaseCandidate::from_env()?);
+            recorder.release_feature = release_feature_for_result(result_kind, None);
+            Ok(recorder)
         }
 
         fn from_env_for_kind_and_profile(
@@ -8606,13 +12092,16 @@ mod unix {
             profile: Option<IntegrationProfile>,
         ) -> Result<Self, Box<dyn Error>> {
             let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
-            Self::new_for_kind_and_profile(
+            let mut recorder = Self::new_for_kind_and_profile(
                 recorder_label,
                 result_host,
                 result_kind,
                 profile,
                 Some(result_path),
-            )
+            )?;
+            recorder.release_candidate = Some(ReleaseCandidate::from_env()?);
+            recorder.release_feature = release_feature_for_result(result_kind, profile);
+            Ok(recorder)
         }
 
         fn new(host: &str, result_path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
@@ -8633,7 +12122,11 @@ mod unix {
             let profile = match result_kind {
                 LIVE_USER_ACTION_RESULT_KIND
                 | LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
-                | LIVE_CLI_FALLBACK_RESULT_KIND => Some(IntegrationProfile::Detective),
+                | LIVE_CLI_FALLBACK_RESULT_KIND
+                | LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND
+                | LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND => {
+                    Some(IntegrationProfile::Detective)
+                }
                 LIVE_FINAL_OUTPUT_RESULT_KIND => None,
                 _ => None,
             };
@@ -8670,19 +12163,27 @@ mod unix {
                 started_at,
                 started: false,
                 finalized: false,
+                release_candidate: None,
+                release_feature: None,
+                release_requested_verified: parse_release_requested_verified_claim(
+                    env::var_os(RELEASE_REQUEST_VERIFIED_ENV).as_deref(),
+                )?,
+                installed_host_detected: false,
+                observed_host_coordinates: None,
+                observed_volicord_build_id: None,
+                runner_environment: LiveRunnerEnvironment::measure()?,
             };
-            if recorder.result_path.is_some() {
-                recorder.write_external_summary(
-                    &serde_json::json!({
-                        "kind": result_kind,
-                        "result": "running",
-                        "host": { "kind": result_host }
-                    }),
-                    false,
-                )?;
-            }
             recorder.started = true;
             Ok(recorder)
+        }
+
+        fn release_candidate(&self) -> Result<&ReleaseCandidate, Box<dyn Error>> {
+            self.release_candidate.as_ref().ok_or_else(|| {
+                io::Error::other(
+                    "selected live release cell has no exact release-candidate binding",
+                )
+                .into()
+            })
         }
 
         fn failed_before_completion_summary(&self) -> Value {
@@ -8708,14 +12209,152 @@ mod unix {
             summary
         }
 
-        fn record_final(&mut self, summary: &Value) -> Result<(), Box<dyn Error>> {
-            validate_terminal_release_host_feature_diagnostics(summary)?;
-            let summary = self.with_validation_run(summary)?;
-            let serialized = serialize_live_host_result(&summary)?;
-            if let Some(path) = self.result_path.as_deref() {
-                atomic_write_live_host_result(path, &serialized, &self.run_id)?;
+        fn bind_observed_host_identity(
+            &mut self,
+            identity: ObservedReleaseHostIdentity,
+        ) -> Result<(), Box<dyn Error>> {
+            self.bind_observed_host_coordinates(ObservedReleaseHostCoordinates::new(
+                identity.host_version,
+                identity.host_executable_sha256,
+            )?)?;
+            self.bind_observed_volicord_build_id(identity.volicord_build_id)
+        }
+
+        fn mark_installed_host_detected(&mut self) {
+            self.installed_host_detected = true;
+        }
+
+        fn bind_observed_host_coordinates(
+            &mut self,
+            coordinates: ObservedReleaseHostCoordinates,
+        ) -> Result<(), Box<dyn Error>> {
+            self.mark_installed_host_detected();
+            if let Some(existing) = &self.observed_host_coordinates {
+                if existing != &coordinates {
+                    return Err(io::Error::other(
+                        "live result recorder cannot replace observed host coordinates",
+                    )
+                    .into());
+                }
+            } else {
+                self.observed_host_coordinates = Some(coordinates);
             }
-            println!("{serialized}");
+            Ok(())
+        }
+
+        fn bind_observed_volicord_build_id(
+            &mut self,
+            volicord_build_id: String,
+        ) -> Result<(), Box<dyn Error>> {
+            let volicord_build_id = bounded_identity(
+                "observed Volicord build id",
+                &volicord_build_id,
+                MAX_BUILD_ID_CHARS,
+            )?;
+            if let Some(existing) = &self.observed_volicord_build_id {
+                if existing != &volicord_build_id {
+                    return Err(io::Error::other(
+                        "live result recorder cannot replace an observed Volicord build id",
+                    )
+                    .into());
+                }
+            } else {
+                self.observed_volicord_build_id = Some(volicord_build_id);
+            }
+            Ok(())
+        }
+
+        fn with_observed_host_identity(&self, summary: &Value) -> Result<Value, Box<dyn Error>> {
+            if self.observed_host_coordinates.is_none() && self.observed_volicord_build_id.is_none()
+            {
+                return Ok(summary.clone());
+            }
+            let mut summary = summary.clone();
+            let object = summary.as_object_mut().ok_or_else(|| {
+                io::Error::other("live-host result summary must be a JSON object")
+            })?;
+            if let Some(coordinates) = &self.observed_host_coordinates {
+                let host = object
+                    .entry("host".to_owned())
+                    .or_insert_with(|| serde_json::json!({ "kind": self.result_host }))
+                    .as_object_mut()
+                    .ok_or_else(|| io::Error::other("live-host result host must be an object"))?;
+                match host.get("kind").and_then(Value::as_str) {
+                    Some(kind) if kind == self.result_host => {}
+                    Some(_) => {
+                        return Err(io::Error::other(
+                            "live-host result host kind conflicts with the recorder host",
+                        )
+                        .into())
+                    }
+                    None => {
+                        host.insert("kind".to_owned(), Value::String(self.result_host.clone()));
+                    }
+                }
+                for (key, expected) in [
+                    ("version", coordinates.host_version.as_str()),
+                    (
+                        "executable_sha256",
+                        coordinates.host_executable_sha256.as_str(),
+                    ),
+                ] {
+                    match host.get(key) {
+                        Some(Value::String(value)) if value == expected => {}
+                        Some(_) => {
+                            return Err(io::Error::other(format!(
+                                "live-host result host {key} conflicts with the observed identity"
+                            ))
+                            .into())
+                        }
+                        None => {
+                            host.insert(key.to_owned(), Value::String(expected.to_owned()));
+                        }
+                    }
+                }
+            }
+            if let Some(volicord_build_id) = &self.observed_volicord_build_id {
+                let volicord = object
+                    .entry("volicord".to_owned())
+                    .or_insert_with(|| serde_json::json!({}))
+                    .as_object_mut()
+                    .ok_or_else(|| {
+                        io::Error::other("live-host result volicord must be an object")
+                    })?;
+                match volicord.get("build_id") {
+                    Some(Value::String(value)) if value == volicord_build_id => {}
+                    Some(_) => {
+                        return Err(io::Error::other(
+                            "live-host result build id conflicts with the observed identity",
+                        )
+                        .into())
+                    }
+                    None => {
+                        volicord.insert(
+                            "build_id".to_owned(),
+                            Value::String(volicord_build_id.clone()),
+                        );
+                    }
+                }
+            }
+            Ok(summary)
+        }
+
+        fn record_final(&mut self, summary: &Value) -> Result<(), Box<dyn Error>> {
+            let summary = self.with_observed_host_identity(summary)?;
+            validate_terminal_release_host_feature_diagnostics(&summary)?;
+            let summary = self.with_validation_run(&summary)?;
+            let serialized = serialize_live_host_result(&summary)?;
+            let rendered = match (self.release_feature, self.result_path.as_deref()) {
+                (Some(feature), Some(cell_path)) => {
+                    self.write_release_cell(feature, cell_path, &summary, &serialized)?
+                }
+                (_, Some(path)) => {
+                    write_new_live_host_result(path, &serialized)?;
+                    serialized
+                }
+                (_, None) => serialized,
+            };
+            println!("{rendered}");
             self.finalized = true;
             Ok(())
         }
@@ -8736,22 +12375,327 @@ mod unix {
             Ok(summary)
         }
 
-        fn write_external_summary(
+        fn write_release_cell(
             &self,
+            feature: HostFeature,
+            cell_path: &Path,
             summary: &Value,
-            replace_existing: bool,
-        ) -> Result<(), Box<dyn Error>> {
-            let Some(path) = self.result_path.as_deref() else {
-                return Ok(());
+            evidence_serialized: &str,
+        ) -> Result<String, Box<dyn Error>> {
+            let candidate = self.release_candidate()?;
+            candidate.validate()?;
+            let host_kind = summary
+                .pointer("/host/kind")
+                .and_then(Value::as_str)
+                .ok_or_else(|| io::Error::other("release-cell evidence has no host kind"))?;
+            let (canonical_host_kind, maintained_host_kind) = match host_kind {
+                "codex" => ("codex", HostKind::Codex),
+                "claude-code" | "claude_code" => ("claude_code", HostKind::ClaudeCode),
+                _ => {
+                    return Err(io::Error::other(
+                        "release-cell evidence names an unsupported managed host",
+                    )
+                    .into())
+                }
             };
-            let summary = self.with_validation_run(summary)?;
-            let serialized = serialize_live_host_result(&summary)?;
-            if replace_existing {
-                atomic_write_live_host_result(path, &serialized, &self.run_id)
+            let host_version = match summary.pointer("/host/version") {
+                Some(Value::String(value)) => Some(bounded_identity(
+                    "release-cell host_version",
+                    value,
+                    MAX_HOST_VERSION_CHARS,
+                )?),
+                Some(Value::Null) | None => None,
+                Some(_) => {
+                    return Err(io::Error::other(
+                        "release-cell host version must be a string or null",
+                    )
+                    .into())
+                }
+            };
+            let host_executable_sha256 = match summary.pointer("/host/executable_sha256") {
+                Some(Value::String(value)) => {
+                    validate_lower_hex("host_executable_sha256", value, &[64])?;
+                    Some(value.clone())
+                }
+                Some(Value::Null) | None => None,
+                Some(_) => {
+                    return Err(io::Error::other(
+                        "release-cell host executable digest must be a string or null",
+                    )
+                    .into())
+                }
+            };
+            if host_version.is_some() != host_executable_sha256.is_some() {
+                return Err(io::Error::other(
+                    "release-cell host version and executable digest must both be present or both be null",
+                )
+                .into());
+            }
+            if self.installed_host_detected && host_version.is_none() {
+                return Err(io::Error::other(
+                    "an installed host cannot be recorded with a null release availability coordinate",
+                )
+                .into());
+            }
+            let adapter_version = match summary.pointer("/volicord/build_id") {
+                Some(Value::String(value)) => {
+                    bounded_identity("release-cell adapter_version", value, MAX_BUILD_ID_CHARS)?
+                }
+                Some(Value::Null) | None => candidate.adapter_build_id()?,
+                Some(_) => {
+                    return Err(io::Error::other(
+                        "release-cell adapter build id must be a string or null",
+                    )
+                    .into())
+                }
+            };
+            let adapter_profile = match feature {
+                HostFeature::RecordFinalOutput | HostFeature::DetectiveFinalOutput => summary
+                    .get("profile")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        io::Error::other("final-output release cell has no exact profile")
+                    })?,
+                _ => IntegrationProfile::Detective.as_str(),
+            };
+            let implementation = host_feature_implementation(maintained_host_kind, feature);
+            let static_unsupported = implementation == HostFeatureImplementation::UnsupportedByHost;
+            let host_identity_available = host_version.is_some();
+            let requested_verified = resolve_release_requested_verified(
+                self.release_requested_verified,
+                static_unsupported,
+                host_identity_available,
+            )?;
+            let completed_pass = summary.get("result").and_then(Value::as_str) == Some("passed");
+            if completed_pass {
+                validate_release_cell_passed_summary(feature, summary)?;
+            }
+            let assertions = release_cell_assertions(feature, static_unsupported, completed_pass);
+            let (evidence_artifact_path, evidence_artifact_sha256) = if static_unsupported {
+                (Value::Null, Value::Null)
             } else {
-                write_new_live_host_result(path, &serialized)
+                let evidence_path = release_evidence_path(cell_path)?;
+                write_new_live_host_result(&evidence_path, evidence_serialized)?;
+                let evidence_sha256 =
+                    sha256_file(&evidence_path, MAX_LIVE_HOST_RESULT_BYTES as u64 + 1)?;
+                (
+                    Value::String(path_text(&evidence_path)),
+                    Value::String(evidence_sha256),
+                )
+            };
+            let claimed_status = if static_unsupported {
+                "unsupported_by_host"
+            } else if completed_pass {
+                "verified"
+            } else {
+                "implemented_unverified"
+            };
+            let recorded_at = recorded_at_now()?;
+            let cell = serde_json::json!({
+                "schema": RELEASE_CELL_SCHEMA,
+                "candidate_id": candidate.candidate_id,
+                "binary_sha256": candidate.binary_sha256,
+                "source_revision": candidate.source_revision,
+                "target_triple": candidate.target_triple,
+                "release_profile": candidate.release_profile,
+                "host_kind": canonical_host_kind,
+                "host_version": host_version,
+                "adapter_profile": adapter_profile,
+                "adapter_version": adapter_version,
+                "feature": feature.as_str(),
+                "implementation_disposition": if static_unsupported { "unsupported_by_host" } else { "implemented" },
+                "requested_verified": requested_verified,
+                "claimed_status": claimed_status,
+                "run_state": if static_unsupported {
+                    "not_applicable"
+                } else if host_identity_available {
+                    "completed"
+                } else {
+                    "ignored"
+                },
+                "started_at": self.started_at,
+                "recorded_at": recorded_at,
+                "environment": {
+                    "runner_os": self.runner_environment.runner_os,
+                    "runner_os_version": self.runner_environment.runner_os_version,
+                    "runner_arch": self.runner_environment.runner_arch,
+                    "host_executable_sha256": host_executable_sha256,
+                    "host_kind": canonical_host_kind,
+                    "host_version": host_version,
+                    "adapter_profile": adapter_profile,
+                    "adapter_version": adapter_version
+                },
+                "assertions": assertions,
+                "evidence_artifact_path": evidence_artifact_path,
+                "evidence_artifact_sha256": evidence_artifact_sha256
+            });
+            let serialized = serde_json::to_string(&cell)?;
+            if serialized.len() > 1024 * 1024 {
+                return Err(io::Error::other("release cell exceeds the 1 MiB bound").into());
+            }
+            candidate.validate()?;
+            write_new_live_host_result(cell_path, &serialized)?;
+            Ok(serialized)
+        }
+    }
+
+    fn release_feature_for_result(
+        result_kind: &str,
+        profile: Option<IntegrationProfile>,
+    ) -> Option<HostFeature> {
+        match result_kind {
+            LIVE_USER_ACTION_RESULT_KIND => Some(HostFeature::NativeUserAction),
+            LIVE_EVIDENCE_OBSERVATION_RESULT_KIND => Some(HostFeature::LocalWebUserChannel),
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND => Some(HostFeature::VerifiedToolProducer),
+            LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND => {
+                Some(HostFeature::RegisteredConnectionObservation)
+            }
+            LIVE_FINAL_OUTPUT_RESULT_KIND => match profile {
+                Some(IntegrationProfile::Record) => Some(HostFeature::RecordFinalOutput),
+                Some(IntegrationProfile::Detective) => Some(HostFeature::DetectiveFinalOutput),
+                None => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn validate_release_cell_passed_summary(
+        feature: HostFeature,
+        summary: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut evidence = summary.clone();
+        let object = evidence.as_object_mut().ok_or_else(|| {
+            io::Error::other("release-cell evidence summary must be a JSON object")
+        })?;
+        object.remove("validation_run");
+        match feature {
+            HostFeature::NativeUserAction => validate_live_user_action_result_shape(&evidence),
+            HostFeature::LocalWebUserChannel => {
+                validate_live_evidence_observation_result_shape(&evidence)
+            }
+            HostFeature::VerifiedToolProducer | HostFeature::RegisteredConnectionObservation => {
+                validate_live_producer_result_shape(&evidence, feature)
+            }
+            HostFeature::RecordFinalOutput => {
+                validate_final_output_result_shape(&evidence, IntegrationProfile::Record)
+            }
+            HostFeature::DetectiveFinalOutput => {
+                validate_final_output_result_shape(&evidence, IntegrationProfile::Detective)
             }
         }
+    }
+
+    fn release_cell_assertions(
+        feature: HostFeature,
+        static_unsupported: bool,
+        passed: bool,
+    ) -> Vec<Value> {
+        let mut assertion_ids = if static_unsupported {
+            vec!["static_unsupported_by_host"]
+        } else {
+            match feature {
+                HostFeature::NativeUserAction => vec![
+                    "actual_host_session",
+                    "native_user_selector_observed",
+                    "operator_choice_confirmed",
+                    "same_connection_resume",
+                    "authority_receipt_observed",
+                ],
+                HostFeature::LocalWebUserChannel => vec![
+                    "actual_host_session",
+                    "trusted_capability_current",
+                    "host_owned_surface_observed",
+                    "model_visible_payload_absence_observed",
+                    "browser_submission_observed",
+                    "same_connection_resume",
+                    "strong_evidence_close_chain",
+                ],
+                HostFeature::VerifiedToolProducer => vec![
+                    "actual_host_tool_event",
+                    "intent_precedes_source",
+                    "exact_session_connection_actor_scope_baseline",
+                    "capture_receipt_bound",
+                    "strong_producer_chain",
+                    "criterion_coverage_projected",
+                    "negative_rejections_zero_effect",
+                ],
+                HostFeature::RegisteredConnectionObservation => vec![
+                    "actual_host_connection_event",
+                    "intent_precedes_source",
+                    "exact_session_connection_actor_scope_baseline",
+                    "capture_receipt_bound",
+                    "strong_producer_chain",
+                    "criterion_coverage_projected",
+                    "negative_rejections_zero_effect",
+                ],
+                HostFeature::RecordFinalOutput => vec![
+                    "actual_host_session",
+                    "authority_display_observed",
+                    "authenticated_exact_replay_observed",
+                ],
+                HostFeature::DetectiveFinalOutput => vec![
+                    "actual_host_session",
+                    "authority_display_observed",
+                    "authenticated_exact_replay_observed",
+                    "block_finalization_observed",
+                ],
+            }
+        };
+        assertion_ids.sort_unstable();
+        assertion_ids
+            .into_iter()
+            .map(|assertion_id| {
+                let assertion_passed = static_unsupported || passed;
+                let mut assertion = serde_json::json!({
+                    "assertion_id": assertion_id,
+                    "passed": assertion_passed
+                });
+                if !assertion_passed {
+                    assertion["finding_codes"] = serde_json::json!(["live_cell_incomplete"]);
+                }
+                assertion
+            })
+            .collect()
+    }
+
+    fn release_evidence_path(cell_path: &Path) -> Result<PathBuf, Box<dyn Error>> {
+        let cell_dir = cell_path
+            .parent()
+            .ok_or_else(|| io::Error::other("release cell path has no parent directory"))?;
+        let result_root = cell_dir
+            .parent()
+            .ok_or_else(|| io::Error::other("release cell directory has no result-root parent"))?;
+        let evidence_dir = result_root.join("evidence");
+        match fs::symlink_metadata(&evidence_dir) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(io::Error::other(
+                        "release evidence directory must be a real directory, not a symlink or file",
+                    )
+                    .into());
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                if let Err(create_error) = fs::create_dir(&evidence_dir) {
+                    if create_error.kind() != io::ErrorKind::AlreadyExists {
+                        return Err(create_error.into());
+                    }
+                    let metadata = fs::symlink_metadata(&evidence_dir)?;
+                    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                        return Err(io::Error::other(
+                            "release evidence directory race produced a symlink or file",
+                        )
+                        .into());
+                    }
+                }
+            }
+            Err(error) => return Err(error.into()),
+        }
+        let file_name = cell_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| io::Error::other("release cell filename must be UTF-8"))?;
+        Ok(evidence_dir.join(format!("{file_name}.evidence.json")))
     }
 
     fn required_live_result_path(value: Option<OsString>) -> Result<PathBuf, Box<dyn Error>> {
@@ -8761,6 +12705,40 @@ mod unix {
             ))
             .into()
         })
+    }
+
+    fn parse_release_requested_verified_claim(
+        value: Option<&OsStr>,
+    ) -> Result<Option<bool>, Box<dyn Error>> {
+        match value.and_then(OsStr::to_str) {
+            None if value.is_none() => Ok(None),
+            Some("0") => Ok(Some(false)),
+            Some("1") => Ok(Some(true)),
+            Some(_) | None => Err(io::Error::other(format!(
+                "{RELEASE_REQUEST_VERIFIED_ENV} must be exactly `0` or `1` when present"
+            ))
+            .into()),
+        }
+    }
+
+    fn resolve_release_requested_verified(
+        explicit: Option<bool>,
+        static_unsupported: bool,
+        _host_identity_available: bool,
+    ) -> Result<bool, Box<dyn Error>> {
+        if static_unsupported {
+            return match explicit {
+                Some(true) => Err(io::Error::other(format!(
+                    "{RELEASE_REQUEST_VERIFIED_ENV}=1 is forbidden for a statically unsupported release cell"
+                ))
+                .into()),
+                Some(false) | None => Ok(false),
+            };
+        }
+        match explicit {
+            Some(value) => Ok(value),
+            None => Ok(true),
+        }
     }
 
     impl Drop for LiveResultRecorder {
@@ -8835,44 +12813,6 @@ mod unix {
         Ok(())
     }
 
-    fn atomic_write_live_host_result(
-        path: &Path,
-        serialized: &str,
-        run_id: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        validate_external_result_path(path, false)?;
-        validate_existing_result_run(path, run_id)?;
-        let parent = path.parent().ok_or_else(|| {
-            io::Error::other(format!(
-                "{LIVE_HOST_RESULT_PATH_ENV} has no parent directory"
-            ))
-        })?;
-        let file_name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| io::Error::other("live-host result filename must be UTF-8"))?;
-        let temporary_path = parent.join(format!(
-            ".{file_name}.{run_id}.{}.tmp",
-            epoch_duration()?.as_nanos()
-        ));
-        let write_result = (|| -> Result<(), Box<dyn Error>> {
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary_path)?;
-            file.write_all(serialized.as_bytes())?;
-            file.write_all(b"\n")?;
-            file.sync_all()?;
-            drop(file);
-            fs::rename(&temporary_path, path)?;
-            Ok(())
-        })();
-        if write_result.is_err() {
-            let _ = fs::remove_file(&temporary_path);
-        }
-        write_result
-    }
-
     fn write_new_live_host_result(path: &Path, serialized: &str) -> Result<(), Box<dyn Error>> {
         validate_external_result_path(path, true)?;
         let mut created = false;
@@ -8890,45 +12830,17 @@ mod unix {
         write_result
     }
 
-    fn validate_existing_result_run(path: &Path, run_id: &str) -> Result<(), Box<dyn Error>> {
-        let metadata = fs::metadata(path).map_err(|error| {
-            io::Error::other(format!(
-                "active live-host result is unavailable before final replacement: {error}"
-            ))
-        })?;
-        if metadata.len() > MAX_LIVE_HOST_RESULT_BYTES as u64 {
-            return Err(io::Error::other(
-                "active live-host result exceeds the bounded result size before final replacement",
-            )
-            .into());
-        }
-        let existing: Value = serde_json::from_slice(&fs::read(path)?)?;
-        if existing
-            .pointer("/validation_run/run_id")
-            .and_then(Value::as_str)
-            != Some(run_id)
-        {
-            return Err(io::Error::other(
-                "active live-host result no longer belongs to this validation run",
-            )
-            .into());
-        }
-        Ok(())
-    }
-
     fn epoch_duration() -> Result<Duration, Box<dyn Error>> {
         Ok(SystemTime::now().duration_since(UNIX_EPOCH)?)
     }
 
     fn recorded_at_now() -> Result<String, Box<dyn Error>> {
-        let duration = epoch_duration()?;
+        let timestamp =
+            DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Secs, true);
+        validate_canonical_second_timestamp("live validation recorded_at", &timestamp)?;
         bounded_identity(
             "live validation recorded_at",
-            &format!(
-                "unix_epoch:{}.{:09}",
-                duration.as_secs(),
-                duration.subsec_nanos()
-            ),
+            &timestamp,
             MAX_RECORDED_AT_CHARS,
         )
     }
@@ -8943,6 +12855,46 @@ mod unix {
             .find(|line| !line.is_empty())
             .ok_or_else(|| io::Error::other("host --version returned no version text"))?;
         bounded_identity("host version", version, MAX_HOST_VERSION_CHARS)
+    }
+
+    fn validate_codex_chatgpt_login_status(
+        stdout: &str,
+        stderr: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let combined = format!("{stdout}\n{stderr}");
+        let lines = combined
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        if lines.as_slice() != ["Logged in using ChatGPT"]
+            || combined.to_ascii_lowercase().contains("api key")
+        {
+            return Err(io::Error::other(
+                "codex login status must say exactly `Logged in using ChatGPT`; API-key or ambiguous authentication is not allowed for live release cells",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn release_build_id_from_version_output(
+        label: &str,
+        output: &TimedOutput,
+    ) -> Result<String, Box<dyn Error>> {
+        require_success(label, output)?;
+        let line = stdout(output);
+        let line = line.trim();
+        let (_, build_id) = line
+            .strip_prefix("volicord ")
+            .and_then(|value| value.strip_suffix(')'))
+            .and_then(|value| value.rsplit_once(" (build_id="))
+            .ok_or_else(|| {
+                io::Error::other(
+                    "release candidate --version did not expose the exact build_id envelope",
+                )
+            })?;
+        bounded_identity("Volicord build_id", build_id, MAX_BUILD_ID_CHARS)
     }
 
     fn bounded_identity(
@@ -9281,6 +13233,260 @@ mod unix {
         Ok(true)
     }
 
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ReleaseCandidateBuildEnvironment {
+        runner_os: String,
+        runner_os_version: String,
+        runner_arch: String,
+        git_version: String,
+        rustc_version: String,
+        cargo_version: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ReleaseCandidate {
+        schema: String,
+        candidate_id: String,
+        candidate_path: String,
+        source_revision: String,
+        source_clean: bool,
+        source_archive_algorithm: String,
+        source_archive_sha256: String,
+        target_triple: String,
+        release_profile: String,
+        binary_sha256: String,
+        build_environment: ReleaseCandidateBuildEnvironment,
+        recorded_at: String,
+    }
+
+    impl ReleaseCandidate {
+        fn from_env() -> Result<Self, Box<dyn Error>> {
+            let descriptor_path = env::var_os(RELEASE_CANDIDATE_PATH_ENV)
+                .map(PathBuf::from)
+                .ok_or_else(|| {
+                    io::Error::other(format!(
+                        "{RELEASE_CANDIDATE_PATH_ENV} must name the exact external release-candidate descriptor"
+                    ))
+                })?;
+            validate_external_regular_input(
+                &descriptor_path,
+                MAX_RELEASE_CANDIDATE_DESCRIPTOR_BYTES as u64,
+                RELEASE_CANDIDATE_PATH_ENV,
+            )?;
+            let bytes = fs::read(&descriptor_path)?;
+            let candidate: Self = serde_json::from_slice(&bytes)?;
+            candidate.validate()?;
+            Ok(candidate)
+        }
+
+        fn validate(&self) -> Result<(), Box<dyn Error>> {
+            if self.schema != RELEASE_CANDIDATE_SCHEMA {
+                return Err(io::Error::other(format!(
+                    "release candidate schema must be {RELEASE_CANDIDATE_SCHEMA}"
+                ))
+                .into());
+            }
+            bounded_identity("candidate_id", &self.candidate_id, 256)?;
+            validate_lower_hex("source_revision", &self.source_revision, &[40, 64])?;
+            if !self.source_clean {
+                return Err(io::Error::other("release candidate source_clean must be true").into());
+            }
+            if self.source_archive_algorithm != RELEASE_SOURCE_ARCHIVE_ALGORITHM {
+                return Err(io::Error::other(format!(
+                    "release candidate source archive algorithm must be {RELEASE_SOURCE_ARCHIVE_ALGORITHM}"
+                ))
+                .into());
+            }
+            validate_lower_hex("source_archive_sha256", &self.source_archive_sha256, &[64])?;
+            validate_lower_hex("binary_sha256", &self.binary_sha256, &[64])?;
+            bounded_identity("target_triple", &self.target_triple, 256)?;
+            bounded_identity("release_profile", &self.release_profile, 128)?;
+            if self.release_profile != "release" {
+                return Err(io::Error::other(
+                    "live release validation requires the exact release profile",
+                )
+                .into());
+            }
+            validate_canonical_second_timestamp("candidate recorded_at", &self.recorded_at)?;
+            for (name, value) in [
+                ("runner_os", self.build_environment.runner_os.as_str()),
+                (
+                    "runner_os_version",
+                    self.build_environment.runner_os_version.as_str(),
+                ),
+                ("runner_arch", self.build_environment.runner_arch.as_str()),
+                ("git_version", self.build_environment.git_version.as_str()),
+                (
+                    "rustc_version",
+                    self.build_environment.rustc_version.as_str(),
+                ),
+                (
+                    "cargo_version",
+                    self.build_environment.cargo_version.as_str(),
+                ),
+            ] {
+                bounded_identity(name, value, 256)?;
+            }
+            let candidate_path = Path::new(&self.candidate_path);
+            validate_external_regular_input(
+                candidate_path,
+                MAX_RELEASE_CANDIDATE_BINARY_BYTES,
+                "candidate_path",
+            )?;
+            let actual_sha256 = sha256_file(candidate_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+            if actual_sha256 != self.binary_sha256 {
+                return Err(io::Error::other(
+                    "release candidate executable bytes do not match binary_sha256",
+                )
+                .into());
+            }
+            Ok(())
+        }
+
+        fn executable_path(&self) -> &Path {
+            Path::new(&self.candidate_path)
+        }
+
+        fn adapter_build_id(&self) -> Result<String, Box<dyn Error>> {
+            self.validate()?;
+            let mut command = Command::new(self.executable_path());
+            command
+                .arg("--version")
+                .env("NO_COLOR", "1")
+                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove(RELEASE_CANDIDATE_PATH_ENV)
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV);
+            LiveSmokeFixture::remove_inherited_host_control_env(&mut command);
+            LiveSmokeFixture::remove_inherited_auth_secret_env(&mut command);
+            let outcome = run_with_timeout(command, COMMAND_TIMEOUT);
+            self.validate()?;
+            let output = outcome?;
+            release_build_id_from_version_output(
+                "exact release candidate volicord --version",
+                &output,
+            )
+        }
+    }
+
+    fn validate_lower_hex(
+        name: &str,
+        value: &str,
+        allowed_lengths: &[usize],
+    ) -> Result<(), Box<dyn Error>> {
+        if !allowed_lengths.contains(&value.len())
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(io::Error::other(format!(
+                "{name} must be lowercase hexadecimal with length in {allowed_lengths:?}"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn validate_managed_summary_session_id(name: &str, value: &str) -> Result<(), Box<dyn Error>> {
+        validate_managed_host_session_id(value)
+            .map_err(|error| io::Error::other(format!("{name} is invalid: {error}")).into())
+    }
+
+    fn validate_domain_separated_correlation_id(
+        name: &str,
+        value: &str,
+        domain: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let prefix = format!("{domain}_");
+        let digest = value.strip_prefix(&prefix).ok_or_else(|| {
+            io::Error::other(format!(
+                "{name} must use the {domain:?} opaque-id domain prefix"
+            ))
+        })?;
+        validate_lower_hex(name, digest, &[16])
+    }
+
+    fn validate_canonical_second_timestamp(name: &str, value: &str) -> Result<(), Box<dyn Error>> {
+        if value.len() != 20
+            || !value.ends_with('Z')
+            || value.as_bytes().get(4) != Some(&b'-')
+            || value.as_bytes().get(7) != Some(&b'-')
+            || value.as_bytes().get(10) != Some(&b'T')
+            || value.as_bytes().get(13) != Some(&b':')
+            || value.as_bytes().get(16) != Some(&b':')
+            || DateTime::parse_from_rfc3339(value).is_err()
+        {
+            return Err(io::Error::other(format!(
+                "{name} must be canonical UTC RFC 3339 with second precision"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn validate_external_regular_input(
+        path: &Path,
+        max_bytes: u64,
+        name: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if !path.is_absolute() {
+            return Err(
+                io::Error::other(format!("{name} must be an absolute external path")).into(),
+            );
+        }
+        let metadata = fs::symlink_metadata(path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(
+                io::Error::other(format!("{name} must name a non-symlink regular file")).into(),
+            );
+        }
+        if metadata.len() > max_bytes {
+            return Err(
+                io::Error::other(format!("{name} exceeds its {max_bytes}-byte bound")).into(),
+            );
+        }
+        let canonical = fs::canonicalize(path)?;
+        let source_repository = fs::canonicalize(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .and_then(Path::parent)
+                .ok_or_else(|| io::Error::other("could not resolve source repository root"))?,
+        )?;
+        if canonical.starts_with(source_repository) {
+            return Err(io::Error::other(format!(
+                "{name} must stay outside the source repository"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn sha256_file(path: &Path, max_bytes: u64) -> Result<String, Box<dyn Error>> {
+        let mut file = fs::File::open(path)?;
+        let mut hasher = Sha256::new();
+        let mut total = 0_u64;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let count = file.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            total = total
+                .checked_add(u64::try_from(count)?)
+                .ok_or_else(|| io::Error::other("file size overflow while hashing"))?;
+            if total > max_bytes {
+                return Err(io::Error::other(format!(
+                    "{} exceeded its {max_bytes}-byte bound while hashing",
+                    path.display()
+                ))
+                .into());
+            }
+            hasher.update(&buffer[..count]);
+        }
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
     struct LiveSmokeFixture {
         _runtime_home: TempRuntimeHome,
         runtime_home_path: PathBuf,
@@ -9292,10 +13498,32 @@ mod unix {
         codex_home: PathBuf,
         xdg_config_home: PathBuf,
         claude_config_dir: PathBuf,
+        volicord_path: PathBuf,
+        expected_volicord_sha256: String,
     }
 
     impl LiveSmokeFixture {
         fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+            Self::new_with_volicord(prefix, Path::new(volicord_bin()), None)
+        }
+
+        fn new_with_release_candidate(
+            prefix: &str,
+            candidate: &ReleaseCandidate,
+        ) -> Result<Self, Box<dyn Error>> {
+            candidate.validate()?;
+            Self::new_with_volicord(
+                prefix,
+                candidate.executable_path(),
+                Some(candidate.binary_sha256.as_str()),
+            )
+        }
+
+        fn new_with_volicord(
+            prefix: &str,
+            source_volicord: &Path,
+            expected_sha256: Option<&str>,
+        ) -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new(&format!("live-host-smoke-{prefix}"))?;
             let runtime_home_path = runtime_home.path().to_path_buf();
             let repo_root = runtime_home.create_product_repo("product-repo")?;
@@ -9307,7 +13535,20 @@ mod unix {
 
             let bin_dir = runtime_home_path.join("live-bin");
             fs::create_dir_all(&bin_dir)?;
-            write_volicord_shim(&bin_dir, Path::new(volicord_bin()))?;
+            let volicord_path = bin_dir.join("volicord-release-candidate");
+            fs::copy(source_volicord, &volicord_path)?;
+            let copied_sha256 = sha256_file(&volicord_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+            let expected_volicord_sha256 = expected_sha256.unwrap_or(&copied_sha256).to_owned();
+            if copied_sha256 != expected_volicord_sha256 {
+                return Err(io::Error::other(
+                    "private live fixture copy does not match the release candidate digest",
+                )
+                .into());
+            }
+            let mut permissions = fs::metadata(&volicord_path)?.permissions();
+            permissions.set_mode(0o555);
+            fs::set_permissions(&volicord_path, permissions)?;
+            write_volicord_shim(&bin_dir, &volicord_path)?;
 
             let home = runtime_home_path.join("isolated-home");
             let codex_home = runtime_home_path.join("isolated-codex-home");
@@ -9331,6 +13572,8 @@ mod unix {
                 codex_home,
                 xdg_config_home,
                 claude_config_dir,
+                volicord_path,
+                expected_volicord_sha256,
             })
         }
 
@@ -9346,17 +13589,22 @@ mod unix {
             &self,
             args: [&str; N],
         ) -> Result<TimedOutput, Box<dyn Error>> {
-            let mut command = Command::new(volicord_bin());
+            let mut command = Command::new(&self.volicord_path);
             command.args(args).current_dir(&self.repo_root);
             self.apply_isolated_env(&mut command);
-            run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            self.run_candidate_command(command)
+        }
+
+        fn release_build_id(&self) -> Result<String, Box<dyn Error>> {
+            let output = self.run_volicord(["--version"])?;
+            release_build_id_from_version_output("release candidate volicord --version", &output)
         }
 
         fn run_volicord_with_host_environment<const N: usize>(
             &self,
             args: [&str; N],
         ) -> Result<TimedOutput, Box<dyn Error>> {
-            let mut command = Command::new(volicord_bin());
+            let mut command = Command::new(&self.volicord_path);
             command
                 .args(args)
                 .current_dir(&self.repo_root)
@@ -9364,12 +13612,10 @@ mod unix {
                 .env("PATH", &self.env_path)
                 .env("NO_COLOR", "1")
                 .env_remove(LIVE_HOST_RESULT_PATH_ENV)
-                .env_remove("OPENAI_API_KEY")
-                .env_remove("ANTHROPIC_API_KEY")
-                .env_remove("CLAUDE_CODE_OAUTH_TOKEN")
-                .env_remove("CLAUDE_CODE_API_KEY");
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV);
             Self::remove_inherited_host_control_env(&mut command);
-            run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            Self::remove_inherited_auth_secret_env(&mut command);
+            self.run_candidate_command(command)
         }
 
         fn run_host_command<const N: usize>(
@@ -9380,14 +13626,46 @@ mod unix {
             let mut command = Command::new(program);
             command.args(args).current_dir(&self.repo_root);
             self.apply_isolated_env(&mut command);
-            run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            self.with_private_candidate_digest_guard(|| {
+                run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            })
+        }
+
+        fn observe_and_bind_installed_host_identity(
+            &self,
+            recorder: &mut LiveResultRecorder,
+            executable_name: &str,
+            executable: &Path,
+        ) -> Result<ObservedReleaseHostIdentity, Box<dyn Error>> {
+            recorder.mark_installed_host_detected();
+            let host_executable_sha256 =
+                sha256_file(executable, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+            let host_version_output = self.run_host_command(executable, ["--version"])?;
+            let host_version = host_version_summary(&host_version_output)?;
+            recorder.bind_observed_host_coordinates(ObservedReleaseHostCoordinates::new(
+                host_version.clone(),
+                host_executable_sha256.clone(),
+            )?)?;
+            require_success(
+                &format!("{executable_name} --version for live release cell"),
+                &host_version_output,
+            )?;
+            let volicord_build_id = self.release_build_id()?;
+            recorder.bind_observed_volicord_build_id(volicord_build_id.clone())?;
+            ObservedReleaseHostIdentity::new(
+                host_version,
+                host_executable_sha256,
+                volicord_build_id,
+            )
         }
 
         fn run_authenticated_interactive_host(
             &self,
+            host: &str,
             program: &Path,
             prompt: &str,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
             let mut command = Command::new(program);
             command
                 .arg(prompt)
@@ -9395,18 +13673,22 @@ mod unix {
                 .env("VOLICORD_HOME", &self.runtime_home_path)
                 .env("PATH", &self.env_path)
                 .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV)
                 .stdin(Stdio::inherit())
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
             Self::remove_inherited_host_control_env(&mut command);
-            Ok(command.status()?)
+            Self::remove_inherited_auth_secret_env(&mut command);
+            self.run_candidate_host_turn(command)
         }
 
         fn run_authenticated_interactive_host_with_local_web(
             &self,
+            host: &str,
             program: &Path,
             prompt: &str,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
             let mut command = Command::new(program);
             command
                 .arg(prompt)
@@ -9414,22 +13696,67 @@ mod unix {
                 .env("VOLICORD_HOME", &self.runtime_home_path)
                 .env("PATH", &self.env_path)
                 .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV)
                 .stdin(Stdio::inherit())
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
             Self::remove_inherited_host_control_env(&mut command);
+            Self::remove_inherited_auth_secret_env(&mut command);
             command.env("VOLICORD_LOCAL_WEB_CONSENT", "1");
-            Ok(command.status()?)
+            self.run_candidate_host_turn(command)
+        }
+
+        fn require_codex_chatgpt_login_immediately_before_cell(
+            &self,
+            host: &str,
+            program: &Path,
+        ) -> Result<(), Box<dyn Error>> {
+            if host != "codex" {
+                return Ok(());
+            }
+            let mut command = Command::new(program);
+            command
+                .args(["login", "status"])
+                .current_dir(&self.repo_root)
+                .env("VOLICORD_HOME", &self.runtime_home_path)
+                .env("PATH", &self.env_path)
+                .env("NO_COLOR", "1")
+                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove(RELEASE_CANDIDATE_PATH_ENV)
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV);
+            Self::remove_inherited_host_control_env(&mut command);
+            Self::remove_inherited_auth_secret_env(&mut command);
+            let output = self.with_private_candidate_digest_guard(|| {
+                run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            })?;
+            require_success("codex login status", &output)?;
+            validate_codex_chatgpt_login_status(&stdout(&output), &stderr(&output))
         }
 
         fn remove_inherited_host_control_env(command: &mut Command) {
             for name in [
+                LIVE_HOST_RESULT_PATH_ENV,
+                RELEASE_CANDIDATE_PATH_ENV,
+                RELEASE_REQUEST_VERIFIED_ENV,
                 "VOLICORD_MCP_VERIFICATION",
                 "VOLICORD_MCP_LAUNCH",
                 "VOLICORD_MCP_HOST",
                 "VOLICORD_MCP_CONNECTION_ID",
                 "VOLICORD_MCP_PROJECT_ID",
                 "VOLICORD_LOCAL_WEB_CONSENT",
+            ] {
+                command.env_remove(name);
+            }
+        }
+
+        fn remove_inherited_auth_secret_env(command: &mut Command) {
+            for name in [
+                "OPENAI_API_KEY",
+                "CODEX_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CLAUDE_CODE_API_KEY",
             ] {
                 command.env_remove(name);
             }
@@ -9443,11 +13770,77 @@ mod unix {
                 .env("XDG_CONFIG_HOME", &self.xdg_config_home)
                 .env("CLAUDE_CONFIG_DIR", &self.claude_config_dir)
                 .env("PATH", &self.env_path)
-                .env("NO_COLOR", "1")
-                .env_remove("OPENAI_API_KEY")
-                .env_remove("ANTHROPIC_API_KEY")
-                .env_remove("CLAUDE_CODE_OAUTH_TOKEN")
-                .env_remove("CLAUDE_CODE_API_KEY");
+                .env("NO_COLOR", "1");
+            Self::remove_inherited_host_control_env(command);
+            Self::remove_inherited_auth_secret_env(command);
+        }
+
+        fn verify_private_candidate_digest(&self) -> Result<(), Box<dyn Error>> {
+            let metadata = fs::symlink_metadata(&self.volicord_path)?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(io::Error::other(
+                    "private live fixture candidate must remain a non-symlink regular file",
+                )
+                .into());
+            }
+            if metadata.permissions().mode() & 0o222 != 0 {
+                return Err(io::Error::other(
+                    "private live fixture candidate must remain read-only",
+                )
+                .into());
+            }
+            let actual = sha256_file(&self.volicord_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+            if actual != self.expected_volicord_sha256 {
+                return Err(io::Error::other(
+                    "private live fixture candidate digest changed after fixture setup",
+                )
+                .into());
+            }
+            Ok(())
+        }
+
+        fn run_candidate_command(&self, command: Command) -> Result<TimedOutput, Box<dyn Error>> {
+            self.with_private_candidate_digest_guard(|| {
+                run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            })
+        }
+
+        fn run_candidate_host_turn(
+            &self,
+            mut command: Command,
+        ) -> Result<ExitStatus, Box<dyn Error>> {
+            self.with_private_candidate_digest_guard(|| command.status().map_err(Into::into))
+        }
+
+        fn run_generated_final_output_handler(
+            &self,
+            host: &str,
+            event: &Value,
+        ) -> Result<Output, Box<dyn Error>> {
+            self.with_private_candidate_digest_guard(|| {
+                run_generated_final_output_handler(
+                    &self.runtime_home_path,
+                    &self.repo_root,
+                    &self.env_path,
+                    host,
+                    event,
+                )
+            })
+        }
+
+        fn with_private_candidate_digest_guard<T>(
+            &self,
+            operation: impl FnOnce() -> Result<T, Box<dyn Error>>,
+        ) -> Result<T, Box<dyn Error>> {
+            self.verify_private_candidate_digest()?;
+            let outcome = catch_unwind(AssertUnwindSafe(operation));
+            let stability = self.verify_private_candidate_digest();
+            match (outcome, stability) {
+                (_, Err(error)) => Err(error),
+                (Ok(Ok(value)), Ok(())) => Ok(value),
+                (Ok(Err(error)), Ok(())) => Err(error),
+                (Err(payload), Ok(())) => resume_unwind(payload),
+            }
         }
     }
 
@@ -9500,14 +13893,17 @@ mod unix {
         host: &str,
         event: &Value,
     ) -> Result<Output, Box<dyn Error>> {
-        let mut child = Command::new(generated_stop_wrapper_path(repo_root, host)?)
+        let mut command = Command::new(generated_stop_wrapper_path(repo_root, host)?);
+        command
             .env("VOLICORD_HOME", runtime_home)
             .env("PATH", path)
             .current_dir(repo_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+        LiveSmokeFixture::remove_inherited_host_control_env(&mut command);
+        LiveSmokeFixture::remove_inherited_auth_secret_env(&mut command);
+        let mut child = command.spawn()?;
         child
             .stdin
             .as_mut()
@@ -9737,7 +14133,7 @@ mod unix {
         let wrapper_path = generated_stop_wrapper_path(&fixture.repo_root, host)?;
         let wrapper = fs::read_to_string(&wrapper_path)?;
         let volicord_command =
-            generated_script_word(path_text(&fs::canonicalize(volicord_bin())?).as_str());
+            generated_script_word(path_text(&fs::canonicalize(&fixture.volicord_path)?).as_str());
         let expected_command = match profile {
             IntegrationProfile::Record => format!("exec {volicord_command} _final-output"),
             IntegrationProfile::Detective => format!("exec {volicord_command} _hook stop"),
@@ -10035,7 +14431,11 @@ mod unix {
         let profile = match kind {
             LIVE_USER_ACTION_RESULT_KIND
             | LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
-            | LIVE_CLI_FALLBACK_RESULT_KIND => Some(IntegrationProfile::Detective),
+            | LIVE_CLI_FALLBACK_RESULT_KIND
+            | LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND
+            | LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND => {
+                Some(IntegrationProfile::Detective)
+            }
             LIVE_FINAL_OUTPUT_RESULT_KIND => match value["profile"].as_str() {
                 Some("record") => Some(IntegrationProfile::Record),
                 Some("detective") => Some(IntegrationProfile::Detective),

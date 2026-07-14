@@ -23,6 +23,7 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 | 관리 작업 흐름 따라가기 | [CLI 작업 흐름](cli-workflows.md) -> [소스 지도](source-map.md) | 설정, 연결, 호스트, 관찰 훅, 진단 경로가 어떻게 조합되고 각 부분이 어디에 있는지 알 수 있습니다. |
 | 공개 메서드 호출 따라가기 | [요청 생명주기](request-lifecycle.md) -> [구현 설계 패턴](design-patterns.md) -> [저장소와 트랜잭션](storage-and-transactions.md) | MCP, Core, Store가 어떻게 협력하고 어떤 구조가 반복되며 어디서 지속 저장이 시작되는지 알 수 있습니다. |
 | 변경 계획 세우기 | [구현 가이드](change-guide.md) -> [테스트 전략](testing-strategy.md) -> [아키텍처 결정](decisions/README.md) | 어떤 담당 문서와 소스 영역을 확인할지, 어떤 테스트 계층을 사용할지, 구현 경계가 왜 존재하는지 알 수 있습니다. |
+| 호스트 릴리스 검증 계획 | [호스트 릴리스 증거](../reference/host-release-evidence.md) -> [외부 호스트 릴리스 증거 게이트](decisions/host-release-evidence-gate.md) -> [검증](../maintain/validation.md) | 정확한 외부 스키마와 게이트, 아키텍처 근거, 유지되는 명령 경로를 확인합니다. |
 | 정확한 동작 확인하기 | [참조 색인](../reference/README.md) -> [API 메서드](../reference/api/methods.md) | API, 스키마, 저장소, 보안, 런타임, 오류, Core 권한 세부사항을 어느 집중 참조 문서가 담당하는지 알 수 있습니다. |
 
 ## 소스 읽기 지름길

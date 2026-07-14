@@ -791,6 +791,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-release-validation-tests"
+version = "0.9.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "volicord-cli",
+ "volicord-types",
+]
+
+[[package]]
 name = "volicord-store"
 version = "0.9.0"
 dependencies = [

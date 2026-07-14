@@ -27,9 +27,9 @@ Agent Connection, host/client version, adapter profile/version, managed
 fingerprint, Volicord build, source revision, target and executable digest, and
 bounded evidence-artifact digest.
 
-The expected `evidence_artifact_sha256` comes from a separately verified
-exact-final-artifact release evidence manifest or receipt outside the
-executable. That manifest must bind the same capability, host/client,
+The expected `evidence_artifact_sha256` would require trusted production
+acquisition of the external `volicord-host-release-manifest-v1` defined by
+[Host Release Evidence](../../reference/host-release-evidence.md). That manifest must bind the same capability, host/client,
 adapter, Volicord build, source revision, target, and executable digest as the
 current row, as well as the expected evidence-artifact digest. The evaluator
 must verify the manifest and exact-match the row's `evidence_artifact_sha256`
@@ -165,6 +165,8 @@ be replaced by fixtures.
 
 Reference owners:
 
+- [Host Release Evidence](../../reference/host-release-evidence.md) and the
+  [external gate decision](host-release-evidence-gate.md)
 - [Agent Connection](../../reference/agent-connection.md)
 - [MCP Transport](../../reference/mcp-transport.md)
 - [Administrative CLI](../../reference/admin-cli.md)

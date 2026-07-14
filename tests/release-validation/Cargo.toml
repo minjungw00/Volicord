@@ -1,0 +1,23 @@
+[package]
+name = "volicord-release-validation-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+volicord-cli = { path = "../../crates/volicord-cli" }
+volicord-types = { path = "../../crates/volicord-types" }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+
+[[bin]]
+name = "host-release-gate"
+path = "src/bin/host-release-gate.rs"
+
+[[bin]]
+name = "host-release-audit"
+path = "src/bin/host-release-audit.rs"

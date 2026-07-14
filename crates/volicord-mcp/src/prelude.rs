@@ -34,9 +34,9 @@ pub(crate) use volicord_store::{
     },
     core_pipeline::CoreProjectStore,
     diagnostics::{
-        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
-        DiagnosticFallbackKind, DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart,
-        DiagnosticTransport, DiagnosticUserChannelKind,
+        record_diagnostic_event, start_diagnostic_session, validate_diagnostic_session_start,
+        DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
+        DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport, DiagnosticUserChannelKind,
     },
     guards::{agent_session, guard_health_record, insert_agent_session, AgentSessionInsert},
     host_capabilities::{
@@ -62,7 +62,8 @@ pub(crate) use volicord_store::{
     StoreError,
 };
 pub(crate) use volicord_types::{
-    canonical_json_bare_sha256, mcp_request_schema, mcp_response_schema, ActorSource,
+    canonical_json_bare_sha256, managed_host_session_id, mcp_request_schema, mcp_response_schema,
+    validate_managed_host_native_session_id, validate_managed_host_session_id, ActorSource,
     AgentConnectionId, AgentConnectionMode, AuthorityReceipt, CheckCloseRequest, CloseTaskRequest,
     EffectKind, ErrorCode, EvidenceRelevanceStatus, GetOperationResultRequest, GuaranteeDisclosure,
     IdempotencyKey, IntakeRequest, IntegrationProfile, McpAuthoritativeRefreshFailure,
@@ -88,9 +89,10 @@ pub(crate) use volicord_types::{
     UserActionChannelKind, UserActionInboxForm, UserActionInboxItem, UserActionOptionAction,
     UserActionPresentationForm, UserActionPresentationPlan, UserActionPresentationSafety,
     UserActionRequest, UserActionRequestBody, UserActionRequestId, UserActionResolutionInput,
-    UserActionStatus, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
-    MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES, USER_ACTION_FORM_MAX_BYTES,
-    VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+    UserActionStatus, MANAGED_HOST_SESSION_ID_PREFIX, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
+    USER_ACTION_FORM_MAX_BYTES, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+    VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
     VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING,
     VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
