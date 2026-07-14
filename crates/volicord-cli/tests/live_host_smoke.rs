@@ -584,6 +584,32 @@ mod unix {
     }
 
     #[test]
+    fn live_user_action_prompt_names_the_closed_create_shape() {
+        let prompt = live_user_action_prompt(
+            "VOLICORD_LIVE_PROMPT_CLOSED_CREATE_SHAPE",
+            "proj_live_prompt_closed_create_shape",
+        );
+
+        for expected in [
+            "`request.task_id`",
+            "`request.change_unit_id`",
+            "`request.required_for=[\"close_complete\"]`",
+            "`request.expires_at=null`",
+            "`request.action.presentation=short`",
+            "`request.action.question=\"Which live-smoke route must the agent consume?\"`",
+            "`request.action.context={\"summary\":\"A human operator must choose the live-smoke route.\",\"related_refs\":[],\"artifact_refs\":[],\"visible_risks\":[],\"constraints\":[]}`",
+            "`request.action.affected_refs=[]`",
+            "`request.action.sensitive_action_scope=null`",
+            "Do not add aliases such as `title` or `prompt`",
+        ] {
+            assert!(
+                prompt.contains(expected),
+                "live UserAction prompt omitted closed create guidance: {expected}"
+            );
+        }
+    }
+
+    #[test]
     fn cli_fallback_authority_event_inspection_uses_row_task_coordinates(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = LiveSmokeFixture::new("cli-fallback-authority-event-coordinates")?;
@@ -2823,7 +2849,7 @@ mod unix {
                 "Do not edit files, run shell commands, prepare a write, or answer on the user's behalf.\n\n",
                 "1. Call `volicord.intake` with `detail=full`, `requested_mode=advisor`, `acceptance_policy=null`, and create-new resume behavior. The plain-language request must be exactly `{task_marker}`. Use a narrow no-write initial scope and exactly one acceptance criterion whose `evidence_requirement=not_required`. Retain the returned Task ID.\n",
                 "2. For that Task, call `volicord.update_scope` with `detail=full`, `baseline_ref={baseline_ref}`, and a `change_unit` whose `operation=create_current`, `scope_summary` describes this no-write live-host user-action validation, and `affected_paths=[]`. Retain `state.active_change_unit_ref.record_id` and `state.baseline_ref`. Do not continue unless both are present.\n",
-                "3. Call `volicord.request_user_action` with `request.operation=create`, `request.action.action_type=choice`, `request.action.judgment_kind=product_decision`, and omit `detail` so the default compact projection is exercised. Ask which live-smoke route the agent must consume, make it required for `close_complete`, and provide exactly these two caller-authored options in this order:\n",
+                "3. Call `volicord.request_user_action` exactly once and omit top-level `detail` so the default compact projection is exercised. Put every create field inside `request`: set `request.operation=create`, set `request.task_id` to the retained Task ID, set `request.change_unit_id` to the retained `state.active_change_unit_ref.record_id`, set `request.required_for=[\"close_complete\"]`, and set `request.expires_at=null`. Set `request.action` to the closed choice object with `request.action.action_type=choice`, `request.action.judgment_kind=product_decision`, `request.action.presentation=short`, `request.action.question=\"Which live-smoke route must the agent consume?\"`, `request.action.context={{\"summary\":\"A human operator must choose the live-smoke route.\",\"related_refs\":[],\"artifact_refs\":[],\"visible_risks\":[],\"constraints\":[]}}`, `request.action.affected_refs=[]`, and `request.action.sensitive_action_scope=null`. Do not add aliases such as `title` or `prompt`, and do not put `task_id` or `required_for` inside `action`. Provide exactly these two caller-authored options in this order:\n",
                 "   - `option_id={alpha_option_id}`, label `Route alpha`, description `Select the alpha live-smoke route.`, consequence `The agent records the alpha choice-consumption Run marker.`, `is_default=false`.\n",
                 "   - `option_id={beta_option_id}`, label `Route beta`, description `Select the beta live-smoke route.`, consequence `The agent records the beta choice-consumption Run marker.`, `is_default=false`.\n",
                 "4. Wait for the host's native MCP elicitation/User Channel UI. The human running this smoke will choose the answer. Never infer, fabricate, or submit that answer yourself.\n",
