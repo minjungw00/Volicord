@@ -367,7 +367,7 @@ Resolved requests require one complete closed resolution body, actor provenance,
 verification basis, and assurance level. Rows missing those facts are invalid
 owner state, not audit-compatible authority records.
 
-`user_action_channel_tokens.creation_metadata_json` strict-decodes as exactly
+`user_action_channel_tokens.created_metadata_json` strict-decodes as exactly
 `{fallback_kind, delivery_surface, endpoint, form_digest}`. The required values
 are `fallback_kind=local_web_consent`,
 `delivery_surface=model_invisible_user_surface`, and `endpoint=/consent`; the

@@ -346,7 +346,7 @@ User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키
 요청에는 완전한 닫힌 해결 본문, 행위자 출처, 검증 근거, 보장 수준이 필요합니다. 이
 사실이 빠진 행은 감사 호환 권한 기록이 아니라 유효하지 않은 소유자 상태입니다.
 
-`user_action_channel_tokens.creation_metadata_json`은 정확히
+`user_action_channel_tokens.created_metadata_json`은 정확히
 `{fallback_kind, delivery_surface, endpoint, form_digest}`로 strict decode되어야 합니다.
 필수 값은 `fallback_kind=local_web_consent`,
 `delivery_surface=model_invisible_user_surface`, `endpoint=/consent`이며 digest는 저장된 닫힌
