@@ -235,10 +235,18 @@ Agent Connection, MCP, Stop, final-output, and fixture contexts fail closed.
 Focused MCP tests table exact capability `true`, omission, `false`, wrong type,
 malformed namespace, and listener-unavailable combinations. Only exact `true`
 plus a ready listener may issue a token and return the closed host-only `_meta`
-handoff. The model-visible view must omit every form and credential field.
-Budget-boundary tests must preflight the complete safe result and handoff before
-token creation, proving that degradation produces generic CLI guidance and no
-orphan token. Replay tests cover direct retry, resume, close, and operation-
+handoff. They separately degrade a previously ready listener between deferred
+selection and final materialization and prove generic CLI fallback, absent
+`_meta`, zero token rows, and no project-clock effect. The model-visible view
+must omit every form and credential field. A separate concurrency invariant
+test proves that invalidation publishes unavailable immediately, blocks new
+leases, and drains any already-granted issuance lease before the listener
+exits. An insertion-boundary assertion proves that the token creator runs while
+that lease is held. Budget-boundary tests must preflight the complete safe
+result and handoff before token creation, proving that the exact compact and
+full limits succeed while the next byte degrades to generic CLI guidance with
+no orphan token. Replay tests cover
+direct retry, resume, close, and operation-
 result page one with legacy full-form, legacy `StateSummary`, mixed-shape, and
 wrong-method stored rows; rejected rows produce no state or cleanup effects.
 

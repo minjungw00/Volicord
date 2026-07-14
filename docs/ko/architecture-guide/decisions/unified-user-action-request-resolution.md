@@ -43,6 +43,16 @@ listener 자체 origin과 scheme 및 authority가 같은, 문법적으로 유효
 합니다. 이 gate는 browser cross-origin 제출에 대한 심층 방어이며 사용자 인증도,
 모델 비가시 credential 경계의 대체물도 아닙니다.
 
+Listener 준비 상태는 시작 시점 marker가 아니라 실시간 process 상태입니다. Listener와
+adapter는 준비 handle 하나를 공유하며 accept-loop 실패는 loop가 끝나기 전에 이를
+unavailable로 표시합니다. 하나의 유효 가용성 evaluator가 Core projection 또는 adapter의
+채널 선택 지점마다 이 상태와 협상된 capability를 결합합니다. Handoff materialization은
+응답 예산 검증 뒤 협상된 capability를 이 evaluator에 전달하고, token 삽입과 handoff 구성이
+끝날 때까지 준비된 listener의 공유 발급 lease를 유지합니다. Listener 무효화는 배타 lease를
+획득합니다. 무효화가 먼저 순서화되면 `_meta`, token, clock 효과 없이 CLI로 fallback합니다.
+발급이 먼저 순서화되면 이미 발급된 것으로 보며 이후 listener가 실패해도 제한된 token TTL을
+유지합니다.
+
 요청 생성과 해결은 각각 정규 준비 동작 시각 샘플 하나를 상태, expiry, 의미 있는
 timestamp에 사용합니다. 이후의 Core 커밋 timestamp는 이 샘플을 다시 쓰지 않습니다.
 로컬 web token 검증은 같은 프로젝트 시계의 반열린 구간
@@ -146,6 +156,15 @@ non-browser 호출자는 이제 전송 담당 `403 ORIGIN_NOT_ALLOWED` 응답을
 same-origin 요청이나 다른 User Channel을 사용해야 합니다. 거부는 token 조회 전에
 일어나므로 다른 면에서 유효한 token을 소비하거나 무효화하지 않습니다.
 
+시작 뒤 listener 저하 추적은 process 내부 adapter 보정입니다. 공개 schema, DDL, 저장
+프로필, migration, SemVer 변경을 추가하지 않습니다. 대기 요청은 CLI로 계속 복구할 수
+있으며 이미 발급된 token은 기존의 제한된 TTL과 검증 규칙을 유지합니다. 기존 공개
+programmatic adapter builder는 source compatibility를 유지하지만 fail-closed shim으로
+바뀝니다. Listener가 소유한 guard 없는 base URL은 더 이상 local web을 활성화하지 않습니다.
+지원되는 process entry point는 managed 경로를 통해 local-web 동작을 유지합니다. 이 동작
+보강은 현재 미출시 `0.8.0` 수정 batch에 포함되며 별도 SemVer 변경을 추가하지 않습니다.
+외부 tracked-listener API는 자체 공개 lifetime 계약이 생길 때까지 보류합니다.
+
 수정된 Store와 adapter fence는 수정 전 process를 교체하거나 재시작한 뒤에만 적용됩니다.
 계속 실행 중인 이전 process는 이미 발급한 raw credential을 보유할 수 있고 기존 token
 TTL로만 제한됩니다. 수정된 fence에 의존하기 전에 이전 process를 교체해야 합니다.
@@ -170,6 +189,12 @@ TTL로만 제한됩니다. 수정된 fence에 의존하기 전에 이전 process
   resume, 정확한 operation-result 조회를 통한 전체 User Channel 폼 접근이 남습니다.
 - Listener 시작을 안전한 host 표면의 증거로 취급하면 모델에게 노출할 수 있는
   클라이언트에 권한 효력이 있는 bearer credential을 발급하게 됩니다.
+- 시작 때 만든 listener context를 accept loop 실패 뒤에도 유지하는 방안은 죽은 User
+  Channel을 위한 credential 포함 handoff를 발급할 수 있으므로 거부했습니다.
+- Atomic 준비 flag를 확인한 뒤 token을 삽입하는 방안은 두 동작 사이에 무효화가 일어날 수
+  있으므로 거부했습니다. 발급 lease가 대신 하나의 순서 지점을 제공합니다.
+- 호출자가 제공한 base URL이나 lifetime assertion을 준비 상태로 취급하는 방안은 listener가
+  계속 소유되고 호출 가능한지 증명하지 못하므로 거부했습니다.
 - 일반 MCP content에 URL을 넣고 사용하지 말라고 안내하면 채널 경계를 강제하지 않고
   권한 우회를 그대로 유지합니다.
 - `Origin`이 없을 때 검사를 선택적으로 적용하는 방안은 browser 방어가 공격자가 통제할

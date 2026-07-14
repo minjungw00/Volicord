@@ -9,7 +9,7 @@ use crate::util::*;
 pub(crate) fn start_stdio_local_web_consent_listener(
     runtime_home: &Path,
     context: &McpConnectionContext,
-) -> Result<LocalWebConsentContext, McpAdapterError> {
+) -> Result<StartedLocalWebConsentListener, McpAdapterError> {
     if local_web_consent_disabled_by_env() {
         return Err(McpAdapterError::Environment(
             "disabled by VOLICORD_LOCAL_WEB_CONSENT".to_owned(),
@@ -29,11 +29,13 @@ pub(crate) fn start_stdio_local_web_consent_listener(
     let consent_context = LocalWebConsentContext {
         base_url: format!("http://{actual_addr}"),
     };
+    let (readiness, listener_readiness) = LocalWebConsentReadiness::tracked();
     let adapter = McpAdapter::new(runtime_home, context.clone())
-        .with_local_web_consent(consent_context.clone());
+        .with_local_web_consent_readiness(consent_context.clone(), readiness.clone());
     thread::Builder::new()
         .name("volicord-local-web-consent".to_owned())
         .spawn(move || {
+            let listener_readiness = listener_readiness;
             let mut server = LocalWebConsentServer::new(adapter);
             for stream in listener.incoming() {
                 match stream {
@@ -48,6 +50,7 @@ pub(crate) fn start_stdio_local_web_consent_listener(
                         }
                     }
                     Err(error) => {
+                        listener_readiness.mark_unavailable();
                         eprintln!("warning: local web consent listener stopped: {error}");
                         break;
                     }
@@ -55,7 +58,15 @@ pub(crate) fn start_stdio_local_web_consent_listener(
             }
         })
         .map_err(McpAdapterError::Io)?;
-    Ok(consent_context)
+    Ok(StartedLocalWebConsentListener {
+        context: consent_context,
+        readiness,
+    })
+}
+
+pub(crate) struct StartedLocalWebConsentListener {
+    pub(crate) context: LocalWebConsentContext,
+    pub(crate) readiness: LocalWebConsentReadiness,
 }
 
 pub(crate) fn local_web_consent_disabled_by_env() -> bool {
@@ -107,6 +118,14 @@ pub(crate) fn handle_local_web_consent_http_request(
     adapter: &McpAdapter,
     request: HttpRequest,
 ) -> HttpResponse {
+    if !adapter.local_web_consent_listener_ready() {
+        return local_web_consent_error_page(
+            503,
+            "Service Unavailable",
+            "LOCAL_WEB_CONSENT_UNAVAILABLE",
+            "Local web consent is not available for this Volicord process.",
+        );
+    }
     let Some(consent_context) = adapter.local_web_consent.as_ref() else {
         return local_web_consent_error_page(
             503,
@@ -936,4 +955,19 @@ pub(crate) fn content_type_is_form(header: Option<&str>) -> bool {
         .map(|(media_type, _)| media_type.trim())
         .unwrap_or_else(|| header.trim())
         == "application/x-www-form-urlencoded"
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+
+    #[test]
+    fn listener_guard_marks_shared_readiness_unavailable_on_exit() {
+        let (readiness, guard) = LocalWebConsentReadiness::tracked();
+        {
+            let _guard = guard;
+            assert!(readiness.is_ready());
+        }
+        assert!(!readiness.is_ready());
+    }
 }

@@ -216,9 +216,15 @@ User Channel projection이 CLI 직접 및 같은 session host 제출에서 완�
 집중 MCP 테스트는 capability의 정확한 `true`, 생략, `false`, 잘못된 타입,
 잘못된 namespace, listener 사용 불가 조합을 table로 구성합니다. 정확한 `true`와
 준비된 listener가 둘 다 있을 때만 token을 발급하고 닫힌 host 전용 `_meta` handoff를
-반환할 수 있습니다. 모델 가시 상태 보기는 모든 form 및 credential 필드를 빼야 합니다.
-Budget 경계 테스트는 token을 만들기 전에 완전한 안전 결과와 handoff를 사전 검사하여
-저하 경로가 일반 CLI 안내와 orphan token 없음을 만듬을 증명합니다. Replay 테스트는
+반환할 수 있습니다. 별도로 준비됐던 listener를 deferred 선택과 최종 materialization
+사이에 저하시켜 일반 CLI fallback, `_meta` 부재, token 행 0개, project clock 효과 없음을
+증명합니다. 모델 가시 상태 보기는 모든 form 및 credential 필드를 빼야 합니다. 별도
+동시성 invariant 테스트는 무효화가 사용 불가 상태를 즉시 게시하고 새 lease를 차단하며,
+listener가 종료되기 전에 이미 부여된 발급 lease를 모두 drain함을 증명합니다. 삽입 경계
+assertion은 token creator가 그 lease를 보유한 동안 실행됨을 증명합니다. Budget 경계
+테스트는 token을 만들기 전에 완전한 안전 결과와 handoff를 사전 검사하여 정확한 compact
+및 full 한계에서는 성공하지만 그 다음 1 byte에서는 일반 CLI 안내로 저하되고 orphan
+token을 만들지 않음을 증명합니다. Replay 테스트는
 기존 full-form, 기존 `StateSummary`, 혼합 형태, 잘못된 메서드 저장 행에 대한 직접 retry,
 resume, close, operation-result 첫 page를 다루며 거부된 행이 상태나 정리 효과를 만들지
 않음을 확인합니다.

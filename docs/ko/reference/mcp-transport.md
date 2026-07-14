@@ -1225,17 +1225,33 @@ GET이 `Origin`을 보내면 정확한 동일 출처 헤더 필드가 하나만 
 form digest, expiry, 후보 membership, 토큰 상태를 다시 검증합니다. 성공한 폐쇄형
 resolution 본문 삽입과 토큰 소비는 원자적입니다.
 
-Listener 시작만으로는 이 경로를 선택하지 않습니다. 정확한 모델 비가시적 client
-capability를 사용할 수 있을 때만 token을 만듭니다. Token 발급 전에 adapter는 완전한
-안전 tool result와 닫힌 `_meta` 전달값이 선택된 65,536 또는 262,144-byte 응답 예산에
-맞는지 확인합니다. 맞지 않으면 token을 발급하지 않고 `_meta`를 생략하며 일반 CLI
-fallback을 반환합니다. 고아 token을 만들거나 URL을 자르지 않습니다. 이 전달값은
-resume, pending이 아닌 결과, CLI fallback, token 발급 실패, 지원되지 않거나 잘못된
-capability, 응답 예산 저하에서 없습니다. URL과 token은 MCP `content`,
+Listener 시작만으로는 이 경로를 선택하지 않습니다. Listener context는 공유되는 실시간
+준비 상태를 가지며 accept loop는 listener 실패 뒤 종료하기 전에 그 상태를 unavailable로
+바꿉니다. 하나의 adapter evaluator가 현재 상태와 정확한 모델 비가시적 client capability를
+결합해 invocation 도출, User Channel projection, fallback 선택, 최종 handoff materialization에
+사용합니다. Token 발급 전에 adapter는 완전한 안전 tool result와 닫힌 `_meta` 전달값이
+선택된 65,536 또는 262,144-byte 응답 예산에 맞는지 확인합니다. 그다음 협상된 capability를
+같은 evaluator에 전달하고 token 삽입과 handoff 구성이 끝날 때까지 준비된 listener의 공유
+발급 lease를 획득합니다. Listener 무효화는 이 lease의 배타 쪽을 획득합니다. 이 지점이
+순서를 하나로 정합니다. 무효화가 먼저면 token을 발급하지 않고 `_meta`를 생략하며 일반
+CLI fallback을 반환합니다. 발급 lease가 먼저면 그 token은 이미 발급된 것으로 보며 이후
+listener가 실패해도 제한된 TTL을 유지합니다. 결과가 예산에 맞지 않을 때도 token 없이
+fallback합니다. 예산 거부와 발급보다 먼저 순서화된 준비 상태 무효화는 token을 만들지
+않으며 adapter는 URL을 자르지 않습니다. 이 전달값은
+resume, pending이 아닌 결과, CLI fallback, token 발급
+실패, 지원되지 않거나 잘못된 capability, listener 시작 실패, 발급보다 먼저 순서화된 저하,
+응답 예산 저하에서 없습니다. URL과 token은 MCP `content`,
 `structuredContent`, 호환·진단 text, status·close projection, 정확한 Core replay,
 operation-result byte, log, template에 나타나면 안 됩니다. Host 선언은 모델 비노출을
 지키겠다는 협력형 약속일 뿐 host 격리, 사용자 identity, 사용자 권한의 증명이 아닙니다.
 이 분리를 보존할 수 없는 host는 capability를 생략하고 CLI fallback을 받아야 합니다.
+
+Base URL만 받는 기존 공개 programmatic adapter builder는 추적되지 않는 source-compatible
+fail-closed shim이며, local web을 available로 만들거나 token을 발급하지 않습니다. 지원되는
+stdio와 결합형 local HTTP process entry point는 복제할 수 없는 listener guard를 소유하고
+공유 managed-readiness 경로로 adapter를 구성합니다. 향후 외부 embedder가 local web을
+사용하려면 별도로 소유되는 공개 listener-lifetime 계약이 필요합니다. 호출자가 제공한 base
+URL이나 lifetime assertion은 준비 상태의 증거가 아닙니다.
 
 POST 해결에서 어댑터는 유일하게 허용되는 digest-only `local_web:<sha256>` submission
 identity를 위한 Core 소유 도출을 사용합니다. 이 도출은 정확한 프로젝트, 사용자 행동

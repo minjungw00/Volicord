@@ -1399,20 +1399,40 @@ effects. Project, connection, request, form digest, expiry, candidate
 membership, and token state are then revalidated. Successful insertion of the
 closed resolution body and token consumption are atomic.
 
-Listener startup alone never selects this path. Token creation occurs only
-after the exact model-invisible client capability is available. Before issuing
-a token, the adapter verifies that the complete safe tool result plus the
-closed `_meta` handoff fits the selected 65,536- or 262,144-byte response
-budget. If it cannot fit, the adapter issues no token, omits `_meta`, and
-returns generic CLI fallback; it never creates an orphan token or truncates the
-URL. The handoff is absent on resume, non-pending results, CLI fallback, token
-issuance failure, unsupported or malformed capability, and response-budget
-degradation. The URL and token must not appear in MCP `content`,
+Listener startup alone never selects this path. The listener context carries a
+shared live-readiness state, and the accept loop makes that state unavailable
+before it exits after a listener failure. One adapter evaluator combines that
+current state with the exact model-invisible client capability for invocation
+derivation, User Channel projection, fallback selection, and final handoff
+materialization. Before issuing a token, the adapter verifies that the complete
+safe tool result plus the closed `_meta` handoff fits the selected 65,536- or
+262,144-byte response budget. It then passes the negotiated capability to the
+same evaluator and acquires a shared ready-listener issuance lease across token
+insertion and handoff construction. Listener invalidation takes the exclusive
+side of that lease. This defines one ordering point: if invalidation wins, the
+adapter issues no token, omits `_meta`, and returns generic CLI fallback; if an
+issuance lease wins, that token is already issued and retains its bounded TTL
+even if the listener fails later. A result that cannot fit also falls back
+without a token. Budget rejection and readiness invalidation that linearizes
+before issuance create no token, and the adapter never truncates the URL. The
+handoff is absent on
+resume, non-pending results, CLI fallback, token issuance failure, unsupported
+or malformed capability, listener startup failure, degradation that linearizes
+before issuance, and response-budget degradation. The URL and token must not
+appear in MCP `content`,
 `structuredContent`, compatibility or diagnostic text, status or close
 projections, exact Core replay, operation-result bytes, logs, or templates. A
 host declaration is a cooperative promise to preserve model invisibility, not
 proof of host isolation, user identity, or user authority. A host that cannot
 preserve this separation must omit the capability and receives CLI fallback.
+
+The legacy public programmatic builder that accepts only a base URL is an
+untracked, source-compatible, fail-closed shim: it does not make local web
+available or issue a token. Supported stdio and combined local HTTP process
+entry points own a non-cloneable listener guard and configure the adapter
+through the shared managed-readiness path. A future external embedder that
+needs local web requires a separately owned public listener-lifetime contract;
+a caller-supplied base URL or lifetime assertion is not readiness evidence.
 
 For POST resolution, the adapter uses the Core-owned derivation for the only
 accepted digest-only `local_web:<sha256>` submission identity. The derivation

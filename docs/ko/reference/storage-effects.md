@@ -679,7 +679,14 @@ MCP가 새로 생성한 대기 요청에 로컬 web fallback을 사용할 때 to
 발급은 추가 권한 이벤트나 재실행 행을 만들지 않고 `state_version`도 증가시키지
 않습니다.
 Token 행은 현재 adapter evaluator가 준비된 listener와 client의 정확한 모델 비가시 표면
-capability를 모두 확인한 뒤에만 만듭니다. 폐쇄형 생성 metadata는 정확히
+capability를 모두 확인한 뒤에만 만듭니다. 공유 listener 상태는 accept loop가 저하되면
+unavailable로 바뀌며, 응답 예산 검증 뒤 같은 evaluator는 원자적 token transaction이 끝날
+때까지 준비된 listener의 공유 발급 lease를 획득합니다. Listener 무효화는 배타 lease를
+획득합니다. 무효화가 먼저 순서화되거나 시작에 실패하면 token 행, `_meta`, project 시간
+하한 전진, authority event, replay 행, state version 변경 없이 일반 CLI fallback을
+선택합니다. 발급이 먼저 순서화되면 이미 발급된 token이므로 이후 listener 실패로 rollback하지
+않습니다. 폐쇄형 생성
+metadata는 정확히
 `{fallback_kind=local_web_consent,
 delivery_surface=model_invisible_user_surface, endpoint=/consent,
 form_digest}`입니다. 필드가 누락되거나 추가되거나, 값이 잘못되거나 일치하지 않으면 그

@@ -80,10 +80,14 @@ pub fn run_local_http_server(config: LocalHttpServerConfig) -> Result<(), LocalH
     let listener = TcpListener::bind(config.listen_addr).map_err(LocalHttpError::Io)?;
     let actual_addr = listener.local_addr().map_err(LocalHttpError::Io)?;
     validate_local_http_listen_addr(&actual_addr, listen_scope)?;
+    let (local_web_readiness, local_web_listener_guard) = LocalWebConsentReadiness::tracked();
     let mut adapter = McpAdapter::new(&config.runtime_home, context);
-    adapter = adapter.with_local_web_consent(LocalWebConsentContext {
-        base_url: local_web_consent_base_url(actual_addr, listen_scope),
-    });
+    adapter = adapter.with_local_web_consent_readiness(
+        LocalWebConsentContext {
+            base_url: local_web_consent_base_url(actual_addr, listen_scope),
+        },
+        local_web_readiness,
+    );
 
     eprintln!("volicord serve listening on http://{actual_addr}{LOCAL_HTTP_MCP_ENDPOINT_PATH}");
     eprintln!("{}", local_http_transport_summary(listen_scope));
@@ -109,7 +113,10 @@ pub fn run_local_http_server(config: LocalHttpServerConfig) -> Result<(), LocalH
                     eprintln!("warning: HTTP request handling failed: {error}");
                 }
             }
-            Err(error) => return Err(LocalHttpError::Io(error)),
+            Err(error) => {
+                local_web_listener_guard.mark_unavailable();
+                return Err(LocalHttpError::Io(error));
+            }
         }
     }
     Ok(())

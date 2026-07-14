@@ -690,7 +690,15 @@ issuance is a separate storage-owned transaction. It inserts the hash-only
 least token `created_at` atomically. Issuance creates no additional authority
 event or replay row and does not increment `state_version`.
 The token row is created only after the current adapter evaluator confirms both
-a ready listener and the client's exact model-invisible-surface capability. Its
+a ready listener and the client's exact model-invisible-surface capability.
+The shared listener state becomes unavailable when its accept loop degrades,
+and after response-budget validation the same evaluator acquires a shared
+ready-listener issuance lease through the atomic token transaction. Listener
+invalidation takes the exclusive lease. Invalidation that linearizes first, or
+a failed startup, selects generic CLI fallback with no token row, `_meta`,
+project-time-floor advance, authority event, replay row, or state-version
+change. Issuance that linearizes first is an already-issued token and is not
+rolled back by a later listener failure. Its
 closed creation metadata is exactly
 `{fallback_kind=local_web_consent,
 delivery_surface=model_invisible_user_surface, endpoint=/consent,

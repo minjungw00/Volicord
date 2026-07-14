@@ -4,6 +4,10 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Condvar, Mutex,
+};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 
 /// Minimal MCP adapter marker for validating dependency direction.
@@ -83,14 +87,192 @@ pub struct LocalWebConsentContext {
     pub base_url: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct LocalWebConsentReadiness(Arc<LocalWebConsentReadinessInner>);
+
+#[derive(Debug)]
+struct LocalWebConsentReadinessInner {
+    ready: AtomicBool,
+    issuance_gate: LocalWebConsentIssuanceGate,
+}
+
+pub(crate) struct LocalWebConsentIssuanceLease<'a> {
+    issuance_gate: &'a LocalWebConsentIssuanceGate,
+}
+
+pub(crate) struct LocalWebConsentListenerGuard(LocalWebConsentReadiness);
+
+#[derive(Debug)]
+struct LocalWebConsentIssuanceGate {
+    state: Mutex<LocalWebConsentIssuanceState>,
+    drained: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct LocalWebConsentIssuanceState {
+    active_issuances: usize,
+    invalidating: bool,
+    drain_waiting: bool,
+}
+
+impl LocalWebConsentIssuanceGate {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(LocalWebConsentIssuanceState::default()),
+            drained: Condvar::new(),
+        }
+    }
+
+    fn release(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        debug_assert!(state.active_issuances > 0);
+        state.active_issuances -= 1;
+        if state.active_issuances == 0 {
+            self.drained.notify_all();
+        }
+    }
+}
+
+impl Drop for LocalWebConsentIssuanceLease<'_> {
+    fn drop(&mut self) {
+        self.issuance_gate.release();
+    }
+}
+
+impl LocalWebConsentReadiness {
+    pub(crate) fn tracked() -> (Self, LocalWebConsentListenerGuard) {
+        let readiness = Self(Arc::new(LocalWebConsentReadinessInner {
+            ready: AtomicBool::new(true),
+            issuance_gate: LocalWebConsentIssuanceGate::new(),
+        }));
+        let guard = LocalWebConsentListenerGuard(readiness.clone());
+        (readiness, guard)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ready_for_test() -> Self {
+        Self(Arc::new(LocalWebConsentReadinessInner {
+            ready: AtomicBool::new(true),
+            issuance_gate: LocalWebConsentIssuanceGate::new(),
+        }))
+    }
+
+    pub(crate) fn is_ready(&self) -> bool {
+        !self.0.issuance_gate.state.is_poisoned() && self.0.ready.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn acquire_issuance_lease(&self) -> Option<LocalWebConsentIssuanceLease<'_>> {
+        if !self.0.ready.load(Ordering::Acquire) {
+            return None;
+        }
+        let mut state = self.0.issuance_gate.state.lock().ok()?;
+        if !self.0.ready.load(Ordering::Acquire) || state.invalidating {
+            return None;
+        }
+        state.active_issuances += 1;
+        Some(LocalWebConsentIssuanceLease {
+            issuance_gate: &self.0.issuance_gate,
+        })
+    }
+
+    pub(crate) fn mark_unavailable(&self) {
+        self.mark_unavailable_with_observers(|| {}, |_| {});
+    }
+
+    fn mark_unavailable_with_observers(
+        &self,
+        after_publish: impl FnOnce(),
+        after_drain_attempt: impl FnOnce(bool),
+    ) {
+        self.0.ready.store(false, Ordering::Release);
+        after_publish();
+        let mut state = self
+            .0
+            .issuance_gate
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.invalidating = true;
+        state.drain_waiting = state.active_issuances != 0;
+        after_drain_attempt(state.drain_waiting);
+        while state.active_issuances != 0 {
+            state = self
+                .0
+                .issuance_gate
+                .drained
+                .wait(state)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        state.drain_waiting = false;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_unavailable_with_observers_for_test(
+        &self,
+        after_publish: impl FnOnce(),
+        after_drain_attempt: impl FnOnce(bool),
+    ) {
+        self.mark_unavailable_with_observers(after_publish, after_drain_attempt);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn issuance_lease_is_held_for_test(&self) -> bool {
+        self.0
+            .issuance_gate
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .active_issuances
+            != 0
+    }
+
+    #[cfg(test)]
+    fn drain_state_for_test(&self) -> (bool, usize) {
+        let state = self
+            .0
+            .issuance_gate
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (state.drain_waiting, state.active_issuances)
+    }
+}
+
+impl LocalWebConsentListenerGuard {
+    pub(crate) fn mark_unavailable(&self) {
+        self.0.mark_unavailable();
+    }
+}
+
+impl Drop for LocalWebConsentListenerGuard {
+    fn drop(&mut self) {
+        self.mark_unavailable();
+    }
+}
+
 /// Local MCP adapter bound to a Core service and one Agent Connection.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct McpAdapter {
     pub(crate) core: CoreService,
     pub(crate) runtime_home: PathBuf,
     pub(crate) context: McpConnectionContext,
     pub(crate) local_web_consent: Option<LocalWebConsentContext>,
+    pub(crate) local_web_consent_readiness: Option<LocalWebConsentReadiness>,
 }
+
+impl PartialEq for McpAdapter {
+    fn eq(&self, other: &Self) -> bool {
+        self.core == other.core
+            && self.runtime_home == other.runtime_home
+            && self.context == other.context
+            && self.local_web_consent == other.local_web_consent
+    }
+}
+
+impl Eq for McpAdapter {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StartupObservationResult {
@@ -131,13 +313,57 @@ impl McpAdapter {
             runtime_home,
             context,
             local_web_consent: None,
+            local_web_consent_readiness: None,
         }
     }
 
-    /// Enables local loopback web consent fallback for pending user actions.
+    /// Retained for source compatibility with untracked callers; the
+    /// fail-closed behavior is owned by the MCP Transport reference.
+    #[deprecated(
+        since = "0.8.0",
+        note = "untracked base URLs no longer enable local web; use a supported process entry point"
+    )]
     pub fn with_local_web_consent(mut self, context: LocalWebConsentContext) -> Self {
         self.local_web_consent = Some(context);
+        self.local_web_consent_readiness = None;
         self
+    }
+
+    pub(crate) fn with_local_web_consent_readiness(
+        mut self,
+        context: LocalWebConsentContext,
+        readiness: LocalWebConsentReadiness,
+    ) -> Self {
+        self.local_web_consent = Some(context);
+        self.local_web_consent_readiness = Some(readiness);
+        self
+    }
+
+    pub(crate) fn effective_local_web_consent_available(
+        &self,
+        model_invisible_user_surface: bool,
+    ) -> bool {
+        model_invisible_user_surface && self.local_web_consent_listener_ready()
+    }
+
+    pub(crate) fn local_web_consent_listener_ready(&self) -> bool {
+        self.local_web_consent.is_some()
+            && self
+                .local_web_consent_readiness
+                .as_ref()
+                .is_some_and(LocalWebConsentReadiness::is_ready)
+    }
+
+    pub(crate) fn local_web_consent_issuance_lease(
+        &self,
+        model_invisible_user_surface: bool,
+    ) -> Option<LocalWebConsentIssuanceLease<'_>> {
+        if !model_invisible_user_surface || self.local_web_consent.is_none() {
+            return None;
+        }
+        self.local_web_consent_readiness
+            .as_ref()?
+            .acquire_issuance_lease()
     }
 
     pub(crate) fn startup_session_watch_observation_best_effort(
@@ -679,8 +905,8 @@ impl McpAdapter {
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
             host_elicitation_available: capabilities.host_elicitation_available,
-            local_web_consent_available: self.local_web_consent.is_some()
-                && capabilities.model_invisible_user_surface,
+            local_web_consent_available: self
+                .effective_local_web_consent_available(capabilities.model_invisible_user_surface),
             git_workspace_context,
         })
     }
@@ -717,8 +943,8 @@ impl McpAdapter {
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
             host_elicitation_available: capabilities.host_elicitation_available,
-            local_web_consent_available: self.local_web_consent.is_some()
-                && capabilities.model_invisible_user_surface,
+            local_web_consent_available: self
+                .effective_local_web_consent_available(capabilities.model_invisible_user_surface),
             git_workspace_context,
         })
     }
@@ -972,7 +1198,7 @@ impl McpAdapter {
         )
         .with_host_elicitation_available(capabilities.host_elicitation_available)
         .with_local_web_consent_available(
-            self.local_web_consent.is_some() && capabilities.model_invisible_user_surface,
+            self.effective_local_web_consent_available(capabilities.model_invisible_user_surface),
         );
         if let Some(session_id) = session_id {
             invocation = invocation.with_session_id(session_id.to_owned());
@@ -2278,4 +2504,63 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
 struct PreparedMcpArguments<T> {
     arguments: T,
     project_id: ProjectId,
+}
+
+#[cfg(test)]
+mod local_web_readiness_tests {
+    use super::*;
+    use std::sync::mpsc::{self, TryRecvError};
+
+    #[test]
+    fn invalidation_publishes_unavailable_then_drains_granted_issuance() {
+        let readiness = LocalWebConsentReadiness::ready_for_test();
+        let lease = readiness
+            .acquire_issuance_lease()
+            .expect("ready listener must grant an issuance lease");
+        let worker_readiness = readiness.clone();
+        let (published_tx, published_rx) = mpsc::channel();
+        let (drain_attempt_tx, drain_attempt_rx) = mpsc::channel();
+        let (completed_tx, completed_rx) = mpsc::channel();
+        let invalidator = thread::spawn(move || {
+            worker_readiness.mark_unavailable_with_observers_for_test(
+                || {
+                    published_tx
+                        .send(())
+                        .expect("test receiver must observe readiness publication");
+                },
+                |blocked_by_granted_issuance| {
+                    drain_attempt_tx
+                        .send(blocked_by_granted_issuance)
+                        .expect("test receiver must observe the drain attempt");
+                },
+            );
+            completed_tx
+                .send(())
+                .expect("test receiver must observe completed invalidation");
+        });
+
+        published_rx
+            .recv()
+            .expect("invalidation must publish unavailable before draining");
+        assert!(!readiness.is_ready());
+        assert!(readiness.acquire_issuance_lease().is_none());
+        assert!(
+            drain_attempt_rx
+                .recv()
+                .expect("invalidation must attempt to drain the issuance gate"),
+            "the granted issuance lease must block invalidation's drain attempt"
+        );
+        assert_eq!(readiness.drain_state_for_test(), (true, 1));
+        assert_eq!(completed_rx.try_recv(), Err(TryRecvError::Empty));
+
+        drop(lease);
+        completed_rx
+            .recv()
+            .expect("invalidation must complete after granted issuance drains");
+        invalidator
+            .join()
+            .expect("invalidation worker must not panic");
+        assert!(!readiness.is_ready());
+        assert!(readiness.acquire_issuance_lease().is_none());
+    }
 }

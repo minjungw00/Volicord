@@ -50,6 +50,18 @@ same exact validation. This gate is defense in depth against browser cross-
 origin submission; it is neither user authentication nor a substitute for the
 model-invisible credential boundary.
 
+Listener readiness is live process state, not a startup-only marker. The
+listener and adapter share one readiness handle; an accept-loop failure marks
+it unavailable before the loop exits. One effective-availability evaluator
+combines that state with the negotiated capability wherever Core projection or
+the adapter chooses a channel. After budget validation, handoff materialization
+passes the negotiated capability to that evaluator and holds a shared
+ready-listener issuance lease through token insertion and handoff construction;
+listener invalidation takes the exclusive lease. Invalidation that linearizes
+first therefore falls back to CLI without `_meta`, token, or clock effect.
+Issuance that linearizes first is already issued and keeps the bounded token
+TTL if the listener fails afterward.
+
 Request creation and resolution each use one canonical prepared-operation time
 sample for status, expiry, and their semantic timestamps. A later Core commit
 timestamp does not rewrite that sample. Local-web token validation uses the
@@ -172,6 +184,17 @@ transport-owned `403 ORIGIN_NOT_ALLOWED` response and must use a conforming
 same-origin request or another User Channel. Rejection occurs before token
 lookup, so it neither consumes nor invalidates an otherwise valid token.
 
+Tracking post-start listener degradation is an in-process adapter correction.
+It adds no public schema, DDL, storage profile, migration, or SemVer change. A
+pending request remains recoverable through CLI; an already issued token keeps
+its existing bounded TTL and validation rules. The existing public
+programmatic adapter builder remains source-compatible but becomes a
+fail-closed shim: a base URL without a listener-owned guard no longer enables
+local web. Supported process entry points retain local-web behavior through the
+managed path. This behavioral hardening is part of the current unreleased
+`0.8.0` correction batch and does not add a separate SemVer change; an external
+tracked-listener API is deferred until it has its own public lifetime contract.
+
 The corrected Store and adapter fences apply only after the pre-correction
 process has been replaced or restarted. A still-running old process can retain
 an already-issued raw credential and is bounded only by that token's existing
@@ -200,6 +223,14 @@ TTL; operators must replace it before relying on the corrected fence.
 - Treating listener startup as proof of a safe host surface would issue an
   authority-bearing bearer credential to clients that can expose it to the
   model.
+- Retaining a startup-created listener context after its accept loop failed was
+  rejected because stale availability can mint a credential-bearing handoff
+  for a dead User Channel.
+- Checking an atomic readiness flag and then inserting the token was rejected
+  because invalidation could occur between those operations; the issuance lease
+  supplies one ordering point instead.
+- Treating a caller-provided base URL or lifetime assertion as readiness was
+  rejected because neither proves that a listener remains owned and callable.
 - Putting the URL in ordinary MCP content with instructions not to use it would
   preserve the authority bypass rather than enforce the channel boundary.
 - Treating `Origin` as optional when absent was rejected because it makes the

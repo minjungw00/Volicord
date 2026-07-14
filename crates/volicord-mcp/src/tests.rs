@@ -9,7 +9,9 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::adapter::StartupObservationResult;
+use crate::adapter::{
+    LocalWebConsentReadiness, McpUserChannelCapabilities, StartupObservationResult,
+};
 use crate::local_http::{
     validate_bearer_token_text, validate_local_http_server_config, LOCAL_HTTP_CONTAINER_WARNING,
     LOCAL_HTTP_EXPOSURE_WARNING, LOCAL_HTTP_GENERATED_TOKEN_WARNING,
@@ -52,10 +54,13 @@ use volicord_store::session_watch::{
     latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
 };
 use volicord_test_support::core_fixtures::{
-    CoreFixture, ResolveUserActionFixture, UserActionFixture,
+    artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
+    UserActionFixture,
 };
 use volicord_types::{
-    AgentConnectionMode, EvidenceTarget, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, EvidenceTarget,
+    OperationCategory, ResidualRiskInput, StagedArtifactHandle,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use super::*;
@@ -3314,7 +3319,7 @@ fn elicitation_wire_budget_accepts_exact_line_and_falls_back_at_next_byte_withou
         &adapter(&over_fixture)?,
         over_response,
         true,
-        true,
+        McpUserChannelCapabilities::new(true, false),
         &mut request_sequence,
         &mut input_lines,
         &mut wire_output,
@@ -4210,7 +4215,7 @@ fn sensitive_complete_presentation_skips_elicitation_and_prompt_capture_without_
                 &adapter(&fixture)?,
                 response.clone(),
                 true,
-                client_supports_elicitation,
+                McpUserChannelCapabilities::new(client_supports_elicitation, false),
                 &mut request_sequence,
                 &mut lines,
                 &mut writer,
@@ -4520,8 +4525,230 @@ fn request_user_action_agent_projection_is_only_the_exact_pending_user_summary(
 }
 
 #[test]
+fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(), Box<dyn Error>> {
+    let cases = [
+        McpUserActionLeakageCase::choice(
+            "product_decision",
+            &["close_complete"],
+            McpUserActionCloseBasis::None,
+            false,
+        ),
+        McpUserActionLeakageCase::choice(
+            "technical_decision",
+            &["close_complete"],
+            McpUserActionCloseBasis::None,
+            false,
+        ),
+        McpUserActionLeakageCase::choice(
+            "scope_decision",
+            &["scope_update"],
+            McpUserActionCloseBasis::None,
+            false,
+        ),
+        McpUserActionLeakageCase::choice(
+            "sensitive_approval",
+            &["prepare_write", "close_complete"],
+            McpUserActionCloseBasis::None,
+            true,
+        ),
+        McpUserActionLeakageCase::choice(
+            "final_acceptance",
+            &["close_complete"],
+            McpUserActionCloseBasis::NoResidualRisks,
+            false,
+        ),
+        McpUserActionLeakageCase::choice(
+            "residual_risk_acceptance",
+            &["close_complete"],
+            McpUserActionCloseBasis::VisibleResidualRisk,
+            false,
+        ),
+        McpUserActionLeakageCase::choice(
+            "cancellation",
+            &["close_cancel"],
+            McpUserActionCloseBasis::None,
+            false,
+        ),
+        McpUserActionLeakageCase::evidence_observation(),
+    ];
+
+    for case in cases {
+        let fixture = CoreFixture::new(&format!("mcp-user-action-leakage-{}", case.name))?;
+        let prepared = prepare_mcp_user_action_leakage_case(&fixture, case)?;
+        let input = Cursor::new(json_lines(&[
+            initialize_request(
+                1,
+                json!({
+                    "experimental": {
+                        "io.volicord/user-channel": {
+                            "model_invisible_user_surface": true
+                        }
+                    }
+                }),
+            ),
+            initialized_notification(),
+            tools_call(2, REQUEST_USER_ACTION_TOOL_NAME, prepared.arguments),
+        ])?);
+        let mut output = Vec::new();
+
+        run_stdio(
+            adapter_with_local_web_consent(&fixture)?,
+            BufReader::new(input),
+            &mut output,
+        )?;
+
+        let values = stdio_responses(&output)?;
+        assert_eq!(values.len(), 2, "{}: unexpected MCP exchange", case.name);
+        let tool_result = &values[1]["result"];
+        assert_eq!(
+            tool_result["isError"], false,
+            "{}: {tool_result}",
+            case.name
+        );
+        let response = volicord_response_from_tool(&values[1])?;
+        let summary = &response["agent_workflow_result"]["user_action_request_summary"];
+        let summary_keys = summary
+            .as_object()
+            .unwrap_or_else(|| panic!("{}: pending summary must be an object", case.name))
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            summary_keys,
+            BTreeSet::from(["next_actor", "status", "user_action_request_id"]),
+            "{}: pending summary must use the exact model-visible three-field shape",
+            case.name
+        );
+        assert_eq!(summary["status"], "pending", "{}", case.name);
+        assert_eq!(summary["next_actor"], "user", "{}", case.name);
+        assert!(
+            summary["user_action_request_id"]
+                .as_str()
+                .is_some_and(|request_id| !request_id.is_empty()),
+            "{}: pending summary must identify the request",
+            case.name
+        );
+
+        let model_visible = json!({
+            "content": tool_result["content"].clone(),
+            "structuredContent": tool_result["structuredContent"].clone(),
+        });
+        for forbidden_key in [
+            "user_action_request",
+            "user_action_request_ref",
+            "request_ref",
+            "inbox_item",
+            "question",
+            "options",
+            "context",
+            "context_summary",
+            "form",
+            "preferred_capture_path",
+            "answer_path_availability",
+            "user_channel_availability",
+            "fallbacks",
+            "command",
+            "url",
+            "token",
+            "verification_code",
+            "sensitive_action_scope",
+        ] {
+            assert!(
+                json_values_for_key(&model_visible, forbidden_key).is_empty(),
+                "{}: model-visible result exposed forbidden key {forbidden_key}",
+                case.name
+            );
+        }
+        let model_visible_text = serde_json::to_string(&model_visible)?;
+        for forbidden_text in prepared.private_markers.iter().map(String::as_str).chain([
+            "http://",
+            "/consent?",
+            "token=",
+        ]) {
+            assert!(
+                !model_visible_text.contains(forbidden_text),
+                "{}: model-visible result exposed forbidden text {forbidden_text:?}",
+                case.name
+            );
+        }
+
+        let host_meta = &tool_result["_meta"];
+        assert_eq!(
+            host_meta
+                .as_object()
+                .expect("host-only metadata must be an object")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["io.volicord/user-channel"]),
+            "{}: host-only metadata must use the single namespaced handoff",
+            case.name
+        );
+        let handoff = &host_meta["io.volicord/user-channel"];
+        assert_eq!(
+            handoff
+                .as_object()
+                .expect("user-channel handoff must be an object")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["expires_at", "kind", "url"]),
+            "{}: user-channel handoff must use the closed shape",
+            case.name
+        );
+        assert_eq!(handoff["kind"], "local_web_consent", "{}", case.name);
+        assert!(
+            handoff["url"]
+                .as_str()
+                .is_some_and(|url| url.starts_with(consent_base_url()) && url.contains("token=")),
+            "{}: host-only handoff must carry the local consent URL",
+            case.name
+        );
+        assert!(handoff["expires_at"].is_string(), "{}", case.name);
+
+        let token_count: i64 = fixture.conn()?.query_row(
+            "SELECT COUNT(*) FROM user_action_channel_tokens",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(
+            token_count, 1,
+            "{}: delivery must issue one token",
+            case.name
+        );
+        let record = stored_action_record(&fixture, &prepared.task_id, &response)?;
+        assert_eq!(
+            serde_json::to_value(record.request.action_kind)?,
+            json!(case.name),
+            "{}: fixture must exercise the intended action kind",
+            case.name
+        );
+        assert!(
+            record.resolution.is_none(),
+            "{}: handoff delivery must not resolve the action",
+            case.name
+        );
+        assert_eq!(
+            fixture.counts()?.user_action_resolutions,
+            0,
+            "{}: handoff delivery must create no resolution row",
+            case.name
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[allow(deprecated)]
 fn local_web_selection_requires_the_exact_model_invisible_client_capability(
 ) -> Result<(), Box<dyn Error>> {
+    #[derive(Clone, Copy)]
+    enum ListenerSetup {
+        Tracked,
+        Missing,
+        UntrackedBuilder,
+    }
+
     let cases = [
         (
             "exact_true",
@@ -4532,9 +4759,34 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
                     }
                 }
             }),
+            ListenerSetup::Tracked,
             true,
         ),
-        ("omitted", json!({}), false),
+        (
+            "exact_true_listener_unavailable",
+            json!({
+                "experimental": {
+                    "io.volicord/user-channel": {
+                        "model_invisible_user_surface": true
+                    }
+                }
+            }),
+            ListenerSetup::Missing,
+            false,
+        ),
+        (
+            "exact_true_untracked_builder",
+            json!({
+                "experimental": {
+                    "io.volicord/user-channel": {
+                        "model_invisible_user_surface": true
+                    }
+                }
+            }),
+            ListenerSetup::UntrackedBuilder,
+            false,
+        ),
+        ("omitted", json!({}), ListenerSetup::Tracked, false),
         (
             "false",
             json!({
@@ -4544,6 +4796,7 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
                     }
                 }
             }),
+            ListenerSetup::Tracked,
             false,
         ),
         (
@@ -4555,6 +4808,7 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
                     }
                 }
             }),
+            ListenerSetup::Tracked,
             false,
         ),
         (
@@ -4566,12 +4820,13 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
                     }
                 }
             }),
+            ListenerSetup::Tracked,
             false,
         ),
     ];
     let mut mismatches = Vec::new();
 
-    for (case, capabilities, expected_local_web) in cases {
+    for (case, capabilities, listener_setup, expected_local_web) in cases {
         let fixture = CoreFixture::new(&format!("mcp-local-web-capability-{case}"))?;
         let setup_adapter = adapter(&fixture)?;
         let (task_id, state_version) = create_task(&setup_adapter)?;
@@ -4586,11 +4841,16 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
         ])?);
         let mut output = Vec::new();
 
-        run_stdio(
-            adapter_with_local_web_consent(&fixture)?,
-            BufReader::new(input),
-            &mut output,
-        )?;
+        let runtime_adapter = match listener_setup {
+            ListenerSetup::Tracked => adapter_with_local_web_consent(&fixture)?,
+            ListenerSetup::Missing => adapter(&fixture)?,
+            ListenerSetup::UntrackedBuilder => {
+                adapter(&fixture)?.with_local_web_consent(LocalWebConsentContext {
+                    base_url: consent_base_url().to_owned(),
+                })
+            }
+        };
+        run_stdio(runtime_adapter, BufReader::new(input), &mut output)?;
 
         let values = stdio_responses(&output)?;
         if values[0].get("error").is_some() {
@@ -4613,6 +4873,39 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
         if token_count != expected_token_count {
             mismatches.push(format!(
                 "{case}: expected {expected_token_count} local-web token rows, observed {token_count}; result={}",
+                values[1]
+            ));
+        }
+        let handoff_present = values[1]["result"]["_meta"]["io.volicord/user-channel"].is_object();
+        if handoff_present != expected_local_web {
+            mismatches.push(format!(
+                "{case}: expected host-only handoff presence {expected_local_web}, observed {handoff_present}; result={}",
+                values[1]
+            ));
+        }
+        let model_visible = json!({
+            "content": values[1]["result"]["content"].clone(),
+            "structuredContent": values[1]["result"]["structuredContent"].clone(),
+        });
+        let model_visible_text = serde_json::to_string(&model_visible)?;
+        if model_visible_text.contains("/consent?") || model_visible_text.contains("token=") {
+            mismatches.push(format!(
+                "{case}: model-visible result exposed local-web credential material: {model_visible_text}"
+            ));
+        }
+        if !expected_local_web
+            && !values[1]["result"]["content"]
+                .as_array()
+                .is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item["text"]
+                            .as_str()
+                            .is_some_and(|text| text.contains("`volicord inbox`"))
+                    })
+                })
+        {
+            mismatches.push(format!(
+                "{case}: degraded selection omitted generic CLI recovery; result={}",
                 values[1]
             ));
         }
@@ -4913,7 +5206,7 @@ fn stdio_rejects_tampered_safe_summaries_and_legacy_full_forms_before_capture(
             &adapter_with_local_web_consent(&fixture)?,
             response,
             true,
-            true,
+            McpUserChannelCapabilities::new(true, true),
             &mut request_sequence,
             &mut lines,
             &mut writer,
@@ -5137,6 +5430,41 @@ fn local_web_consent_get_renders_pending_user_action_page() -> Result<(), Box<dy
     assert!(body.contains("Choice ID: <code>keep</code>"));
     assert!(body.contains("Consequence: Only this focused judgment is resolved."));
     assert!(!body.contains("Runtime Home"));
+    Ok(())
+}
+
+#[test]
+fn local_web_consent_handler_fails_closed_after_listener_invalidation_without_effects(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-handler-listener-invalidated")?;
+    let (_task_id, pending) = create_pending_product_action(&fixture)?;
+    let token = "abababababababababababababababababababababababababababababababab";
+    create_consent_token_for_response(&fixture, &pending, token)?;
+    let readiness = LocalWebConsentReadiness::ready_for_test();
+    let context =
+        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_LOCAL_HTTP_CONNECTION_BINDING);
+    let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
+        .with_local_web_consent_readiness(
+            LocalWebConsentContext {
+                base_url: consent_base_url().to_owned(),
+            },
+            readiness.clone(),
+        );
+    let mut server = LocalHttpServer::new(adapter, http_config(&fixture, Vec::new(), Vec::new()));
+    let before = user_action_side_effect_snapshot(&fixture)?;
+    readiness.mark_unavailable();
+
+    for request in [
+        consent_get_request(&consent_target(fixture.project_id(), token)),
+        consent_post_request(Some(consent_base_url()), &format!("token={token}")),
+    ] {
+        let response = server.handle_request(request);
+        assert_eq!(response.status, 503);
+        assert!(http_body_text(&response)?.contains("LOCAL_WEB_CONSENT_UNAVAILABLE"));
+    }
+
+    assert_eq!(user_action_side_effect_snapshot(&fixture)?, before);
     Ok(())
 }
 
@@ -6392,11 +6720,12 @@ fn project_bound_adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Er
 }
 
 fn adapter_with_local_web_consent(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
-    Ok(
-        adapter(fixture)?.with_local_web_consent(LocalWebConsentContext {
+    Ok(adapter(fixture)?.with_local_web_consent_readiness(
+        LocalWebConsentContext {
             base_url: consent_base_url().to_owned(),
-        }),
-    )
+        },
+        LocalWebConsentReadiness::ready_for_test(),
+    ))
 }
 
 fn consent_base_url() -> &'static str {
@@ -6552,10 +6881,11 @@ fn consent_server_with_context(
     context: McpConnectionContext,
 ) -> Result<LocalHttpServer, Box<dyn Error>> {
     Ok(LocalHttpServer::new(
-        McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent(
+        McpAdapter::new(fixture.runtime_home_path(), context).with_local_web_consent_readiness(
             LocalWebConsentContext {
                 base_url: consent_base_url().to_owned(),
             },
+            LocalWebConsentReadiness::ready_for_test(),
         ),
         http_config(fixture, Vec::new(), Vec::new()),
     ))
@@ -6828,7 +7158,7 @@ fn invoke_pending_elicitation(
         &adapter(fixture)?,
         pending_response,
         true,
-        true,
+        McpUserChannelCapabilities::new(true, false),
         &mut request_sequence,
         &mut lines,
         &mut request_bytes,
@@ -7437,6 +7767,272 @@ fn authority_action_args(fixture: &CoreFixture, task_id: &str, state_version: u6
         Value::Null,
         json!(["scope_update"]),
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpUserActionCloseBasis {
+    None,
+    NoResidualRisks,
+    VisibleResidualRisk,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum McpUserActionLeakageCaseKind {
+    Choice {
+        required_for: &'static [&'static str],
+        close_basis: McpUserActionCloseBasis,
+        sensitive: bool,
+    },
+    EvidenceObservation,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct McpUserActionLeakageCase {
+    name: &'static str,
+    kind: McpUserActionLeakageCaseKind,
+}
+
+impl McpUserActionLeakageCase {
+    const fn choice(
+        name: &'static str,
+        required_for: &'static [&'static str],
+        close_basis: McpUserActionCloseBasis,
+        sensitive: bool,
+    ) -> Self {
+        Self {
+            name,
+            kind: McpUserActionLeakageCaseKind::Choice {
+                required_for,
+                close_basis,
+                sensitive,
+            },
+        }
+    }
+
+    const fn evidence_observation() -> Self {
+        Self {
+            name: "evidence_observation",
+            kind: McpUserActionLeakageCaseKind::EvidenceObservation,
+        }
+    }
+}
+
+struct PreparedMcpUserActionLeakageCase {
+    task_id: String,
+    arguments: Value,
+    private_markers: Vec<String>,
+}
+
+fn prepare_mcp_user_action_leakage_case(
+    fixture: &CoreFixture,
+    case: McpUserActionLeakageCase,
+) -> Result<PreparedMcpUserActionLeakageCase, Box<dyn Error>> {
+    let core = CoreService::new(fixture.runtime_home_path());
+    let invocation = || {
+        InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            OperationCategory::AgentWorkflow,
+            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+        )
+    };
+    let intake = core.intake(
+        fixture.intake_request(
+            &format!("req_mcp_user_action_{}_task", case.name),
+            &format!("idem_mcp_user_action_{}_task", case.name),
+            false,
+            Some(0),
+        ),
+        invocation(),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .ok_or("intake response should expose the Task")?
+        .to_owned();
+    let scope_request_id = format!("req_mcp_user_action_{}_scope", case.name);
+    let scope_idempotency_key = format!("idem_mcp_user_action_{}_scope", case.name);
+    let scope = core.update_scope(
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: &scope_request_id,
+            idempotency_key: &scope_idempotency_key,
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Exercise the UserAction adapter boundary.",
+        }),
+        invocation(),
+    )?;
+    let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
+        .as_str()
+        .ok_or("scope response should expose the current Change Unit")?
+        .to_owned();
+    let criterion_id = scope.response_value["state"]["acceptance_criteria"][0]
+        ["acceptance_criterion_id"]
+        .as_str()
+        .ok_or("scope response should expose the acceptance criterion")?
+        .to_owned();
+    let mut state_version = scope.response_value["base"]["state_version"]
+        .as_u64()
+        .ok_or("scope response should expose state_version")?;
+    let mut registered_artifact_id = None;
+    if let McpUserActionLeakageCaseKind::Choice { close_basis, .. } = case.kind {
+        if close_basis != McpUserActionCloseBasis::None {
+            let request_id = format!("req_mcp_user_action_{}_run", case.name);
+            let idempotency_key = format!("idem_mcp_user_action_{}_run", case.name);
+            let mut request = fixture.record_run_request(
+                &request_id,
+                &idempotency_key,
+                false,
+                Some(state_version),
+                &task_id,
+                &change_unit_id,
+            );
+            let residual_risks = if close_basis == McpUserActionCloseBasis::VisibleResidualRisk {
+                vec![ResidualRiskInput {
+                    summary: "A visible fixture risk remains.".to_owned(),
+                    consequence: "The user must decide whether this fixture risk is acceptable."
+                        .to_owned(),
+                    acceptance_required: true,
+                    source_refs: Vec::new(),
+                }]
+            } else {
+                Vec::new()
+            };
+            request.close_assessment = Some(CloseAssessmentInput {
+                result_summary: "Current close evidence is available.".to_owned(),
+                result_refs: Vec::new(),
+                residual_risks,
+                sensitive_categories: Vec::new(),
+                recovery_constraints: Vec::new(),
+            })
+            .into();
+            let recorded = core.record_run(request, invocation())?;
+            state_version = recorded.response_value["base"]["state_version"]
+                .as_u64()
+                .ok_or("record_run response should expose state_version")?;
+        }
+    }
+    if matches!(case.kind, McpUserActionLeakageCaseKind::EvidenceObservation) {
+        let staged_request_id = format!("req_mcp_user_action_{}_stage", case.name);
+        let staged_idempotency_key = format!("idem_mcp_user_action_{}_stage", case.name);
+        let staged = core.stage_artifact(
+            fixture.stage_artifact_request(
+                &staged_request_id,
+                Some(&staged_idempotency_key),
+                false,
+                Some(state_version),
+                &task_id,
+            ),
+            invocation(),
+        )?;
+        let handle: StagedArtifactHandle =
+            serde_json::from_value(staged.response_value["staged_artifact_handle"].clone())?;
+        let request_id = format!("req_mcp_user_action_{}_run", case.name);
+        let idempotency_key = format!("idem_mcp_user_action_{}_run", case.name);
+        let mut request = fixture.record_run_request(
+            &request_id,
+            &idempotency_key,
+            false,
+            Some(state_version),
+            &task_id,
+            &change_unit_id,
+        );
+        request.artifact_inputs = vec![artifact_input_for_handle(
+            "artifact_input_mcp_user_action_evidence_observation",
+            handle,
+            Some("user_action_candidate"),
+            None,
+        )];
+        let recorded = core.record_run(request, invocation())?;
+        state_version = recorded.response_value["base"]["state_version"]
+            .as_u64()
+            .ok_or("record_run response should expose state_version")?;
+        registered_artifact_id = recorded.response_value["registered_artifacts"][0]["artifact_id"]
+            .as_str()
+            .map(str::to_owned);
+    }
+
+    let question_marker = format!("PRIVATE_{}_QUESTION_MUST_NOT_ESCAPE", case.name);
+    let context_marker = format!("PRIVATE_{}_CONTEXT_MUST_NOT_ESCAPE", case.name);
+    let option_marker = format!("PRIVATE_{}_OPTION_MUST_NOT_ESCAPE", case.name);
+    let mut arguments = match case.kind {
+        McpUserActionLeakageCaseKind::Choice {
+            required_for,
+            sensitive,
+            ..
+        } => {
+            let options = if matches!(case.name, "product_decision" | "technical_decision") {
+                json!([
+                    {
+                        "option_id": "keep",
+                        "label": option_marker,
+                        "description": "Keep the focused fixture behavior.",
+                        "consequence": "Only this fixture action is resolved.",
+                        "is_default": true
+                    },
+                    {
+                        "option_id": "change",
+                        "label": "Change the focused fixture behavior",
+                        "description": "Change only the focused fixture behavior.",
+                        "consequence": "Only this fixture action is resolved differently.",
+                        "is_default": false
+                    }
+                ])
+            } else {
+                Value::Null
+            };
+            let mut arguments = action_args(
+                fixture,
+                &task_id,
+                state_version,
+                case.name,
+                options,
+                json!(required_for),
+            );
+            arguments["request"]["change_unit_id"] = json!(change_unit_id);
+            arguments["request"]["action"]["question"] = json!(question_marker);
+            arguments["request"]["action"]["context"]["summary"] = json!(context_marker);
+            if sensitive {
+                arguments["request"]["action"]["sensitive_action_scope"] = json!({
+                    "action_kind": "mcp_user_action_leakage_fixture",
+                    "description": "Authorize only the named fixture-sensitive step.",
+                    "intended_paths": ["src/fixture.rs"],
+                    "sensitive_categories": ["network"],
+                    "command_or_tool_summary": "Run one local fixture command.",
+                    "network_or_host_summary": "No remote host is authorized.",
+                    "secret_or_credential_summary": null,
+                    "capability_claim": "This fixture approval is not a write ticket.",
+                    "expires_at": null
+                });
+            }
+            arguments
+        }
+        McpUserActionLeakageCaseKind::EvidenceObservation => {
+            let artifact_id = registered_artifact_id
+                .ok_or("evidence-observation setup must register an artifact")?;
+            let mut arguments = evidence_observation_action_args(
+                &task_id,
+                &change_unit_id,
+                vec![json!({
+                    "target_kind": "acceptance_criterion",
+                    "acceptance_criterion_id": criterion_id
+                })],
+                vec![artifact_id],
+            );
+            arguments["detail"] = json!("full");
+            arguments["request"]["action"]["question"] = json!(question_marker);
+            arguments["request"]["action"]["context_summary"] = json!(context_marker);
+            arguments
+        }
+    };
+    arguments["project_selector"] = json!(fixture.project_id());
+
+    Ok(PreparedMcpUserActionLeakageCase {
+        task_id,
+        arguments,
+        private_markers: vec![question_marker, context_marker, option_marker],
+    })
 }
 
 fn action_args(
