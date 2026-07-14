@@ -526,8 +526,60 @@ mod unix {
             )?,
             UserActionPresentationSafety::AgentFacingInputAllowed
         );
-        assert!(live_evidence_observation_prompt(&prepared)
-            .contains(LIVE_EVIDENCE_OBSERVATION_RUN_MARKER));
+        let prompt = live_evidence_observation_prompt(&prepared);
+        assert!(prompt.contains(LIVE_EVIDENCE_OBSERVATION_RUN_MARKER));
+        assert!(prompt.contains(&format!("`project_selector={}`", prepared.project_id)));
+        Ok(())
+    }
+
+    #[test]
+    fn authenticated_live_prompts_bind_the_registered_opaque_project_selector(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("registered-live-prompt-selector")?;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for live prompt routing fixture", &init);
+        let init_json = json_stdout(&init)?;
+        let connection_id = init_json["connection"]["connection_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live prompt init returned no connection id"))?;
+        let prepared = prepare_live_cli_fallback_action(
+            &fixture,
+            connection_id,
+            "VOLICORD_LIVE_PROMPT_MARKER",
+        )?;
+        let project_selector = live_fixture_project_id(&fixture)?;
+        assert_eq!(prepared.observation.project_id, project_selector);
+        let repository_name = fixture
+            .repo_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| io::Error::other("live prompt repository name is unavailable"))?;
+        assert_ne!(project_selector, repository_name);
+        let expected = format!("`project_selector={project_selector}`");
+        let guessed = format!("`project_selector={repository_name}`");
+        let prompts = [
+            live_final_output_no_active_prompt(&project_selector),
+            live_user_action_prompt("VOLICORD_LIVE_PROMPT_MARKER", &project_selector),
+            live_cli_fallback_resume_prompt(&prepared)?,
+        ];
+
+        for prompt in prompts {
+            assert!(prompt.contains(&expected));
+            assert!(prompt.contains("exact opaque selector"));
+            assert!(!prompt.contains(&guessed));
+        }
         Ok(())
     }
 
@@ -1746,16 +1798,12 @@ mod unix {
 
         let before_actual_host = after_second_direct;
         let no_active_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
-        let prompt = concat!(
-            "Use only the MCP server named `volicord` to call `volicord.status` once with `detail=full` and no task_id. ",
-            "Confirm that it reports no active Task, then reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_NO_ACTIVE_TASK and stop. ",
-            "Do not call any other tool, shell command, or edit files."
-        );
+        let prompt = live_final_output_no_active_prompt(&project_id);
         println!(
             "\n=== Volicord live {host}/{} final-output smoke ===\nThis first authenticated host turn intentionally has no active Volicord Task. After the host answer, inspect the host-native final-output surface. Do not enter credentials into this test process.\n=== end instruction ===\n",
             profile.as_str()
         );
-        let host_status = fixture.run_authenticated_interactive_host(&executable, prompt)?;
+        let host_status = fixture.run_authenticated_interactive_host(&executable, &prompt)?;
         if !host_status.success() {
             return Err(io::Error::other(format!(
                 "the interactive {host} process exited unsuccessfully with {}",
@@ -2237,11 +2285,7 @@ mod unix {
         let expected_run_marker = run_marker_for_selected_option(&operator_choice_id)
             .ok_or_else(|| io::Error::other("operator selected an unsupported fallback option"))?;
         let stop_cursor = stop_event_cursor(&fixture, &prepared.observation.project_id)?;
-        let prompt = live_cli_fallback_resume_prompt(
-            user_action_request_id,
-            &prepared.observation.task_id,
-            &prepared.change_unit_id,
-        );
+        let prompt = live_cli_fallback_resume_prompt(&prepared)?;
         println!(
             "\n=== Volicord live {host} CLI-fallback smoke ===\nThe pending choice was resolved by the human operator through the actual `volicord inbox resolve --json` User Channel. The installed host must now resume that exact request through the same Agent Connection, consume the selected option, record its mapped no-write Run, read fresh status, and stop. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
         );
@@ -2448,8 +2492,8 @@ mod unix {
             "VOLICORD_LIVE_HOST_USER_ACTION_ROUND_TRIP_{}",
             host.replace('-', "_").to_ascii_uppercase()
         );
-        let prompt = live_user_action_prompt(&marker);
         let project_id = live_fixture_project_id(&fixture)?;
+        let prompt = live_user_action_prompt(&marker, &project_id);
         let judgment_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
         println!(
             "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
@@ -2644,10 +2688,12 @@ mod unix {
         Ok(())
     }
 
-    fn live_user_action_prompt(marker: &str) -> String {
+    fn live_user_action_prompt(marker: &str, project_selector: &str) -> String {
+        let routing_instruction = live_project_routing_instruction(project_selector);
         format!(
             concat!(
                 "Run a human-in-the-loop Volicord connection smoke using the MCP server named `volicord`. ",
+                "{routing_instruction} ",
                 "Do not edit files, run shell commands, prepare a write, or answer on the user's behalf.\n\n",
                 "1. Call `volicord.intake` with `detail=full`, `requested_mode=advisor`, `acceptance_policy=null`, and create-new resume behavior. The plain-language request must be exactly `{task_marker}`. Use a narrow no-write initial scope and exactly one acceptance criterion whose `evidence_requirement=not_required`. Retain the returned Task ID.\n",
                 "2. For that Task, call `volicord.update_scope` with `detail=full`, `baseline_ref={baseline_ref}`, and a `change_unit` whose `operation=create_current`, `scope_summary` describes this no-write live-host user-action validation, and `affected_paths=[]`. Retain `state.active_change_unit_ref.record_id` and `state.baseline_ref`. Do not continue unless both are present.\n",
@@ -2659,6 +2705,7 @@ mod unix {
                 "6. After that Run is recorded, call `volicord.status` for the Task and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop.\n\n",
                 "If a native prompt does not appear and Volicord returns only a pending `user_action_request_summary`, do not simulate a resolution or execute a fallback command. Report that the CLI User Channel is required and stop so the disposable harness can verify the trusted CLI inbox and resolve-command shape."
             ),
+            routing_instruction = routing_instruction,
             task_marker = marker,
             baseline_ref = LIVE_HOST_BASELINE_REF,
             alpha_option_id = USER_ACTION_ROUTE_ALPHA_OPTION_ID,
@@ -3080,9 +3127,11 @@ mod unix {
     fn live_evidence_observation_prompt(prepared: &PreparedEvidenceObservation) -> String {
         let target = serde_json::to_string(&prepared.target)
             .expect("prepared evidence target must serialize");
+        let routing_instruction = live_project_routing_instruction(&prepared.project_id);
         format!(
             concat!(
                 "Continue the prepared Volicord evidence-observation validation using the MCP server named `volicord`. ",
+                "{routing_instruction} ",
                 "Do not edit files, run shell commands, prepare a write, inspect or relay host-only metadata, open any consent URL, or answer on the user's behalf. The fixture contains no real credential or secret; its display metadata contains a routing marker solely so Volicord requires a user-only local consent page.\n\n",
                 "1. Call `volicord.request_user_action` exactly once with `detail=full` and nested `request.operation=create`. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `request.action.action_type=evidence_observation`, question `{question}`, context summary `{context_summary}`, `target_candidates=[{target}]`, `artifact_candidate_ids=[\"{artifact_id}\"]`, `required_for=[\"record_run\"]`, and `expires_at=null`. Do not create any other user action.\n",
                 "2. The returned public result must expose only `user_action_request_summary` with the exact keys `user_action_request_id`, `status=pending`, and `next_actor=user`; it must not expose a full request, request ref, inbox item, form, question, URL, token, command, or channel availability. The local-web handoff exists only in host-consumed top-level `CallToolResult._meta[\"{capability_namespace}\"]` and is owned entirely by a separate host model-invisible surface. Do not inspect, print, quote, relay, or open it. If the host does not render that separate surface, report only that the required User Channel is unavailable and stop without elicitation, prompt capture, or CLI fallback.\n",
@@ -3090,6 +3139,7 @@ mod unix {
                 "4. Consume that exact resolution in one `volicord.record_run` call. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `kind=shaping_update`, `run_id=null`, `baseline_ref={baseline_ref}`, `write_ticket_id=null`, summary exactly `{run_marker}`, no product-file changes, `artifact_inputs=[]`, and one supported evidence update for the resolved target with the exact resolved ArtifactRef. Add exactly one evidence observation for that target with `source_kind=user_observation`, `assurance_level=user_observed`, null observer/tool fields, empty tool metadata/source refs/limitations, `input_refs` containing only the exact resolution ref, `output_artifact_refs` containing only the exact resolved ArtifactRef, and `observed_at={caller_observed_at}`. Supply a close assessment with result summary exactly `{run_marker}` and empty result refs, risks, sensitive categories, and recovery constraints.\n",
                 "5. Call `volicord.status` for Task `{task_id}`. Report only the request ID from the safe summary, resolution ID, Run ID, evidence observation ID, lifecycle phase, close state, blocker count, and state version. Do not repeat a request ref, form, question, URL, token, user summary, this prompt, or a transcript. Then stop."
             ),
+            routing_instruction = routing_instruction,
             task_id = prepared.task_id,
             change_unit_id = prepared.change_unit_id,
             question = LIVE_EVIDENCE_REQUEST_QUESTION,
@@ -3261,27 +3311,47 @@ mod unix {
     }
 
     fn live_cli_fallback_resume_prompt(
-        user_action_request_id: &str,
-        task_id: &str,
-        change_unit_id: &str,
-    ) -> String {
-        format!(
+        prepared: &PreparedCliFallbackAction,
+    ) -> Result<String, io::Error> {
+        let user_action_request_id = prepared
+            .observation
+            .user_action_request_id
+            .as_deref()
+            .ok_or_else(|| io::Error::other("prepared CLI fallback request id is missing"))?;
+        let routing_instruction =
+            live_project_routing_instruction(&prepared.observation.project_id);
+        Ok(format!(
             concat!(
                 "Continue the prepared Volicord CLI User Channel fallback using the MCP server named `volicord`. ",
+                "{routing_instruction} ",
                 "Do not edit files, run shell commands, create or resolve another user action, prepare a write, or answer on the user's behalf.\n\n",
                 "1. Call `volicord.request_user_action` exactly once with nested `request.operation=resume` and `request.user_action_request_id={user_action_request_id}`. Do not use `request.operation=create`. The request was created by this same Agent Connection and has already been resolved by the human operator through `volicord inbox resolve --json`.\n",
                 "2. Require the resumed result to report `current_status=resolved`, `agent_workflow_result_replayed=true`, and a non-null `user_channel_resolution.resolution_summary.selected_option_id`. Consume that selected option; do not infer it from this instruction.\n",
                 "3. If the selected option is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, use summary exactly `{beta_run_marker}`. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `baseline_ref={baseline_ref}`, `kind=shaping_update`, `run_id=null`, `write_ticket_id=null`, `artifact_inputs=[]`, `evidence_updates=[]`, and `evidence_observations=[]`. Report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`. Supply a non-null `close_assessment` whose `result_summary` is exactly the chosen Run marker and whose `result_refs`, `residual_risks`, `sensitive_categories`, and `recovery_constraints` are empty arrays. Do not record a Run if resume is pending or the option is absent or unrecognized.\n",
                 "4. Call `volicord.status` for Task `{task_id}` and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop."
             ),
+            routing_instruction = routing_instruction,
             user_action_request_id = user_action_request_id,
             alpha_option_id = USER_ACTION_ROUTE_ALPHA_OPTION_ID,
             beta_option_id = USER_ACTION_ROUTE_BETA_OPTION_ID,
             alpha_run_marker = USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
             beta_run_marker = USER_ACTION_ROUTE_BETA_RUN_MARKER,
-            task_id = task_id,
-            change_unit_id = change_unit_id,
+            task_id = prepared.observation.task_id,
+            change_unit_id = prepared.change_unit_id,
             baseline_ref = LIVE_CLI_FALLBACK_BASELINE_REF,
+        ))
+    }
+
+    fn live_project_routing_instruction(project_selector: &str) -> String {
+        format!(
+            "Pass `project_selector={project_selector}` on every public Volicord method call in this turn. This is the fixture's exact opaque selector; never replace it with a repository name, folder name, host label, or remembered value."
+        )
+    }
+
+    fn live_final_output_no_active_prompt(project_selector: &str) -> String {
+        format!(
+            "Use only the MCP server named `volicord` to call `volicord.status` once with `detail=full`, no task_id, and the prepared project routing. {} Confirm that it reports no active Task, then reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_NO_ACTIVE_TASK and stop. Do not call any other tool, shell command, or edit files.",
+            live_project_routing_instruction(project_selector)
         )
     }
 

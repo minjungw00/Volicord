@@ -1798,7 +1798,7 @@ impl McpAdapter {
         if let Some(project_id) = requested_project_id {
             if !self.context.project_allowlist_allows(project_id) {
                 return Err(routing_error(format!(
-                    "project selector {project_id} is outside this HTTP serve project allowlist"
+                    "project selector {project_id} is outside this MCP transport project allowlist"
                 )));
             }
             let access = agent_connection_project_access_read_only(

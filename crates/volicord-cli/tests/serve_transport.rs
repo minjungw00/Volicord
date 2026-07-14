@@ -124,7 +124,7 @@ fn volicord_serve_local_http_starts_with_secure_defaults() -> Result<(), Box<dyn
     let error_text = body["result"]["content"][0]["text"]
         .as_str()
         .ok_or("tool error should contain text")?;
-    assert!(error_text.contains("outside this HTTP serve project allowlist"));
+    assert!(error_text.contains("outside this MCP transport project allowlist"));
 
     Ok(())
 }

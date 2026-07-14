@@ -2695,6 +2695,45 @@ fn stdio_adapter_precondition_error_uses_requested_tool_and_structured_flags(
 }
 
 #[test]
+fn project_bound_stdio_rejects_a_guessed_repository_name_as_project_selector(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-guessed-project-selector")?;
+    let before = fixture.counts()?;
+    let adapter = project_bound_adapter(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(
+            2,
+            STATUS_TOOL_NAME,
+            json!({
+                "detail": "workflow",
+                "project_selector": "product-repo"
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    let error = structured_error_result(&responses[1]["result"]);
+    assert_eq!(error["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
+    assert_eq!(error["tool_name"], STATUS_TOOL_NAME);
+    let issue = tool_error_issue(
+        &error,
+        "/project_selector",
+        "MCP_ADAPTER_PRECONDITION_FAILED",
+    );
+    let message = issue["message"].as_str().expect("routing issue message");
+    assert!(message.contains("outside this MCP transport project allowlist"));
+    assert!(!message.contains("HTTP serve"));
+    assert!(message.contains("Use volicord.list_projects"));
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_duplication(
 ) -> Result<(), Box<dyn Error>> {
     fn intake_result(prefix: &str, detail: Option<&str>) -> Result<Value, Box<dyn Error>> {
@@ -6664,7 +6703,7 @@ fn local_http_project_allowlist_narrows_connection_projects() -> Result<(), Box<
     );
     assert!(issue["message"]
         .as_str()
-        .is_some_and(|message| message.contains("outside this HTTP serve project allowlist")));
+        .is_some_and(|message| message.contains("outside this MCP transport project allowlist")));
     Ok(())
 }
 
