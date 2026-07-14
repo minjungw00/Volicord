@@ -158,6 +158,11 @@ pub mod core_fixtures {
     impl CoreFixture {
         /// Creates a disposable Runtime Home, Product Repository registration, and Agent Connection.
         pub fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+            Self::new_with_host_kind(prefix, HOST_KIND_CODEX)
+        }
+
+        /// Creates the fixture with an exact built-in Agent Connection host kind.
+        pub fn new_with_host_kind(prefix: &str, host_kind: &str) -> Result<Self, Box<dyn Error>> {
             let component = identifier_component(prefix);
             let runtime_home = TempRuntimeHome::new(&component)?;
             let repo_root = runtime_home.create_product_repo("repo")?;
@@ -195,7 +200,7 @@ pub mod core_fixtures {
                 runtime_home.path(),
                 AgentConnectionRegistration {
                     connection_internal_id: connection_id.clone(),
-                    host_kind: HOST_KIND_CODEX.to_owned(),
+                    host_kind: host_kind.to_owned(),
                     intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED.to_owned(),
                     host_scope: HOST_SCOPE_PROJECT.to_owned(),
                     server_name: "volicord-test".to_owned(),

@@ -14,10 +14,18 @@
 
 ## 결정
 
-Agent Connection과 API 값 집합 담당 문서가 정의한 여섯 기능 ID와 우선순위에 중앙의 typed
-`HostFeatureSupportStatus` 평가기 하나를 사용합니다. 평가기는 구현, 정확한 실제 증거,
-현재 런타임 준비 상태를 분리합니다. 설정은 `configured`와
-`configuration_verified`로만 보고하며 지원 상태를 올리지 않습니다.
+Agent Connection과 API 값 집합 담당 문서가 정의한 여섯 기능 ID와 최종 출력 하위 역량에
+공유 정적 구현 평가기 하나를 사용합니다. 공유 타입은 닫힌 식별자, 검토된
+호스트·버전·클라이언트 사실, 정규 Codex 버전 문법, 버전별 구현 매트릭스, 정확한 증거와
+현재 준비 상태를 반영하는 단일 기능 지원 상태 우선순위를 담당합니다. CLI 진단, MCP 전달
+자격, 릴리스 검증은 호스트 종류 fallback, 버전 표, 기능 상태 우선순위를 다시 만들지 않고
+이 결과를 소비해야 합니다.
+
+CLI는 공유 단일 기능 결과를 여섯 기능 매트릭스와 각 최종 출력 프로필에 걸쳐 집계합니다.
+정확한 실제 증거와 현재 런타임 준비 상태는 별도 입력으로 남습니다. 설정은 `configured`와
+`configuration_verified`로만 보고하며 지원 상태를 올리지 않습니다. MCP는 저장된 검증을
+조회하기 전에 정적으로 지원되지 않는 local-web 표면을 거부하고, 전달 lease를 발급할 때도
+같은 점검을 반복해야 합니다.
 
 Doctor, 연결 상태, 릴리스 기능 매트릭스는 같은 평가 결과를 사용합니다. 정확한 재생도
 평가기를 다시 실행합니다. 증거는 현재 최종 Volicord 아티팩트, source revision, 빌드와
@@ -45,6 +53,8 @@ target, 설치 호스트와 버전, 어댑터 프로필, 연결 신원, 증거 �
   낮춥니다.
 - Record와 Detective 최종 출력 주장은 서로 다른 필수 하위 역량을 드러내면서 최신 권한
   projection 코드는 계속 공유합니다.
+- MCP, CLI 진단, 릴리스 검증은 같은 정규 호스트·버전·기능에 서로 다른 정적 구현 상태를
+  부여할 수 없습니다.
 
 ## 공개 및 진단 호환성
 
@@ -75,11 +85,20 @@ selector를 추가하지 않으며, 지원 상태는 Core 권한이나 새 공�
   보존하므로 거부했습니다.
 - 각 명령이 독립적으로 지원 상태를 계산하는 방안은 우선순위, 최신성, 하위 역량 집계가
   달라질 수 있어 거부했습니다.
+- 검토된 버전 매트릭스를 CLI에 두는 방안은 MCP와 테스트 전용 릴리스 검증이 의존 방향을
+  뒤집거나 결정을 복제하지 않고 어댑터 바이너리 크레이트에 의존할 수 없으므로 거부했습니다.
 
 ## 관련 구현 영역
 
-- [`crates/volicord-cli/src/host_integration/`](../../../../crates/volicord-cli/src/host_integration/):
-  typed 값, 호스트 기준 사실, 중앙 평가.
+- [`crates/volicord-types/src/host_feature_support.rs`](../../../../crates/volicord-types/src/host_feature_support.rs):
+  닫힌 식별자, 검토된 호스트·버전·클라이언트 사실, 정규 파싱, 공유 정적 구현 매트릭스,
+  단일 기능 상태 우선순위.
+- [`crates/volicord-cli/src/host_integration/capability_status.rs`](../../../../crates/volicord-cli/src/host_integration/capability_status.rs):
+  공유 정적 결과와 단일 기능 지원 결과에 프로필별 최종 출력과 여섯 기능 진단 집계를 적용.
+- [`crates/volicord-mcp/src/adapter.rs`](../../../../crates/volicord-mcp/src/adapter.rs):
+  같은 정적 결과를 쓰는 최초 및 발급 시점 local-web 전달 자격 점검.
+- [`tests/release-validation`](../../../../tests/release-validation):
+  같은 정적 결과를 쓰는 정확한 아티팩트 주장 평가.
 - [`crates/volicord-cli/src/connection_command.rs`](../../../../crates/volicord-cli/src/connection_command.rs)와
   [`doctor_command.rs`](../../../../crates/volicord-cli/src/doctor_command.rs): 진단 소비자.
 - [`crates/volicord-cli/src/guard_integration/`](../../../../crates/volicord-cli/src/guard_integration/):

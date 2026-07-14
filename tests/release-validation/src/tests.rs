@@ -9,14 +9,10 @@ use std::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
-use volicord_cli::host_integration::{
-    capability_status::{
-        host_feature_implementation_for_version, HostFeature, HostFeatureImplementation,
-        REVIEWED_CODEX_HOST_VERSION,
-    },
-    HostKind as CliHostKind,
+use volicord_types::{
+    host_feature_implementation_for_version, HostFeature, HostFeatureImplementation,
+    HostFeatureSupportStatus, IntegrationProfile, REVIEWED_CODEX_HOST_VERSION,
 };
-use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
 
 use crate::{
     audit::{run_audit, AuditRequest},
@@ -1548,11 +1544,7 @@ fn canonical_disposition(
     host_version: Option<&str>,
     feature: HostFeature,
 ) -> ImplementationDisposition {
-    let host_kind = match host_kind {
-        HostKind::Codex => CliHostKind::Codex,
-        HostKind::ClaudeCode => CliHostKind::ClaudeCode,
-    };
-    match host_feature_implementation_for_version(host_kind, host_version, feature) {
+    match host_feature_implementation_for_version(host_kind.as_str(), host_version, feature) {
         HostFeatureImplementation::Implemented => ImplementationDisposition::Implemented,
         HostFeatureImplementation::UnsupportedByHost => {
             ImplementationDisposition::UnsupportedByHost

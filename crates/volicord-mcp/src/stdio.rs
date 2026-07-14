@@ -7,6 +7,7 @@ use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
 use sha2::{Digest, Sha256};
+use volicord_types::{REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME};
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -18,8 +19,6 @@ const CODEX_HOST_VALUE: &str = "codex";
 const CLAUDE_CODE_HOST_VALUE: &str = "claude_code";
 const CLAUDECODE: &str = "CLAUDECODE";
 const CLAUDE_CODE_SESSION_ID: &str = "CLAUDE_CODE_SESSION_ID";
-const CODEX_MCP_CLIENT_NAME: &str = "codex-mcp-client";
-const CODEX_MCP_CLIENT_VERSION: &str = "0.144.4";
 const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord-codex-mcp-thread-binding-v1\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
@@ -1084,8 +1083,8 @@ fn bind_codex_managed_tool_call(
     if matches!(state.codex_binding, CodexManagedBinding::NotApplicable) {
         return Ok(());
     }
-    if state.client_name.as_deref() != Some(CODEX_MCP_CLIENT_NAME)
-        || state.client_version.as_deref() != Some(CODEX_MCP_CLIENT_VERSION)
+    if state.client_name.as_deref() != Some(REVIEWED_CODEX_MCP_CLIENT_NAME)
+        || state.client_version.as_deref() != Some(REVIEWED_CODEX_HOST_VERSION)
     {
         return Err(
             "managed Codex tools/call requires the reviewed client identity codex-mcp-client/0.144.4",
@@ -4149,6 +4148,7 @@ mod mutation_output_tests {
     };
     use std::cell::Cell;
     use std::io::{BufReader, Cursor};
+    use volicord_store::agent_connections::HOST_KIND_CLAUDE_CODE;
     use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
@@ -4864,7 +4864,10 @@ mod mutation_output_tests {
                 [("exact", 0_usize, true), ("one-over", 1_usize, false)]
             {
                 let case = format!("{detail_case}-{edge_case}");
-                let fixture = CoreFixture::new(&format!("mcp-local-web-budget-{case}"))?;
+                let fixture = CoreFixture::new_with_host_kind(
+                    &format!("mcp-local-web-budget-{case}"),
+                    HOST_KIND_CLAUDE_CODE,
+                )?;
                 let core = CoreService::new(fixture.runtime_home_path());
                 let invocation = || {
                     InvocationContext::new(
@@ -4946,7 +4949,7 @@ mod mutation_output_tests {
                 let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
                     exact_host_capability_evidence_artifact_sha256(&verification_label),
                 );
-                let capabilities = exact_local_web_test_capabilities();
+                let capabilities = exact_local_web_test_capabilities(&fixture)?;
                 let output = materialize_local_web_handoff_with_token_creator(
                     &adapter,
                     Some(detail),
@@ -4999,7 +5002,10 @@ mod mutation_output_tests {
     #[test]
     fn degraded_local_web_listener_before_materialization_creates_no_handoff_or_token(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new("mcp-local-web-degraded-before-materialization")?;
+        let fixture = CoreFixture::new_with_host_kind(
+            "mcp-local-web-degraded-before-materialization",
+            HOST_KIND_CLAUDE_CODE,
+        )?;
         let core = CoreService::new(fixture.runtime_home_path());
         let session_id = "session_local_web_degraded_before_materialization";
         let invocation = || {
@@ -5051,7 +5057,7 @@ mod mutation_output_tests {
         let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
             exact_host_capability_evidence_artifact_sha256("listener_degraded"),
         );
-        let capabilities = exact_local_web_test_capabilities();
+        let capabilities = exact_local_web_test_capabilities(&fixture)?;
         let output = user_action_tool_output(
             &adapter,
             pending,
@@ -5118,7 +5124,10 @@ mod mutation_output_tests {
     #[test]
     fn final_materialization_rechecks_current_verification_after_deferred_selection(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new("mcp-local-web-final-verification-recheck")?;
+        let fixture = CoreFixture::new_with_host_kind(
+            "mcp-local-web-final-verification-recheck",
+            HOST_KIND_CLAUDE_CODE,
+        )?;
         let context =
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
@@ -5132,7 +5141,7 @@ mod mutation_output_tests {
                 exact_host_capability_evidence_artifact_sha256("final_recheck_pass"),
             );
         publish_exact_host_capability_verification(&fixture, "final_recheck_pass")?;
-        let capabilities = exact_local_web_test_capabilities();
+        let capabilities = exact_local_web_test_capabilities(&fixture)?;
         assert!(adapter.effective_local_web_consent_available(&capabilities));
         let mut output = ToolCallOutput::success("{}".to_owned())?;
         output.deferred_local_web_handoff = Some(DeferredLocalWebHandoff {
@@ -5183,7 +5192,8 @@ mod mutation_output_tests {
 
     #[test]
     fn idempotent_create_replay_never_reissues_a_local_web_handoff() -> Result<(), Box<dyn Error>> {
-        let fixture = CoreFixture::new("mcp-local-web-create-replay")?;
+        let fixture =
+            CoreFixture::new_with_host_kind("mcp-local-web-create-replay", HOST_KIND_CLAUDE_CODE)?;
         let core = CoreService::new(fixture.runtime_home_path());
         let intake = core.intake(
             fixture.intake_request(
@@ -5215,7 +5225,7 @@ mod mutation_output_tests {
         let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
             exact_host_capability_evidence_artifact_sha256("create_replay"),
         );
-        let capabilities = exact_local_web_test_capabilities();
+        let capabilities = exact_local_web_test_capabilities(&fixture)?;
         adapter.call_tool_for_session_with_user_channel_capabilities(
             STATUS_TOOL_NAME,
             json!({"task_id": task_id.as_str()}),

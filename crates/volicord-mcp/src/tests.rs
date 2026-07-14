@@ -47,7 +47,8 @@ use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     remove_connection_project, set_connection_enabled, AgentConnectionRegistration,
     ConnectionProjectRegistration, CONNECTION_INTENT_GLOBAL, CONNECTION_MODE_READ_ONLY,
-    HOST_KIND_GENERIC, HOST_SCOPE_EXPORT, VERIFIED_STATUS_COMPLETE,
+    HOST_KIND_CLAUDE_CODE, HOST_KIND_CODEX, HOST_KIND_GENERIC, HOST_SCOPE_EXPORT,
+    VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
@@ -69,15 +70,16 @@ use volicord_test_support::core_fixtures::{
 };
 use volicord_types::{
     AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, EvidenceTarget,
-    OperationCategory, ResidualRiskInput, StagedArtifactHandle,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    OperationCategory, ResidualRiskInput, StagedArtifactHandle, REVIEWED_CODEX_HOST_VERSION,
+    REVIEWED_CODEX_MCP_CLIENT_NAME, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use super::*;
 
 const USER_CHANNEL_TEST_SESSION_ID: &str = "session_user_channel_projection";
-const EXACT_LOCAL_WEB_TEST_CLIENT_NAME: &str = "codex-mcp-client";
-const EXACT_LOCAL_WEB_TEST_CLIENT_VERSION: &str = "0.144.4";
+const CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME: &str = "claude-code";
+const CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION: &str = "2.3.4";
+const CLAUDE_LOCAL_WEB_TEST_SESSION_ID: &str = "claude.local-web.fixture";
 const CODEX_TEST_SESSION_ID: &str = "fixture_codex_session";
 const CODEX_TEST_THREAD_ID: &str = "fixture_codex_thread";
 const CODEX_TEST_TURN_ID: &str = "fixture_codex_turn";
@@ -5545,10 +5547,10 @@ fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(),
     ];
 
     for case in cases {
-        let fixture = CoreFixture::new(&format!("mcp-user-action-leakage-{}", case.name))?;
+        let fixture = local_web_fixture(&format!("mcp-user-action-leakage-{}", case.name))?;
         let prepared = prepare_mcp_user_action_leakage_case(&fixture, case)?;
         let input = Cursor::new(json_lines(&[
-            initialize_request(
+            local_web_initialize_request(
                 1,
                 json!({
                     "experimental": {
@@ -5825,11 +5827,11 @@ fn local_web_selection_requires_exact_managed_current_verification_and_client_ca
     let mut mismatches = Vec::new();
 
     for (case, capabilities, listener_setup, expected_local_web) in cases {
-        let fixture = CoreFixture::new(&format!("mcp-local-web-capability-{case}"))?;
+        let fixture = local_web_fixture(&format!("mcp-local-web-capability-{case}"))?;
         let setup_adapter = adapter(&fixture)?;
         let (task_id, state_version) = create_task(&setup_adapter)?;
         let input = Cursor::new(json_lines(&[
-            initialize_request(1, capabilities),
+            local_web_initialize_request(1, capabilities),
             initialized_notification(),
             tools_call(
                 2,
@@ -5861,7 +5863,14 @@ fn local_web_selection_requires_exact_managed_current_verification_and_client_ca
                 runtime_adapter,
                 BufReader::new(input),
                 &mut output,
-                |name| managed_codex_stdio_env(&fixture, project_bound, name),
+                |name| {
+                    managed_local_web_stdio_env(
+                        &fixture,
+                        project_bound,
+                        HOST_KIND_CLAUDE_CODE,
+                        name,
+                    )
+                },
             )?,
             _ => run_stdio(runtime_adapter, BufReader::new(input), &mut output)?,
         }
@@ -5936,12 +5945,59 @@ fn local_web_selection_requires_exact_managed_current_verification_and_client_ca
 #[test]
 fn adapter_without_expected_release_evidence_digest_fails_closed_for_exact_managed_pass(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-missing-expected-evidence-digest")?;
+    let fixture = local_web_fixture("mcp-local-web-missing-expected-evidence-digest")?;
     publish_exact_host_capability_verification(&fixture, "missing_expected_evidence_digest")?;
     let adapter = adapter_with_local_web_consent(&fixture)?;
 
     assert!(adapter.local_web_consent_listener_ready());
-    assert!(!adapter.effective_local_web_consent_available(&exact_local_web_test_capabilities()));
+    assert!(!adapter
+        .effective_local_web_consent_available(&exact_local_web_test_capabilities(&fixture)?));
+    Ok(())
+}
+
+#[test]
+fn reviewed_codex_local_web_is_statically_unsupported_at_selection_and_issuance(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-reviewed-codex-static-unsupported")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let label = "reviewed_codex_static_unsupported";
+    publish_exact_host_capability_verification(&fixture, label)?;
+    let runtime_adapter = adapter_with_local_web_consent(&fixture)?
+        .with_expected_evidence_artifact_sha256_for_test(
+            exact_host_capability_evidence_artifact_sha256(label),
+        );
+    let capabilities = exact_local_web_test_capabilities(&fixture)?;
+
+    assert!(runtime_adapter.local_web_consent_listener_ready());
+    assert!(!runtime_adapter.effective_local_web_consent_available(&capabilities));
+    assert!(runtime_adapter
+        .local_web_consent_issuance_lease(&capabilities)
+        .is_none());
+
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, model_invisible_user_surface_capability()),
+        initialized_notification(),
+        tools_call(
+            2,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            product_action_args(&fixture, &task_id, state_version),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        runtime_adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, false, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[1]["result"]["isError"], false);
+    assert!(responses[1]["result"].get("_meta").is_none());
+    assert_eq!(local_web_token_count(&fixture)?, 0);
+    assert!(result_mentions_cli_recovery(&responses[1]["result"]));
     Ok(())
 }
 
@@ -5966,7 +6022,7 @@ fn cli_verification_stdio_exact_pass_ready_true_declaration_does_not_enable_loca
 #[test]
 fn local_http_exact_pass_ready_true_declaration_does_not_enable_local_web(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-http-exact-pass")?;
+    let fixture = local_web_fixture("mcp-local-web-http-exact-pass")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let label = "local_http_exact_pass";
@@ -5978,8 +6034,8 @@ fn local_http_exact_pass_ready_true_declaration_does_not_enable_local_web(
     assert!(runtime_adapter.local_web_consent_listener_ready());
     let local_http_capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
         McpLaunchOrigin::Unknown.as_str(),
-        Some(EXACT_LOCAL_WEB_TEST_CLIENT_NAME),
-        Some(EXACT_LOCAL_WEB_TEST_CLIENT_VERSION),
+        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME),
+        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION),
     );
     assert!(!runtime_adapter.effective_local_web_consent_available(&local_http_capabilities));
 
@@ -6073,8 +6129,12 @@ fn generic_connection_self_declaration_never_issues_local_web_handoff() -> Resul
             },
             LocalWebConsentReadiness::ready_for_test(),
         );
-    assert!(!generic_adapter
-        .effective_local_web_consent_available(&exact_local_web_test_capabilities()));
+    let generic_capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
+        McpLaunchOrigin::ManagedHost.as_str(),
+        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME),
+        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION),
+    );
+    assert!(!generic_adapter.effective_local_web_consent_available(&generic_capabilities));
     let input = Cursor::new(json_lines(&[
         initialize_request(
             1,
@@ -6125,7 +6185,7 @@ fn generic_connection_self_declaration_never_issues_local_web_handoff() -> Resul
 fn expired_mismatched_and_superseded_verification_fail_closed_without_token(
 ) -> Result<(), Box<dyn Error>> {
     for case in ["client_version_mismatch", "expired", "superseded_by_failed"] {
-        let fixture = CoreFixture::new(&format!("mcp-local-web-verification-{case}"))?;
+        let fixture = local_web_fixture(&format!("mcp-local-web-verification-{case}"))?;
         let setup_adapter = adapter(&fixture)?;
         let (task_id, state_version) = create_task(&setup_adapter)?;
         let now = DateTime::<Utc>::from(std::time::SystemTime::now());
@@ -6174,11 +6234,11 @@ fn expired_mismatched_and_superseded_verification_fail_closed_without_token(
             initialize_request_with_client_info(
                 1,
                 capabilities,
-                EXACT_LOCAL_WEB_TEST_CLIENT_NAME,
+                CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
                 "0.0.1",
             )
         } else {
-            initialize_request(1, capabilities)
+            local_web_initialize_request(1, capabilities)
         };
         let input = Cursor::new(json_lines(&[
             initialize,
@@ -6197,23 +6257,14 @@ fn expired_mismatched_and_superseded_verification_fail_closed_without_token(
             runtime_adapter,
             BufReader::new(input),
             &mut output,
-            |name| managed_codex_stdio_env(&fixture, project_bound, name),
+            |name| {
+                managed_local_web_stdio_env(&fixture, project_bound, HOST_KIND_CLAUDE_CODE, name)
+            },
         )?;
 
         let values = stdio_responses(&output)?;
         assert_eq!(values.len(), 2, "{case}");
-        if case == "client_version_mismatch" {
-            assert_eq!(values[1]["error"]["code"], -32602);
-            assert_eq!(
-                fixture.conn()?.query_row(
-                    "SELECT COUNT(*) FROM user_action_channel_tokens",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )?,
-                0
-            );
-            continue;
-        }
+        assert_eq!(values[1]["result"]["isError"], false, "{case}");
         assert!(values[1]["result"].get("_meta").is_none(), "{case}");
         assert_eq!(
             fixture.conn()?.query_row(
@@ -6240,11 +6291,11 @@ fn expired_mismatched_and_superseded_verification_fail_closed_without_token(
 #[test]
 fn local_web_bearer_handoff_is_absent_from_model_and_diagnostic_surfaces(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-model-invisible-handoff")?;
+    let fixture = local_web_fixture("mcp-local-web-model-invisible-handoff")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let input = Cursor::new(json_lines(&[
-        initialize_request(
+        local_web_initialize_request(
             1,
             json!({
                 "experimental": {
@@ -6313,7 +6364,7 @@ fn local_web_bearer_handoff_is_absent_from_model_and_diagnostic_surfaces(
 #[test]
 fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavailable(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-fallback")?;
+    let fixture = local_web_fixture("mcp-local-web-fallback")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let adapter = adapter_with_local_web_consent(&fixture)?;
@@ -6326,7 +6377,7 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
     let mut arguments = product_action_args(&fixture, &task_id, state_version);
     arguments["request"]["expires_at"] = json!(request_expires_at);
     let input = Cursor::new(json_lines(&[
-        initialize_request(
+        local_web_initialize_request(
             1,
             json!({
                 "experimental": {
@@ -8001,6 +8052,10 @@ fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
+fn local_web_fixture(prefix: &str) -> Result<CoreFixture, Box<dyn Error>> {
+    CoreFixture::new_with_host_kind(prefix, HOST_KIND_CLAUDE_CODE)
+}
+
 fn adapter_for_additional_connection(
     fixture: &CoreFixture,
     connection_id: &str,
@@ -8062,7 +8117,7 @@ fn assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
         launch_origin,
         McpLaunchOrigin::ManualCli | McpLaunchOrigin::CliVerification
     ));
-    let fixture = CoreFixture::new(prefix)?;
+    let fixture = local_web_fixture(prefix)?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
     let label = format!("{prefix}_verification");
@@ -8074,13 +8129,13 @@ fn assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
     assert!(runtime_adapter.local_web_consent_listener_ready());
     let capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
         launch_origin.as_str(),
-        Some(EXACT_LOCAL_WEB_TEST_CLIENT_NAME),
-        Some(EXACT_LOCAL_WEB_TEST_CLIENT_VERSION),
+        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME),
+        Some(CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION),
     );
     assert!(!runtime_adapter.effective_local_web_consent_available(&capabilities));
 
     let input = Cursor::new(json_lines(&[
-        initialize_request(1, model_invisible_user_surface_capability()),
+        local_web_initialize_request(1, model_invisible_user_surface_capability()),
         initialized_notification(),
         tools_call(
             2,
@@ -8154,15 +8209,16 @@ pub(crate) fn exact_host_capability_input(
     let verification_internal_id = format!("hcv_{label}");
     let evidence_artifact_sha256 = exact_host_capability_evidence_artifact_sha256(label);
     let observed_at = observed_at.to_rfc3339_opts(SecondsFormat::Nanos, true);
+    let (client_name, client_version) = local_web_test_client_identity(&connection.host_kind)?;
     Ok(HostCapabilityVerificationInput {
         verification_internal_id,
         connection_internal_id: fixture.connection_id().to_owned(),
         capability: HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE.to_owned(),
         outcome: HOST_CAPABILITY_OUTCOME_PASSED.to_owned(),
         host_kind: connection.host_kind,
-        host_version: EXACT_LOCAL_WEB_TEST_CLIENT_VERSION.to_owned(),
-        client_name: EXACT_LOCAL_WEB_TEST_CLIENT_NAME.to_owned(),
-        client_version: EXACT_LOCAL_WEB_TEST_CLIENT_VERSION.to_owned(),
+        host_version: client_version.to_owned(),
+        client_name: client_name.to_owned(),
+        client_version: client_version.to_owned(),
         adapter_profile: HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1.to_owned(),
         adapter_version: build.package_version.to_owned(),
         managed_fingerprint: connection.managed_fingerprint,
@@ -8195,11 +8251,18 @@ pub(crate) fn publish_exact_host_capability_verification(
     Ok(())
 }
 
-pub(crate) fn exact_local_web_test_capabilities() -> McpUserChannelCapabilities {
-    McpUserChannelCapabilities::new(false, true).with_stdio_session(
-        McpLaunchOrigin::ManagedHost.as_str(),
-        Some(EXACT_LOCAL_WEB_TEST_CLIENT_NAME),
-        Some(EXACT_LOCAL_WEB_TEST_CLIENT_VERSION),
+pub(crate) fn exact_local_web_test_capabilities(
+    fixture: &CoreFixture,
+) -> Result<McpUserChannelCapabilities, Box<dyn Error>> {
+    let connection = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+        .ok_or("fixture connection should exist")?;
+    let (client_name, client_version) = local_web_test_client_identity(&connection.host_kind)?;
+    Ok(
+        McpUserChannelCapabilities::new(false, true).with_stdio_session(
+            McpLaunchOrigin::ManagedHost.as_str(),
+            Some(client_name),
+            Some(client_version),
+        ),
     )
 }
 
@@ -8210,18 +8273,44 @@ pub(crate) fn exact_host_capability_evidence_artifact_sha256(label: &str) -> Str
     )
 }
 
+fn local_web_test_client_identity(
+    host_kind: &str,
+) -> Result<(&'static str, &'static str), Box<dyn Error>> {
+    match host_kind {
+        HOST_KIND_CODEX => Ok((REVIEWED_CODEX_MCP_CLIENT_NAME, REVIEWED_CODEX_HOST_VERSION)),
+        HOST_KIND_CLAUDE_CODE => Ok((
+            CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
+            CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION,
+        )),
+        _ => Err(format!("unsupported local-web test host kind: {host_kind}").into()),
+    }
+}
+
+fn managed_local_web_stdio_env(
+    fixture: &CoreFixture,
+    project_bound: bool,
+    host_kind: &str,
+    name: &str,
+) -> Option<OsString> {
+    match name {
+        "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+        "VOLICORD_MCP_HOST" => Some(OsString::from(host_kind)),
+        "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+        "VOLICORD_MCP_PROJECT_ID" if project_bound => Some(OsString::from(fixture.project_id())),
+        "CLAUDECODE" if host_kind == HOST_KIND_CLAUDE_CODE => Some(OsString::from("1")),
+        "CLAUDE_CODE_SESSION_ID" if host_kind == HOST_KIND_CLAUDE_CODE => {
+            Some(OsString::from(CLAUDE_LOCAL_WEB_TEST_SESSION_ID))
+        }
+        _ => None,
+    }
+}
+
 fn managed_codex_stdio_env(
     fixture: &CoreFixture,
     project_bound: bool,
     name: &str,
 ) -> Option<OsString> {
-    match name {
-        "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-        "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-        "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-        "VOLICORD_MCP_PROJECT_ID" if project_bound => Some(OsString::from(fixture.project_id())),
-        _ => None,
-    }
+    managed_local_web_stdio_env(fixture, project_bound, HOST_KIND_CODEX, name)
 }
 
 fn run_exact_verified_local_web_stdio<R, W>(
@@ -8235,17 +8324,23 @@ where
     R: io::BufRead,
     W: Write,
 {
+    let connection = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+        .ok_or("fixture connection should exist")?;
+    assert_eq!(
+        connection.host_kind, HOST_KIND_CLAUDE_CODE,
+        "positive local-web transport fixtures require a statically implemented host coordinate"
+    );
     publish_exact_host_capability_verification(fixture, label)?;
     let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
         exact_host_capability_evidence_artifact_sha256(label),
     );
     assert!(
-        adapter.effective_local_web_consent_available(&exact_local_web_test_capabilities()),
+        adapter.effective_local_web_consent_available(&exact_local_web_test_capabilities(fixture)?),
         "the exact persisted fixture and ready listener must satisfy the adapter evaluator"
     );
     let project_bound = adapter.context.project_allowlist.is_some();
     run_stdio_with_env_marker(adapter, reader, writer, |name| {
-        managed_codex_stdio_env(fixture, project_bound, name)
+        managed_local_web_stdio_env(fixture, project_bound, &connection.host_kind, name)
     })?;
     Ok(())
 }
@@ -9368,8 +9463,17 @@ fn initialize_request(id: u64, capabilities: Value) -> Value {
     initialize_request_with_client_info(
         id,
         capabilities,
-        EXACT_LOCAL_WEB_TEST_CLIENT_NAME,
-        EXACT_LOCAL_WEB_TEST_CLIENT_VERSION,
+        REVIEWED_CODEX_MCP_CLIENT_NAME,
+        REVIEWED_CODEX_HOST_VERSION,
+    )
+}
+
+fn local_web_initialize_request(id: u64, capabilities: Value) -> Value {
+    initialize_request_with_client_info(
+        id,
+        capabilities,
+        CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
+        CLAUDE_LOCAL_WEB_TEST_CLIENT_VERSION,
     )
 }
 

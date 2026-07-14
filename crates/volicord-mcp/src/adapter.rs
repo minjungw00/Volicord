@@ -10,6 +10,9 @@ use std::sync::{
     Arc, Condvar, Mutex,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
+use volicord_types::{
+    host_feature_implementation_for_version, HostFeature, HostFeatureImplementation,
+};
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,6 +425,14 @@ impl McpAdapter {
             return false;
         };
         if !connection.enabled || connection.host_kind == "generic" {
+            return false;
+        }
+        if host_feature_implementation_for_version(
+            &connection.host_kind,
+            Some(client_version),
+            HostFeature::LocalWebUserChannel,
+        ) != HostFeatureImplementation::Implemented
+        {
             return false;
         }
         let Some(executable_sha256) = crate::build_info::current_executable_sha256() else {

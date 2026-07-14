@@ -23,7 +23,7 @@ All source and test paths are relative to the repository root.
 
 | Path | Cargo package | Source-map role |
 |---|---|---|
-| `crates/volicord-types` | `volicord-types` | Shared Rust request, response, schema-shaped, value-set, MCP tool-name, identifier, and canonical-hash types. |
+| `crates/volicord-types` | `volicord-types` | Shared Rust request, response, schema-shaped, value-set, MCP tool-name, identifier, canonical-hash, and host-feature implementation types, static matrix, and single-feature support-state evaluation. |
 | `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, immutable host-capability verification history and current-state evaluation, local web consent storage, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | `volicord-core` | Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | `volicord-cli` | Local `volicord` administrative binary, reusable command modules, Runtime Home setup, project and Agent Connection registration, host adapters, guard hooks, User Channel commands, and public `volicord mcp` process dispatch. |
@@ -46,6 +46,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-types/src/values.rs` | Controlled Rust enums and constants for documented value names. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifier wrappers and durable ID generation helpers. |
 | `crates/volicord-types/src/canonical.rs` | Deterministic canonical JSON serialization and request hashing. |
+| `crates/volicord-types/src/host_feature_support.rs` | Closed host-feature and final-output subcapability identifiers, reviewed host/version/client facts, canonical Codex version parsing, shared static implementation matrix, and single-feature support-state precedence consumed by adapters, diagnostics, and release validation. |
 
 ## Platform filesystem facade
 
@@ -121,8 +122,8 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-cli/src/doctor_command.rs` | Installation, connection, host, and guard fact gathering plus consumption of the shared typed host-feature support evaluation for diagnostic reporting. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Content-free session diagnostics aggregate selection and text/JSON rendering. |
 | `crates/volicord-cli/src/user_command.rs` | Local User Channel status and `volicord inbox` command parsing and orchestration, including local-user invocation facts passed to Core judgment recording. |
-| `crates/volicord-cli/src/host_integration/` | Shared host kinds, scopes, capabilities, lifecycle phases, config editing, integration contracts, centralized typed host-feature support evaluation, profile-independent final-output disclosure capability contracts and validation, generic-host fallback guidance, and diagnostic status types. |
-| `crates/volicord-cli/src/host_integration/capability_status.rs` | Exact host-feature and final-output subcapability identifiers, current built-in implementation facts, support-state precedence and aggregation, and the one support matrix consumed by diagnostics and release validation. Configuration checks remain separate evaluator inputs and cannot promote support. |
+| `crates/volicord-cli/src/host_integration/` | Host kinds, scopes, capabilities, lifecycle phases, config editing, integration contracts, dynamic host-feature evidence and readiness aggregation, profile-independent final-output disclosure capability contracts and validation, generic-host fallback guidance, and diagnostic status types. |
+| `crates/volicord-cli/src/host_integration/capability_status.rs` | Profile-specific final-output and six-feature diagnostic aggregation over shared static and single-feature support results, including dynamic evidence, freshness, readiness, and configuration inputs. Configuration checks remain separate inputs and cannot promote support. |
 | `crates/volicord-cli/src/host_integration/contracts.rs` | Supported-host integration contract metadata and fixture/config validation, including the final-output-only phase subset shared by Record and Detective profiles. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex adapter internals for config planning, executable checks, managed identity, trust facts, and verification. |
 | `crates/volicord-cli/src/host_integration/claude_code/` | Claude Code adapter internals for CLI command construction, config planning, managed identity checks, host-native output parsing, and verification. |

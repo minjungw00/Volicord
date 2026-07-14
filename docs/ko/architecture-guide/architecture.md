@@ -65,10 +65,10 @@ flowchart LR
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시 타입. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시, 호스트 기능 구현 타입, 정적 매트릭스, 단일 기능 지원 상태 평가. |
 | `crates/volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, guard/세션 관찰 저장, 변경 불가능한 호스트 역량 검증 이력과 현재 상태 평가, 로컬 웹 동의 저장, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
-| `crates/volicord-cli` | 설정, 프로젝트 등록, User Channel 명령, Agent Connection 설정, 호스트 어댑터, 중앙 typed 호스트 기능 지원 상태 평가, guard 작업 흐름, MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
+| `crates/volicord-cli` | 설정, 프로젝트 등록, User Channel 명령, Agent Connection 설정, 호스트 어댑터, 동적 호스트 기능 증거와 준비 상태 집계, guard 작업 흐름, MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
 | `crates/volicord-platform-fs` | 플랫폼 고유 파일시스템 이름 공간 연산과 Store 소유자 검증 및 로컬 어댑터가 공유하는 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 파일 정책이나 공개 제품 동작을 담당하지 않습니다. |
 | `crates/volicord-mcp` | 시작 검증, 도구 목록, `tools/call` 디코딩과 디스패치, 표준 입출력 프레이밍, 로컬 HTTP 전송, 로컬 웹 동의, Core 호출을 위한 MCP 어댑터 라이브러리. |
 | `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
@@ -109,7 +109,7 @@ flowchart LR
 | Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Store 커밋 경계 | Core 메서드 계획 코드는 읽기 전용, 효과 없음, dry-run, 스테이징, 커밋 분기를 고릅니다. Store는 정상 커밋된 Core 변이를 트랜잭션 경계에서 적용하고, 아티팩트 스테이징을 정상 Core 변이 커밋과 분리합니다. Core 권한 의미는 Core 담당 문서에, 정확한 저장소 기록과 효과는 저장소 담당 문서에 남습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [요청 생명주기](request-lifecycle.md), [Core 모델](../reference/core-model.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md). |
 | MCP 어댑터 경계 | `volicord mcp --stdio`와 `volicord serve --transport local-http`는 전송별 진입 경로를 제공합니다. `volicord-mcp`는 Runtime Home과 Agent Connection 맥락을 해석하고, 시작 및 세션 정보를 검증합니다. 연결 모드에 맞는 도구를 노출하고 허용된 프로젝트를 선택합니다. `tools/call`을 디코딩하고 로컬 호출 정보를 도출한 뒤 Core를 호출하며, Core JSON을 MCP 콘텐츠로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
-| 관리 CLI와 호스트 어댑터 | CLI는 로컬 설정, 프로젝트 등록, Agent Connection 관리, 호스트 및 guard 통합, 진단, `User Channel` 명령을 조율합니다. 하나의 호스트 통합 평가기가 담당 문서가 정의한 구현 사실, 정확한 현재 증거, 런타임 준비 상태를 결합해 모든 진단 소비자가 쓰는 typed 지원 상태를 만듭니다. 설정 감사 사실은 별도 입력으로 남습니다. 이 작업 흐름은 로컬 관리 오케스트레이션이며 공개 Core 메서드나 보안 증명이 아닙니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [호스트 기능 지원 상태 평가](decisions/host-feature-support-state-evaluation.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
+| 관리 CLI와 호스트 어댑터 | 공유 타입은 닫힌 호스트 기능 식별자, 검토된 호스트·버전별 구현 사실, 정규 Codex 버전 문법, CLI·MCP·릴리스 검증이 소비하는 정적 구현 평가와 단일 기능 지원 상태 우선순위를 담당합니다. CLI는 이 공유 결과를 프로필과 여섯 기능 진단 매트릭스에 걸쳐 집계합니다. 설정 감사 사실은 별도 입력으로 남습니다. 이 작업 흐름은 로컬 관리 오케스트레이션이며 공개 Core 메서드나 보안 증명이 아닙니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [호스트 기능 지원 상태 평가](decisions/host-feature-support-state-evaluation.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | 외부 호스트 릴리스 검증 | 테스트 전용 패키지는 운영 권한을 만들지 않습니다. 외부의 정확한 최종 후보 하나를 고정 12개 셀 정규 게이트로 검증하고 별도 프로세스가 새 audit을 재계산합니다. 운영 crate가 이 패키지에 의존하거나 아티팩트를 런타임 신뢰 입력으로 사용하면 안 됩니다. | [호스트 릴리스 증거](../reference/host-release-evidence.md), [외부 호스트 릴리스 증거 게이트](decisions/host-release-evidence-gate.md), [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
 | 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 플랫폼 고유 이름 공간 기본 연산과 정규 읽기 전용 Git common-directory/worktree 탐색을 안전한 Rust 결과 뒤에 격리합니다. 이 primitive를 공유해 저장된 소유자 검증, integration 배치, Core 호출 binding이 같은 worktree 정의를 사용합니다. 어떤 파일을 관리하는지, 교체나 쓰기가 승인되었는지, 연산 후 상태가 유효한지, 복구와 진단이 무엇을 뜻하는지는 결정하지 않습니다. 그 책임은 Store, 호출하는 adapter, Core, 집중 Reference 담당 문서에 남습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. 테스트, 픽스처, 생성 스냅샷, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
@@ -134,7 +134,7 @@ flowchart LR
 | 경계 | 집중 결정 |
 |---|---|
 | Agent Connection, 호스트 처리 경로, 명시적 Connection Project 멤버십 | [Agent Connection과 호스트 라우팅](decisions/agent-connection-routing.md) |
-| 진단과 릴리스 검증이 공유하는 typed 호스트 기능 지원 상태 | [호스트 기능 지원 상태 평가](decisions/host-feature-support-state-evaluation.md) |
+| 어댑터, 진단, 릴리스 검증이 공유하는 정적 호스트 기능 구현 사실 | [호스트 기능 지원 상태 평가](decisions/host-feature-support-state-evaluation.md) |
 | 외부 정확한 최종 아티팩트 호스트 릴리스 게이트와 독립 audit | [외부 호스트 릴리스 증거 게이트](decisions/host-release-evidence-gate.md) |
 | Core가 MCP와 CLI 어댑터에서 독립적임 | [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md) |
 | 정상 커밋된 Store 변이 전 메서드 계획 | [원자적 변이 커밋 전 계획](decisions/plan-and-atomic-commit.md) |

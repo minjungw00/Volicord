@@ -5,16 +5,16 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
-use volicord_cli::host_integration::capability_status::{
+use volicord_types::{
     evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
     CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
+    HostFeatureSupportStatus, IntegrationProfile,
 };
-use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
 
 use crate::{
     error::{ValidationError, ValidationResult},
     evaluation::{
-        cli_host_kind, cli_implementation, parse_canonical_timestamp, validate_candidate_shape,
+        cli_implementation, parse_canonical_timestamp, validate_candidate_shape,
         validate_cell_shape, validate_manifest_container, validate_matrix_shape, validate_sha256,
     },
     io::{
@@ -458,7 +458,7 @@ fn independently_recalculate_cell(
         finding_codes.push("candidate_recorded_after_cell_start".to_owned());
     }
     let expected_implementation = host_feature_implementation_for_version(
-        cli_host_kind(cell.host_kind),
+        cell.host_kind.as_str(),
         cell.host_version.as_ref().map(String::as_str),
         cell.feature,
     );
@@ -526,7 +526,7 @@ fn independently_recalculate_cell(
         && evidence_exact
         && assertions_pass;
     let derived_status = evaluate_host_feature_support_for_version(
-        cli_host_kind(cell.host_kind),
+        cell.host_kind.as_str(),
         cell.host_version.as_ref().map(String::as_str),
         cell.feature,
         HostFeatureEvaluationInput::new(

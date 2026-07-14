@@ -1,156 +1,18 @@
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
+pub use volicord_types::{
+    canonical_codex_host_version, canonical_codex_host_version_from_probe, CurrentRuntimeReadiness,
+    ExactLiveEvidenceState, FinalOutputSubcapability, HostFeature, HostFeatureEvaluationInput,
+    HostFeatureImplementation, REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
+};
+use volicord_types::{
+    evaluate_host_feature_support_for_version as shared_evaluate_host_feature_support_for_version,
+    evaluate_support_status, host_feature_implementation as shared_host_feature_implementation,
+    host_feature_implementation_for_version as shared_host_feature_implementation_for_version,
+    host_final_output_subcapability_implementation as shared_host_final_output_subcapability_implementation,
+    required_final_output_subcapabilities, HostFeatureSupportStatus, IntegrationProfile,
+};
 
 use super::HostKind;
-
-pub const REVIEWED_CODEX_HOST_VERSION: &str = "0.144.4";
-const CODEX_VERSION_PROBE_PREFIX: &str = "codex-cli ";
-
-const RECORD_FINAL_OUTPUT_SUBCAPABILITIES: [FinalOutputSubcapability; 2] = [
-    FinalOutputSubcapability::AuthorityDisplay,
-    FinalOutputSubcapability::AuthenticatedExactReplay,
-];
-const DETECTIVE_FINAL_OUTPUT_SUBCAPABILITIES: [FinalOutputSubcapability; 3] = [
-    FinalOutputSubcapability::AuthorityDisplay,
-    FinalOutputSubcapability::AuthenticatedExactReplay,
-    FinalOutputSubcapability::BlockFinalization,
-];
-
-/// Exact managed-host features with independently reported support state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostFeature {
-    NativeUserAction,
-    LocalWebUserChannel,
-    VerifiedToolProducer,
-    RegisteredConnectionObservation,
-    RecordFinalOutput,
-    DetectiveFinalOutput,
-}
-
-impl HostFeature {
-    pub const ALL: [Self; 6] = [
-        Self::NativeUserAction,
-        Self::LocalWebUserChannel,
-        Self::VerifiedToolProducer,
-        Self::RegisteredConnectionObservation,
-        Self::RecordFinalOutput,
-        Self::DetectiveFinalOutput,
-    ];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::NativeUserAction => "native_user_action",
-            Self::LocalWebUserChannel => "local_web_user_channel",
-            Self::VerifiedToolProducer => "verified_tool_producer",
-            Self::RegisteredConnectionObservation => "registered_connection_observation",
-            Self::RecordFinalOutput => "record_final_output",
-            Self::DetectiveFinalOutput => "detective_final_output",
-        }
-    }
-}
-
-/// Profile-applicable capabilities required by managed final-output support.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FinalOutputSubcapability {
-    AuthorityDisplay,
-    AuthenticatedExactReplay,
-    BlockFinalization,
-}
-
-impl FinalOutputSubcapability {
-    pub const ALL: [Self; 3] = [
-        Self::AuthorityDisplay,
-        Self::AuthenticatedExactReplay,
-        Self::BlockFinalization,
-    ];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::AuthorityDisplay => "authority_display",
-            Self::AuthenticatedExactReplay => "authenticated_exact_replay",
-            Self::BlockFinalization => "block_finalization",
-        }
-    }
-}
-
-/// Static implementation fact supplied by the built-in host adapter contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HostFeatureImplementation {
-    Implemented,
-    UnsupportedByHost,
-}
-
-/// Validates one canonical bare Codex host-version coordinate.
-pub fn canonical_codex_host_version(version: &str) -> Option<&str> {
-    if version.is_empty()
-        || version.len() > 64
-        || !version
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
-        || !version
-            .as_bytes()
-            .first()
-            .is_some_and(u8::is_ascii_alphanumeric)
-        || !version
-            .as_bytes()
-            .last()
-            .is_some_and(u8::is_ascii_alphanumeric)
-    {
-        return None;
-    }
-    Some(version)
-}
-
-/// Extracts the canonical bare Codex version from one exact version-probe envelope.
-pub fn canonical_codex_host_version_from_probe(envelope: &str) -> Option<&str> {
-    canonical_codex_host_version(envelope.strip_prefix(CODEX_VERSION_PROBE_PREFIX)?)
-}
-
-/// Freshness and exact-artifact match state of live evidence for one feature.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExactLiveEvidenceState {
-    Missing,
-    StaleOrMismatched,
-    Current,
-}
-
-/// Present-time readiness of the runtime prerequisites for one feature.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CurrentRuntimeReadiness {
-    Ready,
-    TemporarilyUnavailable,
-}
-
-/// Dynamic inputs evaluated after the static host implementation fact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HostFeatureEvaluationInput {
-    pub exact_evidence: ExactLiveEvidenceState,
-    pub runtime_readiness: CurrentRuntimeReadiness,
-}
-
-impl HostFeatureEvaluationInput {
-    pub const fn new(
-        exact_evidence: ExactLiveEvidenceState,
-        runtime_readiness: CurrentRuntimeReadiness,
-    ) -> Self {
-        Self {
-            exact_evidence,
-            runtime_readiness,
-        }
-    }
-}
-
-impl Default for HostFeatureEvaluationInput {
-    fn default() -> Self {
-        Self::new(
-            ExactLiveEvidenceState::Missing,
-            CurrentRuntimeReadiness::Ready,
-        )
-    }
-}
 
 /// Dynamic evidence and readiness inputs for each final-output subcapability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -383,36 +245,12 @@ pub const fn final_output_feature(profile: IntegrationProfile) -> HostFeature {
     }
 }
 
-/// Returns only the subcapabilities applicable to the selected profile.
-pub const fn required_final_output_subcapabilities(
-    profile: IntegrationProfile,
-) -> &'static [FinalOutputSubcapability] {
-    match profile {
-        IntegrationProfile::Record => &RECORD_FINAL_OUTPUT_SUBCAPABILITIES,
-        IntegrationProfile::Detective => &DETECTIVE_FINAL_OUTPUT_SUBCAPABILITIES,
-    }
-}
-
 /// Returns the current built-in adapter implementation fact for one feature.
 pub fn host_feature_implementation(
     host_kind: HostKind,
     feature: HostFeature,
 ) -> HostFeatureImplementation {
-    match feature {
-        HostFeature::NativeUserAction
-        | HostFeature::LocalWebUserChannel
-        | HostFeature::VerifiedToolProducer
-        | HostFeature::RegisteredConnectionObservation => match host_kind {
-            HostKind::Codex | HostKind::ClaudeCode => HostFeatureImplementation::Implemented,
-            HostKind::Generic => HostFeatureImplementation::UnsupportedByHost,
-        },
-        HostFeature::RecordFinalOutput => {
-            final_output_profile_implementation(host_kind, IntegrationProfile::Record)
-        }
-        HostFeature::DetectiveFinalOutput => {
-            final_output_profile_implementation(host_kind, IntegrationProfile::Detective)
-        }
-    }
+    shared_host_feature_implementation(host_kind.as_str(), feature)
 }
 
 /// Returns the reviewed exact-version fact, falling back to the host-kind table.
@@ -421,70 +259,15 @@ pub fn host_feature_implementation_for_version(
     host_version: Option<&str>,
     feature: HostFeature,
 ) -> HostFeatureImplementation {
-    if host_kind == HostKind::Codex
-        && host_version == Some(REVIEWED_CODEX_HOST_VERSION)
-        && feature == HostFeature::LocalWebUserChannel
-    {
-        HostFeatureImplementation::UnsupportedByHost
-    } else {
-        host_feature_implementation(host_kind, feature)
-    }
+    shared_host_feature_implementation_for_version(host_kind.as_str(), host_version, feature)
 }
 
 /// Returns the current built-in adapter implementation fact for one final-output capability.
-pub const fn host_final_output_subcapability_implementation(
+pub fn host_final_output_subcapability_implementation(
     host_kind: HostKind,
     subcapability: FinalOutputSubcapability,
 ) -> HostFeatureImplementation {
-    match host_kind {
-        HostKind::Codex => match subcapability {
-            FinalOutputSubcapability::AuthorityDisplay => HostFeatureImplementation::Implemented,
-            FinalOutputSubcapability::AuthenticatedExactReplay
-            | FinalOutputSubcapability::BlockFinalization => {
-                HostFeatureImplementation::UnsupportedByHost
-            }
-        },
-        HostKind::ClaudeCode => HostFeatureImplementation::Implemented,
-        HostKind::Generic => HostFeatureImplementation::UnsupportedByHost,
-    }
-}
-
-fn final_output_profile_implementation(
-    host_kind: HostKind,
-    profile: IntegrationProfile,
-) -> HostFeatureImplementation {
-    if required_final_output_subcapabilities(profile)
-        .iter()
-        .all(|subcapability| {
-            host_final_output_subcapability_implementation(host_kind, *subcapability)
-                == HostFeatureImplementation::Implemented
-        })
-    {
-        HostFeatureImplementation::Implemented
-    } else {
-        HostFeatureImplementation::UnsupportedByHost
-    }
-}
-
-/// Evaluates one feature using the canonical support-state precedence.
-pub const fn evaluate_support_status(
-    implementation: HostFeatureImplementation,
-    input: HostFeatureEvaluationInput,
-) -> HostFeatureSupportStatus {
-    match implementation {
-        HostFeatureImplementation::UnsupportedByHost => HostFeatureSupportStatus::UnsupportedByHost,
-        HostFeatureImplementation::Implemented => match input.exact_evidence {
-            ExactLiveEvidenceState::Missing | ExactLiveEvidenceState::StaleOrMismatched => {
-                HostFeatureSupportStatus::ImplementedUnverified
-            }
-            ExactLiveEvidenceState::Current => match input.runtime_readiness {
-                CurrentRuntimeReadiness::Ready => HostFeatureSupportStatus::Verified,
-                CurrentRuntimeReadiness::TemporarilyUnavailable => {
-                    HostFeatureSupportStatus::TemporarilyUnavailable
-                }
-            },
-        },
-    }
+    shared_host_final_output_subcapability_implementation(host_kind.as_str(), subcapability)
 }
 
 /// Evaluates one of the six managed-host features for a current host.
@@ -493,7 +276,7 @@ pub fn evaluate_host_feature_support(
     feature: HostFeature,
     input: HostFeatureEvaluationInput,
 ) -> HostFeatureSupportStatus {
-    evaluate_support_status(host_feature_implementation(host_kind, feature), input)
+    shared_evaluate_host_feature_support_for_version(host_kind.as_str(), None, feature, input)
 }
 
 /// Evaluates one feature using an exact reviewed host version when one is available.
@@ -503,8 +286,10 @@ pub fn evaluate_host_feature_support_for_version(
     feature: HostFeature,
     input: HostFeatureEvaluationInput,
 ) -> HostFeatureSupportStatus {
-    evaluate_support_status(
-        host_feature_implementation_for_version(host_kind, host_version, feature),
+    shared_evaluate_host_feature_support_for_version(
+        host_kind.as_str(),
+        host_version,
+        feature,
         input,
     )
 }

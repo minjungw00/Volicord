@@ -9,6 +9,7 @@
 
 pub mod canonical;
 pub mod host_capability;
+pub mod host_feature_support;
 pub mod ids;
 pub mod managed_host_session;
 pub mod methods;
@@ -19,6 +20,7 @@ pub mod values;
 
 pub use canonical::*;
 pub use host_capability::*;
+pub use host_feature_support::*;
 pub use ids::*;
 pub use managed_host_session::*;
 pub use methods::*;

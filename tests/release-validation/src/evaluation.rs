@@ -1,15 +1,11 @@
 use std::{collections::BTreeSet, path::Path, time::SystemTime};
 
 use chrono::{DateTime, Duration, SecondsFormat, Timelike, Utc};
-use volicord_cli::host_integration::{
-    capability_status::{
-        evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
-        CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
-        HostFeatureImplementation,
-    },
-    HostKind as CliHostKind,
+use volicord_types::{
+    evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
+    CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
+    HostFeatureImplementation, HostFeatureSupportStatus, IntegrationProfile,
 };
-use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
 
 use crate::{
     error::{ValidationError, ValidationResult},
@@ -409,7 +405,7 @@ fn evaluate_cell(
     }
 
     let expected_implementation = host_feature_implementation_for_version(
-        cli_host_kind(cell.host_kind),
+        cell.host_kind.as_str(),
         cell.host_version.as_ref().map(String::as_str),
         cell.feature,
     );
@@ -488,7 +484,7 @@ fn evaluate_cell(
         && evidence_exact
         && assertions_pass;
     let derived_status = evaluate_host_feature_support_for_version(
-        cli_host_kind(cell.host_kind),
+        cell.host_kind.as_str(),
         cell.host_version.as_ref().map(String::as_str),
         cell.feature,
         HostFeatureEvaluationInput::new(
@@ -651,13 +647,6 @@ pub(crate) fn validate_cell_shape(cell: &Cell) -> ValidationResult<()> {
         ));
     }
     Ok(())
-}
-
-pub(crate) fn cli_host_kind(host_kind: HostKind) -> CliHostKind {
-    match host_kind {
-        HostKind::Codex => CliHostKind::Codex,
-        HostKind::ClaudeCode => CliHostKind::ClaudeCode,
-    }
 }
 
 pub(crate) fn cli_implementation(

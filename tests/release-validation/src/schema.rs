@@ -1,7 +1,6 @@
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use volicord_cli::host_integration::capability_status::HostFeature;
-use volicord_types::HostFeatureSupportStatus;
+use volicord_types::{HostFeature, HostFeatureSupportStatus};
 
 pub const CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
 pub const CELL_SCHEMA: &str = "volicord-host-release-cell-v2";

@@ -20,7 +20,7 @@
 
 | 경로 | Cargo 패키지 | 담당 범위 |
 |---|---|---|
-| `crates/volicord-types` | `volicord-types` | 공유 Rust 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규화된 해시 타입. |
+| `crates/volicord-types` | `volicord-types` | 공유 Rust 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규화된 해시, 호스트 기능 구현 타입, 정적 매트릭스, 단일 기능 지원 상태 평가. |
 | `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, `guard`와 세션 관찰 저장, 변경 불가능한 호스트 역량 검증 이력과 현재 상태 평가, 로컬 웹 동의 저장, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | `volicord-core` | Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | `volicord-cli` | 로컬 `volicord` 관리 바이너리, 재사용 명령 모듈, Runtime Home 설정, 프로젝트와 Agent Connection 등록, 호스트 어댑터, `guard` 훅, User Channel 명령, 공개 `volicord mcp` 프로세스 디스패치. |
@@ -43,6 +43,7 @@
 | `crates/volicord-types/src/values.rs` | 문서화된 값 이름을 위한 제어된 Rust 열거형과 상수. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자 래퍼와 영속 ID 생성 도우미. |
 | `crates/volicord-types/src/canonical.rs` | 결정적인 기준 JSON 직렬화와 요청 해시. |
+| `crates/volicord-types/src/host_feature_support.rs` | 닫힌 호스트 기능과 최종 출력 하위 역량 식별자, 검토된 호스트·버전·클라이언트 사실, 정규 Codex 버전 파싱, 어댑터·진단·릴리스 검증이 소비하는 공유 정적 구현 매트릭스와 단일 기능 지원 상태 우선순위. |
 
 ## 플랫폼 파일시스템 파사드
 
@@ -118,8 +119,8 @@
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 보고를 위한 설치, 연결, 호스트, `guard` 사실 수집과 공유 typed 호스트 기능 지원 평가 소비. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | 내용이 없는 session diagnostics aggregate 선택과 text/JSON 출력. |
 | `crates/volicord-cli/src/user_command.rs` | 로컬 User Channel 상태와 `volicord inbox` 명령 파싱 및 조율. 로컬 사용자 호출 사실을 Core의 판단 기록 경로에 전달합니다. |
-| `crates/volicord-cli/src/host_integration/` | 공통 호스트 종류, 범위, 역량, 생명주기 단계, 설정 편집, 통합 계약, 중앙 typed 호스트 기능 지원 평가, 프로필과 무관한 최종 출력 고지 역량 계약과 검증, 범용 호스트 fallback 안내, 진단 상태 타입. |
-| `crates/volicord-cli/src/host_integration/capability_status.rs` | 정확한 호스트 기능과 최종 출력 하위 역량 식별자, 현재 내장 구현 사실, 지원 상태 우선순위와 집계, 진단과 릴리스 검증이 소비하는 단일 지원 매트릭스. 설정 점검은 별도 평가 입력으로 남으며 지원 상태를 올릴 수 없습니다. |
+| `crates/volicord-cli/src/host_integration/` | 호스트 종류, 범위, 역량, 생명주기 단계, 설정 편집, 통합 계약, 동적 호스트 기능 증거와 준비 상태 집계, 프로필과 무관한 최종 출력 고지 역량 계약과 검증, 범용 호스트 fallback 안내, 진단 상태 타입. |
+| `crates/volicord-cli/src/host_integration/capability_status.rs` | 공유 정적 결과와 단일 기능 지원 결과에 동적 증거, 최신성, 준비 상태, 설정 입력을 적용해 프로필별 최종 출력과 여섯 기능 진단 매트릭스를 집계합니다. 설정 점검은 별도 입력으로 남으며 지원 상태를 올릴 수 없습니다. |
 | `crates/volicord-cli/src/host_integration/contracts.rs` | 지원 호스트 통합 계약 메타데이터와 픽스처·설정 검증. Record profile과 Detective profile이 공유하는 최종 출력 전용 단계 부분 집합을 포함합니다. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 어댑터 내부 구현. 설정 계획, 실행 파일 점검, 관리 대상 식별 정보, 신뢰 사실, 검증. |
 | `crates/volicord-cli/src/host_integration/claude_code/` | Claude Code 어댑터 내부 구현. CLI 명령과 설정 계획, 관리 대상 식별 정보 점검, 호스트 고유 출력 파싱, 검증. |
