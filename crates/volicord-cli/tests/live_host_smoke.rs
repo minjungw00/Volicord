@@ -26,7 +26,7 @@ mod unix {
     use sha2::{Digest, Sha256};
     use volicord_cli::host_integration::{
         capability_status::{
-            canonical_codex_host_version_from_probe, default_host_feature_support_json,
+            canonical_codex_host_version_from_probe, default_host_feature_support_json_for_version,
             host_feature_implementation_for_version, HostFeature, HostFeatureDiagnosticProjection,
             HostFeatureImplementation,
         },
@@ -417,6 +417,7 @@ mod unix {
         unavailable.release_feature = Some(HostFeature::NativeUserAction);
         unavailable.record_final(&live_user_action_unavailable_summary(
             "claude-code",
+            None,
             "host_executable",
             "fixture host unavailable",
         ))?;
@@ -444,6 +445,7 @@ mod unix {
         )?)?;
         observed_failure.record_final(&live_user_action_unavailable_summary(
             "claude-code",
+            Some("fixture-observed-host 2.0"),
             "connection_observation",
             "fixture post-preflight failure",
         ))?;
@@ -471,6 +473,7 @@ mod unix {
         excluded_null.release_requested_verified = Some(false);
         excluded_null.record_final(&live_user_action_unavailable_summary(
             "claude-code",
+            None,
             "host_executable",
             "fixture host unavailable",
         ))?;
@@ -522,6 +525,7 @@ mod unix {
         )?)?;
         reviewed_local_web.record_final(&live_user_action_unavailable_summary(
             "codex",
+            Some("0.144.4"),
             "static_unsupported_by_host",
             "reviewed Codex version does not expose the required local-web surface",
         ))?;
@@ -732,6 +736,7 @@ mod unix {
         )?;
         terminal.record_final(&live_user_action_unavailable_summary(
             "codex",
+            Some("fixture-host 1.0"),
             "interactive_terminal",
             "fixture terminal unavailable after installed-host preflight",
         ))?;
@@ -754,6 +759,7 @@ mod unix {
             assert!(unresolved
                 .record_final(&live_user_action_unavailable_summary(
                     "codex",
+                    None,
                     "fixture_setup",
                     "fixture installed identity unresolved",
                 ))
@@ -1357,7 +1363,8 @@ mod unix {
             ("managed_receipt_ui", "failed"),
             ("result_validation", "failed"),
         ] {
-            let incomplete = live_evidence_observation_incomplete_summary("codex", stage, None);
+            let incomplete =
+                live_evidence_observation_incomplete_summary("codex", None, stage, None);
             assert_eq!(incomplete["result"], expected_result);
             assert_eq!(
                 incomplete["final_output_authority_disclosure"]["configured"],
@@ -1367,7 +1374,7 @@ mod unix {
             assert!(serialize_live_host_result(&incomplete)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
         }
         let unknown_stage =
-            live_evidence_observation_incomplete_summary("codex", "raw-error-text", None);
+            live_evidence_observation_incomplete_summary("codex", None, "raw-error-text", None);
         assert!(
             validate_live_evidence_observation_incomplete_result_shape(&unknown_stage).is_err()
         );
@@ -1381,7 +1388,12 @@ mod unix {
             )?,
         )?;
         let observed_connection_failure = observed_connection_failure.with_observed_host_identity(
-            &live_evidence_observation_incomplete_summary("codex", "connection_observation", None),
+            &live_evidence_observation_incomplete_summary(
+                "codex",
+                Some("codex fixture 1.0"),
+                "connection_observation",
+                None,
+            ),
         )?;
         validate_live_evidence_observation_incomplete_result_shape(&observed_connection_failure)?;
         assert_eq!(
@@ -1771,6 +1783,7 @@ mod unix {
         assert!(validate_live_cli_fallback_result_shape(&mismatched_support).is_err());
         let unavailable = live_cli_fallback_unavailable_summary(
             "codex",
+            None,
             "host_executable",
             "fixture executable unavailable",
         );
@@ -1859,6 +1872,7 @@ mod unix {
     ) -> Result<(), Box<dyn Error>> {
         let unavailable = live_user_action_unavailable_summary(
             "claude-code",
+            None,
             "interactive_terminal",
             "fixture terminal unavailable",
         );
@@ -1878,8 +1892,9 @@ mod unix {
             unavailable["final_output_authority_disclosure"]["configured"],
             false
         );
-        let unselected =
-            canonical_release_host_feature_diagnostics_for_profile("codex", None, false, false);
+        let unselected = canonical_release_host_feature_diagnostics_for_profile(
+            "codex", None, None, false, false,
+        );
         let unselected_result = serde_json::json!({
             "host": { "kind": "codex" },
             "host_feature_support": unselected.host_feature_support,
@@ -2188,19 +2203,18 @@ mod unix {
             ])?;
             assert_success("volicord init for direct final-output matrix", &init);
             let init_json = json_stdout(&init)?;
-            assert_direct_matrix_init_report(&init_json, host, profile, expected_host_action);
+            assert_direct_matrix_init_report(&init_json, host, None, profile, expected_host_action);
             let connection_id = init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("matrix init returned no connection id"))?;
-            let config_fixture = verify_final_output_config_fixture(
-                &fixture, host, profile, &init_json,
-            )
-            .map_err(|error| {
-                io::Error::other(format!(
-                    "{host}/{} generated config verification failed: {error}",
-                    profile.as_str()
-                ))
-            })?;
+            let config_fixture =
+                verify_final_output_config_fixture(&fixture, host, None, profile, &init_json)
+                    .map_err(|error| {
+                        io::Error::other(format!(
+                            "{host}/{} generated config verification failed: {error}",
+                            profile.as_str()
+                        ))
+                    })?;
             assert_eq!(config_fixture["status"], "verified");
             let project_id = live_fixture_project_id(&fixture)?;
 
@@ -2555,7 +2569,7 @@ mod unix {
             stderr_output(&init)
         );
         let init_json: Value = serde_json::from_slice(&init.stdout)?;
-        assert_init_host_feature_support(&init_json, "codex", IntegrationProfile::Record);
+        assert_init_host_feature_support(&init_json, "codex", None, IntegrationProfile::Record);
         let event = serde_json::json!({
             "event_id": "live_advisor_stop_ready",
             "session_id": "live_advisor_stop_ready_session",
@@ -2631,6 +2645,7 @@ mod unix {
         let fixture = LiveSmokeFixture::new("codex")?;
         let version = fixture.run_host_command(&codex, ["--version"])?;
         assert_success("codex --version", &version);
+        let host_version = canonical_codex_version_summary(&version)?;
 
         let init = fixture.run_volicord([
             "init",
@@ -2650,6 +2665,7 @@ mod unix {
         assert_live_init_reported_action_required(
             &init_json,
             "codex",
+            Some(&host_version),
             IntegrationProfile::Detective,
             "host_trust_required",
         );
@@ -2733,6 +2749,7 @@ mod unix {
         let fixture = LiveSmokeFixture::new("claude-code")?;
         let version = fixture.run_host_command(&claude, ["--version"])?;
         assert_success("claude --version", &version);
+        let host_version = host_version_summary(&version)?;
 
         let init = fixture.run_volicord([
             "init",
@@ -2755,6 +2772,7 @@ mod unix {
         assert_live_init_reported_action_required(
             &init_json,
             "claude-code",
+            Some(&host_version),
             IntegrationProfile::Detective,
             "project_approval_required",
         );
@@ -3045,12 +3063,14 @@ mod unix {
         assert_live_init_reported_action_required(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
             expected_host_action,
         );
         let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
         )?;
         let connection_id = bounded_identity(
@@ -5077,7 +5097,13 @@ mod unix {
         ])?;
         assert_success("volicord init for live final-output smoke", &init);
         let init_json = json_stdout(&init)?;
-        assert_live_init_reported_action_required(&init_json, host, profile, expected_host_action);
+        assert_live_init_reported_action_required(
+            &init_json,
+            host,
+            Some(&host_version),
+            profile,
+            expected_host_action,
+        );
         let connection_id = bounded_identity(
             "Agent Connection id",
             init_json["connection"]["connection_id"]
@@ -5093,8 +5119,13 @@ mod unix {
             connection_id,
         };
         let project_id = live_fixture_project_id(&fixture)?;
-        let config_fixture =
-            verify_final_output_config_fixture(&fixture, host, profile, &init_json)?;
+        let config_fixture = verify_final_output_config_fixture(
+            &fixture,
+            host,
+            Some(&identity.host_version),
+            profile,
+            &init_json,
+        )?;
 
         let no_active_private_prose =
             "private direct-wrapper model prose must not become authority";
@@ -5569,7 +5600,7 @@ mod unix {
             None => {
                 let reason = format!("`{executable_name}` was not found on PATH");
                 let summary =
-                    live_cli_fallback_unavailable_summary(host, "host_executable", &reason);
+                    live_cli_fallback_unavailable_summary(host, None, "host_executable", &reason);
                 validate_release_host_feature_diagnostics(
                     &summary,
                     Some(IntegrationProfile::Detective),
@@ -5594,8 +5625,12 @@ mod unix {
         )?;
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             let reason = "authenticated live CLI-fallback validation requires interactive terminal stdin and stdout";
-            let summary =
-                live_cli_fallback_unavailable_summary(host, "interactive_terminal", reason);
+            let summary = live_cli_fallback_unavailable_summary(
+                host,
+                Some(&host_version),
+                "interactive_terminal",
+                reason,
+            );
             validate_release_host_feature_diagnostics(
                 &summary,
                 Some(IntegrationProfile::Detective),
@@ -5623,12 +5658,14 @@ mod unix {
         assert_live_init_reported_action_required(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
             expected_host_action,
         );
         let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
         )?;
         let connection_id = bounded_identity(
@@ -5826,7 +5863,7 @@ mod unix {
             None => {
                 let reason = format!("`{executable_name}` was not found on PATH");
                 let summary =
-                    live_user_action_unavailable_summary(host, "host_executable", &reason);
+                    live_user_action_unavailable_summary(host, None, "host_executable", &reason);
                 validate_release_host_feature_diagnostics(
                     &summary,
                     Some(IntegrationProfile::Detective),
@@ -5853,8 +5890,12 @@ mod unix {
         )?;
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             let reason = "authenticated live Judgment validation requires interactive terminal stdin and stdout";
-            let summary =
-                live_user_action_unavailable_summary(host, "interactive_terminal", reason);
+            let summary = live_user_action_unavailable_summary(
+                host,
+                Some(&host_version),
+                "interactive_terminal",
+                reason,
+            );
             validate_release_host_feature_diagnostics(
                 &summary,
                 Some(IntegrationProfile::Detective),
@@ -5882,12 +5923,14 @@ mod unix {
         assert_live_init_reported_action_required(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
             expected_host_action,
         );
         let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
         )?;
         let connection_id = bounded_identity(
@@ -6212,8 +6255,13 @@ mod unix {
             Ok(summary) => {
                 stage = "result_validation";
                 if let Err(error) = validate_live_evidence_observation_result_shape(&summary) {
+                    let observed_host_version = result_recorder
+                        .observed_host_coordinates
+                        .as_ref()
+                        .map(|coordinates| coordinates.host_version.clone());
                     let incomplete = live_evidence_observation_incomplete_summary(
                         host,
+                        observed_host_version.as_deref(),
                         stage,
                         host_feature_diagnostics.as_ref(),
                     );
@@ -6224,8 +6272,13 @@ mod unix {
                 result_recorder.record_final(&summary)
             }
             Err(error) => {
+                let observed_host_version = result_recorder
+                    .observed_host_coordinates
+                    .as_ref()
+                    .map(|coordinates| coordinates.host_version.clone());
                 let incomplete = live_evidence_observation_incomplete_summary(
                     host,
+                    observed_host_version.as_deref(),
                     stage,
                     host_feature_diagnostics.as_ref(),
                 );
@@ -6284,7 +6337,10 @@ mod unix {
         {
             *stage = "static_unsupported_by_host";
             return Ok(live_evidence_observation_incomplete_summary(
-                host, stage, None,
+                host,
+                Some(&host_version),
+                stage,
+                None,
             ));
         }
         *stage = "interactive_terminal";
@@ -6312,12 +6368,14 @@ mod unix {
         require_live_init_reported_action_required(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
             expected_host_action,
         )?;
         *host_feature_diagnostics = Some(release_host_feature_diagnostics_from_init(
             &init_json,
             host,
+            Some(&host_version),
             IntegrationProfile::Detective,
         )?);
         let connection_id = bounded_identity(
@@ -8912,6 +8970,7 @@ mod unix {
 
     fn live_evidence_observation_incomplete_summary(
         host: &str,
+        host_version: Option<&str>,
         stage: &str,
         initialized_diagnostics: Option<&ReleaseHostFeatureDiagnostics>,
     ) -> Value {
@@ -8926,8 +8985,9 @@ mod unix {
         let diagnostics = match initialized_diagnostics {
             Some(diagnostics) => diagnostics,
             None => {
-                default_diagnostics = canonical_release_host_feature_diagnostics(
+                default_diagnostics = canonical_release_host_feature_diagnostics_for_version(
                     host,
+                    host_version,
                     IntegrationProfile::Detective,
                     false,
                     false,
@@ -10235,6 +10295,20 @@ mod unix {
         volicord_build_id: &str,
     ) -> Value {
         let mut summary = final_output_unavailable_summary(host, profile, reason);
+        let diagnostics = canonical_release_host_feature_diagnostics_for_version(
+            host,
+            Some(host_version),
+            profile,
+            false,
+            false,
+        );
+        summary["host_feature_support"] = diagnostics.host_feature_support.clone();
+        summary["final_output_authority_disclosure"] =
+            diagnostics.final_output_authority_disclosure.clone();
+        summary["evidence"]["config_fixture"]["host_feature_support"] =
+            diagnostics.host_feature_support;
+        summary["evidence"]["config_fixture"]["final_output_authority_disclosure"] =
+            diagnostics.final_output_authority_disclosure;
         summary["host"] = serde_json::json!({
             "kind": host,
             "version": host_version,
@@ -11500,9 +11574,15 @@ mod unix {
         })
     }
 
-    fn live_cli_fallback_unavailable_summary(host: &str, stage: &str, reason: &str) -> Value {
-        let diagnostics = canonical_release_host_feature_diagnostics(
+    fn live_cli_fallback_unavailable_summary(
+        host: &str,
+        host_version: Option<&str>,
+        stage: &str,
+        reason: &str,
+    ) -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics_for_version(
             host,
+            host_version,
             IntegrationProfile::Detective,
             false,
             false,
@@ -12039,9 +12119,15 @@ mod unix {
         })
     }
 
-    fn live_user_action_unavailable_summary(host: &str, stage: &str, reason: &str) -> Value {
-        let diagnostics = canonical_release_host_feature_diagnostics(
+    fn live_user_action_unavailable_summary(
+        host: &str,
+        host_version: Option<&str>,
+        stage: &str,
+        reason: &str,
+    ) -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics_for_version(
             host,
+            host_version,
             IntegrationProfile::Detective,
             false,
             false,
@@ -12287,6 +12373,9 @@ mod unix {
         fn failed_before_completion_summary(&self) -> Value {
             let diagnostics = canonical_release_host_feature_diagnostics_for_profile(
                 &self.result_host,
+                self.observed_host_coordinates
+                    .as_ref()
+                    .map(|coordinates| coordinates.host_version.as_str()),
                 self.profile,
                 false,
                 false,
@@ -14330,10 +14419,11 @@ mod unix {
     fn verify_final_output_config_fixture(
         fixture: &LiveSmokeFixture,
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
         init: &Value,
     ) -> Result<Value, Box<dyn Error>> {
-        require_init_host_feature_support(init, host, profile)?;
+        require_init_host_feature_support(init, host, host_version, profile)?;
         let wrapper_path = generated_stop_wrapper_path(&fixture.repo_root, host)?;
         let wrapper = fs::read_to_string(&wrapper_path)?;
         let volicord_command =
@@ -14546,8 +14636,25 @@ mod unix {
         configured: bool,
         configuration_verified: bool,
     ) -> ReleaseHostFeatureDiagnostics {
-        let projection = HostFeatureDiagnosticProjection::baseline(
+        canonical_release_host_feature_diagnostics_for_version(
+            host,
+            None,
+            profile,
+            configured,
+            configuration_verified,
+        )
+    }
+
+    fn canonical_release_host_feature_diagnostics_for_version(
+        host: &str,
+        host_version: Option<&str>,
+        profile: IntegrationProfile,
+        configured: bool,
+        configuration_verified: bool,
+    ) -> ReleaseHostFeatureDiagnostics {
+        let projection = HostFeatureDiagnosticProjection::baseline_for_version(
             maintained_host_kind(host),
+            host_version,
             profile,
             configured,
             configuration_verified,
@@ -14560,19 +14667,24 @@ mod unix {
 
     fn canonical_release_host_feature_diagnostics_for_profile(
         host: &str,
+        host_version: Option<&str>,
         profile: Option<IntegrationProfile>,
         configured: bool,
         configuration_verified: bool,
     ) -> ReleaseHostFeatureDiagnostics {
         match profile {
-            Some(profile) => canonical_release_host_feature_diagnostics(
+            Some(profile) => canonical_release_host_feature_diagnostics_for_version(
                 host,
+                host_version,
                 profile,
                 configured,
                 configuration_verified,
             ),
             None => ReleaseHostFeatureDiagnostics {
-                host_feature_support: default_host_feature_support_json(maintained_host_kind(host)),
+                host_feature_support: default_host_feature_support_json_for_version(
+                    maintained_host_kind(host),
+                    host_version,
+                ),
                 final_output_authority_disclosure: Value::Null,
             },
         }
@@ -14581,9 +14693,10 @@ mod unix {
     fn release_host_feature_diagnostics_from_init(
         value: &Value,
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
     ) -> Result<ReleaseHostFeatureDiagnostics, Box<dyn Error>> {
-        require_init_host_feature_support(value, host, profile)?;
+        require_init_host_feature_support(value, host, host_version, profile)?;
         Ok(ReleaseHostFeatureDiagnostics {
             host_feature_support: value["states"]["host_feature_support"].clone(),
             final_output_authority_disclosure: value["states"]["final_output_authority_disclosure"]
@@ -14600,8 +14713,19 @@ mod unix {
         let host = value["host"]["kind"]
             .as_str()
             .ok_or_else(|| io::Error::other("release result has no exact host kind"))?;
+        let host_version = match value["host"].get("version") {
+            Some(Value::String(version)) => Some(version.as_str()),
+            Some(Value::Null) | None => None,
+            Some(_) => {
+                return Err(io::Error::other(
+                    "release result host version must be a string or null",
+                )
+                .into())
+            }
+        };
         let expected = canonical_release_host_feature_diagnostics_for_profile(
             host,
+            host_version,
             profile,
             configured,
             configuration_verified,
@@ -14684,26 +14808,41 @@ mod unix {
         )
     }
 
-    fn expected_host_feature_support(host: &str) -> Value {
-        canonical_release_host_feature_diagnostics(host, IntegrationProfile::Record, false, false)
-            .host_feature_support
+    fn expected_host_feature_support(host: &str, host_version: Option<&str>) -> Value {
+        canonical_release_host_feature_diagnostics_for_version(
+            host,
+            host_version,
+            IntegrationProfile::Record,
+            false,
+            false,
+        )
+        .host_feature_support
     }
 
     fn expected_final_output_authority_disclosure(
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
     ) -> Value {
-        canonical_release_host_feature_diagnostics(host, profile, true, true)
-            .final_output_authority_disclosure
+        canonical_release_host_feature_diagnostics_for_version(
+            host,
+            host_version,
+            profile,
+            true,
+            true,
+        )
+        .final_output_authority_disclosure
     }
 
     fn require_init_host_feature_support(
         value: &Value,
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
     ) -> Result<(), Box<dyn Error>> {
-        let expected_support = expected_host_feature_support(host);
-        let expected_disclosure = expected_final_output_authority_disclosure(host, profile);
+        let expected_support = expected_host_feature_support(host, host_version);
+        let expected_disclosure =
+            expected_final_output_authority_disclosure(host, host_version, profile);
         if value["states"]["host_feature_support"] != expected_support
             || value["states"]["final_output_authority_disclosure"] != expected_disclosure
             || value["host_hook"].get("host_feature_support").is_some()
@@ -14720,16 +14859,21 @@ mod unix {
         Ok(())
     }
 
-    fn assert_init_host_feature_support(value: &Value, host: &str, profile: IntegrationProfile) {
+    fn assert_init_host_feature_support(
+        value: &Value,
+        host: &str,
+        host_version: Option<&str>,
+        profile: IntegrationProfile,
+    ) {
         assert_eq!(
             value["states"]["host_feature_support"],
-            expected_host_feature_support(host),
+            expected_host_feature_support(host, host_version),
             "{host}/{} init did not emit the exact six-key support map: {value}",
             profile.as_str()
         );
         assert_eq!(
             value["states"]["final_output_authority_disclosure"],
-            expected_final_output_authority_disclosure(host, profile),
+            expected_final_output_authority_disclosure(host, host_version, profile),
             "{host}/{} init did not emit exact selected-profile final-output detail: {value}",
             profile.as_str()
         );
@@ -14742,6 +14886,7 @@ mod unix {
     fn require_live_init_reported_action_required(
         value: &Value,
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
         host_action: &str,
     ) -> Result<(), Box<dyn Error>> {
@@ -14749,7 +14894,7 @@ mod unix {
             .as_array()
             .ok_or_else(|| io::Error::other("live init actions are not an array"))?;
         let has_action = |expected: &str| actions.iter().any(|action| action["id"] == expected);
-        require_init_host_feature_support(value, host, profile)?;
+        require_init_host_feature_support(value, host, host_version, profile)?;
         let profile_state_matches = match profile {
             IntegrationProfile::Record => {
                 value["states"]["hook_config"] == "disabled"
@@ -14781,6 +14926,7 @@ mod unix {
     fn assert_live_init_reported_action_required(
         value: &Value,
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
         host_action: &str,
     ) {
@@ -14797,7 +14943,7 @@ mod unix {
             profile.as_str()
         );
         assert_eq!(value["states"]["host_reload_required"], true);
-        assert_init_host_feature_support(value, host, profile);
+        assert_init_host_feature_support(value, host, host_version, profile);
         match profile {
             IntegrationProfile::Record => {
                 assert_eq!(value["states"]["hook_config"], "disabled");
@@ -14817,6 +14963,7 @@ mod unix {
     fn assert_direct_matrix_init_report(
         value: &Value,
         host: &str,
+        host_version: Option<&str>,
         profile: IntegrationProfile,
         host_action: &str,
     ) {
@@ -14832,7 +14979,7 @@ mod unix {
             profile.as_str()
         );
         assert_eq!(value["states"]["host_reload_required"], true);
-        assert_init_host_feature_support(value, host, profile);
+        assert_init_host_feature_support(value, host, host_version, profile);
         let actions = value["actions"]
             .as_array()
             .expect("matrix init actions should be an array");
