@@ -8,6 +8,10 @@
 [관리 CLI 참조](../reference/admin-cli.md#runtime-home-selection)와
 [연결 결과 상태](../reference/admin-cli.md#agent-connection-result-states)를 보세요.
 
+아래 프로젝트 범위 예시는 init부터 상태 조회와 검증까지 `shared` 의도를 일관되게
+사용합니다. 개인 연결을 복구할 때는 모든 명령에서 `--shared`를 빼야 하며 복구 중에
+연결 의도를 바꾸면 안 됩니다.
+
 ## 변경 전에
 
 현재 로컬 상태를 모읍니다.
@@ -63,7 +67,7 @@ volicord mcp --check --connection "<connection_id>" --project "<project_id>"
 `volicord`를 이미 사용할 수 있다면:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 volicord doctor
 ```
 
@@ -73,7 +77,7 @@ volicord doctor
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo "<repo>" --profile record
+./target/debug/volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 `init`이 `volicord`를 사용할 수 있게 만드는 방법, 호스트 신뢰, 다시 불러오기를
@@ -115,7 +119,7 @@ volicord project use
 또는 Product Repository를 명시적으로 선택합니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 `<repo>`는 에이전트에게 작업을 요청할 Product Repository 경로입니다. 사용자에게 보이는
@@ -145,7 +149,7 @@ WSL UNC 경로, WSL 스타일 `/mnt/<drive>` 경로이기 때문에 유효하지
 `record` 프로필을 `init`에 명시적으로 전달합니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 탐지 프로필 설정에는 [관리 CLI
@@ -157,7 +161,7 @@ Windows 네이티브 환경에서는 탐지 프로필 설정이 지원되지 않
 `DETECTIVE_WINDOWS_UNSUPPORTED`를 보고하면 기록 프로필로 다시 실행합니다.
 
 ```powershell
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 탐지 프로필은 선택한 호스트 훅과 세션 감시기 계약이 지원되고 테스트된 WSL2, Linux,
@@ -364,12 +368,12 @@ Codex IDE 확장에서는 확장 세션에 보이는 PATH 또는 MCP 시작 로�
 PATH만으로는 원격 명령 시작 가능성을 증명하지 않습니다.
 
 설정 일치가 의심되면 생성된 `<repo>/.codex/config.toml` 항목을 확인합니다. Volicord가
-관리하는 프로젝트 범위 Codex 항목에는 일치하는 명령과 인자와 함께
-`VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
-`VOLICORD_MCP_CONNECTION_ID=<connection_id>`,
-`VOLICORD_MCP_PROJECT_ID=<project_id>` 관리 시작 마커가 있어야 합니다. 명령과 인자는
-있지만 이 마커가 없다면 Volicord 설정 또는 연결 관리 명령을 다시 실행해 관리
-항목을 다시 생성합니다.
+관리하는 프로젝트 범위 Codex 항목에는 정확한
+`volicord mcp --stdio --discover-repository --host codex` 명령과 인자 및
+`env_vars = ["VOLICORD_HOME"]`가 있어야 합니다. 로컬 연결·프로젝트 ID, Runtime Home의
+리터럴 경로, 로컬 관리 시작 마커, 추가 전달 변수는 포함하면 안 됩니다. 이 정확한 공유
+형태가 없다면 Volicord 공유 설정 또는 연결 관리 명령을 다시 실행해 관리 항목을 다시
+생성합니다.
 
 호스트 쪽 변경 뒤에는 터미널 쪽 검증을 다시 실행합니다.
 
@@ -417,9 +421,10 @@ Volicord `record` 프로필의 기본 동작이나 도구 노출의 증명으로
 `MCP configuration: changed`, `Current MCP configuration: changed`, 또는
 `mcp_config_changed` 다음 동작을 보고하면 안 됩니다.
 
-그래도 그 상태가 보고된다면 `volicord` 서버 항목의 실제 명령, 인자, 관리 마커가
+그래도 그 상태가 보고된다면 `volicord` 서버 항목의 의도별 관리 식별 정보가 실제로
 일치하지 않거나, 실행 중인 Volicord 빌드가 아직 Codex 도구 승인 정책 추가 설정을
-허용하지 않는 것입니다.
+허용하지 않는 것입니다. 공유 항목의 식별 정보는 정확한 저장소 발견 명령과 인자 및
+`env_vars = ["VOLICORD_HOME"]`입니다. 로컬 관리 시작 마커는 개인 항목에만 속합니다.
 
 먼저 생성된 Codex 프로젝트 설정을 확인합니다.
 
@@ -441,15 +446,19 @@ approval_mode = "approve"
    `approval_mode`뿐이면 그 항목을 보존하고 검증을 다시 실행합니다.
 2. 추가 설정만 있는데도 여전히 `changed`로 보고되면 Codex 도구 승인 정책 추가
    설정을 허용하는 Volicord 빌드를 사용한 뒤 검증을 다시 실행합니다.
-3. 명령, 인자, Volicord 관리 환경 변수 마커가 바뀌었다면 관리 항목을 복구합니다.
+3. 공유 명령, 인자, 정확한 `VOLICORD_HOME` 전달 설정이 바뀌었다면 관리 항목을
+   복구합니다.
 
    ```sh
-   volicord init --host codex --repo "<repo>"
+   volicord init --shared --host codex --repo "<repo>"
    ```
 
-4. `volicord` 서버 항목에 Volicord 관리 마커가 없다면 비관리 호스트 설정으로 다룹니다.
-   무작정 덮어쓰거나 삭제하지 않습니다. 그 사용자 관리 항목을 유지할지, 명시적인
-   `volicord init --host codex --repo "<repo>"` 설정 경로로 교체할지 결정합니다.
+4. 공유 `volicord` 항목에 전달 설정이 없다는 사실만으로 비관리 항목이라고 판정하지
+   않습니다. 연결 상태를 확인하고 명시적인
+   `volicord init --shared --host codex --repo "<repo>"` 복구 경로를 실행합니다. 저장된
+   관리 지문이 인식되는 레거시 관리 설정과 계속 일치하면 init이 정확한 현재 전달
+   형태로 이전할 수 있습니다. 그 밖의 불일치하거나 소유되지 않은 내용은 보존하고 보고된
+   충돌을 해결해야 하며 무작정 덮어쓰거나 삭제하면 안 됩니다.
 
 추가 설정만 있는 승인 정책은 Codex가 소유하는 호스트 정책 추가 설정입니다. 승인 하위
 테이블을 삭제해야 하는 일반 이유가 아니며, 현재 Codex 세션이 Volicord 도구를
@@ -488,14 +497,14 @@ volicord doctor
 설치된 `volicord` 명령으로 `init`을 다시 실행합니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 의도적으로 개발용 소스 체크아웃에서 작업 중이라면:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo "<repo>" --profile record
+./target/debug/volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 `action_required`가 이름 붙인 명령 가용성 또는 호스트 단계를 완료한 뒤 설치와
@@ -524,23 +533,25 @@ volicord connection verify codex --shared --repo "<repo>"
 ```sh
 volicord doctor
 volicord connection status codex --shared --repo "<repo>"
-volicord init --host codex --repo "<repo>" --profile detective
+volicord init --shared --host codex --repo "<repo>" --profile detective
 volicord connection verify codex --shared --repo "<repo>"
 ```
 
 영향받은 연결과 같은 호스트와 저장소를 사용하고, 연결 상태와 검증에는 같은
 의도 선택자를 사용합니다. Claude Code에서는 `codex`를 `claude-code`로 바꾸고, 선택된
 연결이 그렇다면 해당 연결 명령에 `--global` 또는 `--shared`를 함께 넣습니다. 아래에서
-`init`을 다시 실행하라는 지시는 모두
-`volicord init --host HOST --repo PATH --profile detective`를 뜻합니다. `--profile`을
+`init`을 다시 실행하라는 지시는 지원되는 같은 init 의도 선택자를 사용한다는
+뜻입니다. 공유 연결에서는
+`volicord init --shared --host HOST --repo PATH --profile detective`를 사용합니다. `--profile`을
 생략하면 `record` 프로필이 선택되며 탐지 프로필의 훅 래퍼를 다시 생성하지 않습니다.
 
 진단 의미와 복구:
 
 - `relative_path_unsafe`: 호스트 훅 설정이 호스트 세션의 작업 디렉터리에 의존하는
   `.codex/hooks/...`, `./.codex/hooks/...`, `.claude/hooks/...`, 또는
-  `./.claude/hooks/...` 상대 경로를 사용합니다. 훅 명령을 손으로 고치지 말고
-  `volicord init --host HOST --repo PATH --profile detective`를 다시 실행합니다.
+  `./.claude/hooks/...` 상대 경로를 사용합니다. 공유 연결에서는 훅 명령을 손으로
+  고치지 말고 `volicord init --shared --host HOST --repo PATH --profile detective`를
+  다시 실행합니다.
 - `wrapper_missing` 또는 `dispatch_missing`: 생성된 래퍼 또는 Codex 디스패치 래퍼가
   없습니다. 선택된 Product Repository에 대해 탐지 프로필 `init`을 다시 실행합니다.
 - `wrapper_not_executable`: 생성된 래퍼는 있지만 지원되는 Unix 계열 플랫폼에서 실행

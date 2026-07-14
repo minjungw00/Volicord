@@ -8,6 +8,7 @@ use std::{
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use volicord_mcp::RepositoryDiscoveryHost;
 use volicord_store::{
     agent_connections::{
         connection_metadata_contains_pending_host_cleanup_key,
@@ -36,7 +37,10 @@ use crate::{
     guard_integration::git_exclude::{always_local_paths, git_exclude_path, personal_only_paths},
     guard_integration::policy::validate_policy_schema,
     guard_integration::HOOK_WRAPPER_MARKER,
-    host_integration::{is_volicord_managed_entry, managed_entry_from_json, ManagedServerEntry},
+    host_integration::{
+        codex::managed_entry_from_item_for_diagnostics, is_legacy_repository_discovery_entry,
+        is_volicord_managed_entry, managed_entry_from_json, ManagedServerEntry,
+    },
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
@@ -1328,7 +1332,9 @@ fn managed_mcp_projection_present(repo_root: &Path, relative_path: &str) -> Resu
         .and_then(Value::as_object)
         .and_then(|servers| servers.get("volicord"))
         .and_then(managed_entry_from_json)
-        .is_some_and(|entry| is_volicord_managed_entry(&entry)))
+        .is_some_and(|entry| {
+            managed_projection_entry_for_host(&entry, RepositoryDiscoveryHost::ClaudeCode)
+        }))
 }
 
 fn managed_codex_mcp_projection_present(
@@ -1345,36 +1351,32 @@ fn managed_codex_mcp_projection_present(
         .get("mcp_servers")
         .and_then(toml_edit::Item::as_table)
         .and_then(|servers| servers.get("volicord"))
-        .and_then(managed_entry_from_codex_item)
-        .is_some_and(|entry| is_volicord_managed_entry(&entry)))
+        .and_then(managed_entry_from_item_for_diagnostics)
+        .is_some_and(|entry| {
+            managed_projection_entry_for_host(&entry, RepositoryDiscoveryHost::Codex)
+        }))
 }
 
-fn managed_entry_from_codex_item(item: &toml_edit::Item) -> Option<ManagedServerEntry> {
-    let table = item.as_table()?;
-    let command = table.get("command")?.as_str()?.to_owned();
-    let args = table
-        .get("args")
-        .and_then(toml_edit::Item::as_array)
-        .map(|args| {
-            args.iter()
-                .map(|arg| arg.as_str().map(str::to_owned))
-                .collect::<Option<Vec<_>>>()
-        })
-        .unwrap_or_else(|| Some(Vec::new()))?;
-    let env = table
-        .get("env")
-        .and_then(toml_edit::Item::as_table)
-        .map(|env| {
-            env.iter()
-                .map(|(key, value)| {
-                    value
-                        .as_str()
-                        .map(|value| (key.to_owned(), value.to_owned()))
-                })
-                .collect::<Option<BTreeMap<_, _>>>()
-        })
-        .unwrap_or_else(|| Some(BTreeMap::new()))?;
-    Some(ManagedServerEntry { command, args, env })
+fn managed_projection_entry_for_host(
+    entry: &ManagedServerEntry,
+    host: RepositoryDiscoveryHost,
+) -> bool {
+    if entry.validate_repository_discovery(host).is_ok()
+        || is_legacy_repository_discovery_entry(entry, host)
+    {
+        return true;
+    }
+    let belongs_to_other_discovery_host = [
+        RepositoryDiscoveryHost::Codex,
+        RepositoryDiscoveryHost::ClaudeCode,
+    ]
+    .into_iter()
+    .filter(|candidate| *candidate != host)
+    .any(|candidate| {
+        entry.validate_repository_discovery(candidate).is_ok()
+            || is_legacy_repository_discovery_entry(entry, candidate)
+    });
+    !belongs_to_other_discovery_host && is_volicord_managed_entry(entry)
 }
 
 fn managed_hook_wrapper_present(repo_root: &Path, relative_path: &str) -> Result<bool, String> {
@@ -2425,7 +2427,7 @@ fn inspect_command_path(
     checks: &mut Vec<DiagnosticCheck>,
     actions: &mut Vec<DiagnosticAction>,
 ) {
-    if is_executable_file(command) {
+    if command.is_absolute() && is_executable_file(command) {
         checks.push(
             DiagnosticCheck::passed(id, format!("{label} is executable"))
                 .with_details(json!({ "path": path_text(command) })),
@@ -2435,14 +2437,21 @@ fn inspect_command_path(
             DiagnosticCheck::failed(id, format!("{label} is missing or not executable"))
                 .with_details(json!({ "path": path_text(command) })),
         );
+        let (instruction, command) = if id == "volicord_command" {
+            (
+                "Invoke a working Volicord executable and rerun init; init replaces an inaccessible, non-executable, or relative installation-profile volicord command with that running executable.",
+                "volicord init --host <host> --repo <path>",
+            )
+        } else {
+            (
+                "Select an executable MCP launch command, then rerun init with that command.",
+                "volicord init --host <host> --repo <path> --mcp-command PATH",
+            )
+        };
         actions.push(DiagnosticAction {
             id: format!("repair_{id}"),
-            instruction:
-                "Select an executable MCP launch command, then rerun init with that command."
-                    .to_owned(),
-            command: Some(
-                "volicord init --host <host> --repo <path> --mcp-command PATH".to_owned(),
-            ),
+            instruction: instruction.to_owned(),
+            command: Some(command.to_owned()),
         });
     }
 }
@@ -3334,6 +3343,27 @@ mod tests {
     }
 
     #[test]
+    fn relative_profile_command_is_not_reported_as_executable() {
+        let mut checks = Vec::new();
+        let mut actions = Vec::new();
+
+        inspect_command_path(
+            "volicord_command",
+            "volicord command",
+            Path::new("relative/volicord"),
+            &mut checks,
+            &mut actions,
+        );
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, "failed");
+        assert!(actions.iter().any(|action| {
+            action.id == "repair_volicord_command"
+                && action.command.as_deref() == Some("volicord init --host <host> --repo <path>")
+        }));
+    }
+
+    #[test]
     fn intent_drift_reports_enabled_and_projected_opposite_host(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = TestDirectory::new("cross-host-drift")?;
@@ -3350,7 +3380,10 @@ mod tests {
                             "--discover-repository",
                             "--host",
                             "claude-code"
-                        ]
+                        ],
+                        "env": {
+                            "VOLICORD_HOME": "${VOLICORD_HOME}"
+                        }
                     }
                 }
             }))? + "\n",
@@ -3521,7 +3554,7 @@ mod tests {
         fs::create_dir_all(config_path.parent().expect("config parent"))?;
         fs::write(
             &config_path,
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n",
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\n",
         )?;
         let policy = LocalPolicyAudit {
             host: "claude-code".to_owned(),
@@ -3536,6 +3569,95 @@ mod tests {
         assert!(stale.iter().any(|projection| {
             projection.host == "codex" && projection.path == ".codex/config.toml"
         }));
+        Ok(())
+    }
+
+    #[test]
+    fn opposite_host_scan_recognizes_only_exact_legacy_discovery_projections(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let codex_repo = TestDirectory::new("stale-legacy-codex-projection")?;
+        let codex_config = codex_repo.path.join(".codex/config.toml");
+        fs::create_dir_all(codex_config.parent().expect("config parent"))?;
+        fs::write(
+            &codex_config,
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n",
+        )?;
+        let claude_policy = LocalPolicyAudit {
+            host: "claude-code".to_owned(),
+            connection_intent: "shared".to_owned(),
+            selected_profile: "record".to_owned(),
+            connection_id: "conn-claude".to_owned(),
+            guard_installation_id: "guard-claude".to_owned(),
+        };
+        assert!(
+            stale_opposite_projection_paths(&codex_repo.path, &claude_policy)?
+                .iter()
+                .any(|projection| projection.path == ".codex/config.toml")
+        );
+
+        fs::write(
+            &codex_config,
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"API_TOKEN\"]\n",
+        )?;
+        assert!(
+            !stale_opposite_projection_paths(&codex_repo.path, &claude_policy)?
+                .iter()
+                .any(|projection| projection.path == ".codex/config.toml")
+        );
+
+        fs::write(
+            &codex_config,
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\nurl = \"https://unmanaged.invalid\"\n",
+        )?;
+        assert!(
+            !stale_opposite_projection_paths(&codex_repo.path, &claude_policy)?
+                .iter()
+                .any(|projection| projection.path == ".codex/config.toml")
+        );
+
+        let claude_repo = TestDirectory::new("stale-legacy-claude-projection")?;
+        let claude_config = claude_repo.path.join(".mcp.json");
+        fs::write(
+            &claude_config,
+            serde_json::to_string_pretty(&json!({
+                "mcpServers": {
+                    "volicord": {
+                        "command": "volicord",
+                        "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"]
+                    }
+                }
+            }))? + "\n",
+        )?;
+        let codex_policy = LocalPolicyAudit {
+            host: "codex".to_owned(),
+            connection_intent: "shared".to_owned(),
+            selected_profile: "record".to_owned(),
+            connection_id: "conn-codex".to_owned(),
+            guard_installation_id: "guard-codex".to_owned(),
+        };
+        assert!(
+            stale_opposite_projection_paths(&claude_repo.path, &codex_policy)?
+                .iter()
+                .any(|projection| projection.path == ".mcp.json")
+        );
+
+        fs::write(
+            &claude_config,
+            serde_json::to_string_pretty(&json!({
+                "mcpServers": {
+                    "volicord": {
+                        "command": "volicord",
+                        "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"],
+                        "env": {"VOLICORD_HOME": "/tmp/injected"}
+                    }
+                }
+            }))? + "\n",
+        )?;
+        assert!(
+            !stale_opposite_projection_paths(&claude_repo.path, &codex_policy)?
+                .iter()
+                .any(|projection| projection.path == ".mcp.json")
+        );
         Ok(())
     }
 

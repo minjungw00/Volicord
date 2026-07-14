@@ -11,8 +11,9 @@ use crate::host_integration::verification::{
     ManagedConfigStatus, Verification,
 };
 use crate::host_integration::{
-    config_edit::read_text_snapshot, managed_fingerprint, HostConfigError, HostConflict,
-    HostConflictKind, HostKind, HostPlan, HostScope, HostTarget, ManagedServerEntry, PlannedChange,
+    config_edit::read_text_snapshot, is_legacy_repository_discovery_entry, managed_fingerprint,
+    HostConfigError, HostConflict, HostConflictKind, HostKind, HostPlan, HostScope, HostTarget,
+    ManagedServerEntry, PlannedChange,
 };
 
 use super::{
@@ -117,7 +118,7 @@ fn parse_codex_managed_identity(
     let table = item
         .as_table()
         .ok_or(CodexManagedIdentityProblem::Malformed)?;
-    let allowed_keys = ["command", "args", "env", "tools"];
+    let allowed_keys = ["command", "args", "env", "env_vars", "tools"];
     if table.iter().any(|(key, _)| !allowed_keys.contains(&key)) {
         return Err(CodexManagedIdentityProblem::Unmanaged);
     }
@@ -128,32 +129,51 @@ fn parse_codex_managed_identity(
         .and_then(Item::as_str)
         .ok_or(CodexManagedIdentityProblem::Malformed)?
         .to_owned();
-    let args = table
-        .get("args")
-        .and_then(Item::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .map(|item| item.as_str().map(str::to_owned))
-                .collect::<Option<Vec<_>>>()
-        })
-        .unwrap_or_else(|| Some(Vec::new()))
-        .ok_or(CodexManagedIdentityProblem::Malformed)?;
-    let env = table
-        .get("env")
-        .and_then(Item::as_table)
-        .map(|items| {
-            items
-                .iter()
-                .map(|(key, item)| {
-                    item.as_str()
-                        .map(|value| (key.to_owned(), value.to_owned()))
-                })
-                .collect::<Option<BTreeMap<_, _>>>()
-        })
-        .unwrap_or_else(|| Some(BTreeMap::new()))
-        .ok_or(CodexManagedIdentityProblem::Malformed)?;
-    let entry = ManagedServerEntry { command, args, env };
+    let args = match table.get("args") {
+        None => Vec::new(),
+        Some(item) => item
+            .as_array()
+            .and_then(|items| {
+                items
+                    .iter()
+                    .map(|item| item.as_str().map(str::to_owned))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .ok_or(CodexManagedIdentityProblem::Malformed)?,
+    };
+    let env = match table.get("env") {
+        None => BTreeMap::new(),
+        Some(item) => item
+            .as_table()
+            .and_then(|items| {
+                items
+                    .iter()
+                    .map(|(key, item)| {
+                        item.as_str()
+                            .map(|value| (key.to_owned(), value.to_owned()))
+                    })
+                    .collect::<Option<BTreeMap<_, _>>>()
+            })
+            .ok_or(CodexManagedIdentityProblem::Malformed)?,
+    };
+    let env_vars = match table.get("env_vars") {
+        None => Vec::new(),
+        Some(item) => item
+            .as_array()
+            .and_then(|items| {
+                items
+                    .iter()
+                    .map(|item| item.as_str().map(str::to_owned))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .ok_or(CodexManagedIdentityProblem::Malformed)?,
+    };
+    let entry = ManagedServerEntry {
+        command,
+        args,
+        env,
+        env_vars,
+    };
     if !has_codex_managed_identity_markers(&entry) {
         return Err(CodexManagedIdentityProblem::Unmanaged);
     }
@@ -161,6 +181,12 @@ fn parse_codex_managed_identity(
         managed_entry: entry,
         host_policy_overlay,
     })
+}
+
+pub(crate) fn managed_entry_from_item_for_diagnostics(item: &Item) -> Option<ManagedServerEntry> {
+    parse_codex_managed_identity(item)
+        .ok()
+        .map(|parsed| parsed.managed_entry)
 }
 
 pub(super) fn codex_managed_identity_fingerprint(
@@ -181,7 +207,9 @@ fn has_codex_managed_identity_markers(entry: &ManagedServerEntry) -> bool {
     entry
         .validate_repository_discovery(RepositoryDiscoveryHost::Codex)
         .is_ok()
-        || entry.env.contains_key(VOLICORD_MCP_LAUNCH)
+        || is_legacy_repository_discovery_entry(entry, RepositoryDiscoveryHost::Codex)
+        || entry.env_vars.is_empty()
+            && entry.env.contains_key(VOLICORD_MCP_LAUNCH)
             && entry.env.contains_key(VOLICORD_MCP_HOST)
             && entry.env.contains_key(VOLICORD_MCP_CONNECTION_ID)
             && (!entry.args.iter().any(|arg| arg == "--project")

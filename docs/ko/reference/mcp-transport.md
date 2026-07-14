@@ -87,19 +87,29 @@ host capability를 함께 요구합니다. 그렇지 않으면 대기 행동은 
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-생성된 공유 프로젝트 설정은 바인딩 ID와 로컬 환경을 모두 사용하지 않습니다. 전체
-프로세스 기술 정보는 다음 중 하나입니다.
+생성된 공유 프로젝트 설정은 바인딩 ID나 로컬 Runtime Home의 리터럴 경로를 사용하지
+않습니다. 명령과 인자는 다음 중 하나입니다.
 
 ```text
 volicord mcp --stdio --discover-repository --host codex
 volicord mcp --stdio --discover-repository --host claude-code
 ```
 
-공유 명령은 `PATH`로 해석되는 이름 `volicord`여야 합니다. 절대 명령, 추가
-Connection/프로젝트 인자, Runtime Home, 관리 시작 마커, 비밀값 형태 환경 키, 그 밖의
-모든 환경 항목은 유효하지 않습니다. Codex 검증은 이 정확한 프로젝트 기술 정보와 다른
-항목을 설정 불일치로 취급합니다. 개인·사용자 범위 Codex 바인딩은 아래에서 설명하는
-로컬 관리 시작 마커 계약을 유지합니다.
+공유 명령은 `PATH`로 해석되는 이름 `volicord`여야 합니다. 같은 항목에는 복제본에서
+그대로 쓸 수 있는 Runtime Home 전달 설정이 정확히 하나 있어야 합니다.
+
+- Codex `.codex/config.toml`은 `env_vars = ["VOLICORD_HOME"]`을 사용해 호스트가 시작
+  환경의 같은 이름 값을 전달하도록 허용합니다.
+- Claude Code `.mcp.json`은
+  `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용해 호스트의 프로젝트 설정
+  자리표시자로 그 값을 전달합니다.
+
+어느 형태도 Runtime Home 경로를 내장하지 않습니다. 절대 명령, 추가
+Connection/프로젝트 인자, Runtime Home의 리터럴 경로, 관리 시작 마커, 비밀값 형태 환경
+키, 그 밖의 모든 환경 항목은 유효하지 않습니다. Codex와 Claude Code 검증은 전달 설정이
+없거나 정확한 호스트별 프로젝트 기술 정보와 다른 항목을 설정 불일치로 취급합니다.
+개인·사용자 범위 Codex 바인딩은 아래에서 설명하는 로컬 관리 시작 마커 계약을
+유지합니다.
 
 `<connection_id>` 프로세스 바인딩 값은 `volicord init` 또는
 `volicord connection add`가 만든 저장 `connection_internal_id`에서 옵니다.
@@ -164,8 +174,10 @@ Runtime Home, `connection_id`, `connection.mode`, 연결 활성 상태, 레지�
   네이티브 로컬 실행에는 유효하지 않으며 공개 호스트 인터페이스나 원격 제공 옵션이
   아닙니다.
 - `--listen`과 `--container-listen`은 함께 사용할 수 없습니다.
-- `--home PATH`는 프로세스의 Runtime Home을 선택합니다. `--home`이 없으면 공통
-  `VOLICORD_HOME`과 플랫폼 기본 Runtime Home 해석을 사용합니다.
+- `--home PATH`는 프로세스의 Runtime Home을 선택합니다. 저장소 발견 모드 밖에서
+  `--home`을 생략하면 공통 `VOLICORD_HOME`을 사용한 다음 플랫폼 기본 Runtime Home을
+  해석합니다. 저장소 발견 모드는 대신 전달된 값이 비어 있지 않은 절대 경로
+  `VOLICORD_HOME`일 것을 요구하며 플랫폼 기본값으로 대체하지 않습니다.
 - `--connection <connection_id>`는 서버를 저장된 Agent Connection 하나에 묶습니다. 이
   옵션이 없으면 선택적 로컬 HTTP 프로젝트 허용 목록과 일치하고 연결 프로젝트가 있는 활성
   Agent Connection이 정확히 하나일 때만 시작이 성공합니다.
@@ -283,16 +295,18 @@ MCP 프로세스는 아래처럼 역할이 제한된 환경 입력을 해석합�
 
 - `VOLICORD_HOME`
 - `VOLICORD_LOCAL_WEB_CONSENT`
-- `VOLICORD_HOME`이 없을 때 사용하는 표준 플랫폼 홈 환경 변수인 `HOME`,
-  `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합
+- 저장소 발견 모드가 아니고 `VOLICORD_HOME`이 없을 때 사용하는 표준 플랫폼 홈 환경
+  변수인 `HOME`, `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합
 
 `VOLICORD_HOME`은 프로세스의 Runtime Home을 선택합니다. 개인·로컬·사용자 전역 호스트
-오버레이는 필요할 때 이 값을 기록할 수 있습니다. 저장소에서 보이는 공유 Codex 또는
-Claude Code MCP 항목은 환경 맵이 없어야 하므로, 저장소 발견 모드는 호스트 프로세스가
-상속한 로컬 환경이나 플랫폼 기본값에서만 Runtime Home 선택을 받습니다. 이 값은 프로젝트,
-연결 의도, 행위자 출처, 작업 범주, 연결 모드, 호스트 신뢰 상태를 선택하지 않습니다.
-stdio 프로세스와 `--check`는 시작 검증 전에 이 값을 사용하며 help와 version 모드는
-사용하지 않습니다.
+오버레이는 그것을 만든 관리 설정에서 선택한 절대 Runtime Home을 기록합니다. 저장소에서
+보이는 공유 항목은 이 로컬 경로를 내장할 수 없습니다. 대신 호스트별 전달 설정이 시작
+호스트 프로세스의 `VOLICORD_HOME`을 자식 프로세스에 전달합니다. 저장소 발견 모드는
+전달된 값이 존재하고 비어 있지 않은 절대 경로일 것을 요구하며 플랫폼 기본값으로 대체하지
+않습니다. 따라서 시작 호스트 환경은 해당 복제본을 초기화할 때 선택한 것과 같은 절대 로컬
+Runtime Home을 제공해야 합니다. `VOLICORD_HOME`은 프로젝트, 연결 의도, 행위자 출처, 작업 범주, 연결
+모드, 호스트 신뢰 상태를 선택하지 않습니다. stdio 프로세스와 `--check`는 시작 검증 전에
+이 값을 사용하며 help와 version 모드는 사용하지 않습니다.
 
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, `disabled`는 stdio local web consent
 리스너를 끕니다. 다른 값은 리스너 주소나 토큰 정책을 바꾸지 않습니다.
@@ -334,15 +348,18 @@ Volicord가 관리하는 개인 또는 사용자 범위 Codex 설정은 다음 �
 현재 MCP Runtime Home 경로 해석:
 
 1. `VOLICORD_HOME`이 존재하지만 비어 있으면 오류입니다.
-2. 절대 경로 `VOLICORD_HOME`은 제공된 그대로 사용합니다.
-3. 상대 경로 `VOLICORD_HOME`은 그 경로가 존재하지 않아도 프로세스의 현재 작업
-   디렉터리를 기준으로 해석합니다.
-4. `VOLICORD_HOME`이 없으면 플랫폼 홈 환경 변수에서 기본 사용자 홈을 구하고
-   `.volicord`를 붙입니다. Windows가 아닌 플랫폼에서는 `HOME`, `USERPROFILE`,
-   `HOMEDRIVE`와 `HOMEPATH` 조합 순서로 시도합니다. 네이티브 Windows에서는
-   `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합, WSL 형식 mount 경로가 아닌 `HOME`
-   순서로 시도합니다.
-5. 시작 검증 전에 정규화를 요구하지 않습니다.
+2. 저장소 발견 모드에서 `VOLICORD_HOME`이 없거나 상대 경로이면 오류입니다. 위의 빈 값
+   규칙과 함께, 플랫폼 기본 Runtime Home 대체, 레지스트리 접근, 저장소 발견보다 먼저
+   존재하고 비어 있지 않은 절대 경로를 요구합니다.
+3. 절대 경로 `VOLICORD_HOME`은 제공된 그대로 사용합니다.
+4. 저장소 발견 모드 밖에서 상대 경로 `VOLICORD_HOME`은 그 경로가 존재하지 않아도
+   프로세스의 현재 작업 디렉터리를 기준으로 해석합니다.
+5. 저장소 발견 모드 밖에서 `VOLICORD_HOME`이 없으면 플랫폼 홈 환경 변수에서 기본 사용자
+   홈을 구하고 `.volicord`를 붙입니다. Windows가 아닌 플랫폼에서는 `HOME`,
+   `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합 순서로 시도합니다. 네이티브
+   Windows에서는 `USERPROFILE`, `HOMEDRIVE`와 `HOMEPATH` 조합, WSL 형식 mount 경로가
+   아닌 `HOME` 순서로 시도합니다.
+6. 시작 검증 전에 정규화를 요구하지 않습니다.
 
 ## 시작 검증
 
@@ -363,13 +380,16 @@ Volicord가 관리하는 개인 또는 사용자 범위 Codex 설정은 다음 �
 
 저장소 발견 모드는 위의 공통 검증 전에 다음 단계를 닫힌 방식으로 수행합니다.
 
-1. 프로세스 현재 디렉터리를 정규화하고 상위 경로를 따라가 가장 가까운 유효 Git
+1. 명시적으로 전달된, 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 요구합니다. 값이
+   없거나 비어 있거나 상대 경로이면 플랫폼 기본값 대체나 레지스트리 접근 전에 시작이
+   실패합니다.
+2. 프로세스 현재 디렉터리를 정규화하고 상위 경로를 따라가 가장 가까운 유효 Git
    worktree 루트를 찾습니다. 지원되는 gitdir 파일과 연결된 worktree 배치도 포함합니다.
-2. 정확히 그 정규화된 루트가 선택된 로컬 Runtime Home에 등록된 프로젝트인지
+3. 정확히 그 정규화된 루트가 선택된 로컬 Runtime Home에 등록된 프로젝트인지
    요구합니다.
-3. `--host`와 호스트가 일치하고, 의도가 `shared`이며, 호스트 범위가 프로젝트이고,
+4. `--host`와 호스트가 일치하고, 의도가 `shared`이며, 호스트 범위가 프로젝트이고,
    Connection Projects에 해당 프로젝트를 포함하는 활성 연결만 선택합니다.
-4. 일치 항목이 정확히 하나인지 요구하고 프로세스 허용 목록을 해당 프로젝트로
+5. 일치 항목이 정확히 하나인지 요구하고 프로세스 허용 목록을 해당 프로젝트로
    좁힙니다.
 
 일치 항목 없음은 `REPOSITORY_DISCOVERY_CONNECTION_NOT_FOUND`, 여러 항목은

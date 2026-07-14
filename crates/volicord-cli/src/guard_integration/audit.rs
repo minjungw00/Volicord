@@ -18,7 +18,7 @@ use crate::host_integration::{
         validate_final_output_contract_config, HostContractConfigKind,
     },
     HostIntegrationFileKind, HostKind, HostLifecyclePhase, FINAL_OUTPUT_PHASES,
-    REQUIRED_GUARD_PHASES,
+    MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1, REQUIRED_GUARD_PHASES,
 };
 
 use super::policy::{required_guard_phase_names, validate_policy_schema};
@@ -1311,7 +1311,9 @@ fn verify_managed_script_file(
     } = managed;
     let mut state = "installed";
     if file.get("managed_marker").and_then(Value::as_str) != Some(HOOK_WRAPPER_MARKER)
-        || !text.contains(HOOK_WRAPPER_MARKER)
+        || !text
+            .lines()
+            .any(|line| line == format!("# {HOOK_WRAPPER_MARKER}"))
     {
         findings.broken_files.push(path_text.to_owned());
         if let Some(kind) = kind {
@@ -1321,6 +1323,13 @@ fn verify_managed_script_file(
     }
     if kind == Some(HostIntegrationFileKind::HostHookDispatch) {
         verify_managed_dispatch_script_file(file, kind, managed, findings);
+        return;
+    }
+    if !has_current_managed_process_binding(text) {
+        findings.broken_files.push(path_text.to_owned());
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "broken");
+        }
         return;
     }
     let Some(expected_command) = file
@@ -1346,32 +1355,12 @@ fn verify_managed_script_file(
         .get("host_output")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let purpose = file
-        .get("purpose")
-        .and_then(Value::as_str)
-        .unwrap_or("detective_guard");
-    let command_entry = if purpose == "final_output_authority_disclosure" {
-        "volicord _final-output "
-    } else {
-        "volicord _hook "
-    };
-    for required in [
-        command_entry,
-        "--repo ",
-        "--connection ",
-        "--guard-installation ",
-        "--host ",
-        "--integration-profile ",
-        "--policy-hash ",
-        "--host-output ",
-    ] {
-        if !expected_command.contains(required) {
-            findings.broken_files.push(path_text.to_owned());
-            if let Some(kind) = kind {
-                findings.set_kind_state(kind, "broken");
-            }
-            return;
+    if !generated_managed_command_shape_verified(file, expected_command) {
+        findings.broken_files.push(path_text.to_owned());
+        if let Some(kind) = kind {
+            findings.set_kind_state(kind, "broken");
         }
+        return;
     }
     if !expected_policy_hash.is_empty()
         && hook_wrapper_comment_value(text, "policy_hash") != Some(expected_policy_hash)
@@ -1821,6 +1810,165 @@ pub(crate) fn hook_wrapper_exec_command(content: &str) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+fn generated_shell_words(command: &str) -> Option<Vec<String>> {
+    let mut chars = command.chars().peekable();
+    let mut words = Vec::new();
+    while chars.peek().is_some() {
+        while chars
+            .peek()
+            .is_some_and(|character| character.is_whitespace())
+        {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            break;
+        }
+        let mut word = String::new();
+        let mut consumed = false;
+        while chars
+            .peek()
+            .is_some_and(|character| !character.is_whitespace())
+        {
+            match chars.next()? {
+                '\'' => {
+                    consumed = true;
+                    loop {
+                        match chars.next() {
+                            Some('\'') => break,
+                            Some(character) => word.push(character),
+                            None => return None,
+                        }
+                    }
+                }
+                '\\' => {
+                    consumed = true;
+                    word.push(chars.next()?);
+                }
+                character
+                    if character.is_ascii_alphanumeric()
+                        || matches!(character, '_' | '-' | '.' | '/' | ':' | '=') =>
+                {
+                    consumed = true;
+                    word.push(character);
+                }
+                _ => return None,
+            }
+        }
+        if !consumed {
+            return None;
+        }
+        words.push(word);
+    }
+    Some(words)
+}
+
+fn generated_managed_command_shape_verified(file: &Value, command: &str) -> bool {
+    let Some(purpose) = file.get("purpose").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(words) = generated_shell_words(command) else {
+        return false;
+    };
+    if !words
+        .first()
+        .is_some_and(|word| !word.is_empty() && Path::new(word).is_absolute())
+    {
+        return false;
+    }
+    let required_options = [
+        "--repo",
+        "--connection",
+        "--guard-installation",
+        "--host",
+        "--integration-profile",
+        "--policy-hash",
+        "--host-output",
+    ];
+    let argument_start = match purpose {
+        "detective_guard" => {
+            let Some(phase_key) = file.get("phase").and_then(Value::as_str) else {
+                return false;
+            };
+            let Some(phase) = REQUIRED_GUARD_PHASES
+                .into_iter()
+                .find(|phase| phase.policy_key() == phase_key)
+            else {
+                return false;
+            };
+            if words.get(1).map(String::as_str) != Some("_hook")
+                || words.get(2).map(String::as_str) != Some(phase.command_name())
+            {
+                return false;
+            }
+            3
+        }
+        "final_output_authority_disclosure" => {
+            if file.get("phase").and_then(Value::as_str) != Some("stop")
+                || words.get(1).map(String::as_str) != Some("_final-output")
+            {
+                return false;
+            }
+            2
+        }
+        _ => return false,
+    };
+    if words.len() != argument_start + required_options.len() * 2 {
+        return false;
+    }
+    let arguments = &words[argument_start..];
+    required_options.into_iter().all(|option| {
+        arguments
+            .chunks_exact(2)
+            .filter(|pair| pair[0] == option)
+            .count()
+            == 1
+            && arguments
+                .chunks_exact(2)
+                .any(|pair| pair[0] == option && !pair[1].is_empty() && !pair[1].starts_with("--"))
+    })
+}
+
+fn has_current_managed_process_binding(content: &str) -> bool {
+    let binding_export = format!("export {MANAGED_PROCESS_BINDING_ENV}");
+    let binding_assignment = format!("{MANAGED_PROCESS_BINDING_ENV}={MANAGED_PROCESS_BINDING_V1}");
+    if hook_wrapper_comment_value(content, "runtime_home_binding")
+        != Some("selected_init_runtime_home")
+        || content
+            .lines()
+            .filter(|line| *line == "export VOLICORD_HOME")
+            .count()
+            != 1
+        || content
+            .lines()
+            .filter(|line| *line == binding_export)
+            .count()
+            != 1
+        || content
+            .lines()
+            .filter(|line| *line == binding_assignment)
+            .count()
+            != 1
+    {
+        return false;
+    }
+    let mut assignments = content
+        .lines()
+        .filter(|line| line.starts_with("VOLICORD_HOME="));
+    let Some(assignment) = assignments.next() else {
+        return false;
+    };
+    if assignments.next().is_some() {
+        return false;
+    }
+    generated_shell_words(assignment)
+        .filter(|words| words.len() == 1)
+        .and_then(|words| words.into_iter().next())
+        .and_then(|word| word.strip_prefix("VOLICORD_HOME=").map(str::to_owned))
+        .is_some_and(|runtime_home| {
+            !runtime_home.is_empty() && Path::new(&runtime_home).is_absolute()
+        })
+}
+
 pub(crate) fn hook_wrapper_comment_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     let prefix = format!("# {key}=");
     content
@@ -1879,6 +2027,65 @@ mod tests {
         assert_eq!(
             classify_codex_hook_command_path("stop", command, wrapper, wrapper),
             HookWrapperResolutionStatus::Ok
+        );
+    }
+
+    #[test]
+    fn generated_shell_words_preserve_quoted_executable_argument_boundaries() {
+        assert_eq!(
+            generated_shell_words(
+                "'/opt/selected build/volicord'\\''s binary' _hook pre-tool --repo '/repo with spaces' --host codex"
+            ),
+            Some(vec![
+                "/opt/selected build/volicord's binary".to_owned(),
+                "_hook".to_owned(),
+                "pre-tool".to_owned(),
+                "--repo".to_owned(),
+                "/repo with spaces".to_owned(),
+                "--host".to_owned(),
+                "codex".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn matching_old_wrapper_and_capability_fail_current_binding_audit() {
+        let path = Path::new("/repo/.codex/hooks/volicord-pre-tool.sh");
+        let text = format!(
+            "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME=/runtime/home\nexport VOLICORD_HOME\nexec /opt/volicord _hook pre-tool --repo /repo --connection conn --guard-installation guard --host codex --integration-profile detective --policy-hash hash --host-output codex\n"
+        );
+        let command = hook_wrapper_exec_command(&text).expect("old wrapper exec command");
+        let file = json!({
+            "managed_marker": HOOK_WRAPPER_MARKER,
+            "managed_script_command": command,
+        });
+        let capability = json!({});
+        let expected_hash = sha256_text(&text);
+        let mut findings = GuardFileFindings::default();
+
+        verify_managed_script_file(
+            &file,
+            Some(HostIntegrationFileKind::HostHookWrapper),
+            &capability,
+            ManagedFileRead {
+                path,
+                path_text: "/repo/.codex/hooks/volicord-pre-tool.sh",
+                text: &text,
+                expected_hash: &expected_hash,
+            },
+            &mut findings,
+        );
+
+        assert_eq!(
+            findings.broken_files,
+            ["/repo/.codex/hooks/volicord-pre-tool.sh"]
+        );
+        assert_eq!(
+            findings
+                .file_kind_states
+                .get("host_hook_wrapper")
+                .map(String::as_str),
+            Some("broken")
         );
     }
 

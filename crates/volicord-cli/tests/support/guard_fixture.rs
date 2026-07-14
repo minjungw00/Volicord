@@ -8,6 +8,7 @@ use std::{
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_cli::host_integration::{MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1};
 use volicord_core::{Clock, CoreService, InvocationContext, SystemClock};
 use volicord_store::agent_connections::{
     add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
@@ -28,7 +29,7 @@ use volicord_types::{
 
 use super::{
     assertions::{assert_non_guarantees, stderr, stdout},
-    binary_fixture::volicord_bin,
+    binary_fixture::{prepare_runtime_home, volicord_bin},
     json::record_id,
 };
 
@@ -114,6 +115,8 @@ pub(crate) struct PromptEvidenceAction {
 impl GuardCliFixture {
     pub(crate) fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
         let inner = CoreFixture::new(prefix)?;
+        let selected_volicord = fs::canonicalize(volicord_bin())?;
+        prepare_runtime_home(inner.runtime_home_path(), &selected_volicord)?;
         let repo_root = inner.product_repo_path();
         fs::create_dir_all(repo_root.join(".git"))?;
         let repo_arg = repo_root.display().to_string();
@@ -1792,6 +1795,7 @@ pub(crate) fn run_host_guard(
     for (key, value) in extra_env {
         command.env(key, value);
     }
+    command.env(MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1);
     let mut child = command.spawn()?;
     child
         .stdin
@@ -1810,6 +1814,7 @@ pub(crate) fn run_guard<const N: usize>(
     let mut child = Command::new(volicord_bin())
         .args(args)
         .env("VOLICORD_HOME", runtime_home)
+        .env(MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1)
         .current_dir(current_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1831,6 +1836,7 @@ pub(crate) fn run_guard_file<const N: usize>(
     Ok(Command::new(volicord_bin())
         .args(args)
         .env("VOLICORD_HOME", runtime_home)
+        .env(MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1)
         .current_dir(current_dir)
         .output()?)
 }

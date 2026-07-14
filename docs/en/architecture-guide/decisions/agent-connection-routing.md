@@ -15,6 +15,25 @@ The design keeps these responsibilities separate:
 - The administrative CLI creates, verifies, updates, and removes supported host connection setup.
 - Host trust, project approval, OAuth, reload, restart, and model behavior stay with the external host and user.
 
+The Runtime Home selected by init is part of the managed process binding, not
+an incidental platform default. Every generated managed MCP or hook child must
+use that Runtime Home. Personal/local MCP entries bind the selected absolute
+path directly. Shared repository entries remain clone-portable and do not embed
+the path: Codex `.codex/config.toml` allow-forwards it with
+`env_vars = ["VOLICORD_HOME"]`, while Claude Code `.mcp.json` uses
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`. Repository-discovery startup
+requires the forwarded value to be present, nonempty, and absolute and rejects
+an absent, empty, or relative value before platform-default substitution.
+Generated local lifecycle and final-output
+wrappers export the selected absolute `VOLICORD_HOME` and invoke the
+installation profile's absolute `volicord_command`. They also export a
+versioned managed-process binding marker. Hidden managed `_hook` and
+`_final-output` execution validates the explicit absolute Runtime Home, that
+marker, and that the running executable is the installation profile command;
+it does not trust ambient host defaults or a bare PATH-resolved command. Init
+normalizes the selected Runtime Home to an absolute path before generating
+bindings.
+
 Managed host-hook configuration is derived from one validated command shape
 that retains both the rendered command text and the actual execution argv. For
 Codex Detective hooks, the generated wrapper is invoked as exactly
@@ -24,16 +43,25 @@ for one of the five required phases: `session-start`, `pre-tool`, `post-tool`,
 `prompt-capture`, or `stop`. The rule's positive and negative examples are
 validated from that same command shape before configuration is written.
 
-The earlier managed rule used `.codex hooks` as its prefix. That described a
-configuration location rather than the argv executed by the host, so current
-Codex rule validation could reject the file before any hook ran. This correction
-changes only generated managed host configuration. It adds no public API,
-storage record, DDL, storage profile, or SemVer change. Existing managed files
+Codex prompt rules must match the argv executed by the host, not the `.codex
+hooks` configuration location. A location-based prefix can be rejected before
+any hook runs. The exact rule is generated managed host configuration and adds
+no public API, storage record, DDL, or storage-profile contract. Managed files
 are replaced through the normal ownership and fingerprint checks; unmanaged
 files are not adopted. Volicord does not define a stable minimum Codex version,
 so checked-in parser fixtures remain insufficient by themselves: release
 validation must also load and check the generated rule with an applicable real
 Codex parser.
+
+Managed host projections are valid only when they carry the required exact
+Runtime Home forwarding or local process binding. Init conditionally regenerates
+an exact Volicord-owned projection whose fingerprint matches its stored managed
+fingerprint; unmanaged or modified lookalikes remain conflicts. There is no
+fallback that silently adopts a platform-default Runtime Home or bare PATH
+command. This projection rule changes neither Registry schema nor project/Core
+authority records. After a successful host apply, init publishes the refreshed
+managed fingerprint and projection metadata to the Agent Connection Registry
+record; this requires no DDL, storage-profile, or data migration.
 
 ## Consequences
 
@@ -43,6 +71,11 @@ Codex parser.
 - Project-bound startup can establish a session-watch baseline before tool handling. Multi-project startup reports watcher coverage as pending until explicit project selection.
 - Host setup status can distinguish configured-but-awaiting-host-action from complete verification.
 - Generated host configuration prefers `volicord mcp --stdio --connection <connection_id> --project <project_id>` for project-scoped entries and does not require connection-context or actor-provenance environment variables. Connection-only generated entries remain for flows that intentionally serve multiple connected Projects.
+- Shared repository entries stay clone-portable, but the launching host must
+  provide the clone's init-selected nonempty, absolute `VOLICORD_HOME`; init cannot change
+  a parent host process's environment.
+- Local generated wrappers are intentionally untracked process-binding files
+  because they pin both the selected Runtime Home and executable path.
 
 ## Non-goals
 
@@ -64,6 +97,17 @@ Codex parser.
   the required hook command set.
 - Treating fixture validation as proof of host compatibility was rejected
   because the external Codex parser and its load-time checks remain host-owned.
+- Embedding an absolute Runtime Home in a shared repository entry was rejected
+  because the value is clone-local and would make the entry non-portable.
+- Allowing repository discovery to substitute a platform-default Runtime Home
+  was rejected because it can silently open a different or incompatible local
+  registry instead of the one selected by init.
+- Trusting an ambient host value for managed hooks, or invoking a bare
+  PATH-resolved `volicord`, was rejected because either can bind the hook child
+  to a different Runtime Home or executable than the managed installation.
+- Keeping old managed projections through a compatibility fallback was
+  rejected because rerunning init can safely refresh owned files without a
+  storage migration, while fallback would preserve the ambiguous binding.
 
 ## Relevant implementation areas
 
@@ -78,7 +122,11 @@ Tests for this design should cover startup validation, project selection,
 membership revocation, host setup status, repository-write approval for project
 scope, managed marker replacement, rejection of unsupported startup forms, the
 exact five Codex hook argv alternatives, unrelated-command negatives, and
-load-time checking by an applicable real Codex parser.
+load-time checking by an applicable real Codex parser. They should also cover
+the exact shared-host forwarding forms, absent, empty, and relative discovery
+`VOLICORD_HOME` failures before default resolution, and local wrapper binding to
+the selected absolute Runtime Home and `volicord_command` despite conflicting
+ambient values.
 
 Reference owners:
 

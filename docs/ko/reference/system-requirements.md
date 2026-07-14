@@ -169,7 +169,10 @@ CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
   `mcp --stdio --connection <connection_id>` 인자와 함께 시작할 수 있어야 합니다.
 - 공유 Codex와 Claude Code 프로젝트 설정은 정확한 `PATH` 해석형
   `volicord mcp --stdio --discover-repository --host <host>` 기술 정보를 사용해야 하며,
-  로컬 ID, 절대 명령, Runtime Home 경로, 환경 맵을 포함하면 안 됩니다.
+  로컬 ID, 절대 명령, Runtime Home의 리터럴 경로, 관련 없는 로컬 전용 환경 항목을
+  포함하면 안 됩니다. Codex의 `env_vars = ["VOLICORD_HOME"]` 또는 Claude Code의
+  `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}` 중 정확히 하나의 호스트 고유 전달
+  형태를 포함해야 합니다.
 - 사용자가 관리하는 일반 MCP 호스트 설정에는 호스트별로 관찰 가능한 로드 가능 여부
   점검이 없습니다.
 
@@ -184,7 +187,11 @@ CLI](admin-cli.md#runtime-home-selection)를 사용합니다.
   `\\wsl$\...` 같은 WSL UNC 경로, `/mnt/c/...` 같은 WSL 마운트 경로는 네이티브
   Windows Runtime Home 경로로 지원되지 않습니다.
 - 선택한 사용자가 `volicord init`, `volicord project use`, `volicord connection add`, `volicord connection verify`를 실행할 때 디렉터리를 만들거나 그 안에 쓸 수 있어야 합니다.
-- 기본 `$HOME/.volicord`가 의도한 위치가 아니라면 `volicord mcp --stdio`를 시작하는 호스트 프로세스도 같은 Runtime Home 선택을 받아야 합니다. `shared` 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안 됩니다. 각 사용자는 기본값이 아닌 Runtime Home을 자신의 로컬 초기화 또는 환경으로 제공해야 합니다.
+- 공유 저장소 발견을 시작하는 호스트 프로세스는 의도한 위치가 `$HOME/.volicord`인
+  경우에도 항상 비어 있지 않은 절대 `VOLICORD_HOME`으로 Runtime Home을 명시적으로
+  받아야 합니다. `shared` 프로젝트 호스트 설정은 개인 Runtime Home 경로를 담으면 안
+  되므로 각 사용자는 자신의 로컬 init과 호스트 환경으로 값을 제공합니다. 그 밖의 명시적
+  바인딩 방식은 담당 문서가 정의한 일반 Runtime Home 선택 규칙을 유지합니다.
 
 Runtime Home 선택과 정확한 생성 동작은 [관리 CLI](admin-cli.md)와 [MCP 전송](mcp-transport.md)이 담당합니다. 런타임 위치와 분리 규칙은 [런타임 경계](runtime-boundaries.md)가 담당합니다.
 
@@ -246,9 +253,9 @@ Windows의 Record profile은 지원되지만, Windows 호스트 훅과 감시기
 | 호스트 | 연결 의도 | 환경 전제 조건 |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` 또는 `HOME`이 사용자 Codex 설정 위치를 식별해야 합니다. 가용성 점검을 위해 `codex`가 `PATH`에서 사용 가능해야 합니다. |
-| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Codex 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host codex`를 시작하며 상속 환경/기본값 규칙으로 의도한 로컬 Runtime Home을 선택해야 합니다. 공유 항목에는 로컬 ID나 환경 맵이 없습니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
+| Codex | `shared` | `.codex/config.toml`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Codex 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host codex`를 시작하며 init이 선택한 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 제공해야 합니다. 공유 항목에는 로컬 ID나 Runtime Home의 리터럴 경로가 없으며 `env_vars = ["VOLICORD_HOME"]`으로 호스트 값을 전달합니다. Codex 프로젝트 신뢰가 여전히 필요할 수 있습니다. |
 | Claude Code | `personal`, `global` | Volicord가 `claude mcp` 명령을 사용할 수 있도록 관리 프로세스가 `claude` 실행 파일을 시작할 수 있어야 합니다. |
-| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Claude Code 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host claude-code`를 시작하며 상속 환경/기본값 규칙으로 의도한 로컬 Runtime Home을 선택해야 합니다. 공유 항목에는 로컬 ID나 환경 맵이 없습니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
+| Claude Code | `shared` | `.mcp.json`을 적용할 때 선택한 `Product Repository`에 쓸 수 있어야 합니다. Claude Code 호스트는 `PATH`로 `volicord`를 해석하고 복제본 안에서 `mcp --stdio --discover-repository --host claude-code`를 시작하며 init이 선택한 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 제공해야 합니다. 공유 항목에는 로컬 ID나 Runtime Home의 리터럴 경로가 없으며 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`로 호스트 값을 전달합니다. 프로젝트 MCP 승인이 여전히 필요할 수 있습니다. |
 | 일반 MCP 호스트 | 사용자 관리 | Volicord는 일반 MCP 호스트 설정을 쓰지 않습니다. 외부 호스트를 수동으로 설정하려면 먼저 지원되는 Agent Connection이 있어야 합니다. 외부 호스트는 호스트별 방식으로 로드되고 점검되기 전까지 사용자 관리 상태이며 미검증입니다. |
 
 호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
@@ -272,8 +279,10 @@ Windows의 Record profile은 지원되지만, Windows 호스트 훅과 감시기
 
 - 설정된 명령 경로나 `PATH`에 따른 실행 가능한 `volicord` 명령
 - 의도한 Runtime Home이 기본 홈에서 유도되는 위치가 아닐 때의 `VOLICORD_HOME`입니다.
-  개인·로컬 설정은 이 값을 담을 수 있지만 공유 저장소 항목은 호스트가 상속한 로컬
-  환경에 의존합니다.
+  개인·로컬 설정은 이 값을 담을 수 있습니다.
+- 모든 공유 저장소 발견 시작에서 init이 선택한 Runtime Home과 일치하는, 존재하고 비어
+  있지 않은 절대 경로 `VOLICORD_HOME`입니다. 이식 가능한 호스트 항목은 경로를 내장하지
+  않고 이 값을 전달하며 시작은 플랫폼 기본값으로 대체하지 않습니다.
 - Runtime Home과 명시적으로 허용된 각 `Product Repository`에 대한 로컬 파일시스템 접근
 
 `volicord mcp --check --connection <connection_id>`는 그 프로세스 바인딩에 대한 시작
@@ -300,6 +309,8 @@ CLI](admin-cli.md)가 정의한 관리 결과 기준이 필요합니다.
   순회할 수 없거나, 필요한 같은 디렉터리 이름 공간 연산을 사용할 수 없거나, 필요한
   기존 파일 메타데이터를 재현할 수 없습니다.
 - `shared` 연결 의도 호스트 설정이 호스트 환경의 `PATH`에서 `volicord mcp --stdio`를 시작할 수 없습니다.
+- 공유 저장소 발견 호스트 환경이 init이 선택한 `VOLICORD_HOME`을 존재하고 비어 있지 않은
+  절대 경로 값으로 제공할 수 없습니다.
 - 선택한 호스트 경로에 Codex 또는 Claude Code가 필요한데 관리 호환성 점검이 호스트를 시작하거나 해석할 수 없습니다.
 - 네이티브 Windows 설정에서 `--profile detective`를 요청합니다.
 - 필요한 호스트 신뢰, 프로젝트 신뢰, 프로젝트 MCP 승인, OAuth, 다시 로드, 재시작, 또는 비슷한 호스트 소유 동작이 남아 있고 운영자가 이를 완료할 수 없습니다.

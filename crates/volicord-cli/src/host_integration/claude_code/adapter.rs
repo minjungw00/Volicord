@@ -847,7 +847,13 @@ mod tests {
                 "claude-code"
             ]))
         );
-        assert!(server.get("env").is_none());
+        assert_eq!(
+            server.get("env"),
+            Some(&serde_json::json!({
+                "VOLICORD_HOME": "${VOLICORD_HOME}"
+            }))
+        );
+        assert!(server.get("env_vars").is_none());
         assert!(!text.contains("int_alpha"));
         assert!(!text.contains("project_alpha"));
         assert!(!text.contains("/runtime"));
@@ -1002,6 +1008,7 @@ mod tests {
 
         let migrated = fs::read_to_string(repo.join(".mcp.json"))?;
         assert!(migrated.contains("--discover-repository"));
+        assert!(migrated.contains("${VOLICORD_HOME}"));
         assert!(!migrated.contains("--connection"));
         assert!(!migrated.contains("int_alpha"));
         let again = adapter.plan(HostPlanRequest {
@@ -1009,6 +1016,108 @@ mod tests {
             ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
         })?;
         assert_eq!(again.change, PlannedChange::Noop);
+        Ok(())
+    }
+
+    #[test]
+    fn stored_discovery_without_runtime_home_reference_migrates_with_v1_fingerprint(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-discovery-forwarding-migration")?;
+        let mut legacy =
+            ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::ClaudeCode);
+        legacy.env.clear();
+        let legacy_fingerprint = managed_fingerprint(
+            HostKind::ClaudeCode,
+            HostScope::Project,
+            DEFAULT_SERVER_NAME,
+            &legacy,
+        );
+        fs::write(
+            repo.join(".mcp.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "mcpServers": {
+                    "volicord": legacy.to_json_value()
+                }
+            }))? + "\n",
+        )?;
+        let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
+
+        let migration = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&legacy_fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(migration.change, PlannedChange::Update);
+        assert!(migration.conflicts.is_empty());
+        adapter.apply(&migration)?;
+
+        let migrated: Value = serde_json::from_str(&fs::read_to_string(repo.join(".mcp.json"))?)?;
+        assert_eq!(
+            migrated["mcpServers"]["volicord"]["env"]["VOLICORD_HOME"],
+            "${VOLICORD_HOME}"
+        );
+        let again = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&migration.fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(again.change, PlannedChange::Noop);
+        Ok(())
+    }
+
+    #[test]
+    fn project_discovery_rejects_injected_environment_shapes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let cases = [
+            (
+                "literal-home",
+                serde_json::json!({"VOLICORD_HOME": "/tmp/injected"}),
+                None,
+            ),
+            (
+                "extra-env",
+                serde_json::json!({
+                    "VOLICORD_HOME": "${VOLICORD_HOME}",
+                    "API_TOKEN": "injected"
+                }),
+                None,
+            ),
+            (
+                "forwarded-env",
+                serde_json::json!({"VOLICORD_HOME": "${VOLICORD_HOME}"}),
+                Some(serde_json::json!(["VOLICORD_HOME"])),
+            ),
+        ];
+
+        for (name, env, env_vars) in cases {
+            let repo = temp_dir(&format!("claude-project-env-reject-{name}"))?;
+            let mut server = serde_json::json!({
+                "command": "volicord",
+                "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"],
+                "env": env,
+            });
+            if let Some(env_vars) = env_vars {
+                server["env_vars"] = env_vars;
+            }
+            fs::write(
+                repo.join(".mcp.json"),
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "mcpServers": {"volicord": server}
+                }))? + "\n",
+            )?;
+            let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
+
+            let plan = adapter.plan(request(
+                HostScope::Project,
+                Some(&repo),
+                Path::new("ignored"),
+            ))?;
+
+            assert_eq!(plan.change, PlannedChange::Noop, "{name}");
+            assert_eq!(
+                plan.conflicts[0].kind,
+                HostConflictKind::UnmanagedNameCollision,
+                "{name}"
+            );
+        }
         Ok(())
     }
 
@@ -1078,7 +1187,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_intent_uses_path_command_and_no_runtime_home(
+    fn shared_intent_uses_path_command_and_parent_runtime_home_reference(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("claude-project-path")?;
         let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(Vec::new()));
@@ -1100,8 +1209,11 @@ mod tests {
                 "claude-code"
             ]
         );
-        assert!(!plan.entry.env.contains_key("VOLICORD_HOME"));
-        assert!(plan.entry.env.is_empty());
+        assert_eq!(
+            plan.entry.env.get("VOLICORD_HOME").map(String::as_str),
+            Some("${VOLICORD_HOME}")
+        );
+        assert!(plan.entry.env_vars.is_empty());
         assert!(!plan.entry.args.iter().any(|arg| arg == "int_alpha"));
         Ok(())
     }

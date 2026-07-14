@@ -50,7 +50,7 @@ volicord --version
 ### 2. Product Repository 연결
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 Claude Code는 `--host claude-code`를 사용합니다. 예시 경로는 에이전트가 작업할
@@ -59,6 +59,10 @@ Claude Code는 `--host claude-code`를 사용합니다. 예시 경로는 에이�
 이 명령은 로컬 Volicord 상태를 준비하고 프로젝트 범위 호스트 설정 파일을 씁니다.
 출력의 `Next` 단계를 따릅니다. 호스트 재시작이나 다시 불러오기, 프로젝트 신뢰,
 MCP 승인이 더 필요할 수 있습니다.
+
+이 공유 설정은 저장소 설정에 머신 로컬 Runtime Home을 내장하지 않습니다. init이
+선택한 것과 같은 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 제공하는 환경에서
+호스트를 시작해야 합니다. 생성된 호스트 항목은 그 값을 MCP 자식 프로세스에 전달합니다.
 
 이후 연결을 검증합니다.
 

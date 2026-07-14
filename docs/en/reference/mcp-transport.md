@@ -104,18 +104,28 @@ project binding:
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-Generated shared project configuration uses neither binding ID nor local
-environment. Its complete process descriptor is one of:
+Generated shared project configuration uses neither binding ID nor a literal
+local Runtime Home path. Its command and arguments are one of:
 
 ```text
 volicord mcp --stdio --discover-repository --host codex
 volicord mcp --stdio --discover-repository --host claude-code
 ```
 
-The shared command must be the PATH-resolved name `volicord`; an absolute
-command, extra connection/project arguments, Runtime Home, managed-launch
+The shared command must be the PATH-resolved name `volicord`. The same entry
+must carry exactly one clone-portable Runtime Home forwarding directive:
+
+- Codex `.codex/config.toml` uses `env_vars = ["VOLICORD_HOME"]` to allow the
+  host to forward the same-named value from its launch environment.
+- Claude Code `.mcp.json` uses
+  `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}` to forward that value through
+  the host's project-configuration placeholder.
+
+Neither form embeds a Runtime Home path. An absolute command, extra
+connection/project arguments, a literal Runtime Home path, managed-launch
 markers, secret-like environment keys, and every other environment entry are
-invalid. Codex verification treats any deviation from this exact project
+invalid. Codex and Claude Code verification treat a missing forwarding
+directive or any other deviation from the exact host-specific project
 descriptor as configuration drift. Personal/user-scoped Codex bindings retain
 the local managed-launch marker contract described below.
 
@@ -190,8 +200,11 @@ Local HTTP serve command-line behavior:
   such as `-p 127.0.0.1:8765:8765`. It is not valid for native local runs and
   is not a public host-interface or remote serving option.
 - `--listen` and `--container-listen` are mutually exclusive.
-- `--home PATH` selects the Runtime Home for the process. Without `--home`, the
-  shared `VOLICORD_HOME` and platform default Runtime Home resolution apply.
+- `--home PATH` selects the Runtime Home for the process. Outside
+  repository-discovery mode, omitting `--home` uses the shared `VOLICORD_HOME`
+  and then the platform default Runtime Home resolution. Repository-discovery
+  mode instead requires a forwarded, nonempty, absolute `VOLICORD_HOME` and
+  never substitutes the platform default.
 - `--connection <connection_id>` binds the server to one stored Agent
   Connection. Without it, startup succeeds only when exactly one enabled Agent
   Connection with connected projects matches the optional serve project
@@ -328,17 +341,23 @@ Supported operator and Runtime Home inputs:
 
 - `VOLICORD_HOME`
 - `VOLICORD_LOCAL_WEB_CONSENT`
-- standard platform home variables when `VOLICORD_HOME` is absent: `HOME`,
-  `USERPROFILE`, and the `HOMEDRIVE` plus `HOMEPATH` pair
+- standard platform home variables in non-discovery modes when
+  `VOLICORD_HOME` is absent: `HOME`, `USERPROFILE`, and the `HOMEDRIVE` plus
+  `HOMEPATH` pair
 
 `VOLICORD_HOME` selects the Runtime Home for the process. A personal, local, or
-user-wide host overlay may write it when needed. A shared repository-visible
-Codex or Claude Code MCP entry must have no environment map, so discovery mode
-receives Runtime Home selection only from the host process's inherited local
-environment or the platform default. `VOLICORD_HOME` does not select a project,
-connection intent, actor provenance, operation category, connection mode, or
-host trust state. The stdio process and `--check` use it before entering startup
-validation. Help and version modes do not use it.
+user-wide managed host overlay writes the absolute Runtime Home selected by the
+administrative setup that created it. A shared repository-visible entry cannot
+embed that local path: its host-specific forwarding directive passes the
+launching host process's `VOLICORD_HOME` into the child. Repository-discovery
+mode requires that forwarded value to be present, nonempty, and absolute and
+never substitutes the platform default. The launching host environment
+therefore must provide the same absolute local Runtime Home selected when that
+clone was initialized.
+`VOLICORD_HOME` does not select a project, connection intent, actor provenance,
+operation category, connection mode, or host trust state. The stdio process and
+`--check` use it before entering startup validation. Help and version modes do
+not use it.
 
 `VOLICORD_LOCAL_WEB_CONSENT=0`, `false`, `off`, or `disabled` disables the
 stdio local web consent listener. Other values do not change the listener
@@ -386,15 +405,21 @@ variable is a supported operator setting.
 Current MCP Runtime Home resolution:
 
 1. A present but empty `VOLICORD_HOME` is an error.
-2. An absolute `VOLICORD_HOME` is used as supplied.
-3. A relative `VOLICORD_HOME` is resolved against the process current working
-   directory without requiring the path to exist.
-4. When `VOLICORD_HOME` is absent, derive the default user home from the
-   platform home variables and append `.volicord`. Non-Windows platforms try
-   `HOME`, then `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`. Native Windows
-   tries `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`, then `HOME` when it is
-   not a WSL-style mount path.
-5. Do not require canonicalization before startup validation.
+2. In repository-discovery mode, an absent or relative `VOLICORD_HOME` is an
+   error. Together with the empty-value rule above, this requires a present,
+   nonempty, absolute value before platform-default Runtime Home substitution,
+   registry access, or repository discovery.
+3. An absolute `VOLICORD_HOME` is used as supplied.
+4. Outside repository-discovery mode, a relative `VOLICORD_HOME` is resolved
+   against the process current working directory without requiring the path to
+   exist.
+5. Outside repository-discovery mode, when `VOLICORD_HOME` is absent, derive
+   the default user home from the platform home variables and append
+   `.volicord`. Non-Windows platforms try `HOME`, then `USERPROFILE`, then
+   `HOMEDRIVE` plus `HOMEPATH`. Native Windows tries `USERPROFILE`, then
+   `HOMEDRIVE` plus `HOMEPATH`, then `HOME` when it is not a WSL-style mount
+   path.
+6. Do not require canonicalization before startup validation.
 
 ## Startup Validation
 
@@ -417,15 +442,18 @@ Startup validation requires:
 Repository-discovery mode performs these additional fail-closed steps before
 the shared validation above:
 
-1. Canonicalize the process current directory and walk its ancestors to the
+1. Require an explicitly forwarded, nonempty, absolute `VOLICORD_HOME`. An
+   absent, empty, or relative value fails startup before platform-default
+   substitution or registry access.
+2. Canonicalize the process current directory and walk its ancestors to the
    nearest valid Git worktree root, including supported gitdir-file and linked
    worktree layouts.
-2. Require that exact canonical root to be a project registered in the selected
+3. Require that exact canonical root to be a project registered in the selected
    local Runtime Home.
-3. Select enabled connections whose host matches `--host`, whose intent is
+4. Select enabled connections whose host matches `--host`, whose intent is
    `shared`, whose host scope is project, and whose Connection Projects contain
    that project.
-4. Require exactly one match and narrow the process allowlist to that project.
+5. Require exactly one match and narrow the process allowlist to that project.
 
 No match fails with `REPOSITORY_DISCOVERY_CONNECTION_NOT_FOUND`; multiple
 matches fail with `REPOSITORY_DISCOVERY_CONNECTION_AMBIGUOUS`; an unregistered

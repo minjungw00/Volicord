@@ -782,9 +782,23 @@ fn init_profile_plan(
             .map_err(ConnectionCommandError::runtime)?,
         "volicord command",
     )?;
-    let volicord_command = existing
-        .map(|profile| PathBuf::from(&profile.volicord_command))
-        .unwrap_or_else(|| current_exe.clone());
+    let existing_volicord_command = existing.and_then(|profile| {
+        let command = Path::new(&profile.volicord_command);
+        command
+            .is_absolute()
+            .then(|| {
+                canonical_existing_executable(command, "installation profile volicord command")
+            })
+            .and_then(Result::ok)
+    });
+    let volicord_command_source = if existing_volicord_command.is_some() {
+        "existing_profile"
+    } else if existing.is_some() {
+        "current_exe_repair"
+    } else {
+        "current_exe"
+    };
+    let volicord_command = existing_volicord_command.unwrap_or_else(|| current_exe.clone());
     let volicord_mcp_command = match &parsed.mcp_command {
         Some(path) => canonical_existing_executable(path, "MCP launch command")?,
         None => existing
@@ -797,7 +811,7 @@ fn init_profile_plan(
         .unwrap_or_else(|| runtime_home.join("bin"));
     let metadata_json = serde_json::to_string(&json!({
         "created_by": INIT_METADATA_CREATED_BY,
-        "volicord_command_source": if existing.is_some() { "existing_profile" } else { "current_exe" },
+        "volicord_command_source": volicord_command_source,
         "volicord_mcp_command_source": if parsed.mcp_command.is_some() {
             "explicit"
         } else if existing.is_some() {
@@ -2658,10 +2672,12 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .unwrap_or("volicord-test")
         ));
+        let volicord_command = runtime_home.join("bin").join("volicord");
         Ok(plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind,
             profile: init_mode.integration_profile(),
             runtime_home: &runtime_home,
+            volicord_command: &volicord_command,
             repo_root,
             connection_id,
             guard_installation_id,
@@ -2997,8 +3013,24 @@ mod tests {
         assert!(script_is_executable(&dispatch_wrapper_path));
         let pre_tool_wrapper_path = repo.join(".codex/hooks/volicord-pre-tool.sh");
         let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
+        let selected_runtime_home = repo.with_file_name(format!(
+            "{}-runtime-home",
+            repo.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("volicord-test")
+        ));
         assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains("exec volicord _hook pre-tool"));
+        assert!(pre_tool_wrapper.contains(&format!(
+            "exec {} _hook pre-tool",
+            shell_word(&path_text(
+                &selected_runtime_home.join("bin").join("volicord")
+            ))
+        )));
+        assert!(pre_tool_wrapper.contains(&format!(
+            "VOLICORD_HOME={}",
+            shell_word(&path_text(&selected_runtime_home))
+        )));
+        assert!(pre_tool_wrapper.contains("export VOLICORD_HOME"));
         assert!(pre_tool_wrapper.contains(&format!("--repo {}", shell_word(&path_text(&repo)))));
         assert!(pre_tool_wrapper.contains("--connection conn_alpha"));
         assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));
@@ -3056,17 +3088,26 @@ mod tests {
 
         let repo = temp_dir("codex dispatch repo spaces")?;
         init_real_git_repo(&repo)?;
-        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
-        apply_guard_integration(plan_guard_integration_for_test(
-            HostKind::Codex,
-            InitMode::Detective,
-            &repo,
-            "conn_alpha",
-            "guard_installation_alpha",
-            &entry,
-        )?)?;
         let bin_dir = repo.join("fake bin");
-        write_fake_guard_volicord(&bin_dir)?;
+        let fake_volicord = write_fake_guard_volicord(&bin_dir)?;
+        let runtime_home = repo.with_file_name(format!(
+            "{}-runtime-home",
+            repo.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("volicord-test")
+        ));
+        let entry = ManagedServerEntry::new("conn_alpha", Path::new("volicord"), None);
+        apply_guard_integration(plan_guard_integration(GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Detective,
+            runtime_home: &runtime_home,
+            volicord_command: &fake_volicord,
+            repo_root: &repo,
+            connection_id: "conn_alpha",
+            guard_installation_id: "guard_installation_alpha",
+            mcp_entry: &entry,
+            connection_intent: ConnectionIntent::Shared,
+        })?)?;
         let subdir = repo.join("nested dir").join("inner");
         fs::create_dir_all(&subdir)?;
         let hooks: Value =
@@ -3210,8 +3251,24 @@ mod tests {
         assert!(!settings_text.contains("volicord _hook "));
         let pre_tool_wrapper_path = repo.join(".claude/hooks/volicord-pre-tool.sh");
         let pre_tool_wrapper = fs::read_to_string(&pre_tool_wrapper_path)?;
+        let selected_runtime_home = repo.with_file_name(format!(
+            "{}-runtime-home",
+            repo.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("volicord-test")
+        ));
         assert!(pre_tool_wrapper.contains(HOOK_WRAPPER_MARKER));
-        assert!(pre_tool_wrapper.contains("exec volicord _hook pre-tool"));
+        assert!(pre_tool_wrapper.contains(&format!(
+            "exec {} _hook pre-tool",
+            shell_word(&path_text(
+                &selected_runtime_home.join("bin").join("volicord")
+            ))
+        )));
+        assert!(pre_tool_wrapper.contains(&format!(
+            "VOLICORD_HOME={}",
+            shell_word(&path_text(&selected_runtime_home))
+        )));
+        assert!(pre_tool_wrapper.contains("export VOLICORD_HOME"));
         assert!(pre_tool_wrapper.contains("--host claude-code"));
         assert!(pre_tool_wrapper.contains("--host-output claude-code"));
         assert!(pre_tool_wrapper.contains("--guard-installation guard_installation_alpha"));

@@ -217,10 +217,13 @@ pub(super) fn mcp_launch_from_host_plan(plan: &HostPlan, repo_root: Option<&Path
 }
 
 fn apply_mcp_launch_context(command: &mut Command, launch: &McpLaunch, runtime_home: &Path) {
-    command.env(VOLICORD_HOME, runtime_home);
     for (key, value) in &launch.env {
         command.env(key, value);
     }
+    // Host-native repository projections may contain a portable environment
+    // reference. Verification always binds the selected local Runtime Home
+    // explicitly and must not launch with that unevaluated host placeholder.
+    command.env(VOLICORD_HOME, runtime_home);
     if let Some(cwd) = &launch.cwd {
         command.current_dir(cwd);
     }
@@ -441,4 +444,30 @@ fn status_text(status_code: Option<i32>) -> String {
 
 fn compact_stream(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verification_launch_overrides_host_placeholder_with_selected_runtime_home() {
+        let launch = McpLaunch {
+            command: PathBuf::from("volicord"),
+            args: Vec::new(),
+            env: BTreeMap::from([(VOLICORD_HOME.to_owned(), "${VOLICORD_HOME}".to_owned())]),
+            cwd: None,
+        };
+        let mut command = Command::new("volicord");
+
+        apply_mcp_launch_context(&mut command, &launch, Path::new("/selected/runtime-home"));
+
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(name, _)| *name == VOLICORD_HOME)
+                .and_then(|(_, value)| value),
+            Some(std::ffi::OsStr::new("/selected/runtime-home"))
+        );
+    }
 }

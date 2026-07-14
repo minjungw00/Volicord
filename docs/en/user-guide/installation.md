@@ -2,7 +2,7 @@
 
 This tutorial prepares the local `volicord` executable. The ordinary first-run
 path records the installation profile while running
-`volicord init --host HOST --repo PATH --profile record` in the
+`volicord init --shared --host HOST --repo PATH --profile record` in the
 [Quickstart](quickstart.md). Use `volicord doctor` when you need to inspect the
 saved installation profile.
 
@@ -189,7 +189,7 @@ volicord init --help
 ```
 
 For the ordinary first repository connection, continue with
-`volicord init --host HOST --repo PATH --profile record` in the
+`volicord init --shared --host HOST --repo PATH --profile record` in the
 [Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
 installation profile while it connects the selected Product Repository, writes
 project-scoped MCP configuration, and records integration status.
@@ -326,7 +326,7 @@ network API, SaaS endpoint, multi-user server, or security boundary.
 Installing the binary alone does not register a Product Repository and does not
 install host configuration. Project registration happens when you run
 `volicord project use` or a command such as
-`volicord init --host HOST --repo PATH --profile record` or
+`volicord init --shared --host HOST --repo PATH --profile record` or
 `volicord connection add` from inside a Git repository.
 
 Project naming and internal identity behavior are owned by the
@@ -338,7 +338,7 @@ Internal identities are stored by Volicord and are not first-time setup inputs.
 Connect a host to the Product Repository:
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
@@ -346,6 +346,11 @@ you want the agent to work. Use `--profile detective` only when the selected hos
 platform, and repository configuration satisfy the verified detective
 prerequisites; native Windows uses `--profile record` because detective is not
 supported there.
+
+This shared setup requires the host launch environment to provide the same
+nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible
+configuration forwards that value and does not embed a machine-local Runtime
+Home path.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../user-guide/agent-host-setup.md).

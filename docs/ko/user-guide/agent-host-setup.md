@@ -12,7 +12,7 @@ Codex나 Claude Code 에이전트 연결을 설정, 검증, 변경, 제거할 �
 `volicord`를 설치한 뒤 Product Repository 연결을 초기화합니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 Claude Code는 `--host claude-code`를 사용합니다. `<repo>`는 에이전트가 작업할 Git
@@ -21,6 +21,10 @@ Claude Code는 `--host claude-code`를 사용합니다. `<repo>`는 에이전트
 이 명령은 런타임 홈과 설치 프로필을 만들거나 재사용하고, 저장소를 등록하고, 에이전트
 연결을 만들며, 프로젝트 범위 MCP 설정과 지침을 씁니다. 생성된 설정은 선택한
 연결을 위한 `volicord mcp --stdio`를 시작합니다.
+
+이 일반 경로는 공유 저장소 설정을 사용합니다. init이 선택한 것과 같은 비어 있지 않은
+절대 경로 `VOLICORD_HOME`을 제공하는 환경에서 선택한 호스트를 시작해야 합니다.
+생성된 항목은 호스트의 값을 전달하며 머신 로컬 Runtime Home 경로를 내장하지 않습니다.
 
 설정 과정에서 Product Repository 안에도 파일을 씁니다. 저장소의 일반 설정 정책에
 따라 파일을 검토합니다.
@@ -75,7 +79,7 @@ Code 세션 안에서 도구 가용성을 확인합니다. 도구가 없으면 �
 일반적인 프로젝트 범위 경로는 아래와 같습니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 volicord connection verify codex --shared --repo "<repo>"
 ```
 
@@ -108,7 +112,7 @@ Codex 소유 도구 승인 설정은 Volicord 관리 MCP 설정과 함께 있을
 일반적인 프로젝트 범위 경로는 아래와 같습니다.
 
 ```sh
-volicord init --host claude-code --repo "<repo>" --profile record
+volicord init --shared --host claude-code --repo "<repo>" --profile record
 volicord connection verify claude-code --shared --repo "<repo>"
 ```
 
@@ -151,7 +155,7 @@ Windows 네이티브 환경에서는 `--profile record`를 사용합니다. 탐�
 말고 같은 호스트와 저장소에 대해 탐지 초기화를 다시 실행합니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile detective
+volicord init --shared --host codex --repo "<repo>" --profile detective
 ```
 
 이후 호스트 재시작, 신뢰, 승인 단계를 완료하고 검증을 다시 실행합니다. 각 진단 값은

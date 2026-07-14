@@ -42,6 +42,7 @@ pub(super) fn inspection_is_volicord_managed(inspection: &ClaudeMcpInspection) -
         command: command.clone(),
         args: args.clone(),
         env: inspection.env.clone(),
+        env_vars: Vec::new(),
     })
 }
 
@@ -131,6 +132,7 @@ pub(super) fn fingerprint_from_claude_inspection(
                 command: inspection.command.clone()?,
                 args: inspection.args.clone()?,
                 env: inspection.env.clone(),
+                env_vars: Vec::new(),
             },
         ));
     }
@@ -142,6 +144,7 @@ pub(super) fn fingerprint_from_claude_inspection(
             command: inspection.command.clone()?,
             args: inspection.args.clone()?,
             env: inspection.env.clone(),
+            env_vars: Vec::new(),
         },
     ))
 }

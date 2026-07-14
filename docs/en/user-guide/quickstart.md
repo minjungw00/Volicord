@@ -13,7 +13,7 @@ semantics.
 For Codex, run:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 `<repo>` is the Git repository where the agent will work. Use
@@ -22,6 +22,11 @@ volicord init --host codex --repo "<repo>" --profile record
 The command creates or reuses local Volicord state, registers the repository,
 and writes project-scoped MCP configuration and guidance. Generated host
 configuration starts `volicord mcp --stdio` for this connection.
+
+Because this path creates shared repository configuration, start the host with
+the same nonempty, absolute `VOLICORD_HOME` selected by init. The generated
+entry forwards that host value; it does not embed a machine-local Runtime Home
+path or fall back to a platform default when the value is absent.
 
 Read the command's `Next` section. It tells you which host-owned action remains,
 such as restarting the host, trusting the project, or approving the MCP entry.

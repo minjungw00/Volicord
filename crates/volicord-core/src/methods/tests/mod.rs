@@ -1291,11 +1291,11 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     for (capability_phase, command_name, policy_key) in phases {
         let wrapper_path = hooks_dir.join(format!("volicord-{command_name}.sh"));
         let wrapper_command = format!(
-            "volicord _hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
+            "/opt/volicord _hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
             path_text(&repo_root),
         );
         let wrapper_text = format!(
-            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER\n# host_kind=codex\n# phase={policy_key}\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\nexec {wrapper_command}\n"
+            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER\n# host_kind=codex\n# phase={policy_key}\n# purpose=detective_guard\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME=/runtime/home\nVOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1\nexport VOLICORD_HOME\nexport VOLICORD_MANAGED_PROCESS_BINDING\nexec {wrapper_command}\n"
         );
         fs::write(&wrapper_path, &wrapper_text)?;
         set_test_executable(&wrapper_path)?;
@@ -1309,6 +1309,7 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             "managed_script_command": wrapper_command,
             "host_kind": "codex",
             "phase": policy_key,
+            "purpose": "detective_guard",
             "connection_id": CONNECTION_ID,
             "guard_installation_id": "guard_installation",
             "policy_hash": "sha256:guardedfixture",

@@ -15,7 +15,7 @@ runtime boundaries belong to
 Install `volicord`, then initialize the Product Repository connection:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 Use `--host claude-code` for Claude Code. `<repo>` is the Git repository where
@@ -25,6 +25,11 @@ The command creates or reuses the Runtime Home and installation profile,
 registers the repository, creates the Agent Connection, and writes
 project-scoped MCP configuration and guidance. Generated configuration starts
 `volicord mcp --stdio` for the selected connection.
+
+This ordinary path uses shared repository configuration. Start the selected
+host with the same nonempty, absolute `VOLICORD_HOME` selected by init. The
+generated entry forwards that host value and does not embed a machine-local
+Runtime Home path.
 
 Setup also writes files inside the Product Repository. Review them under the
 repository's normal configuration policy:
@@ -81,7 +86,7 @@ configuration by hand.
 The ordinary project-scoped path is:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 volicord connection verify codex --shared --repo "<repo>"
 ```
 
@@ -114,7 +119,7 @@ when verification reports a mismatch.
 The ordinary project-scoped path is:
 
 ```sh
-volicord init --host claude-code --repo "<repo>" --profile record
+volicord init --shared --host claude-code --repo "<repo>" --profile record
 volicord connection verify claude-code --shared --repo "<repo>"
 ```
 
@@ -158,7 +163,7 @@ If Detective setup reports an unsafe or missing hook path, rerun Detective init
 for the same host and repository rather than hand-editing generated wrappers:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile detective
+volicord init --shared --host codex --repo "<repo>" --profile detective
 ```
 
 Then complete any host restart, trust, or approval step and rerun verification.

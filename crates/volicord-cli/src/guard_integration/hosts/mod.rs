@@ -23,6 +23,7 @@ pub(crate) struct HostGeneratedFilesRequest<'a> {
     pub(crate) host_kind: HostKind,
     pub(crate) profile: IntegrationProfile,
     pub(crate) connection_intent: ConnectionIntent,
+    pub(crate) runtime_home: &'a Path,
     pub(crate) repo_root: &'a Path,
     pub(crate) mcp_entry: &'a ManagedServerEntry,
     pub(crate) commands: &'a BTreeMap<String, GuardCommandSpec>,
@@ -38,6 +39,7 @@ pub(crate) fn plan_host_generated_files(
         host_kind,
         profile,
         connection_intent,
+        runtime_home,
         repo_root,
         mcp_entry,
         commands,
@@ -52,7 +54,12 @@ pub(crate) fn plan_host_generated_files(
                 files.push(plan_codex_dispatch_wrapper_file(repo_root)?);
             }
             files.extend(plan_hook_wrapper_files(
-                repo_root, host_kind, commands, phases, purpose,
+                repo_root,
+                runtime_home,
+                host_kind,
+                commands,
+                phases,
+                purpose,
             )?);
             files.push(codex::plan_codex_hook_file(
                 repo_root,
@@ -73,7 +80,12 @@ pub(crate) fn plan_host_generated_files(
             }
             if !phases.is_empty() {
                 files.extend(plan_hook_wrapper_files(
-                    repo_root, host_kind, commands, phases, purpose,
+                    repo_root,
+                    runtime_home,
+                    host_kind,
+                    commands,
+                    phases,
+                    purpose,
                 )?);
                 files.push(claude_code::plan_claude_project_settings_file(
                     repo_root,

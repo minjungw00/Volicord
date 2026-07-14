@@ -175,8 +175,11 @@ Requirement summary:
   <connection_id>` arguments.
 - Shared Codex and Claude Code project configuration must use the exact
   PATH-resolved `volicord mcp --stdio --discover-repository --host <host>`
-  descriptor and must not embed local IDs, an absolute command, a Runtime Home
-  path, or an environment map.
+  descriptor and must not embed local IDs, an absolute command, a literal
+  Runtime Home path, or unrelated local-only environment entries. It must
+  contain exactly one host-native forwarding form: Codex
+  `env_vars = ["VOLICORD_HOME"]` or
+  Claude Code `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`.
 - User-managed generic host configuration remains user-managed and has no
   host-specific observable loadability gate.
 
@@ -191,7 +194,13 @@ Before installation:
   WSL UNC paths such as `\\wsl$\...`, and WSL mount-style paths such as
   `/mnt/c/...` are not supported native Windows Runtime Home paths.
 - Ensure the selected user can create the directory or write into it when running `volicord init`, `volicord project use`, `volicord connection add`, or `volicord connection verify`.
-- Ensure host processes that start `volicord mcp --stdio` receive the same Runtime Home selection when the default `$HOME/.volicord` is not the intended location. Shared project host configuration must not carry a personal Runtime Home path, so each user must provide a non-default Runtime Home through their own local init or environment.
+- Ensure host processes that start shared repository discovery always receive
+  the intended Runtime Home as an explicit, nonempty, absolute
+  `VOLICORD_HOME`, including when that location is `$HOME/.volicord`. Shared
+  project host configuration must not carry a personal Runtime Home path, so
+  each user supplies the value through their own local init and host
+  environment. Other explicit-binding modes retain their owner-defined normal
+  Runtime Home selection rules.
 
 Runtime Home selection and exact creation behavior are owned by [Administrative CLI](admin-cli.md) and [MCP Transport](mcp-transport.md). Runtime location and separation rules are owned by [Runtime Boundaries](runtime-boundaries.md).
 
@@ -259,9 +268,9 @@ Baseline host and connection-intent requirements:
 | Host | Connection intent | Environment prerequisite |
 |---|---|---|
 | Codex | `personal` | `CODEX_HOME` or `HOME` must identify the user Codex configuration location; `codex` must be available on `PATH` for the availability check. |
-| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the Codex host must resolve `volicord` through `PATH`, start `mcp --stdio --discover-repository --host codex` from inside the clone, and select the intended local Runtime Home through inherited environment/default rules; the shared entry has no local IDs or environment map; Codex project trust may still be required. |
+| Codex | `shared` | The selected `Product Repository` must be writable when applying `.codex/config.toml`; the Codex host must resolve `volicord` through `PATH`, start `mcp --stdio --discover-repository --host codex` from inside the clone, and provide the init-selected nonempty, absolute `VOLICORD_HOME`; the shared entry has no local IDs or literal Runtime Home path and forwards the host value through `env_vars = ["VOLICORD_HOME"]`; Codex project trust may still be required. |
 | Claude Code | `personal`, `global` | The `claude` executable must be launchable by the administrative process so Volicord can use `claude mcp` commands. |
-| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the Claude Code host must resolve `volicord` through `PATH`, start `mcp --stdio --discover-repository --host claude-code` from inside the clone, and select the intended local Runtime Home through inherited environment/default rules; the shared entry has no local IDs or environment map; project MCP approval may still be required. |
+| Claude Code | `shared` | The selected `Product Repository` must be writable when applying `.mcp.json`; the Claude Code host must resolve `volicord` through `PATH`, start `mcp --stdio --discover-repository --host claude-code` from inside the clone, and provide the init-selected nonempty, absolute `VOLICORD_HOME`; the shared entry has no local IDs or literal Runtime Home path and forwards the host value through `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`; project MCP approval may still be required. |
 | Generic | user-managed | Volicord does not write generic MCP host configuration. A supported Agent Connection must already exist before an external host can be configured manually. The external host remains user-managed and unverified until loaded and checked by a host-specific mechanism. |
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
@@ -287,8 +296,11 @@ The host process environment must provide:
 
 - an executable `volicord` command according to the configured command path or `PATH`
 - `VOLICORD_HOME` when the intended Runtime Home is not the default home-derived
-  location; personal/local configuration may carry it, while a shared
-  repository entry relies on the host's inherited local environment
+  location; personal/local configuration may carry it
+- for every shared repository-discovery launch, a present, nonempty, absolute
+  `VOLICORD_HOME` matching the Runtime Home selected by init; the portable host
+  entry forwards this value but does not embed its path, and startup does not
+  substitute the platform default
 - local filesystem access to the Runtime Home and each explicitly allowed `Product Repository`
 
 `volicord mcp --check --connection <connection_id>` is a startup validation check for that process binding. It is not complete host integration verification. Complete host verification requires the administrative result gates defined by [Administrative CLI](admin-cli.md).
@@ -313,6 +325,8 @@ Stop before installation when any of these conditions apply:
   same-directory namespace operation, or cannot reproduce the required
   existing-file metadata.
 - Shared-intent host configuration cannot start `volicord mcp --stdio` from the host environment's `PATH`.
+- A shared repository-discovery host environment cannot provide the
+  init-selected `VOLICORD_HOME` as a present, nonempty, absolute value.
 - Codex or Claude Code is required for the selected host path but the administrative compatibility check cannot launch or interpret the host.
 - Native Windows setup requests `--profile detective`.
 - A required host trust, project trust, project MCP approval, OAuth, reload, restart, or comparable host-owned action remains and the operator cannot complete it.

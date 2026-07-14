@@ -21,8 +21,10 @@ mod unix {
     use serde_json::Value;
     use volicord_mcp::{McpAdapter, McpConnectionContext};
     use volicord_store::{
-        agent_connections::{agent_connection_record_read_only, VERIFIED_STATUS_COMPLETE},
-        bootstrap::list_projects,
+        agent_connections::{
+            agent_connection_record_read_only, CONNECTION_MODE_WORKFLOW, VERIFIED_STATUS_COMPLETE,
+        },
+        bootstrap::{list_projects, write_installation_profile, InstallationProfileRegistration},
         diagnostics::{
             diagnostics_db_path, record_diagnostic_event, start_diagnostic_session,
             DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
@@ -1176,6 +1178,21 @@ mod unix {
         let bin_dir = fixture.runtime_home_path().join("record-final-output-bin");
         write_fake_codex(&bin_dir)?;
         write_volicord_shim(&bin_dir, Path::new(volicord_bin()))?;
+        let selected_volicord = fs::canonicalize(volicord_bin())?;
+        write_installation_profile(
+            fixture.runtime_home_path(),
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: path_text(&selected_volicord),
+                volicord_mcp_command: path_text(&selected_volicord),
+                bin_dir: selected_volicord
+                    .parent()
+                    .ok_or("test Volicord binary should have a parent directory")?
+                    .to_path_buf(),
+                default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
         let path = path_with_prefix(&bin_dir)?;
         let init = Command::new(volicord_bin())
             .args([
@@ -1316,6 +1333,7 @@ mod unix {
         )?;
         let codex_mcp = fs::read_to_string(fixture.repo_root.join(".codex/config.toml"))?;
         assert!(!codex_mcp.contains("[mcp_servers.volicord.env]"));
+        assert!(codex_mcp.contains("env_vars = [\"VOLICORD_HOME\"]"));
         assert!(!codex_mcp.contains("--connection"));
         assert!(!codex_mcp.contains(fixture.runtime_home_arg()));
         assert_file_contains(&fixture.repo_root.join(".codex/hooks.json"), "PreToolUse")?;
@@ -1415,6 +1433,11 @@ mod unix {
         assert!(claude_mcp.contains("\"claude-code\""));
         assert!(!claude_mcp.contains("\"--connection\""));
         assert!(!claude_mcp.contains(fixture.runtime_home_arg()));
+        let claude_mcp_json: Value = serde_json::from_str(&claude_mcp)?;
+        assert_eq!(
+            claude_mcp_json["mcpServers"]["volicord"]["env"],
+            serde_json::json!({"VOLICORD_HOME": "${VOLICORD_HOME}"})
+        );
         assert_file_contains(
             &fixture.repo_root.join(".claude/settings.json"),
             "PreToolUse",
@@ -8223,11 +8246,19 @@ mod unix {
         }
         let wrapper_path = generated_stop_wrapper_path(&fixture.repo_root, host)?;
         let wrapper = fs::read_to_string(&wrapper_path)?;
+        let volicord_command =
+            generated_script_word(path_text(&fs::canonicalize(volicord_bin())?).as_str());
         let expected_command = match profile {
-            IntegrationProfile::Record => "exec volicord _final-output",
-            IntegrationProfile::Detective => "exec volicord _hook stop",
+            IntegrationProfile::Record => format!("exec {volicord_command} _final-output"),
+            IntegrationProfile::Detective => format!("exec {volicord_command} _hook stop"),
         };
-        if !wrapper.contains(expected_command)
+        let runtime_home_assignment = format!(
+            "VOLICORD_HOME={}",
+            generated_script_word(fixture.runtime_home_arg())
+        );
+        if !wrapper.contains(&expected_command)
+            || !wrapper.lines().any(|line| line == runtime_home_assignment)
+            || !wrapper.lines().any(|line| line == "export VOLICORD_HOME")
             || !wrapper.contains(&format!("--integration-profile {}", profile.as_str()))
         {
             return Err(io::Error::other(format!(
@@ -8567,12 +8598,14 @@ mod unix {
             ])),
             "Codex MCP args should use portable repository discovery: {value}"
         );
-        assert!(
-            value
-                .get("env")
-                .is_none_or(|env| env.as_object().is_some_and(serde_json::Map::is_empty)),
-            "Codex repository-visible MCP entry must not carry local env: {value}"
+        assert_eq!(
+            value.get("env_vars"),
+            Some(&serde_json::json!(["VOLICORD_HOME"])),
+            "Codex MCP entry must forward only the selected Runtime Home binding: {value}"
         );
+        assert!(value
+            .get("env")
+            .is_none_or(|env| env.as_object().is_some_and(serde_json::Map::is_empty)));
     }
 
     fn assert_claude_mcp_inspect_output(output: &TimedOutput) {
@@ -8642,6 +8675,18 @@ mod unix {
 
     fn path_text(path: &Path) -> String {
         path.display().to_string()
+    }
+
+    fn generated_script_word(value: &str) -> String {
+        if !value.is_empty()
+            && value.chars().all(|ch| {
+                ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '=')
+            })
+        {
+            value.to_owned()
+        } else {
+            format!("'{}'", value.replace('\'', "'\\''"))
+        }
     }
 
     fn volicord_bin() -> &'static str {

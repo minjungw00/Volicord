@@ -404,6 +404,7 @@ mod tests {
                 "conn_test".to_owned(),
             ],
             env: BTreeMap::from([(key.to_owned(), value.to_owned())]),
+            env_vars: Vec::new(),
         }
     }
 

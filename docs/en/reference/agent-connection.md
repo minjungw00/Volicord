@@ -150,9 +150,14 @@ initialized, or exposed the project configuration.
 For Codex project-scoped MCP configuration, the Volicord-managed identity is
 the `volicord` server name and this exact portable process descriptor:
 `command="volicord"`, arguments
-`mcp --stdio --discover-repository --host codex`, and no environment map.
-Connection IDs, project IDs, an absolute command, Runtime Home paths, and all
-environment keys are invalid in that repository-visible managed entry. Codex
+`mcp --stdio --discover-repository --host codex`, and
+`env_vars = ["VOLICORD_HOME"]`. The forwarding directive is part of the exact
+managed identity but embeds no Runtime Home path. Connection IDs, project IDs,
+an absolute command, Runtime Home literal paths, and every other environment
+key are invalid in that repository-visible managed entry. The launching host
+must provide the clone's init-selected nonempty, absolute `VOLICORD_HOME`;
+repository discovery rejects an absent, empty, or relative value before
+platform-default substitution. Codex
 user-scoped configuration remains a local binding and can carry the selected
 connection and project IDs plus managed-launch environment markers such as
 `VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
@@ -162,9 +167,10 @@ Codex-owned tool approval subtables under that server entry are host policy
 overlay, not Volicord-managed identity. Preserving an accepted
 `tools.<tool>.approval_mode` overlay does not prove host trust, active tool
 exposure, running-session approval, correctness, test sufficiency, human
-review completion, sandboxing, or actor identity. Any deviation from the exact
-project descriptor, or command, argument, or managed-marker drift in a local
-binding, is configuration drift.
+review completion, sandboxing, or actor identity. A missing or changed
+forwarding directive, any other deviation from the exact project descriptor,
+or command, argument, or managed-marker drift in a local binding is
+configuration drift.
 
 Rules:
 
@@ -258,20 +264,25 @@ connection and must not enter cleanup-resume or Doctor pending-cleanup
 handling. Doctor reports an older valid replacement marker so a chained or
 interrupted migration remains visible; init rebinds it before cleanup.
 
-A `shared` primary host file contains only a typed repository-discovery
-descriptor: `volicord mcp --stdio --discover-repository --host codex` for
-Codex, or the same command with `--host claude-code` for Claude Code. It must
-not contain `connection_id`, `project_id`, an absolute executable, Runtime Home
-path, or any environment entry. The descriptor bytes can therefore be reused
-by another clone, but Agent Connection and project identities remain local to
-each Runtime Home.
+A `shared` primary host file contains a typed repository-discovery descriptor:
+`volicord mcp --stdio --discover-repository --host codex` for Codex, or the
+same command with `--host claude-code` for Claude Code. It also contains exactly
+one host-native Runtime Home forwarding form: Codex uses
+`env_vars = ["VOLICORD_HOME"]`, and Claude Code uses
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`. It must not contain
+`connection_id`, `project_id`, an absolute executable, a literal Runtime Home
+path, or another environment entry. The descriptor bytes can therefore be
+reused by another clone, but Agent Connection and project identities remain
+local to each Runtime Home.
 
-At repository-discovery startup, the MCP adapter selects the local Runtime
-Home through the normal process environment/default rules, finds the canonical
-Git worktree root from the host process current directory, looks up that exact
-registered repository root, and requires exactly one enabled `shared`,
-project-scoped Agent Connection for the descriptor host whose Connection
-Projects include that project. It then narrows the session to that one project.
+At repository-discovery startup, the MCP adapter requires forwarded
+`VOLICORD_HOME` to be present, nonempty, and absolute and rejects any other
+shape before platform-default Runtime Home selection. It then finds the
+canonical Git worktree root from the host process current directory, looks up
+that exact registered repository root, and requires exactly one enabled
+`shared`, project-scoped Agent Connection for the descriptor host whose
+Connection Projects include that project. It then narrows the session to that
+one project.
 An unregistered clone, no matching connection, or more than one matching
 connection fails closed with an actionable init, verify, list, or duplicate
 removal instruction. Repository metadata never supplies or derives an internal

@@ -1026,6 +1026,10 @@ const KNOWN_GUARD_OBSERVATION_PHASES: &[&str] = &[
     "stop",
 ];
 
+const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
+const MANAGED_PROCESS_BINDING_ENV: &str = "VOLICORD_MANAGED_PROCESS_BINDING";
+const MANAGED_PROCESS_BINDING_V1: &str = "runtime-home-and-profile-command-v1";
+
 #[derive(Debug, Clone)]
 struct GuardCapabilityFacts {
     expected_policy_hash: Option<String>,
@@ -1740,7 +1744,11 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
     let Some(managed_marker) = file.get("managed_marker").and_then(Value::as_str) else {
         return false;
     };
-    if !text.contains(managed_marker) {
+    if managed_marker != HOOK_WRAPPER_MARKER
+        || !text
+            .lines()
+            .any(|line| line == format!("# {HOOK_WRAPPER_MARKER}"))
+    {
         return false;
     }
     if sha256_text(text) != expected_hash {
@@ -1751,6 +1759,9 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
         Some(_) => return false,
         None => {}
     }
+    if !has_current_managed_process_binding(text) {
+        return false;
+    }
     let Some(expected_command) = file
         .get("managed_script_command")
         .and_then(Value::as_str)
@@ -1758,7 +1769,7 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
     else {
         return false;
     };
-    if !expected_command.contains("volicord _hook ") {
+    if !generated_managed_command_shape_verified(file, expected_command) {
         return false;
     }
     if hook_wrapper_exec_command(text) != Some(expected_command) {
@@ -1767,6 +1778,7 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
     for key in [
         "host_kind",
         "phase",
+        "purpose",
         "connection_id",
         "guard_installation_id",
         "policy_hash",
@@ -1788,6 +1800,174 @@ fn generated_script_verified(file: &Value, text: &str, expected_hash: &str) -> b
         return false;
     }
     true
+}
+
+fn generated_managed_command_shape_verified(file: &Value, command: &str) -> bool {
+    let Some(purpose) = file.get("purpose").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(words) = generated_shell_words(command) else {
+        return false;
+    };
+    if !words
+        .first()
+        .is_some_and(|word| !word.is_empty() && Path::new(word).is_absolute())
+    {
+        return false;
+    }
+    let required_options = [
+        "--repo",
+        "--connection",
+        "--guard-installation",
+        "--host",
+        "--integration-profile",
+        "--policy-hash",
+        "--host-output",
+    ];
+    let argument_start = match purpose {
+        "detective_guard" => {
+            let Some(phase) = file
+                .get("phase")
+                .and_then(Value::as_str)
+                .and_then(managed_script_phase_command_name)
+            else {
+                return false;
+            };
+            if words.get(1).map(String::as_str) != Some("_hook")
+                || words.get(2).map(String::as_str) != Some(phase)
+            {
+                return false;
+            }
+            3
+        }
+        "final_output_authority_disclosure" => {
+            if file.get("phase").and_then(Value::as_str) != Some("stop")
+                || words.get(1).map(String::as_str) != Some("_final-output")
+            {
+                return false;
+            }
+            2
+        }
+        _ => return false,
+    };
+    if words.len() != argument_start + required_options.len() * 2 {
+        return false;
+    }
+    let arguments = &words[argument_start..];
+    required_options.into_iter().all(|option| {
+        arguments
+            .chunks_exact(2)
+            .filter(|pair| pair[0] == option)
+            .count()
+            == 1
+            && arguments
+                .chunks_exact(2)
+                .any(|pair| pair[0] == option && !pair[1].is_empty() && !pair[1].starts_with("--"))
+    })
+}
+
+fn managed_script_phase_command_name(phase: &str) -> Option<&'static str> {
+    match phase {
+        "session_start" => Some("session-start"),
+        "pre_tool" => Some("pre-tool"),
+        "post_tool" => Some("post-tool"),
+        "prompt_capture" => Some("prompt-capture"),
+        "stop" => Some("stop"),
+        _ => None,
+    }
+}
+
+fn generated_shell_words(command: &str) -> Option<Vec<String>> {
+    let mut chars = command.chars().peekable();
+    let mut words = Vec::new();
+    while chars.peek().is_some() {
+        while chars
+            .peek()
+            .is_some_and(|character| character.is_whitespace())
+        {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            break;
+        }
+        let mut word = String::new();
+        let mut consumed = false;
+        while chars
+            .peek()
+            .is_some_and(|character| !character.is_whitespace())
+        {
+            match chars.next()? {
+                '\'' => {
+                    consumed = true;
+                    loop {
+                        match chars.next() {
+                            Some('\'') => break,
+                            Some(character) => word.push(character),
+                            None => return None,
+                        }
+                    }
+                }
+                '\\' => {
+                    consumed = true;
+                    word.push(chars.next()?);
+                }
+                character
+                    if character.is_ascii_alphanumeric()
+                        || matches!(character, '_' | '-' | '.' | '/' | ':' | '=') =>
+                {
+                    consumed = true;
+                    word.push(character);
+                }
+                _ => return None,
+            }
+        }
+        if !consumed {
+            return None;
+        }
+        words.push(word);
+    }
+    Some(words)
+}
+
+fn has_current_managed_process_binding(content: &str) -> bool {
+    let binding_export = format!("export {MANAGED_PROCESS_BINDING_ENV}");
+    let binding_assignment = format!("{MANAGED_PROCESS_BINDING_ENV}={MANAGED_PROCESS_BINDING_V1}");
+    if hook_wrapper_comment_value(content, "runtime_home_binding")
+        != Some("selected_init_runtime_home")
+        || content
+            .lines()
+            .filter(|line| *line == "export VOLICORD_HOME")
+            .count()
+            != 1
+        || content
+            .lines()
+            .filter(|line| *line == binding_export)
+            .count()
+            != 1
+        || content
+            .lines()
+            .filter(|line| *line == binding_assignment)
+            .count()
+            != 1
+    {
+        return false;
+    }
+    let mut assignments = content
+        .lines()
+        .filter(|line| line.starts_with("VOLICORD_HOME="));
+    let Some(assignment) = assignments.next() else {
+        return false;
+    };
+    if assignments.next().is_some() {
+        return false;
+    }
+    generated_shell_words(assignment)
+        .filter(|words| words.len() == 1)
+        .and_then(|words| words.into_iter().next())
+        .and_then(|word| word.strip_prefix("VOLICORD_HOME=").map(str::to_owned))
+        .is_some_and(|runtime_home| {
+            !runtime_home.is_empty() && Path::new(&runtime_home).is_absolute()
+        })
 }
 
 fn generated_dispatch_script_verified(file: &Value, text: &str) -> bool {
@@ -4567,6 +4747,39 @@ fn task_ref_for_close(request: &CloseTaskPlanRequest, state_version: u64) -> Sta
 mod hook_command_classification_tests {
     use super::*;
 
+    fn managed_wrapper_file(command: &str, phase: &str, purpose: &str) -> Value {
+        serde_json::json!({
+            "managed_marker": HOOK_WRAPPER_MARKER,
+            "executable_required": false,
+            "managed_script_command": command,
+            "host_kind": "codex",
+            "phase": phase,
+            "purpose": purpose,
+            "connection_id": "connection_test",
+            "guard_installation_id": "guard_test",
+            "policy_hash": "sha256:test",
+            "host_output": "codex"
+        })
+    }
+
+    fn managed_wrapper_text(
+        command: &str,
+        phase: &str,
+        purpose: &str,
+        runtime_home_assignment: &str,
+        binding_assignment: &str,
+    ) -> String {
+        format!(
+            "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind=codex\n# phase={phase}\n# purpose={purpose}\n# connection_id=connection_test\n# guard_installation_id=guard_test\n# policy_hash=sha256:test\n# host_output=codex\n# runtime_home_binding=selected_init_runtime_home\n{runtime_home_assignment}\n{binding_assignment}\nexport VOLICORD_HOME\nexport {MANAGED_PROCESS_BINDING_ENV}\nexec {command}\n"
+        )
+    }
+
+    fn detective_command(executable: &str) -> String {
+        format!(
+            "{executable} _hook pre-tool --repo /repo --connection connection_test --guard-installation guard_test --host codex --integration-profile detective --policy-hash sha256:test --host-output codex"
+        )
+    }
+
     #[test]
     fn direct_hook_commands_use_the_hidden_internal_namespace() {
         let no_args = Vec::new();
@@ -4595,5 +4808,100 @@ mod hook_command_classification_tests {
                 "ok"
             );
         }
+    }
+
+    #[test]
+    fn matching_pre_binding_wrapper_and_capability_are_not_generated_config() {
+        let command = detective_command("/opt/volicord");
+        let text = format!(
+            "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind=codex\n# phase=pre_tool\n# purpose=detective_guard\n# connection_id=connection_test\n# guard_installation_id=guard_test\n# policy_hash=sha256:test\n# host_output=codex\nexec {command}\n"
+        );
+        let file = managed_wrapper_file(&command, "pre_tool", "detective_guard");
+
+        assert!(!generated_script_verified(
+            &file,
+            &text,
+            &sha256_text(&text)
+        ));
+    }
+
+    #[test]
+    fn current_binding_accepts_quoted_absolute_profile_command_and_runtime_home() {
+        let command = detective_command("'/opt/selected build/volicord'\\''s binary'");
+        let text = managed_wrapper_text(
+            &command,
+            "pre_tool",
+            "detective_guard",
+            "VOLICORD_HOME='/runtime home/clone'\\''s data'",
+            "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
+        );
+        let file = managed_wrapper_file(&command, "pre_tool", "detective_guard");
+
+        assert!(generated_script_verified(&file, &text, &sha256_text(&text)));
+    }
+
+    #[test]
+    fn current_binding_rejects_relative_home_command_and_wrong_marker() {
+        let absolute_command = detective_command("/opt/volicord");
+        let relative_command = detective_command("volicord");
+        for (command, home, marker) in [
+            (
+                absolute_command.as_str(),
+                "VOLICORD_HOME=relative/home",
+                "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
+            ),
+            (
+                relative_command.as_str(),
+                "VOLICORD_HOME=/runtime/home",
+                "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
+            ),
+            (
+                absolute_command.as_str(),
+                "VOLICORD_HOME=/runtime/home",
+                "VOLICORD_MANAGED_PROCESS_BINDING=wrong-version",
+            ),
+        ] {
+            let text = managed_wrapper_text(command, "pre_tool", "detective_guard", home, marker);
+            let file = managed_wrapper_file(command, "pre_tool", "detective_guard");
+            assert!(!generated_script_verified(
+                &file,
+                &text,
+                &sha256_text(&text)
+            ));
+        }
+    }
+
+    #[test]
+    fn current_binding_rejects_capability_phase_alias_as_file_phase() {
+        let command = detective_command("/opt/volicord");
+        let text = managed_wrapper_text(
+            &command,
+            "pre_tool_hook",
+            "detective_guard",
+            "VOLICORD_HOME=/runtime/home",
+            "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
+        );
+        let file = managed_wrapper_file(&command, "pre_tool_hook", "detective_guard");
+
+        assert!(!generated_script_verified(
+            &file,
+            &text,
+            &sha256_text(&text)
+        ));
+    }
+
+    #[test]
+    fn current_binding_accepts_final_output_wrapper_shape() {
+        let command = "/opt/volicord _final-output --repo /repo --connection connection_test --guard-installation guard_test --host codex --integration-profile record --policy-hash sha256:test --host-output codex";
+        let text = managed_wrapper_text(
+            command,
+            "stop",
+            "final_output_authority_disclosure",
+            "VOLICORD_HOME=/runtime/home",
+            "VOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1",
+        );
+        let file = managed_wrapper_file(command, "stop", "final_output_authority_disclosure");
+
+        assert!(generated_script_verified(&file, &text, &sha256_text(&text)));
     }
 }

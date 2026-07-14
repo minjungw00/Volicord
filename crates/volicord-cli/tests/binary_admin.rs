@@ -19,6 +19,11 @@ use chrono::{DateTime, SecondsFormat, Utc};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
+use volicord_cli::host_integration::{
+    managed_fingerprint, HostKind, HostScope, ManagedServerEntry, DEFAULT_SERVER_NAME,
+    MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1,
+};
 use volicord_core::{CoreService, GitWorkspaceContext, InvocationContext};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::agent_connections::{
@@ -29,7 +34,8 @@ use volicord_store::agent_connections::{
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_store::{
     bootstrap::{
-        initialize_runtime_home, list_projects, register_project, ProjectRegistration,
+        initialize_runtime_home, installation_profile, list_projects, register_project,
+        write_installation_profile, InstallationProfileRegistration, ProjectRegistration,
         ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
@@ -2362,6 +2368,282 @@ fn migration_reuses_enabled_requested_connection_without_disrupting_existing_pro
 
 #[cfg(unix)]
 #[test]
+fn init_codex_legacy_projection_publishes_fingerprint_after_host_write_and_retries(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-codex-legacy-retry-safe")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let repo_arg = path_text(&repo_root);
+    let init_args = [
+        "init",
+        "--shared",
+        "--host",
+        "codex",
+        "--repo",
+        repo_arg.as_str(),
+        "--profile",
+        "record",
+        "--json",
+    ];
+    let initial = run_with_home_env(runtime_home.path(), init_args, &env)?;
+    assert_success(&initial);
+    let initial = json_stdout(&initial)?;
+    let connection_id = initial["connection"]["connection_id"]
+        .as_str()
+        .expect("Codex connection id")
+        .to_owned();
+
+    let mut legacy =
+        ManagedServerEntry::new_repository_discovery(volicord_mcp::RepositoryDiscoveryHost::Codex);
+    legacy.env_vars.clear();
+    let legacy_fingerprint = managed_fingerprint(
+        HostKind::Codex,
+        HostScope::Project,
+        DEFAULT_SERVER_NAME,
+        &legacy,
+    );
+    let config_path = repo_root.join(".codex/config.toml");
+    fs::write(
+        &config_path,
+        "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n",
+    )?;
+    replace_connection_managed_fingerprint(
+        runtime_home.path(),
+        &connection_id,
+        &legacy_fingerprint,
+    )?;
+
+    let config_parent = config_path.parent().expect("Codex config parent");
+    let original_permissions = fs::metadata(config_parent)?.permissions();
+    fs::set_permissions(config_parent, fs::Permissions::from_mode(0o555))?;
+    let failed_result = run_with_home_env(runtime_home.path(), init_args, &env);
+    fs::set_permissions(config_parent, original_permissions)?;
+    let failed = failed_result?;
+    assert!(
+        !failed.status.success(),
+        "read-only host write unexpectedly succeeded"
+    );
+    assert_eq!(
+        agent_connection_record(runtime_home.path(), &connection_id)?
+            .expect("Codex connection remains registered")
+            .managed_fingerprint,
+        legacy_fingerprint
+    );
+
+    let recovered = run_with_home_env(runtime_home.path(), init_args, &env)?;
+    assert_success(&recovered);
+    assert!(fs::read_to_string(&config_path)?.contains("env_vars = [\"VOLICORD_HOME\"]"));
+    let current =
+        ManagedServerEntry::new_repository_discovery(volicord_mcp::RepositoryDiscoveryHost::Codex);
+    assert_eq!(
+        agent_connection_record(runtime_home.path(), &connection_id)?
+            .expect("Codex connection converged")
+            .managed_fingerprint,
+        managed_fingerprint(
+            HostKind::Codex,
+            HostScope::Project,
+            DEFAULT_SERVER_NAME,
+            &current,
+        )
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn connection_add_claude_legacy_projection_publishes_fingerprint_after_host_write_and_retries(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-claude-legacy-retry-safe")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_claude_code(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let initial = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &env,
+    )?;
+    assert_success(&initial);
+    let initial = json_stdout(&initial)?;
+    let connection_id = initial["connection"]["connection_id"]
+        .as_str()
+        .expect("Claude Code connection id")
+        .to_owned();
+
+    let mut legacy = ManagedServerEntry::new_repository_discovery(
+        volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+    );
+    legacy.env.clear();
+    let legacy_fingerprint = managed_fingerprint(
+        HostKind::ClaudeCode,
+        HostScope::Project,
+        DEFAULT_SERVER_NAME,
+        &legacy,
+    );
+    let config_path = repo_root.join(".mcp.json");
+    fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&json!({
+            "mcpServers": {"volicord": legacy.to_json_value()}
+        }))? + "\n",
+    )?;
+    replace_connection_managed_fingerprint(
+        runtime_home.path(),
+        &connection_id,
+        &legacy_fingerprint,
+    )?;
+
+    let repo_arg = path_text(&repo_root);
+    let add_args = [
+        "connection",
+        "add",
+        "claude-code",
+        "--shared",
+        "--repo",
+        repo_arg.as_str(),
+        "--json",
+    ];
+    let original_permissions = fs::metadata(&repo_root)?.permissions();
+    fs::set_permissions(&repo_root, fs::Permissions::from_mode(0o555))?;
+    let failed_result = run_with_home_env(runtime_home.path(), add_args, &env);
+    fs::set_permissions(&repo_root, original_permissions)?;
+    let failed = failed_result?;
+    assert!(
+        !failed.status.success(),
+        "read-only host write unexpectedly succeeded"
+    );
+    assert_eq!(
+        agent_connection_record(runtime_home.path(), &connection_id)?
+            .expect("Claude Code connection remains registered")
+            .managed_fingerprint,
+        legacy_fingerprint
+    );
+
+    let recovered = run_with_home_env(runtime_home.path(), add_args, &env)?;
+    assert_success(&recovered);
+    let current_config: Value = serde_json::from_str(&fs::read_to_string(&config_path)?)?;
+    assert_eq!(
+        current_config["mcpServers"]["volicord"]["env"]["VOLICORD_HOME"],
+        "${VOLICORD_HOME}"
+    );
+    let current = ManagedServerEntry::new_repository_discovery(
+        volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+    );
+    assert_eq!(
+        agent_connection_record(runtime_home.path(), &connection_id)?
+            .expect("Claude Code connection converged")
+            .managed_fingerprint,
+        managed_fingerprint(
+            HostKind::ClaudeCode,
+            HostScope::Project,
+            DEFAULT_SERVER_NAME,
+            &current,
+        )
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_repairs_stale_profile_command_and_doctor_points_to_the_repair_path(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-stale-profile-command-repair")?;
+    let repo_root = create_real_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let env = [
+        ("PATH", path_env_with_existing(&[bin_dir.as_path()])?),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+    let repo_arg = path_text(&repo_root);
+    let init_args = [
+        "init",
+        "--shared",
+        "--host",
+        "codex",
+        "--repo",
+        repo_arg.as_str(),
+        "--profile",
+        "record",
+        "--json",
+    ];
+    let initial = run_with_home_env(runtime_home.path(), init_args, &env)?;
+    assert_success(&initial);
+    let profile = installation_profile(runtime_home.path())?.expect("installation profile");
+    let stale_command = runtime_home.path().join("removed-bin/volicord");
+    write_installation_profile(
+        runtime_home.path(),
+        InstallationProfileRegistration {
+            installation_id: profile.installation_id,
+            volicord_command: path_text(&stale_command),
+            volicord_mcp_command: profile.volicord_mcp_command,
+            bin_dir: stale_command
+                .parent()
+                .expect("stale command parent")
+                .to_path_buf(),
+            default_connection_mode: profile.default_connection_mode,
+            metadata_json: profile.metadata_json,
+        },
+    )?;
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &env)?;
+    assert!(
+        !doctor.status.success(),
+        "stale profile Doctor unexpectedly passed"
+    );
+    let doctor = json_stdout(&doctor)?;
+    assert_eq!(doctor["status"], "failed");
+    let repair = doctor["actions"]
+        .as_array()
+        .expect("Doctor actions")
+        .iter()
+        .find(|action| action["id"] == "repair_volicord_command")
+        .expect("stale profile command repair action");
+    assert_eq!(
+        repair["command"],
+        "volicord init --host <host> --repo <path>"
+    );
+    assert!(!repair["command"]
+        .as_str()
+        .expect("repair command")
+        .contains("--mcp-command"));
+
+    let repaired = run_with_home_env(runtime_home.path(), init_args, &env)?;
+    assert_success(&repaired);
+    let repaired_profile =
+        installation_profile(runtime_home.path())?.expect("repaired installation profile");
+    assert_eq!(
+        repaired_profile.volicord_command,
+        canonical_volicord_command()
+    );
+    let stop_wrapper = fs::read_to_string(repo_root.join(".codex/hooks/volicord-stop.sh"))?;
+    assert_generated_wrapper_binding(&stop_wrapper, runtime_home.path(), "_final-output");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn interrupted_cross_host_migration_keeps_personal_protection_and_converges(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-cross-host-migration-fail-safe")?;
@@ -2880,7 +3162,7 @@ fn init_defaults_to_personal_claude_code_connection() -> Result<(), Box<dyn Erro
     );
     let stop_wrapper = fs::read_to_string(repo_root.join(".claude/hooks/volicord-stop.sh"))?;
     assert!(stop_wrapper.contains("# purpose=final_output_authority_disclosure"));
-    assert!(stop_wrapper.contains("exec volicord _final-output"));
+    assert_generated_wrapper_binding(&stop_wrapper, runtime_home.path(), "_final-output");
     assert!(stop_wrapper.contains("--integration-profile record"));
     assert!(stop_wrapper.contains("--host-output claude-code"));
     assert!(!repo_root
@@ -2974,7 +3256,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert!(is_executable(&dispatch)?);
     let wrapper = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
     let wrapper_text = fs::read_to_string(&wrapper)?;
-    assert!(wrapper_text.contains("exec volicord _hook pre-tool"));
+    assert_generated_wrapper_binding(&wrapper_text, runtime_home.path(), "_hook pre-tool");
     assert!(wrapper_text.contains(&format!("--connection {connection_id}")));
     assert!(wrapper_text.contains("--guard-installation"));
     assert!(wrapper_text.contains("--host codex"));
@@ -3058,7 +3340,7 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     ));
     let wrapper = repo_root.join(".claude/hooks/volicord-pre-tool.sh");
     let wrapper_text = fs::read_to_string(&wrapper)?;
-    assert!(wrapper_text.contains("exec volicord _hook pre-tool"));
+    assert_generated_wrapper_binding(&wrapper_text, runtime_home.path(), "_hook pre-tool");
     assert!(wrapper_text.contains("--host claude-code"));
     assert!(wrapper_text.contains("--policy-hash"));
     assert!(wrapper_text.contains("--host-output claude-code"));
@@ -3514,7 +3796,7 @@ fn init_codex_record_profile_installs_only_final_output_handler() -> Result<(), 
     assert!(!hooks.to_string().contains("volicord-dispatch.sh"));
     let stop_wrapper = fs::read_to_string(repo_root.join(".codex/hooks/volicord-stop.sh"))?;
     assert!(stop_wrapper.contains("# purpose=final_output_authority_disclosure"));
-    assert!(stop_wrapper.contains("exec volicord _final-output"));
+    assert_generated_wrapper_binding(&stop_wrapper, runtime_home.path(), "_final-output");
     assert!(stop_wrapper.contains("--guard-installation"));
     assert!(stop_wrapper.contains("--integration-profile record"));
     assert!(stop_wrapper.contains("--policy-hash"));
@@ -5093,7 +5375,8 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(!config.contains("[mcp_servers.volicord.env]"));
     assert!(!config.contains(&connection_id));
     assert!(!config.contains(project_id));
-    assert!(!config.contains("VOLICORD_HOME"));
+    assert!(config.contains("env_vars = [\"VOLICORD_HOME\"]"));
+    assert!(!config.contains(path_text(runtime_home.path()).as_str()));
     let hooks = fs::read_to_string(repo_root.join(".codex/hooks.json"))?;
     assert!(hooks.contains("SessionStart"));
     assert!(hooks.contains("PreToolUse"));
@@ -5154,7 +5437,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_guard_policy_invokes_required_phases(&policy, &connection_id);
     assert_eq!(
         policy["host_hook"]["commands"]["pre_tool"]["command"],
-        "volicord"
+        canonical_volicord_command()
     );
     assert_eq!(
         policy["host_hook"]["commands"]["pre_tool"]["args"][0],
@@ -5212,7 +5495,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert!(is_executable(&dispatch_path)?);
     let wrapper_path = repo_root.join(".codex/hooks/volicord-pre-tool.sh");
     let wrapper = fs::read_to_string(&wrapper_path)?;
-    assert!(wrapper.contains("exec volicord _hook pre-tool"));
+    assert_generated_wrapper_binding(&wrapper, runtime_home.path(), "_hook pre-tool");
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host codex"));
@@ -5396,7 +5679,10 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             "claude-code"
         ])
     );
-    assert!(server.get("env").is_none());
+    assert_eq!(
+        server["env"],
+        serde_json::json!({"VOLICORD_HOME": "${VOLICORD_HOME}"})
+    );
     let mcp_text = fs::read_to_string(repo_root.join(".mcp.json"))?;
     assert!(!mcp_text.contains(connection_id));
     assert!(!mcp_text.contains(project_id));
@@ -5410,7 +5696,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
     assert_guard_policy_invokes_required_phases(&policy, connection_id);
     assert_eq!(
         policy["host_hook"]["commands"]["session_start"]["command"],
-        "volicord"
+        canonical_volicord_command()
     );
     let settings = fs::read_to_string(repo_root.join(".claude/settings.json"))?;
     assert!(settings.contains("${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-session-start.sh"));
@@ -5463,7 +5749,7 @@ fn init_claude_code_guarded_writes_project_mcp_policy_and_rule() -> Result<(), B
             && file["managed_projection"] == "claude_code_settings_hooks"));
     let wrapper_path = repo_root.join(".claude/hooks/volicord-pre-tool.sh");
     let wrapper = fs::read_to_string(&wrapper_path)?;
-    assert!(wrapper.contains("exec volicord _hook pre-tool"));
+    assert_generated_wrapper_binding(&wrapper, runtime_home.path(), "_hook pre-tool");
     assert!(wrapper.contains(&format!("--connection {connection_id}")));
     assert!(wrapper.contains("--guard-installation"));
     assert!(wrapper.contains("--host claude-code"));
@@ -9396,6 +9682,85 @@ fn assert_host_native_pre_tool_deny_output(output: &Output) -> Result<Value, Box
 }
 
 #[cfg(unix)]
+fn canonical_volicord_command() -> String {
+    path_text(
+        &fs::canonicalize(volicord_bin())
+            .expect("the test Volicord binary should have a canonical absolute path"),
+    )
+}
+
+#[cfg(unix)]
+fn replace_connection_managed_fingerprint(
+    runtime_home: &Path,
+    connection_id: &str,
+    managed_fingerprint: &str,
+) -> Result<(), Box<dyn Error>> {
+    let existing = agent_connection_record(runtime_home, connection_id)?
+        .ok_or_else(|| format!("missing Agent Connection {connection_id}"))?;
+    ensure_agent_connection(
+        runtime_home,
+        AgentConnectionRegistration {
+            connection_internal_id: existing.connection_internal_id,
+            host_kind: existing.host_kind,
+            intent: existing.intent,
+            host_scope: existing.host_scope,
+            server_name: existing.server_name,
+            config_target: existing.config_target,
+            mode: existing.mode,
+            enabled: existing.enabled,
+            managed_fingerprint: managed_fingerprint.to_owned(),
+            last_verification_status: existing.last_verification_status,
+            last_verification_report_json: existing.last_verification_report_json,
+            last_user_actions_json: existing.last_user_actions_json,
+            metadata_json: existing.metadata_json,
+        },
+    )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn generated_script_word(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
+    {
+        value.to_owned()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
+#[cfg(unix)]
+fn assert_generated_wrapper_binding(wrapper: &str, runtime_home: &Path, args_prefix: &str) {
+    let runtime_home_assignment = format!(
+        "VOLICORD_HOME={}",
+        generated_script_word(path_text(runtime_home).as_str())
+    );
+    let command_prefix = format!(
+        "exec {} {args_prefix}",
+        generated_script_word(canonical_volicord_command().as_str())
+    );
+    assert!(
+        wrapper.lines().any(|line| line == runtime_home_assignment),
+        "generated wrapper did not bind the init-selected Runtime Home:\n{wrapper}"
+    );
+    assert!(wrapper.lines().any(|line| line == "export VOLICORD_HOME"));
+    assert!(wrapper.lines().any(|line| {
+        line == format!("{MANAGED_PROCESS_BINDING_ENV}={MANAGED_PROCESS_BINDING_V1}")
+    }));
+    assert!(wrapper
+        .lines()
+        .any(|line| line == format!("export {MANAGED_PROCESS_BINDING_ENV}")));
+    assert!(
+        wrapper
+            .lines()
+            .any(|line| line.starts_with(&command_prefix)),
+        "generated wrapper did not invoke the installation profile command:\n{wrapper}"
+    );
+}
+
+#[cfg(unix)]
 fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &str) {
     let commands = policy["host_hook"]["commands"]
         .as_object()
@@ -9417,7 +9782,7 @@ fn assert_guard_policy_invokes_required_phases(policy: &Value, connection_id: &s
         let command = commands
             .get(policy_key)
             .unwrap_or_else(|| panic!("missing host-hook command for {policy_key}"));
-        assert_eq!(command["command"], "volicord");
+        assert_eq!(command["command"], canonical_volicord_command());
         let args = command["args"]
             .as_array()
             .expect("host-hook command args should be an array");

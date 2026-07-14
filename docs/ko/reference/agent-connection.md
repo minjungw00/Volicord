@@ -126,9 +126,13 @@ CLI 쪽 MCP 사전 점검, `volicord mcp --check`, 직접 MCP 핸드셰이크는
 
 Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 식별 정보는 `volicord` 서버
 이름과 정확히 다음 이식 가능한 프로세스 기술 정보입니다. 명령은
-`command="volicord"`, 인자는 `mcp --stdio --discover-repository --host codex`, 환경
-맵은 없음입니다. 저장소에서 보이는 이 관리 항목에는 Connection ID, 프로젝트 ID, 절대
-명령 경로, Runtime Home 경로, 어떤 환경 키도 들어갈 수 없습니다. Codex 사용자 범위
+`command="volicord"`, 인자는 `mcp --stdio --discover-repository --host codex`, 전달 설정은
+`env_vars = ["VOLICORD_HOME"]`입니다. 전달 설정은 정확한 관리 식별 정보의 일부이지만
+Runtime Home 경로를 내장하지 않습니다. 저장소에서 보이는 이 관리 항목에는 Connection ID,
+프로젝트 ID, 절대 명령 경로, Runtime Home의 리터럴 경로, 그 밖의 환경 키가 들어갈 수
+없습니다. 시작 호스트는 해당 복제본을 초기화할 때 선택한 비어 있지 않은 절대 경로
+`VOLICORD_HOME`을 제공해야 합니다. 저장소 발견은 값 누락, 빈 값, 상대 경로를 플랫폼
+기본값으로 대체하기 전에 거부합니다. Codex 사용자 범위
 설정은 계속 로컬 바인딩이므로 선택된 연결·프로젝트 ID와
 `VOLICORD_MCP_LAUNCH=managed_host`, `VOLICORD_MCP_HOST=codex`,
 `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, 프로젝트 바인딩이 있을 때의
@@ -136,8 +140,9 @@ Codex 프로젝트 범위 MCP 설정에서 Volicord가 관리하는 식별 정�
 그 서버 항목 아래의 Codex 소유 도구 승인 하위 테이블은 호스트 정책 추가 설정이며,
 Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_mode` 설정을 보존해도
 호스트 신뢰, 활성 도구 노출, 실행 중인 세션의 승인, 정확성, 테스트 충분성, 사람 검토
-완료, 샌드박싱, 행위자 신원을 증명하지 않습니다. 프로젝트 기술 정보가 정확한 형태와
-다르거나 로컬 바인딩의 명령·인자·관리 마커가 달라지면 설정 불일치입니다.
+완료, 샌드박싱, 행위자 신원을 증명하지 않습니다. 전달 설정이 없거나 달라졌거나,
+프로젝트 기술 정보가 정확한 형태와 다르거나, 로컬 바인딩의 명령·인자·관리 마커가
+달라지면 설정 불일치입니다.
 
 규칙:
 
@@ -220,16 +225,19 @@ replacement로 다시 연결합니다.
 
 `shared` 주 호스트 파일에는 형식이 지정된 저장소 발견 기술 정보만 들어갑니다. Codex는
 `volicord mcp --stdio --discover-repository --host codex`, Claude Code는 같은 명령의
-`--host claude-code` 형태를 사용합니다. Connection ID, 프로젝트 ID, 절대 실행 파일,
-Runtime Home 경로, 어떤 환경 항목도 넣으면 안 됩니다. 따라서 기술 정보 바이트는 다른
-복제본에서도 그대로 사용할 수 있지만 Agent Connection과 프로젝트 식별 정보는 각
-Runtime Home에 로컬로 남습니다.
+`--host claude-code` 형태를 사용합니다. 또한 호스트 고유 Runtime Home 전달 형태를 정확히
+하나 포함합니다. Codex는 `env_vars = ["VOLICORD_HOME"]`, Claude Code는
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다. Connection ID,
+프로젝트 ID, 절대 실행 파일, literal Runtime Home 경로, 그 밖의 환경 항목은 넣으면 안
+됩니다. 따라서 기술 정보 바이트는 다른 복제본에서도 그대로 사용할 수 있지만 Agent
+Connection과 프로젝트 식별 정보는 각 Runtime Home에 로컬로 남습니다.
 
-저장소 발견 시작 시 MCP 어댑터는 일반 프로세스 환경과 기본값 규칙으로 로컬 Runtime
-Home을 선택하고, 호스트 프로세스의 현재 디렉터리에서 정규화된 Git worktree 루트를
-찾고, 그 정확한 저장소 루트 등록을 조회합니다. 이어서 그 프로젝트를 Connection
-Projects에 포함하고 기술 정보의 호스트와 일치하는 활성 `shared` 프로젝트 범위 Agent
-Connection이 정확히 하나인지 요구한 뒤 세션을 해당 프로젝트 하나로 좁힙니다. 등록되지
+저장소 발견 시작 시 MCP 어댑터는 전달된 `VOLICORD_HOME`이 존재하고 비어 있지 않은 절대
+경로일 것을 요구하며, 다른 형태는 플랫폼 기본 Runtime Home을 선택하기 전에 거부합니다.
+그 다음 호스트 프로세스의 현재 디렉터리에서 정규화된 Git worktree 루트를 찾고 그 정확한
+저장소 루트 등록을 조회합니다. 이어서 그 프로젝트를 Connection Projects에 포함하고 기술
+정보의 호스트와 일치하는 활성 `shared` 프로젝트 범위 Agent Connection이 정확히 하나인지
+요구한 뒤 세션을 해당 프로젝트 하나로 좁힙니다. 등록되지
 않은 복제본, 일치하는 연결 없음, 일치하는 연결이 둘 이상인 경우에는 init, verify, list,
 중복 제거 동작을 이름 붙인 진단과 함께 닫힌 방식으로 실패합니다. 저장소 메타데이터에서
 내부 ID를 가져오거나 파생하지 않습니다.

@@ -201,6 +201,23 @@ volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --
 연결을 설치합니다. Init은 저장소 설정과 호스트 연결을 수행하면서 Runtime Home 경로나
 MCP 시작 명령도 선택할 수 있습니다. 부모 셸의 현재 환경을 바꿀 수는 없습니다.
 
+init이 선택한 Runtime Home은 그 초기화가 생성하는 모든 관리 자식 프로세스 바인딩의
+일부입니다. 개인·로컬 MCP 항목은 그 경로를 직접 고정합니다. 공유 프로젝트 항목은 경로를
+복제본별 로컬로 유지하도록 호스트별 이식 가능 형태로 `VOLICORD_HOME`을 전달합니다. 생성된
+생명주기 및 최종 출력 래퍼는 선택된 절대 Runtime Home을 내보내고 설치 프로필의 절대
+`volicord_command`를 실행하며 버전이 지정된 관리 프로세스 바인딩 marker를 전달합니다.
+관리 `_hook` 또는 `_final-output` 자식은 이 marker를 검증하고 실행 중인 실행 파일이 선택된
+프로필 명령과 일치할 것을 요구합니다. 관리 MCP 또는 숨겨진 자식 프로세스는 호스트의
+플랫폼 기본 Runtime Home으로 조용히 대체하면 안 됩니다. init은 프로필을 기록하거나 이런
+바인딩을 생성하기 전에 선택한 Runtime Home을 비어 있지 않은 절대 경로로 정규화합니다.
+
+기존 설치 프로필의 `volicord_command`가 상대 경로이거나 없거나 실행할 수 없으면 init은
+로컬 래퍼를 다시 생성하기 전에 그 사용할 수 없는 값을 init을 실행 중인 검증된 절대 실행
+파일로 교체합니다. 프로필이 이미 선택한 접근 가능 실행 파일은 그대로 유지합니다.
+Doctor의 `repair_volicord_command` 동작은 작동하는 Volicord 실행 파일로 init을 다시
+실행하도록 안내합니다. `--mcp-command`는 별도 `volicord_mcp_command`를 바꾸므로 이 필드의
+복구 방법이 아닙니다.
+
 최상위 설정 상태는 설치 프로필 준비 또는 호스트 연결에 이름 붙은 사용자 동작이 아직
 필요한지를 답합니다. Runtime Home과 설치 프로필을 저장한 뒤에도 선택된 명령을 이후
 셸이나 에이전트 호스트가 `PATH`로 찾을 준비가 되어 있지 않으면 init은
@@ -212,8 +229,8 @@ MCP 시작 명령도 선택할 수 있습니다. 부모 셸의 현재 환경을 
 
 | 인자 | 의미 |
 |---|---|
-| `--home PATH` | `Volicord Runtime Home`을 선택합니다. 생략하면 플랫폼 기본 로컬 런타임 위치를 사용합니다. 선택한 경로는 프로젝트 상태를 사용하기 전에 Runtime Home/Product Repository 분리 계약을 만족해야 합니다. |
-| `--mcp-command PATH` | 개인·로컬 연결 바인딩, 검증, 그 밖의 로컬 시작 흐름에 사용할 정확한 로컬 `volicord` 명령을 설치 프로필에 저장합니다. 생략하면 init이 선택한 실행 중인 `volicord` 실행 파일을 사용합니다. 저장소에서 보이는 공유 MCP 항목에는 이 경로를 넣지 않으며, `PATH`로 해석되는 고정 `volicord` 저장소 발견 기술 정보를 사용합니다. |
+| `--home PATH` | `Volicord Runtime Home`을 선택합니다. 생략하면 플랫폼 기본 로컬 런타임 위치를 사용합니다. init은 설치 프로필을 기록하거나 관리 자식 프로세스 바인딩을 생성하기 전에 선택한 경로를 비어 있지 않은 절대 경로로 정규화합니다. 선택한 경로는 프로젝트 상태를 사용하기 전에 Runtime Home/Product Repository 분리 계약을 만족해야 합니다. |
+| `--mcp-command PATH` | 개인·로컬 연결 바인딩, 검증, 그 밖의 로컬 MCP 시작 흐름에 사용할 정확한 로컬 MCP 시작 명령을 설치 프로필의 `volicord_mcp_command`에 저장합니다. 생략하면 init이 선택한 MCP 시작 명령을 사용합니다. 생성된 로컬 훅 래퍼는 이와 별도로 프로필에 기록된 절대 `volicord_command`를 사용합니다. 저장소에서 보이는 공유 MCP 항목에는 두 경로 모두 넣지 않으며, `PATH`로 해석되는 고정 `volicord` 저장소 발견 기술 정보를 사용합니다. |
 | `--json` | 기계 판독 비대화식 출력을 선택합니다. JSON 모드에서는 init이 프롬프트를 표시하지 않습니다. |
 
 Runtime Home과 설치 프로필 선택에 관련된 init 효과:
@@ -411,13 +428,17 @@ Agent Connection 설정은 낮은 수준의 호스트 설정 범위 이름 대�
 일반 `volicord connection add` 명령은 MCP 명령 경로나 Runtime Home 경로를 다시 묻지 않고
 해석된 Runtime Home에 저장된 프로필을 사용합니다. 개인, 로컬, 사용자 전체 호스트
 설정은 그 Runtime Home을 `VOLICORD_HOME`으로 담을 수 있습니다. `shared` 프로젝트
-호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다. 명령은 `volicord`, 환경
-맵은 없음이며 인자는 정확히 `mcp --stdio --discover-repository --host codex` 또는
-`mcp --stdio --discover-repository --host claude-code`입니다. 호스트 환경은
-`volicord`를 `PATH`로 해석하고 상속된 프로세스 환경이나 플랫폼 기본값으로 로컬 Runtime
-Home을 선택해야 합니다. 시작 시 정규화된 현재 Git 저장소를 해당 Runtime Home에서 그
-호스트의 고유한 활성 공유 연결과 프로젝트로 해석합니다. 저장소 메타데이터에서 로컬 ID를
-파생하지 않습니다.
+호스트 설정은 개인 Runtime Home 경로를 포함하면 안 됩니다. 명령은 `volicord`이고 인자는
+정확히 `mcp --stdio --discover-repository --host codex` 또는
+`mcp --stdio --discover-repository --host claude-code`입니다. 생성된 Codex
+`.codex/config.toml` 항목은 `env_vars = ["VOLICORD_HOME"]`도 사용하고, 생성된 Claude Code
+`.mcp.json` 항목은 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다. 이는
+Runtime Home 경로를 내장하는 것이 아니라 전달을 허용하는 형태입니다. 호스트 환경은
+`volicord`를 `PATH`로 해석하고 init이 선택한 것과 같은 비어 있지 않은 절대 경로
+`VOLICORD_HOME`을 제공해야 합니다. 저장소 발견 시작은 플랫폼 기본값으로 대체하기 전에
+값 누락, 빈 값, 상대 경로를 거부합니다. 그런 다음 정규화된 현재 Git 저장소를 해당 Runtime
+Home에서 그 호스트의 고유한 활성 공유 연결과 프로젝트로 해석합니다. 저장소
+메타데이터에서 로컬 ID를 파생하지 않습니다.
 
 <a id="agent-host-setup-and-init"></a>
 ### 호스트 설정 프로필
@@ -430,7 +451,9 @@ Home을 선택해야 합니다. 시작 시 정규화된 현재 Git 저장소를 
 추가하면 `.codex/config.toml` 또는 `.mcp.json`의 프로젝트 범위 호스트 배치를
 선택합니다. 이 생성 항목은 `PATH`를 통해
 `volicord mcp --stdio --discover-repository --host codex|claude-code`를 시작하며 로컬
-ID, 절대 명령 경로, Runtime Home 경로, 환경 맵을 포함하지 않습니다.
+ID, 절대 명령 경로, Runtime Home 경로를 포함하지 않습니다. 호스트별 이식 가능한
+`VOLICORD_HOME` 전달 형태만 포함합니다. Codex는 `env_vars = ["VOLICORD_HOME"]`, Claude
+Code는 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다.
 
 연결 의도는 관리 Agent Connection 대상을 선택합니다. 이와 별도로 init은
 `personal`과 `shared` 모두에서 현재 저장소 통합 파일 구성을 유지합니다.
@@ -600,10 +623,12 @@ Codex `detective` 초기화에서는 선택된 Product Repository가 Git 작업 
 이유만으로 탐지 프로필 설치 기록을 `active`로 표시하지 않습니다.
 
 `--home PATH`는 이 초기화에 사용할 Runtime Home을 선택합니다. `--mcp-command PATH`는
-init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 명령 경로를 설치 프로필에
-저장합니다. 개인 호스트 설정은 호스트 어댑터가 요구하는 대로 저장된 프로필 경로와
-Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호스트 MCP 설정은
-그래도 `PATH`의 `volicord`를 사용합니다.
+init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 MCP 시작 명령을 설치 프로필의
+`volicord_mcp_command`에 저장합니다. 개인 호스트 설정은 호스트 어댑터가 요구하는 대로
+저장된 MCP 명령과 Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호스트 MCP 설정은
+그래도 `PATH`의 `volicord`를 사용하고 선택한 `VOLICORD_HOME`을 내장하지 않고
+전달합니다. 관리 로컬 생명주기 및 최종 출력 래퍼는 대신 선택된 절대 Runtime Home과
+설치 프로필의 절대 `volicord_command`를 모두 고정합니다.
 
 미리보기가 아닌 `volicord init`은 다음을 수행합니다.
 
@@ -614,8 +639,10 @@ Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호
 - 의도에 따라 주 관리 호스트 연결 대상을 설치합니다. `personal`은 Codex 사용자
   대상 또는 Claude Code 로컬 CLI 대상을 사용하고, 명시적 `--shared`는 프로젝트 범위
   Codex `.codex/config.toml` 또는 Claude Code `.mcp.json`을 사용합니다.
-- 명시적 공유 연결에는 환경 맵 없이 정확한 이식 가능 기술 정보
-  `volicord mcp --stdio --discover-repository --host codex|claude-code`를 씁니다.
+- 명시적 공유 연결에는 정확한 이식 가능 기술 정보
+  `volicord mcp --stdio --discover-repository --host codex|claude-code`와 호스트별
+  `VOLICORD_HOME` 전달 형태 하나를 씁니다. Runtime Home의 리터럴 경로나 그 밖의 환경
+  항목은 쓰지 않습니다.
 - `AGENTS.md` 안의 Volicord 관리 블록만 쓰거나 갱신합니다.
 - 선택한 `connection_intent`와 숨겨진 내부 훅 명령군을 호출하는 탐지용 호스트 훅
   명령을 담은 `local_overlay` 정책으로 `.volicord/policy.json`을 씁니다.
@@ -642,6 +669,13 @@ Runtime Home을 사용합니다. `--shared`가 선택한 프로젝트 범위 호
 init 재실행은 일치하는 Volicord 관리 내용과 일부만 완료된 호스트·의도·프로필
 마이그레이션에 대해 멱등입니다. 관리 블록, 정책 파일, 호스트 MCP 항목, 탐지 프로필 설치
 기록을 중복 없이 갱신하며 이미 폐기된 일치 상태 보기는 성공한 무동작입니다. 기존 대상에
+Runtime Home 바인딩 계약보다 앞서 생성된 관리 MCP 항목이나 로컬 래퍼는 오래된 관리
+상태 보기입니다. 플랫폼 기본 Runtime Home이나 `PATH`로 해석한 래퍼 명령을 사용하는 호환
+대체 경로는 제공하지 않습니다. 사용자는 같은 저장소, 호스트, 의도, 프로필, Runtime
+Home으로 init을 다시 실행해야 합니다. 소유 정보가 일치하는 내용은 이식 가능한 전달
+지시나 고정된 절대 래퍼 바인딩으로 조건부 재생성됩니다. 이 상태 보기 갱신은 Runtime Home
+DDL, 저장소 프로필, 저장된 Core 기록을 바꾸지 않으므로 데이터베이스 또는 저장소
+마이그레이션이 필요하지 않습니다. 기존 대상에
 명시적 Connection/프로젝트 바인딩이 든 이전 공유 MCP 항목은 현재 지문이 저장된 관리
 지문과 일치할 때만 한 번의 조건부 마이그레이션 대상입니다. 성공하면 이식 가능한 기술
 정보로 교체하며 이후 재실행은 무동작입니다. 기존 대상에
@@ -690,8 +724,9 @@ Unix에서 새 `.volicord/policy.json`은 사용자 전용 모드 `0600`으로 �
 `VOLICORD_MCP_CONNECTION_ID`, `VOLICORD_MCP_PROJECT_ID`만 허용합니다. 비밀값을
 나타내는 형태의 키와 그 밖의 환경 키는 값을 진단에 포함하지 않고 거부합니다. 이
 허용 목록은 일반적인 비밀값 내용 검사기가 아닙니다.
-이는 로컬 오버레이 스키마이며, 이 환경 필드는 어느 것도 공유 `.codex/config.toml`이나
-`.mcp.json`의 Volicord 항목에 허용되지 않습니다.
+이는 로컬 오버레이 스키마이며, 이 로컬 오버레이 환경 리터럴 값은 어느 것도 공유
+`.codex/config.toml`이나 `.mcp.json`의 Volicord 항목으로 복사하지 않습니다. 공유 항목에는
+위에서 정의한 호스트별 이식 가능한 `VOLICORD_HOME` 전달 형태만 허용합니다.
 정책 스키마는 `storage_scope=local_overlay`, 선택한 `connection_intent`, 비어 있지 않은
 호스트·저장소·연결 식별자 집합, 문자열 인자와 문자열 환경 값을 가진 MCP 명령, 그리고
 `selected_profile`과 일치하는 호스트 훅 활성 상태도 요구합니다. 최상위, `mcp`,
@@ -831,7 +866,7 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 
 | 진단 개념 | 텍스트 출력 | JSON 진단 | 의미 |
 |---|---|---|---|
-| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | `managed_config`를 포함한 호스트 점검 세부사항과 관리 설정 필드 | 항목이 기대하는 명령, 인자, 관리 시작 마커와 일치합니다. 허용된 도구 승인 추가 설정은 이 일치를 바꾸지 않습니다. 관리 마커가 없으면 `managed_config=unmanaged`를 보고할 수 있습니다. 명령, 인자, 마커가 다르면 계속 불일치입니다. |
+| MCP 설정 일치 | `MCP configuration` 또는 `Current MCP configuration` | `managed_config`를 포함한 호스트 점검 세부사항과 관리 설정 필드 | 개인 항목은 기대하는 명령, 인자, 로컬 관리 시작 마커와 일치해야 합니다. 공유 항목은 정확한 저장소 발견 명령과 인자 및 호스트별 이식 가능한 `VOLICORD_HOME` 전달 형태만 포함해야 합니다. 허용된 도구 승인 추가 설정은 이 일치를 바꾸지 않습니다. 개인 마커나 공유 전달 설정이 없으면 `managed_config=unmanaged`를 보고할 수 있습니다. 명령, 인자, 의도별 관리 식별 정보가 다르면 계속 불일치입니다. |
 | Codex 도구 승인 정책 | 있을 때 `Codex tool approval policy` | 있을 때 `verification.host.host_policy_overlay`와 `id=codex_tool_approval_policy`인 `checks[]` 항목 | Codex 소유 `tools.<known Volicord tool>.approval_mode` 하위 테이블은 `kind=codex_tool_approval`로 나타납니다. 진단은 `entries[].tool`과 `entries[].approval_mode`를 포함합니다. 호스트 신뢰, 활성 도구 노출, 실행 중인 세션의 승인을 증명하지 않습니다. |
 | CLI MCP 사전 점검과 핸드셰이크 | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, `Last CLI MCP handshake` | `id=cli_mcp_preflight`와 `id=cli_mcp_handshake`인 `checks[]` 항목, 검증 보고서 필드 | CLI 검증 경로가 Volicord MCP 서버를 직접 시작하고 통신했음을 나타냅니다. CLI가 관찰할 수 있는 MCP 프로세스 검증이며 활성 Codex 도구 노출을 뜻하지 않습니다. |
 | CLI MCP 저장 기능 | `CLI MCP storage read`, `CLI MCP storage write`, `CLI MCP effective tools` | 가능할 때 `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, `id=cli_mcp_effective_tools`인 `checks[]` 항목 | CLI MCP 검증 프로세스에서 관찰한 저장 기능입니다. 관리 Codex 호스트에서 관찰한 저장 기능과 별개입니다. |
@@ -851,10 +886,12 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 approval_mode = "approve"
 ```
 
-`volicord` 서버 항목의 명령, 인자, Volicord 관리 환경 변수 마커가 계속 일치한다면 이
-추가 설정만으로 `managed_config`가 `changed`가 되거나 `mcp_config_changed` 다음 동작이
-나오면 안 됩니다. Volicord 관리 마커가 없는 `volicord` 서버 항목은 비관리로 보고될 수
-있으며, 명령, 인자, 관리 마커의 차이는 계속 설정 불일치입니다.
+개인 `volicord` 서버 항목의 명령, 인자, 로컬 관리 환경 마커가 계속 일치하거나 공유
+항목의 저장소 발견 명령, 인자, 정확한 `env_vars = ["VOLICORD_HOME"]` 전달 설정이 계속
+일치한다면 이 추가 설정만으로 `managed_config`가 `changed`가 되거나
+`mcp_config_changed` 다음 동작이 나오면 안 됩니다. 개인 항목에 관리 마커가 없거나 공유
+항목에 정확한 전달 설정이 없으면 비관리로 보고될 수 있습니다. 명령, 인자, 의도별 관리
+식별 정보의 차이는 계속 설정 불일치입니다.
 
 Claude Code 연결 검증은 런타임을 향한 Claude Code 어댑터를 사용합니다. `shared` 프로젝트
 설정에서는 프로젝트 `.mcp.json`의 `mcpServers.<server_name>` 항목이 관리 식별 정보이며,
@@ -986,7 +1023,9 @@ sandboxing을 대체하지 않습니다.
 생성된 최종 출력 전용 래퍼는 저장소, Agent Connection, guard installation, 호스트,
 프로필, 정책 hash, 호스트 출력 인자를 고정해 숨겨진 `_final-output` 명령을 호출합니다.
 이 값들은 생성된 프로세스 바인딩 입력이며 일반 사용자 명령이나 공개 API 요청 형태가
-아닙니다.
+아닙니다. 래퍼는 init이 선택한 절대 `VOLICORD_HOME`도 내보내고 설치 프로필의 절대
+`volicord_command`를 실행합니다. `PATH`로 해석되는 단순 명령이나 호스트 환경의 기존
+Runtime Home 값을 사용하지 않습니다.
 
 각 호스트 훅 명령은 기본적으로 stdin에서 JSON 훅 이벤트 하나를 읽습니다. `--file PATH`는
 테스트나 이벤트를 파일에 준비하는 호스트 통합을 위해 그 파일에서 JSON 이벤트를
@@ -1041,6 +1080,17 @@ exec "$root/.codex/hooks/volicord-dispatch.sh" PHASE
 기대하는 호스트 종류, 호스트 고유 출력 방식, 저장소 선택자, Agent Connection, 호스트 훅
 설치, 정책 해시를 전달합니다. 사용자는 생성된 훅 명령을 단순 `.codex/hooks/...` 또는
 `.claude/hooks/...` 상대 경로로 바꾸면 안 됩니다.
+
+생성된 모든 로컬 생명주기 또는 최종 출력 래퍼는 실행 전에 관리 자식 프로세스를
+바인딩합니다. init이 선택한 절대 Runtime Home을 `VOLICORD_HOME`으로 내보내고 설치
+프로필의 절대 `volicord_command`를 실행하며 버전이 지정된
+`VOLICORD_MANAGED_PROCESS_BINDING` marker를 내보냅니다. 생성된 값은 호스트 환경의 기존 값을
+신뢰하지 않고 교체합니다. 관리되는 숨겨진 `_hook` 또는 `_final-output` 호출에는 비어 있지
+않은 명시적 절대 Runtime Home, 정확한 현재 marker, 실행 중인 실행 파일과 프로필 명령의
+일치가 필요합니다. 어느 점검이라도 맞지 않으면 플랫폼 기본 Runtime Home 대체나 숨겨진
+명령 처리 전에 실패합니다. 따라서 이전 바인딩 형태의 래퍼와 저장 capability는 저장된
+hash가 서로 일치하기만 한다고 활성 상태로 간주되지 않으며, init을 다시 실행하면 현재
+소유 래퍼가 생성됩니다.
 
 탐지 프로필을 인식하는 상태, 검증, doctor 진단은 `hook_path_safety`,
 `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`,

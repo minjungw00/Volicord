@@ -150,7 +150,7 @@ pub fn run_stdio_discover_repository_from_env(
     } else {
         McpLaunchOrigin::ManagedHost
     };
-    let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
+    let runtime_home = resolve_repository_discovery_runtime_home(process_env_var, &current_dir)?;
     let resolution = RepositoryDiscoveryResolution::resolve(&runtime_home, &current_dir, host)?;
     let local_web_consent =
         start_stdio_local_web_consent_listener(&runtime_home, &resolution.context).ok();
@@ -171,6 +171,34 @@ pub fn run_stdio_discover_repository_from_env(
             startup_session_watch: launch_origin == McpLaunchOrigin::ManagedHost,
             launch_origin,
         },
+    )
+}
+
+fn resolve_repository_discovery_runtime_home<F>(
+    env_var: F,
+    current_dir: &Path,
+) -> Result<PathBuf, McpAdapterError>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    let runtime_home = env_var("VOLICORD_HOME").ok_or_else(|| {
+        McpAdapterError::Environment(
+            "repository discovery MCP startup requires VOLICORD_HOME; refusing to substitute the platform default Runtime Home"
+            .to_owned(),
+        )
+    })?;
+    if runtime_home.is_empty() {
+        return Err(RuntimeHomeResolutionError::EmptyVolicordHome.into());
+    }
+    if !Path::new(&runtime_home).is_absolute() {
+        return Err(McpAdapterError::Environment(
+            "repository discovery MCP startup requires an absolute VOLICORD_HOME; refusing current-directory-relative Runtime Home selection"
+                .to_owned(),
+        ));
+    }
+    resolve_runtime_home(
+        |name| (name == "VOLICORD_HOME").then(|| runtime_home.clone()),
+        current_dir,
     )
 }
 
@@ -246,6 +274,71 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     env_var(VOLICORD_MCP_VERIFICATION).is_some_and(|value| value.to_str() == Some("1"))
+}
+
+#[cfg(test)]
+mod repository_discovery_runtime_home_tests {
+    use super::*;
+
+    #[test]
+    fn missing_runtime_home_fails_before_default_home_lookup() {
+        let error = resolve_repository_discovery_runtime_home(
+            |name| {
+                if name == "VOLICORD_HOME" {
+                    None
+                } else {
+                    panic!("repository discovery must not inspect default-home variable {name}")
+                }
+            },
+            Path::new("/repo"),
+        )
+        .expect_err("missing VOLICORD_HOME must fail closed");
+
+        assert!(matches!(error, McpAdapterError::Environment(_)));
+        assert!(error.to_string().contains("requires VOLICORD_HOME"));
+        assert!(error.to_string().contains("refusing to substitute"));
+    }
+
+    #[test]
+    fn empty_runtime_home_fails_before_repository_discovery() {
+        let error = resolve_repository_discovery_runtime_home(
+            |name| (name == "VOLICORD_HOME").then(OsString::new),
+            Path::new("/repo"),
+        )
+        .expect_err("empty VOLICORD_HOME must fail closed");
+
+        assert!(matches!(error, McpAdapterError::Environment(_)));
+        assert!(error
+            .to_string()
+            .contains("VOLICORD_HOME must not be empty"));
+    }
+
+    #[test]
+    fn relative_runtime_home_fails_before_repository_discovery() {
+        let error = resolve_repository_discovery_runtime_home(
+            |name| (name == "VOLICORD_HOME").then(|| OsString::from("runtime")),
+            Path::new("/repo"),
+        )
+        .expect_err("relative VOLICORD_HOME must fail closed");
+
+        assert!(matches!(error, McpAdapterError::Environment(_)));
+        assert!(error.to_string().contains("absolute VOLICORD_HOME"));
+        assert!(error.to_string().contains("current-directory-relative"));
+    }
+
+    #[test]
+    fn explicit_absolute_runtime_home_is_used_as_supplied() {
+        let absolute = std::env::current_dir()
+            .expect("current directory")
+            .join("runtime-home");
+        let runtime_home = resolve_repository_discovery_runtime_home(
+            |name| (name == "VOLICORD_HOME").then(|| absolute.clone().into_os_string()),
+            Path::new("ignored"),
+        )
+        .expect("explicit absolute repository discovery Runtime Home");
+
+        assert_eq!(runtime_home, absolute);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

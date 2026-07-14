@@ -10,6 +10,10 @@ Exact setup, doctor, and connection result-state meanings belong to
 and
 [Connection result states](../reference/admin-cli.md#agent-connection-result-states).
 
+The project-scoped examples below use the `shared` intent consistently from
+init through status and verification. When recovering a personal connection,
+omit `--shared` from every command instead; do not switch intent during repair.
+
 ## Before You Change Anything
 
 Collect the current local state:
@@ -73,7 +77,7 @@ Bounded recovery:
 If `volicord` is already available:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 volicord doctor
 ```
 
@@ -83,7 +87,7 @@ verified published asset set. From a source checkout:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo "<repo>" --profile record
+./target/debug/volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 Follow init's `action_required` output if it asks how to make `volicord`
@@ -129,7 +133,7 @@ volicord project use
 Or select the Product Repository explicitly:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 `<repo>` is the Product Repository path where you want the agent to work. The
@@ -161,7 +165,7 @@ Bounded recovery: for ordinary first-run setup without lifecycle hook
 installation, pass the host, repository, and `record` profile to init explicitly:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 For detective setup, use the full init contract in the
@@ -173,7 +177,7 @@ On native Windows, detective setup is not supported. If init reports
 `DETECTIVE_WINDOWS_UNSUPPORTED`, rerun with the record profile:
 
 ```powershell
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 Use WSL2, Linux, or macOS for detective only where the selected host hook and
@@ -394,11 +398,11 @@ remote command launchability.
 
 Inspect the generated `<repo>/.codex/config.toml` entry when configuration
 match is in doubt. A Volicord-managed project-scoped Codex entry should include
-the managed launch markers `VOLICORD_MCP_LAUNCH=managed_host`,
-`VOLICORD_MCP_HOST=codex`, `VOLICORD_MCP_CONNECTION_ID=<connection_id>`, and
-`VOLICORD_MCP_PROJECT_ID=<project_id>` together with the matching command and
-args. If the command and args are present without those markers, rerun
-Volicord setup or connection management to regenerate the managed entry.
+the exact `volicord mcp --stdio --discover-repository --host codex` command and
+args plus `env_vars = ["VOLICORD_HOME"]`. It must not contain local connection
+or project IDs, a literal Runtime Home path, local managed-launch markers, or
+additional forwarded variables. If that exact shared shape is absent, rerun
+Volicord shared setup or connection management to regenerate the managed entry.
 
 After any host-side change, rerun terminal-side verification:
 
@@ -451,9 +455,12 @@ themselves make connection status or verification report
 `MCP configuration: changed`, `Current MCP configuration: changed`, or a
 `mcp_config_changed` next action.
 
-If that still happens, either the `volicord` server entry has real command,
-args, or managed-marker drift, or the running Volicord build does not yet accept
-Codex tool approval policy overlay.
+If that still happens, either the `volicord` server entry has real drift in its
+intent-specific managed identity, or the running Volicord build does not yet
+accept Codex tool approval policy overlay. For a shared entry, that identity is
+the exact repository-discovery command and args plus
+`env_vars = ["VOLICORD_HOME"]`; local managed-launch markers belong only to a
+personal entry.
 
 First inspect the generated Codex project configuration:
 
@@ -477,17 +484,20 @@ Bounded recovery:
 2. If overlay-only configuration is still reported as changed, use a Volicord
    build whose verification accepts Codex tool approval policy overlay, then
    rerun verification.
-3. If the command, args, or Volicord managed environment markers changed, repair
-   the managed entry:
+3. If the shared command, args, or exact `VOLICORD_HOME` forwarding changed,
+   repair the managed entry:
 
    ```sh
-   volicord init --host codex --repo "<repo>"
+   volicord init --shared --host codex --repo "<repo>"
    ```
 
-4. If the `volicord` server entry has no Volicord managed markers, treat it as
-   unmanaged host configuration. Do not overwrite or delete it blindly; decide
-   whether to keep that user-managed entry or replace it through an explicit
-   `volicord init --host codex --repo "<repo>"` setup path.
+4. Do not classify a shared `volicord` entry from a missing forwarding
+   directive alone. Check connection status and run the explicit
+   `volicord init --shared --host codex --repo "<repo>"` repair path. When the
+   stored managed fingerprint still matches a recognized legacy managed
+   projection, init can migrate it to the exact current forwarding shape.
+   Otherwise preserve mismatched or unowned content and resolve the reported
+   conflict; do not overwrite or delete it blindly.
 
 Overlay-only approval policy is Codex-owned host policy overlay. It is not a
 normal reason to delete the approval subtables, and it does not prove that the
@@ -527,14 +537,14 @@ Bounded recovery:
 Rerun init with the installed `volicord` command:
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 If you are intentionally working from a development source checkout:
 
 ```sh
 cargo build --workspace --bins
-./target/debug/volicord init --host codex --repo "<repo>" --profile record
+./target/debug/volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 Complete any `action_required` command-availability or host step, then
@@ -563,7 +573,7 @@ Bounded recovery:
 ```sh
 volicord doctor
 volicord connection status codex --shared --repo "<repo>"
-volicord init --host codex --repo "<repo>" --profile detective
+volicord init --shared --host codex --repo "<repo>" --profile detective
 volicord connection verify codex --shared --repo "<repo>"
 ```
 
@@ -571,8 +581,9 @@ Use the same host and repository as the affected connection, and use the same
 intent selector for connection status and verification. For Claude Code,
 replace `codex` with `claude-code` and include `--global` or `--shared` in those
 connection commands when that is the selected connection. Every instruction
-below to rerun init means
-`volicord init --host HOST --repo PATH --profile detective`. Omitting
+below to rerun init means using the same supported init intent selector; for a
+shared connection, use
+`volicord init --shared --host HOST --repo PATH --profile detective`. Omitting
 `--profile` selects the `record` profile and does not regenerate detective hook
 wrappers.
 
@@ -580,9 +591,9 @@ Diagnostic meanings and repairs:
 
 - `relative_path_unsafe`: the host hook config uses a bare `.codex/hooks/...`,
   `./.codex/hooks/...`, `.claude/hooks/...`, or `./.claude/hooks/...` path that
-  depends on the host session cwd. Rerun
-  `volicord init --host HOST --repo PATH --profile detective` instead of
-  hand-editing the hook command.
+  depends on the host session cwd. For a shared connection, rerun
+  `volicord init --shared --host HOST --repo PATH --profile detective` instead
+  of hand-editing the hook command.
 - `wrapper_missing` or `dispatch_missing`: a generated wrapper or Codex
   dispatch wrapper is missing. Rerun detective init for the selected Product
   Repository.

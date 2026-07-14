@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::{env, fmt, path::Path, process};
+use std::{env, ffi::OsStr, fmt, fs, path::Path, process};
 
 use volicord_cli::{
     changes_command::{changes_usage, run_changes_command, ChangesCommandError},
@@ -14,6 +14,7 @@ use volicord_cli::{
     export_command::{export_usage, run_export_command, ExportCommandError},
     final_output_command::{run_final_output_command, FinalOutputCommandError},
     guard_command::{run_guard_command, GuardCommandError},
+    host_integration::{MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1},
     project_context::{project_usage, run_project_command, ProjectCommandError},
     serve_command::{run_serve_command, serve_usage, ServeCommand, ServeCommandError},
     setup_command::CommandOutcome,
@@ -123,15 +124,21 @@ where
         }
         "_hook" => {
             if !guard_help_requested(&args[2..]) {
+                require_explicit_runtime_home_binding(&env_var)?;
                 require_setup_completed(&env_var, current_dir)?;
             }
             guard_command_outcome(run_guard_command(&args[2..], env_var, current_dir)?)
         }
-        "_final-output" => final_output_command_outcome(run_final_output_command(
-            &args[2..],
-            env_var,
-            current_dir,
-        )?),
+        "_final-output" => {
+            if !simple_help_requested(&args[2..]) {
+                require_explicit_runtime_home_binding(&env_var)?;
+            }
+            final_output_command_outcome(run_final_output_command(
+                &args[2..],
+                env_var,
+                current_dir,
+            )?)
+        }
         "connection" => {
             if !connection_help_requested(&args[2..]) {
                 require_setup_completed(&env_var, current_dir)?;
@@ -282,6 +289,43 @@ where
             setup_required_message(&runtime_home)
         ))),
     }
+}
+
+fn require_explicit_runtime_home_binding<F>(env_var: &F) -> Result<(), CliError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    let runtime_home = env_var("VOLICORD_HOME")
+        .filter(|value| !value.is_empty() && Path::new(value).is_absolute())
+        .map(std::path::PathBuf::from)
+        .ok_or_else(managed_process_binding_required)?;
+    if env_var(MANAGED_PROCESS_BINDING_ENV).as_deref()
+        != Some(OsStr::new(MANAGED_PROCESS_BINDING_V1))
+    {
+        return Err(managed_process_binding_required());
+    }
+    let profile = installation_profile(&runtime_home)
+        .map_err(|_| managed_process_binding_required())?
+        .ok_or_else(managed_process_binding_required)?;
+    let profile_command = Path::new(&profile.volicord_command);
+    if !profile_command.is_absolute() {
+        return Err(managed_process_binding_required());
+    }
+    let selected_command =
+        fs::canonicalize(profile_command).map_err(|_| managed_process_binding_required())?;
+    let current_command = env::current_exe()
+        .and_then(fs::canonicalize)
+        .map_err(|_| managed_process_binding_required())?;
+    if current_command != selected_command {
+        return Err(managed_process_binding_required());
+    }
+    Ok(())
+}
+
+fn managed_process_binding_required() -> CliError {
+    CliError::runtime(
+        "RUNTIME_HOME_BINDING_REQUIRED: managed host hook commands require a current generated wrapper to supply an absolute, non-empty VOLICORD_HOME, the managed process binding marker, and the installation profile's selected executable; rerun `volicord init` for this Product Repository and reload the host",
+    )
 }
 
 fn setup_required_message(runtime_home: &Path) -> String {
@@ -830,6 +874,106 @@ mod tests {
         assert!(output.starts_with("volicord _final-output"));
         assert!(output.contains("--guard-installation ID"));
         assert!(output.contains("--host-output codex|claude-code"));
+    }
+
+    #[test]
+    fn hidden_host_commands_reject_platform_default_runtime_home_substitution() {
+        for runtime_home in [None, Some(""), Some("relative/runtime-home")] {
+            for args in [
+                vec!["volicord", "_hook", "session-start"],
+                vec!["volicord", "_final-output", "--repo", "/tmp/repo"],
+            ] {
+                let error = run_cli(
+                    args,
+                    |name| match name {
+                        "HOME" => Some(std::ffi::OsString::from("/wrong/default")),
+                        "VOLICORD_HOME" => runtime_home.map(std::ffi::OsString::from),
+                        _ => None,
+                    },
+                    Path::new(env!("CARGO_MANIFEST_DIR")),
+                )
+                .expect_err("managed host child must require an explicit Runtime Home binding");
+
+                assert!(error.to_string().contains("RUNTIME_HOME_BINDING_REQUIRED"));
+                assert!(!error.to_string().contains("/wrong/default"));
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_host_commands_reject_missing_or_wrong_managed_binding_marker() {
+        let runtime_home = TempRuntimeHome::new("cli-hidden-binding-marker")
+            .expect("temp Runtime Home should be created");
+        initialize_runtime_home(runtime_home.path(), "runtime_home_hidden_marker", "{}")
+            .expect("Runtime Home should initialize");
+        let current_exe = fs::canonicalize(std::env::current_exe().expect("current executable"))
+            .expect("current executable should canonicalize");
+        write_installation_profile(
+            runtime_home.path(),
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: current_exe.display().to_string(),
+                volicord_mcp_command: current_exe.display().to_string(),
+                bin_dir: current_exe
+                    .parent()
+                    .expect("current executable parent")
+                    .to_path_buf(),
+                default_connection_mode: "workflow".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+        .expect("installation profile should be written");
+
+        for marker in [None, Some("wrong-binding-version")] {
+            let error = run_cli(
+                ["volicord", "_hook", "session-start"],
+                |name| match name {
+                    "VOLICORD_HOME" => Some(OsString::from(runtime_home.path())),
+                    MANAGED_PROCESS_BINDING_ENV => marker.map(OsString::from),
+                    _ => None,
+                },
+                Path::new(env!("CARGO_MANIFEST_DIR")),
+            )
+            .expect_err("stale wrapper marker must fail closed");
+
+            assert!(error.to_string().contains("RUNTIME_HOME_BINDING_REQUIRED"));
+        }
+    }
+
+    #[test]
+    fn hidden_host_commands_reject_profile_executable_mismatch() {
+        let runtime_home = TempRuntimeHome::new("cli-hidden-binding-command")
+            .expect("temp Runtime Home should be created");
+        initialize_runtime_home(runtime_home.path(), "runtime_home_hidden_command", "{}")
+            .expect("Runtime Home should initialize");
+        let other_command = runtime_home.path().join("different-volicord");
+        fs::write(&other_command, "not the running executable")
+            .expect("different command fixture should be written");
+        write_installation_profile(
+            runtime_home.path(),
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: other_command.display().to_string(),
+                volicord_mcp_command: other_command.display().to_string(),
+                bin_dir: runtime_home.path().to_path_buf(),
+                default_connection_mode: "workflow".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+        .expect("installation profile should be written");
+
+        let error = run_cli(
+            ["volicord", "_final-output", "--repo", "/tmp/repo"],
+            |name| match name {
+                "VOLICORD_HOME" => Some(OsString::from(runtime_home.path())),
+                MANAGED_PROCESS_BINDING_ENV => Some(OsString::from(MANAGED_PROCESS_BINDING_V1)),
+                _ => None,
+            },
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect_err("profile executable mismatch must fail closed");
+
+        assert!(error.to_string().contains("RUNTIME_HOME_BINDING_REQUIRED"));
     }
 
     #[test]

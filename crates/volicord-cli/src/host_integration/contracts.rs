@@ -88,6 +88,7 @@ pub struct HostMcpConfigShape {
     pub stdio_command_field: &'static str,
     pub stdio_args_field: &'static str,
     pub stdio_env_field: &'static str,
+    pub stdio_env_vars_field: Option<&'static str>,
     pub http_url_field: Option<&'static str>,
     pub unknown_fields_policy: UnknownFieldsPolicy,
 }
@@ -381,6 +382,7 @@ pub const CODEX_CONTRACT: HostIntegrationContract = HostIntegrationContract {
         stdio_command_field: "command",
         stdio_args_field: "args",
         stdio_env_field: "env",
+        stdio_env_vars_field: Some("env_vars"),
         http_url_field: Some("url"),
         unknown_fields_policy: UnknownFieldsPolicy::PreserveOrIgnoreUnlessManagedFieldConflicts,
     },
@@ -425,6 +427,7 @@ pub const CLAUDE_CODE_CONTRACT: HostIntegrationContract = HostIntegrationContrac
         stdio_command_field: "command",
         stdio_args_field: "args",
         stdio_env_field: "env",
+        stdio_env_vars_field: None,
         http_url_field: Some("url"),
         unknown_fields_policy: UnknownFieldsPolicy::PreserveOrIgnoreUnlessManagedFieldConflicts,
     },
@@ -740,11 +743,22 @@ fn validate_codex_project_config(text: &str) -> Result<(), HostContractValidatio
                         .collect::<BTreeMap<_, _>>()
                 })
                 .unwrap_or_default();
+            let env_vars = table
+                .get("env_vars")
+                .and_then(Item::as_array)
+                .map(|env_vars| {
+                    env_vars
+                        .iter()
+                        .filter_map(|env_var| env_var.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             validate_repository_discovery_contract(
                 RepositoryDiscoveryHost::Codex,
                 command,
                 &args,
                 &env,
+                &env_vars,
                 table.get("url").is_some(),
             )?;
         }
@@ -802,6 +816,20 @@ fn validate_toml_mcp_server_table(
             if value.as_str().is_none() {
                 return Err(HostContractValidationError::new(format!(
                     "{host_label} MCP server {name} env.{key} must be a string"
+                )));
+            }
+        }
+    }
+    if let Some(env_vars) = table.get("env_vars") {
+        let env_vars = env_vars.as_array().ok_or_else(|| {
+            HostContractValidationError::new(format!(
+                "{host_label} MCP server {name} env_vars must be an array"
+            ))
+        })?;
+        for env_var in env_vars.iter() {
+            if env_var.as_str().is_none() {
+                return Err(HostContractValidationError::new(format!(
+                    "{host_label} MCP server {name} env_vars must contain only strings"
                 )));
             }
         }
@@ -864,11 +892,22 @@ fn validate_claude_mcp_config(text: &str) -> Result<(), HostContractValidationEr
                         .collect::<BTreeMap<_, _>>()
                 })
                 .unwrap_or_default();
+            let env_vars = object
+                .get("env_vars")
+                .and_then(Value::as_array)
+                .map(|env_vars| {
+                    env_vars
+                        .iter()
+                        .filter_map(|env_var| env_var.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             validate_repository_discovery_contract(
                 RepositoryDiscoveryHost::ClaudeCode,
                 command,
                 &args,
                 &env,
+                &env_vars,
                 object.contains_key("url"),
             )?;
         }
@@ -881,6 +920,7 @@ fn validate_repository_discovery_contract(
     command: &str,
     args: &[String],
     env: &BTreeMap<String, String>,
+    env_vars: &[String],
     has_url: bool,
 ) -> Result<(), HostContractValidationError> {
     if has_url {
@@ -890,7 +930,7 @@ fn validate_repository_discovery_contract(
         )));
     }
     RepositoryDiscoveryDescriptor::new(host)
-        .validate_entry(command, args, env)
+        .validate_entry(command, args, env, env_vars)
         .map_err(|error| {
             HostContractValidationError::new(format!(
                 "repository-visible {} Volicord MCP config must use the portable repository-discovery descriptor: {error}",
@@ -942,6 +982,20 @@ fn validate_json_mcp_server(
             if value.as_str().is_none() {
                 return Err(HostContractValidationError::new(format!(
                     "{host_label} MCP server {name} env.{key} must be a string"
+                )));
+            }
+        }
+    }
+    if let Some(env_vars) = object.get("env_vars") {
+        let env_vars = env_vars.as_array().ok_or_else(|| {
+            HostContractValidationError::new(format!(
+                "{host_label} MCP server {name} env_vars must be an array"
+            ))
+        })?;
+        for env_var in env_vars {
+            if env_var.as_str().is_none() {
+                return Err(HostContractValidationError::new(format!(
+                    "{host_label} MCP server {name} env_vars must contain only strings"
                 )));
             }
         }
@@ -1435,6 +1489,10 @@ mod tests {
         assert_eq!(contract.host_kind, HostKind::Codex);
         assert_eq!(contract.mcp_config_shape.format, HostConfigFormat::Toml);
         assert_eq!(contract.mcp_config_shape.root_key, "mcp_servers");
+        assert_eq!(
+            contract.mcp_config_shape.stdio_env_vars_field,
+            Some("env_vars")
+        );
         assert_eq!(contract.hook_config_shape.root_key, "hooks");
         assert_eq!(contract.hook_config_shape.command_args_field, None);
         assert_eq!(contract.hook_config_shape.project_root_placeholder, None);
@@ -1475,6 +1533,7 @@ mod tests {
         assert_eq!(contract.host_kind, HostKind::ClaudeCode);
         assert_eq!(contract.mcp_config_shape.format, HostConfigFormat::Json);
         assert_eq!(contract.mcp_config_shape.root_key, "mcpServers");
+        assert_eq!(contract.mcp_config_shape.stdio_env_vars_field, None);
         assert_eq!(contract.hook_config_shape.root_key, "hooks");
         assert_eq!(contract.hook_config_shape.command_args_field, Some("args"));
         assert_eq!(
@@ -1782,6 +1841,7 @@ unknown_root = "preserved"
 [mcp_servers.volicord]
 command = "volicord"
 args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+env_vars = ["VOLICORD_HOME"]
 unknown_server_field = "preserved"
 "#;
         validate_contract_config(
@@ -1808,6 +1868,7 @@ command = ["volicord"]
                 "volicord": {
                     "command": "volicord",
                     "args": ["mcp", "--stdio", "--discover-repository", "--host", "claude-code"],
+                    "env": {"VOLICORD_HOME": "${VOLICORD_HOME}"},
                     "volicordUnknown": true
                 }
             },
@@ -1842,6 +1903,10 @@ command = ["volicord"]
         for forbidden in [
             CODEX_PROJECT_CONFIG.replace("\"codex\"]", "\"codex\", \"--connection\", \"local\"]"),
             CODEX_PROJECT_CONFIG.replace("command = \"volicord\"", "command = \"/local/bin/volicord\""),
+            CODEX_PROJECT_CONFIG.replace(
+                "env_vars = [\"VOLICORD_HOME\"]",
+                "env_vars = [\"VOLICORD_HOME\", \"API_TOKEN\"]",
+            ),
             format!(
                 "{CODEX_PROJECT_CONFIG}\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/local/home\"\n"
             ),
@@ -1866,6 +1931,7 @@ command = ["volicord"]
         for (field, value) in [
             ("command", json!("/local/bin/volicord")),
             ("env", json!({"SECRET_TOKEN": "local-only"})),
+            ("env_vars", json!(["VOLICORD_HOME"])),
             ("args", json!(["mcp", "--stdio", "--connection", "local"])),
             ("connection_id", json!("connection_local")),
         ] {

@@ -18,6 +18,8 @@ pub mod verification;
 
 pub const DEFAULT_SERVER_NAME: &str = "volicord";
 pub const DEFAULT_MCP_COMMAND: &str = "volicord";
+pub const MANAGED_PROCESS_BINDING_ENV: &str = "VOLICORD_MANAGED_PROCESS_BINDING";
+pub const MANAGED_PROCESS_BINDING_V1: &str = "runtime-home-and-profile-command-v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -260,6 +262,7 @@ pub struct ManagedServerEntry {
     pub command: String,
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
+    pub env_vars: Vec<String>,
 }
 
 impl ManagedServerEntry {
@@ -299,6 +302,7 @@ impl ManagedServerEntry {
             command: mcp_command.display().to_string(),
             args,
             env,
+            env_vars: Vec::new(),
         }
     }
 
@@ -307,7 +311,8 @@ impl ManagedServerEntry {
         Self {
             command: RepositoryDiscoveryDescriptor::COMMAND.to_owned(),
             args: descriptor.args(),
-            env: BTreeMap::new(),
+            env: descriptor.env(),
+            env_vars: descriptor.env_vars(),
         }
     }
 
@@ -316,7 +321,7 @@ impl ManagedServerEntry {
         host: RepositoryDiscoveryHost,
     ) -> Result<(), HostConfigError> {
         RepositoryDiscoveryDescriptor::new(host)
-            .validate_entry(&self.command, &self.args, &self.env)
+            .validate_entry(&self.command, &self.args, &self.env, &self.env_vars)
             .map_err(|error| {
                 HostConfigError::Conflict(HostConflict::new(
                     HostConflictKind::InvalidCommand,
@@ -343,8 +348,25 @@ impl ManagedServerEntry {
                 ),
             );
         }
+        if !self.env_vars.is_empty() {
+            entry.insert(
+                "env_vars".to_owned(),
+                Value::Array(self.env_vars.iter().cloned().map(Value::String).collect()),
+            );
+        }
         Value::Object(entry)
     }
+}
+
+pub(crate) fn is_legacy_repository_discovery_entry(
+    entry: &ManagedServerEntry,
+    host: RepositoryDiscoveryHost,
+) -> bool {
+    let descriptor = RepositoryDiscoveryDescriptor::new(host);
+    entry.command == RepositoryDiscoveryDescriptor::COMMAND
+        && entry.args == descriptor.args()
+        && entry.env.is_empty()
+        && entry.env_vars.is_empty()
 }
 
 pub(crate) fn validate_managed_server_entry_schema(
@@ -591,17 +613,35 @@ pub fn managed_fingerprint(
     server_name: &str,
     entry: &ManagedServerEntry,
 ) -> String {
-    let payload = json!({
-        "format": "volicord-host-entry-v1",
-        "host_kind": host_kind.as_str(),
-        "host_scope": host_scope.as_str(),
-        "server_name": server_name,
-        "entry": {
-            "command": entry.command,
-            "args": entry.args,
-            "env": entry.env,
-        },
-    });
+    let payload = if entry.env_vars.is_empty() {
+        // Preserve the exact v1 payload for every legacy entry that predates
+        // host-native forwarded environment names. Stored fingerprints must
+        // continue to authorize a safe managed migration of those entries.
+        json!({
+            "format": "volicord-host-entry-v1",
+            "host_kind": host_kind.as_str(),
+            "host_scope": host_scope.as_str(),
+            "server_name": server_name,
+            "entry": {
+                "command": entry.command,
+                "args": entry.args,
+                "env": entry.env,
+            },
+        })
+    } else {
+        json!({
+            "format": "volicord-host-entry-v2",
+            "host_kind": host_kind.as_str(),
+            "host_scope": host_scope.as_str(),
+            "server_name": server_name,
+            "entry": {
+                "command": entry.command,
+                "args": entry.args,
+                "env": entry.env,
+                "env_vars": entry.env_vars,
+            },
+        })
+    };
     digest_json(&payload)
 }
 
@@ -632,7 +672,7 @@ pub(crate) fn current_entry_fingerprint_from_json(
 
 pub(crate) fn managed_entry_from_json(value: &Value) -> Option<ManagedServerEntry> {
     let object = value.as_object()?;
-    let allowed_keys = ["command", "args", "env"];
+    let allowed_keys = ["command", "args", "env", "env_vars"];
     if object
         .keys()
         .any(|key| !allowed_keys.contains(&key.as_str()))
@@ -640,28 +680,41 @@ pub(crate) fn managed_entry_from_json(value: &Value) -> Option<ManagedServerEntr
         return None;
     }
     let command = object.get("command")?.as_str()?.to_owned();
-    let args = object
-        .get("args")
-        .and_then(Value::as_array)
-        .map(|items| {
+    let args = match object.get("args") {
+        None => Vec::new(),
+        Some(value) => value.as_array().and_then(|items| {
             items
                 .iter()
                 .map(Value::as_str)
                 .collect::<Option<Vec<_>>>()
                 .map(|items| items.into_iter().map(str::to_owned).collect::<Vec<_>>())
-        })
-        .unwrap_or_else(|| Some(Vec::new()))?;
-    let env = object
-        .get("env")
-        .and_then(Value::as_object)
-        .map(|items| {
+        })?,
+    };
+    let env = match object.get("env") {
+        None => BTreeMap::new(),
+        Some(value) => value.as_object().and_then(|items| {
             items
                 .iter()
                 .map(|(key, value)| value.as_str().map(|value| (key.clone(), value.to_owned())))
                 .collect::<Option<BTreeMap<_, _>>>()
-        })
-        .unwrap_or_else(|| Some(BTreeMap::new()))?;
-    Some(ManagedServerEntry { command, args, env })
+        })?,
+    };
+    let env_vars = match object.get("env_vars") {
+        None => Vec::new(),
+        Some(value) => value.as_array().and_then(|items| {
+            items
+                .iter()
+                .map(Value::as_str)
+                .collect::<Option<Vec<_>>>()
+                .map(|items| items.into_iter().map(str::to_owned).collect())
+        })?,
+    };
+    Some(ManagedServerEntry {
+        command,
+        args,
+        env,
+        env_vars,
+    })
 }
 
 pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
@@ -675,6 +728,7 @@ pub(crate) fn is_volicord_managed_entry(entry: &ManagedServerEntry) -> bool {
         return true;
     }
     if !(entry.args.len() == 4 || entry.args.len() == 6)
+        || !entry.env_vars.is_empty()
         || entry.args[0] != "mcp"
         || entry.args[1] != "--stdio"
         || entry.args[2] != "--connection"
@@ -718,6 +772,7 @@ mod tests {
             ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
         );
         assert!(shared.env.is_empty());
+        assert_eq!(shared.env_vars, ["VOLICORD_HOME"]);
 
         shared
             .args
@@ -727,9 +782,7 @@ mod tests {
                 .is_err()
         );
         shared.args.truncate(5);
-        shared
-            .env
-            .insert("SECRET_TOKEN".to_owned(), "not-stored".to_owned());
+        shared.env_vars.push("SECRET_TOKEN".to_owned());
         assert!(
             validate_managed_server_entry_schema(HostKind::Codex, HostScope::Project, &shared)
                 .is_err()
@@ -791,6 +844,50 @@ mod tests {
                 "volicord-integration",
                 &changed
             )
+        );
+    }
+
+    #[test]
+    fn entries_without_forwarded_env_vars_keep_the_exact_v1_fingerprint_payload() {
+        let entry = ManagedServerEntry::new(
+            "integration",
+            Path::new("/bin/volicord"),
+            Some(Path::new("/runtime")),
+        );
+        let expected = digest_json(&json!({
+            "format": "volicord-host-entry-v1",
+            "host_kind": "codex",
+            "host_scope": "user",
+            "server_name": "volicord",
+            "entry": {
+                "command": "/bin/volicord",
+                "args": ["mcp", "--stdio", "--connection", "integration"],
+                "env": {"VOLICORD_HOME": "/runtime"},
+            },
+        }));
+
+        assert!(entry.env_vars.is_empty());
+        assert_eq!(
+            managed_fingerprint(HostKind::Codex, HostScope::User, "volicord", &entry),
+            expected
+        );
+    }
+
+    #[test]
+    fn forwarded_env_vars_are_bound_by_the_v2_fingerprint() {
+        let current = ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
+        let mut changed = current.clone();
+        changed.env_vars.push("API_TOKEN".to_owned());
+        let mut legacy = current.clone();
+        legacy.env_vars.clear();
+
+        assert_ne!(
+            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &current),
+            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &changed)
+        );
+        assert_ne!(
+            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &current),
+            managed_fingerprint(HostKind::Codex, HostScope::Project, "volicord", &legacy)
         );
     }
 

@@ -6,7 +6,8 @@ use std::{error::Error, fs, io::Write, process::Command};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use support::binary_fixture::volicord_bin;
+use support::binary_fixture::{prepare_runtime_home, volicord_bin};
+use volicord_cli::host_integration::{MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
 use volicord_test_support::core_fixtures::CoreFixture;
@@ -95,9 +96,11 @@ fn binary_final_output_drains_stdin_and_projects_only_fresh_authority() -> Resul
             metadata_json: "{}".to_owned(),
         },
     )?;
+    let selected_volicord = fs::canonicalize(volicord_bin())?;
+    prepare_runtime_home(fixture.runtime_home_path(), &selected_volicord)?;
     let before = fixture.counts()?;
 
-    let mut child = Command::new(volicord_bin())
+    let mut child = Command::new(&selected_volicord)
         .args([
             "_final-output",
             "--repo",
@@ -119,6 +122,7 @@ fn binary_final_output_drains_stdin_and_projects_only_fresh_authority() -> Resul
             "codex",
         ])
         .env("VOLICORD_HOME", fixture.runtime_home_path())
+        .env(MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

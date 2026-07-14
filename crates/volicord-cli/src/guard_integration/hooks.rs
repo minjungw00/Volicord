@@ -12,8 +12,8 @@ use crate::{
         public_host_label, GuardIntegrationError, HookWrapperResolutionStatus,
     },
     host_integration::{
-        HostIntegrationFileKind, HostKind, HostLifecyclePhase, DEFAULT_MCP_COMMAND,
-        REQUIRED_GUARD_PHASES,
+        HostIntegrationFileKind, HostKind, HostLifecyclePhase, MANAGED_PROCESS_BINDING_ENV,
+        MANAGED_PROCESS_BINDING_V1, REQUIRED_GUARD_PHASES,
     },
 };
 
@@ -123,6 +123,7 @@ pub(crate) struct HostHookCommandVerification {
 
 pub(crate) fn plan_hook_wrapper_files(
     repo_root: &Path,
+    runtime_home: &Path,
     host_kind: HostKind,
     guard_commands: &BTreeMap<String, GuardCommandSpec>,
     phases: &[HostLifecyclePhase],
@@ -137,13 +138,21 @@ pub(crate) fn plan_hook_wrapper_files(
                     phase.policy_key()
                 ))
             })?;
-            plan_hook_wrapper_file(repo_root, host_kind, *phase, purpose, guard_command)
+            plan_hook_wrapper_file(
+                repo_root,
+                runtime_home,
+                host_kind,
+                *phase,
+                purpose,
+                guard_command,
+            )
         })
         .collect()
 }
 
 pub(crate) fn plan_hook_wrapper_file(
     repo_root: &Path,
+    runtime_home: &Path,
     host_kind: HostKind,
     phase: HostLifecyclePhase,
     purpose: HostHookPurpose,
@@ -151,7 +160,8 @@ pub(crate) fn plan_hook_wrapper_file(
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let relative_path = hook_wrapper_relative_path(host_kind, phase)?;
     let path = repo_root.join(&relative_path);
-    let content = hook_wrapper_script_content(host_kind, phase, purpose, guard_command);
+    let content =
+        hook_wrapper_script_content(runtime_home, host_kind, phase, purpose, guard_command);
     plan_managed_script_file(
         repo_root,
         &path,
@@ -269,6 +279,7 @@ pub(crate) fn host_hook_command_spec(
 }
 
 pub(crate) fn guard_command_specs(
+    volicord_command: &Path,
     repo_root: &Path,
     connection_id: &str,
     guard_installation_id: &str,
@@ -314,7 +325,7 @@ pub(crate) fn guard_command_specs(
             (
                 phase.policy_key().to_owned(),
                 GuardCommandSpec {
-                    command: DEFAULT_MCP_COMMAND.to_owned(),
+                    command: path_text(volicord_command),
                     args,
                 },
             )
@@ -323,6 +334,7 @@ pub(crate) fn guard_command_specs(
 }
 
 pub(crate) fn final_output_command_specs(
+    volicord_command: &Path,
     repo_root: &Path,
     connection_id: &str,
     guard_installation_id: &str,
@@ -355,7 +367,7 @@ pub(crate) fn final_output_command_specs(
     BTreeMap::from([(
         HostLifecyclePhase::Stop.policy_key().to_owned(),
         GuardCommandSpec {
-            command: DEFAULT_MCP_COMMAND.to_owned(),
+            command: path_text(volicord_command),
             args,
         },
     )])
@@ -454,6 +466,7 @@ pub(crate) fn codex_hook_root_available(repo_root: &Path) -> Result<bool, GuardI
 }
 
 fn hook_wrapper_script_content(
+    runtime_home: &Path,
     host_kind: HostKind,
     phase: HostLifecyclePhase,
     purpose: HostHookPurpose,
@@ -465,8 +478,9 @@ fn hook_wrapper_script_content(
         arg_after(&guard_command.args, "--guard-installation").unwrap_or("unknown");
     let policy_hash = arg_after(&guard_command.args, "--policy-hash").unwrap_or("unknown");
     let host_output = arg_after(&guard_command.args, "--host-output").unwrap_or("none");
+    let runtime_home = shell_word(&path_text(runtime_home));
     format!(
-        "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# purpose={purpose}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\nexec {command_line}\n",
+        "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind={}\n# phase={}\n# purpose={purpose}\n# connection_id={connection_id}\n# guard_installation_id={guard_installation_id}\n# policy_hash={policy_hash}\n# host_output={host_output}\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME={runtime_home}\n{MANAGED_PROCESS_BINDING_ENV}={MANAGED_PROCESS_BINDING_V1}\nexport VOLICORD_HOME\nexport {MANAGED_PROCESS_BINDING_ENV}\nexec {command_line}\n",
         public_host_label(host_kind),
         phase.policy_key(),
         purpose = purpose.as_str(),
@@ -527,4 +541,87 @@ fn arg_after<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, process::Command};
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    use volicord_test_support::TempRuntimeHome;
+
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn generated_hook_wrapper_overrides_ambient_runtime_home_with_selected_home(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("hook-runtime-home-binding")?;
+        let repo_root = fixture.create_product_repo("repo")?;
+        let selected_runtime_home = fixture.path().join("selected home's records");
+        let bin_dir = repo_root.join("bin");
+        let wrong_bin_dir = repo_root.join("wrong-bin");
+        let capture_path = repo_root.join("captured-runtime-home");
+        fs::create_dir_all(&bin_dir)?;
+        fs::create_dir_all(&wrong_bin_dir)?;
+
+        let fake_volicord = bin_dir.join("selected volicord's build");
+        fs::write(
+            &fake_volicord,
+            "#!/bin/sh\nprintf 'selected|%s' \"$VOLICORD_HOME\" > \"$VOLICORD_TEST_CAPTURE\"\n",
+        )?;
+        let mut fake_permissions = fs::metadata(&fake_volicord)?.permissions();
+        fake_permissions.set_mode(0o755);
+        fs::set_permissions(&fake_volicord, fake_permissions)?;
+        let wrong_volicord = wrong_bin_dir.join("volicord");
+        fs::write(
+            &wrong_volicord,
+            "#!/bin/sh\nprintf 'wrong|%s' \"$VOLICORD_HOME\" > \"$VOLICORD_TEST_CAPTURE\"\n",
+        )?;
+        let mut wrong_permissions = fs::metadata(&wrong_volicord)?.permissions();
+        wrong_permissions.set_mode(0o755);
+        fs::set_permissions(&wrong_volicord, wrong_permissions)?;
+
+        let command = GuardCommandSpec {
+            command: fake_volicord.display().to_string(),
+            args: vec![
+                "_hook".to_owned(),
+                "session-start".to_owned(),
+                "--connection".to_owned(),
+                "connection_alpha".to_owned(),
+                "--guard-installation".to_owned(),
+                "guard_alpha".to_owned(),
+            ],
+        };
+        let wrapper = repo_root.join("volicord-session-start.sh");
+        fs::write(
+            &wrapper,
+            hook_wrapper_script_content(
+                &selected_runtime_home,
+                HostKind::Codex,
+                HostLifecyclePhase::SessionStart,
+                HostHookPurpose::DetectiveGuard,
+                &command,
+            ),
+        )?;
+        let mut wrapper_permissions = fs::metadata(&wrapper)?.permissions();
+        wrapper_permissions.set_mode(0o755);
+        fs::set_permissions(&wrapper, wrapper_permissions)?;
+
+        let status = Command::new(&wrapper)
+            .env_clear()
+            .env("PATH", &wrong_bin_dir)
+            .env("VOLICORD_HOME", "/wrong/ambient/runtime-home")
+            .env("VOLICORD_TEST_CAPTURE", &capture_path)
+            .status()?;
+
+        assert!(status.success());
+        assert_eq!(
+            fs::read_to_string(capture_path)?,
+            format!("selected|{}", selected_runtime_home.display())
+        );
+        Ok(())
+    }
 }

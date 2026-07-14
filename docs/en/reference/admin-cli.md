@@ -223,6 +223,27 @@ connection. Init can select the Runtime Home path or MCP launch command while
 performing repository setup and host connection. It cannot change the parent
 shell's current environment.
 
+The Runtime Home selected by init is part of every managed child-process
+binding produced by that initialization. Personal and local MCP entries bind it
+directly. Shared project entries keep the path clone-local by forwarding
+`VOLICORD_HOME` through the host-specific portable form. Generated lifecycle
+and final-output wrappers export the selected absolute Runtime Home and invoke
+the installation profile's absolute `volicord_command`, and carry a versioned
+managed-process binding marker. A managed `_hook` or `_final-output` child
+validates that marker and requires its running executable to match the selected
+profile command. A managed MCP or hidden child must not silently substitute the
+host's platform-default Runtime Home. Init normalizes its selected Runtime Home
+to an absolute, nonempty path before recording the profile or generating any of
+these bindings.
+
+When an existing installation profile's `volicord_command` is relative,
+missing, or not executable, init replaces that unusable value with the
+validated absolute executable running init before regenerating local wrappers.
+An accessible executable already selected by the profile remains selected.
+Doctor's `repair_volicord_command` action directs the user to invoke a working
+Volicord executable and rerun init; `--mcp-command` changes the separate
+`volicord_mcp_command` and is not the repair for this field.
+
 The top-level setup status answers whether installation-profile preparation or
 host connection still needs a named user action. Init may report
 `action_required` after saving the Runtime Home and installation profile when
@@ -235,8 +256,8 @@ Arguments:
 
 | Argument | Meaning |
 |---|---|
-| `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
-| `--mcp-command PATH` | Stores the exact local `volicord` command in the installation profile for personal/local connection bindings, verification, and other local startup flows. Omission uses the running `volicord` executable selected by init. A shared repository-visible MCP entry never embeds this path; it uses the fixed PATH-resolved `volicord` repository-discovery descriptor. |
+| `--home PATH` | Selects the `Volicord Runtime Home`. Omission uses the platform default local runtime location. Init normalizes the selected path to an absolute, nonempty path before recording the installation profile or generating managed child bindings. The selected path must satisfy the Runtime Home/Product Repository separation contract before project state is used. |
+| `--mcp-command PATH` | Stores the exact local MCP launch command in installation-profile `volicord_mcp_command` for personal/local connection bindings, verification, and other local MCP startup flows. Omission uses the MCP launch command selected by init. Generated local hook wrappers instead use the profile's separately recorded absolute `volicord_command`. A shared repository-visible MCP entry never embeds either path; it uses the fixed PATH-resolved `volicord` repository-discovery descriptor. |
 | `--json` | Selects machine-readable, noninteractive output. Init does not prompt in JSON mode. |
 
 Init effects that relate to Runtime Home and installation profile selection:
@@ -447,14 +468,19 @@ Ordinary `volicord connection add` commands use the saved profile in the resolve
 Runtime Home instead of asking for an MCP command path or Runtime Home path.
 Personal, local, or user-wide host configuration may carry that Runtime Home as
 `VOLICORD_HOME`. Shared project host configuration must not embed a personal
-Runtime Home path. It uses command `volicord`, no environment map, and exactly
+Runtime Home path. It uses command `volicord` and exactly
 `mcp --stdio --discover-repository --host codex` or
-`mcp --stdio --discover-repository --host claude-code`. The host environment
-must resolve `volicord` through `PATH` and select its local Runtime Home through
-the inherited process environment or platform default. Startup resolves the
-canonical current Git repository to the unique enabled shared connection and
-project registered for that host in that Runtime Home. Repository metadata is
-never used to derive local IDs.
+`mcp --stdio --discover-repository --host claude-code`. A generated Codex
+`.codex/config.toml` entry also uses `env_vars = ["VOLICORD_HOME"]`; a generated
+Claude Code `.mcp.json` entry uses
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`. These are allow-forward forms,
+not embedded Runtime Home paths. The host environment must resolve `volicord`
+through `PATH` and provide the same nonempty, absolute `VOLICORD_HOME` selected
+by init. Repository-discovery startup rejects a missing, empty, or relative
+value before any platform-default substitution. It then resolves the canonical current Git
+repository to the unique enabled shared connection and project registered for
+that host in that Runtime Home. Repository metadata is never used to derive
+local IDs.
 
 <a id="agent-host-setup-and-init"></a>
 ### Host setup profiles
@@ -468,8 +494,10 @@ configuration target, while Claude Code uses its repository-local CLI scope.
 Adding `--shared` selects the project-scoped host layout in
 `.codex/config.toml` or `.mcp.json`; that generated entry starts
 `volicord mcp --stdio --discover-repository --host codex|claude-code` through
-`PATH` and contains no local IDs, absolute command, Runtime Home path, or
-environment map.
+`PATH` and contains no local IDs, absolute command, or Runtime Home path. It
+contains only the host-specific portable `VOLICORD_HOME` forwarding form:
+Codex `env_vars = ["VOLICORD_HOME"]` or Claude Code
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`.
 
 Connection intent selects the managed Agent Connection target. Init separately
 keeps its current repository integration inventory for both `personal` and
@@ -666,11 +694,15 @@ installed but no matching host-hook event has been observed. Init does not mark
 a detective installation record `active` merely because files were written.
 
 `--home PATH` selects the Runtime Home for this initialization. `--mcp-command
-PATH` stores the exact command path in the installation profile when init must
-create or update that profile. Personal host configuration uses the saved
-profile path and Runtime Home as required by the host adapter. Project-scoped
+PATH` stores the exact MCP launch command in installation-profile
+`volicord_mcp_command` when init must create or update that profile. Personal
+host configuration uses the saved MCP command and Runtime Home as required by
+the host adapter. Project-scoped
 host MCP configuration selected by `--shared` still uses `volicord` from
-`PATH`.
+`PATH` and forwards, but never embeds, the selected `VOLICORD_HOME`. Managed
+local lifecycle and final-output wrappers instead pin both the selected
+absolute Runtime Home and the installation profile's absolute
+`volicord_command`.
 
 Non-dry-run `volicord init`:
 
@@ -685,7 +717,8 @@ Non-dry-run `volicord init`:
   explicit `--shared`
 - for an explicit shared connection, writes the exact portable
   `volicord mcp --stdio --discover-repository --host codex|claude-code`
-  descriptor with no environment map
+  descriptor with the one host-specific portable `VOLICORD_HOME` forwarding
+  form and no literal Runtime Home path or other environment entry
 - writes or updates only the Volicord-managed block in `AGENTS.md`
 - writes `.volicord/policy.json` as a `local_overlay` policy carrying the
   selected `connection_intent` and detective host hook commands that invoke the
@@ -714,6 +747,14 @@ Re-running init is idempotent for matching Volicord-managed content and for a
 partially completed host, intent, or profile migration. It updates managed
 blocks, policy files, host MCP entries, and detective installation records without
 duplicating them; an already retired matching projection is a successful no-op.
+Managed MCP entries or local wrappers generated before the Runtime Home binding
+contract are stale managed projections. They receive no compatibility fallback
+to a platform-default Runtime Home or a PATH-resolved wrapper command. The user
+must rerun init with the same repository, host, intent, profile, and Runtime
+Home; matching owned content is conditionally regenerated with the portable
+forwarding directive or the pinned absolute wrapper bindings. This projection
+refresh does not change Runtime Home DDL, the storage profile, or stored Core
+records, so it requires no database or storage migration.
 An older shared MCP entry with explicit connection/project bindings is eligible
 for one conditional migration only when its current fingerprint matches the
 stored managed fingerprint; successful migration replaces it with the portable
@@ -771,8 +812,10 @@ only `VOLICORD_HOME`, `VOLICORD_MCP_LAUNCH`, `VOLICORD_MCP_HOST`,
 `VOLICORD_MCP_CONNECTION_ID`, and `VOLICORD_MCP_PROJECT_ID`; secret-like and
 all other environment keys are rejected without including their values in the
 diagnostic. This allowlist is not a general secret-content scanner.
-This is a local-overlay schema; none of these environment fields is permitted
-in a shared `.codex/config.toml` or `.mcp.json` Volicord entry.
+This is a local-overlay schema; none of these literal local-overlay environment
+values is copied into a shared `.codex/config.toml` or `.mcp.json` Volicord
+entry. The shared entry permits only the host-specific portable
+`VOLICORD_HOME` forwarding form defined above.
 The policy schema also requires `storage_scope=local_overlay`, the selected
 `connection_intent`, a non-empty host/repository/connection identity set, an MCP
 command with string arguments and string environment values, and a host-hook
@@ -931,7 +974,7 @@ Codex connection verification keeps these diagnostic concepts separate:
 
 | Diagnostic concept | Text output surface | JSON diagnostic surface | Meaning |
 |---|---|---|---|
-| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields, including `managed_config` | The entry matches the expected command, args, and managed launch markers. Accepted tool-approval overlays do not change the match. Missing markers may report `managed_config=unmanaged`; command, arg, or marker drift remains non-matching. |
+| MCP configuration match | `MCP configuration` or `Current MCP configuration` | host check details and managed configuration fields, including `managed_config` | A personal entry matches the expected command, args, and local managed-launch markers. A shared entry matches the exact repository-discovery command and args plus only the host-specific portable `VOLICORD_HOME` forwarding form. Accepted tool-approval overlays do not change the match. Missing personal markers or missing shared forwarding may report `managed_config=unmanaged`; command, arg, or intent-specific managed-identity drift remains non-matching. |
 | Codex tool approval policy | `Codex tool approval policy` when present | `verification.host.host_policy_overlay` and a `checks[]` entry with `id=codex_tool_approval_policy` when present | Codex-owned `tools.<known Volicord tool>.approval_mode` subtables appear as `kind=codex_tool_approval`. Diagnostics include `entries[].tool` and `entries[].approval_mode`. This does not prove host trust, active tool exposure, or running-session approval. |
 | CLI MCP preflight and handshake | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, or `Last CLI MCP handshake` | `checks[]` entries with `id=cli_mcp_preflight` and `id=cli_mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. This validates the CLI-observable MCP process, not active Codex tool exposure. |
 | CLI MCP storage capability | `CLI MCP storage read`, `CLI MCP storage write`, and `CLI MCP effective tools` | `checks[]` entries with `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, and `id=cli_mcp_effective_tools` when available | Storage capability observed through the CLI MCP verification process. This is separate from storage capability observed from a managed Codex host. |
@@ -951,12 +994,14 @@ The accepted Codex tool approval policy overlay shape is:
 approval_mode = "approve"
 ```
 
-When the `volicord` server entry's command, args, and Volicord managed
-environment markers still match, that overlay alone must not make
-`managed_config` become `changed` or produce the `mcp_config_changed` next
-action. A `volicord` server entry without Volicord managed markers may be
-reported as unmanaged, and command, args, or managed marker drift remains
-configuration drift.
+When a personal `volicord` server entry's command, args, and local managed
+environment markers still match, or a shared entry's repository-discovery
+command, args, and exact `env_vars = ["VOLICORD_HOME"]` forwarding still match,
+that overlay alone must not make `managed_config` become `changed` or produce
+the `mcp_config_changed` next action. A personal entry without its managed
+markers or a shared entry without its exact forwarding directive may be
+reported as unmanaged. Command, args, or intent-specific managed-identity drift
+remains configuration drift.
 
 Claude Code connection verification uses the runtime-facing Claude Code
 adapter. For shared project setup, the managed identity is the project
@@ -1107,7 +1152,10 @@ checks, host trust, shell approval, or OS-level sandboxing.
 Generated final-output-only wrappers invoke the hidden `_final-output` command
 with pinned repository, Agent Connection, guard-installation, host, profile,
 policy-hash, and host-output arguments. These are generated process-binding
-inputs, not a normal user command or public API request shape.
+inputs, not a normal user command or public API request shape. The wrapper also
+exports the init-selected absolute `VOLICORD_HOME` and invokes the installation
+profile's absolute `volicord_command`; it does not use a bare PATH-resolved
+command or an ambient host Runtime Home.
 
 Each host-hook command reads one JSON hook event from stdin by default. `--file PATH`
 reads that JSON event from a file for tests or host integrations that stage
@@ -1166,6 +1214,19 @@ exit code, and pass the expected host kind, host-native output mode, repository
 selector, Agent Connection, host-hook installation, and policy hash. Users must not
 replace generated hook commands with bare `.codex/hooks/...` or
 `.claude/hooks/...` relative paths.
+
+Every generated local lifecycle or final-output wrapper binds its managed child
+before execution: it exports the absolute Runtime Home selected by init as
+`VOLICORD_HOME`, exports the versioned `VOLICORD_MANAGED_PROCESS_BINDING`
+marker, and invokes the installation profile's absolute `volicord_command`.
+The generated value replaces rather than trusts an ambient host value. A
+managed invocation of hidden `_hook` or `_final-output` requires that explicit
+nonempty absolute Runtime Home, the exact current marker, and a running
+executable that resolves to the profile command. It fails before
+platform-default Runtime Home substitution or hidden-command handling when any
+check does not match. A wrapper and stored capability from an older binding
+shape are therefore not considered active merely because their stored hashes
+agree; rerunning init regenerates the current owned wrapper.
 
 Detective-aware status, verification, and doctor diagnostics report
 `hook_path_safety`, `hook_commands_cwd_independent`,

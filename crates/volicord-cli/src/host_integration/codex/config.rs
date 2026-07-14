@@ -99,6 +99,13 @@ fn server_table(entry: &ManagedServerEntry) -> Table {
         args.push(arg.as_str());
     }
     table["args"] = value(args);
+    if !entry.env_vars.is_empty() {
+        let mut env_vars = Array::default();
+        for env_var in &entry.env_vars {
+            env_vars.push(env_var.as_str());
+        }
+        table["env_vars"] = value(env_vars);
+    }
     if !entry.env.is_empty() {
         let mut env = Table::new();
         for (key, value_text) in &entry.env {

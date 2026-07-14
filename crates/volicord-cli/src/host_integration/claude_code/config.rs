@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::host_integration::{
     config_edit::read_json_object,
-    current_entry_fingerprint_from_json, is_volicord_managed_entry, managed_entry_from_json,
-    managed_fingerprint,
+    current_entry_fingerprint_from_json, is_legacy_repository_discovery_entry,
+    is_volicord_managed_entry, managed_entry_from_json, managed_fingerprint,
     verification::{HostConfigurationStatus, ManagedConfigStatus, Verification},
     HostConfigError, HostConflict, HostConflictKind, HostKind, HostPlan, HostScope,
     ManagedServerEntry, PlannedChange, DEFAULT_MCP_COMMAND,
@@ -49,7 +49,7 @@ pub(super) fn classify_existing_json_entry(
         ));
         return PlannedChange::Noop;
     };
-    if !is_claude_managed_identity_candidate(&entry) {
+    if !is_claude_managed_identity_candidate_for_scope(scope, &entry) {
         conflicts.push(HostConflict::new(
             HostConflictKind::UnmanagedNameCollision,
             format!("{label} is already configured by an unmanaged entry: {server_name}"),
@@ -76,6 +76,23 @@ pub(super) fn is_claude_managed_identity_candidate(entry: &ManagedServerEntry) -
     is_volicord_managed_entry(entry)
         || command_is_volicord(entry)
         || args_have_volicord_mcp_binding(&entry.args)
+}
+
+fn is_claude_managed_identity_candidate_for_scope(
+    scope: HostScope,
+    entry: &ManagedServerEntry,
+) -> bool {
+    if scope != HostScope::Project {
+        return is_claude_managed_identity_candidate(entry);
+    }
+    entry
+        .validate_repository_discovery(volicord_mcp::RepositoryDiscoveryHost::ClaudeCode)
+        .is_ok()
+        || is_legacy_repository_discovery_entry(
+            entry,
+            volicord_mcp::RepositoryDiscoveryHost::ClaudeCode,
+        )
+        || entry.env_vars.is_empty() && args_have_volicord_mcp_binding(&entry.args)
 }
 
 fn command_is_volicord(entry: &ManagedServerEntry) -> bool {
@@ -179,7 +196,7 @@ pub(super) fn verify_claude_project_entry(
     let Some(entry) = managed_entry_from_json(existing) else {
         return Ok(ManagedConfigStatus::Malformed);
     };
-    if !is_claude_managed_identity_candidate(&entry) {
+    if !is_claude_managed_identity_candidate_for_scope(HostScope::Project, &entry) {
         return Ok(ManagedConfigStatus::Unmanaged);
     }
     let current = managed_fingerprint(

@@ -52,7 +52,7 @@ the executable-discovery guidance in [Installation](docs/en/user-guide/installat
 ### 2. Connect A Product Repository
 
 ```sh
-volicord init --host codex --repo /path/to/your-product-repo --profile record
+volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
 Use `--host claude-code` for Claude Code. The example path is the repository
@@ -61,6 +61,11 @@ where the agent will work, not the Volicord source repository.
 The command prepares local Volicord state and writes project-scoped host setup
 files. Follow the `Next` steps it prints. The host may still require a restart,
 reload, project trust decision, or MCP approval.
+
+This shared setup does not embed a machine-local Runtime Home in repository
+configuration. Launch the host with the same nonempty, absolute
+`VOLICORD_HOME` selected by init; the generated host entry forwards that value
+to the MCP child process.
 
 Then verify the connection:
 

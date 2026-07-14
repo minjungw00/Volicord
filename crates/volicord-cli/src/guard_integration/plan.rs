@@ -64,6 +64,7 @@ pub(crate) struct GuardIntegrationPlanRequest<'a> {
     pub(crate) host_kind: HostKind,
     pub(crate) profile: IntegrationProfile,
     pub(crate) runtime_home: &'a Path,
+    pub(crate) volicord_command: &'a Path,
     pub(crate) repo_root: &'a Path,
     pub(crate) connection_id: &'a str,
     pub(crate) guard_installation_id: &'a str,
@@ -78,12 +79,24 @@ pub(crate) fn plan_guard_integration(
         host_kind,
         profile,
         runtime_home,
+        volicord_command,
         repo_root,
         connection_id,
         guard_installation_id,
         mcp_entry,
         connection_intent,
     } = request;
+    for (label, path) in [
+        ("Runtime Home", runtime_home),
+        ("installation profile volicord_command", volicord_command),
+    ] {
+        if !path.is_absolute() {
+            return Err(GuardIntegrationError::runtime(format!(
+                "MANAGED_PROCESS_BINDING_INVALID: {label} must be an absolute path before managed host wrappers are generated: {}",
+                path.display()
+            )));
+        }
+    }
     if profile != IntegrationProfile::Record {
         ensure_observe_profile_supported_on_platform(host_kind)?;
     }
@@ -102,6 +115,7 @@ pub(crate) fn plan_guard_integration(
         ensure_observe_session_watcher_supported(runtime_home, repo_root, host_kind)?;
     }
     let policy_guard_commands = guard_command_specs(
+        volicord_command,
         repo_root,
         connection_id,
         guard_installation_id,
@@ -124,6 +138,7 @@ pub(crate) fn plan_guard_integration(
     let policy_hash =
         policy_hash(&policy).map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
     let guard_commands = guard_command_specs(
+        volicord_command,
         repo_root,
         connection_id,
         guard_installation_id,
@@ -136,6 +151,7 @@ pub(crate) fn plan_guard_integration(
         if profile == IntegrationProfile::Record && final_output_supported {
             (
                 final_output_command_specs(
+                    volicord_command,
                     repo_root,
                     connection_id,
                     guard_installation_id,
@@ -196,6 +212,7 @@ pub(crate) fn plan_guard_integration(
         host_kind,
         profile,
         connection_intent,
+        runtime_home,
         repo_root,
         mcp_entry,
         commands: &generated_host_commands,
@@ -442,10 +459,96 @@ mod tests {
     use super::*;
     use crate::guard_integration::{
         apply::apply_guard_integration,
+        audit::guard_file_findings,
         capability::host_hook_capability_json,
         files::{apply_managed_file_retirement, RetirementPlanStatus},
     };
     use volicord_test_support::TempRuntimeHome;
+
+    #[test]
+    fn managed_wrapper_plan_rejects_relative_process_bindings(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("relative-managed-process-binding")?;
+        let repo_root = fixture.create_product_repo("product-repo")?;
+        let runtime_home = fixture.path().to_path_buf();
+        let volicord_command = runtime_home.join("bin/volicord");
+        let mcp_entry = ManagedServerEntry::new("conn_record", Path::new("volicord"), None);
+
+        for (selected_home, selected_command, expected_label) in [
+            (
+                Path::new("relative-runtime-home"),
+                volicord_command.as_path(),
+                "Runtime Home",
+            ),
+            (
+                runtime_home.as_path(),
+                Path::new("relative-volicord"),
+                "installation profile volicord_command",
+            ),
+        ] {
+            let error = plan_guard_integration(GuardIntegrationPlanRequest {
+                host_kind: HostKind::Codex,
+                profile: IntegrationProfile::Record,
+                runtime_home: selected_home,
+                volicord_command: selected_command,
+                repo_root: &repo_root,
+                connection_id: "conn_record",
+                guard_installation_id: "guard_record",
+                mcp_entry: &mcp_entry,
+                connection_intent: ConnectionIntent::Shared,
+            })
+            .expect_err("relative managed process binding must fail closed");
+
+            assert!(error
+                .to_string()
+                .contains("MANAGED_PROCESS_BINDING_INVALID"));
+            assert!(error.to_string().contains(expected_label));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn managed_wrapper_audit_accepts_quoted_absolute_profile_command(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("quoted-managed-process-binding")?;
+        let repo_root = fixture.create_product_repo("product-repo")?;
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let runtime_home = fixture.path().join("selected home's records");
+        let volicord_command = fixture
+            .path()
+            .join("selected build")
+            .join("volicord's binary");
+        let mcp_entry = ManagedServerEntry::new_repository_discovery(
+            volicord_mcp::RepositoryDiscoveryHost::Codex,
+        );
+
+        let installed =
+            apply_guard_integration(plan_guard_integration(GuardIntegrationPlanRequest {
+                host_kind: HostKind::Codex,
+                profile: IntegrationProfile::Detective,
+                runtime_home: &runtime_home,
+                volicord_command: &volicord_command,
+                repo_root: &repo_root,
+                connection_id: "conn_quoted",
+                guard_installation_id: "guard_quoted",
+                mcp_entry: &mcp_entry,
+                connection_intent: ConnectionIntent::Shared,
+            })?)?;
+        let capability_json = host_hook_capability_json(&installed)?;
+        let findings = guard_file_findings(&capability_json);
+
+        assert!(
+            findings.stale_files.is_empty(),
+            "{:#?}",
+            findings.stale_files
+        );
+        assert!(
+            findings.broken_files.is_empty(),
+            "{:#?}",
+            findings.broken_files
+        );
+        Ok(())
+    }
 
     #[test]
     fn codex_record_capability_transition_retires_git_only_final_output_files(
@@ -459,6 +562,7 @@ mod tests {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,
             runtime_home: &runtime_home,
+            volicord_command: Path::new("/bin/volicord"),
             repo_root: &repo_root,
             connection_id: "conn_record",
             guard_installation_id: "guard_record",

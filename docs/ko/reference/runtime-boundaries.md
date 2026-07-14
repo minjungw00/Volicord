@@ -71,7 +71,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **외부 MCP 호스트 설정**
 
-- **포함하는 것:** `volicord mcp --stdio` 프로세스를 지정할 수 있는 호스트 소유 또는 사용자 관리 설정입니다. 개인·로컬 오버레이에는 내부 Agent Connection 바인딩, 절대 명령 경로, `VOLICORD_HOME` 같은 로컬 환경이 들어갈 수 있습니다. 저장소에서 보이는 공유 Codex와 Claude Code 항목에는 로컬 ID나 환경 맵 없이 형식이 지정된 `volicord mcp --stdio --discover-repository --host <host>` 기술 정보만 들어갑니다.
+- **포함하는 것:** `volicord mcp --stdio` 프로세스를 지정할 수 있는 호스트 소유 또는 사용자 관리 설정입니다. 개인·로컬 오버레이에는 내부 Agent Connection 바인딩, 절대 명령 경로, init이 선택한 절대 `VOLICORD_HOME`이 들어갈 수 있습니다. 저장소에서 보이는 공유 Codex와 Claude Code 항목에는 로컬 ID나 Runtime Home의 리터럴 경로 없이 형식이 지정된 `volicord mcp --stdio --discover-repository --host <host>` 기술 정보가 들어갑니다. 복제본별 로컬 `VOLICORD_HOME`은 정확한 호스트별 이식 가능 형태로 전달합니다. Codex는 `env_vars = ["VOLICORD_HOME"]`, Claude Code는 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다.
 - **사용 경로:** 외부 호스트가 로드와 신뢰 결정을 담당합니다. [관리 CLI](admin-cli.md)가 동작을 정의한 경우에만 `volicord`가 지원되는 직접 설정을 쓸 수 있습니다.
 - **경계:** Runtime Home 레지스트리 상태나 Core 권한이 아니며 Volicord 권한을 증명하지 않습니다. `Product Repository`에 저장되었다면 명시적 통합 파일일 뿐입니다.
 
@@ -83,7 +83,7 @@ Volicord는 구현 파일, 제품 파일, 런타임 데이터, 외부 호스트 
 
 **`volicord mcp --stdio` MCP 어댑터 프로세스**
 
-- **담당하는 것:** 명시적 로컬 ID 또는 고유한 로컬 저장소 발견 결과로 Agent Connection 하나에 묶인 로컬 stdio 자식 프로세스입니다. Runtime Home과 연결 상태를 확인하고, `connection.mode`에 맞는 도구를 노출하고, 허용된 프로젝트를 선택하고, 어댑터가 담당하는 호출 사실을 파생하고, 공개 메서드 호출을 Core와 Store로 전달합니다. 저장소 발견은 현재 Git worktree를 정규화하고 로컬 Runtime Home에서 선택한 등록 프로젝트 하나로 프로세스를 좁힙니다.
+- **담당하는 것:** 명시적 로컬 ID 또는 고유한 로컬 저장소 발견 결과로 Agent Connection 하나에 묶인 로컬 stdio 자식 프로세스입니다. Volicord가 관리하는 시작에서는 init이 만든 설정에 바인딩된 Runtime Home을 사용합니다. 사용자가 관리하는 명시적 ID 시작은 [MCP 전송](mcp-transport.md)이 정한 프로세스 입력에서 Runtime Home을 해석합니다. 연결 상태를 확인하고, `connection.mode`에 맞는 도구를 노출하고, 허용된 프로젝트를 선택하고, 어댑터가 담당하는 호출 사실을 파생하고, 공개 메서드 호출을 Core와 Store로 전달합니다. 저장소 발견은 명시적으로 전달된 비어 있지 않은 절대 경로 `VOLICORD_HOME`을 요구하고 누락, 빈 값, 상대 경로를 플랫폼 기본값으로 대체하기 전에 거부합니다. 그런 다음 현재 Git worktree를 정규화하고 해당 Runtime Home에서 선택한 등록 프로젝트 하나로 프로세스를 좁힙니다.
 - **시작 주체:** `stdin`/`stdout`으로 통신하는 MCP 호스트입니다.
 - **경계:** 임의 제품 파일 편집 권한이나 사용자 행동 resolution 기록 권한을 부여하지 않습니다. 호스트 신뢰를 강제하거나 샌드박싱을 제공하거나 MCP 네트워크 전송 리스너를 열지 않습니다. 비활성화하지 않으면 로컬 User Channel 동의를 위한 별도 임시 루프백 전용 HTTP 리스너를 열 수 있지만, 이 리스너는 MCP 전송이 아닙니다.
 
@@ -144,7 +144,10 @@ Record profile init에서 기본 개인 Codex 연결은 Codex 사용자 설정 �
 init은 개인 훅 설정과 규칙 경로도 보호합니다. `.volicord/policy.json`은
 `storage_scope=local_overlay`를 선언하고 선택한 `connection_intent`를 기록하므로 공유
 상태 보기로 커밋하면 안 됩니다. 생성된 래퍼 스크립트도 프로세스 바인딩 경로와
-식별자를 담으므로 로컬 파일입니다.
+식별자를 담으므로 로컬 파일입니다. 모든 관리 생명주기 또는 최종 출력 래퍼는 init이
+선택한 절대 `VOLICORD_HOME`을 내보내고 설치 프로필의 절대 `volicord_command`를
+실행합니다. 호스트 환경의 기존 Runtime Home 값이나 `PATH`로 해석되는 단순 명령을 신뢰하지
+않습니다.
 
 Product Repository 하나에서 이 저장소 로컬 표면은 선택한 지원 호스트, 활성 의도,
 프로필을 각각 하나씩 나타냅니다. 선택한 호스트, 의도, 프로필 중 하나를 바꾸는 init은
@@ -161,10 +164,14 @@ Codex `.codex/hooks.json`은 Volicord 통합이 파일 전체를 소유하며, �
 표면을 커밋할지는 Product Repository 정책 결정입니다. 공유 `.codex/config.toml` 또는
 `.mcp.json`의 Volicord MCP 항목은 호스트별 저장소 발견 형태와 정확히 일치할 때만
 복제본에서 그대로 쓸 수 있습니다. 명령은 `volicord`, 인자는
-`mcp --stdio --discover-repository --host codex|claude-code`, 환경 맵은 없음입니다.
-Connection/프로젝트 ID, 절대 명령, Runtime Home 경로, 비밀값 형태를 포함한 모든 환경
-키는 로컬 오버레이에만 속하며 이 공유 항목에서는 유효하지 않습니다. 각 복제본은 선택한
-로컬 Runtime Home에서 고유한 활성 공유 연결로 별도로 등록되어야 합니다.
+`mcp --stdio --discover-repository --host codex|claude-code`이고, 이식 가능한 Runtime Home
+전달 설정은 하나입니다. Codex는 `env_vars = ["VOLICORD_HOME"]`, Claude Code는
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다. 어느 형태도 Runtime Home
+경로를 내장하지 않습니다. Connection/프로젝트 ID, 절대 명령, Runtime Home의 리터럴 경로,
+비밀값 형태를 포함한 그 밖의 환경 키는 로컬 오버레이에만 속하며 이 공유 항목에서는
+유효하지 않습니다. 각 복제본은 선택한 로컬 Runtime Home에서 고유한 활성 공유 연결로
+별도로 등록되어야 하고 시작 호스트는 같은 비어 있지 않은 절대 경로
+`VOLICORD_HOME`을 제공해야 합니다.
 
 연결된 worktree에서 공통 `info/exclude`는 모든 형제가 안전하게 읽을 수 있는 의도와
 무관한 정책 및 래퍼 경로만 담습니다. 개인 Detective init은 추가 개인 전용 경로를
@@ -251,6 +258,12 @@ Volicord 구현은 이 저장소가 유지하는 구현 집합을 뜻합니다. 
 
 현재 로컬 Rust MCP 어댑터는 Volicord 구현 안의 실행 파일 역할인 `volicord mcp --stdio` stdio 프로세스입니다. MCP 호스트는 프로토콜이나 호스트 설정 맥락에서 설정된 항목을 MCP 서버라고 부를 수 있습니다. 그 라벨은 Volicord를 서버 제품으로 만들거나 Volicord 구현을 네트워크 서버로 만들지 않습니다. MCP 호스트는 `volicord mcp --stdio`를 자식 프로세스로 시작하고, 프로세스 환경으로 설정을 전달하며, `stdin`/`stdout`을 통해 줄 단위 JSON-RPC를 주고받습니다. MCP 전송 자체는 TCP, HTTP, Unix 도메인 소켓, 또는 그 밖의 네트워크 전송 리스너를 열지 않습니다. 다만 `VOLICORD_LOCAL_WEB_CONSENT`로 비활성화하지 않으면 같은 프로세스가 로컬 User Channel 동의를 위한 임시 루프백 전용 HTTP 리스너를 열려고 시도합니다. 이 선택적 리스너를 시작하지 못해도 stdio 시작은 계속됩니다. 동의 리스너는 MCP 전송이 아니며, 정확한 동작은 [MCP 전송](mcp-transport.md#local-web-consent-fallback)이 담당합니다.
 
+Volicord 관리 시작에서는 프로세스 환경이 MCP 자식 프로세스를 init이 선택한 Runtime
+Home에 묶어야 합니다. 개인·로컬 설정은 선택한 절대 경로를 직접 제공합니다. 복제본에서
+그대로 쓰는 공유 설정은 경로를 내장하지 않고 시작 호스트의 `VOLICORD_HOME`을 전달하며,
+저장소 발견 시작은 그 값이 존재하고 비어 있지 않을 것을 요구합니다. 플랫폼 기본 Runtime
+Home으로 대체하지 않으며 상대 경로도 거부합니다.
+
 별도 `volicord serve --transport local-http` 모드는 로컬/Docker 사용을 위한 Local HTTP
 transport입니다. 기준 stdio 프로세스가 아니며 공개 네트워크 API, SaaS 엔드포인트, 다중
 사용자 서버, 보안 경계로 취급하면 안 됩니다. 정확한 리스너, 인증, Origin, HTTP 메시지 교환
@@ -277,6 +290,9 @@ MCP 호스트 설정은 외부 MCP 호스트가 소유합니다. [관리 CLI](ad
 주장할 수 있는 것:
 - 호스트 설정은 `volicord mcp --stdio` 실행 파일, 내부 Agent Connection 바인딩, 그 호스트에 필요한 환경 값을 지정할 수 있습니다.
 - 호스트 설정은 소스 저장소, 설치 파일, `Volicord Runtime Home`, `Product Repository` 밖에 있을 수 있습니다.
+- 공유 저장소 호스트 설정은 로컬 경로를 내장하지 않고 `VOLICORD_HOME`을 전달할 수
+  있습니다. 생성된 로컬 훅 래퍼는 명시적 로컬 통합 파일로 남으면서 선택한 절대 경로와
+  절대 `volicord_command`를 고정할 수 있습니다.
 
 주장하면 안 되는 것:
 - MCP 호스트 설정이 정의상 Volicord 런타임 상태라는 주장.

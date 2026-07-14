@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use crate::host_integration::HostCapabilities;
 
 pub use adapter::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest};
-pub(crate) use identity::managed_identity_evaluation_for_plan;
+pub(crate) use identity::{
+    managed_entry_from_item_for_diagnostics, managed_identity_evaluation_for_plan,
+};
 pub(crate) use trust::project_trust_diagnostic;
 
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -63,6 +65,7 @@ mod tests {
         HostPlanRequest, HostRemoveRequest, HostScope, HostTarget, InstallationProfile,
         ManagedServerEntry, PlannedChange, ProjectContext, DEFAULT_SERVER_NAME,
     };
+    use volicord_mcp::RepositoryDiscoveryHost;
 
     use super::*;
 
@@ -385,9 +388,11 @@ mod tests {
             ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
         );
         assert!(plan.entry.env.is_empty());
+        assert_eq!(plan.entry.env_vars, ["VOLICORD_HOME"]);
         assert!(text.contains(
             "args = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]"
         ));
+        assert!(text.contains("env_vars = [\"VOLICORD_HOME\"]"));
         assert!(!text.contains("[mcp_servers.volicord.env]"));
         assert!(!text.contains("int_alpha"));
         assert!(!text.contains("project_alpha"));
@@ -617,6 +622,7 @@ mod tests {
 
         let migrated = fs::read_to_string(repo.join(".codex/config.toml"))?;
         assert!(migrated.contains("--discover-repository"));
+        assert!(migrated.contains("env_vars = [\"VOLICORD_HOME\"]"));
         assert!(!migrated.contains("--connection"));
         assert!(!migrated.contains("[mcp_servers.volicord.env]"));
         let again = adapter.plan(HostPlanRequest {
@@ -624,6 +630,83 @@ mod tests {
             ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
         })?;
         assert_eq!(again.change, PlannedChange::Noop);
+        Ok(())
+    }
+
+    #[test]
+    fn stored_discovery_without_forwarding_migrates_with_its_v1_fingerprint(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("codex-discovery-forwarding-migration")?;
+        fs::create_dir_all(repo.join(".codex"))?;
+        let mut legacy =
+            ManagedServerEntry::new_repository_discovery(RepositoryDiscoveryHost::Codex);
+        legacy.env_vars.clear();
+        let legacy_fingerprint = managed_fingerprint(
+            HostKind::Codex,
+            HostScope::Project,
+            DEFAULT_SERVER_NAME,
+            &legacy,
+        );
+        fs::write(
+            repo.join(".codex/config.toml"),
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n",
+        )?;
+        let mut adapter = CodexAdapter::new(CodexEnvironment::default());
+
+        let migration = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&legacy_fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(migration.change, PlannedChange::Update);
+        assert!(migration.conflicts.is_empty());
+        adapter.apply(&migration)?;
+
+        let migrated = fs::read_to_string(repo.join(".codex/config.toml"))?;
+        assert!(migrated.contains("env_vars = [\"VOLICORD_HOME\"]"));
+        let again = adapter.plan(HostPlanRequest {
+            expected_fingerprint: Some(&migration.fingerprint),
+            ..request(HostScope::Project, Some(&repo), Path::new("ignored"))
+        })?;
+        assert_eq!(again.change, PlannedChange::Noop);
+        Ok(())
+    }
+
+    #[test]
+    fn project_discovery_rejects_injected_environment_shapes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (name, extra) in [
+            (
+                "forwarded-secret",
+                "env_vars = [\"VOLICORD_HOME\", \"API_TOKEN\"]\n",
+            ),
+            (
+                "literal-home",
+                "[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/tmp/injected\"\n",
+            ),
+        ] {
+            let repo = temp_dir(&format!("codex-project-env-reject-{name}"))?;
+            fs::create_dir_all(repo.join(".codex"))?;
+            fs::write(
+                repo.join(".codex/config.toml"),
+                format!(
+                    "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\n{extra}"
+                ),
+            )?;
+            let adapter = CodexAdapter::new(CodexEnvironment::default());
+
+            let plan = adapter.plan(request(
+                HostScope::Project,
+                Some(&repo),
+                Path::new("ignored"),
+            ))?;
+
+            assert_eq!(plan.change, PlannedChange::Noop, "{name}");
+            assert_eq!(
+                plan.conflicts[0].kind,
+                HostConflictKind::UnmanagedNameCollision,
+                "{name}"
+            );
+        }
         Ok(())
     }
 
@@ -698,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_intent_uses_path_command_and_no_runtime_home(
+    fn shared_intent_uses_path_command_and_parent_runtime_home_forwarding(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let repo = temp_dir("codex-project-path")?;
         let adapter = CodexAdapter::new(CodexEnvironment::default());
@@ -716,6 +799,7 @@ mod tests {
         );
         assert!(!plan.entry.env.contains_key("VOLICORD_HOME"));
         assert!(plan.entry.env.is_empty());
+        assert_eq!(plan.entry.env_vars, ["VOLICORD_HOME"]);
         assert!(!plan.entry.args.iter().any(|arg| arg == "int_alpha"));
         Ok(())
     }

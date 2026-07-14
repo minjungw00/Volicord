@@ -12,7 +12,7 @@
 Codex는 아래 명령을 실행합니다.
 
 ```sh
-volicord init --host codex --repo "<repo>" --profile record
+volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 `<repo>`는 에이전트가 작업할 Git 저장소입니다. Claude Code는
@@ -21,6 +21,11 @@ volicord init --host codex --repo "<repo>" --profile record
 이 명령은 로컬 Volicord 상태를 만들거나 재사용하고, 저장소를 등록하며, 프로젝트
 범위 MCP 설정과 지침을 씁니다. 생성된 호스트 설정은 이 연결을 위한
 `volicord mcp --stdio`를 시작합니다.
+
+이 경로는 공유 저장소 설정을 만들므로 init이 선택한 것과 같은 비어 있지 않은 절대
+경로 `VOLICORD_HOME`을 제공하는 환경에서 호스트를 시작해야 합니다. 생성된 항목은
+호스트의 값을 전달하며 머신 로컬 Runtime Home 경로를 내장하지 않습니다. 값이 없을 때
+플랫폼 기본값으로 대체하지도 않습니다.
 
 명령 출력의 `Next` 섹션을 읽습니다. 호스트 재시작, 프로젝트 신뢰, MCP 항목 승인처럼
 남은 호스트 소유 동작을 알려 줍니다. 설정 파일을 썼다는 사실만으로 실행 중인

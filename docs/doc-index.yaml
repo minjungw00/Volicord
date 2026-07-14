@@ -1279,8 +1279,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1300,6 +1300,7 @@ documents:
   - maintained shell example applicability
   - executable layout and discovery prerequisites for `volicord` and its `mcp` subcommand
   - Runtime Home, Product Repository, and host configuration access prerequisites
+  - shared repository-discovery explicit Runtime Home environment prerequisite
   - host compatibility check policy when no stable Codex or Claude Code minimum version is defined
   - managed final-output fixed-UI authority-disclosure environment applicability and fallback boundary
   - stop criteria for unsupported or unverified installation environments
@@ -1378,8 +1379,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-12'
-  last_verified_on: '2026-07-12'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1397,6 +1398,8 @@ documents:
   - User Channel boundary for authority-bearing user judgments
   - runtime-location separation among source repository, installation files, Runtime Home, Product
     Repository, and external MCP host configuration
+  - managed MCP and host-hook child-process binding to the Runtime Home selected by init
+  - clone-portable shared host configuration Runtime Home forwarding boundary
   - ordinary MCP server term versus Volicord product, implementation, CLI, and adapter labels
   - explicit integration files allowed in Product Repositories
 - doc_id: reference.admin-cli
@@ -1426,6 +1429,7 @@ documents:
   - '`volicord` command-line arguments, defaults, stdout and stderr routing, and exit codes'
   - local `volicord inbox` judgment listing and answer command behavior
   - Runtime Home path selection rules for `volicord` administrative commands
+  - generated managed MCP and host-hook Runtime Home and executable binding
   - administrative project registration command behavior
   - administrative Agent Connection and User Channel registration command behavior
   - agent connection connect, connections, status, verify, mode, and remove commands
@@ -1479,6 +1483,7 @@ documents:
   - MCP process environment variables and integration-bound startup
   - MCP startup validation and integration process binding
   - MCP Runtime Home environment resolution
+  - repository-discovery explicit Runtime Home forwarding and no-default startup boundary
   - per-call MCP project selection and validation
   - MCP public tool input and output schema surfaces without internal protocol envelope fields
   - MCP tool behavior annotations

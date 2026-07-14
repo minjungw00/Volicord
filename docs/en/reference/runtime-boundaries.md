@@ -71,7 +71,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **External MCP host configuration**
 
-- **Contains:** Host-owned or user-managed configuration that can name a `volicord mcp --stdio` process. Personal/local overlays may carry an internal Agent Connection binding, absolute command, and local environment such as `VOLICORD_HOME`. Repository-visible shared Codex and Claude Code entries carry only the typed `volicord mcp --stdio --discover-repository --host <host>` descriptor with no local IDs or environment map.
+- **Contains:** Host-owned or user-managed configuration that can name a `volicord mcp --stdio` process. Personal/local overlays may carry an internal Agent Connection binding, absolute command, and the absolute `VOLICORD_HOME` selected by init. Repository-visible shared Codex and Claude Code entries carry the typed `volicord mcp --stdio --discover-repository --host <host>` descriptor with no local IDs or literal Runtime Home path. They forward the clone-local `VOLICORD_HOME` through the exact host-specific portable form: Codex `env_vars = ["VOLICORD_HOME"]` or Claude Code `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`.
 - **Used by:** The external host for loading and trust decisions. `volicord` may write supported direct configuration only when [Administrative CLI](admin-cli.md) defines that behavior.
 - **Boundary:** It is not Runtime Home registry state or Core authority, and it does not prove Volicord authority. When stored in a `Product Repository`, it is only an explicit integration file.
 
@@ -83,7 +83,7 @@ The following summary covers the baseline local Rust implementation. Detailed re
 
 **`volicord mcp --stdio` MCP adapter process**
 
-- **Handles:** One local stdio child process bound to one Agent Connection, either by an explicit local ID or by a unique local repository-discovery result. It resolves Runtime Home, validates connection state, exposes tools by `connection.mode`, selects allowed projects, derives adapter-owned invocation facts, and routes public method calls through Core and Store. Repository discovery canonicalizes the current Git worktree and narrows the process to the one registered project selected in the local Runtime Home.
+- **Handles:** One local stdio child process bound to one Agent Connection, either by an explicit local ID or by a unique local repository-discovery result. For a Volicord-managed launch, it uses the Runtime Home bound by the init-produced configuration; a user-managed explicit-ID launch resolves Runtime Home from its process inputs under [MCP Transport](mcp-transport.md). It validates connection state, exposes tools by `connection.mode`, selects allowed projects, derives adapter-owned invocation facts, and routes public method calls through Core and Store. Repository discovery requires an explicitly forwarded, nonempty, absolute `VOLICORD_HOME`; it rejects an absent, empty, or relative value before platform-default substitution, canonicalizes the current Git worktree, and narrows the process to the one registered project selected in that Runtime Home.
 - **Started by:** An MCP host, which communicates through stdin/stdout.
 - **Boundary:** It does not grant arbitrary product-file edit authority or authority to record user-action resolutions. It does not enforce host trust, provide sandboxing, or open an MCP network transport listener. Unless disabled, the process may separately bind an ephemeral loopback-only HTTP listener for local User Channel consent; that listener is not the MCP transport.
 
@@ -149,7 +149,11 @@ wrapper scripts untracked through Git `info/exclude` without changing
 configuration and rule paths. `.volicord/policy.json` declares
 `storage_scope=local_overlay` and records the selected `connection_intent`; it
 must not be committed as a shared projection. Generated wrapper scripts are
-also local because they carry process-binding paths and identifiers.
+also local because they carry process-binding paths and identifiers. Every
+managed lifecycle or final-output wrapper exports the init-selected absolute
+`VOLICORD_HOME` and invokes the installation profile's absolute
+`volicord_command`; it does not trust an ambient host Runtime Home or a
+PATH-resolved bare command.
 
 For one Product Repository, these repository-local surfaces represent one
 selected supported host, active intent, and profile. An init that changes the
@@ -169,11 +173,15 @@ repository-visible. Whether to commit those shared surfaces is a Product
 Repository policy decision. The Volicord MCP entry in a shared
 `.codex/config.toml` or `.mcp.json` is clone-portable only in the exact
 host-specific repository-discovery shape: command `volicord`, arguments
-`mcp --stdio --discover-repository --host codex|claude-code`, and no environment
-map. Connection/project IDs, absolute commands, Runtime Home paths, and
-secret-like or other environment keys belong only to local overlays and are
-invalid in that shared entry. Each clone must still be registered with a unique
-enabled shared connection in its selected local Runtime Home.
+`mcp --stdio --discover-repository --host codex|claude-code`, and one portable
+Runtime Home forwarding directive. Codex uses
+`env_vars = ["VOLICORD_HOME"]`; Claude Code uses
+`"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`. Neither form embeds a Runtime
+Home path. Connection/project IDs, absolute commands, literal Runtime Home
+paths, and secret-like or other environment keys belong only to local overlays
+and are invalid in that shared entry. Each clone must still be registered with
+a unique enabled shared connection in its selected local Runtime Home, and the
+launching host must provide that same nonempty, absolute `VOLICORD_HOME`.
 
 For a linked worktree, the common `info/exclude` contains only the
 intent-independent policy and wrapper paths read safely by every sibling.
@@ -266,6 +274,14 @@ Must not claim:
 
 The current local Rust MCP adapter is the `volicord mcp --stdio` stdio process, an executable role within Volicord implementation. An MCP host may label the configured entry an MCP server for protocol or host-configuration purposes. That label does not make Volicord a server product or make Volicord implementation a network server. An MCP host starts `volicord mcp --stdio` as a child process, passes configuration through process environment, and exchanges line-delimited JSON-RPC through stdin/stdout. The MCP transport itself opens no TCP, HTTP, Unix-domain socket, or other network transport listener. Unless disabled by `VOLICORD_LOCAL_WEB_CONSENT`, the same process attempts to bind an ephemeral loopback-only HTTP listener for local User Channel consent. Failure to start that optional listener does not prevent stdio startup. The consent listener is not the MCP transport; its exact behavior belongs to [MCP Transport](mcp-transport.md#local-web-consent-fallback).
 
+For a Volicord-managed launch, the process environment must bind the MCP child
+to the Runtime Home selected by init. Personal/local configuration supplies the
+selected absolute path directly. Clone-portable shared configuration forwards
+the launching host's `VOLICORD_HOME` without embedding the path, and
+repository-discovery startup requires that value to be present and nonempty.
+It must also be absolute and does not fall back to a platform-default Runtime
+Home.
+
 The separate `volicord serve --transport local-http` mode is a Local HTTP
 transport for local/Docker use. It is not the baseline stdio process and must
 not be treated as a public network API, SaaS endpoint, multi-user server, or
@@ -293,6 +309,10 @@ MCP host configuration belongs to the external MCP host. Volicord administrative
 May claim:
 - Host configuration can name a `volicord mcp --stdio` executable, an internal Agent Connection binding, and environment values needed by that host.
 - Host configuration can live outside the source repository, installation files, `Volicord Runtime Home`, and `Product Repository`.
+- Shared repository host configuration can forward `VOLICORD_HOME` without
+  embedding its local path; generated local hook wrappers can bind the selected
+  absolute path and absolute `volicord_command` while remaining explicit local
+  integration files.
 
 Must not claim:
 - MCP host configuration is Volicord runtime state by definition.
