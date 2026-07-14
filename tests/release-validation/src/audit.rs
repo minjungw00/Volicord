@@ -6,8 +6,8 @@ use std::{
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use volicord_cli::host_integration::capability_status::{
-    evaluate_host_feature_support, host_feature_implementation, CurrentRuntimeReadiness,
-    ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
+    evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
+    CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
 };
 use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
 
@@ -26,7 +26,7 @@ use crate::{
     schema::{
         AuditExclusion, AuditInvariantResult, AuditVerdict, Candidate, Cell, GateVerdict,
         ImplementationDisposition, ManifestCell, RecalculatedCell, ReleaseAudit, ReleaseManifest,
-        RunState, AUDIT_SCHEMA, MANIFEST_SCHEMA,
+        RunState, AUDIT_SCHEMA, CELL_INPUTS_DIGEST_DOMAIN, MANIFEST_SCHEMA,
     },
 };
 
@@ -208,8 +208,6 @@ fn independently_read_cell_directory(
     context: &ValidationContext,
     cell_directory: &Path,
 ) -> ValidationResult<(Vec<Cell>, String)> {
-    const DIGEST_DOMAIN: &[u8] = b"volicord-host-release-cell-inputs-v1\0";
-
     context.validate_existing_directory(cell_directory)?;
     let mut paths = fs::read_dir(cell_directory)?
         .map(|entry| {
@@ -230,7 +228,7 @@ fn independently_read_cell_directory(
         ));
     }
 
-    let mut digest_preimage = Vec::from(DIGEST_DOMAIN);
+    let mut digest_preimage = Vec::from(CELL_INPUTS_DIGEST_DOMAIN);
     let mut cells = Vec::with_capacity(12);
     for (exact_path, path) in paths {
         if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
@@ -459,8 +457,11 @@ fn independently_recalculate_cell(
     if !candidate_precedes_cell {
         finding_codes.push("candidate_recorded_after_cell_start".to_owned());
     }
-    let expected_implementation =
-        host_feature_implementation(cli_host_kind(cell.host_kind), cell.feature);
+    let expected_implementation = host_feature_implementation_for_version(
+        cli_host_kind(cell.host_kind),
+        cell.host_version.as_ref().map(String::as_str),
+        cell.feature,
+    );
     if expected_implementation != cli_implementation(cell.implementation_disposition) {
         return Err(ValidationError::new(format!(
             "{} implementation_disposition does not match the independent canonical audit",
@@ -524,8 +525,9 @@ fn independently_recalculate_cell(
         && environment_coordinates_exact
         && evidence_exact
         && assertions_pass;
-    let derived_status = evaluate_host_feature_support(
+    let derived_status = evaluate_host_feature_support_for_version(
         cli_host_kind(cell.host_kind),
+        cell.host_version.as_ref().map(String::as_str),
         cell.feature,
         HostFeatureEvaluationInput::new(
             if current {

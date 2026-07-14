@@ -34,7 +34,7 @@ Do not infer support from Rust portability alone. A Rust crate being portable in
 | Shell syntax | **Supported** for maintained POSIX-style examples on Linux, WSL2, and macOS, and for maintained PowerShell examples on native Windows. Other shells are **unverified** for these examples. | POSIX installation examples use `sh`-compatible environment assignments, temporary installer paths, and `~/.local/bin`. Native Windows installation examples use a downloaded `install.ps1` release asset, PowerShell parameters or environment variables, and `%LOCALAPPDATA%\Volicord\bin`. CLI integration tests create `#!/bin/sh` fake executables behind `#[cfg(unix)]`; the release workflow runs the PowerShell smoke test on Windows. | Use the shell syntax for the selected operating environment and verify the installed command before continuing. |
 | Executable role names | **Supported and verified.** | Reference owners define `volicord` as the installed executable for administrative CLI commands and the `mcp` subcommand used by the local MCP stdio adapter. | Build or install `volicord`; host configuration should start MCP with `volicord mcp --stdio ...`. |
 | Package-manager installation | **Out of scope.** | No Homebrew tap, Homebrew formula, Linux package-manager package, or external package registry is claimed by this repository. | Use a source build, local Docker build, an existing `volicord` executable, or a release installer backed by a verified published asset set. |
-| Host version minimums for Codex and Claude Code | No stable minimum host version is defined. Host compatibility is checked operationally, not by a documented version floor. | Codex verification looks for `codex` on `PATH` and runs `codex --version`. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns the final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not rely on an undocumented Codex or Claude Code minimum version. |
+| Host version compatibility for Codex and Claude Code | No stable minimum host version is defined. Exact reviewed compatibility is version-specific: the current Codex release matrix recognizes probe output `codex-cli 0.144.4` as canonical `host_version=0.144.4`. | Codex verification finds `codex` on `PATH`, runs `codex --version`, and retains the parsed canonical coordinate separately from the raw probe envelope in that fresh verification result. A stored verification report is diagnostic history and is not reused as the current installed-host coordinate by connection status or Doctor. Claude Code verification inspects host state through `claude mcp get <server_name>`. Administrative verification owns final result states. | Use `volicord connection verify HOST [--repo PATH] [--shared|--global]` after installation. Do not generalize the `0.144.4` review into a minimum-version promise or another host version. |
 | Codex managed final-output root resolution | **Implemented configuration prerequisite** for best-effort display in local Git work trees on Linux and macOS. It does not establish `record_final_output` or `detective_final_output` support; both current Codex aggregate states are `unsupported_by_host`. The managed fixed-UI display is unavailable for a non-Git Codex `record` installation. | Generated Codex final-output commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to the Volicord-managed wrapper. A non-Git Codex `record` initialization succeeds without generating that handler and reports the display configuration as unavailable. Root resolution proves neither authenticated exact replay nor safe block-only finalization. | Use a local Git work tree when best-effort Codex managed final-output display is desired. In a non-Git Codex `record` repository, inspect current authority with `volicord status --task TASK_ID --json`, or `volicord status --json` when there is no active Task. Claude Code does not require a Git root for this handler. |
 | Codex Detective profile host-hook root resolution | **Supported and verified** for local Git work trees. | Generated Codex detective host-hook commands resolve the Git work-tree root with `git rev-parse --show-toplevel` before dispatching to Volicord-managed wrappers, and initialization rejects Detective profile setup when that root strategy cannot be supported. | For the Codex Detective profile, use a Product Repository with a `.git` work-tree root and ensure the Codex hook environment can run `git` from repository subdirectories. Use `--profile record` when this prerequisite is not available. |
 | Git workspace-coordinate reference storage | The Git `files` reference backend is **supported and verified** for loose refs, `packed-refs`, normal worktrees, and linked worktrees. Git `reftable` reference storage is **out of scope**. | Workspace-coordinate capture reads bounded Git control files without invoking Git. It detects an explicit non-`files` `extensions.refStorage` value and fails closed instead of treating an existing branch as unborn. | Use the `files` reference backend for a Git-backed Product Repository whose Change Unit/write-ticket path relies on workspace coordinates. Convert an unsupported repository before using that path. |
@@ -276,13 +276,15 @@ Baseline host and connection-intent requirements:
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
 
-Host feature applicability is separate from installation applicability. The
-current Codex baseline is `implemented_unverified` for
-`native_user_action`, `local_web_user_channel`, `verified_tool_producer`, and
-`registered_connection_observation`; Codex Record final output is
-`unsupported_by_host` without an authenticated exact-replay entry point, and
-Codex Detective final output is `unsupported_by_host` without a safe block-only
-finalization surface. Claude Code is `implemented_unverified` for all six
+Host feature applicability is separate from installation applicability. For
+exact Codex `host_version=0.144.4`, `native_user_action`,
+`verified_tool_producer`, and `registered_connection_observation` are
+implemented but unverified until exact evidence passes;
+`local_web_user_channel`, `record_final_output`, and
+`detective_final_output` are `unsupported_by_host`. An absent or unreviewed
+Codex version uses the conservative host-kind fallback: the first four
+features remain implemented but unverified and both final-output features
+remain unsupported. Claude Code is `implemented_unverified` for all six
 features pending exact final-artifact live evidence. Generic is
 `unsupported_by_host` for all six.
 
@@ -320,6 +322,16 @@ The host process environment must provide:
   entry forwards this value but does not embed its path, and startup does not
   substitute the platform default
 - local filesystem access to the Runtime Home and each explicitly allowed `Product Repository`
+
+For the reviewed Codex `0.144.4` managed path, the launch descriptor establishes
+provenance only. Exact `clientInfo.name=codex-mcp-client`,
+`clientInfo.version=0.144.4`, and strict request-side
+`_meta.threadId` plus `_meta["x-codex-turn-metadata"]` session/thread/turn
+metadata are required before the first known tool call binds the managed root
+session and process-local thread digest. Pending launch creates no managed
+effects. `CODEX_THREAD_ID`, PID, cwd, process ancestry, timing, and hook-event
+proximity are not substitutes; exact behavior belongs to
+[MCP Transport](mcp-transport.md#managed-host-session-input).
 
 `volicord mcp --check --connection <connection_id>` is a startup validation check for that process binding. It is not complete host integration verification. Complete host verification requires the administrative result gates defined by [Administrative CLI](admin-cli.md).
 

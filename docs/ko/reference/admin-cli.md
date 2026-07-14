@@ -619,6 +619,11 @@ final_output_authority_disclosure:
 증거·런타임 평가기에서 나옵니다. 현재 Volicord 출력은 `os_enforced=false`와
 `actor_identity_provable=false`를 보고해야 합니다.
 
+init과 연결 검증은 같은 명령이 설치 호스트의 새 probe를 완료했을 때만 정규 호스트
+버전을 이 projection에 전달합니다. 연결 상태와 Doctor는 그 probe를 실행하지 않으므로
+호스트 종류 대체 표를 사용합니다. 저장된 검증 보고서의 버전은 진단 이력이며 두 현재
+projection의 입력으로 사용해서는 안 됩니다.
+
 연결 상태는 여섯 키 map을 항상 `states.host_feature_support`에 출력합니다. 저장된 설치
 프로필이 정확히 `record` 또는 `detective`일 때만 선택 프로필 세부정보를
 `states.final_output_authority_disclosure`에 출력합니다. 저장 값이
@@ -948,7 +953,7 @@ Agent Connection 명령은 아래 결과 상태를 사용합니다.
 | 상태 | 의미 |
 |---|---|
 | `not_verified` | 선택된 Agent Connection에 현재 기록된 검증 결과가 없습니다. 호스트가 실패했다는 증거가 아닙니다. |
-| `complete` | 오래 유지되는 Agent Connection 상태가 있고, 관리 호스트 설정이 존재하며 예상 관리 지문과 일치하고, 필요한 호스트 로드 가능성 및 신뢰 게이트가 충족되고, CLI MCP 시작과 초기화가 실패하지 않으며, 관리 호스트 도구 호출 증거 또는 명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처가 활성 Codex 도구 노출을 확인합니다. |
+| `complete` | 오래 유지되는 Agent Connection 상태가 있고, 관리 호스트 설정이 존재하며 예상 관리 지문과 일치하고, 필요한 호스트 로드 가능성 및 신뢰 게이트가 충족되고, CLI MCP 시작과 초기화가 실패하지 않으며, 세션과 thread가 정확히 결속된 관리 호스트 도구 호출 또는 명시적으로 신뢰할 수 있는 다른 활성 도구 노출 출처가 활성 Codex 도구 노출을 확인합니다. 기술 정보만 있거나 초기화만 됐거나 결속 대기 중인 관찰은 해당하지 않습니다. |
 | `action_required` | 오래 유지되는 Agent Connection 상태와 호스트 설정은 있지만 호스트 신뢰, 프로젝트 승인, OAuth, 설정 다시 불러오기, 재시작, 명령 링크 복구, 설치 프로필 복구, 또는 그와 비슷한 사용자 통제 동작이 남아 있습니다. |
 | `failed` | 요청한 명령이나 검증이 사용할 수 있는 오래 유지되는 Agent Connection 상태, 사용할 수 있는 호스트 설정, 또는 필요한 로컬 전제 조건을 만들지 못했습니다. |
 | `dry_run` | 명령이 영속 변경 없이 계획된 동작을 보고했습니다. |
@@ -962,9 +967,9 @@ Codex 연결 검증은 아래 진단 개념을 분리해 유지합니다.
 | CLI MCP 사전 점검과 핸드셰이크 | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, `Last CLI MCP handshake` | `id=cli_mcp_preflight`와 `id=cli_mcp_handshake`인 `checks[]` 항목, 검증 보고서 필드 | CLI 검증 경로가 Volicord MCP 서버를 직접 시작하고 통신했음을 나타냅니다. CLI가 관찰할 수 있는 MCP 프로세스 검증이며 활성 Codex 도구 노출을 뜻하지 않습니다. |
 | CLI MCP 저장 기능 | `CLI MCP storage read`, `CLI MCP storage write`, `CLI MCP effective tools` | 가능할 때 `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, `id=cli_mcp_effective_tools`인 `checks[]` 항목 | CLI MCP 검증 프로세스에서 관찰한 저장 기능입니다. 관리 Codex 호스트에서 관찰한 저장 기능과 별개입니다. |
 | Codex 프로젝트 신뢰 | `Codex project trust` | 가능할 때 `verification.project_trust`와 `id=codex_project_trust`인 `checks[]` 항목 | Codex 사용자 설정이 프로젝트를 `trusted`, `untrusted`, `unknown`, 또는 그 밖의 신뢰 미확인 상태로 표시합니다. |
-| 관리 Codex 시작 | `Managed Codex MCP startup` | 가능할 때 `verification.host_runtime.managed_host_startup`과 `id=managed_host_startup`인 `checks[]` 항목 | Volicord가 선택된 연결에 대해 관리 Codex 호스트 프로세스가 Volicord MCP 서버를 시작했는지 관찰한 상태입니다. |
-| 관리 Codex 도구 목록 | `Managed Codex tools/list` | 가능할 때 `verification.host_runtime.managed_host_tools_list`와 `id=managed_host_tools_list`인 `checks[]` 항목 | 관리 Codex 호스트의 `tools/list` 생명주기 이벤트를 관찰했는지 나타냅니다. 이것만으로는 활성 도구 노출을 확인하지 않습니다. |
-| 관리 Codex 도구 호출 | `Managed Codex tool call` | 가능할 때 `verification.host_runtime.managed_host_tool_call`과 `id=managed_host_tool_call`인 `checks[]` 항목 | 선택된 연결에 대해 관리 Codex 호스트가 Volicord 도구를 호출했는지 나타냅니다. 이것이 현재 활성 Codex 도구 노출의 완료 증거입니다. |
+| 관리 Codex 시작 | `Managed Codex MCP startup` | 가능할 때 `verification.host_runtime.managed_host_startup`과 `id=managed_host_startup`인 `checks[]` 항목 | 선택된 연결에 대해 정확한 호출별 관리 세션 결속 뒤에만 구체화되는 한정된 시작 사실입니다. 세션 감시 범위는 결속 때 시작해 부분 범위이며 기술 정보가 있다는 사실만으로는 관찰이 아닙니다. |
+| 관리 Codex 도구 목록 | `Managed Codex tools/list` | 가능할 때 `verification.host_runtime.managed_host_tools_list`와 `id=managed_host_tools_list`인 `checks[]` 항목 | 목록 조회가 있었을 때 정확한 결속 뒤 구체화되는 한정된 결속 전 `tools/list` 사실입니다. 이것만으로 활성 도구 노출이나 결속 전 세션 감시 범위를 확인하지 않습니다. |
+| 관리 Codex 도구 호출 | `Managed Codex tool call` | 가능할 때 `verification.host_runtime.managed_host_tool_call`과 `id=managed_host_tool_call`인 `checks[]` 항목 | 정확한 Codex 클라이언트 identity와 호출별 root 세션·thread 메타데이터가 변경 불가능한 프로세스 결속을 확립했거나 일치한 실제 알려진 Volicord 도구 호출입니다. 이것이 현재 활성 Codex 도구 노출의 완료 증거입니다. |
 | 활성 세션 도구 노출 | `Active Codex tool exposure`와 확인이 필요할 때의 `Next` 문구 | `verification.active_tool_exposure`, `verification.host_runtime.active_tool_exposure`, `primary_next_action`, `actions[]`, `connection.user_actions[]` | 활성 Codex 도구 노출이 확인됨, 미확인, 알 수 없음 중 어느 상태인지 나타냅니다. 수동 점검, 권한 상승 점검, CLI 사전 점검, 직접 핸드셰이크, 출처 없는 이전 관찰은 이를 확인하지 않습니다. |
 | 관리 호스트 저장 기능 | `Managed host storage read`, `Managed host storage write`, `Managed host effective tools` | 가능할 때 `verification.host_runtime.managed_host_storage`와 `id=managed_host_storage_read`, `id=managed_host_storage_write`, `id=managed_host_effective_tools`인 `checks[]` 항목 | 관리 Codex 호스트 생명주기에서 관찰한 저장 기능입니다. CLI MCP 저장 기능과 별개입니다. |
 | 호스트 MCP 명령 실행 가능성 | `Host MCP command` | 가능할 때 `verification.host_mcp_command`와 `id=host_mcp_command`인 `checks[]` 항목 | 설정된 MCP 명령이 `absolute`, `PATH-resolved`, `remote/executor-backed`, `unknown`, `malformed` 중 어느 시작 방식인지와 `host_path_unconfirmed` 같은 위험 세부사항을 나타냅니다. 실제 시작 실패가 확인되지 않았다면 PATH 위험은 경고입니다. |
@@ -1017,6 +1022,12 @@ Claude Code 검증은 아래 호스트 상태를 보고할 수 있습니다.
 직접 핸드셰이크 또는 점검 시작, 수동 시작, 출처 없는 이전 관찰은 이 필드를 충족하지
 않습니다. 관리 `tools/list` 이벤트만 있고 관리
 도구 호출이 없으면 활성 도구 노출은 미확인으로 남습니다.
+
+검토된 Codex `0.144.4`에서 정확한 원본 버전 probe는 `codex-cli 0.144.4`이고
+`host_version=0.144.4`로 정규화합니다. 관리 시작은 정확한
+`clientInfo.name=codex-mcp-client`, `clientInfo.version=0.144.4`, 엄격한 호출별
+`_meta`가 [MCP 전송](mcp-transport.md#managed-host-session-input)이 정한 방식으로 결속할
+때까지 대기합니다. 대기 상태에서는 위 생명주기나 저장소 관찰을 만들지 않습니다.
 
 ### 검증 출력
 
@@ -1208,6 +1219,14 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
 필드는 저장되는 호스트 훅 이벤트의 가려진 대상 정보에 보존합니다. 프롬프트 형태 필드는
 기본적으로 해시하거나 생략합니다. 프롬프트 캡처 기록은 프롬프트 해시를 저장하고 본문은
 생략합니다.
+
+관리 내장 호스트의 상관관계 필드는 이 관대한 파싱의 예외입니다. 모든 Codex와 Claude
+Code 관리 이벤트에는 정확한 최상위 `session_id`가 있어야 하며, `session-start`가 아닌
+Codex 이벤트에는 정확한 최상위 `turn_id`도 있어야 합니다. 중첩 필드, 별칭, 대체 위치는
+어느 좌표도 대신할 수 없습니다. Volicord는 native 세션을 정규 불투명 `mhs_` 값으로
+매핑하고 원본 식별자는 영속 저장하지 않습니다. `--session`을 지정해도 정확한 정규
+매핑을 확인하는 assertion일 뿐이며 파생된 값과 같아야 합니다. 다른 세션을 덮어쓰거나
+고정하는 용도로 사용할 수 없습니다.
 
 호스트가 보고한 `occurred_at`은 관찰 metadata일 뿐입니다. Volicord가 받아들이면 담당자가
 검증한 원천 사실로 보존하지만 영속 정규 Core UTC 하한의 입력이나 전진 값으로 사용하지

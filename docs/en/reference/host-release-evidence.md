@@ -29,10 +29,11 @@ them explicitly.
 | Role | Exact identifier |
 |---|---|
 | Exact candidate descriptor | `volicord-release-candidate-v1` |
-| One live-host matrix result | `volicord-host-release-cell-v1` |
-| Canonical release-gate result | `volicord-host-release-manifest-v1` |
-| Separate-process recalculation | `volicord-host-release-audit-v1` |
+| One live-host matrix result | `volicord-host-release-cell-v2` |
+| Canonical release-gate result | `volicord-host-release-manifest-v2` |
+| Separate-process recalculation | `volicord-host-release-audit-v2` |
 | Source archive digest algorithm | `git_archive_tar_sha256_v1` |
+| Cell-input-set digest domain | `volicord-host-release-cell-inputs-v2` |
 
 All four artifacts are canonical UTF-8 JSON objects with duplicate keys
 rejected. Unknown fields are rejected. SHA-256 values are lowercase 64-hex,
@@ -47,6 +48,14 @@ Configured exclusion roots are normalized before overlap checks. A relative
 `CARGO_TARGET_DIR` is resolved from the source checkout, while a relative
 `VOLICORD_HOME` is resolved from the invoking process's current directory;
 existing symlink prefixes and dot components do not weaken an exclusion.
+
+The v2 gate and audit reject `volicord-host-release-cell-v1`,
+`volicord-host-release-manifest-v1`, `volicord-host-release-audit-v1`, and the
+`volicord-host-release-cell-inputs-v1` digest domain. They do not reinterpret
+historical v1 artifacts. The candidate remains
+`volicord-release-candidate-v1`, and the source archive algorithm remains
+`git_archive_tar_sha256_v1`, because neither candidate nor archive preimage
+semantics changed.
 
 ## Exact Release Candidate
 
@@ -124,11 +133,11 @@ executable digest. Results from different versions or availability coordinates
 must never be aggregated into one host result. A new host version requires a
 new complete twelve-cell manifest.
 
-`volicord-host-release-cell-v1` contains exactly these required members:
+`volicord-host-release-cell-v2` contains exactly these required members:
 
 | Member | Contract |
 |---|---|
-| `schema` | Exact value `volicord-host-release-cell-v1`. |
+| `schema` | Exact value `volicord-host-release-cell-v2`. |
 | `candidate_id`, `binary_sha256`, `source_revision`, `target_triple`, `release_profile` | Exact copies of the candidate coordinates. |
 | `host_kind`, `host_version` | One fixed host kind and either the exact installed host version observed by the cell or explicit `null` when that host is unavailable. The member is always required. |
 | `adapter_profile`, `adapter_version` | Exact managed adapter coordinates. |
@@ -141,6 +150,21 @@ new complete twelve-cell manifest.
 | `environment` | Exact `runner_os`, `runner_os_version`, `runner_arch`, required-nullable `host_executable_sha256` and `host_version`, and all host/adapter coordinates used by the run. The three top-level/environment host identity fields are either all non-null or all null. |
 | `assertions` | Non-empty bounded array of stable assertion IDs with `passed` booleans and optional bounded finding codes. |
 | `evidence_artifact_path`, `evidence_artifact_sha256` | External create-new bounded evidence file and SHA-256; both remain required for an implemented cell, including an unavailable ignored cell, and both are `null` only for static `unsupported_by_host`. |
+
+The v2 evaluator validates `implementation_disposition` against the exact
+host-version-aware owner table rather than accepting the producer's value as
+an independent fact. For Codex, exact canonical `host_version=0.144.4` is
+reviewed as `implemented` for `native_user_action`,
+`verified_tool_producer`, and `registered_connection_observation`, and as
+`unsupported_by_host` for `local_web_user_channel`, `record_final_output`, and
+`detective_final_output`. The exact installed probe output is
+`codex-cli 0.144.4`; cells store the parsed canonical coordinate `0.144.4`.
+For absent or unreviewed Codex versions, the host-kind fallback keeps the
+first four features `implemented` and both final-output features
+`unsupported_by_host`; lack of exact evidence leaves those implemented cells
+`implemented_unverified`. Claude Code keeps its host-kind fallback of all six
+features `implemented`. A new reviewed version table requires an owner change
+and a complete new twelve-cell manifest.
 
 The canonical `adapter_profile` is `record` only for
 `record_final_output`; it is `detective` for the other five features,
@@ -224,9 +248,9 @@ with every implemented cell verified and none explicitly excluded is `pass`.
 
 ## Release Manifest
 
-`volicord-host-release-manifest-v1` contains exactly:
+`volicord-host-release-manifest-v2` contains exactly:
 
-- `schema`, with exact value `volicord-host-release-manifest-v1`;
+- `schema`, with exact value `volicord-host-release-manifest-v2`;
 - `candidate`, the complete validated candidate object;
 - `evaluated_at`;
 - `cells`, exactly twelve objects containing each raw cell, `derived_status`,
@@ -254,9 +278,9 @@ cell-input and cell-evidence SHA-256 values, all structural invariants, every
 derived status, and the gate verdict. It must not call a mode that merely reads
 the manifest's claimed status or verdict.
 
-`volicord-host-release-audit-v1` contains exactly:
+`volicord-host-release-audit-v2` contains exactly:
 
-- `schema`, with exact value `volicord-host-release-audit-v1`;
+- `schema`, with exact value `volicord-host-release-audit-v2`;
 - `manifest_path`, `manifest_sha256`, `cell_directory`,
   `cell_inputs_sha256`, `candidate_path`, and `candidate_sha256`;
 - `started_at` and `evaluated_at` for the separate audit process;
@@ -270,7 +294,7 @@ the manifest's claimed status or verdict.
 
 `cell_directory` is the exact external absolute input-directory string.
 `cell_inputs_sha256` is SHA-256 of this preimage: the ASCII domain
-`volicord-host-release-cell-inputs-v1` followed by NUL, then, for each of the
+`volicord-host-release-cell-inputs-v2` followed by NUL, then, for each of the
 twelve cells ordered by bytewise ascending exact UTF-8 absolute path, the path
 byte length as unsigned 64-bit big-endian, the exact path bytes, and the raw
 32-byte SHA-256 of the cell file's exact bytes. The audit requires the reopened
@@ -293,6 +317,28 @@ managed adapter path. The native value must be valid UTF-8, 1 through 256 bytes,
 and match `[A-Za-z0-9._:-]+`; whitespace, controls, empty values, and every
 other byte are rejected.
 
+For the reviewed Codex coordinate, the installed-host probe envelope is
+exactly `codex-cli 0.144.4`, while MCP initialize must report exact
+`clientInfo.name=codex-mcp-client` and `clientInfo.version=0.144.4`. A launch
+with managed Codex provenance starts session-unbound. Only an otherwise valid
+known-tool call may supply the binding, through exact request metadata:
+
+- `_meta.threadId` is a valid native identifier;
+- `_meta["x-codex-turn-metadata"]` is an object whose `session_id`,
+  `thread_id`, and `turn_id` are valid native identifiers; and
+- `_meta.threadId` equals the nested `thread_id`.
+
+The nested `session_id` is the native session value used by the mapping below.
+The concrete `thread_id` may differ from `session_id`, including for a
+subagent, but its flat and nested copies must agree. Volicord reduces that
+thread value to a separate domain-separated process-local digest. The first
+valid call binds the managed stdio process exactly once to both the mapped root
+session and that thread digest. Every later call must carry valid metadata that
+matches both; a later turn may use a different valid `turn_id`. Missing,
+malformed, or mismatched metadata is rejected without rebinding and before
+tool dispatch. Ambient or configured `CODEX_THREAD_ID`, timing, arrival order,
+and a nearest or most-recent session are not binding inputs.
+
 For a validated value, Volicord calculates:
 
 ```text
@@ -308,7 +354,15 @@ The same mapped `managed_host_session_id` is used for managed MCP observations
 and host-hook observations. The `mhs_` namespace is reserved for this managed
 mapping. Its registered-connection and host-kind coordinates are immutable;
 generic or manual paths cannot preseed or reuse it. An invalid managed marker
-fails before durable diagnostics or protocol state is created.
+fails before durable diagnostics or protocol state is created. While a Codex
+launch is session-unbound, successful startup, initialize, and tools-list facts
+may be retained only as bounded process-local state. They create no durable
+managed session, lifecycle, diagnostic, tool, capture, token, or watch effect.
+The first valid binding materializes the applicable retained lifecycle facts
+once in canonical order before recording the accepted call. Session-watch
+coverage starts at binding and remains explicitly partial; deferred lifecycle
+facts do not backdate repository observation. A rejected binding attempt
+creates none of those effects, and a later valid call may retry.
 
 The raw native identifier and raw native event, tool-call, capture, turn, or
 invocation identifiers exist only long enough to validate, hash, or replace
@@ -318,7 +372,8 @@ A missing native identifier, invalid value, different mapping coordinate, or
 mismatch between managed MCP and hook observations cannot create Strong
 Evidence and must remain an explicit missing/mismatch finding. Implementations
 must not silently mint a replacement session ID or correlate across host kinds
-or registered connections.
+or registered connections. Per-call binding is enforced through the existing
+feature assertion sets; it does not add a release assertion identifier.
 
 ## Command Routes
 
@@ -346,3 +401,5 @@ these artifacts, but they are auxiliary and cannot replace either command.
 - [Validation](../maintain/validation.md) owns maintainer execution and reports.
 - [Host release evidence gate decision](../architecture-guide/decisions/host-release-evidence-gate.md)
   records why this contract is external and independently recalculated.
+- [Managed-host session/thread binding and per-call turn validation decision](../architecture-guide/decisions/managed-host-session-turn-binding.md)
+  records why Codex binding is call-scoped and fail-closed.

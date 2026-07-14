@@ -190,7 +190,13 @@ Volicord 관리 식별 정보가 아닙니다. 허용된 `tools.<tool>.approval_
 
 관리 Codex 및 Claude Code 관찰은
 [호스트 릴리스 증거](host-release-evidence.md)가 정의하는 불투명
-`managed_host_session_id` 매핑 하나를 사용합니다. 관리 MCP 경로와 호스트 훅 경로는
+`managed_host_session_id` 매핑 하나를 사용합니다. Codex에서 관리 기술 정보는 시작
+출처만 확립합니다. 연결은
+[MCP 전송](mcp-transport.md#managed-host-session-input)이 요구하는 정확한 호출별 메타데이터와
+클라이언트 identity를 처음으로 유효한 알려진 `tools/call`이 제공할 때까지 대기하며
+영속 관리 세션 상태를 만들지 않습니다. 그 호출은 매핑된 root 세션과 domain 분리된
+메모리 내 thread 다이제스트를 결속합니다. 이후 호출은 둘 다 일치해야 하지만 새
+turn에서는 `turn_id`가 바뀔 수 있습니다. 관리 MCP 경로와 호스트 훅 경로는
 관찰 세션 하나에 같은 매핑 값을 제시해야 합니다. 원본 `native_session_id`는 검증 및 해시
 입력으로만 쓰며 연결 상태, 로그, 진단, 증거, 릴리스 아티팩트에 넣으면 안 됩니다. 결속이
 원본 native event, tool-call, capture, turn, invocation identifier에도 같은 금지가
@@ -415,17 +421,26 @@ detective_final_output
 Volicord 아티팩트, 런타임 전제 조건을 다시 평가하며 이전 `verified` 결과를 물려받을 수
 없습니다.
 
-현재 기준은 다음과 같습니다.
+현재 버전별 기준은 다음과 같습니다.
 
-| 호스트 | 기능 상태 |
+| 호스트/버전 | 기능 상태 |
 |---|---|
-| Codex | `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, `registered_connection_observation`는 `implemented_unverified`입니다. `record_final_output`은 인증된 실제 호스트 정확 재생 진입점이 없으므로 `unsupported_by_host`입니다. `detective_final_output`은 안전한 block 전용 최종화 표면이 없으므로 `unsupported_by_host`입니다. |
+| Codex `0.144.4` | `native_user_action`, `verified_tool_producer`, `registered_connection_observation`는 구현되어 있으며 정확한 증거가 통과할 때까지 `implemented_unverified`입니다. 이 검토 버전에서 `local_web_user_channel`, `record_final_output`, `detective_final_output`는 `unsupported_by_host`입니다. 정확한 probe 외피는 `codex-cli 0.144.4`이고 정규 `host_version` 및 보존된 `clientInfo.version` 좌표는 접두사 없는 `0.144.4`입니다. |
+| Codex 버전 없음 또는 미검토 | 보수적인 호스트 종류 대체 표는 `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, `registered_connection_observation`를 구현됐지만 미검증인 상태로 두고 두 최종 출력 기능을 `unsupported_by_host`로 둡니다. 정확한 `0.144.4` 검토를 물려받을 수 없습니다. |
 | Claude Code | 여섯 기능 모두 최종 Volicord 아티팩트와 설치 호스트 버전에 결속된 정확한 실제 증거가 생길 때까지 `implemented_unverified`입니다. |
 | Generic | 여섯 기능 모두 `unsupported_by_host`입니다. |
 
 `volicord connection status`, `volicord doctor`, 릴리스 기능 매트릭스는 이 평가기 하나를
 사용합니다. 설정 발견 사항, 픽스처, 직접 래퍼 결과, 무시된 테스트, 과거 실제 결과를 각각
 다시 해석하여 기능 지원으로 올리면 안 됩니다.
+
+init과 `volicord connection verify`처럼 설치 호스트의 정규 probe를 성공적으로 수행한
+명령은 그 명령의 출력에 한해 새로 관찰한 구조화 `host_version`을 평가기에 전달합니다.
+`last_verification_report_json`에 보존된 버전은 진단 이력일 뿐 현재 설치 호스트의
+증명이 아닙니다. `volicord connection status`와 `volicord doctor`는 설치 호스트 probe를
+실행하지 않으므로 현재 버전 없이 평가기를 호출하고 호스트 종류 대체 표를 사용합니다.
+저장된 과거 좌표로 지원 상태를 승격하거나 다시 분류해서는 안 됩니다. 릴리스 셀은 해당
+셀이 직접 관찰하고 결속한 정확한 버전만 사용합니다.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ## 관리되는 최종 출력 권한 고지

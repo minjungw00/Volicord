@@ -26,8 +26,9 @@ mod unix {
     use sha2::{Digest, Sha256};
     use volicord_cli::host_integration::{
         capability_status::{
-            default_host_feature_support_json, host_feature_implementation, HostFeature,
-            HostFeatureDiagnosticProjection, HostFeatureImplementation,
+            canonical_codex_host_version_from_probe, default_host_feature_support_json,
+            host_feature_implementation_for_version, HostFeature, HostFeatureDiagnosticProjection,
+            HostFeatureImplementation,
         },
         HostKind,
     };
@@ -92,7 +93,7 @@ mod unix {
     const RELEASE_CANDIDATE_PATH_ENV: &str = "VOLICORD_RELEASE_CANDIDATE_PATH";
     const RELEASE_REQUEST_VERIFIED_ENV: &str = "VOLICORD_RELEASE_REQUEST_VERIFIED";
     const RELEASE_CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
-    const RELEASE_CELL_SCHEMA: &str = "volicord-host-release-cell-v1";
+    const RELEASE_CELL_SCHEMA: &str = "volicord-host-release-cell-v2";
     const RELEASE_SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
     const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
     const LIVE_EVIDENCE_OBSERVATION_RESULT_KIND: &str =
@@ -508,6 +509,36 @@ mod unix {
         assert_eq!(static_final_cell["claimed_status"], "unsupported_by_host");
         assert_eq!(static_final_cell["run_state"], "not_applicable");
         assert_eq!(static_final_cell["evidence_artifact_path"], Value::Null);
+
+        let reviewed_local_web_path = result_dir.join("codex-reviewed-local-web.json");
+        let mut reviewed_local_web =
+            LiveResultRecorder::new("codex", Some(reviewed_local_web_path.clone()))?;
+        reviewed_local_web.release_candidate = Some(candidate.clone());
+        reviewed_local_web.release_feature = Some(HostFeature::LocalWebUserChannel);
+        reviewed_local_web.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            "0.144.4".to_owned(),
+            "e".repeat(64),
+            "fixture-reviewed-build".to_owned(),
+        )?)?;
+        reviewed_local_web.record_final(&live_user_action_unavailable_summary(
+            "codex",
+            "static_unsupported_by_host",
+            "reviewed Codex version does not expose the required local-web surface",
+        ))?;
+        let reviewed_local_web_cell: Value =
+            serde_json::from_slice(&fs::read(&reviewed_local_web_path)?)?;
+        assert_eq!(reviewed_local_web_cell["schema"], RELEASE_CELL_SCHEMA);
+        assert_eq!(reviewed_local_web_cell["host_version"], "0.144.4");
+        assert_eq!(
+            reviewed_local_web_cell["implementation_disposition"],
+            "unsupported_by_host"
+        );
+        assert_eq!(reviewed_local_web_cell["requested_verified"], false);
+        assert_eq!(reviewed_local_web_cell["run_state"], "not_applicable");
+        assert_eq!(
+            reviewed_local_web_cell["evidence_artifact_path"],
+            Value::Null
+        );
 
         let forbidden_static_path = result_dir.join("codex-record-final-output-requested.json");
         let mut forbidden_static = LiveResultRecorder::new_for_kind_and_profile(
@@ -4964,8 +4995,11 @@ mod unix {
             IntegrationProfile::Record => HostFeature::RecordFinalOutput,
             IntegrationProfile::Detective => HostFeature::DetectiveFinalOutput,
         };
-        if host_feature_implementation(maintained_host_kind, feature)
-            == HostFeatureImplementation::UnsupportedByHost
+        if host_feature_implementation_for_version(
+            maintained_host_kind,
+            Some(&host_version),
+            feature,
+        ) == HostFeatureImplementation::UnsupportedByHost
         {
             let summary = final_output_unavailable_summary_with_host_identity(
                 host,
@@ -12458,7 +12492,11 @@ mod unix {
                     })?,
                 _ => IntegrationProfile::Detective.as_str(),
             };
-            let implementation = host_feature_implementation(maintained_host_kind, feature);
+            let implementation = host_feature_implementation_for_version(
+                maintained_host_kind,
+                host_version.as_deref(),
+                feature,
+            );
             let static_unsupported = implementation == HostFeatureImplementation::UnsupportedByHost;
             let host_identity_available = host_version.is_some();
             let requested_verified = resolve_release_requested_verified(
@@ -12855,6 +12893,36 @@ mod unix {
             .find(|line| !line.is_empty())
             .ok_or_else(|| io::Error::other("host --version returned no version text"))?;
         bounded_identity("host version", version, MAX_HOST_VERSION_CHARS)
+    }
+
+    fn canonical_codex_version_summary(output: &TimedOutput) -> Result<String, Box<dyn Error>> {
+        let stdout = stdout(output);
+        let stderr = stderr(output);
+        if !stderr.is_empty() {
+            return Err(io::Error::other(
+                "Codex --version must not write a second version envelope to stderr",
+            )
+            .into());
+        }
+        let envelope = stdout
+            .strip_suffix('\n')
+            .ok_or_else(|| io::Error::other("Codex --version must end with exactly one LF"))?;
+        if envelope.contains('\n') || envelope.contains('\r') {
+            return Err(io::Error::other(
+                "Codex --version must contain exactly one canonical line",
+            )
+            .into());
+        }
+        let version = canonical_codex_host_version_from_probe(envelope).ok_or_else(|| {
+            io::Error::other(
+                "Codex --version did not return a canonical `codex-cli VERSION` envelope",
+            )
+        })?;
+        bounded_identity(
+            "canonical Codex host version",
+            version,
+            MAX_HOST_VERSION_CHARS,
+        )
     }
 
     fn validate_codex_chatgpt_login_status(
@@ -13641,7 +13709,11 @@ mod unix {
             let host_executable_sha256 =
                 sha256_file(executable, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
             let host_version_output = self.run_host_command(executable, ["--version"])?;
-            let host_version = host_version_summary(&host_version_output)?;
+            let host_version = if executable_name == "codex" {
+                canonical_codex_version_summary(&host_version_output)?
+            } else {
+                host_version_summary(&host_version_output)?
+            };
             recorder.bind_observed_host_coordinates(ObservedReleaseHostCoordinates::new(
                 host_version.clone(),
                 host_executable_sha256.clone(),

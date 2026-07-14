@@ -34,7 +34,7 @@ Rust 이식성만으로 지원을 추론하지 마세요. 어떤 Rust 크레이�
 | 셸 문법 | Linux, WSL2, macOS의 유지되는 POSIX 스타일 예시와 네이티브 Windows의 PowerShell 예시는 **지원됩니다.** 다른 셸은 이 예시에 대해 **미검증입니다.** | POSIX 설치 예시는 `sh` 호환 환경 변수 지정, 임시 설치 스크립트 경로, `~/.local/bin`을 사용합니다. 네이티브 Windows 설치 예시는 내려받은 `install.ps1`, PowerShell 매개변수 또는 환경 변수, `%LOCALAPPDATA%\Volicord\bin`을 사용합니다. CLI 통합 테스트는 `#[cfg(unix)]` 아래에서 `#!/bin/sh` 가짜 실행 파일을 만들며, 릴리스 워크플로는 Windows에서 PowerShell 스모크 테스트를 실행합니다. | 선택한 운영 환경에 맞는 셸 문법을 사용하고, 설치된 명령을 확인한 뒤 계속합니다. |
 | 실행 파일 역할 이름 | **지원되고 검증되었습니다.** | 참조 담당 문서는 `volicord`를 관리 CLI 명령과 로컬 MCP stdio 어댑터가 사용하는 `mcp` 하위 명령을 제공하는 설치 실행 파일로 정의합니다. | `volicord`를 빌드하거나 설치합니다. 호스트 설정은 MCP를 `volicord mcp --stdio ...`로 시작해야 합니다. |
 | 패키지 관리자 설치 | **지원 범위 밖입니다.** | 이 저장소는 Homebrew 탭이나 포뮬러, Linux 패키지 관리자 패키지, 외부 패키지 레지스트리를 제공한다고 주장하지 않습니다. | 소스 빌드, 로컬 Docker 빌드, 기존 `volicord` 실행 파일, 또는 검증된 게시 자산 세트가 뒷받침하는 릴리스 설치 스크립트를 사용합니다. |
-| Codex와 Claude Code 호스트 최소 버전 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 호스트 호환성은 문서화된 버전 하한이 아니라 운영 점검으로 확인합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행합니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. 문서화되지 않은 Codex 또는 Claude Code 최소 버전에 의존하지 않습니다. |
+| Codex와 Claude Code 호스트 버전 호환성 | 안정적인 호스트 최소 버전은 정의되어 있지 않습니다. 정확한 검토 호환성은 버전별입니다. 현재 Codex 릴리스 행렬은 probe 출력 `codex-cli 0.144.4`를 정규 `host_version=0.144.4`로 인식합니다. | Codex 검증은 `PATH`에서 `codex`를 찾고 `codex --version`을 실행하며 해당 새 검증 결과 안에서 원본 probe 외피와 별도로 해석한 정규 좌표를 보존합니다. 저장된 검증 보고서는 진단 이력이며 연결 상태나 Doctor가 현재 설치 호스트 좌표로 재사용하지 않습니다. Claude Code 검증은 `claude mcp get <server_name>`으로 호스트 상태를 조사합니다. 관리 검증은 최종 결과 상태를 담당합니다. | 설치 후 `volicord connection verify HOST [--repo PATH] [--shared|--global]`을 사용합니다. `0.144.4` 검토를 최소 버전 약속이나 다른 호스트 버전으로 일반화하지 않습니다. |
 | Codex 관리 최종 출력 루트 해석 | Linux와 macOS의 로컬 Git 작업 트리에서 최선형 표시에 쓰는 **구현된 설정 전제 조건**입니다. `record_final_output`이나 `detective_final_output` 지원을 성립시키지 않으며 현재 Codex 집계 상태는 둘 다 `unsupported_by_host`입니다. Git 저장소가 아닌 Codex `record` 설치에서는 관리 고정 UI 표시를 사용할 수 없습니다. | 생성된 Codex 최종 출력 명령은 Volicord 관리 래퍼를 호출하기 전에 `git rev-parse --show-toplevel`로 Git 작업 트리 루트를 찾습니다. Git 저장소가 아닌 Codex `record` 초기화는 해당 처리기를 생성하지 않고 성공하며 표시 설정을 사용할 수 없다고 보고합니다. 루트 해석은 인증된 정확 재생이나 안전한 block 전용 최종화를 증명하지 않습니다. | 최선형 Codex 관리 최종 출력 표시가 필요하면 로컬 Git 작업 트리를 사용합니다. Git 저장소가 아닌 Codex `record` 저장소에서는 `volicord status --task TASK_ID --json`으로 현재 권한을 확인하고 현재 Task가 없으면 `volicord status --json`을 사용합니다. Claude Code 처리기에는 Git 루트가 필요하지 않습니다. |
 | Codex Detective profile의 호스트 훅 루트 결정 | 로컬 Git 작업 트리에서 **지원되고 검증되었습니다.** | 생성된 Codex 탐지형 호스트 훅 명령은 Volicord 관리 래퍼를 호출하기 전에 `git rev-parse --show-toplevel`로 Git 작업 트리 루트를 찾습니다. 초기화는 이 방법을 지원할 수 없으면 Detective profile 설정을 거부합니다. | Codex Detective profile에는 `.git` 작업 트리 루트가 있는 Product Repository를 사용합니다. Codex 훅 환경은 저장소 하위 디렉터리에서도 `git`을 실행할 수 있어야 합니다. 이 전제 조건이 없으면 `--profile record`를 사용합니다. |
 | Git 작업공간 좌표의 참조 저장 방식 | loose ref, `packed-refs`, 일반 작업 트리, linked worktree에 대해 Git `files` 참조 백엔드는 **지원되고 검증되었습니다.** Git `reftable` 참조 저장 방식은 **지원 범위 밖입니다.** | 작업공간 좌표 캡처는 Git을 실행하지 않고 크기가 제한된 Git 제어 파일을 읽습니다. 명시적인 `extensions.refStorage` 값이 `files`가 아니면 기존 브랜치를 unborn으로 오인하지 않고 실패 폐쇄합니다. | 작업공간 좌표에 의존하는 Git 기반 Product Repository의 Change Unit/write-ticket 경로에는 `files` 참조 백엔드를 사용합니다. 지원하지 않는 저장소는 해당 경로를 사용하기 전에 변환합니다. |
@@ -261,13 +261,15 @@ Windows의 Record profile은 지원되지만, Windows 호스트 훅과 감시기
 
 호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
 
-호스트 기능 적용 가능성은 설치 적용 가능성과 구분합니다. 현재 Codex 기준에서
-`native_user_action`, `local_web_user_channel`, `verified_tool_producer`,
-`registered_connection_observation`는 `implemented_unverified`입니다. 인증된 정확 재생
-진입점이 없는 Codex Record 최종 출력은 `unsupported_by_host`이고, 안전한 block 전용
-최종화 표면이 없는 Codex Detective 최종 출력도 `unsupported_by_host`입니다. Claude Code는
-정확한 최종 아티팩트 실제 증거가 생길 때까지 여섯 기능 모두
-`implemented_unverified`입니다. Generic은 여섯 기능 모두 `unsupported_by_host`입니다.
+호스트 기능 적용 가능성은 설치 적용 가능성과 구분합니다. 정확한 Codex
+`host_version=0.144.4`에서 `native_user_action`, `verified_tool_producer`,
+`registered_connection_observation`는 구현되어 있지만 정확한 증거가 통과할 때까지
+미검증입니다. `local_web_user_channel`, `record_final_output`,
+`detective_final_output`는 `unsupported_by_host`입니다. Codex 버전이 없거나 검토되지
+않았으면 보수적인 호스트 종류 대체 표를 사용합니다. 앞의 네 기능은 구현됐지만 미검증인
+상태로 두고 두 최종 출력 기능은 지원되지 않는 상태로 둡니다. Claude Code는 정확한 최종
+아티팩트 실제 증거가 생길 때까지 여섯 기능 모두 `implemented_unverified`입니다. Generic은
+여섯 기능 모두 `unsupported_by_host`입니다.
 
 일치하는 증거가 없는 구현된 내장 기능을 `temporarily_unavailable`로 바꾸면 안 됩니다. 그
 값은 정확한 현재 증거가 있고 지금의 런타임 전제 조건만 내려가 있을 때 사용합니다. 호스트
@@ -299,6 +301,14 @@ Windows의 Record profile은 지원되지만, Windows 호스트 훅과 감시기
   있지 않은 절대 경로 `VOLICORD_HOME`입니다. 이식 가능한 호스트 항목은 경로를 내장하지
   않고 이 값을 전달하며 시작은 플랫폼 기본값으로 대체하지 않습니다.
 - Runtime Home과 명시적으로 허용된 각 `Product Repository`에 대한 로컬 파일시스템 접근
+
+검토된 Codex `0.144.4` 관리 경로에서 시작 기술 정보는 출처만 확립합니다. 처음으로 알려진
+도구 호출이 관리 root 세션과 프로세스 로컬 thread 다이제스트를 결속하려면 정확한
+`clientInfo.name=codex-mcp-client`, `clientInfo.version=0.144.4`, 엄격한 요청측
+`_meta.threadId`, `_meta["x-codex-turn-metadata"]` 세션·thread·turn 메타데이터가
+필요합니다. 시작 대기 상태는 관리 효과를 만들지 않습니다. `CODEX_THREAD_ID`, PID, cwd,
+프로세스 조상 관계, 시각, 훅 이벤트와의 근접성은 대체 입력이 아닙니다. 정확한 동작은
+[MCP 전송](mcp-transport.md#managed-host-session-input)이 담당합니다.
 
 `volicord mcp --check --connection <connection_id>`는 그 프로세스 바인딩에 대한 시작
 검증 점검입니다. 전체 호스트 통합 검증이 아닙니다. 전체 호스트 검증에는 [관리

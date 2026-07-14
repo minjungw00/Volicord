@@ -93,7 +93,7 @@ use support::{
     binary_fixture::{create_real_git_repo, prepare_runtime_home, volicord_bin},
     fake_hosts::{
         hook_execution_path_env, is_executable, path_env, path_env_with_existing,
-        write_fake_claude_code, write_fake_codex,
+        write_fake_claude_code, write_fake_codex, write_fake_codex_with_version,
     },
     fake_mcp::{write_fake_mcp, write_fake_mcp_missing_workflow_reconcile},
     guard_fixture::{
@@ -8054,6 +8054,80 @@ fn connection_selector_distinguishes_project_registration_and_allowlist(
     )?;
     assert_eq!(mismatch.status.code(), Some(1));
     assert!(stderr(&mismatch).contains("CONNECTION_ALLOWLIST_MISMATCH"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn fresh_codex_version_drives_verify_but_stored_history_does_not_drive_status_or_doctor(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-codex-version-aware-support")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    let codex_home = runtime_home.path().join("codex-home");
+    write_fake_codex_with_version(&bin_dir, "0.144.4")?;
+    let mcp = write_fake_mcp(&bin_dir)?;
+    prepare_runtime_home(runtime_home.path(), &mcp)?;
+
+    let connected = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "add",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[
+            ("PATH", path_env(&[bin_dir.as_path()])),
+            ("CODEX_HOME", path_text(&codex_home)),
+            ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+        ],
+    )?;
+    assert_success(&connected);
+    let connected = json_stdout(&connected)?;
+    assert_eq!(connected["verification"]["host"]["host_version"], "0.144.4");
+    assert_eq!(
+        connected["states"]["host_feature_support"]["local_web_user_channel"],
+        "unsupported_by_host"
+    );
+
+    let status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&status);
+    let status = json_stdout(&status)?;
+    assert_eq!(
+        status["connection"]["verification_report"]["host"]["host_version"], "0.144.4",
+        "the stored coordinate remains diagnostic history"
+    );
+    assert_eq!(
+        status["states"]["host_feature_support"]["local_web_user_channel"],
+        "implemented_unverified",
+        "status must not treat a historical probe as current"
+    );
+
+    let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
+    assert_success(&doctor);
+    let doctor = json_stdout(&doctor)?;
+    let row = doctor["states"]["host_feature_support_by_connection"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["host_kind"] == "codex"))
+        .expect("Doctor should project the stored Codex connection");
+    assert_eq!(
+        row["host_feature_support"]["local_web_user_channel"], "implemented_unverified",
+        "Doctor must use the no-current-probe fallback"
+    );
     Ok(())
 }
 

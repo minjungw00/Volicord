@@ -4,6 +4,9 @@ use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
 
 use super::HostKind;
 
+pub const REVIEWED_CODEX_HOST_VERSION: &str = "0.144.4";
+const CODEX_VERSION_PROBE_PREFIX: &str = "codex-cli ";
+
 const RECORD_FINAL_OUTPUT_SUBCAPABILITIES: [FinalOutputSubcapability; 2] = [
     FinalOutputSubcapability::AuthorityDisplay,
     FinalOutputSubcapability::AuthenticatedExactReplay,
@@ -78,6 +81,32 @@ impl FinalOutputSubcapability {
 pub enum HostFeatureImplementation {
     Implemented,
     UnsupportedByHost,
+}
+
+/// Validates one canonical bare Codex host-version coordinate.
+pub fn canonical_codex_host_version(version: &str) -> Option<&str> {
+    if version.is_empty()
+        || version.len() > 64
+        || !version
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
+        || !version
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        || !version
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
+    {
+        return None;
+    }
+    Some(version)
+}
+
+/// Extracts the canonical bare Codex version from one exact version-probe envelope.
+pub fn canonical_codex_host_version_from_probe(envelope: &str) -> Option<&str> {
+    canonical_codex_host_version(envelope.strip_prefix(CODEX_VERSION_PROBE_PREFIX)?)
 }
 
 /// Freshness and exact-artifact match state of live evidence for one feature.
@@ -234,7 +263,18 @@ impl HostFeatureDiagnosticProjection {
         configured: bool,
         configuration_verified: bool,
     ) -> Self {
-        let matrix = default_host_feature_support_matrix(host_kind);
+        Self::baseline_for_version(host_kind, None, profile, configured, configuration_verified)
+    }
+
+    /// Evaluates the version-aware no-live-evidence baseline once for CLI projections.
+    pub fn baseline_for_version(
+        host_kind: HostKind,
+        host_version: Option<&str>,
+        profile: IntegrationProfile,
+        configured: bool,
+        configuration_verified: bool,
+    ) -> Self {
+        let matrix = default_host_feature_support_matrix_for_version(host_kind, host_version);
         Self::from_matrix(matrix, profile, configured, configuration_verified)
     }
 
@@ -296,6 +336,17 @@ pub fn host_feature_support_json(matrix: HostFeatureSupportMatrix) -> Value {
 /// Evaluates and projects the no-live-evidence host baseline without selecting a profile.
 pub fn default_host_feature_support_json(host_kind: HostKind) -> Value {
     host_feature_support_json(default_host_feature_support_matrix(host_kind))
+}
+
+/// Projects the version-aware no-live-evidence host baseline.
+pub fn default_host_feature_support_json_for_version(
+    host_kind: HostKind,
+    host_version: Option<&str>,
+) -> Value {
+    host_feature_support_json(default_host_feature_support_matrix_for_version(
+        host_kind,
+        host_version,
+    ))
 }
 
 fn final_output_authority_disclosure_json(
@@ -364,6 +415,22 @@ pub fn host_feature_implementation(
     }
 }
 
+/// Returns the reviewed exact-version fact, falling back to the host-kind table.
+pub fn host_feature_implementation_for_version(
+    host_kind: HostKind,
+    host_version: Option<&str>,
+    feature: HostFeature,
+) -> HostFeatureImplementation {
+    if host_kind == HostKind::Codex
+        && host_version == Some(REVIEWED_CODEX_HOST_VERSION)
+        && feature == HostFeature::LocalWebUserChannel
+    {
+        HostFeatureImplementation::UnsupportedByHost
+    } else {
+        host_feature_implementation(host_kind, feature)
+    }
+}
+
 /// Returns the current built-in adapter implementation fact for one final-output capability.
 pub const fn host_final_output_subcapability_implementation(
     host_kind: HostKind,
@@ -429,6 +496,19 @@ pub fn evaluate_host_feature_support(
     evaluate_support_status(host_feature_implementation(host_kind, feature), input)
 }
 
+/// Evaluates one feature using an exact reviewed host version when one is available.
+pub fn evaluate_host_feature_support_for_version(
+    host_kind: HostKind,
+    host_version: Option<&str>,
+    feature: HostFeature,
+    input: HostFeatureEvaluationInput,
+) -> HostFeatureSupportStatus {
+    evaluate_support_status(
+        host_feature_implementation_for_version(host_kind, host_version, feature),
+        input,
+    )
+}
+
 /// Aggregates a nonempty required-capability set with the canonical precedence.
 pub fn aggregate_required_support_statuses(
     statuses: &[HostFeatureSupportStatus],
@@ -489,24 +569,37 @@ pub fn evaluate_host_feature_support_matrix(
     host_kind: HostKind,
     inputs: HostFeatureMatrixInputs,
 ) -> HostFeatureSupportMatrix {
+    evaluate_host_feature_support_matrix_for_version(host_kind, None, inputs)
+}
+
+/// Evaluates all six feature states against an exact reviewed host version when present.
+pub fn evaluate_host_feature_support_matrix_for_version(
+    host_kind: HostKind,
+    host_version: Option<&str>,
+    inputs: HostFeatureMatrixInputs,
+) -> HostFeatureSupportMatrix {
     HostFeatureSupportMatrix {
-        native_user_action: evaluate_host_feature_support(
+        native_user_action: evaluate_host_feature_support_for_version(
             host_kind,
+            host_version,
             HostFeature::NativeUserAction,
             inputs.native_user_action,
         ),
-        local_web_user_channel: evaluate_host_feature_support(
+        local_web_user_channel: evaluate_host_feature_support_for_version(
             host_kind,
+            host_version,
             HostFeature::LocalWebUserChannel,
             inputs.local_web_user_channel,
         ),
-        verified_tool_producer: evaluate_host_feature_support(
+        verified_tool_producer: evaluate_host_feature_support_for_version(
             host_kind,
+            host_version,
             HostFeature::VerifiedToolProducer,
             inputs.verified_tool_producer,
         ),
-        registered_connection_observation: evaluate_host_feature_support(
+        registered_connection_observation: evaluate_host_feature_support_for_version(
             host_kind,
+            host_version,
             HostFeature::RegisteredConnectionObservation,
             inputs.registered_connection_observation,
         ),
@@ -525,7 +618,19 @@ pub fn evaluate_host_feature_support_matrix(
 
 /// Returns the no-live-evidence baseline for all six features of a host.
 pub fn default_host_feature_support_matrix(host_kind: HostKind) -> HostFeatureSupportMatrix {
-    evaluate_host_feature_support_matrix(host_kind, HostFeatureMatrixInputs::default())
+    default_host_feature_support_matrix_for_version(host_kind, None)
+}
+
+/// Returns the version-aware no-live-evidence baseline for all six host features.
+pub fn default_host_feature_support_matrix_for_version(
+    host_kind: HostKind,
+    host_version: Option<&str>,
+) -> HostFeatureSupportMatrix {
+    evaluate_host_feature_support_matrix_for_version(
+        host_kind,
+        host_version,
+        HostFeatureMatrixInputs::default(),
+    )
 }
 
 #[cfg(test)]
@@ -614,6 +719,121 @@ mod tests {
                 "block_finalization",
             ]
         );
+    }
+
+    #[test]
+    fn codex_version_probe_canonicalization_is_strict() {
+        assert_eq!(
+            canonical_codex_host_version(REVIEWED_CODEX_HOST_VERSION),
+            Some(REVIEWED_CODEX_HOST_VERSION)
+        );
+        assert_eq!(
+            canonical_codex_host_version_from_probe("codex-cli 0.144.4"),
+            Some(REVIEWED_CODEX_HOST_VERSION)
+        );
+        assert_eq!(
+            canonical_codex_host_version_from_probe("codex-cli 1.2.3-alpha+1"),
+            Some("1.2.3-alpha+1")
+        );
+
+        for invalid in [
+            "",
+            "codex-cli ",
+            "codex 0.144.4",
+            "codex-cli 0.144.4\n",
+            " codex-cli 0.144.4",
+            "codex-cli 0.144.4 ",
+            "codex-cli .0.144.4",
+            "codex-cli 0.144.4-",
+            "codex-cli 0/144/4",
+            "codex-cli 버전",
+        ] {
+            assert_eq!(
+                canonical_codex_host_version_from_probe(invalid),
+                None,
+                "{invalid:?}"
+            );
+        }
+        let oversized = format!("codex-cli {}", "1".repeat(65));
+        assert_eq!(canonical_codex_host_version_from_probe(&oversized), None);
+    }
+
+    #[test]
+    fn reviewed_codex_version_implementation_matrix_is_exact() {
+        let expected = [
+            HostFeatureImplementation::Implemented,
+            HostFeatureImplementation::UnsupportedByHost,
+            HostFeatureImplementation::Implemented,
+            HostFeatureImplementation::Implemented,
+            HostFeatureImplementation::UnsupportedByHost,
+            HostFeatureImplementation::UnsupportedByHost,
+        ];
+        for (feature, expected) in HostFeature::ALL.into_iter().zip(expected) {
+            assert_eq!(
+                host_feature_implementation_for_version(
+                    HostKind::Codex,
+                    Some(REVIEWED_CODEX_HOST_VERSION),
+                    feature,
+                ),
+                expected,
+                "{}",
+                feature.as_str()
+            );
+        }
+
+        let matrix = default_host_feature_support_matrix_for_version(
+            HostKind::Codex,
+            Some(REVIEWED_CODEX_HOST_VERSION),
+        );
+        let expected_statuses = [
+            HostFeatureSupportStatus::ImplementedUnverified,
+            HostFeatureSupportStatus::UnsupportedByHost,
+            HostFeatureSupportStatus::ImplementedUnverified,
+            HostFeatureSupportStatus::ImplementedUnverified,
+            HostFeatureSupportStatus::UnsupportedByHost,
+            HostFeatureSupportStatus::UnsupportedByHost,
+        ];
+        assert_eq!(matrix.rows().map(|(_, status)| status), expected_statuses);
+
+        assert_eq!(
+            evaluate_host_feature_support_for_version(
+                HostKind::Codex,
+                Some(REVIEWED_CODEX_HOST_VERSION),
+                HostFeature::LocalWebUserChannel,
+                CURRENT_READY,
+            ),
+            HostFeatureSupportStatus::UnsupportedByHost
+        );
+    }
+
+    #[test]
+    fn absent_and_unreviewed_versions_retain_host_kind_fallback() {
+        for host_version in [None, Some("0.144.5"), Some("codex-cli 0.144.4")] {
+            for feature in HostFeature::ALL {
+                assert_eq!(
+                    host_feature_implementation_for_version(HostKind::Codex, host_version, feature,),
+                    host_feature_implementation(HostKind::Codex, feature),
+                    "host_version={host_version:?}, feature={}",
+                    feature.as_str()
+                );
+            }
+        }
+
+        for host_kind in [HostKind::ClaudeCode, HostKind::Generic] {
+            for feature in HostFeature::ALL {
+                assert_eq!(
+                    host_feature_implementation_for_version(
+                        host_kind,
+                        Some(REVIEWED_CODEX_HOST_VERSION),
+                        feature,
+                    ),
+                    host_feature_implementation(host_kind, feature),
+                    "host={}, feature={}",
+                    host_kind.as_str(),
+                    feature.as_str()
+                );
+            }
+        }
     }
 
     #[test]

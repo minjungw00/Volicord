@@ -8,9 +8,9 @@ use volicord_store::{
     bootstrap::{project_record_for_execution, ProjectRecord},
     core_pipeline::CoreProjectStore,
     diagnostics::{
-        record_diagnostic_event, start_diagnostic_session, validate_diagnostic_session_start,
-        DiagnosticEvent, DiagnosticEventKind, DiagnosticHostKind, DiagnosticOutcome,
-        DiagnosticSessionStart, DiagnosticTransport, DiagnosticUserChannelKind,
+        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
+        DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
+        DiagnosticUserChannelKind,
     },
     guards::{
         agent_session, guard_event, insert_agent_session, insert_guard_event,
@@ -169,7 +169,6 @@ where
     let envelope = guard_envelope(phase, &options, &input, &project)?;
     let input = protect_managed_guard_input(input, &envelope)?;
     validate_existing_managed_session_binding(&runtime_home, &project, &envelope)?;
-    validate_managed_guard_diagnostic_binding(&runtime_home, &project, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
     if phase == GuardPhase::Stop {
         if let Some(replayed) =
@@ -556,35 +555,6 @@ fn record_guard_diagnostic_best_effort(
             outcome,
         },
     );
-}
-
-fn validate_managed_guard_diagnostic_binding(
-    runtime_home: &Path,
-    project: &ProjectRecord,
-    envelope: &GuardEnvelope,
-) -> Result<(), GuardCommandError> {
-    if !is_managed_builtin_host(&envelope.host_kind) {
-        return Ok(());
-    }
-    let Some(session_id) = envelope.session_id.as_deref() else {
-        return Ok(());
-    };
-    let build = volicord_mcp::build_info();
-    validate_diagnostic_session_start(
-        runtime_home,
-        DiagnosticSessionStart {
-            session_id,
-            connection_id: Some(&envelope.connection_id),
-            project_id: Some(&project.project_id),
-            transport: DiagnosticTransport::GuardHook,
-            host_kind: Some(DiagnosticHostKind::from_connection_host_kind(
-                &envelope.host_kind,
-            )),
-            package_version: build.package_version,
-            build_id: &build.build_id,
-        },
-    )?;
-    Ok(())
 }
 
 fn attach_guard_disclosure(result: &mut Value) {

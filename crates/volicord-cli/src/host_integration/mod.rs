@@ -559,6 +559,7 @@ pub trait HostAdapter {
 pub struct HostDetection {
     pub host_kind: HostKind,
     pub available: bool,
+    pub host_version: Option<String>,
     pub details: String,
 }
 

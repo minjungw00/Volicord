@@ -219,7 +219,7 @@ May claim:
   result is `outcome=passed`, unexpired, and bounded by
   `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`.
   Its `evidence_artifact_sha256` would require trusted production acquisition
-  of the external `volicord-host-release-manifest-v1` defined by
+  of the external `volicord-host-release-manifest-v2` defined by
   [Host Release Evidence](host-release-evidence.md). That manifest must bind the same capability,
   host/client, adapter, build, source, target, and executable digest. A missing,
   unknown, malformed, unverified, or mismatched manifest fails closed; neither
@@ -269,12 +269,21 @@ Must not claim:
 Managed-host session correlation uses only the domain-separated opaque
 `managed_host_session_id` defined by
 [Host Release Evidence](host-release-evidence.md).
+For reviewed Codex `0.144.4`, a managed descriptor is launch provenance only.
+Exact `clientInfo` plus strict per-call `_meta.threadId` and
+`_meta["x-codex-turn-metadata"]` bind the root session and an immutable
+process-local thread digest. Pending state has no managed durable, Core,
+token, or local-web effects. `CODEX_THREAD_ID`, PID, cwd, process ancestry,
+timing, and hook-event proximity cannot establish or repair this binding.
 Raw native session, event, tool-call, capture, turn, and invocation identifiers
 must not be persisted, logged, diagnosed, or attached to evidence. The `mhs_`
 namespace is reserved and bound immutably to one host and registered
 connection; invalid or conflicting markers fail without durable state. The
 mapped value is correlation metadata, not user identity, host attestation, or
 authority; missing or mismatched binding cannot produce Strong Evidence.
+This exact correlation does not promote `local_web_user_channel`: that feature
+is `unsupported_by_host` for reviewed Codex `0.144.4` and still requires every
+separate credential-delivery condition for any future reviewed version.
 
 <a id="historical-operation-result-access"></a>
 ### Historical operation-result access

@@ -701,10 +701,11 @@ fn guard_builtin_sessions_are_canonical_and_raw_native_ids_are_not_persisted(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-managed-session-binding")?;
     let native_session_id = "codex.native:secret-1";
+    let native_thread_id = "codex.thread:secret-2";
     let event = json!({
         "event_id": "guard_managed_session_binding",
         "session_id": native_session_id,
-        "thread_id": native_session_id,
+        "thread_id": native_thread_id,
         "connection_id": fixture.connection_id(),
         "host_kind": "codex",
         "transcript_path": format!("/tmp/{native_session_id}.jsonl")
@@ -736,9 +737,10 @@ fn guard_builtin_sessions_are_canonical_and_raw_native_ids_are_not_persisted(
         .expect("managed guard event should be stored");
     assert_eq!(stored.session_id.as_deref(), Some(expected.as_str()));
     assert!(!stored.subject_json.contains(native_session_id));
+    assert!(!stored.subject_json.contains(native_thread_id));
     let subject: Value = serde_json::from_str(&stored.subject_json)?;
     assert_eq!(subject["raw_event"]["session_id"], expected);
-    assert_eq!(subject["raw_event"]["thread_id"], expected);
+    assert_ne!(subject["raw_event"]["thread_id"], native_thread_id);
     assert!(subject["raw_event"]["transcript_path"]
         .as_str()
         .is_some_and(|path| !path.contains(native_session_id)));
@@ -888,8 +890,7 @@ fn guard_managed_session_preseed_conflict_has_zero_effects() -> Result<(), Box<d
 }
 
 #[test]
-fn guard_managed_diagnostic_preseed_conflict_has_zero_project_effects() -> Result<(), Box<dyn Error>>
-{
+fn guard_managed_diagnostic_preseed_conflict_is_non_authoritative() -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-managed-diagnostic-preseed-conflict")?;
     let native_session_id = "native.session:diagnostic-preseed-conflict";
     let session_id = volicord_types::managed_host_session_id(
@@ -910,7 +911,6 @@ fn guard_managed_diagnostic_preseed_conflict_has_zero_project_effects() -> Resul
         },
     )?;
     let before_core = fixture.core_effect_counts()?;
-    let before_durable = guard_durable_counts(&fixture)?;
     let event = json!({
         "event_id": "native-event-diagnostic-preseed-conflict",
         "session_id": native_session_id,
@@ -926,9 +926,9 @@ fn guard_managed_diagnostic_preseed_conflict_has_zero_project_effects() -> Resul
         &event,
     )?;
 
-    assert!(!output.status.success());
-    assert!(stdout(&output).is_empty());
-    assert!(stderr(&output).contains("already bound to a different connection or host"));
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["session_id"], session_id);
     assert_output_excludes(
         &output,
         &[
@@ -937,9 +937,23 @@ fn guard_managed_diagnostic_preseed_conflict_has_zero_project_effects() -> Resul
         ],
     );
     assert_eq!(fixture.core_effect_counts()?, before_core);
-    assert_eq!(guard_durable_counts(&fixture)?, before_durable);
+    let stored_session = agent_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        session_id.as_str(),
+    )?
+    .expect("authoritative project state should accept the exact managed binding");
+    assert_eq!(
+        stored_session.connection_internal_id,
+        fixture.connection_id()
+    );
+    assert_eq!(stored_session.host_kind, "codex");
+    let guard_event_id = value["guard_event_id"]
+        .as_str()
+        .expect("successful session-start should record a guard event");
+    assert!(guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?.is_some());
     let unchanged = read_diagnostic_session(fixture.runtime_home(), Some(session_id.as_str()))?
-        .expect("conflicting diagnostic binding should remain unchanged");
+        .expect("conflicting best-effort diagnostic binding should remain unchanged");
     assert_eq!(
         unchanged.connection_id.as_deref(),
         Some("connection_diagnostic_other")
@@ -1236,15 +1250,6 @@ fn guard_builtin_sessions_reject_missing_inconsistent_and_noncanonical_bindings(
                 "host_kind": "codex"
             }),
         ),
-        (
-            "inconsistent",
-            json!({
-                "event_id": "guard_managed_inconsistent_session",
-                "session_id": "native-a",
-                "thread_id": "native-b",
-                "host_kind": "codex"
-            }),
-        ),
     ] {
         let fixture = GuardCliFixture::new(&format!("guard-managed-{label}"))?;
         let mut event = event;
@@ -1286,6 +1291,31 @@ fn guard_builtin_sessions_reject_missing_inconsistent_and_noncanonical_bindings(
     )?;
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("mhs_"));
+
+    for (label, turn_id) in [("missing", Value::Null), ("invalid", json!("bad turn"))] {
+        let fixture = GuardCliFixture::new(&format!("guard-managed-turn-{label}"))?;
+        let event = json!({
+            "event_id": format!("guard_managed_turn_{label}"),
+            "session_id": "native-session",
+            "turn_id": turn_id,
+            "host_kind": "codex",
+            "connection_id": fixture.connection_id(),
+            "tool_name": "Read",
+            "tool_input": {"path": "README.md"}
+        });
+        let output = run_guard(
+            fixture.runtime_home(),
+            fixture.repo_root(),
+            ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+            &event,
+        )?;
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{label} turn id must fail closed"
+        );
+        assert!(stderr(&output).contains("turn id"));
+    }
     Ok(())
 }
 
@@ -2102,6 +2132,7 @@ fn guard_prompt_capture_hashes_prompt_and_omits_text() -> Result<(), Box<dyn Err
             "event_id": "guard_prompt_event",
             "prompt_capture_id": "guard_prompt_capture_a",
             "session_id": "guard_session_prompt",
+            "turn_id": "guard_turn_prompt",
             "connection_id": fixture.connection_id(),
             "host": {"kind": PROMPT_CAPTURE_TEST_HOST_KIND},
             "message": "Please prepare the write carefully."

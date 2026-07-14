@@ -249,6 +249,7 @@ impl<R: CommandRunner> HostAdapter for ClaudeCodeAdapter<R> {
         Ok(HostDetection {
             host_kind: HostKind::ClaudeCode,
             available: true,
+            host_version: None,
             details: format!("Claude Code command target: {}", self.claude_command),
         })
     }

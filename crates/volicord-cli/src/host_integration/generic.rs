@@ -49,6 +49,7 @@ impl HostAdapter for GenericAdapter {
         Ok(HostDetection {
             host_kind: HostKind::Generic,
             available: false,
+            host_version: None,
             details: USER_MANAGED_CONFIGURATION_GUIDANCE.to_owned(),
         })
     }

@@ -4,8 +4,8 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{
-    managed_host_session_id, validate_managed_host_session_id, HostKind, IntegrationProfile,
-    MANAGED_HOST_SESSION_ID_PREFIX,
+    managed_host_session_id, validate_managed_host_native_session_id,
+    validate_managed_host_session_id, HostKind, IntegrationProfile, MANAGED_HOST_SESSION_ID_PREFIX,
 };
 
 use super::{
@@ -94,6 +94,15 @@ pub(super) fn guard_envelope(
             })
             .unwrap_or_else(|| DEFAULT_INTEGRATION_PROFILE.to_owned()),
     )?;
+    if host_kind == "codex" && phase != GuardPhase::SessionStart {
+        let native_turn_id =
+            consistent_exact_event_string(&input.raw_value, &[&["turn_id"]], "native turn id")?;
+        validate_managed_host_native_session_id(native_turn_id).map_err(|error| {
+            GuardCommandError::Usage(format!(
+                "managed Codex event has an invalid turn id: {error}"
+            ))
+        })?;
+    }
     let session_id = if is_managed_builtin_host(&host_kind) {
         Some(managed_builtin_session_id(
             &host_kind,
@@ -212,7 +221,7 @@ pub(super) fn managed_native_session_id<'a>(
     event: &'a Value,
 ) -> Result<&'a str, GuardCommandError> {
     let paths: &[&[&str]] = match host_kind {
-        "codex" => &[&["session_id"], &["thread_id"]],
+        "codex" => &[&["session_id"]],
         "claude_code" => &[&["session_id"]],
         _ => {
             return Err(GuardCommandError::Usage(
@@ -362,7 +371,7 @@ mod tests {
     fn builtin_native_fields_map_to_the_shared_opaque_session_id() {
         let codex = json!({
             "session_id": "native.session:1",
-            "thread_id": "native.session:1"
+            "thread_id": "different.subagent.thread"
         });
         let expected = managed_host_session_id("codex", "connection_alpha", "native.session:1")
             .expect("valid managed coordinates should bind");
@@ -390,16 +399,20 @@ mod tests {
 
     #[test]
     fn builtin_native_fields_and_internal_overrides_fail_closed() {
-        for event in [
-            json!({ "session_id": "native with space" }),
-            json!({}),
-            json!({
-                "session_id": "native-a",
-                "thread_id": "native-b"
-            }),
-        ] {
+        for event in [json!({ "session_id": "native with space" }), json!({})] {
             assert!(managed_builtin_session_id("codex", "connection", None, &event).is_err());
         }
+
+        let different_thread = json!({
+            "session_id": "native-a",
+            "thread_id": "native-b"
+        });
+        assert_eq!(
+            managed_builtin_session_id("codex", "connection", None, &different_thread)
+                .expect("thread identifiers do not replace the root session binding"),
+            managed_host_session_id("codex", "connection", "native-a")
+                .expect("root session should map")
+        );
 
         let event = json!({ "session_id": "native" });
         assert!(

@@ -1930,7 +1930,6 @@ pub(crate) fn expected_managed_session_id(
         .ok_or("managed fixture event should contain host_kind")?;
     let native_session_id = event
         .get("session_id")
-        .or_else(|| event.get("thread_id"))
         .and_then(Value::as_str)
         .ok_or("managed fixture event should contain a native session id")?;
     Ok(managed_host_session_id(
@@ -2112,7 +2111,7 @@ pub(crate) fn run_host_guard(
     event: &Value,
     extra_env: &[(&str, &str)],
 ) -> Result<Output, Box<dyn Error>> {
-    let event = managed_test_event(event, Some(host_output));
+    let event = managed_test_event(event, Some(host_output), phase);
     let mut command = Command::new(volicord_bin());
     command
         .args([
@@ -2150,7 +2149,8 @@ pub(crate) fn run_guard<const N: usize>(
     let configured_host = args
         .windows(2)
         .find_map(|pair| matches!(pair[0], "--host" | "--host-output").then_some(pair[1]));
-    let event = managed_test_event(event, configured_host);
+    let phase = args.get(1).copied().unwrap_or_default();
+    let event = managed_test_event(event, configured_host, phase);
     let mut child = Command::new(volicord_bin())
         .args(args)
         .env("VOLICORD_HOME", runtime_home)
@@ -2168,7 +2168,7 @@ pub(crate) fn run_guard<const N: usize>(
     Ok(child.wait_with_output()?)
 }
 
-fn managed_test_event(event: &Value, configured_host: Option<&str>) -> Value {
+fn managed_test_event(event: &Value, configured_host: Option<&str>, phase: &str) -> Value {
     let mut event = event.clone();
     let event_host = event
         .get("host_kind")
@@ -2179,13 +2179,14 @@ fn managed_test_event(event: &Value, configured_host: Option<&str>) -> Value {
             "claude-code" => "claude_code",
             other => other,
         });
+    let is_codex = event_host == Some("codex");
     if !matches!(event_host, Some("codex" | "claude_code")) {
         return event;
     }
     let Some(object) = event.as_object_mut() else {
         return event;
     };
-    if !object.contains_key("session_id") && !object.contains_key("thread_id") {
+    if !object.contains_key("session_id") {
         let native_session_id = object
             .get("event_id")
             .and_then(Value::as_str)
@@ -2198,6 +2199,12 @@ fn managed_test_event(event: &Value, configured_host: Option<&str>) -> Value {
             .unwrap_or("managed-test-session")
             .to_owned();
         object.insert("session_id".to_owned(), Value::String(native_session_id));
+    }
+    if is_codex && phase != "session-start" && !object.contains_key("turn_id") {
+        object.insert(
+            "turn_id".to_owned(),
+            Value::String("managed-test-turn".to_owned()),
+        );
     }
     event
 }
@@ -2276,6 +2283,7 @@ pub(crate) fn pre_tool_write_event(event_id: &str) -> Value {
     json!({
         "event_id": event_id,
         "session_id": "generated_hook_session",
+        "turn_id": "generated_hook_turn",
         "tool_name": "Bash",
         "tool_call_id": format!("{event_id}_tool"),
         "command": "touch src/lib.rs",

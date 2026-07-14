@@ -243,6 +243,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
         Ok(HostDetection {
             host_kind: HostKind::Codex,
             available: availability.is_available(),
+            host_version: availability.host_version,
             details: availability.details,
         })
     }
@@ -285,6 +286,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             _ => Path::new("unknown Codex configuration target"),
         };
         let executable = self.executable_availability(config_target);
+        let host_version = executable.host_version.clone();
         let managed_evaluation = evaluate_codex_managed_identity(plan)?;
         let managed = managed_evaluation.status;
         if managed != ManagedConfigStatus::Match {
@@ -296,7 +298,8 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
                     plan.server_name
                 ),
             )
-            .with_host_executable(executable.status);
+            .with_host_executable(executable.status)
+            .with_host_version(host_version);
             if let Some(overlay) = managed_evaluation.host_policy_overlay {
                 verification = verification.with_host_policy_overlay(overlay);
             }
@@ -348,6 +351,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
                 verification = verification.with_host_policy_overlay(overlay);
             }
             verification = verification.with_project_trust(project_trust);
+            verification = verification.with_host_version(host_version);
             return Ok(verification.merge_user_actions(&plan.user_actions));
         }
         if !executable.is_available() {
@@ -361,6 +365,7 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
             "Codex managed configuration is present, Codex executable is available, and no separate project trust gate applies",
         )
         .with_host_executable(HostExecutableStatus::Available)
+        .with_host_version(host_version)
         .with_mcp_handshake_allowed(true);
         if let Some(overlay) = managed_evaluation.host_policy_overlay {
             verification = verification.with_host_policy_overlay(overlay);

@@ -255,8 +255,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - terminology_map_v1
@@ -883,8 +883,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -899,6 +899,7 @@ documents:
   - architecture-guide.decision.core-adapter-boundary
   - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.managed-host-session-turn-binding
   - architecture-guide.decision.host-release-evidence-gate
   - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decision.evidence-capture-producer-finalization
@@ -1007,6 +1008,35 @@ documents:
   - reference.storage-records
   - reference.storage-ddl
   - reference.storage-versioning
+- doc_id: architecture-guide.decision.managed-host-session-turn-binding
+  path_en: docs/en/architecture-guide/decisions/managed-host-session-turn-binding.md
+  path_ko: docs/ko/architecture-guide/decisions/managed-host-session-turn-binding.md
+  kind: explanation
+  summary: Architecture decision explaining pending managed-launch provenance, exact per-call Codex session and thread binding, and turn validation.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-15'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - mcp_protocol_2025_11_25
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.agent-connection-routing
+  - architecture-guide.decision.host-capability-verification
+  - reference.agent-connection
+  - reference.mcp-transport
+  - reference.host-release-evidence
+  - reference.security
 - doc_id: architecture-guide.decision.host-release-evidence-gate
   path_en: docs/en/architecture-guide/decisions/host-release-evidence-gate.md
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
@@ -1269,8 +1299,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1414,8 +1444,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1436,7 +1466,8 @@ documents:
   - executable layout and discovery prerequisites for `volicord` and its `mcp` subcommand
   - Runtime Home, Product Repository, and host configuration access prerequisites
   - shared repository-discovery explicit Runtime Home environment prerequisite
-  - host compatibility check policy when no stable Codex or Claude Code minimum version is defined
+  - exact reviewed host-version compatibility coordinates without a Codex or Claude Code minimum-version promise
+  - managed Codex pending-launch prerequisites and per-call session/thread binding environment boundary
   - managed final-output fixed-UI authority-disclosure environment applicability and fallback boundary
   - external exact-final-artifact host-capability release evidence manifest applicability and current
     trusted-acquisition status
@@ -1458,8 +1489,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-07-14'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1472,7 +1503,7 @@ documents:
   - implement
   - maintain
   canonical_for:
-  - '`volicord-release-candidate-v1`, `volicord-host-release-cell-v1`, `volicord-host-release-manifest-v1`, and `volicord-host-release-audit-v1`'
+  - '`volicord-release-candidate-v1`, `volicord-host-release-cell-v2`, `volicord-host-release-manifest-v2`, and `volicord-host-release-audit-v2`'
   - exact external candidate, clean source revision, `git_archive_tar_sha256_v1`, target, profile, environment, held-handle digest, and private-copy execution binding
   - non-adversarial build-provenance and source-archive integrity boundary without reproducible-build or hostile-producer attestation
   - fixed twelve-cell Codex and Claude Code host release validation matrix with explicit nullable host availability coordinates
@@ -1487,6 +1518,7 @@ documents:
   - reference.mcp-transport
   - reference.admin-cli
   - reference.security
+  - architecture-guide.decision.managed-host-session-turn-binding
   - reference.api.schema-value-sets
   - maintain.validation
 - doc_id: reference.scope
@@ -1595,8 +1627,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1635,6 +1667,7 @@ documents:
   - administrative host-feature support diagnostics, profile-specific final-output subcapabilities, and configuration-only facts
   - exact six-key host_feature_support map and Doctor per-connection row projection
   - auxiliary CLI and Doctor projection boundary from the canonical host release evidence gate and audit
+  - exact Codex version normalization and session-bound managed lifecycle diagnostic meaning
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -1651,8 +1684,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -1685,7 +1718,7 @@ documents:
   - MCP process shutdown and reconnection behavior
   - centralized exact host-capability evaluation, external exact-final-artifact release evidence
     manifest requirement, and credential-bearing local-web handoff eligibility
-  - managed native host session input mapping before persistence or diagnostics
+  - pending managed Codex launch provenance, exact per-call session and thread binding, and turn validation before persistence or diagnostics
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -1694,6 +1727,7 @@ documents:
   - reference.api.schema-value-sets
   - reference.storage
   - reference.host-release-evidence
+  - architecture-guide.decision.managed-host-session-turn-binding
 - doc_id: reference.security
   path_en: docs/en/reference/security.md
   path_ko: docs/ko/reference/security.md
@@ -1703,8 +1737,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
@@ -1726,7 +1760,7 @@ documents:
   - generated final-output display and model-authored text non-authority boundary
   - host-capability evidence, external release-manifest trust boundary, credential-delivery trust
     boundary, and non-attestation wording
-  - managed native host session privacy and opaque-correlation non-authority boundary
+  - managed native host session privacy, pending zero-effect state, strict per-call opaque correlation, and non-authority boundary
   depends_on:
   - reference.host-release-evidence
 - doc_id: reference.glossary
@@ -2628,8 +2662,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -2658,9 +2692,11 @@ documents:
   - immutable host-capability verification history, current state, freshness, external
     exact-final-artifact release evidence binding, and exact-match eligibility
   - canonical host-feature support status meaning, precedence, current host matrix, replay, and freshness boundaries
-  - managed MCP and host-hook use of one opaque managed-host session identifier
+  - managed MCP and host-hook use of one opaque managed-host session identifier with pending Codex call binding
   depends_on:
   - reference.host-release-evidence
+  - reference.mcp-transport
+  - architecture-guide.decision.managed-host-session-turn-binding
 - doc_id: reference.projection-and-templates
   path_en: docs/en/reference/projection-and-templates.md
   path_ko: docs/ko/reference/projection-and-templates.md
@@ -3000,8 +3036,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -3023,6 +3059,7 @@ documents:
     external result retention, and unavailable-host reporting boundaries.
   - Exact `tests/release-validation` package, fixed host release gate, separate-process audit,
     and unavailable-implementation reporting command routes.
+  - Exact Codex client/session/thread binding assertions for live-host release cells.
   - Rust validation routing for documentation work that also changes implementation files.
   depends_on:
   - maintain.documentation-policy

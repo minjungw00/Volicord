@@ -262,17 +262,18 @@ Docker 노출 동작:
 
 세션 감시 시작 범위:
 
-- stdio 시작이 `--project <project_id>` 또는 사용할 수 있는 허용 프로젝트가 정확히 하나인
-  연결 맥락 때문에 프로젝트에 묶이면, 프로세스는 한정된 스냅샷 생성을 사용할 수 있을 때
-  도구 요청을 처리하기 전에 세션 감시 기준선을 만들거나 연결합니다. 관찰 범위 근거는
-  `mcp_start`입니다.
-- 관리 출처 마커가 검증된 생성 Codex 시작에서는 쓰기 가능한 저장소를 사용할 수 있을 때
-  stdio 프로세스가 같은 기준선에 `managed_host_startup`,
-  `managed_host_initialize_response`, `managed_host_tools_list`,
-  `managed_host_tool_call` 관찰에 대한 관리 생명주기 메타데이터도 추가합니다. 각
-  생명주기 이벤트는 선택된 연결과 프로젝트, `host_kind=codex`,
-  `launch_origin=managed_host`, 시각, 관찰된 저장 기능, 사용할 수 있을 때의 유효 도구
-  모드를 기록합니다.
+- 관리 Codex 세션 결속 대기 경로가 아니라면, 프로젝트에 결속된 stdio 시작은 한정된
+  스냅샷 생성을 사용할 수 있을 때 도구 요청을 처리하기 전에 세션 감시 기준선을 만들거나
+  연결할 수 있습니다. 관찰 범위 근거는 `mcp_start`입니다.
+- 검증된 생성 Codex 기술 정보나 로컬 관리 마커 집합은 관리 시작 출처만 확립합니다.
+  진단 세션, 세션 감시 기준선, 관리 생명주기 행, Core 효과, local-web 자격을 만들지
+  않습니다. 아래 호출별 결속이 성공할 때까지 프로세스는 대기 상태입니다.
+- 처음으로 결속 자격이 있는 Codex `tools/call`이 오면 프로세스는 세션 감시 기준선을
+  시작하고 그 프로세스에서 관찰한 한정된 생명주기 사실을 구체화합니다.
+  `managed_host_startup`, `managed_host_initialize_response`, 목록 조회가 있었다면
+  `managed_host_tools_list`, 그리고 `managed_host_tool_call`이 해당합니다. 관찰 범위는 이
+  결속 경계에서 시작하고 명시적으로 부분 범위이며, 이 시작 사실은 기준선 이전의 Product
+  Repository 변경을 관찰했다는 주장이 아닙니다.
 - 로컬 HTTP 초기화가 `Mcp-Session-Id`를 만들고 선택된 연결·프로젝트 맥락에 사용할 수
   있는 허용 프로젝트가 정확히 하나이면, 서버는 그 세션의 이후 도구 요청을 받기 전에
   같은 `mcp_start` 기준선을 만들거나 연결합니다.
@@ -333,8 +334,9 @@ Volicord가 관리하는 개인 또는 사용자 범위 Codex 설정은 다음 �
 선택적 project 값은 대응하는 프로세스 인자와 일치해야 합니다. 일부만 있거나 값이 맞지
 않는 마커 집합은 유효하지 않은 관리 출처이며 관리 생명주기 관찰을 만들지 않습니다.
 저장소 발견 시작은 정확한 형식의 기술 정보와 호스트 선택자를 관리 시작 출처로 사용하며
-이 마커를 담으면 안 됩니다. 마커와 기술 정보는 프로젝트 접근, 호스트 신뢰, 더 넓은
-권한을 부여하지 않습니다.
+이 마커를 담으면 안 됩니다. 어느 형태도 Codex native 세션 identity를 제공하지 않습니다.
+마커와 기술 정보는 프로젝트 접근, 호스트 신뢰, 세션 결속, 더 넓은 권한을 부여하지
+않습니다.
 
 로컬 연결 식별 정보는 개인·로컬 생성 설정이나 사용자가 관리하는 일반 호스트 설정 안의
 `--connection <connection_id>`로 제공합니다. 이것은 저장된 `connection_internal_id`를
@@ -413,16 +415,45 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 멤버십이 제거된 뒤 프로젝트 탐색은 사용 가능한 프로젝트가 없다고 보고할 수 있으며,
 프로젝트 라우팅이 필요한 공개 도구는 연결 프로젝트가 남아 있지 않으므로 거절됩니다.
 
+<a id="managed-host-session-input"></a>
 ## 관리 호스트 세션 입력
 
-관리 Codex 및 Claude Code 시작에서 transport 코드는 native host session identifier를
-검증하고 즉시 [호스트 릴리스 증거](host-release-evidence.md)가 정의한 불투명
-`managed_host_session_id`로 매핑합니다. 매핑한 값만 Agent Connection 상태, 관리 MCP
-관찰, 훅 상관관계로 전달할 수 있습니다. `mhs_` namespace는 예약되며 기존 매핑의 호스트와
-등록 연결 좌표는 바꿀 수 없습니다. 원본 session 및 그 밖의 native 상관관계 identifier는
-영속 저장하거나 진단하지 않습니다. 잘못된 marker는 영속 진단 session, 프로토콜 상태,
-프로젝트 상태를 만들기 전에 거부합니다. 값이 없거나, 잘못됐거나, 일치하지 않으면 Strong
-Evidence를 만들 자격이 없으며 transport 코드가 대체 값을 합성하면 안 됩니다.
+관리 Codex 시작 출처와 세션 결속은 서로 다른 상태입니다. 검토된 경로는 성공한
+`initialize`에서 정확한 `clientInfo.name=codex-mcp-client`와
+`clientInfo.version=0.144.4`를 보존하지만 초기화만으로 관리 세션을 결속하지 않습니다.
+설치 호스트의 정규 좌표는 정확한 probe 외피 `codex-cli 0.144.4`에서 해석한
+`0.144.4`입니다.
+
+Ready 전환 뒤 처음으로 알려진 도구를 구조적으로 올바르게 호출할 때는
+`_meta.threadId`와 객체 `_meta["x-codex-turn-metadata"]` 안의 문자열
+`session_id`, `thread_id`, `turn_id`가 있어야 합니다. 바깥 `threadId`는 안쪽
+`thread_id`와 정확히 같아야 합니다. 각 native 값은 UTF-8 1바이트 이상 256바이트
+이하이고 `[A-Za-z0-9._:-]+`와 일치해야 합니다. JSON-RPC 형태, 알려진 도구 이름,
+`arguments` 검증이 모두 성공한 뒤에만 어댑터가 `session_id`에서
+`managed_host_session_id`를 파생하고 `thread_id`에서 domain 분리된 메모리 내 thread
+결속 다이제스트를 파생합니다. 두 결속은 stdio 프로세스 수명 동안 바뀌지 않습니다.
+이후 호출은 둘 다 일치해야 하며 새 turn에서는 `turn_id`가 바뀔 수 있습니다. 원본
+세션·thread·turn 값은 검증과 해시 뒤 폐기합니다.
+
+메타데이터가 없거나 형식이 잘못되었거나 일치하지 않으면 진단 세션, 세션 감시 행, 관리
+생명주기 이벤트, 도구 호출 행, Core 호출, token, local-web 전달을 만들기 전에
+JSON-RPC `-32602`를 반환합니다. 이 숨은 메타데이터는 transport 입력이며 공개 도구
+인자, 권한, host attestation이 아닙니다. 환경 변수, 프로세스 ID, 프로세스 조상 관계,
+도착 시각, 훅 이벤트와의 시간적 근접성, 최신 세션 조회로 대체하면 안 됩니다. Claude
+Code는 담당 문서가 정한 어댑터 입력을 사용합니다. 두 호스트 모두 검증된 native 세션을
+[호스트 릴리스 증거](host-release-evidence.md)가 정의한 불투명한
+`managed_host_session_id`로 매핑합니다. 원본 세션, thread, turn, 이벤트, 호출,
+capture, invocation 식별자는 영속 저장, 로그 기록, 진단, 렌더링, 증거 첨부를 하지
+않습니다. 결속이 없거나 잘못됐거나 일치하지 않으면 Strong Evidence 자격이 없으며
+대체값을 합성해 고치면 안 됩니다.
+
+`diagnostics.sqlite`는 최선형 운용 저장소이며 결속 권한이 아닙니다. 손상, 쓰기 거부,
+기존 진단 좌표와의 충돌은 그 밖에는 유효한 관리 메타데이터를 거부하거나 MCP 결과,
+guard 결과, Core 결과, 권한 효력이 있는 결속을 바꿀 수 없습니다. 가능하면 해당 진단
+영속화는 건너뛰거나 치명적이지 않은 진단 실패로 기록합니다. 정확한 소유권 충돌은 계속
+프로젝트 Agent Session과 등록 연결 상태에서 판단합니다. 이 비권한 진단 경계가 위의
+잘못되거나 일치하지 않는 요청 메타데이터에 대한 효과 없는 거부를 약하게 만들지는
+않습니다.
 
 ## Agent Connection에 묶인 프로세스
 
@@ -803,6 +834,10 @@ MCP에 보이는 도구는 공개 Volicord Core API 메서드 목록과 같은 �
 
 - 문자열 `name`
 - 선택적 객체 `arguments`
+
+관리 Codex 경로는 [관리 호스트 세션 입력](#managed-host-session-input)에 정의된 숨은 요청측
+`_meta` 결속도 사용합니다. 이 값은 `tools/list`에 노출되지 않고 공개 도구 입력
+스키마의 일부가 아니며 Core 요청 인자로 복사되지 않습니다.
 
 `arguments`가 없으면 빈 객체로 취급합니다. `arguments: null`과 객체가 아닌
 `arguments`는 잘못된 메서드 파라미터이며 JSON-RPC `-32602`를 반환합니다. 알 수 없는
@@ -1272,7 +1307,7 @@ Listener 시작만으로는 이 경로를 선택하지 않습니다. Listener co
 관리 지문, 어댑터 프로필·버전, Volicord 빌드, source revision, target, 실행 파일
 다이제스트, 클라이언트 이름·버전, 크기가 제한된 실제 호스트 증거 다이제스트와 정확히
 일치해야 합니다. 예상 증거 다이제스트에는 [호스트 릴리스 증거](host-release-evidence.md)가
-담당하는 정확한 외부 `volicord-host-release-manifest-v1`을 신뢰해 획득하는 운영 경로가
+담당하는 정확한 외부 `volicord-host-release-manifest-v2`를 신뢰해 획득하는 운영 경로가
 필요합니다. 그 manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target,
 실행 파일 다이제스트에 결속됩니다. 행의
 `evidence_artifact_sha256`은 그 예상값과 정확히 일치해야 하며 행, 빌드 설명자, 복사한 값이

@@ -34,9 +34,9 @@ pub(crate) use volicord_store::{
     },
     core_pipeline::CoreProjectStore,
     diagnostics::{
-        record_diagnostic_event, start_diagnostic_session, validate_diagnostic_session_start,
-        DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
-        DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport, DiagnosticUserChannelKind,
+        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
+        DiagnosticFallbackKind, DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart,
+        DiagnosticTransport, DiagnosticUserChannelKind,
     },
     guards::{agent_session, guard_health_record, insert_agent_session, AgentSessionInsert},
     host_capabilities::{

@@ -66,7 +66,7 @@ use crate::guard_integration::{
 use crate::host_integration::REQUIRED_GUARD_PHASES;
 use crate::host_integration::{
     capability_status::{
-        default_host_feature_support_matrix, host_feature_support_json, HostFeature,
+        default_host_feature_support_matrix_for_version, host_feature_support_json, HostFeature,
         HostFeatureDiagnosticProjection, HostFeatureSupportMatrix,
     },
     claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
@@ -1269,13 +1269,14 @@ struct ConnectionHostFeatureDiagnostics {
 }
 
 impl ConnectionHostFeatureDiagnostics {
-    fn baseline(
+    fn baseline_for_version(
         host_kind: HostKind,
+        host_version: Option<&str>,
         profile: Option<IntegrationProfile>,
         configured: bool,
         configuration_verified: bool,
     ) -> Self {
-        let support = default_host_feature_support_matrix(host_kind);
+        let support = default_host_feature_support_matrix_for_version(host_kind, host_version);
         let final_output = profile.map(|profile| {
             HostFeatureDiagnosticProjection::from_matrix(
                 support,
@@ -1564,8 +1565,18 @@ impl GuardOperationalState {
         host_kind: HostKind,
         profile: Option<IntegrationProfile>,
     ) -> ConnectionHostFeatureDiagnostics {
-        ConnectionHostFeatureDiagnostics::baseline(
+        self.host_feature_diagnostic_for_version(host_kind, None, profile)
+    }
+
+    fn host_feature_diagnostic_for_version(
+        &self,
+        host_kind: HostKind,
+        host_version: Option<&str>,
+        profile: Option<IntegrationProfile>,
+    ) -> ConnectionHostFeatureDiagnostics {
+        ConnectionHostFeatureDiagnostics::baseline_for_version(
             host_kind,
+            host_version,
             profile,
             self.final_output_authority_disclosure.configured,
             self.final_output_authority_disclosure
@@ -2780,6 +2791,31 @@ mod tests {
         );
         assert!(host_hook.get("host_feature_support").is_none());
         assert!(host_hook.get("final_output_authority_disclosure").is_none());
+    }
+
+    #[test]
+    fn fresh_reviewed_codex_version_drives_only_the_fresh_connection_projection() {
+        let guard_state = GuardOperationalState::not_configured();
+        let fresh =
+            guard_state.host_feature_diagnostic_for_version(HostKind::Codex, Some("0.144.4"), None);
+        let no_current_probe = guard_state.host_feature_diagnostic(HostKind::Codex, None);
+
+        assert_eq!(
+            fresh.host_feature_support_json()["local_web_user_channel"],
+            "unsupported_by_host"
+        );
+        assert_eq!(
+            no_current_probe.host_feature_support_json()["local_web_user_channel"],
+            "implemented_unverified"
+        );
+        assert_eq!(
+            fresh.host_feature_support_json()["native_user_action"],
+            "implemented_unverified"
+        );
+        assert_eq!(
+            fresh.host_feature_support_json()["record_final_output"],
+            "unsupported_by_host"
+        );
     }
 
     fn plan_guard_integration_for_test(

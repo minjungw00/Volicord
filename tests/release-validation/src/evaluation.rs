@@ -3,8 +3,9 @@ use std::{collections::BTreeSet, path::Path, time::SystemTime};
 use chrono::{DateTime, Duration, SecondsFormat, Timelike, Utc};
 use volicord_cli::host_integration::{
     capability_status::{
-        evaluate_host_feature_support, host_feature_implementation, CurrentRuntimeReadiness,
-        ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput, HostFeatureImplementation,
+        evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
+        CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
+        HostFeatureImplementation,
     },
     HostKind as CliHostKind,
 };
@@ -407,8 +408,11 @@ fn evaluate_cell(
         finding_codes.push("candidate_recorded_after_cell_start".to_owned());
     }
 
-    let expected_implementation =
-        host_feature_implementation(cli_host_kind(cell.host_kind), cell.feature);
+    let expected_implementation = host_feature_implementation_for_version(
+        cli_host_kind(cell.host_kind),
+        cell.host_version.as_ref().map(String::as_str),
+        cell.feature,
+    );
     let declared_implementation = cli_implementation(cell.implementation_disposition);
     if expected_implementation != declared_implementation {
         return Err(ValidationError::new(format!(
@@ -483,8 +487,9 @@ fn evaluate_cell(
         && environment_coordinates_exact
         && evidence_exact
         && assertions_pass;
-    let derived_status = evaluate_host_feature_support(
+    let derived_status = evaluate_host_feature_support_for_version(
         cli_host_kind(cell.host_kind),
+        cell.host_version.as_ref().map(String::as_str),
         cell.feature,
         HostFeatureEvaluationInput::new(
             if exact_live_evidence {

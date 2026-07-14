@@ -25,10 +25,11 @@
 | 역할 | 정확한 식별자 |
 |---|---|
 | 정확한 후보 설명자 | `volicord-release-candidate-v1` |
-| 실제 호스트 행렬 결과 하나 | `volicord-host-release-cell-v1` |
-| 정규 릴리스 게이트 결과 | `volicord-host-release-manifest-v1` |
-| 별도 프로세스 재계산 결과 | `volicord-host-release-audit-v1` |
+| 실제 호스트 행렬 결과 하나 | `volicord-host-release-cell-v2` |
+| 정규 릴리스 게이트 결과 | `volicord-host-release-manifest-v2` |
+| 별도 프로세스 재계산 결과 | `volicord-host-release-audit-v2` |
 | 소스 아카이브 다이제스트 알고리즘 | `git_archive_tar_sha256_v1` |
+| 셀 입력 집합 다이제스트 도메인 | `volicord-host-release-cell-inputs-v2` |
 
 네 아티팩트는 중복 키를 거부하는 정규 UTF-8 JSON 객체입니다. 알 수 없는 필드는
 거부합니다. SHA-256 값은 소문자 64자리 16진수이고, 타임스탬프는 초 정밀도의 정규 UTC
@@ -41,6 +42,13 @@ JSON 파일은 최대 4 MiB, 셀이 참조하는 증거 아티팩트 하나는 �
 `CARGO_TARGET_DIR`는 소스 checkout을 기준으로, 상대 `VOLICORD_HOME`은 호출 프로세스의
 현재 디렉터리를 기준으로 해석합니다. 기존 symlink 접두사와 점 경로 요소로 제외 범위를
 약화할 수 없습니다.
+
+v2 게이트와 audit은 `volicord-host-release-cell-v1`,
+`volicord-host-release-manifest-v1`, `volicord-host-release-audit-v1`,
+`volicord-host-release-cell-inputs-v1` 다이제스트 도메인을 거부합니다. 과거 v1 아티팩트를
+새 의미로 다시 해석하지 않습니다. 후보와 아카이브 preimage 의미는 바뀌지 않았으므로
+후보는 계속 `volicord-release-candidate-v1`, 소스 아카이브 알고리즘은 계속
+`git_archive_tar_sha256_v1`입니다.
 
 ## 정확한 릴리스 후보
 
@@ -113,11 +121,11 @@ Manifest 하나에는 아래 두 집합의 모든 곱에 해당하는 셀이 정
 결과를 호스트 결과 하나로 합치면 안 됩니다. 새 호스트 버전에는 완전한 12개 셀
 manifest를 새로 만들어야 합니다.
 
-`volicord-host-release-cell-v1`에는 다음 필수 구성원만 들어갑니다.
+`volicord-host-release-cell-v2`에는 다음 필수 구성원만 들어갑니다.
 
 | 구성원 | 계약 |
 |---|---|
-| `schema` | 정확한 값 `volicord-host-release-cell-v1`. |
+| `schema` | 정확한 값 `volicord-host-release-cell-v2`. |
 | `candidate_id`, `binary_sha256`, `source_revision`, `target_triple`, `release_profile` | 후보 좌표의 정확한 복사본. |
 | `host_kind`, `host_version` | 고정 호스트 종류 하나와 셀이 관찰한 정확한 설치 호스트 버전, 또는 해당 호스트를 사용할 수 없을 때 명시적 `null`. 구성원 자체는 항상 필수입니다. |
 | `adapter_profile`, `adapter_version` | 정확한 관리 어댑터 좌표. |
@@ -130,6 +138,18 @@ manifest를 새로 만들어야 합니다.
 | `environment` | 정확한 `runner_os`, `runner_os_version`, `runner_arch`, 필수-nullable `host_executable_sha256`와 `host_version`, 실행에 사용한 모든 호스트·어댑터 좌표. 최상위 및 environment의 호스트 정체성 필드 세 개는 모두 null이 아니거나 모두 null이어야 합니다. |
 | `assertions` | 안정된 assertion ID, `passed` boolean, 선택적인 크기 제한 finding code를 담은 비어 있지 않은 크기 제한 배열. |
 | `evidence_artifact_path`, `evidence_artifact_sha256` | 외부에 새로 만드는 크기 제한 증거 파일과 SHA-256. 사용할 수 없어 ignored인 셀을 포함한 구현된 셀에는 둘 다 필수이고, 정적 `unsupported_by_host`일 때만 둘 다 `null`. |
+
+v2 평가기는 생산자가 적은 `implementation_disposition`을 독립된 사실로 받아들이지 않고
+정확한 호스트 버전별 담당 표와 대조합니다. Codex의 정확한 정규
+`host_version=0.144.4`에서는 `native_user_action`, `verified_tool_producer`,
+`registered_connection_observation`가 `implemented`이고, `local_web_user_channel`,
+`record_final_output`, `detective_final_output`가 `unsupported_by_host`입니다. 설치된
+호스트의 정확한 probe 출력은 `codex-cli 0.144.4`이며 셀은 해석된 정규 좌표
+`0.144.4`를 저장합니다. Codex 버전이 없거나 검토되지 않았으면 호스트 종류 대체 표를
+사용하여 앞의 네 기능은 `implemented`, 두 최종 출력 기능은 `unsupported_by_host`로
+둡니다. 정확한 증거가 없으면 구현된 셀은 `implemented_unverified`입니다. Claude Code는
+여섯 기능 모두 `implemented`인 호스트 종류 대체 표를 유지합니다. 새 검토 버전 표에는
+담당 문서 변경과 완전한 새 12개 셀 manifest가 필요합니다.
 
 canonical `adapter_profile`은 `record_final_output`에서만 `record`이고,
 `detective_final_output`을 포함한 나머지 다섯 기능에서는 `detective`입니다.
@@ -206,9 +226,9 @@ manifest 불변조건이 실패하면 게이트 판정은 `fail`입니다. 요�
 
 ## 릴리스 Manifest
 
-`volicord-host-release-manifest-v1`에는 다음 구성원만 들어갑니다.
+`volicord-host-release-manifest-v2`에는 다음 구성원만 들어갑니다.
 
-- 정확한 값 `volicord-host-release-manifest-v1`인 `schema`
+- 정확한 값 `volicord-host-release-manifest-v2`인 `schema`
 - 검증을 마친 완전한 후보 객체인 `candidate`
 - `evaluated_at`
 - 각 원본 셀, `derived_status`, 안정된 `finding_codes`를 담은 정확히 12개의 `cells`
@@ -232,9 +252,9 @@ Audit은 후보, 셀 파일, manifest를 만들지 않은 새 프로세스에서
 도출 상태, 게이트 판정을 다시 계산합니다. Manifest의 주장 상태나 판정만 읽는 모드를
 호출해서는 안 됩니다.
 
-`volicord-host-release-audit-v1`에는 다음 구성원만 들어갑니다.
+`volicord-host-release-audit-v2`에는 다음 구성원만 들어갑니다.
 
-- 정확한 값 `volicord-host-release-audit-v1`인 `schema`
+- 정확한 값 `volicord-host-release-audit-v2`인 `schema`
 - `manifest_path`, `manifest_sha256`, `cell_directory`, `cell_inputs_sha256`,
   `candidate_path`, `candidate_sha256`
 - 별도 audit 프로세스의 `started_at`, `evaluated_at`
@@ -248,7 +268,7 @@ Audit은 후보, 셀 파일, manifest를 만들지 않은 새 프로세스에서
 
 `cell_directory`는 입력 디렉터리의 정확한 외부 절대 경로 문자열입니다.
 `cell_inputs_sha256`은 다음 preimage의 SHA-256입니다. ASCII domain
-`volicord-host-release-cell-inputs-v1` 뒤에 NUL을 붙이고, 정확한 UTF-8 절대 셀 경로
+`volicord-host-release-cell-inputs-v2` 뒤에 NUL을 붙이고, 정확한 UTF-8 절대 셀 경로
 바이트를 바이트 오름차순으로 정렬한 뒤 12개 셀 각각에 대해 경로 바이트 길이를 unsigned
 64-bit big-endian으로, 정확한 경로 바이트를, 셀 파일의 정확한 바이트에 대한 SHA-256
 32바이트 원본 값을 차례로 붙입니다. Audit은 다시 연 셀 입력이 manifest의 원본 셀과
@@ -270,6 +290,27 @@ Codex 및 Claude Code의 native session identifier는 관리 어댑터 경로에
 `[A-Za-z0-9._:-]+`와 일치해야 합니다. 공백, 제어 문자, 빈 값, 그 밖의 모든 바이트는
 거부합니다.
 
+검토한 Codex 좌표에서 설치 호스트 probe envelope는 정확히 `codex-cli 0.144.4`이고 MCP
+initialize는 정확히 `clientInfo.name=codex-mcp-client`와
+`clientInfo.version=0.144.4`를 보고해야 합니다. 관리 Codex provenance가 있는 시작은
+세션 미결속 상태입니다. 그 밖의 조건을 만족하는 알려진 tool의 유효한 call만 다음의
+정확한 요청 메타데이터로 결속을 제공할 수 있습니다.
+
+- `_meta.threadId`는 유효한 native identifier입니다.
+- `_meta["x-codex-turn-metadata"]`는 `session_id`, `thread_id`, `turn_id`가 모두 유효한
+  native identifier인 객체입니다.
+- `_meta.threadId`는 중첩 `thread_id`와 같습니다.
+
+아래 매핑에서 native session 값으로 사용하는 것은 중첩 `session_id`입니다. Subagent를
+포함하여 구체적인 `thread_id`는 `session_id`와 다를 수 있지만 평면 및 중첩 복사본은
+일치해야 합니다. Volicord는 이 thread 값을 별도의 domain 분리 프로세스 로컬 다이제스트로
+줄입니다. 첫 유효 call은 관리 stdio 프로세스를 매핑된 root 세션과 이 thread 다이제스트
+모두에 정확히 한 번 결속합니다. 이후 모든 call은 두 값 모두에 맞는 유효한 메타데이터를
+가져야 하며 이후 turn은 다른 유효한 `turn_id`를 사용할 수 있습니다. 메타데이터가 없거나
+잘못됐거나 일치하지 않으면 다시 결속하지 않고 tool dispatch 전에 거부합니다. 주변 또는
+설정의 `CODEX_THREAD_ID`, 시각, 도착 순서, 가장 가깝거나 최근인 세션은 결속 입력이
+아닙니다.
+
 검증한 값에 대해 Volicord는 다음을 계산합니다.
 
 ```text
@@ -284,7 +325,14 @@ managed_host_session_id = "mhs_" || lowercase_hex(digest)
 관리 MCP 관찰과 호스트 훅 관찰은 같은 `managed_host_session_id`를 사용합니다. `mhs_`
 namespace는 이 관리 매핑에만 예약됩니다. 등록된 연결 및 호스트 종류 좌표는 바꿀 수
 없으며 generic 또는 manual 경로에서 미리 심거나 재사용할 수 없습니다. 유효하지 않은
-관리 marker는 영속 진단이나 프로토콜 상태를 만들기 전에 실패합니다.
+관리 marker는 영속 진단이나 프로토콜 상태를 만들기 전에 실패합니다. Codex 시작이 세션
+미결속 상태인 동안 성공한 startup, initialize, tools-list 사실은 크기가 제한된 프로세스
+로컬 상태로만 보유할 수 있습니다. 영속 관리 세션, 생명주기, 진단, tool, capture, token,
+watch 효과를 만들지 않습니다. 첫 유효 결속은 허용되는 보유 생명주기 사실을 정규 순서로
+한 번만 구체화한 뒤 허용한 call을 기록합니다. 세션 watch 관찰 범위는 결속 시점에
+시작하고 명시적으로 부분 범위에 머뭅니다. 지연된 생명주기 사실이 저장소 관찰 시점을
+과거로 소급하지 않습니다. 거부된 결속 시도는 이런 효과를 만들지 않으며 이후 유효한
+call이 다시 시도할 수 있습니다.
 
 원본 native session identifier와 원본 native event, tool-call, capture, turn, invocation
 identifier는 검증·해시하거나 domain 분리 불투명 값으로 바꾸는 동안에만 존재합니다. 영속
@@ -292,7 +340,8 @@ identifier는 검증·해시하거나 domain 분리 불투명 값으로 바꾸�
 식별자가 없거나 값이 잘못됐거나, 매핑 좌표가 다르거나, 관리 MCP 관찰과 훅 관찰이
 일치하지 않으면 Strong Evidence를 만들 수 없으며 명시적인 누락 또는 불일치 finding으로
 남겨야 합니다. 구현은 대체 세션 ID를 조용히 만들거나 호스트 종류 또는 등록된 연결
-경계를 넘어 상관관계를 만들면 안 됩니다.
+경계를 넘어 상관관계를 만들면 안 됩니다. Call별 결속은 기존 기능 assertion 집합으로
+검사하며 릴리스 assertion 식별자를 추가하지 않습니다.
 
 ## 명령 경로
 
@@ -319,3 +368,5 @@ cargo run --locked -p volicord-release-validation-tests --bin host-release-audit
 - [검증](../maintain/validation.md)은 유지관리자 실행과 보고를 담당합니다.
 - [호스트 릴리스 증거 게이트 결정](../architecture-guide/decisions/host-release-evidence-gate.md)은
   이 계약을 외부에 두고 독립적으로 재계산하는 이유를 기록합니다.
+- [관리 호스트 세션·thread 결속과 호출별 turn 검증 결정](../architecture-guide/decisions/managed-host-session-turn-binding.md)은
+  Codex 결속이 call 범위이고 닫힌 상태로 실패하는 이유를 기록합니다.

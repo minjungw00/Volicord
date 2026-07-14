@@ -329,6 +329,13 @@ impl ManagedLifecycleEvent {
             Self::ToolCallCompleted => "managed_host_tool_call_completed",
         }
     }
+
+    const fn is_connection_once(self) -> bool {
+        matches!(
+            self,
+            Self::Startup | Self::InitializeResponse | Self::ToolsList
+        )
+    }
 }
 
 impl McpAdapter {
@@ -513,11 +520,45 @@ impl McpAdapter {
         lifecycle_event: ManagedLifecycleEvent,
         tool_name: Option<&str>,
     ) -> StartupObservationResult {
+        self.managed_lifecycle_observation_with_basis_best_effort(
+            session_id,
+            launch_origin,
+            lifecycle_event,
+            tool_name,
+            SessionWatchCoverageBasis::McpStart,
+        )
+    }
+
+    pub(crate) fn managed_lifecycle_observation_at_binding_best_effort(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        lifecycle_event: ManagedLifecycleEvent,
+        tool_name: Option<&str>,
+    ) -> StartupObservationResult {
+        self.managed_lifecycle_observation_with_basis_best_effort(
+            session_id,
+            launch_origin,
+            lifecycle_event,
+            tool_name,
+            SessionWatchCoverageBasis::MethodBoundary,
+        )
+    }
+
+    fn managed_lifecycle_observation_with_basis_best_effort(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        lifecycle_event: ManagedLifecycleEvent,
+        tool_name: Option<&str>,
+        coverage_basis: SessionWatchCoverageBasis,
+    ) -> StartupObservationResult {
         match self.managed_lifecycle_observation(
             session_id,
             launch_origin,
             lifecycle_event,
             tool_name,
+            coverage_basis,
         ) {
             Ok(result) => result,
             Err(error) if startup_observation_storage_is_readonly(&error) => {
@@ -552,6 +593,7 @@ impl McpAdapter {
         launch_origin: &str,
         lifecycle_event: ManagedLifecycleEvent,
         tool_name: Option<&str>,
+        coverage_basis: SessionWatchCoverageBasis,
     ) -> Result<StartupObservationResult, McpAdapterError> {
         let Some(project_id) = self.project_bound_startup_project()? else {
             return Ok(StartupObservationResult::NotAttempted);
@@ -568,7 +610,7 @@ impl McpAdapter {
         self.ensure_session_watch_baseline(
             &project_id,
             session_id,
-            SessionWatchCoverageBasis::McpStart,
+            coverage_basis,
             Some(launch_origin),
         )?;
         self.append_managed_lifecycle_event(
@@ -629,14 +671,12 @@ impl McpAdapter {
 
         let store = CoreProjectStore::open(&self.runtime_home, project_id)
             .map_err(McpAdapterError::Store)?;
-        let snapshot = match snapshot_product_repository(
+        let snapshot = snapshot_product_repository(
             &self.runtime_home,
             &store.project_record().repo_root,
             WatchSnapshotOptions::default(),
-        ) {
-            Ok(snapshot) => snapshot,
-            Err(_) => return Ok(()),
-        };
+        )
+        .map_err(McpAdapterError::Store)?;
         let partial_coverage_warning = match coverage_basis {
             SessionWatchCoverageBasis::McpStart => None,
             SessionWatchCoverageBasis::FirstProjectSelection => {
@@ -707,7 +747,10 @@ impl McpAdapter {
             latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
                 .map_err(McpAdapterError::Store)?
         else {
-            return Ok(());
+            return Err(McpAdapterError::Environment(
+                "managed lifecycle baseline is unavailable after baseline initialization"
+                    .to_owned(),
+            ));
         };
         let now = CoreProjectStore::open(&self.runtime_home, project_id)
             .and_then(|store| store.current_timestamp())
@@ -720,6 +763,19 @@ impl McpAdapter {
         let object = metadata
             .as_object_mut()
             .expect("metadata was normalized to an object");
+        if lifecycle_event.is_connection_once()
+            && object
+                .get("lifecycle_events")
+                .and_then(Value::as_array)
+                .is_some_and(|events| {
+                    events.iter().any(|event| {
+                        event.get("lifecycle_event").and_then(Value::as_str)
+                            == Some(lifecycle_event.as_str())
+                    })
+                })
+        {
+            return Ok(());
+        }
         object.insert("host_kind".to_owned(), json!(&host_kind));
         object.insert("launch_origin".to_owned(), json!(launch_origin));
         object.insert(

@@ -28,7 +28,7 @@ fingerprint, Volicord build, source revision, target and executable digest, and
 bounded evidence-artifact digest.
 
 The expected `evidence_artifact_sha256` would require trusted production
-acquisition of the external `volicord-host-release-manifest-v1` defined by
+acquisition of the external `volicord-host-release-manifest-v2` defined by
 [Host Release Evidence](../../reference/host-release-evidence.md). That manifest must bind the same capability, host/client,
 adapter, Volicord build, source revision, target, and executable digest as the
 current row, as well as the expected evidence-artifact digest. The evaluator
@@ -36,6 +36,8 @@ must verify the manifest and exact-match the row's `evidence_artifact_sha256`
 against that expected value. A missing, unknown, malformed, unverified, or
 mismatched manifest fails closed. The row's own digest, the build descriptor,
 and a copied manifest value are not substitutes for this comparison.
+Historical `volicord-host-release-manifest-v1` input is rejected and is not
+reinterpreted under v2 rules.
 
 For the built-in stdio adapter, a passing row represents one observed host
 version rather than two independent runtime versions:
@@ -43,6 +45,13 @@ version rather than two independent runtime versions:
 match the live artifact's installed-host version. A passing `source_revision`
 is exact lowercase 40- or 64-hex; `unknown` cannot pass. If the version equality
 or source revision cannot be proved, publication must use a non-passing outcome.
+For the reviewed Codex coordinate, the exact raw installed-host probe envelope
+is `codex-cli 0.144.4`, the canonical row coordinate is `0.144.4`, and the
+exact MCP initialize identity is `codex-mcp-client`/`0.144.4`. The managed
+stdio session additionally remains ineligible until exact per-call Codex
+metadata binds it to the same opaque root session used by hooks and to one
+immutable process-local thread digest. These are exact matching and correlation
+inputs, not host attestation.
 
 The verification uses canonical UTC timestamps and must satisfy
 `observed_at <= created_at` and
@@ -82,9 +91,13 @@ exists, so its digest must not be embedded back into that executable: doing so
 would change the executable digest and create a recursive binding. A trusted
 internal acquisition path must instead verify the external manifest described
 above before publishing or evaluating a pass. The current adapter has no such
-trusted acquisition path. Therefore production local-web eligibility remains
-fail-closed, local web remains implemented but unverified, and CLI inbox is
-used.
+trusted acquisition path. In addition, the reviewed Codex `0.144.4` table
+classifies `local_web_user_channel` as `unsupported_by_host`, so that exact
+coordinate is not eligible for a passing local-web row. Null or unreviewed
+Codex coordinates retain the host-kind implemented fallback, and Claude Code
+retains its implemented fallback, but without trusted acquisition those paths
+remain implemented and unverified. Production local-web eligibility therefore
+remains fail-closed and CLI inbox is used.
 
 The new Registry shape is `baseline_sqlite_v6`. There is no v5 conversion,
 relabeling, inferred pass, or synthetic history; an incompatible Runtime Home

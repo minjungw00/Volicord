@@ -4,10 +4,11 @@ use volicord_cli::host_integration::capability_status::HostFeature;
 use volicord_types::HostFeatureSupportStatus;
 
 pub const CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
-pub const CELL_SCHEMA: &str = "volicord-host-release-cell-v1";
-pub const MANIFEST_SCHEMA: &str = "volicord-host-release-manifest-v1";
-pub const AUDIT_SCHEMA: &str = "volicord-host-release-audit-v1";
+pub const CELL_SCHEMA: &str = "volicord-host-release-cell-v2";
+pub const MANIFEST_SCHEMA: &str = "volicord-host-release-manifest-v2";
+pub const AUDIT_SCHEMA: &str = "volicord-host-release-audit-v2";
 pub const SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
+pub const CELL_INPUTS_DIGEST_DOMAIN: &[u8] = b"volicord-host-release-cell-inputs-v2\0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

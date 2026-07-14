@@ -304,19 +304,22 @@ Docker publishing behavior:
 
 Session-watch startup coverage:
 
-- When stdio startup is project-bound by `--project <project_id>` or by a
-  connection context with exactly one available allowed project, the process
-  creates or attaches a session-watch baseline before serving tool requests
+- Outside the managed Codex pending-binding path, a project-bound stdio startup
+  can create or attach a session-watch baseline before serving tool requests
   whenever bounded snapshot creation is available. The coverage basis is
   `mcp_start`.
-- For validated generated Codex launches with managed provenance markers, the
-  stdio process also appends managed lifecycle metadata to that baseline for
-  `managed_host_startup`, `managed_host_initialize_response`,
-  `managed_host_tools_list`, and `managed_host_tool_call` observations when
-  writable storage is available. Each lifecycle event records the selected
-  connection and project, `host_kind=codex`, `launch_origin=managed_host`, a
-  timestamp, observed storage capability, and effective tool mode when those
-  values are available.
+- A validated generated Codex descriptor or local managed-marker set establishes
+  managed launch provenance only. It creates no diagnostic session,
+  session-watch baseline, managed lifecycle row, Core effect, or local-web
+  eligibility. The process remains pending until the per-call binding below
+  succeeds.
+- On the first binding-eligible Codex `tools/call`, the process starts the
+  session-watch baseline and materializes the bounded lifecycle facts observed
+  for that process: `managed_host_startup`,
+  `managed_host_initialize_response`, `managed_host_tools_list` when listing
+  occurred, and `managed_host_tool_call`. Coverage starts at this binding
+  boundary and is explicitly partial; these startup facts do not claim
+  observation of Product Repository changes before the baseline.
 - When HTTP serve initialization creates an `Mcp-Session-Id` and the selected
   serve connection/project context has exactly one available allowed project,
   the server creates or attaches the same `mcp_start` baseline before accepting
@@ -388,8 +391,9 @@ project values must match the corresponding process arguments. A partial or
 mismatched marker set is invalid managed provenance and does not create managed
 lifecycle observations. A repository-discovery launch uses its exact typed
 descriptor and host selector as managed launch provenance and must not carry
-these markers. The markers and descriptor grant neither project access, host
-trust, nor broader authority.
+these markers. Neither form supplies a Codex native session identity. The
+markers and descriptor grant neither project access, host trust, session
+binding, nor broader authority.
 
 Local connection process binding is supplied by `--connection <connection_id>`
 in personal/local generated configuration or user-managed generic host
@@ -480,18 +484,47 @@ reject because no connected project remains.
 
 ## Managed-Host Session Input
 
-On managed Codex and Claude Code launches, transport code validates the native
-host session identifier and immediately maps it to the opaque
-`managed_host_session_id` defined by
-[Host Release Evidence](host-release-evidence.md).
-Only the mapped value may cross into Agent Connection state, managed MCP
-observations, or hook correlation. The `mhs_` namespace is reserved and an
-existing mapping's host and registered-connection coordinates are immutable.
-Raw session and other native correlation identifiers are never persisted or
-diagnosed. An invalid marker is rejected before a durable diagnostic session,
-protocol state, or project state is created. Missing, invalid, or mismatched
-values remain ineligible for Strong Evidence; transport code must not
-synthesize a replacement.
+Managed Codex launch provenance and session binding are separate states. The
+reviewed path retains exact `clientInfo.name=codex-mcp-client` and
+`clientInfo.version=0.144.4` from a successful `initialize`; initialization
+alone does not bind a managed session. The canonical installed-host coordinate
+is `0.144.4`, parsed from the exact probe envelope `codex-cli 0.144.4`.
+
+The first structurally valid call to a known tool after the ready transition
+must carry `_meta.threadId` and object
+`_meta["x-codex-turn-metadata"]` with string `session_id`, `thread_id`, and
+`turn_id`. The flat `threadId` must exactly equal the nested `thread_id`. Each
+native value must be 1 through 256 UTF-8 bytes matching
+`[A-Za-z0-9._:-]+`. Only after JSON-RPC shape, known tool name, and
+`arguments` validation succeed does the adapter derive
+`managed_host_session_id` from `session_id` and a domain-separated in-memory
+thread-binding digest from `thread_id`. Those bindings are immutable for the
+stdio process. Later calls must match both; `turn_id` may change for a new
+turn. Raw session, thread, and turn values are discarded after validation and
+hashing.
+
+Missing, malformed, or mismatched metadata returns JSON-RPC `-32602` before a
+diagnostic session, session-watch row, managed lifecycle event, tool-invocation
+row, Core call, token, or local-web handoff is created. This hidden metadata is
+transport input, not a public tool argument, authority, or host attestation.
+Environment variables, process IDs, process ancestry, arrival time, proximity
+to a hook event, and newest-session lookup must not substitute for it. Claude
+Code uses its owner-defined adapter input; both hosts map a validated native
+session to the opaque `managed_host_session_id` defined by
+[Host Release Evidence](host-release-evidence.md). Raw session, thread, turn,
+event, call, capture, and invocation identifiers are never persisted, logged,
+diagnosed, rendered, or attached to evidence. Missing, invalid, or mismatched
+binding remains ineligible for Strong Evidence and must not be repaired by
+synthesizing a replacement.
+
+`diagnostics.sqlite` is best-effort operability storage, not binding authority.
+Corruption, write denial, or an existing conflicting diagnostic coordinate
+cannot reject otherwise valid managed metadata or change an MCP result, guard
+result, Core result, or authoritative binding. Such diagnostic persistence is
+skipped or recorded as a nonfatal diagnostic failure where possible. Exact
+ownership conflicts still come from project Agent Session and registered
+connection state. This non-authoritative diagnostic boundary does not weaken
+the zero-effect rejection above for invalid or mismatched request metadata.
 
 ## Agent-Connection-Bound Process
 
@@ -909,6 +942,11 @@ A structurally valid `tools/call` request has object `params` with:
 
 - `name` as a string
 - optional `arguments` as an object
+
+The managed Codex path additionally consumes the hidden request-side `_meta`
+binding described in [Managed-Host Session Input](#managed-host-session-input).
+It is not exposed by `tools/list`, is not part of a public tool input schema,
+and is never copied into Core request arguments.
 
 Missing `arguments` are treated as an empty object. `arguments: null` and
 non-object `arguments` are malformed method parameters and return JSON-RPC
@@ -1463,7 +1501,7 @@ match the enabled non-generic connection host kind, managed fingerprint,
 adapter profile/version, Volicord build, source revision, target and executable
 digest, client name/version, and bounded live-host evidence digest.
 The expected evidence digest would require trusted production acquisition of
-the exact external `volicord-host-release-manifest-v1` owned by
+the exact external `volicord-host-release-manifest-v2` owned by
 [Host Release Evidence](host-release-evidence.md), binding the same capability,
 host/client, adapter, build, source, target, and executable digest.
 The row's `evidence_artifact_sha256` must exactly match that expected value;

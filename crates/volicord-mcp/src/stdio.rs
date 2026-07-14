@@ -6,6 +6,7 @@ use crate::prelude::*;
 use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
+use sha2::{Digest, Sha256};
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -15,9 +16,12 @@ const VOLICORD_MCP_PROJECT_ID: &str = "VOLICORD_MCP_PROJECT_ID";
 const MANAGED_HOST_LAUNCH_VALUE: &str = "managed_host";
 const CODEX_HOST_VALUE: &str = "codex";
 const CLAUDE_CODE_HOST_VALUE: &str = "claude_code";
-const CODEX_THREAD_ID: &str = "CODEX_THREAD_ID";
 const CLAUDECODE: &str = "CLAUDECODE";
 const CLAUDE_CODE_SESSION_ID: &str = "CLAUDE_CODE_SESSION_ID";
+const CODEX_MCP_CLIENT_NAME: &str = "codex-mcp-client";
+const CODEX_MCP_CLIENT_VERSION: &str = "0.144.4";
+const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
+const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord-codex-mcp-thread-binding-v1\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
@@ -62,10 +66,8 @@ where
     let mut state =
         ConnectionState::for_launch_origin(options.launch_origin, options.managed_host_session_id);
     validate_managed_stdio_session_ownership(&adapter, &state)?;
-    if let Err(error) = start_transport_diagnostic_session(&adapter, &state) {
-        if state.managed_host_lifecycle_observations {
-            return Err(McpAdapterError::Store(error));
-        }
+    if !state.codex_binding.is_pending() {
+        let _ = start_transport_diagnostic_session(&adapter, &state);
     }
     let _startup_observation = if options.startup_session_watch
         && state.managed_host_lifecycle_observations
@@ -248,6 +250,70 @@ mod managed_marker_protocol_order_tests {
     use std::cell::Cell;
 
     use super::*;
+
+    #[test]
+    fn repository_descriptor_is_codex_launch_provenance_but_not_session_identity() {
+        assert_eq!(
+            classify_launch_origin_with_descriptor(
+                |_| None,
+                "connection.alpha",
+                Some("project.alpha"),
+                Some(CODEX_HOST_VALUE),
+                true,
+            ),
+            McpLaunchOrigin::ManagedHost
+        );
+        assert!(managed_host_session_id_from_env(
+            &|_| None,
+            McpLaunchOrigin::ManagedHost,
+            CODEX_HOST_VALUE,
+            "connection.alpha",
+        )
+        .is_none());
+
+        assert_eq!(
+            classify_launch_origin_with_descriptor(
+                |name| {
+                    (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient-not-a-binding"))
+                },
+                "connection.alpha",
+                Some("project.alpha"),
+                Some(CODEX_HOST_VALUE),
+                true,
+            ),
+            McpLaunchOrigin::ManagedHost,
+            "an ambient CODEX_THREAD_ID must not become a second provenance or binding input"
+        );
+    }
+
+    #[test]
+    fn repository_descriptor_does_not_invent_claude_or_cross_host_provenance() {
+        assert_eq!(
+            classify_launch_origin_with_descriptor(
+                |_| None,
+                "connection.alpha",
+                Some("project.alpha"),
+                Some(CLAUDE_CODE_HOST_VALUE),
+                true,
+            ),
+            McpLaunchOrigin::ManualCli,
+            "a descriptor without Claude's native markers remains a manual launch"
+        );
+        assert_eq!(
+            classify_launch_origin_with_descriptor(
+                |name| match name {
+                    CLAUDECODE => Some(OsString::from("1")),
+                    CLAUDE_CODE_SESSION_ID => Some(OsString::from("claude.session.alpha")),
+                    _ => None,
+                },
+                "connection.alpha",
+                Some("project.alpha"),
+                Some(CODEX_HOST_VALUE),
+                true,
+            ),
+            McpLaunchOrigin::InvalidManagedMarker
+        );
+    }
 
     #[test]
     fn invalid_managed_marker_is_rejected_before_optional_protocol_start() {
@@ -517,7 +583,11 @@ where
     .any(|name| env_var(name).is_some());
     let native_marker_present = host_native_marker_present(&env_var);
     if !volicord_marker_present && !native_marker_present {
-        return McpLaunchOrigin::ManualCli;
+        return if repository_discovery_descriptor && expected_host_kind == Some(CODEX_HOST_VALUE) {
+            McpLaunchOrigin::ManagedHost
+        } else {
+            McpLaunchOrigin::ManualCli
+        };
     }
 
     let Some(expected_host_kind) = expected_host_kind.or(host.as_deref()) else {
@@ -580,7 +650,7 @@ fn host_native_marker_present<F>(env_var: &F) -> bool
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    [CODEX_THREAD_ID, CLAUDECODE, CLAUDE_CODE_SESSION_ID]
+    [CLAUDECODE, CLAUDE_CODE_SESSION_ID]
         .into_iter()
         .any(|name| env_var(name).is_some())
 }
@@ -591,14 +661,10 @@ where
 {
     match host_kind {
         CODEX_HOST_VALUE => {
-            env_var(CLAUDECODE).is_none()
-                && env_var(CLAUDE_CODE_SESSION_ID).is_none()
-                && env_text(env_var, CODEX_THREAD_ID)
-                    .is_some_and(|value| validate_managed_host_native_session_id(&value).is_ok())
+            env_var(CLAUDECODE).is_none() && env_var(CLAUDE_CODE_SESSION_ID).is_none()
         }
         CLAUDE_CODE_HOST_VALUE => {
-            env_var(CODEX_THREAD_ID).is_none()
-                && env_text(env_var, CLAUDECODE).as_deref() == Some("1")
+            env_text(env_var, CLAUDECODE).as_deref() == Some("1")
                 && env_text(env_var, CLAUDE_CODE_SESSION_ID)
                     .is_some_and(|value| validate_managed_host_native_session_id(&value).is_ok())
         }
@@ -619,7 +685,6 @@ where
         return None;
     }
     let native_session_id = match host_kind {
-        CODEX_HOST_VALUE => env_text(env_var, CODEX_THREAD_ID),
         CLAUDE_CODE_HOST_VALUE if env_text(env_var, CLAUDECODE).as_deref() == Some("1") => {
             env_text(env_var, CLAUDE_CODE_SESSION_ID)
         }
@@ -644,6 +709,28 @@ pub(crate) enum ConnectionPhase {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum CodexManagedBinding {
+    NotApplicable,
+    Pending,
+    Bound { thread_digest: [u8; 32] },
+}
+
+impl CodexManagedBinding {
+    const fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DeferredCodexLifecycle {
+    initialize_observed: bool,
+    tools_list_observed: bool,
+    startup_materialized: bool,
+    initialize_materialized: bool,
+    tools_list_materialized: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
     pub(crate) client_supports_elicitation: bool,
@@ -654,6 +741,8 @@ pub(crate) struct ConnectionState {
     pub(crate) session_id: String,
     pub(crate) managed_host_lifecycle_observations: bool,
     pub(crate) launch_origin: &'static str,
+    codex_binding: CodexManagedBinding,
+    deferred_codex_lifecycle: DeferredCodexLifecycle,
 }
 
 impl Default for ConnectionState {
@@ -668,6 +757,8 @@ impl Default for ConnectionState {
             session_id: generated_metadata_id("session", "mcp", "stdio"),
             managed_host_lifecycle_observations: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
+            codex_binding: CodexManagedBinding::NotApplicable,
+            deferred_codex_lifecycle: DeferredCodexLifecycle::default(),
         }
     }
 }
@@ -677,14 +768,23 @@ impl ConnectionState {
         launch_origin: McpLaunchOrigin,
         managed_host_session_id: Option<String>,
     ) -> Self {
+        let pending_codex =
+            launch_origin == McpLaunchOrigin::ManagedHost && managed_host_session_id.is_none();
         let mut state = Self {
             managed_host_lifecycle_observations: launch_origin == McpLaunchOrigin::ManagedHost
                 && managed_host_session_id.is_some(),
             launch_origin: launch_origin.as_str(),
+            codex_binding: if pending_codex {
+                CodexManagedBinding::Pending
+            } else {
+                CodexManagedBinding::NotApplicable
+            },
             ..Self::default()
         };
         if let Some(managed_host_session_id) = managed_host_session_id {
             state.session_id = managed_host_session_id;
+        } else if pending_codex {
+            state.session_id.clear();
         }
         state
     }
@@ -695,7 +795,11 @@ impl ConnectionState {
             self.client_supports_model_invisible_user_surface,
         )
         .with_stdio_session(
-            self.launch_origin,
+            if self.codex_binding.is_pending() {
+                McpLaunchOrigin::Unknown.as_str()
+            } else {
+                self.launch_origin
+            },
             self.client_name.as_deref(),
             self.client_version.as_deref(),
         )
@@ -856,12 +960,16 @@ where
             state.client_name = Some(capabilities.client_name);
             state.client_version = Some(capabilities.client_version);
             state.phase = ConnectionPhase::AwaitingInitialized;
-            record_managed_lifecycle_event(
-                adapter,
-                state,
-                ManagedLifecycleEvent::InitializeResponse,
-                None,
-            );
+            if state.codex_binding.is_pending() {
+                state.deferred_codex_lifecycle.initialize_observed = true;
+            } else {
+                record_managed_lifecycle_event(
+                    adapter,
+                    state,
+                    ManagedLifecycleEvent::InitializeResponse,
+                    None,
+                );
+            }
             initialize_result()
         }
         "ping" => {
@@ -880,12 +988,16 @@ where
             }
             match adapter.tools() {
                 Ok(tools) => {
-                    record_managed_lifecycle_event(
-                        adapter,
-                        state,
-                        ManagedLifecycleEvent::ToolsList,
-                        None,
-                    );
+                    if state.codex_binding.is_pending() {
+                        state.deferred_codex_lifecycle.tools_list_observed = true;
+                    } else {
+                        record_managed_lifecycle_event(
+                            adapter,
+                            state,
+                            ManagedLifecycleEvent::ToolsList,
+                            None,
+                        );
+                    }
                     json!({ "tools": tools })
                 }
                 Err(error) => return Ok(json_rpc_error_for_adapter(response_id, error)),
@@ -962,6 +1074,293 @@ fn record_managed_lifecycle_event(
         lifecycle_event,
         tool_name,
     );
+}
+
+fn bind_codex_managed_tool_call(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    params: &Map<String, Value>,
+) -> Result<(), &'static str> {
+    if matches!(state.codex_binding, CodexManagedBinding::NotApplicable) {
+        return Ok(());
+    }
+    if state.client_name.as_deref() != Some(CODEX_MCP_CLIENT_NAME)
+        || state.client_version.as_deref() != Some(CODEX_MCP_CLIENT_VERSION)
+    {
+        return Err(
+            "managed Codex tools/call requires the reviewed client identity codex-mcp-client/0.144.4",
+        );
+    }
+
+    let binding =
+        codex_managed_call_binding(params, adapter.context.connection_internal_id.as_str())?;
+    match &state.codex_binding {
+        CodexManagedBinding::Pending => {
+            let mut candidate = state.clone();
+            candidate.session_id = binding.managed_host_session_id;
+            candidate.codex_binding = CodexManagedBinding::Bound {
+                thread_digest: binding.thread_digest,
+            };
+            candidate.managed_host_lifecycle_observations = true;
+            validate_managed_stdio_session_ownership(adapter, &candidate).map_err(|_| {
+                "managed Codex call metadata conflicts with the registered connection session"
+            })?;
+            *state = candidate;
+            let _ = start_transport_diagnostic_session(adapter, state);
+            Ok(())
+        }
+        CodexManagedBinding::Bound { thread_digest }
+            if state.session_id == binding.managed_host_session_id
+                && *thread_digest == binding.thread_digest =>
+        {
+            Ok(())
+        }
+        CodexManagedBinding::Bound { .. } => {
+            Err("managed Codex call metadata changed session or thread binding")
+        }
+        CodexManagedBinding::NotApplicable => Ok(()),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CodexManagedCallBinding {
+    managed_host_session_id: String,
+    thread_digest: [u8; 32],
+}
+
+fn codex_managed_call_binding(
+    params: &Map<String, Value>,
+    connection_internal_id: &str,
+) -> Result<CodexManagedCallBinding, &'static str> {
+    let metadata = params
+        .get("_meta")
+        .and_then(Value::as_object)
+        .ok_or("managed Codex tools/call requires object params._meta")?;
+    let flat_thread_id = metadata
+        .get("threadId")
+        .and_then(Value::as_str)
+        .ok_or("managed Codex tools/call requires string params._meta.threadId")?;
+    let turn_metadata = metadata
+        .get(CODEX_TURN_METADATA_KEY)
+        .and_then(Value::as_object)
+        .ok_or("managed Codex tools/call requires object params._meta.x-codex-turn-metadata")?;
+    let native_session_id = codex_turn_metadata_id(turn_metadata, "session_id")?;
+    let nested_thread_id = codex_turn_metadata_id(turn_metadata, "thread_id")?;
+    let _turn_id = codex_turn_metadata_id(turn_metadata, "turn_id")?;
+    validate_managed_host_native_session_id(flat_thread_id)
+        .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
+    if flat_thread_id != nested_thread_id {
+        return Err("managed Codex tools/call thread metadata is inconsistent");
+    }
+    let managed_host_session_id =
+        managed_host_session_id(CODEX_HOST_VALUE, connection_internal_id, native_session_id)
+            .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
+    let thread_digest =
+        codex_thread_binding_digest(connection_internal_id, native_session_id, nested_thread_id);
+    Ok(CodexManagedCallBinding {
+        managed_host_session_id,
+        thread_digest,
+    })
+}
+
+fn codex_turn_metadata_id<'a>(
+    metadata: &'a Map<String, Value>,
+    field: &str,
+) -> Result<&'a str, &'static str> {
+    let value = metadata
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or("managed Codex tools/call requires string session, thread, and turn metadata")?;
+    validate_managed_host_native_session_id(value)
+        .map_err(|_| "managed Codex tools/call contains invalid native identity metadata")?;
+    Ok(value)
+}
+
+fn codex_thread_binding_digest(
+    connection_internal_id: &str,
+    native_session_id: &str,
+    native_thread_id: &str,
+) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    digest.update(CODEX_THREAD_BINDING_DOMAIN);
+    digest.update(connection_internal_id.as_bytes());
+    digest.update([0]);
+    digest.update(native_session_id.as_bytes());
+    digest.update([0]);
+    digest.update(native_thread_id.as_bytes());
+    digest.finalize().into()
+}
+
+#[cfg(test)]
+mod codex_call_binding_tests {
+    use super::*;
+
+    fn valid_params() -> Map<String, Value> {
+        json!({
+            "name": "volicord.status",
+            "arguments": {},
+            "_meta": {
+                "threadId": "thread.alpha",
+                "x-codex-turn-metadata": {
+                    "session_id": "session.alpha",
+                    "thread_id": "thread.alpha",
+                    "turn_id": "turn.alpha",
+                    "future_field": "allowed"
+                },
+                "future_meta": true
+            }
+        })
+        .as_object()
+        .expect("fixture object")
+        .clone()
+    }
+
+    #[test]
+    fn exact_codex_call_metadata_accepts_extensions_and_has_stable_bindings() {
+        let first = codex_managed_call_binding(&valid_params(), "connection.alpha")
+            .expect("exact metadata should bind");
+        assert_eq!(
+            first.managed_host_session_id,
+            managed_host_session_id("codex", "connection.alpha", "session.alpha")
+                .expect("expected session mapping")
+        );
+        let replay = codex_managed_call_binding(&valid_params(), "connection.alpha")
+            .expect("same metadata should replay");
+        assert_eq!(first, replay);
+
+        let mut next_turn = valid_params();
+        next_turn["_meta"][CODEX_TURN_METADATA_KEY]["turn_id"] = json!("turn.beta");
+        assert_eq!(
+            codex_managed_call_binding(&next_turn, "connection.alpha")
+                .expect("turn changes do not change the session/thread binding"),
+            first
+        );
+    }
+
+    #[test]
+    fn malformed_codex_call_metadata_is_rejected_table_driven() {
+        let mut cases = Vec::<(&str, Map<String, Value>)>::new();
+        let mut push = |label, value: Value| {
+            cases.push((
+                label,
+                value.as_object().expect("negative fixture object").clone(),
+            ));
+        };
+        push(
+            "missing meta",
+            json!({"name":"volicord.status","arguments":{}}),
+        );
+        push(
+            "non-object meta",
+            json!({"name":"volicord.status","arguments":{},"_meta":null}),
+        );
+        for (label, metadata) in [
+            (
+                "missing flat thread",
+                json!({CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"t","turn_id":"u"}}),
+            ),
+            (
+                "non-string flat thread",
+                json!({"threadId":1,CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"t","turn_id":"u"}}),
+            ),
+            ("missing nested metadata", json!({"threadId":"t"})),
+            (
+                "non-object nested metadata",
+                json!({"threadId":"t",CODEX_TURN_METADATA_KEY:null}),
+            ),
+            (
+                "missing session",
+                json!({"threadId":"t",CODEX_TURN_METADATA_KEY:{"thread_id":"t","turn_id":"u"}}),
+            ),
+            (
+                "missing thread",
+                json!({"threadId":"t",CODEX_TURN_METADATA_KEY:{"session_id":"s","turn_id":"u"}}),
+            ),
+            (
+                "missing turn",
+                json!({"threadId":"t",CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"t"}}),
+            ),
+            (
+                "invalid session",
+                json!({"threadId":"t",CODEX_TURN_METADATA_KEY:{"session_id":"bad session","thread_id":"t","turn_id":"u"}}),
+            ),
+            (
+                "invalid thread",
+                json!({"threadId":"bad/thread",CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"bad/thread","turn_id":"u"}}),
+            ),
+            (
+                "invalid turn",
+                json!({"threadId":"t",CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"t","turn_id":""}}),
+            ),
+            (
+                "thread mismatch",
+                json!({"threadId":"t1",CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"t2","turn_id":"u"}}),
+            ),
+            (
+                "oversized thread",
+                json!({"threadId":"x".repeat(257),CODEX_TURN_METADATA_KEY:{"session_id":"s","thread_id":"x".repeat(257),"turn_id":"u"}}),
+            ),
+        ] {
+            push(
+                label,
+                json!({"name":"volicord.status","arguments":{},"_meta":metadata}),
+            );
+        }
+
+        for (label, params) in cases {
+            assert!(
+                codex_managed_call_binding(&params, "connection.alpha").is_err(),
+                "{label}"
+            );
+        }
+    }
+}
+
+fn materialize_deferred_codex_lifecycle(adapter: &McpAdapter, state: &mut ConnectionState) -> bool {
+    if !matches!(state.codex_binding, CodexManagedBinding::Bound { .. }) {
+        return true;
+    }
+    if !state.deferred_codex_lifecycle.startup_materialized {
+        let result = adapter.managed_lifecycle_observation_at_binding_best_effort(
+            &state.session_id,
+            state.launch_origin,
+            ManagedLifecycleEvent::Startup,
+            None,
+        );
+        if result != StartupObservationResult::Recorded {
+            return false;
+        }
+        state.deferred_codex_lifecycle.startup_materialized = true;
+    }
+    if state.deferred_codex_lifecycle.initialize_observed
+        && !state.deferred_codex_lifecycle.initialize_materialized
+    {
+        let result = adapter.managed_lifecycle_observation_at_binding_best_effort(
+            &state.session_id,
+            state.launch_origin,
+            ManagedLifecycleEvent::InitializeResponse,
+            None,
+        );
+        if result != StartupObservationResult::Recorded {
+            return false;
+        }
+        state.deferred_codex_lifecycle.initialize_materialized = true;
+    }
+    if state.deferred_codex_lifecycle.tools_list_observed
+        && !state.deferred_codex_lifecycle.tools_list_materialized
+    {
+        let result = adapter.managed_lifecycle_observation_at_binding_best_effort(
+            &state.session_id,
+            state.launch_origin,
+            ManagedLifecycleEvent::ToolsList,
+            None,
+        );
+        if result != StartupObservationResult::Recorded {
+            return false;
+        }
+        state.deferred_codex_lifecycle.tools_list_materialized = true;
+    }
+    true
 }
 
 pub(crate) fn initialize_result() -> Value {
@@ -1175,13 +1574,6 @@ where
         );
         return Ok(Err(error));
     }
-    record_managed_lifecycle_event(
-        adapter,
-        state,
-        ManagedLifecycleEvent::ToolCallReceived,
-        Some(tool_name),
-    );
-
     let arguments = match object.get("arguments") {
         None => json!({}),
         Some(Value::Object(_)) => object
@@ -1205,6 +1597,18 @@ where
             return Ok(Err(error));
         }
     };
+    if let Err(error) = bind_codex_managed_tool_call(adapter, state, &object) {
+        return Ok(Err(invalid_params_response(id, error)));
+    }
+    let managed_lifecycle_ready = materialize_deferred_codex_lifecycle(adapter, state);
+    if managed_lifecycle_ready {
+        record_managed_lifecycle_event(
+            adapter,
+            state,
+            ManagedLifecycleEvent::ToolCallReceived,
+            Some(tool_name),
+        );
+    }
     let mutation_detail = mutation_detail_for_tool(tool_name, &arguments);
     let allow_user_action_capture = tool_name == REQUEST_USER_ACTION_TOOL_NAME
         && arguments
@@ -1366,12 +1770,14 @@ where
         output,
     )?;
 
-    record_managed_lifecycle_event(
-        adapter,
-        state,
-        ManagedLifecycleEvent::ToolCallCompleted,
-        Some(tool_name),
-    );
+    if managed_lifecycle_ready {
+        record_managed_lifecycle_event(
+            adapter,
+            state,
+            ManagedLifecycleEvent::ToolCallCompleted,
+            Some(tool_name),
+        );
+    }
     let diagnostic_facts = output.diagnostic_facts();
     let diagnostic_outcome =
         if response_kind_from_structured_content(&output.structured_content) == Some("rejected") {
@@ -2539,23 +2945,7 @@ fn validate_managed_stdio_session_ownership(
         }
     }
 
-    let project_id = stdio_diagnostic_project_id(adapter);
-    let build = crate::build_info();
-    validate_diagnostic_session_start(
-        &adapter.runtime_home,
-        DiagnosticSessionStart {
-            session_id: &state.session_id,
-            connection_id: Some(adapter.context.connection_internal_id.as_str()),
-            project_id: project_id.as_deref(),
-            transport: DiagnosticTransport::McpStdio,
-            host_kind: Some(DiagnosticHostKind::from_connection_host_kind(
-                &connection.host_kind,
-            )),
-            package_version: build.package_version,
-            build_id: &build.build_id,
-        },
-    )
-    .map_err(McpAdapterError::Store)
+    Ok(())
 }
 
 fn stdio_diagnostic_project_id(adapter: &McpAdapter) -> Option<String> {
@@ -2623,6 +3013,9 @@ fn record_tool_diagnostic_best_effort(
     validation_failure: bool,
     outcome: DiagnosticOutcome,
 ) {
+    if state.codex_binding.is_pending() {
+        return;
+    }
     let elapsed = started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
     let response_bytes = response
         .and_then(|value| serde_json::to_vec(value).ok())

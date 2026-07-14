@@ -36,11 +36,20 @@ pub(crate) fn path_env_with_existing(path_dirs: &[&Path]) -> Result<String, Box<
 
 #[cfg(unix)]
 pub(crate) fn write_fake_codex(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    write_fake_codex_with_version(dir, "1.2.3-test")
+}
+
+pub(crate) fn write_fake_codex_with_version(
+    dir: &Path,
+    version: &str,
+) -> Result<PathBuf, Box<dyn Error>> {
     fs::create_dir_all(dir)?;
     let path = dir.join("codex");
     fs::write(
         &path,
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'codex 1.2.3-test\\n'; exit 0; fi\nprintf 'unexpected codex invocation\\n' >&2\nexit 2\n",
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'codex-cli {version}\\n'; exit 0; fi\nprintf 'unexpected codex invocation\\n' >&2\nexit 2\n"
+        ),
     )?;
     make_executable(&path)?;
     Ok(path)

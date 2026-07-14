@@ -228,6 +228,12 @@ verification, mode, and removal commands belong to
 Managed Codex and Claude Code observations use the single opaque
 `managed_host_session_id` mapping defined by
 [Host Release Evidence](host-release-evidence.md).
+For Codex, a managed descriptor establishes launch provenance only. The
+connection remains pending and creates no durable managed-session state until
+the first valid known `tools/call` supplies the exact per-call metadata and
+client identity required by [MCP Transport](mcp-transport.md#managed-host-session-input).
+That call binds the mapped root session and a domain-separated in-memory thread
+digest; later calls must match both while a new turn may change `turn_id`.
 The managed MCP path and host-hook path must present the same mapped value for
 one observed session. Raw `native_session_id` values are validation-and-hash
 inputs only and must not enter connection state, logs, diagnostics, evidence,
@@ -491,9 +497,10 @@ artifact, and runtime prerequisites; it cannot inherit an earlier
 
 The current baseline is:
 
-| Host | Feature state |
+| Host/version | Feature state |
 |---|---|
-| Codex | `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, and `registered_connection_observation` are `implemented_unverified`. `record_final_output` is `unsupported_by_host` because the authenticated actual-host exact-replay entry point is absent. `detective_final_output` is `unsupported_by_host` because a safe block-only finalization surface is absent. |
+| Codex `0.144.4` | `native_user_action`, `verified_tool_producer`, and `registered_connection_observation` are implemented and remain `implemented_unverified` until exact evidence passes. `local_web_user_channel`, `record_final_output`, and `detective_final_output` are `unsupported_by_host` for this reviewed version. The exact probe envelope is `codex-cli 0.144.4`; the canonical `host_version` and retained `clientInfo.version` coordinate is bare `0.144.4`. |
+| Codex absent or unreviewed version | The conservative host-kind fallback keeps `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, and `registered_connection_observation` implemented but unverified, and keeps both final-output features `unsupported_by_host`. It cannot inherit the exact `0.144.4` review. |
 | Claude Code | All six features are `implemented_unverified` pending exact live evidence bound to the final Volicord artifact and installed host version. |
 | Generic | All six features are `unsupported_by_host`. |
 
@@ -501,6 +508,16 @@ The current baseline is:
 consume this one evaluator. They must not independently reinterpret
 configuration findings, fixtures, direct-wrapper results, ignored tests, or
 historical live results as feature support.
+
+A command that performs a successful canonical installed-host probe, including
+init and `volicord connection verify`, passes that fresh structured
+`host_version` to the evaluator for the output of that command. The retained
+version in `last_verification_report_json` is diagnostic history, not proof of
+the currently installed host. `volicord connection status` and `volicord
+doctor` do not run the installed-host probe and therefore invoke the evaluator
+with no current version, using the host-kind fallback. They must never promote
+or reclassify support from the stored historical coordinate. Release cells use
+only the exact version observed and bound by that cell.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ## Managed final-output authority disclosure

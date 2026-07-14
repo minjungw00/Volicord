@@ -58,6 +58,7 @@ mod tests {
     };
 
     use crate::host_integration::{
+        capability_status::REVIEWED_CODEX_HOST_VERSION,
         claude_code::{CommandInvocation, CommandOutput, CommandRunner},
         managed_fingerprint,
         verification::{HostExecutableStatus, ManagedConfigStatus, ProjectTrustStatus},
@@ -853,6 +854,7 @@ mod tests {
         let detection = adapter.detect()?;
 
         assert!(!detection.available);
+        assert_eq!(detection.host_version, None);
         assert!(detection.details.contains("not found on PATH"));
         Ok(())
     }
@@ -875,7 +877,51 @@ mod tests {
         let detection = adapter.detect()?;
 
         assert!(detection.available);
+        assert_eq!(
+            detection.host_version.as_deref(),
+            Some(REVIEWED_CODEX_HOST_VERSION)
+        );
         assert!(detection.details.contains("codex --version"));
+        assert!(detection.details.contains("canonical version: 0.144.4"));
+        Ok(())
+    }
+
+    #[test]
+    fn detect_rejects_noncanonical_version_envelopes() -> Result<(), Box<dyn std::error::Error>> {
+        let cases = [
+            ("legacy prefix", "codex 0.144.4\n", ""),
+            ("missing terminal newline", "codex-cli 0.144.4", ""),
+            ("multiple lines", "codex-cli 0.144.4\nextra\n", ""),
+            ("stderr output", "codex-cli 0.144.4\n", "warning"),
+        ];
+
+        for (name, stdout, stderr) in cases {
+            let dir = temp_dir("codex-detect-bad-version")?;
+            let codex_home = dir.join("codex");
+            let bin = dir.join("bin");
+            write_fake_codex_file(&bin)?;
+            let adapter = CodexAdapter::with_runner(
+                CodexEnvironment {
+                    home: None,
+                    codex_home: Some(codex_home),
+                    path: Some(bin.into_os_string()),
+                },
+                FakeRunner::new(vec![Ok(CommandOutput {
+                    success: true,
+                    status_code: Some(0),
+                    stdout: stdout.to_owned(),
+                    stderr: stderr.to_owned(),
+                })]),
+            );
+
+            let detection = adapter.detect()?;
+            assert!(!detection.available, "{name}");
+            assert!(
+                detection.details.contains("non-canonical"),
+                "{name}: {}",
+                detection.details
+            );
+        }
         Ok(())
     }
 
@@ -1028,11 +1074,18 @@ mod tests {
             ]),
         );
         let plan = adapter.plan(request(HostScope::User, None, Path::new("/bin/volicord")))?;
-        assert_eq!(adapter.verify(&plan)?.status.as_str(), "missing");
-        adapter.apply(&plan)?;
+        let missing = adapter.verify(&plan)?;
+        assert_eq!(missing.status.as_str(), "missing");
         assert_eq!(
-            adapter.verify(&plan)?.host_state.as_str(),
-            "configured_ready"
+            missing.host_version.as_deref(),
+            Some(REVIEWED_CODEX_HOST_VERSION)
+        );
+        adapter.apply(&plan)?;
+        let configured = adapter.verify(&plan)?;
+        assert_eq!(configured.host_state.as_str(), "configured_ready");
+        assert_eq!(
+            configured.host_version.as_deref(),
+            Some(REVIEWED_CODEX_HOST_VERSION)
         );
         let HostTarget::File(target) = plan.target.clone() else {
             unreachable!("codex target");
@@ -1216,7 +1269,7 @@ mod tests {
         CommandOutput {
             success: true,
             status_code: Some(0),
-            stdout: "codex 1.2.3\n".to_owned(),
+            stdout: "codex-cli 0.144.4\n".to_owned(),
             stderr: String::new(),
         }
     }

@@ -235,9 +235,12 @@ pub(super) fn render_connection_output(
         &host_display,
         primary_next_action.as_ref(),
     );
-    let host_feature_diagnostic = data
-        .guard_state
-        .host_feature_diagnostic(data.host_kind, data.guard_state.integration_profile());
+    let host_feature_diagnostic = data.guard_state.host_feature_diagnostic_for_version(
+        data.host_kind,
+        data.verification
+            .and_then(|verification| verification.host.host_version.as_deref()),
+        data.guard_state.integration_profile(),
+    );
     match data.format {
         OutputFormat::Text => render_compact_connection_text(
             &data,
@@ -383,8 +386,12 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
     } else {
         GuardOperationalState::planned(data.init_mode, data.integration)
     };
-    let host_feature_diagnostic = guard_state
-        .host_feature_diagnostic(data.host_kind, Some(data.init_mode.integration_profile()));
+    let host_feature_diagnostic = guard_state.host_feature_diagnostic_for_version(
+        data.host_kind,
+        data.verification
+            .and_then(|verification| verification.host.host_version.as_deref()),
+        Some(data.init_mode.integration_profile()),
+    );
     let mcp_config_state = init_mcp_config_state(data.verification, Some(data.host_plan));
     let project_state = if data.project_id.is_some() {
         "registered"

@@ -7,9 +7,13 @@ use std::{
 };
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use volicord_cli::host_integration::{
-    capability_status::{host_feature_implementation, HostFeature, HostFeatureImplementation},
+    capability_status::{
+        host_feature_implementation_for_version, HostFeature, HostFeatureImplementation,
+        REVIEWED_CODEX_HOST_VERSION,
+    },
     HostKind as CliHostKind,
 };
 use volicord_types::{HostFeatureSupportStatus, IntegrationProfile};
@@ -22,12 +26,26 @@ use crate::{
     schema::{
         expected_assertion_ids, AuditVerdict, Candidate, CandidateBuildEnvironment, Cell,
         CellAssertion, CellEnvironment, GateVerdict, HostKind, ImplementationDisposition,
-        RequiredNullable, RunState, CANDIDATE_SCHEMA, CELL_SCHEMA, SOURCE_ARCHIVE_ALGORITHM,
+        RequiredNullable, RunState, AUDIT_SCHEMA, CANDIDATE_SCHEMA, CELL_INPUTS_DIGEST_DOMAIN,
+        CELL_SCHEMA, MANIFEST_SCHEMA, SOURCE_ARCHIVE_ALGORITHM,
     },
 };
 
 const EVALUATED_AT: &str = "2026-01-01T02:00:00Z";
 const TARGET: &str = "x86_64-unknown-linux-gnu";
+
+#[test]
+fn release_contract_identifiers_use_v2_without_changing_candidate_or_archive_v1() {
+    assert_eq!(CANDIDATE_SCHEMA, "volicord-release-candidate-v1");
+    assert_eq!(SOURCE_ARCHIVE_ALGORITHM, "git_archive_tar_sha256_v1");
+    assert_eq!(CELL_SCHEMA, "volicord-host-release-cell-v2");
+    assert_eq!(MANIFEST_SCHEMA, "volicord-host-release-manifest-v2");
+    assert_eq!(AUDIT_SCHEMA, "volicord-host-release-audit-v2");
+    assert_eq!(
+        CELL_INPUTS_DIGEST_DOMAIN,
+        b"volicord-host-release-cell-inputs-v2\0"
+    );
+}
 
 #[test]
 fn strict_json_rejects_duplicate_and_unknown_members() {
@@ -91,6 +109,7 @@ fn exact_matrix_gate_and_separate_audit_pass() {
     )
     .expect("independent audit");
     assert_eq!(audit.audit_verdict, AuditVerdict::Pass);
+    assert_eq!(audit.schema, AUDIT_SCHEMA);
     assert_eq!(audit.recalculated_verdict, GateVerdict::Pass);
     assert_eq!(audit.recalculated_cells.len(), 12);
     assert_eq!(
@@ -98,6 +117,17 @@ fn exact_matrix_gate_and_separate_audit_pass() {
         fixture.cell_directory.to_string_lossy()
     );
     assert_eq!(audit.cell_inputs_sha256.len(), 64);
+    assert_eq!(
+        audit.cell_inputs_sha256,
+        fixture_cell_inputs_digest(&fixture.cell_directory, CELL_INPUTS_DIGEST_DOMAIN)
+    );
+    assert_ne!(
+        audit.cell_inputs_sha256,
+        fixture_cell_inputs_digest(
+            &fixture.cell_directory,
+            b"volicord-host-release-cell-inputs-v1\0"
+        )
+    );
     assert!(audit.findings.is_empty());
 
     let repeated_audit = run_audit(
@@ -113,6 +143,120 @@ fn exact_matrix_gate_and_separate_audit_pass() {
     )
     .expect("repeated independent audit");
     assert_eq!(audit.cell_inputs_sha256, repeated_audit.cell_inputs_sha256);
+}
+
+#[cfg(unix)]
+#[test]
+fn reviewed_codex_version_matrix_is_enforced_by_gate_and_audit() {
+    let mut fixture = Fixture::new();
+    fixture.set_codex_host_version(REVIEWED_CODEX_HOST_VERSION);
+
+    let manifest = fixture.run_gate("reviewed-codex.json", EVALUATED_AT);
+    assert_eq!(manifest.schema, MANIFEST_SCHEMA);
+    assert_eq!(manifest.verdict, GateVerdict::Pass);
+    assert_eq!(manifest.requested_verified_claims.len(), 9);
+    let expected = [
+        HostFeatureImplementation::Implemented,
+        HostFeatureImplementation::UnsupportedByHost,
+        HostFeatureImplementation::Implemented,
+        HostFeatureImplementation::Implemented,
+        HostFeatureImplementation::UnsupportedByHost,
+        HostFeatureImplementation::UnsupportedByHost,
+    ];
+    for (feature, expected) in HostFeature::ALL.into_iter().zip(expected) {
+        let cell = manifest
+            .cells
+            .iter()
+            .find(|cell| cell.raw.host_kind == HostKind::Codex && cell.raw.feature == feature)
+            .expect("reviewed Codex cell");
+        assert_eq!(
+            cell.raw.host_version.as_ref().map(String::as_str),
+            Some(REVIEWED_CODEX_HOST_VERSION)
+        );
+        assert_eq!(
+            cell.raw.implementation_disposition,
+            match expected {
+                HostFeatureImplementation::Implemented => ImplementationDisposition::Implemented,
+                HostFeatureImplementation::UnsupportedByHost => {
+                    ImplementationDisposition::UnsupportedByHost
+                }
+            },
+            "{}",
+            feature.as_str()
+        );
+    }
+
+    let audit = run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest: fixture.external.path().join("reviewed-codex.json"),
+            audit_output: fixture.external.path().join("reviewed-codex-audit.json"),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect("reviewed Codex audit");
+    assert_eq!(audit.audit_verdict, AuditVerdict::Pass);
+    assert_eq!(audit.recalculated_verdict, GateVerdict::Pass);
+}
+
+#[cfg(unix)]
+#[test]
+fn historical_v1_cell_and_manifest_inputs_are_rejected() {
+    let mut cell_fixture = Fixture::new();
+    cell_fixture.cells[0].schema = "volicord-host-release-cell-v1".to_owned();
+    cell_fixture.write_cell(0);
+    let cell_manifest = cell_fixture.external.path().join("v1-cell-manifest.json");
+    let cell_error = run_gate(
+        &cell_fixture.context,
+        &GateRequest {
+            candidate_descriptor: cell_fixture.candidate_descriptor.clone(),
+            cell_directory: cell_fixture.cell_directory.clone(),
+            manifest_output: cell_manifest.clone(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("v1 cell input must be rejected");
+    assert!(cell_error
+        .detail()
+        .contains("cell schema identifier mismatch"));
+    assert!(!cell_manifest.exists());
+
+    let manifest_fixture = Fixture::new();
+    manifest_fixture.run_gate("v2-manifest.json", EVALUATED_AT);
+    let v2_manifest_path = manifest_fixture.external.path().join("v2-manifest.json");
+    let mut historical: Value =
+        serde_json::from_slice(&fs::read(&v2_manifest_path).expect("v2 manifest bytes"))
+            .expect("v2 manifest JSON");
+    historical["schema"] = Value::String("volicord-host-release-manifest-v1".to_owned());
+    let historical_path = manifest_fixture.external.path().join("v1-manifest.json");
+    fs::write(
+        &historical_path,
+        serde_json::to_vec_pretty(&historical).expect("historical manifest bytes"),
+    )
+    .expect("historical manifest fixture");
+    let audit_output = manifest_fixture
+        .external
+        .path()
+        .join("v1-manifest-audit.json");
+    let manifest_error = run_audit(
+        &manifest_fixture.context,
+        &AuditRequest {
+            candidate_descriptor: manifest_fixture.candidate_descriptor.clone(),
+            cell_directory: manifest_fixture.cell_directory.clone(),
+            manifest: historical_path,
+            audit_output: audit_output.clone(),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("v1 manifest input must be rejected");
+    assert!(manifest_error
+        .detail()
+        .contains("manifest schema identifier mismatch"));
+    assert!(!audit_output.exists());
 }
 
 #[cfg(unix)]
@@ -1108,7 +1252,7 @@ impl Fixture {
                     HostKind::Codex => "codex-test-1",
                     HostKind::ClaudeCode => "claude-test-1",
                 };
-                let disposition = canonical_disposition(host_kind, feature);
+                let disposition = canonical_disposition(host_kind, Some(host_version), feature);
                 let adapter_profile = expected_adapter_profile(feature).as_str();
                 let evidence = if disposition == ImplementationDisposition::Implemented {
                     let path = evidence_directory.join(format!(
@@ -1248,6 +1392,48 @@ impl Fixture {
         .expect("rewrite candidate descriptor");
     }
 
+    fn set_codex_host_version(&mut self, host_version: &str) {
+        for index in 0..self.cells.len() {
+            if self.cells[index].host_kind != HostKind::Codex {
+                continue;
+            }
+            let feature = self.cells[index].feature;
+            let disposition = canonical_disposition(HostKind::Codex, Some(host_version), feature);
+            self.cells[index].host_version = RequiredNullable::some(host_version.to_owned());
+            self.cells[index].environment.host_version =
+                RequiredNullable::some(host_version.to_owned());
+            self.cells[index].environment.host_executable_sha256 =
+                RequiredNullable::some(sha256_bytes(host_version.as_bytes()));
+            self.cells[index].implementation_disposition = disposition;
+            self.cells[index].requested_verified =
+                disposition == ImplementationDisposition::Implemented;
+            self.cells[index].claimed_status =
+                if disposition == ImplementationDisposition::Implemented {
+                    HostFeatureSupportStatus::Verified
+                } else {
+                    HostFeatureSupportStatus::UnsupportedByHost
+                };
+            self.cells[index].run_state = if disposition == ImplementationDisposition::Implemented {
+                RunState::Completed
+            } else {
+                RunState::NotApplicable
+            };
+            self.cells[index].assertions = expected_assertion_ids(disposition, feature)
+                .into_iter()
+                .map(|assertion_id| CellAssertion {
+                    assertion_id: assertion_id.to_owned(),
+                    passed: true,
+                    finding_codes: None,
+                })
+                .collect();
+            if disposition == ImplementationDisposition::UnsupportedByHost {
+                self.cells[index].evidence_artifact_path = RequiredNullable::null();
+                self.cells[index].evidence_artifact_sha256 = RequiredNullable::null();
+            }
+            self.write_cell(index);
+        }
+    }
+
     fn apply_build_override(&mut self, build_override: BuildOverride) {
         let (script, build_id) = {
             let mut build = BuildFields::new(&self.candidate.source_revision);
@@ -1357,17 +1543,48 @@ const fn expected_adapter_profile(feature: HostFeature) -> IntegrationProfile {
 }
 
 #[cfg(unix)]
-fn canonical_disposition(host_kind: HostKind, feature: HostFeature) -> ImplementationDisposition {
+fn canonical_disposition(
+    host_kind: HostKind,
+    host_version: Option<&str>,
+    feature: HostFeature,
+) -> ImplementationDisposition {
     let host_kind = match host_kind {
         HostKind::Codex => CliHostKind::Codex,
         HostKind::ClaudeCode => CliHostKind::ClaudeCode,
     };
-    match host_feature_implementation(host_kind, feature) {
+    match host_feature_implementation_for_version(host_kind, host_version, feature) {
         HostFeatureImplementation::Implemented => ImplementationDisposition::Implemented,
         HostFeatureImplementation::UnsupportedByHost => {
             ImplementationDisposition::UnsupportedByHost
         }
     }
+}
+
+#[cfg(unix)]
+fn fixture_cell_inputs_digest(cell_directory: &Path, domain: &[u8]) -> String {
+    let mut paths = fs::read_dir(cell_directory)
+        .expect("cell directory")
+        .map(|entry| entry.expect("cell entry").path())
+        .collect::<Vec<_>>();
+    paths.sort_by(|left, right| {
+        left.to_str()
+            .expect("UTF-8 cell path")
+            .as_bytes()
+            .cmp(right.to_str().expect("UTF-8 cell path").as_bytes())
+    });
+    let mut preimage = domain.to_vec();
+    for path in paths {
+        let path_text = path.to_str().expect("UTF-8 cell path");
+        let path_bytes = path_text.as_bytes();
+        preimage.extend_from_slice(
+            &u64::try_from(path_bytes.len())
+                .expect("bounded cell path")
+                .to_be_bytes(),
+        );
+        preimage.extend_from_slice(path_bytes);
+        preimage.extend_from_slice(&Sha256::digest(fs::read(path).expect("cell bytes")));
+    }
+    sha256_bytes(&preimage)
 }
 
 #[cfg(unix)]

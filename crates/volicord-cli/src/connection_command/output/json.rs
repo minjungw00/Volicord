@@ -960,6 +960,7 @@ pub(in crate::connection_command) fn verification_json(report: &VerificationRepo
         "host": {
             "status": report.host.status.as_str(),
             "host_state": report.host.host_state.as_str(),
+            "host_version": &report.host.host_version,
             "managed_config": report.host.managed_config.as_str(),
             "host_executable": report.host.host_executable.as_str(),
             "host_gate": report.host.host_gate.as_str(),

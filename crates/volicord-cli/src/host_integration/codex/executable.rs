@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::host_integration::capability_status::canonical_codex_host_version_from_probe;
 use crate::host_integration::claude_code::{CommandInvocation, CommandRunner};
 use crate::host_integration::verification::{
     HostConfigurationStatus, HostExecutableStatus, HostGateStatus, Verification,
@@ -12,14 +13,16 @@ use crate::host_integration::verification::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CodexExecutableAvailability {
     pub(super) status: HostExecutableStatus,
+    pub(super) host_version: Option<String>,
     pub(super) details: String,
     pub(super) diagnostic: Option<String>,
 }
 
 impl CodexExecutableAvailability {
-    fn available(details: String) -> Self {
+    fn available(host_version: String, details: String) -> Self {
         Self {
             status: HostExecutableStatus::Available,
+            host_version: Some(host_version),
             details,
             diagnostic: None,
         }
@@ -28,6 +31,7 @@ impl CodexExecutableAvailability {
     fn unavailable(details: String, diagnostic: impl Into<String>) -> Self {
         Self {
             status: HostExecutableStatus::Unavailable,
+            host_version: None,
             details,
             diagnostic: Some(diagnostic.into()),
         }
@@ -58,11 +62,25 @@ pub(super) fn codex_executable_availability<R: CommandRunner>(
         cwd: None,
     };
     match runner.borrow_mut().run(&invocation) {
-        Ok(output) if output.success => CodexExecutableAvailability::available(format!(
-            "Codex executable availability check succeeded with `codex --version`; executable: {}; configuration target: {}",
-            executable.display(),
-            config_target.display()
-        )),
+        Ok(output) if output.success => {
+            let Some(version) = canonical_codex_version_output(&output.stdout, &output.stderr) else {
+                return CodexExecutableAvailability::unavailable(
+                    format!(
+                        "Codex executable returned a non-canonical `codex --version` envelope; install or repair Codex before using this Agent Connection; configuration target: {}",
+                        config_target.display()
+                    ),
+                    "Codex executable availability check returned a non-canonical version envelope",
+                );
+            };
+            CodexExecutableAvailability::available(
+                version.to_owned(),
+                format!(
+                    "Codex executable availability check succeeded with `codex --version`; canonical version: {version}; executable: {}; configuration target: {}",
+                    executable.display(),
+                    config_target.display()
+                ),
+            )
+        }
         Ok(output) => CodexExecutableAvailability::unavailable(
             format!(
                 "Codex executable failed its availability check `codex --version` with status {}; install or repair Codex before using this Agent Connection; configuration target: {}",
@@ -82,6 +100,17 @@ pub(super) fn codex_executable_availability<R: CommandRunner>(
             format!("Codex executable availability check could not launch: {error}"),
         ),
     }
+}
+
+fn canonical_codex_version_output<'a>(stdout: &'a str, stderr: &str) -> Option<&'a str> {
+    if !stderr.is_empty() {
+        return None;
+    }
+    let envelope = stdout.strip_suffix('\n')?;
+    if envelope.contains(['\n', '\r']) {
+        return None;
+    }
+    canonical_codex_host_version_from_probe(envelope)
 }
 
 fn status_text(status_code: Option<i32>) -> String {

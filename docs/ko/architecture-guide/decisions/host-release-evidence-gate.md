@@ -8,6 +8,10 @@
 fixture, 주장 상태, 서로 다른 호스트 버전에서 모은 결과는 정확한 릴리스 주장 하나를
 확립할 수 없습니다.
 
+과거 v1 셀, manifest, audit 평가기는 구현 disposition을 호스트 종류만으로 담당했습니다.
+검토한 정확한 버전 표를 추가하면 셀 해석이 달라지므로 v1 아티팩트와 그 셀 입력 다이제스트
+도메인에 새 의미를 부여할 수 없습니다.
+
 Credential을 포함하는 local-web 경로는 더 민감합니다. 현재 운영 어댑터에는 신뢰할 수
 있는 manifest 획득 경로가 없습니다. 따라서 릴리스 아티팩트는 런타임 신뢰 입력이 아니라
 외부 검증 증거로 남아야 합니다.
@@ -33,7 +37,16 @@ provenance 및 무결성을 제공하며, 재현 가능한 재빌드나 임의�
 호스트를 사용할 수 없는 실제 행렬은 명시적 null 정체성을 사용합니다. 구현된 셀은
 `ignored`이며 하향 조정으로 남고, 정적 미지원 셀은 `not_applicable`입니다. 구현된 셀의
 검증됨 요청은 정체성이 null이어도 게이트를 실패시킬 수 있으며, 명시적으로 제외할 때만
-`requested_verified=false`를 사용합니다. 정규
+`requested_verified=false`를 사용합니다. v2 평가기는 각 정적 disposition을 호스트
+버전을 인식하는 담당 표와 대조합니다. Codex의 정규 `host_version=0.144.4`에서는
+`native_user_action`, `verified_tool_producer`, `registered_connection_observation`가
+구현되었고, `local_web_user_channel`, `record_final_output`,
+`detective_final_output`은 해당 호스트 버전에서 지원되지 않습니다. 정확한 원문 버전 probe
+envelope는 `codex-cli 0.144.4`이고 셀에는 여기서 얻은 `0.144.4`를 저장합니다. null 또는
+아직 검토하지 않은 Codex 버전에는 호스트 종류 fallback을 유지하여 앞의 네 기능은
+구현됨, 두 final-output 기능은 미지원으로 둡니다. Claude Code는 여섯 기능 모두 구현된
+호스트 종류 fallback을 유지합니다. 이는 최소 버전 주장이 아니라 검토한 정확한 버전
+표입니다. 정규
 평가기는 좌표, 타임스탬프, 다이제스트를 검사하고 다시 계산하며 생산자가 주장한 상태를
 신뢰하지 않고 지원 상태를 도출합니다. 어댑터 프로필은 기능에서 도출하며
 `record_final_output`에서만 `record`, 그 밖에는 `detective`이고, 정적 미지원 셀을
@@ -50,13 +63,14 @@ provenance 및 무결성을 제공하며, 재현 가능한 재빌드나 임의�
 `pass_with_downgrades`입니다. 명시적 `requested_verified=false` 제외는 셀 증거가
 `verified`로 도출되어도 하향 조정으로 남습니다.
 
-게이트는 크기가 제한된 외부 `volicord-host-release-manifest-v1` 파일을 덮어쓰지 않고
+게이트는 크기가 제한된 외부 `volicord-host-release-manifest-v2` 파일을 덮어쓰지 않고
 새로 만듭니다. 게이트 프로세스가 끝나면 별도 프로세스가 소스 후보, 원본 셀 파일 12개,
 셀 증거, manifest를 독립적으로 다시 열고 SHA-256 값, 불변조건, 상태, finding,
 exclusion, 판정을 다시 계산하며 원본 셀이 manifest에 내장된 원본 셀과 같은지 확인합니다.
-그런 다음 크기가 제한된 외부 `volicord-host-release-audit-v1` 파일을
-덮어쓰지 않고 새로 만듭니다. Audit은 manifest를 신뢰하는 표시 경로에 계산을 위임하면
-안 됩니다. 관리 CLI 출력은 보조 수단일 뿐입니다.
+그런 다음 크기가 제한된 외부 `volicord-host-release-audit-v2` 파일을
+덮어쓰지 않고 새로 만듭니다. 셀 입력 집합 다이제스트는
+`volicord-host-release-cell-inputs-v2` 도메인을 사용합니다. Audit은 manifest를 신뢰하는
+표시 경로에 계산을 위임하면 안 됩니다. 관리 CLI 출력은 보조 수단일 뿐입니다.
 
 관리 Codex 및 Claude Code 세션 상관관계에는 호스트 릴리스 증거 문서가 담당하는 domain
 분리 SHA-256 매핑을 사용합니다. 관리 MCP 경로와 훅 경로는 같은 불투명 Volicord 세션
@@ -64,6 +78,20 @@ ID를 사용하고 원본 native session identifier는 영속 저장하지 않�
 namespace와 그 호스트·연결 좌표는 예약되고 변경할 수 없습니다. 잘못된 marker는 영속
 진단 상태를 만들지 않으며 다른 native 상관관계 identifier도 영속화 전에 불투명 값으로
 바꿉니다. 결속이 없거나 일치하지 않으면 Strong Evidence를 만들 수 없습니다.
+
+검토한 Codex 버전에서 관리 stdio는 허용된 tool call이 정확한 MCP 클라이언트 정체성
+`codex-mcp-client`/`0.144.4`와 내부적으로 일관된 call별 메타데이터를 제공할 때까지 세션
+미결속 상태로 남습니다. 메타데이터에는 `_meta.threadId`와
+`_meta["x-codex-turn-metadata"]` 아래의 `session_id`, `thread_id`, `turn_id`가 있어야
+합니다. 평면 및 중첩 thread ID는 서로 같아야 하며, 예약 매핑의 입력은 두 thread ID가
+아니라 native `session_id`입니다. 구체적인 thread는 별도의 domain 분리 프로세스 로컬
+다이제스트로 줄입니다. 첫 유효 call이 stdio 프로세스를 두 좌표 모두에 한 번만 결속하고
+이후 모든 call은 두 좌표와 모두 일치해야 하며 새 turn ID는 허용합니다. 메타데이터가
+없거나 잘못됐거나 일치하지 않으면 tool dispatch 및 관리 영속 효과 전에 거부합니다.
+주변 `CODEX_THREAD_ID`, 도착 순서,
+타임스탬프, 가장 가까운 세션 선택은 결속 권한이 아닙니다. 기존 기능 assertion 집합이 이미
+그 결과인 정확한 세션과 연결 범위를 요구하므로 이 transport 결속은 릴리스 assertion
+식별자를 추가하지 않습니다.
 
 검증 구현은 테스트 전용 `tests/release-validation` workspace 패키지로 격리합니다. 구현
 담당 평가기를 재사용할 수 있지만 운영 crate는 이 패키지에 의존하지 않습니다. 유지하는
@@ -94,16 +122,18 @@ namespace와 그 호스트·연결 좌표는 예약되고 변경할 수 없습�
 
 ## 호환성과 마이그레이션
 
-이 결정은 테스트 전용 외부 릴리스 계약을 추가하고 내부 관리 호스트 상관관계를 더
-엄격하게 합니다. 공개 Core API 스키마, 공개 MCP 메서드, SQLite DDL, 저장 profile 버전은
-바꾸지 않습니다. 과거의 임의 실제 호스트 JSON을 v1 스키마로 import하거나 migration하는
-경로는 없습니다. 그런 결과는 과거 진단으로만 남고 이 게이트를 충족할 수 없습니다.
+이 결정은 테스트 전용 셀, manifest, audit, 셀 입력 다이제스트 계약을 v2로 올리고 내부
+관리 호스트 상관관계를 더 엄격하게 합니다. 공개 Core API 스키마, 공개 MCP 메서드,
+SQLite DDL, 저장 profile 버전은 바꾸지 않습니다. V1 셀, manifest, audit, 셀 입력 도메인
+입력은 과거 자료로 남으며 import, migration, 재해석하지 않고 거부합니다. Preimage가
+바뀌지 않았으므로 후보는 `volicord-release-candidate-v1`, 소스 아카이브 알고리즘은
+`git_archive_tar_sha256_v1`을 유지합니다.
 
 예약된 `mhs_` 규칙은 generic 경로에서 미리 심은 값, 다른 호스트나 연결의 값, 잘못된
 관리 marker를 의도적으로 거부합니다. 이전 alias, fallback 매핑, 호환 decoder를 추가하지
 않으며 호환되는 현재 관찰은 관리 어댑터를 통해 다시 만듭니다. 지원되는 공개 API 또는
 배포 표면을 추가하거나 깨뜨리지 않으므로 이 변경 묶음은 현재 workspace SemVer 안에
-남습니다. 외부에 저장하는 v1 아티팩트는 새 opt-in 릴리스 검증 출력입니다.
+남습니다. 외부에 저장하는 v2 아티팩트는 opt-in 릴리스 검증 출력입니다.
 
 ## 거부한 대안
 
@@ -121,10 +151,15 @@ namespace와 그 호스트·연결 좌표는 예약되고 변경할 수 없습�
   제공하지 못하므로 거부했습니다.
 - 원본 호스트 세션 식별자를 저장하는 방안은 상관관계에 domain 분리 불투명 매핑만
   필요하므로 거부했습니다.
+- V1 셀, manifest, audit, v1 셀 입력 다이제스트를 v2 의미로 다시 해석하는 방안은 과거
+  다이제스트 하나가 의미 하나를 유지해야 하므로 거부했습니다.
+- `CODEX_THREAD_ID`, 시각, 도착 순서, 가장 최근에 열린 세션, 근접성을 이용한 Codex 결속은
+  동시 또는 재개된 세션이 구별할 수 없지만 뒤바뀐 짝을 만들 수 있으므로 거부했습니다.
 
 ## 관련 담당 문서와 예정된 검증 위치
 
 - [호스트 릴리스 증거](../../reference/host-release-evidence.md)
+- [관리 호스트 세션·thread 결속과 호출별 turn 검증](managed-host-session-turn-binding.md)
 - [Agent Connection](../../reference/agent-connection.md)
 - [시스템 요구사항](../../reference/system-requirements.md)
 - [보안](../../reference/security.md)

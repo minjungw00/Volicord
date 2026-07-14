@@ -283,7 +283,10 @@ execution and evidence separation only.
 Prepare an approved release-record location outside the source repository and
 record the release-candidate identity and installed host identities. Every
 `VOLICORD_LIVE_HOST_RESULT_PATH` must be a different new absolute path with an
-existing parent directory. Run all four ignored host/profile tests separately:
+existing parent directory. Invoke all four maintained host/profile cell
+producers separately. Only implemented cells proceed to authenticated,
+interactive host validation; static unsupported cells terminate before a host
+turn:
 
 | Host | Record profile | Detective profile |
 |---|---|---|
@@ -297,16 +300,24 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
 VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=1 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-detective-final-output.json VOLICORD_RUN_CLAUDE_DETECTIVE_FINAL_OUTPUT_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_detective_live_final_output_is_opt_in -- --ignored --nocapture
 ```
 
-The Codex final-output features are statically `unsupported_by_host`, so their
+For canonical Codex `host_version=0.144.4`, the final-output features are
+statically `unsupported_by_host`, so their
 cells require `VOLICORD_RELEASE_REQUEST_VERIFIED=0` and finish
 `not_applicable` without an authenticated host turn. Setting the variable to
 `1` is a structural error. For an implemented feature, `1` retains the release
 claim even when the installed host is unavailable and therefore makes the gate
 fail; use `0` only for an intentional, reported exclusion.
 
-For each cell, inspect a bounded result with the matching `host` and `profile`.
-It must keep these evidence fields separate; no field can be inferred from or
-replaced by another:
+For either static Codex cell, validate only the canonical
+`implementation_disposition=unsupported_by_host`,
+`requested_verified=false`, `run_state=not_applicable`,
+`claimed_status=unsupported_by_host`, and null evidence path and digest. It
+must not contain fabricated live-host evidence, and the full live-evidence
+requirements below do not apply.
+
+For each implemented cell that executes the host path, inspect a bounded result
+with the matching `host` and `profile`. It must keep these evidence fields
+separate; no field can be inferred from or replaced by another:
 
 1. `config_fixture` identifies the managed host configuration checked for that
    profile. A passing fixture does not show that the installed host loaded the
@@ -324,10 +335,14 @@ replaced by another:
    direct-wrapper count check proves that the final-output handler itself adds
    no Guard event or Agent Session. An actual managed host turn separately
    starts one or more MCP stdio lifecycles when the host retries or restarts its
-   managed server. The Record event entry must report the bounded positive
-   AgentSession set in `managed_mcp_observation`, bind every new row to the same
-   Agent Connection, `guard_mode=record`, and managed-host startup provenance,
-   and require at least one complete startup/initialize/tools-list lifecycle.
+   managed server. A Codex descriptor supplies launch provenance only; the
+   lifecycle remains pending until exact client identity and strict per-call
+   metadata bind its root session and process-local thread digest. The Record
+   event entry must report the bounded positive AgentSession set in
+   `managed_mcp_observation`, bind every new row to the same Agent Connection,
+   `guard_mode=record`, and exact managed-session binding, and require at least
+   one bound initialize/tools-list/tool-call lifecycle with explicitly partial
+   watcher coverage from the binding point.
    Across that set the first turn must contain exactly one received and
    completed `volicord.status` call and no other tool call, while the second
    no-tool turn must contain none. The surrounding count and rowid-window check
@@ -363,10 +378,13 @@ replaced by another:
    current receipt while the stored historical event remains byte-for-byte
    unchanged.
 
-Evidence statuses are `verified`, `unavailable`, `not_applicable`, or `failed`.
-These are validation-harness facts rather than product response fields. A cell
-passes only when every applicable evidence item is `verified`; the Record-only
-Detective decision is the sole expected `not_applicable` case. If the installed
+Evidence statuses inside an implemented live cell are `verified`, `unavailable`,
+`not_applicable`, or `failed`. These are validation-harness facts rather than
+product response fields. An implemented cell passes only when every applicable
+evidence item is `verified`; within that live-evidence shape the Record-only
+Detective decision is the sole expected nested `not_applicable` case. The
+entire static unsupported cell described above is a separate
+`run_state=not_applicable` result. If the installed
 host has no safe `block` entry, no actual-host replay entry point, no active-Task
 receipt UI, or no no-active-Task fallback UI, record the corresponding evidence
 as `unavailable` and keep the overall `result=incomplete`. Generated-wrapper
@@ -378,13 +396,17 @@ Detective `block` entry, or actual-host replay entry is never a pass. Preserve
 the structured `unavailable` or `incomplete` result where the harness can write
 one, then report the release-validation outcome as `SKIP` or `FAIL`. Do not
 upgrade it from fixture, direct-wire, or another matrix cell. All four cells
-must pass before a release claim covers both maintained hosts and both profiles.
+must be present, but only implemented cells can pass and support a claim. Since
+both reviewed Codex `0.144.4` final-output cells are statically unsupported, a
+release claim covering both maintained hosts and both profiles is impossible
+for that reviewed Codex version.
 
 The result destination remains absent until the recorder creates one bounded
 terminal cell. An ordinary early return or unwind creates
 `failed_before_completion`; an existing destination is never overwritten.
-Treat `result=incomplete` or every other non-passing terminal result as
-incomplete evidence, never as a pass.
+Treat `result=incomplete` or every other non-passing implemented-cell terminal
+result as incomplete evidence, never as a pass. A canonical static
+`not_applicable` cell is valid matrix input but is not a passed support claim.
 Keep the bounded results and release approver's checklist outside the source
 repository. Do not commit result files, Runtime Homes, screenshots,
 transcripts, recordings, credentials, secrets, full prompts, or private
@@ -527,20 +549,28 @@ Prepare an approved release-record location outside the source repository and
 record the exact release-candidate and installed-host identities. A local
 browser must be able to reach the loopback consent listener. Each result path
 must be a different new absolute path with an existing parent directory; the
-harness rejects an existing path. Run both ignored cells separately from an
-interactive TTY in the ordinary authenticated host environment:
+harness rejects an existing path. Invoke both maintained cell producers
+separately. An implemented cell that reaches the host path requires an
+interactive TTY in the ordinary authenticated host environment; a statically
+unsupported cell terminates before host launch:
 
 ```sh
 VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/codex-evidence-observation.json VOLICORD_RUN_CODEX_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
 VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/cells/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
-Production managed-host local-web capability acquisition is unavailable, so
-the maintained release run records these implemented cells as explicit
-`requested_verified=false` exclusions. They remain downgrades and cannot be
-promoted by fixture capability data or browser success on an untrusted path.
+Production managed-host local-web capability acquisition is unavailable. For
+reviewed Codex `host_version=0.144.4`, the cell is statically
+`unsupported_by_host`, requires `requested_verified=false`, and finishes
+`not_applicable` without an authenticated host turn. The Claude Code cell uses
+the host-kind implemented fallback and is an explicit
+`requested_verified=false` exclusion. That exclusion remains a downgrade and
+cannot be promoted by fixture capability data or browser success on an
+untrusted path.
 
-For each host, confirm all of these observations against the release candidate:
+For each implemented cell that actually executes the host path, confirm all of
+these observations against the release candidate. They do not apply to a
+static `not_applicable` result:
 
 1. Store inspection observes no `UserActionRequest` before host launch and,
    afterward, exactly one request created by the installed host on the prepared
@@ -615,9 +645,11 @@ unexpected unwind creates `result=failed_before_completion`. Treat every
 non-`passed` result, a test merely reported as ignored, or a run without its
 opt-in variable as not passed.
 
-Both host-specific cells must pass before a release claim covers both
-maintained hosts. This cell proves only the observed evidence-observation
-local-web path. It does not satisfy, and cannot be satisfied by, the native
+An implemented host-specific cell must pass before a release claim covers that
+host. A static `unsupported_by_host` cell is a valid matrix input but cannot
+support such a claim; therefore the reviewed Codex `0.144.4` row cannot claim
+the local-web evidence-observation feature. This cell proves only the observed
+evidence-observation local-web path. It does not satisfy, and cannot be satisfied by, the native
 Judgment, executable CLI-fallback, host-configuration, or final-output cells.
 Keep the bounded results and release approver's checklist outside the source
 repository. Do not commit them or any Runtime Home. The evidence applies only
@@ -648,6 +680,14 @@ capture with zero durable effects before accepting the exact capture. A second
 actual-host turn on the same registered connection must finalize exactly one
 receipt-linked producer, artifact, Strong Evidence observation, criterion
 coverage, Run, current status receipt, and close result.
+
+For a Codex `0.144.4` cell, the harness also proves exact
+`clientInfo.name=codex-mcp-client`, canonical client/host version `0.144.4`,
+flat/nested thread equality, one root-session mapping, and one immutable
+process-local thread digest. Missing or mismatched session/thread metadata must
+produce zero managed, diagnostic, tool-invocation, Core, token, and local-web
+effects; a later valid `turn_id` on the same bindings is allowed. Environment,
+PID, cwd, timing, and hook proximity cannot satisfy these assertions.
 
 The bounded evidence sidecar records only identifiers, counts, digests, and
 owner-conformance booleans. It must not retain the prompt, transcript, raw tool
@@ -770,6 +810,11 @@ implemented cell is `ignored` with evidence and a static unsupported cell is
 remains required, causing honest absence to fail; use `0` only for an explicit
 reported exclusion, yielding a downgrade. Do not fabricate a host version or
 digest, and do not synthesize a missing file.
+
+For installed Codex `0.144.4`, the exact probe envelope is
+`codex-cli 0.144.4` and every cell stores canonical `host_version=0.144.4`.
+The v2 evaluator uses the exact-version disposition table; a missing or
+unreviewed version cannot inherit that table.
 
 The gate output and audit output are create-new bounded external files. End the
 gate process before starting the audit so the audit independently strict-reads

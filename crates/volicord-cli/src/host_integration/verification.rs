@@ -245,6 +245,7 @@ impl HostConfigurationStatus {
 pub struct Verification {
     pub status: VerificationStatus,
     pub host_state: HostVerificationState,
+    pub host_version: Option<String>,
     pub managed_config: ManagedConfigStatus,
     pub host_executable: HostExecutableStatus,
     pub host_gate: HostGateStatus,
@@ -612,6 +613,7 @@ impl Verification {
         Self {
             status,
             host_state: host_state_from_status(status),
+            host_version: None,
             managed_config: ManagedConfigStatus::Unknown,
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
@@ -631,6 +633,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Complete,
             host_state: HostVerificationState::ConfiguredReady,
+            host_version: None,
             managed_config: ManagedConfigStatus::Match,
             host_executable: HostExecutableStatus::NotRequired,
             host_gate: HostGateStatus::Ready,
@@ -650,6 +653,7 @@ impl Verification {
         Self {
             status: VerificationStatus::ActionRequired,
             host_state: HostVerificationState::ConfiguredActionRequired,
+            host_version: None,
             managed_config: ManagedConfigStatus::Match,
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::ActionRequired,
@@ -669,6 +673,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Missing,
             host_state: HostVerificationState::Missing,
+            host_version: None,
             managed_config: ManagedConfigStatus::Missing,
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Missing,
@@ -688,6 +693,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Changed,
             host_state: HostVerificationState::Changed,
+            host_version: None,
             managed_config: ManagedConfigStatus::Changed,
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
@@ -707,6 +713,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Rejected,
             host_state: HostVerificationState::Rejected,
+            host_version: None,
             managed_config: ManagedConfigStatus::Match,
             host_executable: HostExecutableStatus::Available,
             host_gate: HostGateStatus::Rejected,
@@ -726,6 +733,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Unavailable,
             host_state: HostVerificationState::Unavailable,
+            host_version: None,
             managed_config: ManagedConfigStatus::Unknown,
             host_executable: HostExecutableStatus::Unavailable,
             host_gate: HostGateStatus::Unknown,
@@ -745,6 +753,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Unknown,
             host_state: HostVerificationState::Unknown,
+            host_version: None,
             managed_config: ManagedConfigStatus::Unknown,
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
@@ -764,6 +773,7 @@ impl Verification {
         Self {
             status: VerificationStatus::Failed,
             host_state: HostVerificationState::Failed,
+            host_version: None,
             managed_config: ManagedConfigStatus::Unknown,
             host_executable: HostExecutableStatus::NotChecked,
             host_gate: HostGateStatus::Unknown,
@@ -781,6 +791,11 @@ impl Verification {
 
     pub fn with_managed_config(mut self, managed_config: ManagedConfigStatus) -> Self {
         self.managed_config = managed_config;
+        self
+    }
+
+    pub fn with_host_version(mut self, host_version: Option<String>) -> Self {
+        self.host_version = host_version;
         self
     }
 

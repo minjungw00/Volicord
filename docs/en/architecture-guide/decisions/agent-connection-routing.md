@@ -15,6 +15,14 @@ The design keeps these responsibilities separate:
 - The administrative CLI creates, verifies, updates, and removes supported host connection setup.
 - Host trust, project approval, OAuth, reload, restart, and model behavior stay with the external host and user.
 
+For reviewed Codex `0.144.4`, the generated descriptor or local marker set is
+launch provenance only. The managed process remains pending with zero managed
+effects until exact `clientInfo` and strict per-call `_meta` bind the root
+session and immutable process-local thread digest. Environment variables, PID,
+cwd, process ancestry, timing, and hook-event rendezvous do not substitute for
+that binding. See
+[Managed-host session/thread binding and per-call turn validation](managed-host-session-turn-binding.md).
+
 The Runtime Home selected by init is part of the managed process binding, not
 an incidental platform default. Every generated managed MCP or hook child must
 use that Runtime Home. Personal/local MCP entries bind the selected absolute
@@ -68,7 +76,7 @@ record; this requires no DDL, storage-profile, or data migration.
 - A user-scoped host configuration can serve multiple explicitly connected Projects without granting all registered Projects.
 - Adding or removing a connected Project does not require rewriting a multi-project host MCP command when the command already points at the same `connection_id`; project-bound generated entries may be regenerated when their selected Project binding changes.
 - Project selection failures are deterministic: the adapter can report missing or ambiguous project selection and direct the agent to list connected Projects.
-- Project-bound startup can establish a session-watch baseline before tool handling. Multi-project startup reports watcher coverage as pending until explicit project selection.
+- Ordinary project-bound startup can establish a session-watch baseline before tool handling. Managed Codex startup instead remains pending until its first exact call binding; coverage begins there and is explicitly partial. Multi-project startup also remains pending until explicit project selection.
 - Host setup status can distinguish configured-but-awaiting-host-action from complete verification.
 - Generated host configuration prefers `volicord mcp --stdio --connection <connection_id> --project <project_id>` for project-scoped entries and does not require connection-context or actor-provenance environment variables. Connection-only generated entries remain for flows that intentionally serve multiple connected Projects.
 - Shared repository entries stay clone-portable, but the launching host must
@@ -97,6 +105,9 @@ record; this requires no DDL, storage-profile, or data migration.
   the required hook command set.
 - Treating fixture validation as proof of host compatibility was rejected
   because the external Codex parser and its load-time checks remain host-owned.
+- Inferring a managed Codex session from `CODEX_THREAD_ID`, PID, cwd, process
+  ancestry, timing, or the nearest hook event was rejected because those facts
+  cannot bind one exact concurrent root session and thread.
 - Embedding an absolute Runtime Home in a shared repository entry was rejected
   because the value is clone-local and would make the entry non-portable.
 - Allowing repository discovery to substitute a platform-default Runtime Home
@@ -126,7 +137,9 @@ load-time checking by an applicable real Codex parser. They should also cover
 the exact shared-host forwarding forms, absent, empty, and relative discovery
 `VOLICORD_HOME` failures before default resolution, and local wrapper binding to
 the selected absolute Runtime Home and `volicord_command` despite conflicting
-ambient values.
+ambient values. Managed Codex tests additionally cover pending zero effects,
+exact client and call metadata, immutable root-session/thread binding, later
+turn acceptance, and mismatch rejection without durable state.
 
 Reference owners:
 
@@ -138,3 +151,4 @@ Reference owners:
 - [Storage DDL](../../reference/storage-ddl.md)
 - [Storage Versioning](../../reference/storage-versioning.md)
 - [Security](../../reference/security.md)
+- [Managed-host session/thread binding and per-call turn validation](managed-host-session-turn-binding.md)

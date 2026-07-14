@@ -23,7 +23,7 @@ lease, 정확한 클라이언트 선언, 만료되지 않은 변경 불가능한
 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트와 일치해야 합니다.
 
 예상 `evidence_artifact_sha256`에는 [호스트 릴리스 증거](../../reference/host-release-evidence.md)가
-정의한 외부 `volicord-host-release-manifest-v1`을 신뢰해 획득하는 운영 경로가 필요합니다.
+정의한 외부 `volicord-host-release-manifest-v2`를 신뢰해 획득하는 운영 경로가 필요합니다.
 그 manifest는 현재 행과 같은
 역량, 호스트·클라이언트, 어댑터, Volicord 빌드, source revision, target, 실행 파일
 다이제스트뿐 아니라 예상 증거 아티팩트 다이제스트에도 결속되어야 합니다. 평가기는
@@ -31,12 +31,19 @@ manifest를 검증하고 행의 `evidence_artifact_sha256`을 그 예상값과 �
 합니다. Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지 않았거나, 일치하지 않으면
 닫힌 상태로 실패합니다. 행 자체의 다이제스트, 빌드 설명자, 복사한 manifest 값은 이
 대조를 대신하지 못합니다.
+과거 `volicord-host-release-manifest-v1` 입력은 거부하며 v2 규칙으로 재해석하지 않습니다.
 
 내장 stdio 어댑터에서 통과 행은 독립된 두 런타임 버전이 아니라 관찰한 호스트 버전 하나를
 나타냅니다. `host_version == client_version == clientInfo.version`이어야 하고 그 값은 실제
 아티팩트의 설치 호스트 버전과 같아야 합니다. 통과하는 `source_revision`은 정확한 소문자
 40자리 또는 64자리 16진수이며 `unknown`은 통과할 수 없습니다. 버전 같음이나 source
 revision을 증명할 수 없으면 통과하지 않은 outcome으로 게시해야 합니다.
+검토한 Codex 좌표에서 설치 호스트 probe의 정확한 원문 envelope는
+`codex-cli 0.144.4`, 정규 행 좌표는 `0.144.4`, 정확한 MCP initialize 정체성은
+`codex-mcp-client`/`0.144.4`입니다. 또한 정확한 call별 Codex 메타데이터가 훅과 같은
+불투명 root 세션 및 변경 불가능한 프로세스 로컬 thread 다이제스트 하나에 stdio 세션을
+결속하기 전까지 자격이 없습니다. 이 값은 정확한 일치 대조 및 상관관계 입력이지 host
+attestation이 아닙니다.
 
 검증은 정규 UTC 타임스탬프를 사용하며
 `observed_at <= created_at`과
@@ -72,8 +79,12 @@ challenge를 보내고, User Action이나 token을 만들지 않으며, 호스�
 뒤에만 생성되므로 그 다이제스트를 실행 파일에 다시 내장하면 안 됩니다. 그렇게 다시
 빌드하면 결속 대상 실행 파일 다이제스트가 바뀌어 재귀 결속이 생깁니다. 대신 신뢰된 내부
 획득 경로가 위의 외부 manifest를 검증한 뒤에만 pass를 게시하거나 평가해야 합니다. 현재
-어댑터에는 그런 신뢰된 획득 경로가 없습니다. 따라서 운영 local-web 자격은 닫힌 상태로
-실패하고, local web은 구현되었지만 검증되지 않은 상태로 남으며 CLI inbox를 사용합니다.
+어댑터에는 그런 신뢰된 획득 경로가 없습니다. 또한 검토한 Codex `0.144.4` 표는
+`local_web_user_channel`을 `unsupported_by_host`로 분류하므로 이 정확한 좌표는 통과하는
+local-web 행의 자격이 없습니다. `null` 또는 아직 검토하지 않은 Codex 좌표는 호스트 종류
+구현됨 fallback을 유지하고 Claude Code도 구현됨 fallback을 유지하지만, 신뢰된 획득 경로가
+없으므로 그런 경로는 구현되었지만 검증되지 않은 상태에 머뭅니다. 따라서 운영 local-web
+자격은 닫힌 상태로 실패하며 CLI inbox를 사용합니다.
 
 새 레지스트리 형태는 `baseline_sqlite_v6`입니다. v5 변환, relabel, 추론한 pass, 합성 이력은
 없으며 호환되지 않는 Runtime Home은 다시 만들어야 합니다.

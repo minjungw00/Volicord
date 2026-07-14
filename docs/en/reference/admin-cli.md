@@ -689,6 +689,12 @@ field comes from the centralized exact-evidence and runtime evaluator. Current
 Volicord output must report `os_enforced=false` and
 `actor_identity_provable=false`.
 
+Init and connection verification pass a canonical host version to this
+projection only when that same command completed a fresh installed-host probe.
+Connection status and Doctor do not run that probe and therefore use the
+host-kind fallback. The version retained in a stored verification report is
+diagnostic history and must not drive either current projection.
+
 Connection status always emits the six-key map at
 `states.host_feature_support`. It emits selected-profile detail at
 `states.final_output_authority_disclosure` only when the stored installation
@@ -1065,7 +1071,7 @@ Agent Connection commands use these result states:
 | State | Meaning |
 |---|---|
 | `not_verified` | No verification result is currently recorded for the selected Agent Connection. This is not proof that the host failed. |
-| `complete` | Durable Agent Connection state exists, managed host configuration exists and matches the expected managed fingerprint, required host loadability and trust gates are satisfied, CLI MCP startup and initialization do not fail, and active Codex tool exposure is confirmed by managed host tool-call evidence or another explicitly reliable active-tool-exposure source. |
+| `complete` | Durable Agent Connection state exists, managed host configuration exists and matches the expected managed fingerprint, required host loadability and trust gates are satisfied, CLI MCP startup and initialization do not fail, and active Codex tool exposure is confirmed by an exactly session/thread-bound managed host tool call or another explicitly reliable active-tool-exposure source. Descriptor-only, initialize-only, and pending-binding observations do not qualify. |
 | `action_required` | Durable Agent Connection state and host configuration are present, but host trust, project approval, OAuth, reload, restart, command-link repair, installation-profile repair, or a comparable user-controlled action remains. |
 | `failed` | The requested command or verification did not establish usable durable Agent Connection state, usable host configuration, or a required local prerequisite. |
 | `dry_run` | The command reported the planned actions without persistent changes. |
@@ -1079,9 +1085,9 @@ Codex connection verification keeps these diagnostic concepts separate:
 | CLI MCP preflight and handshake | `CLI MCP preflight`, `CLI MCP handshake`, `Last CLI MCP preflight`, or `Last CLI MCP handshake` | `checks[]` entries with `id=cli_mcp_preflight` and `id=cli_mcp_handshake`, plus verification report fields | The CLI verification path directly launched and talked to Volicord's MCP server. This validates the CLI-observable MCP process, not active Codex tool exposure. |
 | CLI MCP storage capability | `CLI MCP storage read`, `CLI MCP storage write`, and `CLI MCP effective tools` | `checks[]` entries with `id=cli_mcp_storage_read`, `id=cli_mcp_storage_write`, and `id=cli_mcp_effective_tools` when available | Storage capability observed through the CLI MCP verification process. This is separate from storage capability observed from a managed Codex host. |
 | Codex project trust | `Codex project trust` | `verification.project_trust` and a `checks[]` entry with `id=codex_project_trust` when available | Codex user configuration marks the project `trusted`, `untrusted`, `unknown`, or otherwise leaves trust unconfirmed. |
-| Managed Codex startup | `Managed Codex MCP startup` | `verification.host_runtime.managed_host_startup` and a `checks[]` entry with `id=managed_host_startup` when available | Volicord has or has not observed a managed Codex host process start the Volicord MCP server for the selected connection. |
-| Managed Codex tool listing | `Managed Codex tools/list` | `verification.host_runtime.managed_host_tools_list` and a `checks[]` entry with `id=managed_host_tools_list` when available | Volicord has or has not observed a managed Codex host `tools/list` lifecycle event. This does not by itself confirm active tool exposure. |
-| Managed Codex tool call | `Managed Codex tool call` | `verification.host_runtime.managed_host_tool_call` and a `checks[]` entry with `id=managed_host_tool_call` when available | Volicord has or has not observed a managed Codex host call a Volicord tool for the selected connection. This is the current completion evidence for active Codex tool exposure. |
+| Managed Codex startup | `Managed Codex MCP startup` | `verification.host_runtime.managed_host_startup` and a `checks[]` entry with `id=managed_host_startup` when available | A bounded startup fact materialized only after exact per-call managed-session binding for the selected connection. Its watcher coverage starts at binding and is partial; descriptor presence alone is not an observation. |
+| Managed Codex tool listing | `Managed Codex tools/list` | `verification.host_runtime.managed_host_tools_list` and a `checks[]` entry with `id=managed_host_tools_list` when available | A bounded pre-binding `tools/list` fact materialized after exact binding when listing occurred. It does not by itself confirm active tool exposure or pre-binding watcher coverage. |
+| Managed Codex tool call | `Managed Codex tool call` | `verification.host_runtime.managed_host_tool_call` and a `checks[]` entry with `id=managed_host_tool_call` when available | An actual known Volicord tool call whose exact Codex client identity and per-call root-session/thread metadata established or matched the immutable process binding. This is the current completion evidence for active Codex tool exposure. |
 | Active-session tool exposure | `Active Codex tool exposure` and `Next` action text when confirmation is required | `verification.active_tool_exposure`, `verification.host_runtime.active_tool_exposure`, `primary_next_action`, `actions[]`, and `connection.user_actions[]` | Whether active Codex tool exposure is confirmed, unconfirmed, or unknown. Manual probes, elevated probes, CLI preflight, direct handshakes, and source-less legacy observations do not confirm it. |
 | Managed host storage capability | `Managed host storage read`, `Managed host storage write`, and `Managed host effective tools` | `verification.host_runtime.managed_host_storage` and `checks[]` entries with `id=managed_host_storage_read`, `id=managed_host_storage_write`, and `id=managed_host_effective_tools` when available | Storage capability observed from the managed Codex host lifecycle. This is separate from CLI MCP storage capability. |
 | Host MCP command launchability | `Host MCP command` | `verification.host_mcp_command` and a `checks[]` entry with `id=host_mcp_command` when available | The configured MCP command is absolute, PATH-resolved, remote/executor-backed, unknown, or malformed, and can carry launch-risk details such as `host_path_unconfirmed`. PATH risk is a warning unless launch failure is proven. |
@@ -1139,6 +1145,13 @@ these fields; CLI preflight, direct handshake or probe launches, manual
 launches, and source-less legacy observations do not satisfy them. A managed
 `tools/list` event without a managed tool call leaves active tool exposure
 unconfirmed.
+
+For reviewed Codex `0.144.4`, the exact raw version probe is
+`codex-cli 0.144.4`, normalized to `host_version=0.144.4`. The managed launch
+remains pending until exact `clientInfo.name=codex-mcp-client`,
+`clientInfo.version=0.144.4`, and strict per-call `_meta` bind it as owned by
+[MCP Transport](mcp-transport.md#managed-host-session-input). Pending state
+creates none of the lifecycle or storage observations above.
 
 ### Verification output
 
@@ -1356,6 +1369,15 @@ field placements for host kind, session, tool name, command, prompt, result,
 and changed paths, and preserves unknown fields in the stored host-hook event's
 redacted subject. Prompt-like fields are hashed or omitted by default. Prompt
 capture records store the prompt hash and omit prompt text.
+
+Managed built-in correlation fields are the exception to that tolerant parsing.
+Every Codex and Claude Code managed event requires an exact top-level
+`session_id`; a non-`session-start` Codex event also requires an exact top-level
+`turn_id`. Nested fields, aliases, and fallback placement cannot replace either
+coordinate. Volicord maps the native session to the canonical opaque `mhs_`
+value and does not persist the raw identifiers. When `--session` is supplied,
+it is only an assertion of that exact canonical mapping and must equal the
+derived value; it cannot override or pin a different session.
 
 A host-reported `occurred_at` is observation metadata only. Volicord preserves
 it as the owner-verified source fact when accepted; it is never an input to, or

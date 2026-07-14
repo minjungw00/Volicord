@@ -16,6 +16,7 @@ close readiness, or conformance results.
 | [Core and adapter dependency boundary](core-adapter-boundary.md) | Why Core does not depend on MCP or CLI adapters, and what adapter code may do before calling Core. |
 | [Final-output authority disclosure](final-output-authority-disclosure.md) | Why fresh authority disclosure uses one shared status/receipt validator and a profile-independent host UI path separate from Detective Stop enforcement. |
 | [Host-capability verification for credential delivery](host-capability-verification.md) | Why credential-bearing local-web delivery requires exact, expiring live-host evidence in addition to listener readiness and a cooperative client declaration. |
+| [Managed-host session/thread binding and per-call turn validation](managed-host-session-turn-binding.md) | Why managed launch provenance stays pending until exact per-call Codex session and thread metadata binds one stdio process. |
 | [External host release evidence gate](host-release-evidence-gate.md) | Why one external exact-final candidate uses a fixed twelve-cell canonical gate and a separate-process recalculating audit. |
 | [Host feature support-state evaluation](host-feature-support-state-evaluation.md) | Why implementation, configuration, exact live evidence, and current runtime readiness use one typed evaluator rather than ambiguous support booleans. |
 | [Durable operation-result retrieval](operation-result-retrieval.md) | Why exact historical mutation responses reuse immutable replay rows and bounded, access-checked paging. |
