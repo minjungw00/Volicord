@@ -496,14 +496,14 @@ mod unix {
             "codex",
             IntegrationProfile::Record,
             "fixture static unsupported feature",
-            "fixture-host 1.0",
+            "0.144.4",
             &binary_sha256,
             "fixture-build-id",
         );
         validate_final_output_result_shape(&static_summary, IntegrationProfile::Record)?;
         static_final.record_final(&static_summary)?;
         let static_final_cell: Value = serde_json::from_slice(&fs::read(&static_final_path)?)?;
-        assert_eq!(static_final_cell["host_version"], "fixture-host 1.0");
+        assert_eq!(static_final_cell["host_version"], "0.144.4");
         assert_eq!(static_final_cell["requested_verified"], false);
         assert_eq!(
             static_final_cell["implementation_disposition"],
@@ -10372,9 +10372,6 @@ mod unix {
                 key,
             )?;
         }
-        let host = value["host"]["kind"]
-            .as_str()
-            .ok_or_else(|| io::Error::other("live final-output result has no host kind"))?;
         let config_fixture = evidence
             .get("config_fixture")
             .expect("config_fixture was required above");
@@ -10388,12 +10385,12 @@ mod unix {
                 .into())
             }
         };
-        let expected_diagnostics = canonical_release_host_feature_diagnostics(
-            host,
-            profile,
+        validate_release_host_feature_diagnostics(
+            value,
+            Some(profile),
             configuration_verified,
             configuration_verified,
-        );
+        )?;
         let top_level_support = value.get("host_feature_support").ok_or_else(|| {
             io::Error::other("live final-output result has no top-level host_feature_support")
         })?;
@@ -10405,14 +10402,6 @@ mod unix {
                     "live final-output result has no top-level final_output_authority_disclosure",
                 )
                 })?;
-        if top_level_support != &expected_diagnostics.host_feature_support
-            || top_level_disclosure != &expected_diagnostics.final_output_authority_disclosure
-        {
-            return Err(io::Error::other(
-                "live final-output result does not use the canonical host-feature projection",
-            )
-            .into());
-        }
         if config_fixture.get("host_feature_support") != Some(top_level_support)
             || config_fixture.get("final_output_authority_disclosure") != Some(top_level_disclosure)
         {
