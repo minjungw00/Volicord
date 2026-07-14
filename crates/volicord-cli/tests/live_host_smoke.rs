@@ -584,9 +584,88 @@ mod unix {
     }
 
     #[test]
-    fn local_web_evidence_diagnostic_query_requires_one_ordered_status(
+    fn cli_fallback_authority_event_inspection_uses_row_task_coordinates(
     ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("cli-fallback-authority-event-coordinates")?;
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for CLI-fallback event fixture", &init);
+        let init_json = json_stdout(&init)?;
+        let connection_id = init_json["connection"]["connection_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI-fallback event init returned no connection id"))?;
+        let marker = "VOLICORD_LIVE_CLI_FALLBACK_EVENT_COORDINATES";
+        let prepared = prepare_live_cli_fallback_action(&fixture, connection_id, marker)?;
+        resolve_live_user_action_via_cli(
+            &fixture,
+            &prepared.observation,
+            USER_ACTION_ROUTE_ALPHA_OPTION_ID,
+        )?;
+
+        let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&fixture.runtime_home_path, context);
+        let task_id = prepared.observation.task_id.clone();
+        let recorded = adapter.call_tool(
+            "volicord.record_run",
+            serde_json::json!({
+                "detail": "full",
+                "task_id": task_id,
+                "change_unit_id": prepared.change_unit_id,
+                "kind": "shaping_update",
+                "run_id": null,
+                "baseline_ref": LIVE_CLI_FALLBACK_BASELINE_REF,
+                "write_ticket_id": null,
+                "summary": USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+                "observed_changes": {
+                    "changed_paths": [],
+                    "product_file_write_observed": false,
+                    "sensitive_categories": [],
+                    "baseline_ref": LIVE_CLI_FALLBACK_BASELINE_REF
+                },
+                "artifact_inputs": [],
+                "evidence_updates": [],
+                "evidence_observations": [],
+                "close_assessment": {
+                    "result_summary": USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+                    "result_refs": [],
+                    "residual_risks": [],
+                    "sensitive_categories": [],
+                    "recovery_constraints": []
+                }
+            }),
+        )?;
+        let run_id = recorded.response_value["run_summary"]["run_ref"]["record_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("CLI-fallback event Run has no record id"))?;
+        let observation = inspect_live_user_action(&fixture, marker)?
+            .ok_or_else(|| io::Error::other("CLI-fallback event Task is missing"))?;
+        let (run, event_order) = inspect_live_choice_consumption(&fixture, &observation, run_id)?;
+
+        assert_eq!(run.summary, USER_ACTION_ROUTE_ALPHA_RUN_MARKER);
+        assert!(
+            event_order.user_action_requested_event_seq
+                < event_order.user_action_resolved_event_seq
+        );
+        assert!(event_order.user_action_resolved_event_seq < event_order.run_recorded_event_seq);
+        Ok(())
+    }
+
+    #[test]
+    fn live_diagnostic_queries_require_ordered_post_cursor_status() -> Result<(), Box<dyn Error>> {
         let fixture = LiveSmokeFixture::new("evidence-diagnostic-query")?;
+        assert_eq!(diagnostic_event_cursor(&fixture)?.0, 0);
         let connection_id = "CONN-evidence-diagnostic-query";
         let project_id = "PRJ-evidence-diagnostic-query";
         let session_id = "SESSION-evidence-diagnostic-query";
@@ -602,6 +681,7 @@ mod unix {
                 build_id: "live-evidence-diagnostic-query-fixture",
             },
         )?;
+        let probe_cursor = diagnostic_event_cursor(&fixture)?;
         let record =
             |tool_name, core_committed, replayed, fallback_kind| -> Result<(), Box<dyn Error>> {
                 record_diagnostic_event(
@@ -626,6 +706,14 @@ mod unix {
                 )?;
                 Ok(())
             };
+        record("volicord.status", false, false, None)?;
+        assert_connection_observation_diagnostic(
+            &fixture,
+            connection_id,
+            project_id,
+            probe_cursor,
+        )?;
+        let diagnostic_cursor = diagnostic_event_cursor(&fixture)?;
         record(
             "volicord.request_user_action",
             true,
@@ -634,9 +722,27 @@ mod unix {
         )?;
         record("volicord.request_user_action", false, true, None)?;
         record("volicord.record_run", true, false, None)?;
+        assert!(assert_cli_fallback_resume_diagnostic(
+            &fixture,
+            connection_id,
+            project_id,
+            diagnostic_cursor,
+        )
+        .is_err());
         record("volicord.status", false, false, None)?;
+        assert_cli_fallback_resume_diagnostic(
+            &fixture,
+            connection_id,
+            project_id,
+            diagnostic_cursor,
+        )?;
 
-        let observed = assert_local_web_evidence_diagnostic(&fixture, connection_id, project_id)?;
+        let observed = assert_local_web_evidence_diagnostic(
+            &fixture,
+            connection_id,
+            project_id,
+            diagnostic_cursor,
+        )?;
         assert_eq!(observed.create_calls, 1);
         assert_eq!(observed.resume_calls, 1);
         assert_eq!(observed.record_run_calls, 1);
@@ -646,7 +752,13 @@ mod unix {
         assert!(observed.ordered);
 
         record("volicord.status", false, false, None)?;
-        assert!(assert_local_web_evidence_diagnostic(&fixture, connection_id, project_id).is_err());
+        assert!(assert_local_web_evidence_diagnostic(
+            &fixture,
+            connection_id,
+            project_id,
+            diagnostic_cursor,
+        )
+        .is_err());
         Ok(())
     }
 
@@ -1811,7 +1923,7 @@ mod unix {
             ))
             .into());
         }
-        assert_live_connection_verified(&fixture, &identity.connection_id)?;
+        verify_live_connection_after_host_observation(&fixture, host, &identity.connection_id)?;
         confirm_final_output_ui(host, profile, FinalOutputUiExpectation::ManagedSurface)?;
         confirm_final_output_ui(
             host,
@@ -2262,6 +2374,12 @@ mod unix {
             volicord_build_id,
             connection_id,
         };
+        observe_and_verify_live_connection_before_task(
+            &fixture,
+            host,
+            &executable,
+            &identity.connection_id,
+        )?;
         let marker = format!(
             "VOLICORD_LIVE_HOST_CLI_FALLBACK_ROUND_TRIP_{}",
             host.replace('-', "_").to_ascii_uppercase()
@@ -2285,6 +2403,7 @@ mod unix {
         let expected_run_marker = run_marker_for_selected_option(&operator_choice_id)
             .ok_or_else(|| io::Error::other("operator selected an unsupported fallback option"))?;
         let stop_cursor = stop_event_cursor(&fixture, &prepared.observation.project_id)?;
+        let diagnostic_cursor = diagnostic_event_cursor(&fixture)?;
         let prompt = live_cli_fallback_resume_prompt(&prepared)?;
         println!(
             "\n=== Volicord live {host} CLI-fallback smoke ===\nThe pending choice was resolved by the human operator through the actual `volicord inbox resolve --json` User Channel. The installed host must now resume that exact request through the same Agent Connection, consume the selected option, record its mapped no-write Run, read fresh status, and stop. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
@@ -2361,6 +2480,7 @@ mod unix {
             &fixture,
             &identity.connection_id,
             &observation.project_id,
+            diagnostic_cursor,
         )?;
         if let Err(error) = confirm_final_output_ui(
             host,
@@ -2487,6 +2607,12 @@ mod unix {
                 identity.host_version, identity.volicord_build_id, identity.connection_id
             ),
         );
+        observe_and_verify_live_connection_before_task(
+            &fixture,
+            host,
+            &executable,
+            &identity.connection_id,
+        )?;
 
         let marker = format!(
             "VOLICORD_LIVE_HOST_USER_ACTION_ROUND_TRIP_{}",
@@ -2827,6 +2953,13 @@ mod unix {
             volicord_build_id,
             connection_id,
         };
+        *stage = "connection_observation";
+        observe_and_verify_live_connection_before_task(
+            &fixture,
+            host,
+            &executable,
+            &identity.connection_id,
+        )?;
         let marker = format!(
             "VOLICORD_LIVE_HOST_EVIDENCE_OBSERVATION_{}",
             host.replace('-', "_").to_ascii_uppercase()
@@ -2837,6 +2970,7 @@ mod unix {
             &marker,
         )?;
         let stop_cursor = stop_event_cursor(&fixture, &prepared.project_id)?;
+        let diagnostic_cursor = diagnostic_event_cursor(&fixture)?;
         let prompt = live_evidence_observation_prompt(&prepared);
         println!(
             "\n=== Volicord live {host} evidence-observation smoke ===\nThis cell is valid only if the MCP client negotiated `capabilities.experimental[\"{MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE}\"].{MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_FIELD}=true` and the host consumes `CallToolResult._meta[\"{MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE}\"]` in a separate host-owned model-invisible surface. That `_meta` handoff must never enter chat or model output. Never ask the agent to relay, quote, print, or open the URL. If that separate surface appears, use it yourself to select the sole target and artifact, choose `supported`, enter a non-secret one-line summary, and submit. If it does not appear—or if any URL, token, form, question, or request ref appears in returned tool-result content, returned structured output, or host diagnostic text—tell the host to stop without fallback; the harness will record this cell unavailable. Do not enter credentials, secrets, tokens, or private keys.\n\n{prompt}\n=== end instruction ===\n"
@@ -2912,6 +3046,7 @@ mod unix {
             &fixture,
             &identity.connection_id,
             &observation.project_id,
+            diagnostic_cursor,
         )?;
 
         *stage = "managed_receipt_ui";
@@ -4146,10 +4281,6 @@ mod unix {
         for row in rows {
             let (event_seq, event_type, payload_json) = row?;
             let payload: Value = serde_json::from_str(&payload_json)?;
-            if payload.get("task_id").and_then(Value::as_str) != Some(observation.task_id.as_str())
-            {
-                continue;
-            }
             match event_type.as_str() {
                 "user_action_requested"
                     if payload
@@ -4157,6 +4288,14 @@ mod unix {
                         .and_then(Value::as_str)
                         == Some(user_action_request_id) =>
                 {
+                    if payload.get("action_kind").and_then(Value::as_str)
+                        != Some("product_decision")
+                    {
+                        return Err(io::Error::other(
+                            "matching user_action_requested event has the wrong action kind",
+                        )
+                        .into());
+                    }
                     requested.push(event_seq);
                 }
                 "user_action_resolved"
@@ -6647,6 +6786,15 @@ mod unix {
     #[derive(Clone, Copy, Debug)]
     struct StopEventCursor(i64);
 
+    #[derive(Clone, Copy, Debug)]
+    struct DiagnosticEventCursor(i64);
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct ProjectAuthoritySnapshot {
+        state_version: u64,
+        task_count: u64,
+    }
+
     #[derive(Debug, Eq, PartialEq)]
     struct StoredStopSnapshot {
         guard_event_id: String,
@@ -6687,6 +6835,138 @@ mod unix {
             [project_id],
             |row| row.get(0),
         )?))
+    }
+
+    fn diagnostic_event_cursor(
+        fixture: &LiveSmokeFixture,
+    ) -> Result<DiagnosticEventCursor, Box<dyn Error>> {
+        let path = diagnostics_db_path(&fixture.runtime_home_path);
+        if !path.exists() {
+            return Ok(DiagnosticEventCursor(0));
+        }
+        let conn = rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        Ok(DiagnosticEventCursor(conn.query_row(
+            "SELECT COALESCE(MAX(event_id), 0) FROM diagnostic_events",
+            [],
+            |row| row.get(0),
+        )?))
+    }
+
+    fn project_authority_snapshot(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+    ) -> Result<ProjectAuthoritySnapshot, Box<dyn Error>> {
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let state_version = conn.query_row(
+            "SELECT state_version FROM project_state WHERE project_id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )?;
+        let task_count = conn.query_row(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )?;
+        Ok(ProjectAuthoritySnapshot {
+            state_version,
+            task_count,
+        })
+    }
+
+    fn observe_and_verify_live_connection_before_task(
+        fixture: &LiveSmokeFixture,
+        host: &str,
+        executable: &Path,
+        connection_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let project_selector = live_fixture_project_id(fixture)?;
+        let authority_before = project_authority_snapshot(fixture, &project_selector)?;
+        if authority_before.task_count != 0 {
+            return Err(io::Error::other(
+                "the connection-observation probe requires a project with no Task",
+            )
+            .into());
+        }
+        let diagnostic_cursor = diagnostic_event_cursor(fixture)?;
+        let prompt = live_final_output_no_active_prompt(&project_selector);
+        println!(
+            "\n=== Volicord live {host} connection-observation probe ===\nThis authenticated host turn intentionally has no active Volicord Task. It must expose and call the installed Volicord MCP server before the administrative verification step can store a complete Agent Connection result. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
+        );
+        let status = fixture.run_authenticated_interactive_host(executable, &prompt)?;
+        smoke_note(
+            host,
+            format!(
+                "connection-observation host exited with {}",
+                status_text(status)
+            ),
+        );
+        if !status.success() {
+            return Err(io::Error::other(format!(
+                "the connection-observation {host} process exited unsuccessfully with {}",
+                status_text(status)
+            ))
+            .into());
+        }
+        let authority_after = project_authority_snapshot(fixture, &project_selector)?;
+        if authority_after != authority_before {
+            return Err(io::Error::other(format!(
+                "the connection-observation probe changed project authority state: before={authority_before:?}, after={authority_after:?}"
+            ))
+            .into());
+        }
+        assert_connection_observation_diagnostic(
+            fixture,
+            connection_id,
+            &project_selector,
+            diagnostic_cursor,
+        )?;
+        verify_live_connection_after_host_observation(fixture, host, connection_id)
+    }
+
+    fn verify_live_connection_after_host_observation(
+        fixture: &LiveSmokeFixture,
+        host: &str,
+        connection_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let verification = fixture.run_volicord_with_host_environment([
+            "connection",
+            "verify",
+            host,
+            "--repo",
+            fixture.repo_arg(),
+            "--shared",
+            "--json",
+        ])?;
+        require_success(
+            "volicord connection verify after live host observation",
+            &verification,
+        )?;
+        let value = json_stdout(&verification)?;
+        let observed_status = value["status"].as_str().unwrap_or("missing");
+        let observed_connection_id = value["connection"]["connection_id"]
+            .as_str()
+            .unwrap_or("missing");
+        if observed_status != "complete" || observed_connection_id != connection_id {
+            let action_ids = value["actions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|action| action["id"].as_str())
+                .collect::<Vec<_>>();
+            return Err(io::Error::other(format!(
+                "the post-observation administrative verification did not complete the prepared Agent Connection: status={observed_status:?}, connection_id_matches={}, actions={action_ids:?}",
+                observed_connection_id == connection_id
+            ))
+            .into());
+        }
+        assert_live_connection_verified(fixture, connection_id)
     }
 
     fn assert_live_connection_verified(
@@ -7616,6 +7896,44 @@ mod unix {
         Ok(value.to_owned())
     }
 
+    fn assert_connection_observation_diagnostic(
+        fixture: &LiveSmokeFixture,
+        connection_id: &str,
+        project_id: &str,
+        cursor: DiagnosticEventCursor,
+    ) -> Result<(), Box<dyn Error>> {
+        let conn = rusqlite::Connection::open_with_flags(
+            diagnostics_db_path(&fixture.runtime_home_path),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let observed = conn.query_row(
+            "SELECT
+                 COALESCE(SUM(CASE
+                       WHEN e.tool_name = 'volicord.status'
+                        AND e.core_committed = 0
+                        AND e.outcome = 'success'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                       WHEN e.core_committed = 1
+                       THEN 1 ELSE 0 END), 0)
+               FROM diagnostic_sessions s
+               JOIN diagnostic_events e ON e.session_id = s.session_id
+              WHERE s.connection_id = ?1
+                AND s.project_id = ?2
+                AND e.event_id > ?3",
+            rusqlite::params![connection_id, project_id, cursor.0],
+            |row| Ok((row.get::<_, u64>(0)?, row.get::<_, u64>(1)?)),
+        )?;
+        if observed.0 < 1 || observed.1 != 0 {
+            return Err(io::Error::other(format!(
+                "the connection-observation probe did not remain a read-only status observation: successful_status={}, committed_events={}",
+                observed.0, observed.1
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
     fn assert_native_channel_diagnostic(
         fixture: &LiveSmokeFixture,
         connection_id: &str,
@@ -7647,6 +7965,7 @@ mod unix {
         fixture: &LiveSmokeFixture,
         connection_id: &str,
         project_id: &str,
+        cursor: DiagnosticEventCursor,
     ) -> Result<(), Box<dyn Error>> {
         let conn = rusqlite::Connection::open_with_flags(
             diagnostics_db_path(&fixture.runtime_home_path),
@@ -7667,24 +7986,45 @@ mod unix {
                  COALESCE(SUM(CASE
                        WHEN e.tool_name = 'volicord.status'
                         AND e.outcome = 'success'
-                       THEN 1 ELSE 0 END), 0)
+                       THEN 1 ELSE 0 END), 0),
+                 MIN(CASE
+                       WHEN e.tool_name = 'volicord.request_user_action'
+                        AND e.replayed = 1
+                        AND e.outcome = 'success'
+                       THEN e.event_id END),
+                 MIN(CASE
+                       WHEN e.tool_name = 'volicord.record_run'
+                        AND e.core_committed = 1
+                        AND e.outcome = 'success'
+                       THEN e.event_id END),
+                 MAX(CASE
+                       WHEN e.tool_name = 'volicord.status'
+                        AND e.outcome = 'success'
+                       THEN e.event_id END)
                FROM diagnostic_sessions s
                JOIN diagnostic_events e ON e.session_id = s.session_id
               WHERE s.connection_id = ?1
-                AND s.project_id = ?2",
-            [connection_id, project_id],
+                AND s.project_id = ?2
+                AND e.event_id > ?3",
+            rusqlite::params![connection_id, project_id, cursor.0],
             |row| {
                 Ok((
                     row.get::<_, u64>(0)?,
                     row.get::<_, u64>(1)?,
                     row.get::<_, u64>(2)?,
+                    row.get::<_, Option<u64>>(3)?,
+                    row.get::<_, Option<u64>>(4)?,
+                    row.get::<_, Option<u64>>(5)?,
                 ))
             },
         )?;
-        if observed.0 < 1 || observed.1 != 1 || observed.2 < 1 {
+        let ordered = observed.3.zip(observed.4).zip(observed.5).is_some_and(
+            |((resume, record_run), status)| resume < record_run && record_run < status,
+        );
+        if observed.0 < 1 || observed.1 != 1 || observed.2 < 1 || !ordered {
             return Err(io::Error::other(format!(
-                "the authenticated host diagnostics did not show one same-connection resume path: replayed request_user_action={}, committed record_run={}, status={}",
-                observed.0, observed.1, observed.2
+                "the authenticated host diagnostics did not show one ordered same-connection resume path after the active-run cursor: replayed request_user_action={}, committed record_run={}, status={}, ordered={ordered}",
+                observed.0, observed.1, observed.2,
             ))
             .into());
         }
@@ -7705,6 +8045,7 @@ mod unix {
         fixture: &LiveSmokeFixture,
         connection_id: &str,
         project_id: &str,
+        cursor: DiagnosticEventCursor,
     ) -> Result<LiveEvidenceDiagnosticObservation, Box<dyn Error>> {
         let conn = rusqlite::Connection::open_with_flags(
             diagnostics_db_path(&fixture.runtime_home_path),
@@ -7774,8 +8115,10 @@ mod unix {
                        THEN e.event_id END)
                FROM diagnostic_sessions s
                JOIN diagnostic_events e ON e.session_id = s.session_id
-              WHERE s.connection_id = ?1 AND s.project_id = ?2",
-            [connection_id, project_id],
+              WHERE s.connection_id = ?1
+                AND s.project_id = ?2
+                AND e.event_id > ?3",
+            rusqlite::params![connection_id, project_id, cursor.0],
             |row| {
                 Ok((
                     row.get::<_, u64>(0)?,
@@ -7938,6 +8281,26 @@ mod unix {
             let mut command = Command::new(volicord_bin());
             command.args(args).current_dir(&self.repo_root);
             self.apply_isolated_env(&mut command);
+            run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+        }
+
+        fn run_volicord_with_host_environment<const N: usize>(
+            &self,
+            args: [&str; N],
+        ) -> Result<TimedOutput, Box<dyn Error>> {
+            let mut command = Command::new(volicord_bin());
+            command
+                .args(args)
+                .current_dir(&self.repo_root)
+                .env("VOLICORD_HOME", &self.runtime_home_path)
+                .env("PATH", &self.env_path)
+                .env("NO_COLOR", "1")
+                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove("OPENAI_API_KEY")
+                .env_remove("ANTHROPIC_API_KEY")
+                .env_remove("CLAUDE_CODE_OAUTH_TOKEN")
+                .env_remove("CLAUDE_CODE_API_KEY");
+            Self::remove_inherited_host_control_env(&mut command);
             run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
         }
 

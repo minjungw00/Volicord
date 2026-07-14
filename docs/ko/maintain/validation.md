@@ -226,6 +226,22 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 확인 가능 속성만 증명하고, Rust 테스트는 구현 점검만 증명하며, 에이전트 책상
 검토는 유지보수자가 객관적 차단 사유를 문서에서 검토했다는 점만 증명합니다.
 
+<a id="live-host-connection-readiness-sequence"></a>
+## 실제 호스트 연결 준비 순서
+
+아래에서 `Task`에 결속되는 모든 실제 호스트 체크리스트를 실행하기 전에 이 순서를
+적용합니다. 먼저 선택한 Product Repository에 활성 `Task`가 없는 상태에서 정확히
+준비한 Agent Connection으로 설치된 호스트를 시작하고 읽기 전용
+`volicord.status` 호출을 관찰합니다. 그 호스트가 종료된 뒤 같은 연결에 대해 관리
+`volicord connection verify ... --json`을 실행하고 담당 문서가 정의한 `complete`
+결과를 요구합니다. 그 후에만 워크플로 `Task`를 만들거나 활성화하고 Task 결속 호스트
+실행을 시작합니다. 첫 관찰은 관리 검증을 대신하지 않습니다.
+
+연결 검증의 정확한 동작과 상태 의미는
+[Agent Connection](../reference/agent-connection.md)과
+[관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 계속 담당합니다.
+이 절은 릴리스 검증 순서만 담당합니다.
+
 <a id="live-host-final-output-release-validation"></a>
 ## 실제 호스트 최종 출력 릴리스 검증
 

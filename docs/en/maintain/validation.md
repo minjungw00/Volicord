@@ -250,6 +250,23 @@ proves only the machine-checkable properties it owns, Rust tests prove only
 implementation checks, and an agent desk review proves only that a maintainer
 reviewed the documents for objective blockers.
 
+<a id="live-host-connection-readiness-sequence"></a>
+## Live-Host Connection-Readiness Sequence
+
+Apply this sequence before every task-bound live-host checklist below. First,
+start the installed host on the exact prepared Agent Connection while the
+selected Product Repository has no active `Task`, and observe a read-only
+`volicord.status` call. After that host exits, run administrative
+`volicord connection verify ... --json` for the same connection and require the
+owner-defined `complete` result. Only then create or activate the workflow
+`Task` and start the task-bound host run. The first observation does not replace
+administrative verification.
+
+Exact connection-verification behavior and state meaning remain with
+[Agent Connection](../reference/agent-connection.md) and
+[Administrative CLI](../reference/admin-cli.md#agent-connection-result-states);
+this section owns release-validation order only.
+
 <a id="live-host-final-output-release-validation"></a>
 ## Live-Host Final-Output Release Validation
 
