@@ -5,7 +5,10 @@ use serde_json::{json, Value};
 use crate::{
     guard_integration::{
         files::{plan_managed_block_file, plan_managed_exact_json_file, GeneratedFilePlan},
-        hooks::{host_hook_command_lines, HostHookCommand, HostHookCommandShape},
+        hooks::{
+            codex_detective_hook_script, shell_word, HostHookCommand, HostHookCommandShape,
+            HostHookPurpose,
+        },
         GuardIntegrationError,
     },
     host_integration::{
@@ -15,6 +18,7 @@ use crate::{
             validate_final_output_contract_config, HostContractConfigKind,
         },
         HostIntegrationFileKind, HostKind, HostLifecyclePhase, FINAL_OUTPUT_PHASES,
+        REQUIRED_GUARD_PHASES,
     },
 };
 
@@ -97,19 +101,71 @@ pub(crate) fn plan_codex_rule_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
-    let command_lines = host_hook_command_lines(hook_commands)
-        .into_iter()
-        .map(|(_, command)| command)
-        .collect::<Vec<_>>();
-    let mut body = String::from(
-        "prefix_rule(\n    pattern = [\".codex\", \"hooks\"],\n    decision = \"prompt\",\n    justification = \"Volicord hook wrappers record local lifecycle events.\",\n    match = [\n",
+    if hook_commands.len() != REQUIRED_GUARD_PHASES.len() {
+        return Err(GuardIntegrationError::runtime(
+            "Codex rule generation requires the exact five detective hook phases",
+        ));
+    }
+    let mut command_lines = Vec::with_capacity(REQUIRED_GUARD_PHASES.len());
+    let mut hook_scripts = Vec::with_capacity(REQUIRED_GUARD_PHASES.len());
+    for phase in REQUIRED_GUARD_PHASES {
+        let command = hook_commands.get(phase.policy_key()).ok_or_else(|| {
+            GuardIntegrationError::runtime(
+                "Codex rule generation requires the exact five detective hook phases",
+            )
+        })?;
+        if command.host_kind != HostKind::Codex
+            || command.phase != phase
+            || command.purpose != HostHookPurpose::DetectiveGuard
+        {
+            return Err(GuardIntegrationError::runtime(
+                "Codex rule generation requires exact Codex detective hook commands",
+            ));
+        }
+        let HostHookCommandShape::ShellCommandString { command_text, argv } =
+            &command.generated_command_shape
+        else {
+            return Err(GuardIntegrationError::runtime(
+                "Codex rule generation requires command-string form",
+            ));
+        };
+        let [shell, flag, script] = argv.as_slice() else {
+            return Err(GuardIntegrationError::runtime(
+                "Codex rule generation requires exact sh -c hook argv",
+            ));
+        };
+        if shell != "sh" || flag != "-c" {
+            return Err(GuardIntegrationError::runtime(
+                "Codex rule generation requires exact sh -c hook argv",
+            ));
+        }
+        let expected_script = codex_detective_hook_script(phase);
+        let expected_command_text = format!("sh -c {}", shell_word(&expected_script));
+        if script != &expected_script || command_text != &expected_command_text {
+            return Err(GuardIntegrationError::runtime(
+                "Codex rule generation requires exact generated hook commands",
+            ));
+        }
+        command_lines.push(command_text);
+        hook_scripts.push(script);
+    }
+    let mut body = String::from("prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n");
+    for script in hook_scripts {
+        body.push_str("        ");
+        body.push_str(&starlark_string(script));
+        body.push_str(",\n");
+    }
+    body.push_str(
+        "    ]],\n    decision = \"prompt\",\n    justification = \"Volicord hook wrappers record local lifecycle events.\",\n    match = [\n",
     );
     for command in command_lines {
         body.push_str("        ");
-        body.push_str(&starlark_string(&command));
+        body.push_str(&starlark_string(command));
         body.push_str(",\n");
     }
-    body.push_str("    ],\n)\n");
+    body.push_str(
+        "    ],\n    not_match = [\n        \"sh -c 'echo unrelated'\",\n        \"volicord status\",\n    ],\n)\n",
+    );
     validate_contract_config(HostKind::Codex, HostContractConfigKind::RuleConfig, &body).map_err(
         |error| {
             GuardIntegrationError::runtime(format!(
@@ -133,7 +189,8 @@ fn codex_hook_handler_value(
     phase: HostLifecyclePhase,
     command: &HostHookCommand,
 ) -> Result<Value, GuardIntegrationError> {
-    let HostHookCommandShape::ShellCommandString(command_text) = &command.generated_command_shape
+    let HostHookCommandShape::ShellCommandString { command_text, .. } =
+        &command.generated_command_shape
     else {
         return Err(GuardIntegrationError::runtime(
             "Codex hook command generation requires command-string form",

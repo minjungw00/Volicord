@@ -635,6 +635,17 @@ Detective lifecycle-hook installation or session watcher setup. Its supported
 managed final-output handler is a separate profile-independent display
 capability.
 
+For Codex Detective setup, the generated `.codex/rules/volicord.rules` must be
+loadable by the host: every `match` example must match its rule during host
+rule validation. The prompt rule matches a three-token argv prefix: `sh`, `-c`,
+and a closed choice of the exact generated Volicord hook script for
+`session-start`, `pre-tool`, `post-tool`, `prompt-capture`, or `stop`. Because
+Codex rules use prefix matching, trailing argv after those three tokens remains
+inside the prompted set; generated Volicord hook calls supply no trailing argv.
+Unrelated `sh -c` invocations and non-hook commands remain unmatched. This rule
+is cooperative host prompting, not OS enforcement or proof that the host ran
+the hook; those non-guarantees remain owned by [Security](security.md).
+
 On native Windows, init rejects `--profile detective` with
 `DETECTIVE_WINDOWS_UNSUPPORTED` before planning or writing detective host hook files.
 Native Windows supports `--profile record`; use WSL2, Linux, or macOS for

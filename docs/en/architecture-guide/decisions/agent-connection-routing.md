@@ -15,6 +15,26 @@ The design keeps these responsibilities separate:
 - The administrative CLI creates, verifies, updates, and removes supported host connection setup.
 - Host trust, project approval, OAuth, reload, restart, and model behavior stay with the external host and user.
 
+Managed host-hook configuration is derived from one validated command shape
+that retains both the rendered command text and the actual execution argv. For
+Codex Detective hooks, the generated wrapper is invoked as exactly
+`sh -c <generated-hook-script>`. The companion prompt rule therefore matches
+the three-token argv prefix `sh`, `-c`, and a closed choice of the exact script
+for one of the five required phases: `session-start`, `pre-tool`, `post-tool`,
+`prompt-capture`, or `stop`. The rule's positive and negative examples are
+validated from that same command shape before configuration is written.
+
+The earlier managed rule used `.codex hooks` as its prefix. That described a
+configuration location rather than the argv executed by the host, so current
+Codex rule validation could reject the file before any hook ran. This correction
+changes only generated managed host configuration. It adds no public API,
+storage record, DDL, storage profile, or SemVer change. Existing managed files
+are replaced through the normal ownership and fingerprint checks; unmanaged
+files are not adopted. Volicord does not define a stable minimum Codex version,
+so checked-in parser fixtures remain insufficient by themselves: release
+validation must also load and check the generated rule with an applicable real
+Codex parser.
+
 ## Consequences
 
 - A user-scoped host configuration can serve multiple explicitly connected Projects without granting all registered Projects.
@@ -33,6 +53,18 @@ The design keeps these responsibilities separate:
 - It does not make repository guidance, MCP server instructions, or host rule files enforce model behavior.
 - It does not permit Volicord runtime state, SQLite databases, generated logs, QA results, acceptance records, close-readiness state, or residual-risk records in the `Product Repository`.
 
+## Rejected alternatives
+
+- Keeping the `.codex hooks` prefix was rejected because it never represents
+  the generated hook process argv.
+- Matching only `sh -c` was rejected because it would prompt unrelated shell
+  commands rather than the closed Volicord hook set.
+- Accepting additional scripts, phases, or a second canonical prompt rule was
+  rejected because the generated rule would no longer be derived exactly from
+  the required hook command set.
+- Treating fixture validation as proof of host compatibility was rejected
+  because the external Codex parser and its load-time checks remain host-owned.
+
 ## Relevant implementation areas
 
 - [`crates/volicord-mcp`](../../../../crates/volicord-mcp): connection-bound startup, MCP initialization, tool discovery, project selection, and adapter validation before Core calls.
@@ -42,7 +74,11 @@ The design keeps these responsibilities separate:
 
 ## Related tests and Reference owners
 
-Tests for this design should cover startup validation, project selection, membership revocation, host setup status, repository-write approval for project scope, managed marker replacement, and rejection of unsupported startup forms.
+Tests for this design should cover startup validation, project selection,
+membership revocation, host setup status, repository-write approval for project
+scope, managed marker replacement, rejection of unsupported startup forms, the
+exact five Codex hook argv alternatives, unrelated-command negatives, and
+load-time checking by an applicable real Codex parser.
 
 Reference owners:
 

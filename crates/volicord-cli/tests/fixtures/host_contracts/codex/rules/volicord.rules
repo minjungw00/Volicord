@@ -1,12 +1,22 @@
 prefix_rule(
-    pattern = [".codex", "hooks"],
+    pattern = ["sh", "-c", [
+        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start",
+        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" pre-tool",
+        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" post-tool",
+        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" prompt-capture",
+        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" stop",
+    ]],
     decision = "prompt",
     justification = "Volicord hook wrappers may observe local lifecycle state.",
     match = [
         "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'",
         "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" pre-tool'",
+        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" post-tool'",
+        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" prompt-capture'",
+        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" stop'",
     ],
     not_match = [
+        "sh -c 'echo unrelated'",
         "volicord status",
     ],
 )

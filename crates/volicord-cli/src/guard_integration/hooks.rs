@@ -57,7 +57,7 @@ impl HostHookPurpose {
 impl HostHookCommand {
     pub(crate) fn command_line(&self) -> String {
         match &self.generated_command_shape {
-            HostHookCommandShape::ShellCommandString(command) => command.clone(),
+            HostHookCommandShape::ShellCommandString { command_text, .. } => command_text.clone(),
             HostHookCommandShape::Exec { command, args } => guard_command_line(&GuardCommandSpec {
                 command: command.clone(),
                 args: args.clone(),
@@ -67,7 +67,7 @@ impl HostHookCommand {
 
     pub(crate) fn command_shape_name(&self) -> &'static str {
         match &self.generated_command_shape {
-            HostHookCommandShape::ShellCommandString(_) => "shell_command_string",
+            HostHookCommandShape::ShellCommandString { .. } => "shell_command_string",
             HostHookCommandShape::Exec { .. } => "exec_form",
         }
     }
@@ -75,8 +75,14 @@ impl HostHookCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HostHookCommandShape {
-    ShellCommandString(String),
-    Exec { command: String, args: Vec<String> },
+    ShellCommandString {
+        command_text: String,
+        argv: Vec<String>,
+    },
+    Exec {
+        command: String,
+        args: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,15 +205,11 @@ pub(crate) fn host_hook_command_spec(
     match host_kind {
         HostKind::Codex => {
             let dispatch_relative = codex_dispatch_wrapper_relative_path();
-            let dispatch_relative_text = path_text(&dispatch_relative);
             let expected_phase_wrapper_path = repo_root.join(&relative_path);
             let (expected_wrapper_path, script) = match purpose {
                 HostHookPurpose::DetectiveGuard => (
                     repo_root.join(&dispatch_relative),
-                    format!(
-                        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
-                        phase.command_name()
-                    ),
+                    codex_detective_hook_script(phase),
                 ),
                 HostHookPurpose::FinalOutputAuthorityDisclosure => (
                     expected_phase_wrapper_path.clone(),
@@ -220,10 +222,10 @@ pub(crate) fn host_hook_command_spec(
                 host_kind,
                 phase,
                 purpose,
-                generated_command_shape: HostHookCommandShape::ShellCommandString(format!(
-                    "sh -c {}",
-                    shell_word(&script)
-                )),
+                generated_command_shape: HostHookCommandShape::ShellCommandString {
+                    command_text: format!("sh -c {}", shell_word(&script)),
+                    argv: vec!["sh".to_owned(), "-c".to_owned(), script],
+                },
                 expected_wrapper_path,
                 expected_phase_wrapper_path,
                 root_resolution_basis: HookRootResolutionBasis::GitWorkTree,
@@ -432,6 +434,14 @@ fn hook_wrapper_relative_path(
 
 fn codex_dispatch_wrapper_relative_path() -> PathBuf {
     PathBuf::from(CODEX_DISPATCH_WRAPPER)
+}
+
+pub(crate) fn codex_detective_hook_script(phase: HostLifecyclePhase) -> String {
+    let dispatch_relative_text = path_text(&codex_dispatch_wrapper_relative_path());
+    format!(
+        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/{dispatch_relative_text}\" {}",
+        phase.command_name()
+    )
 }
 
 pub(crate) fn codex_hook_root_available(repo_root: &Path) -> Result<bool, GuardIntegrationError> {

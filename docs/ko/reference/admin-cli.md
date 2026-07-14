@@ -572,6 +572,16 @@ boolean을 담습니다. 이 값들은 어댑터 기능과 관리 설정만 나�
 설정을 요구하지 않습니다. 지원되는 관리 최종 출력 처리기는 프로필과 독립된 별도 표시
 기능입니다.
 
+Codex Detective 설정에서 생성된 `.codex/rules/volicord.rules`는 호스트가 불러올 수 있어야
+합니다. 호스트가 규칙을 검증할 때 모든 `match` 예시는 해당 규칙과 일치해야 합니다. 프롬프트
+규칙은 세 토큰으로 된 argv 접두사를 일치시킵니다. 첫 두 토큰은 `sh`, `-c`이고 세 번째
+토큰은 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 중 하나를 지정하는
+정확히 생성된 Volicord 훅 스크립트 다섯 개의 닫힌 선택 중 하나입니다. Codex 규칙은 접두사
+일치를 사용하므로 이 세 토큰 뒤의 추가 argv도 프롬프트 대상에 포함됩니다. 생성된 Volicord
+훅 호출은 그런 추가 argv를 제공하지 않습니다. 관련 없는 `sh -c` 호출과 훅이 아닌 명령은
+일치하지 않은 상태로 남습니다. 이 규칙은 협력적 호스트 프롬프트이며 OS 수준 강제나 호스트가
+훅을 실행했다는 증명이 아닙니다. 이런 비보장은 계속 [보안](security.md)이 담당합니다.
+
 네이티브 Windows에서는 init이 탐지용 호스트 훅 파일을 계획하거나 쓰기 전에
 `--profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. 네이티브 Windows는
 `--profile record`를 지원합니다. `detective`는 선택한 호스트 훅과 감시기 계약이 지원되고

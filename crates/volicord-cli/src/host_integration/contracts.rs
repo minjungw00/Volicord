@@ -1215,17 +1215,88 @@ fn validate_codex_rule_config(text: &str) -> Result<(), HostContractValidationEr
             "Codex rule config must not be empty",
         ));
     }
-    if !trimmed.contains("prefix_rule(") {
+    if trimmed.matches("prefix_rule").count() != 1 {
         return Err(HostContractValidationError::new(
-            "Codex rule config must contain a prefix_rule entry",
+            "Codex rule config must contain exactly one exact generated hook argv prefix rule",
         ));
     }
-    if !trimmed.contains("pattern = [") || !trimmed.contains("decision = ") {
+    let exact_shape_error = || {
+        HostContractValidationError::new(
+            "Codex rule config must use the exact generated hook argv prefix with five closed script choices",
+        )
+    };
+    let Some(pattern_lines) = codex_rule_list_lines(trimmed, "pattern = [\"sh\", \"-c\", [", "]],")
+    else {
+        return Err(exact_shape_error());
+    };
+    let Some(match_lines) = codex_rule_list_lines(trimmed, "match = [", "],") else {
+        return Err(exact_shape_error());
+    };
+    let Some(not_match_lines) = codex_rule_list_lines(trimmed, "not_match = [", "],") else {
+        return Err(exact_shape_error());
+    };
+    let expected_pattern_lines = REQUIRED_GUARD_PHASES
+        .iter()
+        .map(|phase| {
+            format!(
+                "\"root=$(git rev-parse --show-toplevel) || exit $?; exec \\\"$root/.codex/hooks/volicord-dispatch.sh\\\" {}\",",
+                phase.command_name()
+            )
+        })
+        .collect::<Vec<_>>();
+    let expected_match_lines = REQUIRED_GUARD_PHASES
+        .iter()
+        .map(|phase| {
+            format!(
+                "\"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \\\"$root/.codex/hooks/volicord-dispatch.sh\\\" {}'\",",
+                phase.command_name()
+            )
+        })
+        .collect::<Vec<_>>();
+    if !same_string_set(&pattern_lines, &expected_pattern_lines)
+        || !same_string_set(&match_lines, &expected_match_lines)
+        || !same_string_set(
+            &not_match_lines,
+            &[
+                "\"sh -c 'echo unrelated'\",".to_owned(),
+                "\"volicord status\",".to_owned(),
+            ],
+        )
+    {
+        return Err(exact_shape_error());
+    }
+    if trimmed
+        .lines()
+        .filter(|line| line.trim() == "decision = \"prompt\",")
+        .count()
+        != 1
+    {
         return Err(HostContractValidationError::new(
-            "Codex rule config must include pattern and decision fields",
+            "Codex rule config must prompt for the exact generated hook argv prefix",
         ));
     }
     Ok(())
+}
+
+fn codex_rule_list_lines(text: &str, start: &str, end: &str) -> Option<Vec<String>> {
+    let lines = text.lines().map(str::trim).collect::<Vec<_>>();
+    let start_index = lines.iter().position(|line| *line == start)?;
+    let end_index = lines
+        .iter()
+        .enumerate()
+        .skip(start_index + 1)
+        .find_map(|(index, line)| (*line == end).then_some(index))?;
+    Some(
+        lines[start_index + 1..end_index]
+            .iter()
+            .filter(|line| !line.is_empty())
+            .map(|line| (*line).to_owned())
+            .collect(),
+    )
+}
+
+fn same_string_set(actual: &[String], expected: &[String]) -> bool {
+    actual.len() == expected.len() && expected.iter().all(|line| actual.contains(line))
 }
 
 fn validate_claude_rule_config(text: &str) -> Result<(), HostContractValidationError> {
@@ -1810,6 +1881,49 @@ command = ["volicord"]
                 error.message().contains("portable repository-discovery")
                     || error.message().contains("must not define local field")
             );
+        }
+    }
+
+    #[test]
+    fn codex_rule_contract_rejects_nonmatching_or_overbroad_argv_prefixes() {
+        let valid = include_str!("../../tests/fixtures/host_contracts/codex/rules/volicord.rules");
+        let sixth_alternative =
+            valid.replacen("    ]],", "        \"echo unrelated\",\n    ]],", 1);
+        let second_rule = format!(
+            "{valid}\nprefix_rule(\n    pattern = [\"sh\"],\n    decision = \"allow\",\n)\n"
+        );
+        let inline_second_rule =
+            format!("{valid}\nprefix_rule (pattern = [\"sh\"], decision = \"allow\")\n");
+        for invalid in [
+            r#"
+prefix_rule(
+    pattern = [".codex", "hooks"],
+    decision = "prompt",
+    match = [
+        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'",
+    ],
+)
+"#,
+            r#"
+prefix_rule(
+    pattern = ["sh", "-c"],
+    decision = "prompt",
+    match = [
+        "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'",
+    ],
+)
+"#,
+            sixth_alternative.as_str(),
+            second_rule.as_str(),
+            inline_second_rule.as_str(),
+        ] {
+            let error = validate_contract_config(
+                HostKind::Codex,
+                HostContractConfigKind::RuleConfig,
+                invalid,
+            )
+            .expect_err("Codex rules must use the closed generated hook-script argv choice");
+            assert!(error.message().contains("exact generated hook argv"));
         }
     }
 

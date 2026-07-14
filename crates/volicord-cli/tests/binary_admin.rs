@@ -5115,6 +5115,11 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     let rules = fs::read_to_string(repo_root.join(".codex/rules/volicord.rules"))?;
     assert!(rules.contains("# BEGIN VOLICORD MANAGED CODEX RULES"));
     assert!(rules.contains("prefix_rule("));
+    assert!(rules.contains("pattern = [\"sh\", \"-c\", ["));
+    assert!(!rules.contains("pattern = [\".codex\", \"hooks\"]"));
+    assert!(rules.contains("not_match = ["));
+    assert!(rules.contains("sh -c 'echo unrelated'"));
+    assert!(rules.contains("volicord status"));
     assert!(rules.contains("git rev-parse --show-toplevel"));
     assert!(rules.contains(".codex/hooks/volicord-dispatch.sh"));
     assert!(rules.contains("session-start"));

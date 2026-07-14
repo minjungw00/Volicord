@@ -264,8 +264,8 @@ pub(crate) fn host_hook_commands_json(commands: &[HostHookCommand]) -> Value {
             .iter()
             .map(|command| {
                 let (command_text, args) = match &command.generated_command_shape {
-                    HostHookCommandShape::ShellCommandString(command) => {
-                        (command.clone(), Value::Null)
+                    HostHookCommandShape::ShellCommandString { command_text, .. } => {
+                        (command_text.clone(), Value::Null)
                     }
                     HostHookCommandShape::Exec { command, args } => (
                         command.clone(),
