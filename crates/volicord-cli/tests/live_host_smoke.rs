@@ -532,6 +532,28 @@ mod unix {
         let prompt = live_evidence_observation_prompt(&prepared);
         assert!(prompt.contains(LIVE_EVIDENCE_OBSERVATION_RUN_MARKER));
         assert!(prompt.contains(&format!("`project_selector={}`", prepared.project_id)));
+        for expected in [
+            "`detail=full`",
+            "`request.operation=create`",
+            "`request.task_id=",
+            "`request.change_unit_id=",
+            "`request.required_for=[\"record_run\"]`",
+            "`request.expires_at=null`",
+            "`request.action.action_type=evidence_observation`",
+            "`request.action.question=",
+            "`request.action.context_summary=",
+            "`request.action.target_candidates=",
+            "`request.action.artifact_candidate_ids=",
+            "Do not put `request.task_id`, `request.change_unit_id`, `request.required_for`, or `request.expires_at` inside `request.action`",
+            "`request.operation=resume`",
+            "`request.user_action_request_id`",
+            "Do not include create-only fields in the resume `request`",
+        ] {
+            assert!(
+                prompt.contains(expected),
+                "live evidence-observation prompt omitted closed request guidance: {expected}"
+            );
+        }
         Ok(())
     }
 
@@ -3360,9 +3382,9 @@ mod unix {
                 "Continue the prepared Volicord evidence-observation validation using the MCP server named `volicord`. ",
                 "{routing_instruction} ",
                 "Do not edit files, run shell commands, prepare a write, inspect or relay host-only metadata, open any consent URL, or answer on the user's behalf. The fixture contains no real credential or secret; its display metadata contains a routing marker solely so Volicord requires a user-only local consent page.\n\n",
-                "1. Call `volicord.request_user_action` exactly once with `detail=full` and nested `request.operation=create`. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `request.action.action_type=evidence_observation`, question `{question}`, context summary `{context_summary}`, `target_candidates=[{target}]`, `artifact_candidate_ids=[\"{artifact_id}\"]`, `required_for=[\"record_run\"]`, and `expires_at=null`. Do not create any other user action.\n",
+                "1. Call `volicord.request_user_action` exactly once with `detail=full` and the closed create shape. Set `request.operation=create`, `request.task_id={task_id}`, `request.change_unit_id={change_unit_id}`, `request.required_for=[\"record_run\"]`, and `request.expires_at=null`. Set `request.action` to the closed evidence-observation object with `request.action.action_type=evidence_observation`, `request.action.question=\"{question}\"`, `request.action.context_summary=\"{context_summary}\"`, `request.action.target_candidates=[{target}]`, and `request.action.artifact_candidate_ids=[\"{artifact_id}\"]`. Do not put `request.task_id`, `request.change_unit_id`, `request.required_for`, or `request.expires_at` inside `request.action`, and do not add any other `request.action` members. Do not create any other user action.\n",
                 "2. The returned public result must expose only `user_action_request_summary` with the exact keys `user_action_request_id`, `status=pending`, and `next_actor=user`; it must not expose a full request, request ref, inbox item, form, question, URL, token, command, or channel availability. The local-web handoff exists only in host-consumed top-level `CallToolResult._meta[\"{capability_namespace}\"]` and is owned entirely by a separate host model-invisible surface. Do not inspect, print, quote, relay, or open it. If the host does not render that separate surface, report only that the required User Channel is unavailable and stop without elicitation, prompt capture, or CLI fallback.\n",
-                "3. Wait until the operator confirms completion without pasting any URL, token, form value, or observation summary into chat. Then call `volicord.request_user_action` exactly once with the same request ID and nested `request.operation=resume`; never use create again. Require `agent_workflow_result_replayed=true`, `current_status=resolved`, a non-null `user_action_resolution_ref`, and an evidence-observation resolution summary whose target equals `{target}`, whose sole artifact has ID `{artifact_id}`, and whose relevance is `supported`. Do not record a Run if any fact differs.\n",
+                "3. Wait until the operator confirms completion without pasting any URL, token, form value, or observation summary into chat. Then call `volicord.request_user_action` exactly once with `detail=full` and the closed resume shape: set `request.operation=resume` and set `request.user_action_request_id` to the request ID returned in step 2. Do not include create-only fields in the resume `request`, and never use create again. Require `agent_workflow_result_replayed=true`, `current_status=resolved`, a non-null `user_action_resolution_ref`, and an evidence-observation resolution summary whose target equals `{target}`, whose sole artifact has ID `{artifact_id}`, and whose relevance is `supported`. Do not record a Run if any fact differs.\n",
                 "4. Consume that exact resolution in one `volicord.record_run` call. Use `task_id={task_id}`, `change_unit_id={change_unit_id}`, `kind=shaping_update`, `run_id=null`, `baseline_ref={baseline_ref}`, `write_ticket_id=null`, summary exactly `{run_marker}`, no product-file changes, `artifact_inputs=[]`, and one supported evidence update for the resolved target with the exact resolved ArtifactRef. Add exactly one evidence observation for that target with `source_kind=user_observation`, `assurance_level=user_observed`, null observer/tool fields, empty tool metadata/source refs/limitations, `input_refs` containing only the exact resolution ref, `output_artifact_refs` containing only the exact resolved ArtifactRef, and `observed_at={caller_observed_at}`. Supply a close assessment with result summary exactly `{run_marker}` and empty result refs, risks, sensitive categories, and recovery constraints.\n",
                 "5. Call `volicord.status` for Task `{task_id}`. Report only the request ID from the safe summary, resolution ID, Run ID, evidence observation ID, lifecycle phase, close state, blocker count, and state version. Do not repeat a request ref, form, question, URL, token, user summary, this prompt, or a transcript. Then stop."
             ),
