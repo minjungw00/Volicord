@@ -794,7 +794,7 @@ mod unix {
             "fixture-host 1.0",
         )?;
         assert!(version_fixture
-            .run_host_command(&version_host, ["--version"])
+            .run_installed_host_version_probe(&version_host)
             .is_err());
 
         let login_fixture = LiveSmokeFixture::new("guarded-login-status")?;
@@ -820,6 +820,24 @@ mod unix {
                 panic!("fixture host invocation unwind");
             })
             .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn installed_host_version_probe_does_not_use_disposable_codex_home(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("host-version-home")?;
+        let host = fixture.runtime_home_path.join("version-host");
+        fs::write(
+            &host,
+            "#!/bin/sh\nif [ \"${CODEX_HOME+x}\" = x ]; then\n  printf 'unexpected CODEX_HOME\\n' >&2\n  exit 21\nfi\nprintf 'fixture-host 1.0\\n'\n",
+        )?;
+        make_executable(&host)?;
+
+        let output = fixture.run_installed_host_version_probe(&host)?;
+        require_success("fixture installed-host version probe", &output)?;
+        assert_eq!(stdout(&output), "fixture-host 1.0\n");
+        assert!(stderr(&output).is_empty());
         Ok(())
     }
 
@@ -13699,6 +13717,24 @@ mod unix {
             })
         }
 
+        fn run_installed_host_version_probe(
+            &self,
+            program: &Path,
+        ) -> Result<TimedOutput, Box<dyn Error>> {
+            let mut command = Command::new(program);
+            command
+                .arg("--version")
+                .current_dir(&self.repo_root)
+                .env("PATH", &self.env_path)
+                .env("NO_COLOR", "1")
+                .env_remove("CODEX_HOME");
+            Self::remove_inherited_host_control_env(&mut command);
+            Self::remove_inherited_auth_secret_env(&mut command);
+            self.with_private_candidate_digest_guard(|| {
+                run_with_timeout(command, COMMAND_TIMEOUT).map_err(Into::into)
+            })
+        }
+
         fn observe_and_bind_installed_host_identity(
             &self,
             recorder: &mut LiveResultRecorder,
@@ -13708,7 +13744,7 @@ mod unix {
             recorder.mark_installed_host_detected();
             let host_executable_sha256 =
                 sha256_file(executable, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
-            let host_version_output = self.run_host_command(executable, ["--version"])?;
+            let host_version_output = self.run_installed_host_version_probe(executable)?;
             let host_version = if executable_name == "codex" {
                 canonical_codex_version_summary(&host_version_output)?
             } else {
