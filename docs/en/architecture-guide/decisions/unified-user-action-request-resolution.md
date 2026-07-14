@@ -40,6 +40,16 @@ token. No User Channel credential or credential-bearing URL may enter Agent
 Connection `content`, `structuredContent`, compatibility or diagnostic text,
 exact replay, or operation-result bytes.
 
+The loopback browser submission adds an independent transport defense. Every
+`POST /consent` must carry exactly one syntactically valid `Origin` whose
+scheme and authority equal the listener's own origin. The server rejects a
+missing, empty, `null`, malformed, comma-joined, repeated, or different origin
+before reading the form body, looking up the token, or invoking Core. A
+`GET /consent` does not require `Origin`, but a supplied origin must satisfy the
+same exact validation. This gate is defense in depth against browser cross-
+origin submission; it is neither user authentication nor a substitute for the
+model-invisible credential boundary.
+
 Request creation and resolution each use one canonical prepared-operation time
 sample for status, expiry, and their semantic timestamps. A later Core commit
 timestamp does not rewrite that sample. Local-web token validation uses the
@@ -80,6 +90,10 @@ shape are removed.
   when the listener and negotiated model-invisible host surface are both
   available; capability omission or negotiation failure falls back to CLI
   without token issuance.
+- Local-web browser submission requires the exact same-origin transport gate
+  before request-body, token, replay, or resolution processing. Rejection has
+  no token or Core state effect, and the same valid token can be retried from
+  the correct origin.
 - The user selects only stored candidates through a verified `User Channel`.
 - Resolution kind, request kind, basis, Task, Change Unit, scope, baseline,
   target, artifact bytes, expiry, and channel binding are revalidated before one
@@ -143,6 +157,14 @@ rendering or effects. The row is never upgraded; the pending action remains
 resolvable through another valid User Channel such as CLI. No compatibility
 alias restores the unsafe projection.
 
+Requiring same-origin `Origin` on browser `POST /consent` is also a correction
+inside that unreleased batch. It changes no public method schema, DDL, or
+storage profile and needs no separate SemVer change. Browser form submissions
+already supply `Origin`; a non-browser caller that omitted it now receives the
+transport-owned `403 ORIGIN_NOT_ALLOWED` response and must use a conforming
+same-origin request or another User Channel. Rejection occurs before token
+lookup, so it neither consumes nor invalidates an otherwise valid token.
+
 The corrected Store and adapter fences apply only after the pre-correction
 process has been replaced or restarted. A still-running old process can retain
 an already-issued raw credential and is bounded only by that token's existing
@@ -173,6 +195,12 @@ TTL; operators must replace it before relying on the corrected fence.
   model.
 - Putting the URL in ordinary MCP content with instructions not to use it would
   preserve the authority bypass rather than enforce the channel boundary.
+- Treating `Origin` as optional when absent was rejected because it makes the
+  browser defense depend on attacker-controlled header omission.
+- Treating the bearer token as sufficient browser-request protection was
+  rejected because possession of the token and same-origin request provenance
+  are separate defenses, and neither one replaces the model-invisible delivery
+  invariant.
 
 ## Implementation and tests
 

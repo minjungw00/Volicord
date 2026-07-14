@@ -393,11 +393,11 @@ revalidates it before replay or commit. These checks prevent a different local
 credential or context from opening that replay; they do not attest a human
 identity or turn the listener into an authentication or authorization service.
 The raw token is issued only for a negotiated model-invisible host surface and
-must not enter Agent Connection output. A token created under the superseded
-delivery contract lacks the required delivery-surface marker and is permanently
-unusable under corrected code: GET and POST fail closed without rendering or
-effects. The row is never upgraded; the pending action remains resolvable
-through another valid User Channel such as CLI.
+must not enter Agent-visible/model-context or public output. A token created
+under the superseded delivery contract lacks the required delivery-surface
+marker and is permanently unusable under corrected code: GET and POST fail
+closed without rendering or effects. The row is never upgraded; the pending
+action remains resolvable through another valid User Channel such as CLI.
 
 ### Broad authority inference
 

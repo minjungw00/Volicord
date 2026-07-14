@@ -35,6 +35,14 @@ credential이나 credential을 포함한 URL은 Agent Connection `content`,
 `structuredContent`, 호환·진단 text, 정확한 replay, operation-result byte에 들어가면 안
 됩니다.
 
+Loopback browser 제출에는 독립적인 전송 방어를 추가합니다. 모든 `POST /consent`는
+listener 자체 origin과 scheme 및 authority가 같은, 문법적으로 유효한 `Origin` 하나만
+담아야 합니다. 서버는 form body를 읽거나 token을 조회하거나 Core를 호출하기 전에
+누락·빈 값·`null`·잘못된 형식·쉼표 결합·중복·다른 origin을 거부합니다. `GET
+/consent`는 `Origin`을 요구하지 않지만, 제공된 origin은 같은 정확한 검증을 통과해야
+합니다. 이 gate는 browser cross-origin 제출에 대한 심층 방어이며 사용자 인증도,
+모델 비가시 credential 경계의 대체물도 아닙니다.
+
 요청 생성과 해결은 각각 정규 준비 동작 시각 샘플 하나를 상태, expiry, 의미 있는
 timestamp에 사용합니다. 이후의 Core 커밋 timestamp는 이 샘플을 다시 쓰지 않습니다.
 로컬 web token 검증은 같은 프로젝트 시계의 반열린 구간
@@ -68,6 +76,9 @@ connection과 metadata를 결합한 domain-separated token digest를 사용합�
 - Listener 존재는 전달 capability가 아닙니다. Listener와 협상된 모델 비가시적 host
   표면을 모두 사용할 수 있을 때만 local web을 사용할 수 있으며 capability 누락이나
   협상 실패는 token 발급 없이 CLI로 fallback합니다.
+- Local-web browser 제출은 request body, token, replay, resolution을 처리하기 전에
+  정확한 same-origin 전송 gate를 통과해야 합니다. 거부는 token이나 Core 상태에 효과를
+  남기지 않으며 같은 유효 token을 올바른 origin에서 다시 시도할 수 있습니다.
 - 사용자는 검증된 `User Channel`에서 저장된 후보만 선택합니다.
 - 해결 종류, 요청 종류, 근거, Task, Change Unit, scope, baseline, 대상, 아티팩트
   bytes, 만료, 채널 binding을 하나의 원자적 커밋 전에 다시 검증합니다.
@@ -122,6 +133,13 @@ token에는 필수 `delivery_surface=model_invisible_user_surface` 생성 marker
 유효한 User Channel로 계속 해결할 수 있습니다. 안전하지 않은 projection을 복구하는
 호환 별칭은 두지 않습니다.
 
+Browser `POST /consent`에 same-origin `Origin`을 요구하는 것도 같은 미출시 batch 안의
+보정입니다. 공개 메서드 스키마, DDL, 저장 프로필을 바꾸지 않으며 별도 SemVer 변경이
+필요하지 않습니다. Browser form 제출은 이미 `Origin`을 제공합니다. 이를 생략하던
+non-browser 호출자는 이제 전송 담당 `403 ORIGIN_NOT_ALLOWED` 응답을 받으며, 계약에 맞는
+same-origin 요청이나 다른 User Channel을 사용해야 합니다. 거부는 token 조회 전에
+일어나므로 다른 면에서 유효한 token을 소비하거나 무효화하지 않습니다.
+
 수정된 Store와 adapter fence는 수정 전 process를 교체하거나 재시작한 뒤에만 적용됩니다.
 계속 실행 중인 이전 process는 이미 발급한 raw credential을 보유할 수 있고 기존 token
 TTL로만 제한됩니다. 수정된 fence에 의존하기 전에 이전 process를 교체해야 합니다.
@@ -148,6 +166,11 @@ TTL로만 제한됩니다. 수정된 fence에 의존하기 전에 이전 process
   클라이언트에 권한 효력이 있는 bearer credential을 발급하게 됩니다.
 - 일반 MCP content에 URL을 넣고 사용하지 말라고 안내하면 채널 경계를 강제하지 않고
   권한 우회를 그대로 유지합니다.
+- `Origin`이 없을 때 검사를 선택적으로 적용하는 방안은 browser 방어가 공격자가 통제할
+  수 있는 header 생략에 의존하게 되므로 거부했습니다.
+- Browser 요청 보호에 bearer token만으로 충분하다고 보는 방안은 token 보유와
+  same-origin 요청 출처가 서로 다른 방어이고 어느 쪽도 모델 비가시 전달 불변 조건을
+  대신하지 못하므로 거부했습니다.
 
 ## 구현과 테스트
 

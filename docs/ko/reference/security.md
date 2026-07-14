@@ -371,11 +371,11 @@ token이 아니라 domain-separated hash와 digest-only submission/replay identi
 폐쇄형 완료 맥락에 결속하고 replay 또는 커밋 전에 다시 검증합니다. 이 점검은 서로 다른
 로컬 credential이나 맥락이 해당 replay를 여는 것을 막지만 사람 신원을 증명하거나
 listener를 인증·인가 서비스로 바꾸지는 않습니다.
-원문 token은 협상된 모델 비가시적 host 표면에 대해서만 발급하고 Agent Connection 출력에
-들어가면 안 됩니다. 폐기된 전달 계약으로 만든 token에는 필수 delivery-surface marker가
-없으므로 수정된 코드에서 영구적으로 사용할 수 없습니다. GET과 POST는 표시나
-효과 없이 닫힌 상태로 실패합니다. 그 행은 upgrade하지 않으며 대기 행동은 CLI 같은
-다른 유효한 User Channel로 계속 해결할 수 있습니다.
+원문 token은 협상된 모델 비가시적 host 표면에 대해서만 발급하고 Agent 대상·모델 맥락
+또는 공개 출력에 들어가면 안 됩니다. 폐기된 전달 계약으로 만든 token에는 필수
+delivery-surface marker가 없으므로 수정된 코드에서 영구적으로 사용할 수 없습니다. GET과
+POST는 표시나 효과 없이 닫힌 상태로 실패합니다. 그 행은 upgrade하지 않으며 대기 행동은
+CLI 같은 다른 유효한 User Channel로 계속 해결할 수 있습니다.
 
 ### 포괄적 권한 추론
 

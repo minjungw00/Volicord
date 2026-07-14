@@ -1008,6 +1008,8 @@ documents:
   - reference.api.schema-user-action
   - reference.core-model
   - reference.mcp-transport
+  - reference.agent-connection
+  - reference.security
   - reference.storage-records
   - reference.storage-ddl
   - reference.storage-effects
