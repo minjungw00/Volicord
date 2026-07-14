@@ -5,6 +5,7 @@ mod support;
 #[cfg(unix)]
 mod unix {
     use std::{
+        collections::BTreeSet,
         env,
         error::Error,
         ffi::OsString,
@@ -30,6 +31,7 @@ mod unix {
             DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
             DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         },
+        session_watch::latest_watch_baseline_for_session,
         sqlite::open_project_state_database_read_only,
     };
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
@@ -105,6 +107,7 @@ mod unix {
     const MAX_VALIDATION_RUN_ID_CHARS: usize = 192;
     const MAX_RECORDED_AT_CHARS: usize = 64;
     const MAX_LIVE_HOST_RESULT_BYTES: usize = 16 * 1_024;
+    const MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN: u64 = 8;
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
 
     #[test]
@@ -950,6 +953,43 @@ mod unix {
             .remove("managed_mcp_observation");
         assert!(validate_final_output_result_shape(
             &missing_record_mcp_observation,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut bounded_multi_session_record = record.clone();
+        let multi_session = &mut bounded_multi_session_record["evidence"]["actual_host_event"]
+            ["authority_receipt_event"]["managed_mcp_observation"];
+        multi_session["agent_session_delta"] = Value::from(2);
+        multi_session["session_ids"] =
+            serde_json::json!(["SESSION-retry-fixture", "SESSION-receipt-fixture"]);
+        validate_final_output_result_shape(
+            &bounded_multi_session_record,
+            IntegrationProfile::Record,
+        )?;
+        let mut zero_session_delta = record.clone();
+        zero_session_delta["evidence"]["actual_host_event"]["authority_receipt_event"]
+            ["managed_mcp_observation"]["agent_session_delta"] = Value::from(0);
+        assert!(validate_final_output_result_shape(
+            &zero_session_delta,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut mismatched_session_set = record.clone();
+        mismatched_session_set["evidence"]["actual_host_event"]["authority_receipt_event"]
+            ["managed_mcp_observation"]["agent_session_delta"] = Value::from(2);
+        assert!(validate_final_output_result_shape(
+            &mismatched_session_set,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut duplicate_session_set = record.clone();
+        let duplicate_managed = &mut duplicate_session_set["evidence"]["actual_host_event"]
+            ["authority_receipt_event"]["managed_mcp_observation"];
+        duplicate_managed["agent_session_delta"] = Value::from(2);
+        duplicate_managed["session_ids"] =
+            serde_json::json!(["SESSION-receipt-fixture", "SESSION-receipt-fixture"]);
+        assert!(validate_final_output_result_shape(
+            &duplicate_session_set,
             IntegrationProfile::Record
         )
         .is_err());
@@ -1967,6 +2007,7 @@ mod unix {
             ))
             .into());
         }
+        let after_actual_host = guard_observation_counts(&fixture, &project_id)?;
         verify_live_connection_after_host_observation(&fixture, host, &identity.connection_id)?;
         confirm_final_output_ui(host, profile, FinalOutputUiExpectation::ManagedSurface)?;
         confirm_final_output_ui(
@@ -1976,7 +2017,6 @@ mod unix {
                 complete_message: first_wire.system_message.clone(),
             },
         )?;
-        let after_actual_host = guard_observation_counts(&fixture, &project_id)?;
 
         let no_active_actual_event = match profile {
             IntegrationProfile::Record => {
@@ -2056,6 +2096,7 @@ mod unix {
             ))
             .into());
         }
+        let after_receipt_host = guard_observation_counts(&fixture, &project_id)?;
         let prepared = read_live_final_authority(
             &fixture,
             &identity.connection_id,
@@ -2071,7 +2112,6 @@ mod unix {
                 canonical_json: canonical_json_string(&prepared.receipt.canonical_receipt)?,
             },
         )?;
-        let after_receipt_host = guard_observation_counts(&fixture, &project_id)?;
         let (receipt_actual_event, detective_decision) = match profile {
             IntegrationProfile::Record => {
                 let managed_mcp_observation = verify_record_managed_mcp_host_turn(
@@ -6396,10 +6436,12 @@ mod unix {
                     }
                     serde_json::json!({
                         "agent_session_delta": 1,
+                        "all_new_sessions_validated": true,
+                        "complete_session_ids": [session_id],
                         "connection_id": "CONN-fixture",
                         "guard_mode": "record",
                         "lifecycle_events": lifecycle_events,
-                        "session_id": session_id,
+                        "session_ids": [session_id],
                         "tool_name": tool_name
                     })
                 };
@@ -6783,13 +6825,55 @@ mod unix {
                             .into());
                         }
                         let managed = &event["managed_mcp_observation"];
-                        if managed["agent_session_delta"] != 1
+                        let agent_session_delta = managed["agent_session_delta"]
+                            .as_u64()
+                            .filter(|delta| {
+                                (1..=MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN).contains(delta)
+                            })
+                            .ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "verified Record {branch} has no bounded positive managed MCP AgentSession delta"
+                                ))
+                            })?;
+                        let session_ids = managed["session_ids"].as_array().ok_or_else(|| {
+                            io::Error::other(format!(
+                                "verified Record {branch} has no managed MCP session-id set"
+                            ))
+                        })?;
+                        let complete_session_ids = managed["complete_session_ids"]
+                            .as_array()
+                            .filter(|values| !values.is_empty())
+                            .ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "verified Record {branch} has no complete managed MCP session set"
+                                ))
+                            })?;
+                        let unique_session_ids = session_ids
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .collect::<BTreeSet<_>>();
+                        let unique_complete_session_ids = complete_session_ids
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .collect::<BTreeSet<_>>();
+                        if session_ids.len() != usize::try_from(agent_session_delta)?
+                            || session_ids
+                                .iter()
+                                .any(|value| value.as_str().is_none_or(str::is_empty))
+                            || unique_session_ids.len() != session_ids.len()
+                            || complete_session_ids
+                                .iter()
+                                .any(|value| value.as_str().is_none_or(str::is_empty))
+                            || unique_complete_session_ids.len() != complete_session_ids.len()
+                            || complete_session_ids
+                                .iter()
+                                .any(|complete| !session_ids.contains(complete))
+                            || managed["all_new_sessions_validated"] != true
                             || managed["guard_mode"] != IntegrationProfile::Record.as_str()
                             || managed["connection_id"].as_str().is_none_or(str::is_empty)
-                            || managed["session_id"].as_str().is_none_or(str::is_empty)
                         {
                             return Err(io::Error::other(format!(
-                                "verified Record {branch} must separate one registered managed MCP AgentSession from non-observing final-output delivery"
+                                "verified Record {branch} must separate every bounded registered managed MCP AgentSession from non-observing final-output delivery"
                             ))
                             .into());
                         }
@@ -6927,6 +7011,7 @@ mod unix {
     struct GuardObservationCounts {
         guard_events: u64,
         agent_sessions: u64,
+        max_agent_session_rowid: i64,
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -6957,11 +7042,17 @@ mod unix {
             .find(|project| project.project_id == project_id)
             .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
         let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let guard_events =
+            conn.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
+        let (agent_sessions, max_agent_session_rowid) = conn.query_row(
+            "SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM agent_sessions",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
         Ok(GuardObservationCounts {
-            guard_events: conn
-                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
-            agent_sessions: conn
-                .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?,
+            guard_events,
+            agent_sessions,
+            max_agent_session_rowid,
         })
     }
 
@@ -6979,15 +7070,26 @@ mod unix {
             )
             .into());
         }
-        let expected_agent_sessions = before
+        let agent_session_delta = after
             .agent_sessions
-            .checked_add(1)
-            .ok_or_else(|| io::Error::other("Record AgentSession count overflowed"))?;
-        if after.agent_sessions != expected_agent_sessions {
+            .checked_sub(before.agent_sessions)
+            .filter(|delta| *delta > 0)
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "Record actual-host turn did not add a managed MCP AgentSession: before={}, after={}",
+                    before.agent_sessions, after.agent_sessions
+                ))
+            })?;
+        if agent_session_delta > MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN {
             return Err(io::Error::other(format!(
-                "Record actual-host turn must add exactly one managed MCP AgentSession while final-output handling remains non-observing: before={}, after={}",
-                before.agent_sessions, after.agent_sessions
+                "Record actual-host turn added an unbounded number of managed MCP AgentSessions: delta={agent_session_delta}, maximum={MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN}"
             ))
+            .into());
+        }
+        if after.max_agent_session_rowid <= before.max_agent_session_rowid {
+            return Err(io::Error::other(
+                "Record actual-host AgentSession count advanced without a new rowid",
+            )
             .into());
         }
 
@@ -6996,114 +7098,221 @@ mod unix {
             .find(|project| project.project_id == project_id)
             .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
         let conn = open_project_state_database_read_only(&project.state_db_path)?;
-        let (session_id, guard_mode, session_metadata_json): (String, String, String) = conn
-            .query_row(
-                "SELECT session_id, guard_mode, metadata_json
-                   FROM agent_sessions
-                  WHERE project_id = ?1
-                    AND connection_internal_id = ?2
-                  ORDER BY rowid DESC
-                  LIMIT 1",
-                [project_id, connection_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )?;
-        if guard_mode != IntegrationProfile::Record.as_str() {
+        let mut statement = conn.prepare(
+            "SELECT rowid, session_id, connection_internal_id, host_kind, guard_mode, metadata_json
+               FROM agent_sessions
+              WHERE project_id = ?1
+                AND rowid > ?2
+                AND rowid <= ?3
+              ORDER BY rowid",
+        )?;
+        let new_sessions = statement
+            .query_map(
+                rusqlite::params![
+                    project_id,
+                    before.max_agent_session_rowid,
+                    after.max_agent_session_rowid
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        if u64::try_from(new_sessions.len())? != agent_session_delta {
             return Err(io::Error::other(format!(
-                "Record managed MCP AgentSession used unexpected guard_mode {guard_mode:?}"
+                "Record actual-host AgentSession delta does not match the bounded rowid window: delta={agent_session_delta}, rows={}",
+                new_sessions.len()
             ))
             .into());
         }
-        let session_metadata: Value = serde_json::from_str(&session_metadata_json)?;
-        if session_metadata["source"] != "volicord_session_watch"
-            || session_metadata["session_watch_initialized"] != true
-        {
-            return Err(io::Error::other(
-                "Record managed MCP AgentSession is missing its bounded session-watch initialization metadata",
-            )
-            .into());
-        }
 
-        let baseline_metadata_json: String = conn.query_row(
-            "SELECT metadata_json
-               FROM session_watch_baselines
-              WHERE project_id = ?1
-                AND session_id = ?2
-                AND connection_internal_id = ?3
-              ORDER BY rowid DESC
-              LIMIT 1",
-            [project_id, session_id.as_str(), connection_id],
-            |row| row.get(0),
-        )?;
-        let baseline_metadata: Value = serde_json::from_str(&baseline_metadata_json)?;
-        if baseline_metadata["source"] != "volicord_session_watch"
-            || baseline_metadata["coverage_basis"] != "mcp_start"
-            || baseline_metadata["launch_origin"] != "managed_host"
-            || baseline_metadata["host_kind"] != "codex"
-            || baseline_metadata["connection_id"] != connection_id
-            || baseline_metadata["project_id"] != project_id
+        let mut session_ids = Vec::with_capacity(new_sessions.len());
+        let mut complete_session_ids = Vec::new();
+        let mut observed_lifecycle_events = BTreeSet::new();
+        let mut expected_tool_calls_received = 0_u64;
+        let mut expected_tool_calls_completed = 0_u64;
+        let mut expected_tool_received_session_id = None;
+        let mut expected_tool_completed_session_id = None;
+        for (_, session_id, observed_connection_id, host_kind, guard_mode, session_metadata_json) in
+            new_sessions
         {
-            return Err(io::Error::other(
-                "Record host turn did not persist the expected registered managed MCP lifecycle binding",
-            )
-            .into());
-        }
-        let lifecycle_events = baseline_metadata["lifecycle_events"]
-            .as_array()
-            .ok_or_else(|| io::Error::other("managed MCP lifecycle metadata has no events"))?;
-        let lifecycle_event_names = lifecycle_events
-            .iter()
-            .filter_map(|event| event["lifecycle_event"].as_str())
-            .collect::<Vec<_>>();
-        for required in [
-            "managed_host_startup",
-            "managed_host_initialize_response",
-            "managed_host_tools_list",
-        ] {
-            if !lifecycle_event_names.contains(&required) {
+            if observed_connection_id != connection_id {
                 return Err(io::Error::other(format!(
-                    "Record host turn is missing required managed MCP lifecycle event {required:?}"
+                    "Record actual-host turn added an AgentSession for unexpected connection {observed_connection_id:?}"
                 ))
                 .into());
             }
-        }
-        let tool_call_events = lifecycle_events
-            .iter()
-            .filter(|event| {
-                matches!(
-                    event["lifecycle_event"].as_str(),
-                    Some("managed_host_tool_call" | "managed_host_tool_call_completed")
+            if host_kind != "codex" {
+                return Err(io::Error::other(format!(
+                    "Record managed MCP AgentSession used unexpected host_kind {host_kind:?}"
+                ))
+                .into());
+            }
+            if guard_mode != IntegrationProfile::Record.as_str() {
+                return Err(io::Error::other(format!(
+                    "Record managed MCP AgentSession used unexpected guard_mode {guard_mode:?}"
+                ))
+                .into());
+            }
+            let session_metadata: Value = serde_json::from_str(&session_metadata_json)?;
+            if session_metadata["source"] != "volicord_session_watch"
+                || session_metadata["session_watch_initialized"] != true
+            {
+                return Err(io::Error::other(
+                    "Record managed MCP AgentSession is missing its bounded session-watch initialization metadata",
                 )
-            })
-            .collect::<Vec<_>>();
-        match expected_tool_name {
-            Some(expected_tool_name) => {
-                for required in ["managed_host_tool_call", "managed_host_tool_call_completed"] {
-                    if !tool_call_events.iter().any(|event| {
-                        event["lifecycle_event"] == required
-                            && event["tool_name"] == expected_tool_name
-                    }) {
-                        return Err(io::Error::other(format!(
-                            "Record host turn is missing {required:?} evidence for {expected_tool_name:?}"
-                        ))
-                        .into());
-                    }
+                .into());
+            }
+
+            let baseline = latest_watch_baseline_for_session(
+                &fixture.runtime_home_path,
+                project_id,
+                &session_id,
+            )?
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "Record managed MCP AgentSession {session_id:?} has no canonical session-watch baseline"
+                ))
+            })?;
+            if baseline.connection_internal_id != connection_id {
+                return Err(io::Error::other(format!(
+                    "Record managed MCP baseline used unexpected connection {:?}",
+                    baseline.connection_internal_id
+                ))
+                .into());
+            }
+            let baseline_metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+            if baseline_metadata["source"] != "volicord_session_watch"
+                || baseline_metadata["coverage_basis"] != "mcp_start"
+                || baseline_metadata["launch_origin"] != "managed_host"
+                || baseline_metadata["host_kind"] != "codex"
+                || baseline_metadata["connection_id"] != connection_id
+                || baseline_metadata["project_id"] != project_id
+            {
+                return Err(io::Error::other(
+                    "Record host turn did not persist the expected registered managed MCP lifecycle binding",
+                )
+                .into());
+            }
+            let lifecycle_events = baseline_metadata["lifecycle_events"]
+                .as_array()
+                .ok_or_else(|| io::Error::other("managed MCP lifecycle metadata has no events"))?;
+            for event in lifecycle_events {
+                if event["connection_id"] != connection_id
+                    || event["project_id"] != project_id
+                    || event["host_kind"] != "codex"
+                    || event["launch_origin"] != "managed_host"
+                {
+                    return Err(io::Error::other(format!(
+                        "Record managed MCP AgentSession {session_id:?} contains a lifecycle event outside its registered managed-host binding"
+                    ))
+                    .into());
                 }
             }
-            None if !tool_call_events.is_empty() => {
+            let lifecycle_event_names = lifecycle_events
+                .iter()
+                .filter_map(|event| event["lifecycle_event"].as_str())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            if !lifecycle_event_names
+                .iter()
+                .any(|event| event == "managed_host_startup")
+            {
+                return Err(io::Error::other(
+                    "Record host turn added a managed MCP AgentSession without startup evidence",
+                )
+                .into());
+            }
+
+            for event in lifecycle_events {
+                let Some(lifecycle_event) = event["lifecycle_event"].as_str() else {
+                    continue;
+                };
+                let is_received = lifecycle_event == "managed_host_tool_call";
+                let is_completed = lifecycle_event == "managed_host_tool_call_completed";
+                if !is_received && !is_completed {
+                    continue;
+                }
+                let observed_tool_name = event["tool_name"].as_str();
+                if observed_tool_name != expected_tool_name {
+                    return Err(io::Error::other(format!(
+                        "Record actual-host turn observed unexpected MCP tool call {observed_tool_name:?}; expected {expected_tool_name:?}"
+                    ))
+                    .into());
+                }
+                if is_received {
+                    expected_tool_calls_received += 1;
+                    expected_tool_received_session_id = Some(session_id.clone());
+                }
+                if is_completed {
+                    expected_tool_calls_completed += 1;
+                    expected_tool_completed_session_id = Some(session_id.clone());
+                }
+            }
+
+            let complete_lifecycle = [
+                "managed_host_startup",
+                "managed_host_initialize_response",
+                "managed_host_tools_list",
+            ]
+            .iter()
+            .all(|required| lifecycle_event_names.iter().any(|event| event == required));
+            if complete_lifecycle {
+                complete_session_ids.push(session_id.clone());
+            }
+            observed_lifecycle_events.extend(lifecycle_event_names);
+            session_ids.push(session_id);
+        }
+
+        match expected_tool_name {
+            Some(expected_tool_name)
+                if expected_tool_calls_received != 1 || expected_tool_calls_completed != 1 =>
+            {
+                return Err(io::Error::other(format!(
+                    "Record host turn must observe exactly one received and completed {expected_tool_name:?} call across its managed MCP sessions: received={expected_tool_calls_received}, completed={expected_tool_calls_completed}"
+                ))
+                .into());
+            }
+            Some(expected_tool_name)
+                if expected_tool_received_session_id != expected_tool_completed_session_id =>
+            {
+                return Err(io::Error::other(format!(
+                    "Record host turn observed the received and completed {expected_tool_name:?} call in different managed MCP sessions"
+                ))
+                .into());
+            }
+            None if expected_tool_calls_received != 0 || expected_tool_calls_completed != 0 => {
                 return Err(io::Error::other(
                     "Record AuthorityReceipt host turn unexpectedly called an MCP tool",
                 )
                 .into());
             }
-            None => {}
+            _ => {}
         }
+        if complete_session_ids.is_empty() {
+            return Err(io::Error::other(
+                "Record actual-host turn has no complete registered managed MCP lifecycle",
+            )
+            .into());
+        }
+        session_ids.sort();
+        complete_session_ids.sort();
 
         Ok(serde_json::json!({
-            "agent_session_delta": 1,
+            "agent_session_delta": agent_session_delta,
+            "all_new_sessions_validated": true,
+            "complete_session_ids": complete_session_ids,
             "connection_id": connection_id,
-            "guard_mode": guard_mode,
-            "lifecycle_events": lifecycle_event_names,
-            "session_id": session_id,
+            "guard_mode": IntegrationProfile::Record.as_str(),
+            "lifecycle_events": observed_lifecycle_events.into_iter().collect::<Vec<_>>(),
+            "session_ids": session_ids,
             "tool_name": expected_tool_name,
         }))
     }

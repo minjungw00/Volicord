@@ -286,12 +286,16 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-detectiv
    Record는 의도적으로 지속 Guard 관찰을 만들지 않으므로, 해당 event 항목은 인증된
    호스트 소유 관리 UI 전달을 근거로 명시합니다. 직접 래퍼 전후 개수 검사는 최종 출력
    핸들러 자체가 Guard 이벤트나 Agent Session을 추가하지 않았음을 증명합니다. 실제 관리
-   호스트 turn은 별도로 MCP session 하나를 시작하므로 Record event 항목은 이 한 행의
-   `managed_mcp_observation`을 보고하고, 같은 Agent Connection과 `guard_mode=record`에
-   결속하며, 첫 turn에 필요한 `volicord.status` 호출과 두 번째 no-tool turn을 구분해야
-   합니다. 바깥 개수 검사는 Guard 이벤트 증가가 없고 정확히 이 MCP AgentSession 하나만
-   추가됐음을 요구하므로 해당 session을 최종 출력 전달 효과로 잘못 귀속하지 않습니다.
-   이는 전달 증거이지 지속 최종 출력 관찰을 꾸며낸 것이 아닙니다.
+   호스트 turn에서는 호스트가 관리 서버를 재시도하거나 재시작할 때 하나 이상의 MCP stdio
+   생명주기가 별도로 시작될 수 있습니다. Record event 항목은 한정된 양수 AgentSession
+   집합을 `managed_mcp_observation`으로 보고하고, 새 행 모두를 같은 Agent Connection,
+   `guard_mode=record`, 관리 호스트 시작 출처에 결속하며, 그중 하나 이상에서 완전한
+   시작·초기화·도구 목록 생명주기를 요구해야 합니다. 이 집합 전체에서 첫 turn은 정확히
+   한 번의 `volicord.status` 수신·완료 호출만 포함하고 다른 도구 호출은 없어야 하며, 두
+   번째 no-tool turn에는 도구 호출이 없어야 합니다. 바깥 개수와 rowid 창 검사는 Guard
+   이벤트 증가가 없고 새 MCP AgentSession 모두가 관리 생명주기에서 비롯됐음을 확인하여
+   이를 최종 출력 전달 효과로 잘못 귀속하지 않습니다. 이는 전달 증거이지 지속 최종 출력
+   관찰을 꾸며낸 것이 아닙니다.
    `actual_host_fixed_ui.authority_receipt`는 모델 산문과 구분되는 호스트 소유 고정 UI에서
    현재 Task의 receipt 전체를 별도로 기록하고 Project, Task, `state_version`, 최신 Run,
    닫기 상태, 차단 사유 수를 결속합니다. `actual_host_fixed_ui.status_fallback`은 Task가

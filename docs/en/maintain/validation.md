@@ -316,12 +316,16 @@ replaced by another:
    entries cite the authenticated host-owned managed-UI delivery while the
    direct-wrapper count check proves that the final-output handler itself adds
    no Guard event or Agent Session. An actual managed host turn separately
-   starts one MCP session; the Record event entry must report that one-row
-   `managed_mcp_observation`, bind it to the same Agent Connection and
-   `guard_mode=record`, and distinguish the required first-turn
-   `volicord.status` call from the second no-tool turn. The surrounding count
-   check requires no Guard-event increase and exactly that one MCP AgentSession,
-   so the session is not misattributed to final-output delivery. This remains
+   starts one or more MCP stdio lifecycles when the host retries or restarts its
+   managed server. The Record event entry must report the bounded positive
+   AgentSession set in `managed_mcp_observation`, bind every new row to the same
+   Agent Connection, `guard_mode=record`, and managed-host startup provenance,
+   and require at least one complete startup/initialize/tools-list lifecycle.
+   Across that set the first turn must contain exactly one received and
+   completed `volicord.status` call and no other tool call, while the second
+   no-tool turn must contain none. The surrounding count and rowid-window check
+   requires no Guard-event increase and attributes every new MCP AgentSession to
+   its managed lifecycle rather than to final-output delivery. This remains
    delivery evidence, not an invented durable final-output observation.
    `actual_host_fixed_ui.authority_receipt` separately records the complete
    active-Task receipt on the host-owned fixed UI, distinct from model prose,
