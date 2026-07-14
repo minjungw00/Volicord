@@ -6249,6 +6249,7 @@ mod unix {
         );
         match outcome {
             Ok(summary) if stage == "static_unsupported_by_host" => {
+                let summary = result_recorder.with_observed_host_identity(&summary)?;
                 validate_live_evidence_observation_incomplete_result_shape(&summary)?;
                 result_recorder.record_final(&summary)
             }
@@ -6265,6 +6266,7 @@ mod unix {
                         stage,
                         host_feature_diagnostics.as_ref(),
                     );
+                    let incomplete = result_recorder.with_observed_host_identity(&incomplete)?;
                     validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
                     result_recorder.record_final(&incomplete)?;
                     return Err(error);
@@ -6282,6 +6284,7 @@ mod unix {
                     stage,
                     host_feature_diagnostics.as_ref(),
                 );
+                let incomplete = result_recorder.with_observed_host_identity(&incomplete)?;
                 validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
                 result_recorder.record_final(&incomplete)?;
                 Err(error)
