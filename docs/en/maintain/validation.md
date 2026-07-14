@@ -314,8 +314,15 @@ replaced by another:
    delivery to the handler for both branches.
    Record intentionally creates no persistent Guard observation, so its event
    entries cite the authenticated host-owned managed-UI delivery while the
-   count check proves that no Guard event or Agent Session was added. This is
-   delivery evidence, not an invented durable observation.
+   direct-wrapper count check proves that the final-output handler itself adds
+   no Guard event or Agent Session. An actual managed host turn separately
+   starts one MCP session; the Record event entry must report that one-row
+   `managed_mcp_observation`, bind it to the same Agent Connection and
+   `guard_mode=record`, and distinguish the required first-turn
+   `volicord.status` call from the second no-tool turn. The surrounding count
+   check requires no Guard-event increase and exactly that one MCP AgentSession,
+   so the session is not misattributed to final-output delivery. This remains
+   delivery evidence, not an invented durable final-output observation.
    `actual_host_fixed_ui.authority_receipt` separately records the complete
    active-Task receipt on the host-owned fixed UI, distinct from model prose,
    and binds its Project, Task, `state_version`, latest Run, close state, and

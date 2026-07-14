@@ -284,9 +284,14 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/claude-detectiv
    `actual_host_event.authority_receipt_event`는 두 분기에서 실제 호스트가 핸들러로
    전달한 사실을 분리해서 기록합니다.
    Record는 의도적으로 지속 Guard 관찰을 만들지 않으므로, 해당 event 항목은 인증된
-   호스트 소유 관리 UI 전달을 근거로 명시하고 전후 개수 검사로 Guard 이벤트나 Agent
-   Session이 추가되지 않았음을 증명합니다. 이는 전달 증거이지 지속 관찰을 꾸며낸 것이
-   아닙니다.
+   호스트 소유 관리 UI 전달을 근거로 명시합니다. 직접 래퍼 전후 개수 검사는 최종 출력
+   핸들러 자체가 Guard 이벤트나 Agent Session을 추가하지 않았음을 증명합니다. 실제 관리
+   호스트 turn은 별도로 MCP session 하나를 시작하므로 Record event 항목은 이 한 행의
+   `managed_mcp_observation`을 보고하고, 같은 Agent Connection과 `guard_mode=record`에
+   결속하며, 첫 turn에 필요한 `volicord.status` 호출과 두 번째 no-tool turn을 구분해야
+   합니다. 바깥 개수 검사는 Guard 이벤트 증가가 없고 정확히 이 MCP AgentSession 하나만
+   추가됐음을 요구하므로 해당 session을 최종 출력 전달 효과로 잘못 귀속하지 않습니다.
+   이는 전달 증거이지 지속 최종 출력 관찰을 꾸며낸 것이 아닙니다.
    `actual_host_fixed_ui.authority_receipt`는 모델 산문과 구분되는 호스트 소유 고정 UI에서
    현재 Task의 receipt 전체를 별도로 기록하고 Project, Task, `state_version`, 최신 Run,
    닫기 상태, 차단 사유 수를 결속합니다. `actual_host_fixed_ui.status_fallback`은 Task가

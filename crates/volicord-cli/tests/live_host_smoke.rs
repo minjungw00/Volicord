@@ -943,6 +943,24 @@ mod unix {
             IntegrationProfile::Record
         )
         .is_err());
+        let mut missing_record_mcp_observation = record.clone();
+        missing_record_mcp_observation["evidence"]["actual_host_event"]["status_fallback_event"]
+            .as_object_mut()
+            .expect("Record event should be an object")
+            .remove("managed_mcp_observation");
+        assert!(validate_final_output_result_shape(
+            &missing_record_mcp_observation,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut missing_detective_persistence = detective.clone();
+        missing_detective_persistence["evidence"]["actual_host_event"]["authority_receipt_event"]
+            ["persistent_guard_event"] = Value::Bool(false);
+        assert!(validate_final_output_result_shape(
+            &missing_detective_persistence,
+            IntegrationProfile::Detective
+        )
+        .is_err());
         let mut collapsed = detective;
         collapsed["evidence"]
             .as_object_mut()
@@ -1962,16 +1980,19 @@ mod unix {
 
         let no_active_actual_event = match profile {
             IntegrationProfile::Record => {
-                if after_actual_host != before_actual_host {
-                    return Err(io::Error::other(
-                        "Record actual-host final-output handling persisted a GuardEvent or AgentSession observation",
-                    )
-                    .into());
-                }
+                let managed_mcp_observation = verify_record_managed_mcp_host_turn(
+                    &fixture,
+                    &project_id,
+                    &identity.connection_id,
+                    before_actual_host,
+                    after_actual_host,
+                    Some("volicord.status"),
+                )?;
                 serde_json::json!({
                     "status": "verified",
                     "source": "authenticated_host_owned_surface_delivery",
                     "delivery_evidence": "managed_final_output_ui",
+                    "managed_mcp_observation": managed_mcp_observation,
                     "persistent_guard_event": false,
                     "non_observing": true
                 })
@@ -2001,7 +2022,8 @@ mod unix {
                     "source": "persisted_guard_event",
                     "guard_event_id": historical.guard_event_id,
                     "session_id": historical.session_id,
-                    "decision": historical.decision
+                    "decision": historical.decision,
+                    "persistent_guard_event": true
                 })
             }
         };
@@ -2052,17 +2074,20 @@ mod unix {
         let after_receipt_host = guard_observation_counts(&fixture, &project_id)?;
         let (receipt_actual_event, detective_decision) = match profile {
             IntegrationProfile::Record => {
-                if after_receipt_host != before_receipt_host {
-                    return Err(io::Error::other(
-                        "Record actual-host AuthorityReceipt handling persisted a GuardEvent or AgentSession observation",
-                    )
-                    .into());
-                }
+                let managed_mcp_observation = verify_record_managed_mcp_host_turn(
+                    &fixture,
+                    &project_id,
+                    &identity.connection_id,
+                    before_receipt_host,
+                    after_receipt_host,
+                    None,
+                )?;
                 (
                     serde_json::json!({
                         "status": "verified",
                         "source": "authenticated_host_owned_surface_delivery",
                         "delivery_evidence": "managed_final_output_ui",
+                        "managed_mcp_observation": managed_mcp_observation,
                         "persistent_guard_event": false,
                         "non_observing": true
                     }),
@@ -2093,7 +2118,8 @@ mod unix {
                         "source": "persisted_guard_event",
                         "guard_event_id": stop.guard_event_id,
                         "session_id": stop.session_id,
-                        "decision": stop.decision
+                        "decision": stop.decision,
+                        "persistent_guard_event": true
                     }),
                     serde_json::json!({
                         "status": "verified",
@@ -6356,19 +6382,60 @@ mod unix {
                 "block": { "status": "unavailable" }
             }),
         };
-        let actual_event_branch = match profile {
-            IntegrationProfile::Record => serde_json::json!({
-                "status": "verified",
-                "source": "authenticated_host_owned_surface_delivery",
-                "delivery_evidence": "managed_final_output_ui",
-                "persistent_guard_event": false,
-                "non_observing": true
-            }),
-            IntegrationProfile::Detective => serde_json::json!({
-                "status": "verified",
-                "source": "persisted_guard_event",
-                "persistent_guard_event": true
-            }),
+        let (status_fallback_event, authority_receipt_event) = match profile {
+            IntegrationProfile::Record => {
+                let managed_mcp_observation = |session_id: &str, tool_name: Option<&str>| {
+                    let mut lifecycle_events = vec![
+                        "managed_host_startup",
+                        "managed_host_initialize_response",
+                        "managed_host_tools_list",
+                    ];
+                    if tool_name.is_some() {
+                        lifecycle_events
+                            .extend(["managed_host_tool_call", "managed_host_tool_call_completed"]);
+                    }
+                    serde_json::json!({
+                        "agent_session_delta": 1,
+                        "connection_id": "CONN-fixture",
+                        "guard_mode": "record",
+                        "lifecycle_events": lifecycle_events,
+                        "session_id": session_id,
+                        "tool_name": tool_name
+                    })
+                };
+                (
+                    serde_json::json!({
+                        "status": "verified",
+                        "source": "authenticated_host_owned_surface_delivery",
+                        "delivery_evidence": "managed_final_output_ui",
+                        "managed_mcp_observation": managed_mcp_observation(
+                            "SESSION-status-fixture",
+                            Some("volicord.status"),
+                        ),
+                        "persistent_guard_event": false,
+                        "non_observing": true
+                    }),
+                    serde_json::json!({
+                        "status": "verified",
+                        "source": "authenticated_host_owned_surface_delivery",
+                        "delivery_evidence": "managed_final_output_ui",
+                        "managed_mcp_observation": managed_mcp_observation(
+                            "SESSION-receipt-fixture",
+                            None,
+                        ),
+                        "persistent_guard_event": false,
+                        "non_observing": true
+                    }),
+                )
+            }
+            IntegrationProfile::Detective => {
+                let event = serde_json::json!({
+                    "status": "verified",
+                    "source": "persisted_guard_event",
+                    "persistent_guard_event": true
+                });
+                (event.clone(), event)
+            }
         };
         serde_json::json!({
             "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
@@ -6388,8 +6455,8 @@ mod unix {
                 },
                 "actual_host_event": {
                     "status": "verified",
-                    "status_fallback_event": actual_event_branch.clone(),
-                    "authority_receipt_event": actual_event_branch
+                    "status_fallback_event": status_fallback_event,
+                    "authority_receipt_event": authority_receipt_event
                 },
                 "actual_host_fixed_ui": {
                     "status": "verified",
@@ -6715,6 +6782,59 @@ mod unix {
                             ))
                             .into());
                         }
+                        let managed = &event["managed_mcp_observation"];
+                        if managed["agent_session_delta"] != 1
+                            || managed["guard_mode"] != IntegrationProfile::Record.as_str()
+                            || managed["connection_id"].as_str().is_none_or(str::is_empty)
+                            || managed["session_id"].as_str().is_none_or(str::is_empty)
+                        {
+                            return Err(io::Error::other(format!(
+                                "verified Record {branch} must separate one registered managed MCP AgentSession from non-observing final-output delivery"
+                            ))
+                            .into());
+                        }
+                        let lifecycle_events = managed["lifecycle_events"]
+                            .as_array()
+                            .ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "verified Record {branch} has no managed MCP lifecycle events"
+                                ))
+                            })?
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>();
+                        for required in [
+                            "managed_host_startup",
+                            "managed_host_initialize_response",
+                            "managed_host_tools_list",
+                        ] {
+                            if !lifecycle_events.contains(&required) {
+                                return Err(io::Error::other(format!(
+                                    "verified Record {branch} is missing managed MCP lifecycle event {required:?}"
+                                ))
+                                .into());
+                            }
+                        }
+                        let expected_tool_name =
+                            (branch == "status_fallback_event").then_some("volicord.status");
+                        if managed["tool_name"].as_str() != expected_tool_name {
+                            return Err(io::Error::other(format!(
+                                "verified Record {branch} has the wrong managed MCP tool-call binding"
+                            ))
+                            .into());
+                        }
+                        for tool_event in
+                            ["managed_host_tool_call", "managed_host_tool_call_completed"]
+                        {
+                            if lifecycle_events.contains(&tool_event)
+                                != expected_tool_name.is_some()
+                            {
+                                return Err(io::Error::other(format!(
+                                    "verified Record {branch} has inconsistent {tool_event:?} lifecycle evidence"
+                                ))
+                                .into());
+                            }
+                        }
                     }
                 }
             }
@@ -6843,6 +6963,149 @@ mod unix {
             agent_sessions: conn
                 .query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?,
         })
+    }
+
+    fn verify_record_managed_mcp_host_turn(
+        fixture: &LiveSmokeFixture,
+        project_id: &str,
+        connection_id: &str,
+        before: GuardObservationCounts,
+        after: GuardObservationCounts,
+        expected_tool_name: Option<&str>,
+    ) -> Result<Value, Box<dyn Error>> {
+        if after.guard_events != before.guard_events {
+            return Err(io::Error::other(
+                "Record actual-host final-output handling persisted a GuardEvent",
+            )
+            .into());
+        }
+        let expected_agent_sessions = before
+            .agent_sessions
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("Record AgentSession count overflowed"))?;
+        if after.agent_sessions != expected_agent_sessions {
+            return Err(io::Error::other(format!(
+                "Record actual-host turn must add exactly one managed MCP AgentSession while final-output handling remains non-observing: before={}, after={}",
+                before.agent_sessions, after.agent_sessions
+            ))
+            .into());
+        }
+
+        let project = list_projects(&fixture.runtime_home_path)?
+            .into_iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| io::Error::other("live smoke project registration is missing"))?;
+        let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let (session_id, guard_mode, session_metadata_json): (String, String, String) = conn
+            .query_row(
+                "SELECT session_id, guard_mode, metadata_json
+                   FROM agent_sessions
+                  WHERE project_id = ?1
+                    AND connection_internal_id = ?2
+                  ORDER BY rowid DESC
+                  LIMIT 1",
+                [project_id, connection_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+        if guard_mode != IntegrationProfile::Record.as_str() {
+            return Err(io::Error::other(format!(
+                "Record managed MCP AgentSession used unexpected guard_mode {guard_mode:?}"
+            ))
+            .into());
+        }
+        let session_metadata: Value = serde_json::from_str(&session_metadata_json)?;
+        if session_metadata["source"] != "volicord_session_watch"
+            || session_metadata["session_watch_initialized"] != true
+        {
+            return Err(io::Error::other(
+                "Record managed MCP AgentSession is missing its bounded session-watch initialization metadata",
+            )
+            .into());
+        }
+
+        let baseline_metadata_json: String = conn.query_row(
+            "SELECT metadata_json
+               FROM session_watch_baselines
+              WHERE project_id = ?1
+                AND session_id = ?2
+                AND connection_internal_id = ?3
+              ORDER BY rowid DESC
+              LIMIT 1",
+            [project_id, session_id.as_str(), connection_id],
+            |row| row.get(0),
+        )?;
+        let baseline_metadata: Value = serde_json::from_str(&baseline_metadata_json)?;
+        if baseline_metadata["source"] != "volicord_session_watch"
+            || baseline_metadata["coverage_basis"] != "mcp_start"
+            || baseline_metadata["launch_origin"] != "managed_host"
+            || baseline_metadata["host_kind"] != "codex"
+            || baseline_metadata["connection_id"] != connection_id
+            || baseline_metadata["project_id"] != project_id
+        {
+            return Err(io::Error::other(
+                "Record host turn did not persist the expected registered managed MCP lifecycle binding",
+            )
+            .into());
+        }
+        let lifecycle_events = baseline_metadata["lifecycle_events"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("managed MCP lifecycle metadata has no events"))?;
+        let lifecycle_event_names = lifecycle_events
+            .iter()
+            .filter_map(|event| event["lifecycle_event"].as_str())
+            .collect::<Vec<_>>();
+        for required in [
+            "managed_host_startup",
+            "managed_host_initialize_response",
+            "managed_host_tools_list",
+        ] {
+            if !lifecycle_event_names.contains(&required) {
+                return Err(io::Error::other(format!(
+                    "Record host turn is missing required managed MCP lifecycle event {required:?}"
+                ))
+                .into());
+            }
+        }
+        let tool_call_events = lifecycle_events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event["lifecycle_event"].as_str(),
+                    Some("managed_host_tool_call" | "managed_host_tool_call_completed")
+                )
+            })
+            .collect::<Vec<_>>();
+        match expected_tool_name {
+            Some(expected_tool_name) => {
+                for required in ["managed_host_tool_call", "managed_host_tool_call_completed"] {
+                    if !tool_call_events.iter().any(|event| {
+                        event["lifecycle_event"] == required
+                            && event["tool_name"] == expected_tool_name
+                    }) {
+                        return Err(io::Error::other(format!(
+                            "Record host turn is missing {required:?} evidence for {expected_tool_name:?}"
+                        ))
+                        .into());
+                    }
+                }
+            }
+            None if !tool_call_events.is_empty() => {
+                return Err(io::Error::other(
+                    "Record AuthorityReceipt host turn unexpectedly called an MCP tool",
+                )
+                .into());
+            }
+            None => {}
+        }
+
+        Ok(serde_json::json!({
+            "agent_session_delta": 1,
+            "connection_id": connection_id,
+            "guard_mode": guard_mode,
+            "lifecycle_events": lifecycle_event_names,
+            "session_id": session_id,
+            "tool_name": expected_tool_name,
+        }))
     }
 
     fn stop_event_cursor(
