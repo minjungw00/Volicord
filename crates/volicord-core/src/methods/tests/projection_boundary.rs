@@ -1,3 +1,4 @@
+use super::prepare_evidence_capture::{capture_request, create_workspace_bound_task};
 use super::*;
 
 fn operation_result_request(
@@ -143,6 +144,15 @@ fn replace_stored_response(
     response: &Value,
 ) -> Result<String, Box<dyn Error>> {
     let response_json = serde_json::to_string(response)?;
+    replace_stored_response_json(harness, method, idempotency_key, &response_json)
+}
+
+fn replace_stored_response_json(
+    harness: &MethodHarness,
+    method: MethodName,
+    idempotency_key: &str,
+    response_json: &str,
+) -> Result<String, Box<dyn Error>> {
     let changed = harness.conn()?.execute(
         "UPDATE tool_invocations
             SET response_json = ?4
@@ -152,7 +162,7 @@ fn replace_stored_response(
         rusqlite::params![PROJECT_ID, method.as_str(), idempotency_key, response_json],
     )?;
     assert_eq!(changed, 1, "fixture must replace exactly one replay row");
-    Ok(serde_json::to_string(response)?)
+    Ok(response_json.to_owned())
 }
 
 fn operation_result_ref_for_stored_bytes(
@@ -543,5 +553,284 @@ fn legacy_state_summary_is_unavailable_before_replay_or_first_page() -> Result<(
         |row| row.get(0),
     )?;
     assert_eq!(after_floor, before_floor);
+    Ok(())
+}
+
+#[test]
+fn duplicate_json_members_are_unavailable_before_direct_replay_resume_or_first_page(
+) -> Result<(), Box<dyn Error>> {
+    for variant in ["duplicate_summary", "escaped_nested_member"] {
+        let harness = MethodHarness::new()?;
+        let suffix = format!("duplicate_stored_{variant}");
+        let (task_id, change_unit_id) = create_task_with_change_unit(&harness, &suffix)?;
+        let idempotency_key = format!("idem_{suffix}");
+        let request = user_action_request(
+            &format!("req_{suffix}"),
+            &idempotency_key,
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        );
+        let committed = harness.service.request_user_action(
+            request.clone(),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let user_action_request_id = committed.response_value["user_action_request_summary"]
+            ["user_action_request_id"]
+            .as_str()
+            .expect("committed request must identify the pending request")
+            .to_owned();
+        let operation_result_ref = committed
+            .operation_result_ref
+            .clone()
+            .expect("committed request must expose an operation-result ref");
+        let canonical_summary =
+            serde_json::to_string(&committed.response_value["user_action_request_summary"])?;
+        let canonical_member = format!("\"user_action_request_summary\":{canonical_summary}");
+        assert!(
+            committed.response_json.contains(&canonical_member),
+            "fixture must find the canonical summary member"
+        );
+        let sentinel = format!("private_replay_sentinel_{variant}");
+        let replacement = match variant {
+            "duplicate_summary" => format!(
+                "\"user_action_request_summary\":{{\"question\":\"{sentinel}\"}},{canonical_member}"
+            ),
+            "escaped_nested_member" => {
+                let safe_next_actor = "\"next_actor\":\"user\"";
+                assert!(
+                    canonical_summary.contains(safe_next_actor),
+                    "fixture must find the nested next_actor member"
+                );
+                let ambiguous_summary = canonical_summary.replacen(
+                    safe_next_actor,
+                    &format!("\"next_actor\":\"{sentinel}\",\"\\u006eext_actor\":\"user\""),
+                    1,
+                );
+                format!("\"user_action_request_summary\":{ambiguous_summary}")
+            }
+            _ => unreachable!(),
+        };
+        let response_json = committed
+            .response_json
+            .replacen(&canonical_member, &replacement, 1);
+        assert!(response_json.contains(&sentinel));
+        let response_json = replace_stored_response_json(
+            &harness,
+            MethodName::RequestUserAction,
+            &idempotency_key,
+            &response_json,
+        )?;
+        let operation_result_ref =
+            operation_result_ref_for_stored_bytes(operation_result_ref, &response_json);
+        let before = harness.counts()?;
+        let before_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+
+        let replay = harness
+            .service
+            .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(
+            replay.response_value["base"]["response_kind"], "rejected",
+            "variant {variant}"
+        );
+        assert_eq!(
+            replay.response_value["errors"][0]["code"], "MCP_UNAVAILABLE",
+            "variant {variant}"
+        );
+        assert!(!replay.replayed, "variant {variant}");
+        assert!(replay.operation_result_ref.is_none(), "variant {variant}");
+        assert!(
+            !replay.response_json.contains(&sentinel),
+            "variant {variant} must not return ambiguous stored bytes"
+        );
+
+        let resumed = harness
+            .service
+            .resume_user_action_request(
+                ProjectId::new(PROJECT_ID),
+                UserActionRequestId::new(&user_action_request_id),
+                invocation(OperationCategory::AgentWorkflow),
+            )?
+            .expect("an ineligible origin must return a closed rejection");
+        assert_eq!(resumed.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            resumed.response_value["errors"][0]["code"],
+            "MCP_UNAVAILABLE"
+        );
+        assert!(!resumed.replayed);
+        assert!(!resumed.response_json.contains(&sentinel));
+
+        let first_page = harness.service.get_operation_result(
+            operation_result_request(&format!("req_{suffix}_page"), operation_result_ref),
+            invocation(OperationCategory::Read),
+        )?;
+        assert_rejected_without_operation_result_chunk(&first_page, "OPERATION_RESULT_UNAVAILABLE");
+        assert!(!first_page.response_json.contains(&sentinel));
+        assert_eq!(harness.counts()?, before, "variant {variant}");
+        let after_floor: String = harness.conn()?.query_row(
+            "SELECT updated_at FROM project_state WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get(0),
+        )?;
+        assert_eq!(after_floor, before_floor, "variant {variant}");
+    }
+    Ok(())
+}
+
+#[test]
+fn duplicate_members_inside_map_results_are_unavailable_before_replay_or_paging(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id, criterion_id, workspace) =
+        create_workspace_bound_task(&harness, "duplicate_map_result")?;
+    let idempotency_key = "idem_duplicate_map_result_capture";
+    let request = capture_request(
+        "req_duplicate_map_result_capture",
+        Some(idempotency_key),
+        false,
+        2,
+        (&task_id, &change_unit_id, &criterion_id),
+        EvidenceCaptureSpec::VerifiedCommandExecution {
+            command_sha256: "a".repeat(64),
+            command_label: "cargo test".to_owned(),
+            expected_exit_code: RequiredNullable::null(),
+        },
+    );
+    let committed = harness.service.prepare_evidence_capture(
+        request.clone(),
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace.clone()),
+    )?;
+    let operation_result_ref = committed
+        .operation_result_ref
+        .clone()
+        .expect("committed capture intent must expose an operation-result ref");
+    let canonical_map = "\"expected_outcome\":{\"expected_exit_code\":0}";
+    assert!(
+        committed.response_json.contains(canonical_map),
+        "fixture must find the map-valued expected outcome"
+    );
+    let sentinel = "private_duplicate_map_value_must_not_escape";
+    let ambiguous_map = format!(
+        "\"expected_outcome\":{{\"expected_exit_code\":\"{sentinel}\",\"\\u0065xpected_exit_code\":0}}"
+    );
+    let response_json = committed
+        .response_json
+        .replacen(canonical_map, &ambiguous_map, 1);
+    assert!(response_json.contains(sentinel));
+    let response_json = replace_stored_response_json(
+        &harness,
+        MethodName::PrepareEvidenceCapture,
+        idempotency_key,
+        &response_json,
+    )?;
+    let operation_result_ref =
+        operation_result_ref_for_stored_bytes(operation_result_ref, &response_json);
+    let before = harness.counts()?;
+    let before_floor: String = harness.conn()?.query_row(
+        "SELECT updated_at FROM project_state WHERE project_id = ?1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+
+    let replay = harness.service.prepare_evidence_capture(
+        request,
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace),
+    )?;
+    assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        replay.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+    assert!(!replay.replayed);
+    assert!(replay.operation_result_ref.is_none());
+    assert!(!replay.response_json.contains(sentinel));
+
+    let first_page = harness.service.get_operation_result(
+        operation_result_request("req_duplicate_map_result_page", operation_result_ref),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_rejected_without_operation_result_chunk(&first_page, "OPERATION_RESULT_UNAVAILABLE");
+    assert!(!first_page.response_json.contains(sentinel));
+    assert_eq!(harness.counts()?, before);
+    let after_floor: String = harness.conn()?.query_row(
+        "SELECT updated_at FROM project_state WHERE project_id = ?1",
+        [PROJECT_ID],
+        |row| row.get(0),
+    )?;
+    assert_eq!(after_floor, before_floor);
+    Ok(())
+}
+
+#[test]
+fn stored_commit_envelope_mismatches_are_unavailable() -> Result<(), Box<dyn Error>> {
+    for variant in ["response_kind", "effect_kind", "dry_run", "state_version"] {
+        let harness = MethodHarness::new()?;
+        let suffix = format!("stored_envelope_{variant}");
+        let (task_id, change_unit_id) = create_task_with_change_unit(&harness, &suffix)?;
+        let idempotency_key = format!("idem_{suffix}");
+        let request = user_action_request(
+            &format!("req_{suffix}"),
+            &idempotency_key,
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        );
+        let committed = harness.service.request_user_action(
+            request.clone(),
+            invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let operation_result_ref = committed
+            .operation_result_ref
+            .clone()
+            .expect("committed request must expose an operation-result ref");
+        let mut tampered = committed.response_value.clone();
+        match variant {
+            "response_kind" => tampered["base"]["response_kind"] = json!("rejected"),
+            "effect_kind" => tampered["base"]["effect_kind"] = json!("read_only"),
+            "dry_run" => tampered["base"]["dry_run"] = json!(true),
+            "state_version" => {
+                let state_version = tampered["base"]["state_version"]
+                    .as_u64()
+                    .expect("committed result state version");
+                tampered["base"]["state_version"] = json!(state_version + 1);
+            }
+            _ => unreachable!(),
+        }
+        let response_json = replace_stored_response(
+            &harness,
+            MethodName::RequestUserAction,
+            &idempotency_key,
+            &tampered,
+        )?;
+        let operation_result_ref =
+            operation_result_ref_for_stored_bytes(operation_result_ref, &response_json);
+        let before = harness.counts()?;
+
+        let replay = harness
+            .service
+            .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            replay.response_value["errors"][0]["code"],
+            "MCP_UNAVAILABLE"
+        );
+        assert!(!replay.replayed, "variant {variant}");
+        assert!(replay.operation_result_ref.is_none(), "variant {variant}");
+
+        let first_page = harness.service.get_operation_result(
+            operation_result_request(&format!("req_{suffix}_page"), operation_result_ref),
+            invocation(OperationCategory::Read),
+        )?;
+        assert_rejected_without_operation_result_chunk(&first_page, "OPERATION_RESULT_UNAVAILABLE");
+        assert_eq!(harness.counts()?, before, "variant {variant}");
+    }
     Ok(())
 }

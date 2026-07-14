@@ -17,7 +17,7 @@ fn workspace_context(seed: char) -> crate::pipeline::GitWorkspaceContext {
     }
 }
 
-fn create_workspace_bound_task(
+pub(super) fn create_workspace_bound_task(
     harness: &MethodHarness,
     suffix: &str,
 ) -> Result<(String, String, String, crate::pipeline::GitWorkspaceContext), Box<dyn Error>> {
@@ -50,7 +50,7 @@ fn create_workspace_bound_task(
     Ok((task_id, change_unit_id, criterion_id, workspace))
 }
 
-fn capture_request(
+pub(super) fn capture_request(
     request_id: &str,
     idempotency_key: Option<&str>,
     dry_run: bool,

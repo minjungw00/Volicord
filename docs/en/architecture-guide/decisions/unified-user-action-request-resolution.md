@@ -157,6 +157,13 @@ rendering or effects. The row is never upgraded; the pending action remains
 resolvable through another valid User Channel such as CLI. No compatibility
 alias restores the unsafe projection.
 
+The same replay correction rejects duplicate raw JSON object members before
+generic value normalization, non-result branches, and committed-state-version
+mismatches. It applies to preflight replay, a replay discovered inside the
+commit transaction, resume, and operation-result paging. Such an existing row
+is unavailable and is never normalized, redacted, rewritten, or upgraded. This
+adds no DDL, storage profile, compatibility decoder, or separate SemVer change.
+
 Requiring same-origin `Origin` on browser `POST /consent` is also a correction
 inside that unreleased batch. It changes no public method schema, DDL, or
 storage profile and needs no separate SemVer change. Browser form submissions
@@ -201,6 +208,12 @@ TTL; operators must replace it before relying on the corrected fence.
   rejected because possession of the token and same-origin request provenance
   are separate defenses, and neither one replaces the model-invisible delivery
   invariant.
+- Parsing stored bytes into a generic JSON tree before checking the concrete
+  result was rejected because duplicate members can collapse and make unsafe
+  original bytes appear to have the current safe shape.
+- Accepting the shared rejected or dry-run response branches as replay rows was
+  rejected because replay storage contains only committed non-dry-run method
+  results.
 
 ## Implementation and tests
 

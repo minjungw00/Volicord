@@ -112,8 +112,11 @@ event, replay row, prompt, token, resolution, or state-version increment. A
 request created by another connection or by `volicord.reconcile_changes` is
 unavailable through this branch. An unrelated later Git or authority-state
 change does not rewrite or invalidate the historical result. A stored response
-using the superseded full-form result shape is unavailable instead of being
-replayed.
+using the superseded full-form result shape, a duplicate JSON object member at
+any nesting level, a non-result branch, or a commit-coordinate mismatch is
+unavailable instead of being replayed. Resume applies the same raw committed-
+result gate as direct replay and returns `MCP_UNAVAILABLE` without any stored
+bytes when that gate fails.
 
 After create or resume, the adapter asks Core for a separate current,
 agent-safe projection. Core reads its status, optional safe resolution, exact

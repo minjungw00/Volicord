@@ -58,11 +58,13 @@ User-only results, including the exact `volicord.resolve_user_action` body,
 free-form user note, and evidence-observation summary, are not exposed to an
 Agent Connection. A host-mediated user-action flow keeps the original
 agent-owned `volicord.request_user_action` reference. That exact stored response
-is eligible only when the whole response decodes as the current closed
-`RequestUserActionResponse` shape and contains the exact three-field
-`AgentSafeUserActionRequestSummary`. A response with the legacy
-`user_action_request` or `inbox_item` field, missing or malformed summary,
-unknown extra field, or mixed old and new fields is ineligible and returns
+is eligible only when the raw whole response decodes as the current concrete
+closed `RequestUserActionResult` and contains the exact three-field
+`AgentSafeUserActionRequestSummary`. A response with a duplicate JSON object
+member at any nesting level, a generic rejected or dry-run branch, a commit-
+coordinate mismatch, the legacy `user_action_request` or `inbox_item` field, a
+missing or malformed summary, an unknown extra field, or mixed old and new
+fields is ineligible and returns
 `OPERATION_RESULT_UNAVAILABLE`. The method validates the complete response
 before returning the first page and never rewrites legacy bytes or returns a
 partial fragment. The separately owned MCP outcome projection may report safe
@@ -77,7 +79,7 @@ strict-decodes as the current closed `CloseTaskResponse` and uses
 close response is also `OPERATION_RESULT_UNAVAILABLE`; no partial page is
 returned and stored bytes are not rewritten.
 
-The same current closed-result check applies to every source method before any
+The same raw committed-result check applies to every source method before any
 page is returned. In particular, legacy results from `volicord.intake`,
 `volicord.update_scope`, `volicord.prepare_write`, `volicord.record_run`, or
 `volicord.reconcile_changes` that embed the superseded `StateSummary` pending-

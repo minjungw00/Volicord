@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     error::Error,
     fmt,
     path::{Path, PathBuf},
@@ -7,7 +8,10 @@ use std::{
 };
 
 use chrono::{DateTime, Timelike, Utc};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{
+    de::{self, DeserializeOwned, MapAccess, SeqAccess, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
@@ -18,15 +22,14 @@ use volicord_store::{
     StoreError, StoreFailureRoute, StoreResult,
 };
 use volicord_types::{
-    canonical_request_hash, ActorSource, ChangeUnitId, CheckCloseResponse, CloseTaskResponse,
-    DryRunSummary, DurableIdError, DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode,
-    EventId, EventRef, GetOperationResultResponse, GuaranteeDisclosure, IdempotencyKey,
-    IntakeResponse, JsonObject, MethodName, OperationCategory, OperationResultRef,
-    PrepareEvidenceCaptureResponse, PrepareWriteResponse, ProjectId, RandomDurableIdGenerator,
-    ReconcileChangesResponse, RecordRunResponse, RequestHash, RequestUserActionResponse,
-    ResolveUserActionResponse, ResponseKind, StageArtifactResponse, StatusResponse, TaskId,
-    ToolDryRunResponse, ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase,
-    UpdateScopeResponse, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+    canonical_request_hash, ActorSource, ChangeUnitId, CloseTaskResult, DryRunSummary,
+    DurableIdError, DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef,
+    GuaranteeDisclosure, IdempotencyKey, IntakeResult, JsonObject, MethodName, OperationCategory,
+    OperationResultRef, PrepareEvidenceCaptureResult, PrepareWriteResult, ProjectId,
+    RandomDurableIdGenerator, ReconcileChangesResult, RecordRunResult, RequestHash,
+    RequestUserActionResult, ResolveUserActionResult, ResponseKind, TaskId, ToolDryRunResponse,
+    ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase, UpdateScopeResult, UtcTimestamp,
+    DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::policy::{
@@ -1109,7 +1112,11 @@ fn replay_preflight_response(
         )?));
     }
     if record.request_hash == request_hash.as_str() {
-        if !stored_public_response_is_current(request.method_name, &record.response_json) {
+        if !stored_public_response_is_current(
+            request.method_name,
+            &record.response_json,
+            record.committed_state_version,
+        ) {
             return Ok(Some(stored_response_unavailable_response(
                 project_state.state_version,
                 Some(verified_invocation.clone()),
@@ -1155,47 +1162,161 @@ fn replay_preflight_response(
 pub(crate) fn stored_public_response_is_current(
     method_name: MethodName,
     response_json: &str,
+    committed_state_version: u64,
 ) -> bool {
+    if matches!(
+        method_name,
+        MethodName::Status
+            | MethodName::GetOperationResult
+            | MethodName::CheckClose
+            | MethodName::StageArtifact
+    ) || !raw_json_has_unique_object_members(response_json)
+    {
+        return false;
+    }
     let Ok(response_value) = serde_json::from_str::<Value>(response_json) else {
         return false;
     };
     if !response_value.is_object() {
         return false;
     }
+    let Some(base_value) = response_value.get("base") else {
+        return false;
+    };
+    let Ok(base) = serde_json::from_value::<ToolResultBase>(base_value.clone()) else {
+        return false;
+    };
+    if base.response_kind != ResponseKind::Result
+        || base.effect_kind != EffectKind::CoreCommitted
+        || base.dry_run
+        || base.state_version != Some(committed_state_version)
+    {
+        return false;
+    }
     match method_name {
-        MethodName::Intake => exact_typed_response::<IntakeResponse>(&response_value),
-        MethodName::UpdateScope => exact_typed_response::<UpdateScopeResponse>(&response_value),
-        MethodName::Status => exact_typed_response::<StatusResponse>(&response_value),
-        MethodName::GetOperationResult => {
-            exact_typed_response::<GetOperationResultResponse>(&response_value)
+        MethodName::Intake => exact_typed_result::<IntakeResult>(response_json, &response_value),
+        MethodName::UpdateScope => {
+            exact_typed_result::<UpdateScopeResult>(response_json, &response_value)
         }
-        MethodName::CheckClose => exact_typed_response::<CheckCloseResponse>(&response_value),
         MethodName::PrepareEvidenceCapture => {
-            exact_typed_response::<PrepareEvidenceCaptureResponse>(&response_value)
+            exact_typed_result::<PrepareEvidenceCaptureResult>(response_json, &response_value)
         }
-        MethodName::PrepareWrite => exact_typed_response::<PrepareWriteResponse>(&response_value),
-        MethodName::StageArtifact => exact_typed_response::<StageArtifactResponse>(&response_value),
-        MethodName::RecordRun => exact_typed_response::<RecordRunResponse>(&response_value),
+        MethodName::PrepareWrite => {
+            exact_typed_result::<PrepareWriteResult>(response_json, &response_value)
+        }
+        MethodName::RecordRun => {
+            exact_typed_result::<RecordRunResult>(response_json, &response_value)
+        }
         MethodName::RequestUserAction => {
-            exact_typed_response::<RequestUserActionResponse>(&response_value)
+            exact_typed_result::<RequestUserActionResult>(response_json, &response_value)
         }
         MethodName::ResolveUserAction => {
-            exact_typed_response::<ResolveUserActionResponse>(&response_value)
+            exact_typed_result::<ResolveUserActionResult>(response_json, &response_value)
         }
         MethodName::ReconcileChanges => {
-            exact_typed_response::<ReconcileChangesResponse>(&response_value)
+            exact_typed_result::<ReconcileChangesResult>(response_json, &response_value)
         }
-        MethodName::CloseTask => exact_typed_response::<CloseTaskResponse>(&response_value),
+        MethodName::CloseTask => {
+            exact_typed_result::<CloseTaskResult>(response_json, &response_value)
+        }
+        MethodName::Status
+        | MethodName::GetOperationResult
+        | MethodName::CheckClose
+        | MethodName::StageArtifact => false,
     }
 }
 
-fn exact_typed_response<T>(response_value: &Value) -> bool
+fn exact_typed_result<T>(response_json: &str, response_value: &Value) -> bool
 where
     T: DeserializeOwned + Serialize,
 {
-    serde_json::from_value::<T>(response_value.clone())
+    serde_json::from_str::<T>(response_json)
         .and_then(serde_json::to_value)
         .is_ok_and(|round_trip| round_trip == *response_value)
+}
+
+fn raw_json_has_unique_object_members(response_json: &str) -> bool {
+    let mut deserializer = serde_json::Deserializer::from_str(response_json);
+    UniqueJsonDocument::deserialize(&mut deserializer)
+        .and_then(|_| deserializer.end())
+        .is_ok()
+}
+
+struct UniqueJsonDocument;
+
+impl<'de> Deserialize<'de> for UniqueJsonDocument {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(UniqueJsonDocumentVisitor)
+    }
+}
+
+struct UniqueJsonDocumentVisitor;
+
+impl<'de> Visitor<'de> for UniqueJsonDocumentVisitor {
+    type Value = UniqueJsonDocument;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a JSON value with unique object members")
+    }
+
+    fn visit_bool<E>(self, _value: bool) -> Result<Self::Value, E> {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E> {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E> {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_f64<E>(self, _value: f64) -> Result<Self::Value, E> {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_str<E>(self, _value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_string<E>(self, _value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while sequence.next_element::<UniqueJsonDocument>()?.is_some() {}
+        Ok(UniqueJsonDocument)
+    }
+
+    fn visit_map<A>(self, mut object: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut members = BTreeSet::new();
+        while let Some(member) = object.next_key::<String>()? {
+            if !members.insert(member) {
+                return Err(de::Error::custom("duplicate JSON object member"));
+            }
+            object.next_value::<UniqueJsonDocument>()?;
+        }
+        Ok(UniqueJsonDocument)
+    }
 }
 
 pub(crate) fn stored_response_unavailable_response(
@@ -1389,6 +1510,18 @@ fn commit_mutation(
             committed_state_version,
             ..
         } => {
+            if !stored_public_response_is_current(
+                method_name,
+                &response_json,
+                committed_state_version,
+            ) {
+                let current_state_version = store.project_state()?.state_version;
+                return stored_response_unavailable_response(
+                    current_state_version,
+                    Some(verified_invocation),
+                    Some(task_id.clone()),
+                );
+            }
             let operation_result_ref = operation_result_ref(
                 &response_json,
                 &envelope.project_id,
@@ -1864,6 +1997,56 @@ mod tests {
         );
     }
 
+    #[test]
+    fn stored_response_gate_rejects_shared_non_result_branches_for_every_method() {
+        let rejected = serde_json::to_string(&rejected_response(
+            false,
+            Some(7),
+            vec![tool_error(
+                ErrorCode::McpUnavailable,
+                "stored response fixture",
+                true,
+                None,
+            )],
+        ))
+        .expect("rejected response should serialize");
+        let dry_run = serde_json::to_string(&dry_run_response(
+            Some(7),
+            DryRunSummary {
+                planned_effects: Vec::new(),
+                would_blockers: Vec::new(),
+                would_errors: Vec::new(),
+                next_actions: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+        ))
+        .expect("dry-run response should serialize");
+        let methods = [
+            MethodName::Intake,
+            MethodName::UpdateScope,
+            MethodName::Status,
+            MethodName::GetOperationResult,
+            MethodName::CheckClose,
+            MethodName::PrepareEvidenceCapture,
+            MethodName::PrepareWrite,
+            MethodName::StageArtifact,
+            MethodName::RecordRun,
+            MethodName::RequestUserAction,
+            MethodName::ResolveUserAction,
+            MethodName::ReconcileChanges,
+            MethodName::CloseTask,
+        ];
+
+        for method in methods {
+            for (branch, response_json) in [("rejected", &rejected), ("dry_run", &dry_run)] {
+                assert!(
+                    !stored_public_response_is_current(method, response_json, 7),
+                    "{method:?} must reject the shared {branch} branch"
+                );
+            }
+        }
+    }
+
     struct PipelineHarness {
         _runtime_home: TempRuntimeHome,
         runtime_home_path: PathBuf,
@@ -2261,6 +2444,69 @@ mod tests {
         );
         assert_ne!(second.response_json, first.response_json);
         assert_eq!(after_second, after_first);
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_replay_outcome_rechecks_current_stored_result_contract(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = PipelineHarness::new()?;
+        let envelope = envelope(
+            "req_concurrent_replay_gate",
+            Some("idem_concurrent_replay_gate"),
+            false,
+            Some(0),
+            Some(TASK_ID),
+        );
+        let request_json = request_json(
+            MethodName::UpdateScope,
+            &envelope,
+            "concurrent-replay-private-sentinel",
+        );
+        let invocation = invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID));
+        let branch = commit_branch("concurrent-replay-private-sentinel");
+        let policy = MethodPolicy::for_branch(
+            OperationCategory::AgentWorkflow,
+            TaskRequirement::Required,
+            &branch,
+        );
+        let prepared = match harness.service.prepare_request(PipelinePreflightRequest {
+            method_name: MethodName::UpdateScope,
+            envelope: envelope.clone(),
+            request_json: request_json.clone(),
+            invocation: invocation.clone(),
+            policy,
+        })? {
+            PipelinePreflightOutcome::Prepared(prepared) => *prepared,
+            PipelinePreflightOutcome::Response(response) => {
+                panic!("preflight unexpectedly returned {}", response.response_json)
+            }
+        };
+
+        let concurrent = harness.execute(PipelineRequest {
+            method_name: MethodName::UpdateScope,
+            request_json,
+            envelope,
+            invocation,
+            operation_category: OperationCategory::AgentWorkflow,
+            task_requirement: TaskRequirement::Required,
+            branch: branch.clone(),
+        })?;
+        assert_eq!(concurrent.response_value["base"]["response_kind"], "result");
+        let after_concurrent = harness.counts()?;
+
+        let replay = harness.service.execute_prepared_request(prepared, branch)?;
+        assert_eq!(replay.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            replay.response_value["errors"][0]["code"],
+            "MCP_UNAVAILABLE"
+        );
+        assert!(!replay.replayed);
+        assert!(replay.operation_result_ref.is_none());
+        assert!(!replay
+            .response_json
+            .contains("concurrent-replay-private-sentinel"));
+        assert_eq!(harness.counts()?, after_concurrent);
         Ok(())
     }
 

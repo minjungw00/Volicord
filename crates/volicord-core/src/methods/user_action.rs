@@ -500,6 +500,7 @@ impl CoreService {
         if !crate::pipeline::stored_public_response_is_current(
             MethodName::RequestUserAction,
             &replay.response_json,
+            replay.committed_state_version,
         ) {
             return crate::pipeline::stored_response_unavailable_response(
                 project_state.state_version,

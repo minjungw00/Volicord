@@ -139,6 +139,7 @@ impl CoreService {
         if !crate::pipeline::stored_public_response_is_current(
             request.operation_result_ref.source_method,
             &stored.response_json,
+            stored.committed_state_version,
         ) {
             return operation_result_rejected(
                 &prepared,

@@ -57,10 +57,11 @@ agent-workflow 호출과 일치해야 합니다. Ref나 cursor를 가지고 있�
 정확한 `volicord.resolve_user_action` 본문, 사용자의 자유 형식 note, Evidence 관찰
 summary를 포함한 user-only 결과는 Agent Connection에 노출하지 않습니다. Host가
 중개한 사용자 행동 흐름은 최초 agent 소유 `volicord.request_user_action` ref를 유지합니다.
-저장된 정확한 응답 전체가 현재의 닫힌 `RequestUserActionResponse` 형태로 decode되고 정확한
-세 필드 `AgentSafeUserActionRequestSummary`를 담을 때만 조회할 수 있습니다. 기존
-`user_action_request` 또는 `inbox_item` 필드, 누락되거나 잘못된 summary, 알 수 없는 추가
-필드, 이전·새 필드가 섞인 응답은 조회할 수 없으며 `OPERATION_RESULT_UNAVAILABLE`을
+저장된 원문 응답 전체가 현재의 구체적이고 닫힌 `RequestUserActionResult`로 decode되고
+정확한 세 필드 `AgentSafeUserActionRequestSummary`를 담을 때만 조회할 수 있습니다. 어떤
+중첩 단계의 중복 JSON object member, 일반 rejected 또는 dry-run 분기, commit 좌표 불일치,
+기존 `user_action_request` 또는 `inbox_item` 필드, 누락되거나 잘못된 summary, 알 수 없는
+추가 필드, 이전·새 필드가 섞인 응답은 조회할 수 없으며 `OPERATION_RESULT_UNAVAILABLE`을
 반환합니다. 이 메서드는 첫 page를 반환하기 전에 전체 응답을 검증하며 기존 byte를 다시
 쓰거나 일부 조각을 반환하지 않습니다. 별도 담당 MCP 결과 상태 보기는 선택 결과의 안전한
 식별자와 파생 ref를 보고할 수 있지만 user-only ref로 바꾸거나 사용자 note, Evidence 관찰
@@ -72,7 +73,7 @@ summary, 정확한 user-only 응답 본문을 노출하지 않습니다.
 그 밖의 잘못된 닫기 응답도 `OPERATION_RESULT_UNAVAILABLE`이며 일부 page를 반환하거나
 저장 byte를 다시 쓰지 않습니다.
 
-첫 page를 반환하기 전의 같은 현재 닫힌 결과 검사는 모든 source 메서드에
+첫 page를 반환하기 전의 같은 원문 committed-result 검사는 모든 source 메서드에
 적용합니다. 특히 폐기된 `StateSummary` 대기 행동 형태를 담은 기존
 `volicord.intake`, `volicord.update_scope`, `volicord.prepare_write`,
 `volicord.record_run`, `volicord.reconcile_changes` 결과는 이 메서드를 통해

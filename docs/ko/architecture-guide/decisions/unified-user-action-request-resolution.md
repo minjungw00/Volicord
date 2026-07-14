@@ -133,6 +133,12 @@ token에는 필수 `delivery_surface=model_invisible_user_surface` 생성 marker
 유효한 User Channel로 계속 해결할 수 있습니다. 안전하지 않은 projection을 복구하는
 호환 별칭은 두지 않습니다.
 
+같은 replay 보정은 일반 value normalization 전에 중복 원문 JSON object member,
+non-result 분기, committed state version 불일치를 거부합니다. Preflight replay, commit
+transaction 안에서 발견한 replay, resume, operation-result paging에 모두 적용합니다. 이런
+기존 행은 사용할 수 없으며 normalize, redact, rewrite, upgrade하지 않습니다. DDL, 저장
+프로필, 호환 decoder, 별도 SemVer 변경을 추가하지 않습니다.
+
 Browser `POST /consent`에 same-origin `Origin`을 요구하는 것도 같은 미출시 batch 안의
 보정입니다. 공개 메서드 스키마, DDL, 저장 프로필을 바꾸지 않으며 별도 SemVer 변경이
 필요하지 않습니다. Browser form 제출은 이미 `Origin`을 제공합니다. 이를 생략하던
@@ -171,6 +177,11 @@ TTL로만 제한됩니다. 수정된 fence에 의존하기 전에 이전 process
 - Browser 요청 보호에 bearer token만으로 충분하다고 보는 방안은 token 보유와
   same-origin 요청 출처가 서로 다른 방어이고 어느 쪽도 모델 비가시 전달 불변 조건을
   대신하지 못하므로 거부했습니다.
+- 구체적인 결과를 검사하기 전에 저장 byte를 일반 JSON tree로 parse하는 방안은 중복
+  member가 축약되어 안전하지 않은 원문 byte가 현재의 안전한 형태처럼 보일 수 있으므로
+  거부했습니다.
+- 공통 rejected 또는 dry-run 응답 분기를 replay 행으로 허용하는 방안은 replay 저장소가
+  commit된 non-dry-run 메서드 결과만 담으므로 거부했습니다.
 
 ## 구현과 테스트
 
