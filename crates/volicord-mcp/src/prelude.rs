@@ -39,6 +39,11 @@ pub(crate) use volicord_store::{
         DiagnosticTransport, DiagnosticUserChannelKind,
     },
     guards::{agent_session, guard_health_record, insert_agent_session, AgentSessionInsert},
+    host_capabilities::{
+        evaluate_current_host_capability_verification_read_only,
+        HostCapabilityVerificationExpectation, HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1,
+        HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+    },
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,
     },

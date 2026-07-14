@@ -87,6 +87,17 @@ work. Core is the local authority record for Volicord state.
    timestamp. Release builds provide and verify their clean source commit and
    exact profile through the checked-in workflow.
 
+   For host-capability release evidence, keep that build descriptor as a
+   matching coordinate only. Evidence is observed after the final executable
+   exists, so the expected evidence digest belongs in a separately verified
+   exact-final-artifact manifest or receipt outside the executable, bound to
+   the capability, host/client, adapter, build, source, target, and final
+   executable digest. Do not rebuild to embed that post-finalization digest;
+   doing so changes the executable digest and creates a recursive binding. The
+   current adapter has no trusted acquisition path for this manifest, so route
+   concrete schema and acquisition work through the focused Reference owners
+   before claiming production local-web eligibility.
+
 8. Run validation.
 
    For Rust implementation edits, default to `cargo fmt`,

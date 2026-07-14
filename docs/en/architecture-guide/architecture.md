@@ -56,8 +56,9 @@ flowchart LR
 ```
 
 The `volicord-mcp` adapter library may use Store directly for startup
-inspection, session validation, Agent Connection context, and request-time
-project routing. That direct Store use is not an alternate implementation of
+inspection, session validation, Agent Connection context, current
+host-capability evaluation, and request-time project routing. That direct Store
+use is not an alternate implementation of
 public Volicord method semantics; public method execution routes through Core.
 
 `Product Repository` remains a separate product-file boundary. Public Volicord
@@ -71,7 +72,7 @@ the public method execution path.
 | Workspace member | Guide-level role |
 |---|---|
 | `crates/volicord-types` | Shared request, response, schema-shaped, value-set, MCP tool-name, identifier, and canonical-hash types. |
-| `crates/volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, local web consent storage, export snapshots, and storage-error implementation. |
+| `crates/volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, immutable host-capability verification history and current-state evaluation, local web consent storage, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, User Channel commands, Agent Connection setup, host adapters, guard workflows, and MCP process handoff. |
 | `crates/volicord-platform-fs` | Internal safe facade for platform-native filesystem namespace operations and read-only canonical Git common-directory/worktree snapshots shared by local adapters. It does not own managed-file policy or public product behavior. |

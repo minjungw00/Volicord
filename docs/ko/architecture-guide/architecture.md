@@ -50,8 +50,9 @@ flowchart LR
   host -. 공개 API 밖의 제품 파일 도구 .-> product
 ```
 
-`volicord-mcp` 어댑터 라이브러리는 시작 검사, 세션 검증, Agent Connection 맥락,
-요청 시점 프로젝트 라우팅을 위해 Store를 직접 사용할 수 있습니다. 이 직접 Store
+`volicord-mcp` 어댑터 라이브러리는 시작 검사, 세션 검증, Agent Connection 맥락, 현재
+호스트 역량 평가, 요청 시점 프로젝트 라우팅을 위해 Store를 직접 사용할 수 있습니다.
+이 직접 Store
 사용은 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아닙니다. 공개 메서드
 실행은 Core를 통과합니다.
 
@@ -65,7 +66,7 @@ flowchart LR
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
 | `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규 해시 타입. |
-| `crates/volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, guard/세션 관찰 저장, 로컬 웹 동의 저장, 내보내기 스냅샷, 저장소 오류 구현. |
+| `crates/volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, guard/세션 관찰 저장, 변경 불가능한 호스트 역량 검증 이력과 현재 상태 평가, 로컬 웹 동의 저장, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, User Channel 명령, Agent Connection 설정, 호스트 어댑터, guard 작업 흐름, MCP 프로세스 인계를 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
 | `crates/volicord-platform-fs` | 플랫폼 고유 파일시스템 이름 공간 연산과 로컬 어댑터가 공유하는 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 파일 정책이나 공개 제품 동작을 담당하지 않습니다. |

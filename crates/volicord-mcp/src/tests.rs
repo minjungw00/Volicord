@@ -1,3 +1,5 @@
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -42,13 +44,19 @@ use volicord_core::CoreBoundary;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     remove_connection_project, set_connection_enabled, AgentConnectionRegistration,
-    ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
+    ConnectionProjectRegistration, CONNECTION_INTENT_GLOBAL, CONNECTION_MODE_READ_ONLY,
+    HOST_KIND_GENERIC, HOST_SCOPE_EXPORT,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
 use volicord_store::guards::{
     agent_session, end_agent_session, insert_agent_session, list_unresolved_unrecorded_changes,
     upsert_guard_installation, AgentSessionInsert, GuardInstallationUpsert,
+};
+use volicord_store::host_capabilities::{
+    publish_host_capability_verification, HostCapabilityVerificationInput,
+    HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1, HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+    HOST_CAPABILITY_OUTCOME_FAILED, HOST_CAPABILITY_OUTCOME_PASSED,
 };
 use volicord_store::session_watch::{
     latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
@@ -66,6 +74,8 @@ use volicord_types::{
 use super::*;
 
 const USER_CHANNEL_TEST_SESSION_ID: &str = "session_user_channel_projection";
+const EXACT_LOCAL_WEB_TEST_CLIENT_NAME: &str = "volicord-unit-test";
+const EXACT_LOCAL_WEB_TEST_CLIENT_VERSION: &str = "0.0.0";
 
 #[test]
 fn mcp_boundary_wraps_core_boundary() {
@@ -1513,8 +1523,25 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
             |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
             "conn_alpha",
             Some("project_alpha"),
+            Some("codex"),
         ),
         McpLaunchOrigin::CliVerification
+    );
+    assert_eq!(
+        classify_launch_origin(
+            |name| match name {
+                "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+                "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+                "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_alpha")),
+                "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
+                "CODEX_THREAD_ID" => Some(OsString::from("thread_alpha")),
+                _ => None,
+            },
+            "conn_alpha",
+            Some("project_alpha"),
+            Some("codex"),
+        ),
+        McpLaunchOrigin::ManagedHost
     );
     assert_eq!(
         classify_launch_origin(
@@ -1527,12 +1554,24 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
             },
             "conn_alpha",
             Some("project_alpha"),
+            Some("codex"),
         ),
-        McpLaunchOrigin::ManagedHost
+        McpLaunchOrigin::InvalidManagedMarker,
+        "the Volicord marker tuple also requires matching host-native process evidence"
     );
     assert_eq!(
-        classify_launch_origin(|_| None, "conn_alpha", Some("project_alpha")),
+        classify_launch_origin(|_| None, "conn_alpha", Some("project_alpha"), Some("codex"),),
         McpLaunchOrigin::ManualCli
+    );
+    assert_eq!(
+        classify_launch_origin(
+            |name| (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient_thread")),
+            "conn_alpha",
+            Some("project_alpha"),
+            Some("codex"),
+        ),
+        McpLaunchOrigin::ManualCli,
+        "an ambient host-native marker is not a managed launch identity"
     );
     assert_eq!(
         classify_launch_origin(
@@ -1541,10 +1580,12 @@ fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
                 "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
                 "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_beta")),
                 "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from("project_alpha")),
+                "CODEX_THREAD_ID" => Some(OsString::from("thread_alpha")),
                 _ => None,
             },
             "conn_alpha",
             Some("project_alpha"),
+            Some("codex"),
         ),
         McpLaunchOrigin::InvalidManagedMarker
     );
@@ -1566,6 +1607,7 @@ fn managed_stdio_launch_records_host_runtime_observation() -> Result<(), Box<dyn
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
             "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            "CODEX_THREAD_ID" => Some(OsString::from("thread_managed_watch")),
             _ => None,
         },
     )?;
@@ -1612,6 +1654,7 @@ fn managed_stdio_tools_list_records_lifecycle_observation() -> Result<(), Box<dy
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
             "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            "CODEX_THREAD_ID" => Some(OsString::from("thread_managed_tools")),
             _ => None,
         },
     )?;
@@ -1660,6 +1703,7 @@ fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
             "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            "CODEX_THREAD_ID" => Some(OsString::from("thread_managed_call")),
             _ => None,
         },
     )?;
@@ -1722,6 +1766,7 @@ fn invalid_managed_marker_launch_does_not_create_host_runtime_observation(
             "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
             "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from("conn_wrong")),
             "VOLICORD_MCP_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
+            "CODEX_THREAD_ID" => Some(OsString::from("thread_invalid_marker")),
             _ => None,
         },
     )?;
@@ -4630,7 +4675,9 @@ fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(),
         ])?);
         let mut output = Vec::new();
 
-        run_stdio(
+        run_exact_verified_local_web_stdio(
+            &fixture,
+            &format!("all_kinds_{}", case.name),
             adapter_with_local_web_consent(&fixture)?,
             BufReader::new(input),
             &mut output,
@@ -4779,7 +4826,7 @@ fn all_eight_user_action_kinds_preserve_the_mcp_handoff_boundary() -> Result<(),
 
 #[test]
 #[allow(deprecated)]
-fn local_web_selection_requires_the_exact_model_invisible_client_capability(
+fn local_web_selection_requires_exact_managed_current_verification_and_client_capability(
 ) -> Result<(), Box<dyn Error>> {
     #[derive(Clone, Copy)]
     enum ListenerSetup {
@@ -4790,7 +4837,7 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
 
     let cases = [
         (
-            "exact_true",
+            "exact_true_current_passed_managed",
             json!({
                 "experimental": {
                     "io.volicord/user-channel": {
@@ -4800,6 +4847,30 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
             }),
             ListenerSetup::Tracked,
             true,
+        ),
+        (
+            "managed_without_current_verification",
+            json!({
+                "experimental": {
+                    "io.volicord/user-channel": {
+                        "model_invisible_user_surface": true
+                    }
+                }
+            }),
+            ListenerSetup::Tracked,
+            false,
+        ),
+        (
+            "manual_client_self_declaration_without_verification",
+            json!({
+                "experimental": {
+                    "io.volicord/user-channel": {
+                        "model_invisible_user_surface": true
+                    }
+                }
+            }),
+            ListenerSetup::Tracked,
+            false,
         ),
         (
             "exact_true_listener_unavailable",
@@ -4889,7 +4960,23 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
                 })
             }
         };
-        run_stdio(runtime_adapter, BufReader::new(input), &mut output)?;
+        let project_bound = runtime_adapter.context.project_allowlist.is_some();
+        match case {
+            "exact_true_current_passed_managed" => run_exact_verified_local_web_stdio(
+                &fixture,
+                case,
+                runtime_adapter,
+                BufReader::new(input),
+                &mut output,
+            )?,
+            "managed_without_current_verification" => run_stdio_with_env_marker(
+                runtime_adapter,
+                BufReader::new(input),
+                &mut output,
+                |name| managed_codex_stdio_env(&fixture, project_bound, name),
+            )?,
+            _ => run_stdio(runtime_adapter, BufReader::new(input), &mut output)?,
+        }
 
         let values = stdio_responses(&output)?;
         if values[0].get("error").is_some() {
@@ -4959,6 +5046,304 @@ fn local_web_selection_requires_the_exact_model_invisible_client_capability(
 }
 
 #[test]
+fn adapter_without_expected_release_evidence_digest_fails_closed_for_exact_managed_pass(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-missing-expected-evidence-digest")?;
+    publish_exact_host_capability_verification(&fixture, "missing_expected_evidence_digest")?;
+    let adapter = adapter_with_local_web_consent(&fixture)?;
+
+    assert!(adapter.local_web_consent_listener_ready());
+    assert!(!adapter.effective_local_web_consent_available(&exact_local_web_test_capabilities()));
+    Ok(())
+}
+
+#[test]
+fn manual_stdio_exact_pass_ready_true_declaration_does_not_enable_local_web(
+) -> Result<(), Box<dyn Error>> {
+    assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
+        "mcp-local-web-manual-exact-pass",
+        McpLaunchOrigin::ManualCli,
+    )
+}
+
+#[test]
+fn cli_verification_stdio_exact_pass_ready_true_declaration_does_not_enable_local_web(
+) -> Result<(), Box<dyn Error>> {
+    assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
+        "mcp-local-web-cli-verification-exact-pass",
+        McpLaunchOrigin::CliVerification,
+    )
+}
+
+#[test]
+fn local_http_exact_pass_ready_true_declaration_does_not_enable_local_web(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-local-web-http-exact-pass")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let label = "local_http_exact_pass";
+    publish_exact_host_capability_verification(&fixture, label)?;
+    let runtime_adapter = adapter_with_local_web_consent(&fixture)?
+        .with_expected_evidence_artifact_sha256_for_test(
+            exact_host_capability_evidence_artifact_sha256(label),
+        );
+    assert!(runtime_adapter.local_web_consent_listener_ready());
+    let local_http_capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
+        McpLaunchOrigin::Unknown.as_str(),
+        Some(EXACT_LOCAL_WEB_TEST_CLIENT_NAME),
+        Some(EXACT_LOCAL_WEB_TEST_CLIENT_VERSION),
+    );
+    assert!(!runtime_adapter.effective_local_web_consent_available(&local_http_capabilities));
+
+    let mut server = LocalHttpServer::new(
+        runtime_adapter,
+        http_config(&fixture, Vec::new(), Vec::new()),
+    );
+    let initialize = server.handle_request(http_request(
+        "POST",
+        LOCAL_HTTP_MCP_ENDPOINT_PATH,
+        Some("test_token"),
+        None,
+        None,
+        initialize_request(1, model_invisible_user_surface_capability()),
+    )?);
+    assert_eq!(initialize.status, 200);
+    let session_id = http_header(&initialize, "Mcp-Session-Id")
+        .expect("initialize should create a local HTTP session")
+        .to_owned();
+    let initialized = server.handle_request(http_request(
+        "POST",
+        LOCAL_HTTP_MCP_ENDPOINT_PATH,
+        Some("test_token"),
+        None,
+        Some(&session_id),
+        initialized_notification(),
+    )?);
+    assert_eq!(initialized.status, 202);
+    let called = server.handle_request(http_request(
+        "POST",
+        LOCAL_HTTP_MCP_ENDPOINT_PATH,
+        Some("test_token"),
+        None,
+        Some(&session_id),
+        tools_call(
+            2,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            product_action_args(&fixture, &task_id, state_version),
+        ),
+    )?);
+    assert_eq!(called.status, 200);
+    let called = http_json(&called);
+    assert_eq!(called["result"]["isError"], false);
+    assert!(called["result"].get("_meta").is_none());
+    assert_eq!(local_web_token_count(&fixture)?, 0);
+    assert!(result_mentions_cli_recovery(&called["result"]));
+    Ok(())
+}
+
+#[test]
+fn generic_connection_self_declaration_never_issues_local_web_handoff() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-local-web-generic-connection")?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+        .expect("fixture connection should exist");
+    let generic_connection_id = "connection_generic_local_web";
+    ensure_agent_connection(
+        fixture.runtime_home_path(),
+        AgentConnectionRegistration {
+            connection_internal_id: generic_connection_id.to_owned(),
+            host_kind: HOST_KIND_GENERIC.to_owned(),
+            intent: CONNECTION_INTENT_GLOBAL.to_owned(),
+            host_scope: HOST_SCOPE_EXPORT.to_owned(),
+            server_name: "generic-local-web".to_owned(),
+            config_target: "generic-export.json".to_owned(),
+            mode: existing.mode,
+            enabled: true,
+            managed_fingerprint: "generic-local-web-fingerprint".to_owned(),
+            last_verification_status: existing.last_verification_status,
+            last_verification_report_json: existing.last_verification_report_json,
+            last_user_actions_json: existing.last_user_actions_json,
+            metadata_json: existing.metadata_json,
+        },
+    )?;
+    add_connection_project(
+        fixture.runtime_home_path(),
+        ConnectionProjectRegistration {
+            connection_internal_id: generic_connection_id.to_owned(),
+            project_id: fixture.project_id().to_owned(),
+        },
+    )?;
+    let context =
+        McpConnectionContext::resolve(fixture.runtime_home_path(), generic_connection_id)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING);
+    let generic_adapter = McpAdapter::new(fixture.runtime_home_path(), context)
+        .with_local_web_consent_readiness(
+            LocalWebConsentContext {
+                base_url: consent_base_url().to_owned(),
+            },
+            LocalWebConsentReadiness::ready_for_test(),
+        );
+    assert!(!generic_adapter
+        .effective_local_web_consent_available(&exact_local_web_test_capabilities()));
+    let input = Cursor::new(json_lines(&[
+        initialize_request(
+            1,
+            json!({
+                "experimental": {
+                    "io.volicord/user-channel": {
+                        "model_invisible_user_surface": true
+                    }
+                }
+            }),
+        ),
+        initialized_notification(),
+        tools_call(
+            2,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            product_action_args(&fixture, &task_id, state_version),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        generic_adapter,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from(HOST_KIND_GENERIC)),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(generic_connection_id)),
+            "CODEX_THREAD_ID" => Some(OsString::from("ambient_generic_thread")),
+            _ => None,
+        },
+    )?;
+
+    let values = stdio_responses(&output)?;
+    assert_eq!(values.len(), 2);
+    assert!(values[1]["result"].get("_meta").is_none());
+    assert_eq!(
+        fixture.conn()?.query_row(
+            "SELECT COUNT(*) FROM user_action_channel_tokens",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?,
+        0
+    );
+    assert!(values[1]["result"]["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry["text"].as_str())
+        .any(|text| text.contains("`volicord inbox`")));
+    Ok(())
+}
+
+#[test]
+fn expired_mismatched_and_superseded_verification_fail_closed_without_token(
+) -> Result<(), Box<dyn Error>> {
+    for case in ["client_version_mismatch", "expired", "superseded_by_failed"] {
+        let fixture = CoreFixture::new(&format!("mcp-local-web-verification-{case}"))?;
+        let setup_adapter = adapter(&fixture)?;
+        let (task_id, state_version) = create_task(&setup_adapter)?;
+        let now = DateTime::<Utc>::from(std::time::SystemTime::now());
+        let initial = match case {
+            "expired" => exact_host_capability_input(
+                &fixture,
+                &format!("{case}_pass"),
+                now - Duration::hours(2),
+                now - Duration::hours(1),
+            )?,
+            "superseded_by_failed" => exact_host_capability_input(
+                &fixture,
+                &format!("{case}_pass"),
+                now - Duration::seconds(2),
+                now + Duration::hours(1),
+            )?,
+            _ => exact_host_capability_input(
+                &fixture,
+                &format!("{case}_pass"),
+                now - Duration::seconds(1),
+                now + Duration::hours(1),
+            )?,
+        };
+        let mut expected_evidence_artifact_sha256 = initial.evidence_artifact_sha256.clone();
+        publish_host_capability_verification(fixture.runtime_home_path(), initial)?;
+        if case == "superseded_by_failed" {
+            let mut failed = exact_host_capability_input(
+                &fixture,
+                &format!("{case}_current"),
+                now - Duration::seconds(1),
+                now + Duration::hours(1),
+            )?;
+            failed.outcome = HOST_CAPABILITY_OUTCOME_FAILED.to_owned();
+            expected_evidence_artifact_sha256 = failed.evidence_artifact_sha256.clone();
+            publish_host_capability_verification(fixture.runtime_home_path(), failed)?;
+        }
+
+        let capabilities = json!({
+            "experimental": {
+                "io.volicord/user-channel": {
+                    "model_invisible_user_surface": true
+                }
+            }
+        });
+        let initialize = if case == "client_version_mismatch" {
+            initialize_request_with_client_info(
+                1,
+                capabilities,
+                EXACT_LOCAL_WEB_TEST_CLIENT_NAME,
+                "0.0.1",
+            )
+        } else {
+            initialize_request(1, capabilities)
+        };
+        let input = Cursor::new(json_lines(&[
+            initialize,
+            initialized_notification(),
+            tools_call(
+                2,
+                REQUEST_USER_ACTION_TOOL_NAME,
+                product_action_args(&fixture, &task_id, state_version),
+            ),
+        ])?);
+        let runtime_adapter = adapter_with_local_web_consent(&fixture)?
+            .with_expected_evidence_artifact_sha256_for_test(expected_evidence_artifact_sha256);
+        let project_bound = runtime_adapter.context.project_allowlist.is_some();
+        let mut output = Vec::new();
+        run_stdio_with_env_marker(
+            runtime_adapter,
+            BufReader::new(input),
+            &mut output,
+            |name| managed_codex_stdio_env(&fixture, project_bound, name),
+        )?;
+
+        let values = stdio_responses(&output)?;
+        assert_eq!(values.len(), 2, "{case}");
+        assert!(values[1]["result"].get("_meta").is_none(), "{case}");
+        assert_eq!(
+            fixture.conn()?.query_row(
+                "SELECT COUNT(*) FROM user_action_channel_tokens",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+            0,
+            "{case}"
+        );
+        assert!(
+            values[1]["result"]["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry["text"].as_str())
+                .any(|text| text.contains("`volicord inbox`")),
+            "{case}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn local_web_bearer_handoff_is_absent_from_model_and_diagnostic_surfaces(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-local-web-model-invisible-handoff")?;
@@ -4984,7 +5369,9 @@ fn local_web_bearer_handoff_is_absent_from_model_and_diagnostic_surfaces(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(
+    run_exact_verified_local_web_stdio(
+        &fixture,
+        "model_invisible_handoff",
         adapter_with_local_web_consent(&fixture)?,
         BufReader::new(input),
         &mut output,
@@ -5060,7 +5447,13 @@ fn stdio_without_elicitation_uses_local_web_consent_when_prompt_capture_unavaila
     ])?);
     let mut output = Vec::new();
 
-    run_stdio(adapter, BufReader::new(input), &mut output)?;
+    run_exact_verified_local_web_stdio(
+        &fixture,
+        "fallback",
+        adapter,
+        BufReader::new(input),
+        &mut output,
+    )?;
 
     let values = stdio_responses(&output)?;
     assert_eq!(values.len(), 2);
@@ -6767,6 +7160,203 @@ fn adapter_with_local_web_consent(fixture: &CoreFixture) -> Result<McpAdapter, B
     ))
 }
 
+fn assert_non_managed_stdio_exact_pass_does_not_enable_local_web(
+    prefix: &str,
+    launch_origin: McpLaunchOrigin,
+) -> Result<(), Box<dyn Error>> {
+    assert!(matches!(
+        launch_origin,
+        McpLaunchOrigin::ManualCli | McpLaunchOrigin::CliVerification
+    ));
+    let fixture = CoreFixture::new(prefix)?;
+    let setup_adapter = adapter(&fixture)?;
+    let (task_id, state_version) = create_task(&setup_adapter)?;
+    let label = format!("{prefix}_verification");
+    publish_exact_host_capability_verification(&fixture, &label)?;
+    let runtime_adapter = adapter_with_local_web_consent(&fixture)?
+        .with_expected_evidence_artifact_sha256_for_test(
+            exact_host_capability_evidence_artifact_sha256(&label),
+        );
+    assert!(runtime_adapter.local_web_consent_listener_ready());
+    let capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
+        launch_origin.as_str(),
+        Some(EXACT_LOCAL_WEB_TEST_CLIENT_NAME),
+        Some(EXACT_LOCAL_WEB_TEST_CLIENT_VERSION),
+    );
+    assert!(!runtime_adapter.effective_local_web_consent_available(&capabilities));
+
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, model_invisible_user_surface_capability()),
+        initialized_notification(),
+        tools_call(
+            2,
+            REQUEST_USER_ACTION_TOOL_NAME,
+            product_action_args(&fixture, &task_id, state_version),
+        ),
+    ])?);
+    let mut output = Vec::new();
+    match launch_origin {
+        McpLaunchOrigin::ManualCli => {
+            run_stdio(runtime_adapter, BufReader::new(input), &mut output)?;
+        }
+        McpLaunchOrigin::CliVerification => {
+            run_stdio_with_env_marker(
+                runtime_adapter,
+                BufReader::new(input),
+                &mut output,
+                |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
+            )?;
+        }
+        _ => unreachable!("helper accepts only non-managed stdio launch origins"),
+    }
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[1]["result"]["isError"], false);
+    assert!(responses[1]["result"].get("_meta").is_none());
+    assert_eq!(local_web_token_count(&fixture)?, 0);
+    assert!(result_mentions_cli_recovery(&responses[1]["result"]));
+    Ok(())
+}
+
+fn model_invisible_user_surface_capability() -> Value {
+    json!({
+        "experimental": {
+            "io.volicord/user-channel": {
+                "model_invisible_user_surface": true
+            }
+        }
+    })
+}
+
+fn local_web_token_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
+    Ok(fixture.conn()?.query_row(
+        "SELECT COUNT(*) FROM user_action_channel_tokens",
+        [],
+        |row| row.get(0),
+    )?)
+}
+
+fn result_mentions_cli_recovery(result: &Value) -> bool {
+    result["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry["text"].as_str())
+        .any(|text| text.contains("`volicord inbox`"))
+}
+
+pub(crate) fn exact_host_capability_input(
+    fixture: &CoreFixture,
+    label: &str,
+    observed_at: chrono::DateTime<Utc>,
+    expires_at: chrono::DateTime<Utc>,
+) -> Result<HostCapabilityVerificationInput, Box<dyn Error>> {
+    let connection = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+        .expect("fixture connection should exist");
+    let build = crate::build_info();
+    let executable_sha256 = crate::build_info::current_executable_sha256()
+        .ok_or("current test executable must be readable")?;
+    let verification_internal_id = format!("hcv_{label}");
+    let evidence_artifact_sha256 = exact_host_capability_evidence_artifact_sha256(label);
+    let observed_at = observed_at.to_rfc3339_opts(SecondsFormat::Nanos, true);
+    Ok(HostCapabilityVerificationInput {
+        verification_internal_id,
+        connection_internal_id: fixture.connection_id().to_owned(),
+        capability: HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE.to_owned(),
+        outcome: HOST_CAPABILITY_OUTCOME_PASSED.to_owned(),
+        host_kind: connection.host_kind,
+        host_version: EXACT_LOCAL_WEB_TEST_CLIENT_VERSION.to_owned(),
+        client_name: EXACT_LOCAL_WEB_TEST_CLIENT_NAME.to_owned(),
+        client_version: EXACT_LOCAL_WEB_TEST_CLIENT_VERSION.to_owned(),
+        adapter_profile: HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1.to_owned(),
+        adapter_version: build.package_version.to_owned(),
+        managed_fingerprint: connection.managed_fingerprint,
+        volicord_build_id: build.build_id,
+        source_revision: build.git_commit.to_owned(),
+        target_triple: build.target_triple.to_owned(),
+        executable_sha256: executable_sha256.to_owned(),
+        evidence_artifact_sha256,
+        observed_at: observed_at.clone(),
+        expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
+        metadata_json: "{}".to_owned(),
+        created_at: observed_at,
+    })
+}
+
+pub(crate) fn publish_exact_host_capability_verification(
+    fixture: &CoreFixture,
+    label: &str,
+) -> Result<(), Box<dyn Error>> {
+    let now = DateTime::<Utc>::from(std::time::SystemTime::now());
+    publish_host_capability_verification(
+        fixture.runtime_home_path(),
+        exact_host_capability_input(
+            fixture,
+            label,
+            now - Duration::seconds(1),
+            now + Duration::hours(1),
+        )?,
+    )?;
+    Ok(())
+}
+
+pub(crate) fn exact_local_web_test_capabilities() -> McpUserChannelCapabilities {
+    McpUserChannelCapabilities::new(false, true).with_stdio_session(
+        McpLaunchOrigin::ManagedHost.as_str(),
+        Some(EXACT_LOCAL_WEB_TEST_CLIENT_NAME),
+        Some(EXACT_LOCAL_WEB_TEST_CLIENT_VERSION),
+    )
+}
+
+pub(crate) fn exact_host_capability_evidence_artifact_sha256(label: &str) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(format!("host-capability-test:{label}").as_bytes())
+    )
+}
+
+fn managed_codex_stdio_env(
+    fixture: &CoreFixture,
+    project_bound: bool,
+    name: &str,
+) -> Option<OsString> {
+    match name {
+        "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+        "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+        "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+        "VOLICORD_MCP_PROJECT_ID" if project_bound => Some(OsString::from(fixture.project_id())),
+        "CODEX_THREAD_ID" => Some(OsString::from("fixture_codex_thread")),
+        _ => None,
+    }
+}
+
+fn run_exact_verified_local_web_stdio<R, W>(
+    fixture: &CoreFixture,
+    label: &str,
+    adapter: McpAdapter,
+    reader: R,
+    writer: W,
+) -> Result<(), Box<dyn Error>>
+where
+    R: io::BufRead,
+    W: Write,
+{
+    publish_exact_host_capability_verification(fixture, label)?;
+    let adapter = adapter.with_expected_evidence_artifact_sha256_for_test(
+        exact_host_capability_evidence_artifact_sha256(label),
+    );
+    assert!(
+        adapter.effective_local_web_consent_available(&exact_local_web_test_capabilities()),
+        "the exact persisted fixture and ready listener must satisfy the adapter evaluator"
+    );
+    let project_bound = adapter.context.project_allowlist.is_some();
+    run_stdio_with_env_marker(adapter, reader, writer, |name| {
+        managed_codex_stdio_env(fixture, project_bound, name)
+    })?;
+    Ok(())
+}
+
 fn consent_base_url() -> &'static str {
     "http://127.0.0.1:39000"
 }
@@ -7621,6 +8211,20 @@ fn make_project_state_readonly(
 }
 
 fn initialize_request(id: u64, capabilities: Value) -> Value {
+    initialize_request_with_client_info(
+        id,
+        capabilities,
+        EXACT_LOCAL_WEB_TEST_CLIENT_NAME,
+        EXACT_LOCAL_WEB_TEST_CLIENT_VERSION,
+    )
+}
+
+fn initialize_request_with_client_info(
+    id: u64,
+    capabilities: Value,
+    client_name: &str,
+    client_version: &str,
+) -> Value {
     request(
         id,
         "initialize",
@@ -7628,8 +8232,8 @@ fn initialize_request(id: u64, capabilities: Value) -> Value {
             "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
             "capabilities": capabilities,
             "clientInfo": {
-                "name": "volicord-unit-test",
-                "version": "0.0.0"
+                "name": client_name,
+                "version": client_version
             }
         }),
     )

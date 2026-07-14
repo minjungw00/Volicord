@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};
 
 /// Baseline storage profile recorded by canonical storage records.
-pub const STORAGE_PROFILE: &str = "baseline_sqlite_v5";
+pub const STORAGE_PROFILE: &str = "baseline_sqlite_v6";
 
 /// Storage database kind for `registry.sqlite` diagnostics.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";

@@ -614,12 +614,14 @@ JSON-RPC 응답을 만들지 않습니다. 그러나 그런 `params`는 수명�
 }
 ```
 
-정확한 boolean `true`만 그 클라이언트를 모델 비가시적 local-web handoff 대상으로
-만듭니다. 구성원이 없거나 `false`, 잘못된 타입, 잘못된 namespace, 잘못된 중첩 객체이면
-initialize 오류가 아니라 capability unavailable입니다. 이 flag는 사용자 권한이나 host
-신뢰의 증거가 아닙니다. Namespaced tool-result `_meta` 값을 사용자 소유 표면에 전달하고
-모델 맥락에는 절대 제공하지 않는다는 클라이언트의 협력적 약속입니다. 다른 capability
-항목은 그 자체로 Volicord 동작을 만들지 않습니다.
+정확한 boolean `true`만 모델 비가시적 local-web handoff에 대한 클라이언트의 협력적
+선언을 제공합니다. 이 값은 필요하지만 자격의 충분조건은 아닙니다. 구성원이 없거나
+`false`, 잘못된 타입, 잘못된 namespace, 잘못된 중첩 객체이면 initialize 오류가 아니라
+capability unavailable입니다. 이 flag는 사용자 권한이나 host 신뢰의 증거가 아닙니다.
+Namespaced tool-result `_meta` 값을 사용자 소유 표면에 전달하고 모델 맥락에는 절대
+제공하지 않는다는 클라이언트의 약속입니다. 어댑터는 정확한 `clientInfo.name`과
+`clientInfo.version`을 검증 입력으로 보존하지만, 클라이언트 text는 신원 증명이 아닙니다.
+다른 capability 항목은 그 자체로 Volicord 동작을 만들지 않습니다.
 
 예시는 위에 나열한 필드를 사용합니다. `volicord mcp --stdio`는 2025-11-25 스키마가
 허용하는 추가 MCP `Implementation` 메타데이터, 예를 들어 `title`, `description`,
@@ -633,7 +635,10 @@ initialize 오류가 아니라 capability unavailable입니다. 이 flag는 사�
 같으며 `build_id`, Git 메타데이터 출처, 타깃, 정확한 프로필 또는 근사 프로필 계열,
 최적화 수준, 디버그 상태를 포함합니다. 빌드 시각은 포함하지 않습니다. 알 수 없는 Git
 메타데이터는 명시적으로 표현하고, dirty 작업 트리는 수정된 내용을 정확히 식별한다고
-주장하지 않은 채 표시합니다.
+주장하지 않은 채 표시합니다. 이 빌드 객체에는 최종 실행 파일 다이제스트나 릴리스 증거
+다이제스트가 없으며 릴리스 증거 manifest가 아닙니다. 호스트 역량 평가는 실행 파일 밖의
+별도로 검증된 정확한 최종 아티팩트 릴리스 증거 manifest 또는 receipt에서 예상
+`evidence_artifact_sha256`을 얻어야 합니다.
 Initialize 결과는 클라이언트가 이 선택적 handoff를 협상할 수 있도록
 `capabilities.experimental["io.volicord/user-channel"]` 확장도 광고합니다. 서버 광고만으로
 클라이언트 capability가 available이 되지는 않습니다.
@@ -1208,9 +1213,10 @@ projection을 반환합니다. Create 중 요청을 pending으로 남긴 취소�
 입력은 정확한 중첩 resume 안내를 포함하고 두 번째 요청을 만들지 않습니다.
 
 fallback 안내는 Core 권한 밖에 남습니다. 사용할 수 없는 host prompt 입력이 다른 가용
-경로를 숨기면 안 됩니다. Loopback listener와 협상된 모델 비가시적 표면을 모두 사용할
-수 있으면 짧게 만료되는 local web token을 정확한 요청, form digest, project,
-connection, delivery-surface marker에 결속합니다. 원문 credential을 포함한 URL은
+경로를 숨기면 안 됩니다. 중앙 전달 평가기가 관리 stdio 호스트 경로, 준비된 loopback
+listener, 정확한 클라이언트 선언, 현재의 정확히 일치하는 호스트 역량 검증을 확인하면
+짧게 만료되는 local web token을 정확한 요청, form digest, project, connection,
+delivery-surface marker에 결속합니다. 원문 credential을 포함한 URL은
 아래의 닫힌 최상위 전달값에만 두며 알 수 없거나 추가된 필드는 허용하지 않습니다.
 
 ```json
@@ -1227,7 +1233,7 @@ connection, delivery-surface marker에 결속합니다. 원문 credential을 포
 
 `CallToolResult._meta["io.volicord/user-channel"]`는 공개 tool `outputSchema` 밖에 있습니다.
 Agent 대상 content는 요청
-ID, pending 상태, next actor, 안전한 연속 작업 안내만 보고합니다. 어느 capability 입력이든
+ID, pending 상태, next actor, 안전한 연속 작업 안내만 보고합니다. 자격 입력 중 하나라도
 사용할 수 없으면 token을 발급하지 않고 `volicord inbox`를 안내합니다. 각 pending
 fallback은 두 번째 요청을 만들거나 닫힌 공개 응답 스키마 밖의 구조화된 연속 작업 객체를
 추가하지 않습니다. User Channel 완료 뒤 workflow를 계속하는 호출자는 다른 create를
@@ -1247,9 +1253,31 @@ resolution 본문 삽입과 토큰 소비는 원자적입니다.
 
 Listener 시작만으로는 이 경로를 선택하지 않습니다. Listener context는 공유되는 실시간
 준비 상태를 가지며 accept loop는 listener 실패 뒤 종료하기 전에 그 상태를 unavailable로
-바꿉니다. 하나의 adapter evaluator가 현재 상태와 정확한 모델 비가시적 client capability를
-결합해 invocation 도출, User Channel projection, fallback 선택, 최종 handoff materialization에
-사용합니다. Token 발급 전에 adapter는 완전한 안전 tool result와 닫힌 `_meta` 전달값이
+바꿉니다. 하나의 adapter evaluator가 현재 상태와 정확한 모델 비가시적 client 선언,
+관리 stdio 시작 원천, 보존된 `clientInfo`, 현재 영속 호스트 역량 상태를 결합해 invocation
+도출, User Channel projection, fallback 선택, 최종 handoff materialization에 사용합니다.
+현재 상태가 가리키는 변경 불가능한 검증은 `outcome=passed`이고,
+`observed_at <= now < expires_at`을 만족하며, 활성화된 generic이 아닌 연결의 호스트 종류,
+관리 지문, 어댑터 프로필·버전, Volicord 빌드, source revision, target, 실행 파일
+다이제스트, 클라이언트 이름·버전, 크기가 제한된 실제 호스트 증거 다이제스트와 정확히
+일치해야 합니다. 예상 증거 다이제스트는 같은 역량, 호스트·클라이언트, 어댑터, 빌드,
+source, target, 실행 파일 다이제스트에 결속된, 별도로 검증한 외부 정확한 최종 아티팩트
+릴리스 증거 manifest 또는 receipt에서 가져와야 합니다. 행의
+`evidence_artifact_sha256`은 그 예상값과 정확히 일치해야 하며 행, 빌드 설명자, 복사한 값이
+스스로 예상값을 제공할 수 없습니다. Manifest 입력이 없거나, 알 수 없거나, 잘못됐거나,
+검증되지 않았거나, 일치하지 않으면 닫힌 상태로 실패합니다. 현재 어댑터에는 그 manifest를
+신뢰해 획득하는 경로가 없으므로 운영 local-web 선택은 사용할 수 없고 CLI fallback을
+반환합니다. 수동 stdio, CLI 검증 probe, Local HTTP transport, generic 연결,
+유효하지 않거나 알 수 없는 관리 marker는 자격이 없습니다. 통과하는 source revision은
+정확한 소문자 40자리 또는 64자리 16진수이며 `unknown`은 통과할 수 없습니다. 내장 stdio
+어댑터에서는 `host_version == client_version == clientInfo.version`이고 같은 버전이 실제
+아티팩트의 설치 호스트 버전과 일치해야 합니다. 이 같음을 증명할 수 없으면 통과 행이
+아닙니다. 검증 구간은 또한 `observed_at <= created_at`,
+`observed_at < expires_at <= observed_at + 86,400 seconds`,
+`created_at < expires_at`을 만족해야 합니다. 24시간은 기본 수명이나 attestation 기간이
+아니라 최대 최신성 구간이며 게시자는 더 짧은 만료 시각을 선택할 수 있습니다. Token 발급
+전에 adapter는
+완전한 안전 tool result와 닫힌 `_meta` 전달값이
 선택된 65,536 또는 262,144-byte 응답 예산에 맞는지 확인합니다. 그다음 협상된 capability를
 같은 evaluator에 전달하고 token 삽입과 handoff 구성이 끝날 때까지 준비된 listener의 공유
 발급 lease를 획득합니다. Listener 무효화는 이 lease의 배타 쪽을 획득합니다. 이 지점이
@@ -1257,14 +1285,17 @@ Listener 시작만으로는 이 경로를 선택하지 않습니다. Listener co
 CLI fallback을 반환합니다. 발급 lease가 먼저면 그 token은 이미 발급된 것으로 보며 이후
 listener가 실패해도 제한된 TTL을 유지합니다. 결과가 예산에 맞지 않을 때도 token 없이
 fallback합니다. 예산 거부와 발급보다 먼저 순서화된 준비 상태 무효화는 token을 만들지
-않으며 adapter는 URL을 자르지 않습니다. 이 전달값은
+않으며 adapter는 URL을 자르지 않습니다. 호스트 역량 상태가 없거나, 통과하지 않았거나,
+만료·손상·불일치 상태일 때도 token, `_meta`, 프로젝트 시간 하한 효과가 없습니다. 이 전달값은
 resume, pending이 아닌 결과, CLI fallback, token 발급
-실패, 지원되지 않거나 잘못된 capability, listener 시작 실패, 발급보다 먼저 순서화된 저하,
+실패, 지원되지 않거나 잘못된 선언, 없거나 오래되거나 취소되거나 손상되거나 일치하지 않는
+검증, listener 시작 실패, 발급보다 먼저 순서화된 저하,
 응답 예산 저하에서 없습니다. URL과 token은 MCP `content`,
 `structuredContent`, 호환·진단 text, status·close projection, 정확한 Core replay,
-operation-result byte, log, template에 나타나면 안 됩니다. Host 선언은 모델 비노출을
-지키겠다는 협력형 약속일 뿐 host 격리, 사용자 identity, 사용자 권한의 증명이 아닙니다.
-이 분리를 보존할 수 없는 host는 capability를 생략하고 CLI fallback을 받아야 합니다.
+operation-result byte, log, template에 나타나면 안 됩니다. Host 선언과 일치하는 크기 제한
+검증 기록은 계속 협력적 통합 증거일 뿐 host attestation, host 격리, 사용자 identity,
+사용자 권한의 증명이 아닙니다. 이 분리를 보존할 수 없는 host는 capability를 생략하고 CLI
+fallback을 받아야 합니다.
 
 Base URL만 받는 기존 공개 programmatic adapter builder는 추적되지 않는 source-compatible
 fail-closed shim이며, local web을 available로 만들거나 token을 발급하지 않습니다. 지원되는

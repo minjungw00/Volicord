@@ -362,14 +362,27 @@ CoverageSummary:
 - `required_hook_phases`와 `missing_required_hook_phases`는 필수 호스트 훅 설정이 완전한지를 보고합니다. 필요한 단계가 `required_hook_phases`에 없거나 `missing_required_hook_phases`에 나열되어 있으면 누락된 것으로 취급합니다. 필요한 단계가 누락되면 유효한 훅 이벤트가 관찰되었더라도 유효 `detective` 상태는 `active`가 되지 않습니다.
 - `prompt_capture_status`는 선택된 연결에서 프롬프트 캡처를 사용할 수 있는지를 기계가 읽을 수 있는 값으로 보고합니다. `prompt_capture_available=true`는 그 상태가 검증 코드 채팅 명령을 허용할 때만 사용합니다. 원문 프롬프트 텍스트가 포함된다는 뜻은 아닙니다.
 - `prompt_capture_available`은 선택된 연결에서 프롬프트 캡처용 검증 코드 채팅 명령을 표시하거나 기록할 수 있는지 보고합니다. 프롬프트 텍스트는 포함하지 않습니다.
-- `local_web_consent_available=true`는 현재 어댑터 호출의 루프백 listener가 준비됐고
-  초기화한 client가
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
-  정확한 boolean `true`를 보냈을 때만 사용합니다. 선언이 생략됐거나 false이거나, 타입이
-  다르거나, 형태가 잘못됐거나, namespace가 다르면 `false`입니다. 이 값은 token 발급,
-  form 표시, 사용자 식별, 모델 격리 증명을 뜻하지 않습니다. Status와 check-close는 같은
-  evaluator를 사용하고 가용성 보고만을 위해 token을 발급하지 않습니다. 두 런타임 입력을
-  관찰할 수 없는 setup 진단도 `false`를 보고합니다.
+- `local_web_consent_available=true`는 현재 어댑터 호출의 중앙 평가기가 관리되는
+  generic이 아닌 stdio 호스트, 준비된 loopback listener,
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`의
+  정확한 boolean `true` 선언, 만료되지 않은 `outcome=passed` 결과를 가진 현재의 정확히
+  일치하는 영속 호스트 역량 상태를 모두 관찰할 때만 사용합니다. 구간은
+  `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`를 만족해야 하고
+  행의 `evidence_artifact_sha256`은 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source,
+  target, 실행 파일 다이제스트에 결속된, 실행 파일 밖의 별도로 검증한 정확한 최종
+  아티팩트 릴리스 증거 manifest 또는 receipt의 예상 다이제스트와도 정확히 일치해야 하며
+  현재 평가는
+  `observed_at <= now < expires_at`을 사용합니다. 24시간은 기본 수명이나 attestation
+  기간이 아니라 최대 최신성 구간입니다. 선언이 생략됐거나
+  false이거나, 타입·형태·namespace가 잘못됐거나, 검증이 없거나 통과하지 않았거나
+  만료·취소·손상·불일치 상태이면 `false`입니다. 이 값은 token 발급, form 표시, 사용자
+  식별, 모델 격리 증명을 뜻하지 않습니다. Status와 check-close는 같은 평가기를 사용하고
+  가용성 보고만을 위해 token을 발급하지 않습니다. 모든 런타임·영속 입력을 관찰할 수
+  없는 setup 진단도 `false`를 보고합니다.
+  Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지 않았거나, 일치하지 않아도
+  `false`입니다. 행과 빌드 메타데이터가 예상 다이제스트를 자기 선언할 수 없습니다. 현재
+  어댑터에는 신뢰된 manifest 획득 경로가 없으므로 운영 projection은 이 역량을 사용할 수
+  없다고 보고합니다.
 - `mcp_connection_healthy`와 `mcp_connection_status`는 추적되는 Agent Connection 확인 상태가 있을 때 그 상태를 요약합니다.
 - `session_watch_status`는 선택된 연결 또는 세션의 Product Repository 세션 감시기가 `disabled`, `active`, `degraded`, `unavailable`, `pending_project_selection` 중 어떤 상태인지 보고합니다.
 - `last_session_watch_checked_at`은 가장 최근 세션 감시 기준선 상태 갱신 시각입니다. 사용할 수 있는 기준선이 없으면 `null`입니다.

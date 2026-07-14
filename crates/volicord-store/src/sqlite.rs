@@ -223,6 +223,8 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             "project_aliases",
             "agent_connections",
             "connection_projects",
+            "host_capability_verifications",
+            "host_capability_state",
             "guard_installations",
         ],
     )?;
@@ -238,6 +240,9 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             "idx_agent_connections_project",
             "idx_agent_connections_target_project",
             "idx_agent_connections_target_global",
+            "idx_host_capability_verifications_connection",
+            "idx_host_capability_verifications_outcome_expiry",
+            "idx_host_capability_state_current",
             "idx_guard_installations_connection",
             "idx_guard_installations_project",
             "idx_guard_installations_status",
@@ -419,6 +424,49 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             primary_key_position: 0,
         },
     )?;
+    for column in [
+        "verification_internal_id",
+        "connection_internal_id",
+        "capability",
+        "outcome",
+        "host_kind",
+        "host_version",
+        "client_name",
+        "client_version",
+        "adapter_profile",
+        "adapter_version",
+        "managed_fingerprint",
+        "volicord_build_id",
+        "source_revision",
+        "target_triple",
+        "executable_sha256",
+        "evidence_artifact_sha256",
+        "observed_at",
+        "expires_at",
+        "metadata_json",
+        "created_at",
+    ] {
+        require_column(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            "host_capability_verifications",
+            column,
+        )?;
+    }
+    for column in [
+        "connection_internal_id",
+        "capability",
+        "current_verification_internal_id",
+        "updated_at",
+    ] {
+        require_column(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            "host_capability_state",
+            column,
+        )?;
+    }
+    validate_host_capability_constraints(conn)?;
     for column in [
         "guard_installation_id",
         "runtime_home_id",
@@ -1425,6 +1473,46 @@ fn validate_guard_installations_constraints(conn: &Connection) -> StoreResult<()
     Ok(())
 }
 
+fn validate_host_capability_constraints(conn: &Connection) -> StoreResult<()> {
+    let verification_sql = normalized_table_sql(conn, "host_capability_verifications")?;
+    for fragment in [
+        "capability = 'model_invisible_user_surface'",
+        "outcome in ('passed', 'failed', 'unavailable', 'revoked')",
+        "host_kind in ('codex', 'claude_code', 'generic')",
+        "adapter_profile = 'mcp_user_channel_local_web_v1'",
+        "length(executable_sha256) = 64",
+        "length(evidence_artifact_sha256) = 64",
+        "metadata_json = '{}'",
+        "unique (connection_internal_id, capability, verification_internal_id)",
+        "outcome != 'passed' or host_kind in ('codex', 'claude_code')",
+        "outcome != 'passed' or host_version = client_version",
+        "length(source_revision) in (40, 64)",
+        "source_revision not glob '*[^0-9a-f]*'",
+    ] {
+        if !verification_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                "host_capability_verifications constraints are missing or malformed",
+            ));
+        }
+    }
+
+    let state_sql = normalized_table_sql(conn, "host_capability_state")?;
+    for fragment in [
+        "capability = 'model_invisible_user_surface'",
+        "primary key (connection_internal_id, capability)",
+        "current_verification_internal_id",
+    ] {
+        if !state_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                "host_capability_state constraints are missing or malformed",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_user_action_channel_tokens(conn: &Connection) -> StoreResult<()> {
     for (column, not_null) in [
         ("project_id", true),
@@ -1953,26 +2041,26 @@ mod tests {
     }
 
     #[test]
-    fn previous_v4_project_profile_requires_recreation() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-state-v4-profile")?;
-        let path = project_state_db_path(runtime_home.path(), "PRJ-v4-profile");
+    fn previous_v5_project_profile_requires_recreation() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-state-v5-profile")?;
+        let path = project_state_db_path(runtime_home.path(), "PRJ-v5-profile");
         let conn = open_project_state_database(&path)?;
         conn.execute(
             "INSERT INTO project_state (
                 project_id, storage_profile, created_at, updated_at
-            ) VALUES ('project_v4', 'baseline_sqlite_v4', 't0', 't0')",
+            ) VALUES ('project_v5', 'baseline_sqlite_v5', 't0', 't0')",
             [],
         )?;
 
         let error = validate_project_state_schema(&conn)
-            .expect_err("the previous v4 profile must not open as baseline_sqlite_v5");
+            .expect_err("the previous v5 profile must not open as baseline_sqlite_v6");
         assert!(matches!(
             error,
             StoreError::UnsupportedStorageProfile {
                 actual_storage_profile,
-                expected_storage_profile: "baseline_sqlite_v5",
+                expected_storage_profile: "baseline_sqlite_v6",
                 ..
-            } if actual_storage_profile == "baseline_sqlite_v4"
+            } if actual_storage_profile == "baseline_sqlite_v5"
         ));
         Ok(())
     }

@@ -300,7 +300,11 @@ also reporting availability warnings and `actions_recommended`. PATH or
 command-link recommendations say when an existing agent host may need restart
 or reload. Runtime-only capabilities such as session-watcher observation and
 local web consent appear unavailable unless the reporting process owns that
-runtime state.
+runtime state. A connection-level `complete` result, successful CLI handshake,
+or generated configuration does not create a host-capability verification.
+Doctor may read and explain the bounded current verification basis, but it must
+not create, refresh, or promote that basis. Without every invocation-bound
+input, it reports local web consent as unavailable.
 
 These checks do not prove OS enforcement, sandboxing, write prevention, product
 correctness, or Close Status. Doctor does not create projects, install host
@@ -315,7 +319,11 @@ diagnostic disclosure, and a compact `summary_card`. The `build` object exposes
 `target_triple`, nullable `build_profile`, `profile_class`, `profile_exact`,
 `opt_level`, nullable `debug`, and `build_id`. `metadata_source` is
 `repository`, `environment`, or `unknown`; `profile_exact=false` means only the
-Cargo `debug`/`release` profile class is known. JSON uses
+Cargo `debug`/`release` profile class is known. The build object contains
+neither the final executable digest nor a release evidence digest and is not a
+release evidence manifest. Expected `evidence_artifact_sha256` for
+host-capability evaluation must come from a separately verified external
+exact-final-artifact release evidence manifest or receipt. JSON uses
 `disclosure.guarantee_class=detective_observation` and `non_guarantees` values
 such as `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`, `NotTestSufficiencyProof`,
@@ -1472,10 +1480,22 @@ prompt input is the preferred User Channel input method for a compatible
 pending action created through `volicord.request_user_action`. Agent-facing
 fallback guidance never shows a request-bound chat command, verification code,
 complete form, or loopback bearer URL. Local web consent is selected only when
-the listener is ready and the initialized client sent exact boolean `true` at
-`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`;
-the short-lived URL is delivered only in the namespaced top-level tool-result
-`_meta` handoff. Otherwise the Agent receives generic CLI inbox guidance. The
+the shared evaluator confirms the managed non-generic stdio path, ready
+listener, exact boolean declaration, and current unexpired exact-match
+`outcome=passed` host-capability verification whose canonical UTC interval
+satisfies
+`observed_at <= created_at < expires_at <= observed_at + 86,400 seconds` and
+whose current evaluation uses `observed_at <= now < expires_at`. Twenty-four hours is
+the maximum freshness window, not a default lifetime or attestation period.
+The verification's `evidence_artifact_sha256` must exactly match the expected
+digest from the separately verified external exact-final-artifact manifest or
+receipt bound to the same capability, host/client, adapter, build, source,
+target, and executable digest. A missing, unknown, malformed, unverified, or
+mismatched manifest fails closed. The current adapter has no trusted manifest
+acquisition path, so production local-web selection uses CLI inbox fallback.
+The short-lived URL is delivered
+only in the namespaced top-level tool-result `_meta` handoff. Otherwise the
+Agent receives generic CLI inbox guidance. The
 terminal `volicord inbox` commands remain the complete-form CLI input and
 manual-inspection path when another verified User Channel is unavailable,
 disabled, degraded, or inappropriate for the action form.
@@ -1593,7 +1613,11 @@ Required diagnostic JSON values:
   expose `generated_config_verified`,
   `native_host_output_adapter_verified`, and
   `direct_file_write_matcher_coverage` to show the stricter host-hook
-  prerequisites. When watcher diagnostics are reported, JSON must also expose
+  prerequisites. `local_web_consent_available` must remain `false` when the
+  command cannot observe the current invocation's exact client declaration,
+  launch origin, listener readiness, and persisted verification tuple; stored
+  connection verification alone must not set it to `true`. When watcher
+  diagnostics are reported, JSON must also expose
   `watcher_status`, `watcher_baseline_created_at`,
   `watcher_coverage_start_at`, `watcher_coverage_basis`,
   `watcher_partial_coverage_warning`, and `watcher_scan_summary`.

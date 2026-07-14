@@ -115,6 +115,79 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   )
   WHERE project_internal_id IS NULL;
 
+CREATE TABLE host_capability_verifications (
+  verification_internal_id TEXT PRIMARY KEY,
+  connection_internal_id TEXT NOT NULL,
+  capability TEXT NOT NULL
+    CHECK (capability = 'model_invisible_user_surface'),
+  outcome TEXT NOT NULL
+    CHECK (outcome IN ('passed', 'failed', 'unavailable', 'revoked')),
+  host_kind TEXT NOT NULL
+    CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
+  host_version TEXT NOT NULL CHECK (length(trim(host_version)) > 0),
+  client_name TEXT NOT NULL CHECK (length(trim(client_name)) > 0),
+  client_version TEXT NOT NULL CHECK (length(trim(client_version)) > 0),
+  adapter_profile TEXT NOT NULL
+    CHECK (adapter_profile = 'mcp_user_channel_local_web_v1'),
+  adapter_version TEXT NOT NULL CHECK (length(trim(adapter_version)) > 0),
+  managed_fingerprint TEXT NOT NULL CHECK (length(trim(managed_fingerprint)) > 0),
+  volicord_build_id TEXT NOT NULL CHECK (length(trim(volicord_build_id)) > 0),
+  source_revision TEXT NOT NULL CHECK (length(trim(source_revision)) > 0),
+  target_triple TEXT NOT NULL CHECK (length(trim(target_triple)) > 0),
+  executable_sha256 TEXT NOT NULL
+    CHECK (length(executable_sha256) = 64 AND executable_sha256 NOT GLOB '*[^0-9a-f]*'),
+  evidence_artifact_sha256 TEXT NOT NULL
+    CHECK (
+      length(evidence_artifact_sha256) = 64
+      AND evidence_artifact_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+  observed_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (metadata_json = '{}'),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE CASCADE,
+  UNIQUE (connection_internal_id, capability, verification_internal_id),
+  CHECK (outcome != 'passed' OR host_kind IN ('codex', 'claude_code')),
+  CHECK (outcome != 'passed' OR host_version = client_version),
+  CHECK (
+    outcome != 'passed'
+    OR (
+      length(source_revision) IN (40, 64)
+      AND source_revision NOT GLOB '*[^0-9a-f]*'
+    )
+  )
+);
+
+CREATE TABLE host_capability_state (
+  connection_internal_id TEXT NOT NULL,
+  capability TEXT NOT NULL
+    CHECK (capability = 'model_invisible_user_surface'),
+  current_verification_internal_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (connection_internal_id, capability),
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (
+    connection_internal_id,
+    capability,
+    current_verification_internal_id
+  ) REFERENCES host_capability_verifications (
+    connection_internal_id,
+    capability,
+    verification_internal_id
+  ) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_host_capability_verifications_connection
+  ON host_capability_verifications (connection_internal_id, capability, observed_at);
+CREATE INDEX idx_host_capability_verifications_outcome_expiry
+  ON host_capability_verifications (outcome, expires_at);
+CREATE INDEX idx_host_capability_state_current
+  ON host_capability_state (current_verification_internal_id);
+
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,

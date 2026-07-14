@@ -47,7 +47,7 @@ The tree is representative after the relevant storage features have been used; i
 
 Storage placement:
 
-- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, host-hook installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
+- `registry.sqlite` stores Runtime Home identity, installation profile records, project registration mapping, project aliases, Agent Connection records, Connection Projects membership, host-capability verification history and current pointers, host-hook installation records, and registry metadata. The installation profile includes the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps. Project registration includes `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, registered `repo_root`, `project_home`, project `state.sqlite` path, status, metadata, and timestamps.
 - `diagnostics.sqlite` is a lazily created, bounded, non-authority local operability store. It is separate from `registry.sqlite` and every project `state.sqlite` and has no foreign keys into either database.
 - `projects/{project_internal_id}/` is the default Volicord project home shape for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state and project-scoped host-observation records for the registered project.
@@ -62,7 +62,7 @@ For operational project records, `project_home` is the location owner for projec
 
 The `Product Repository` is the user product-file boundary registered by `repo_root`. It is not a Volicord runtime home, not Core authority storage, and not where runtime records, replay rows, judgments, write tickets, guard records, or Agent Connection registry state are stored.
 
-Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v5`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
+Baseline SQLite table shape, indexes, foreign keys, constraints, and canonical SQL sources belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v6`; storage-profile and incompatible-storage boundary behavior belongs to [Storage Versioning](storage-versioning.md).
 
 Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`, while a newly created Runtime Home gets a new id. The id can help detect suspicious copies, duplicate registrations, or path drift; it is not a security guarantee.
 
@@ -89,6 +89,8 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
 | `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |
+| `registry.sqlite` | `host_capability_verifications` | Immutable host-capability validation history | Exact connection/capability, outcome, host/client version, adapter profile, managed fingerprint, Volicord build/source/target/executable digest, bounded evidence-artifact digest, observation/expiry interval, strict canonical `{}` metadata, and creation time. |
+| `registry.sqlite` | `host_capability_state` | Current host-capability pointer | One current immutable verification row per connection and capability, replaced atomically by later passing, failed, unavailable, or revoked observations. |
 | `registry.sqlite` | Host-hook installation | Host-hook setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, integration mode, host capability JSON, installation lifecycle status, observed hook metadata, timestamps, and metadata. |
 | `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, project enforcement profile, and `updated_at` as the persisted floor of the canonical Core UTC clock. |
 | `state.sqlite` | `agent_sessions` | Observed Agent Session | Project-scoped session for one Agent Connection, optional host-hook installation, host kind, integration profile, start/end timestamps, and metadata. |
@@ -131,6 +133,23 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 - Project registration requires a unique `project_internal_id`, unique project alias, unique repository root, unique project home, and unique state database path. `project_name` is the display name and `project_alias` is the CLI selection aid.
 - Agent Connection identity is unique by `connection_internal_id`.
 - Connection Projects membership is unique by `connection_internal_id` and `project_internal_id`, and is the only registry membership that lets one connection address a registered project.
+- Host-capability verification identity is unique by
+  `verification_internal_id`; each history row belongs to one Agent Connection
+  and exact capability. `host_capability_state` can point only to a row with the
+  same connection and capability. A current non-passing row prevents fallback
+  to an older passing row. Canonical UTC interval values must satisfy
+  `observed_at <= created_at` and
+  `observed_at < expires_at <= observed_at + 86,400 seconds`; a passing row also
+  requires `created_at < expires_at`. A row is fresh only at
+  `observed_at <= now < expires_at`. Twenty-four hours is a maximum freshness
+  window, not a default lifetime or attestation period. A passing
+  built-in stdio row requires `host_version = client_version`, and that single
+  version must equal both the exact runtime `clientInfo.version` and the live
+  artifact's installed-host version. Its `source_revision` is exact lowercase
+  40- or 64-hex; `unknown` cannot pass.
+- Publishing the exact same verification ID and content is idempotent. If that
+  history row is no longer current, the duplicate does not move the newer
+  pointer backward. The same ID with different content is a conflict.
 - A disabled connection may ordinarily retain membership and is not thereby a migration-cleanup record. Last-project host migration cleanup is identified only by the exact `agent_connections.metadata_json.pending_host_cleanup` object with `project_id` and `replacement_connection_id`. The cleanup transaction must match that marker, disabled state, and the one retained membership before host retirement and membership removal.
 - `agent_connections.metadata_json.pending_host_cleanup` is Store-owned recovery state. Generic Agent Connection registration and update inputs must reject that reserved key, and generic enable/disable or Connection Projects membership mutations must reject a marked row. A migration must not activate a marked row as its requested target. Migration transition and cleanup operations may rebind or remove the marker on superseded inventory only while revalidating its project membership.
 - A present `pending_host_cleanup` value with missing, extra, empty, or wrongly typed members is not resumable cleanup. Doctor must report it as an invalid reserved marker; cleanup and migration discovery must not interpret it as valid inventory.
@@ -480,6 +499,7 @@ Rules:
 |---|---|
 | Installation profile | Installation-profile metadata that is not a host trust decision, user judgment, or public API schema. |
 | Agent Connection | Verification report JSON, user-action JSON, and metadata that are not used as authority, host trust proof, or a replacement for external host configuration. |
+| Host-capability verification | V1 `metadata_json` is strict canonical `{}` only. Every allowed evidence coordinate has a dedicated column; a bearer URL or token, prompt, transcript, screenshot, raw host artifact, private operator data, and arbitrary or additional members are invalid. |
 | Host-hook installation | Host capability JSON and metadata for local host-hook setup health, not OS enforcement proof. |
 | `agent_sessions` | Non-authority metadata for a project-scoped Agent Session. |
 | `guard_events` | Host-hook subject JSON, result JSON, and metadata for a local host decision request. |

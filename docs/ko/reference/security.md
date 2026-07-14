@@ -202,11 +202,27 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - 판단과 Evidence 관찰을 포함한 권한 효력이 있는 사용자 행동 resolution에는 `User Channel`을 통한 `actor_source=local_user`가 필요합니다.
 - 원문 User Channel bearer token이나 credential을 포함한 URL은 `content`,
   `structuredContent`, 호환·진단 text, 정확한 replay, operation-result byte를 포함한 Agent
-  대상·모델 맥락 또는 공개 출력 projection에 들어가면 안 됩니다. Local-web 전달에는 loopback listener와
+  대상·모델 맥락 또는 공개 출력 projection에 들어가면 안 됩니다. Local-web 전달에는
+  관리되는 generic이 아닌 stdio 호스트, 준비된 loopback listener,
   `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`의
-  정확한 boolean `true`가 모두 필요하며 유일한 host-only 예외로 URL을 `outputSchema`와
-  모델 맥락 밖의 namespaced 최상위 tool-result `_meta` handoff에만 둡니다. Capability가 없거나 false이거나 잘못된 형태이면
-  token을 발급하지 않고 CLI inbox 복구를 남깁니다.
+  정확한 boolean `true`, 변경 불가능한 결과가 `outcome=passed`이고 만료되지 않은 현재의
+  정확히 일치하는 영속 호스트 역량 상태가 모두 필요합니다. 검증 구간은
+  `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`를 만족해야
+  합니다. 24시간은 기본 수명, 신원 증명, attestation 기간이 아니라 최대 최신성 구간일
+  뿐입니다.
+  `evidence_artifact_sha256`은 실행 파일 밖의 별도로 검증된 정확한 최종 아티팩트 릴리스
+  증거 manifest 또는 receipt가 제공하는 예상 다이제스트와 정확히 일치해야 합니다. 그
+  manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target, 실행 파일
+  다이제스트에 결속되어야 합니다. Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지
+  않았거나, 일치하지 않으면 닫힌 상태로 실패하며 영속 행이나 빌드 메타데이터가 예상값을
+  자기 선언할 수 없습니다. 현재 어댑터에는 신뢰된 manifest 획득 경로가 없으므로 운영
+  local-web 자격은 사용할 수 없고 CLI inbox를 사용합니다.
+  V1 검증 `metadata_json`은 엄격한 정규 `{}`만 허용합니다. 임의 메타데이터가 다른 신뢰
+  입력이 되거나 token, prompt, transcript, 원문 호스트 아티팩트, 비공개 운영자 데이터를
+  담을 수 없습니다. 유일한 host-only 예외로 URL을
+  `outputSchema`와 모델 맥락 밖의 namespaced 최상위 tool-result `_meta` handoff에만 둡니다.
+  입력이 없거나, 통과하지 않았거나, 만료·취소·손상·불일치 상태이면 token을 발급하지 않고
+  CLI inbox 복구를 남깁니다.
 - Workflow Agent Connection은 현재 evidence-capture intent를 만들 수 있습니다. 등록된
   local source만 이를 fulfillment할 수 있고, receipt를 producer와 observation으로
   finalization할 수 있는 메서드는 `record_run`뿐입니다. MCP receipt-fulfillment
@@ -220,6 +236,16 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
 - `operation_category`가 OS 권한, 호스트 신뢰, 포괄적 권한이라는 주장.
 - 텍스트에서 복사한 `actor_source`가 호출자 권한 토큰이라는 주장.
 - 환경으로 제어되는 라벨, 공개 요청 필드, 임의 호출자 텍스트가 신뢰된 권한, 감사 사실, 검증 근거 입력이라는 주장.
+- 스스로 선언한 capability, `clientInfo` 이름·버전, 환경 marker, 프로세스 인자, 연결의
+  `complete` 결과, 복사한 증거 다이제스트, fixture 결과가 credential 전달 자격을 만든다는
+  주장. 이 값은 집중 담당 문서가 요구하는 곳에서 일치 대조 입력일 뿐입니다.
+- 실행 파일에 내장한 릴리스 증거 다이제스트가 유효한 신뢰 원천이라는 주장. 실제 호스트
+  증거는 최종 실행 파일이 생긴 뒤에 생성되며, 다이제스트를 내장하려고 다시 빌드하면 실행
+  파일 다이제스트가 바뀌어 재귀 결속이 생깁니다.
+- 호스트 역량 검증이 암호학적 host attestation, 현재 사용자 신원, 호스트 격리, 이후
+  호스트 실행에서 `_meta`를 모델 맥락 밖에 두었다는 증명이라는 주장. 한 호스트, 버전,
+  target, 어댑터 프로필, 연결, 지문, 빌드, 유효 기간의 결과를 다른 tuple로 일반화하면
+  안 됩니다.
 - 등록된 guard event, session-watcher observation, Volicord command runner가
   cryptographic host signature, local-principal attestation, 위조 방지 경계,
   actor-identity 증명이라는 주장. 정확한 digest와 완전성을 검사해도 이 source는

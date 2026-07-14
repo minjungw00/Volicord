@@ -4,7 +4,7 @@ This document owns baseline storage-versioning rules for current Volicord SQLite
 
 ## Storage Profile
 
-The current baseline storage profile is `baseline_sqlite_v5`.
+The current baseline storage profile is `baseline_sqlite_v6`.
 
 Baseline storage uses the canonical SQL sources [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and [`project.sql`](../../../crates/volicord-store/src/schema/project.sql). Runtime Home initialization applies those sources to empty SQLite databases. Baseline storage does not create `schema_migrations`, `schema_version`, `migration_version`, `storage_version`, or equivalent storage-version fields.
 
@@ -18,9 +18,17 @@ A database is usable only when its table shape, columns, indexes, foreign keys, 
 
 Store code must not guess record meaning, silently rewrite data, or convert unsupported storage. Existing Runtime Homes with incompatible storage fail clearly and require Runtime Home recreation.
 
-Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, evidence-capture intents, receipts, exclusive source claims, immutable evidence producers, user-action requests, immutable user-action resolutions, request-bound local channel tokens, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
+Baseline registry storage includes Runtime Home identity, installation profile records, repository-root-based project registrations, project aliases, Agent Connection records, `connection_projects`, immutable host-capability verification history, current host-capability pointers, and `guard_installations`. Baseline project-state storage includes Core state projection records, `authority_events`, replay rows, staged artifacts, persistent artifacts, evidence, evidence-capture intents, receipts, exclusive source claims, immutable evidence producers, user-action requests, immutable user-action resolutions, request-bound local channel tokens, runs, blockers, `write_tickets`, host-observation records, and session-watch records.
 
-`baseline_sqlite_v5` replaces the v4 judgment and direct user-observation
+`baseline_sqlite_v6` adds `host_capability_verifications` and
+`host_capability_state` to the Registry so credential-delivery eligibility can
+depend on immutable, expiring, exact-profile live-host evidence instead of a
+client declaration or mutable configuration-verification JSON. The baseline
+provides no in-place conversion from `baseline_sqlite_v5`. A v5 Runtime Home is
+an incompatible shape and must be recreated; Store must not relabel it, infer a
+passing verification from existing connection state, or synthesize history.
+
+The earlier `baseline_sqlite_v5` profile replaced the v4 judgment and direct user-observation
 families with `user_action_requests`, immutable one-to-one
 `user_action_resolutions` carrying closed tagged observation-resolution detail,
 and request-bound local channel tokens. The baseline provides no in-place
@@ -29,12 +37,12 @@ shape and must be recreated; Store must not relabel or guess-convert it.
 `project_state.state_version` remains a Core state clock and is not the
 storage-profile version.
 
-The current pre-major v5 contract stores a registered-connection capture's
+The pre-major v5 contract stored a registered-connection capture's
 closed source selector and Core-derived canonical selector digest in the intent.
 Concrete event/watcher-observation identity, observation time, and raw-event or
 snapshot/selection digest are receipt-owned facts. This correction changes no
 canonical SQL table, column, index, foreign key, or constraint and is completed
-inside the current `baseline_sqlite_v5` / `0.8.0` batch. It therefore does not
+inside the `baseline_sqlite_v5` / `0.8.0` batch. It therefore did not
 create another storage-profile or package-version transition. Store does not
 decode the removed caller-supplied future-observation-digest capture shape as a
 legacy alias or fallback; a malformed required record fails closed.

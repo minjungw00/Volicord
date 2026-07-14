@@ -1,4 +1,6 @@
 use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::{io::Read, sync::OnceLock};
 
 const UNKNOWN: &str = "unknown";
 
@@ -61,6 +63,26 @@ pub fn build_id() -> String {
     build_info().build_id
 }
 
+pub(crate) fn current_executable_sha256() -> Option<&'static str> {
+    static DIGEST: OnceLock<Option<String>> = OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            let executable = std::env::current_exe().ok()?;
+            let mut file = std::fs::File::open(executable).ok()?;
+            let mut hasher = Sha256::new();
+            let mut buffer = [0_u8; 64 * 1024];
+            loop {
+                let read = file.read(&mut buffer).ok()?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            Some(format!("{:x}", hasher.finalize()))
+        })
+        .as_deref()
+}
+
 fn parsed_bool(value: &str) -> Option<bool> {
     match value {
         "true" => Some(true),
@@ -111,6 +133,15 @@ mod tests {
         assert!(!info.build_id.contains("time="));
         assert!(!info.build_id.contains("timestamp="));
         assert!(!info.build_id.contains("built_at="));
+    }
+
+    #[test]
+    fn current_executable_digest_is_lowercase_sha256() {
+        let digest = current_executable_sha256().expect("current test executable must be readable");
+        assert_eq!(digest.len(), 64);
+        assert!(digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
     }
 
     #[test]

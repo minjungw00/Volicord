@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
@@ -16,6 +16,10 @@ use crate::{
         VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED, VERIFIED_STATUS_NOT_VERIFIED,
     },
     bootstrap::{validate_project_record_for_execution, ProjectRecord},
+    host_capabilities::{
+        validate_stored_record, validate_unique_newest_host_capability_pointer,
+        HostCapabilityVerificationRecord, HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+    },
     schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND, STORAGE_PROFILE},
     sqlite::{open_read_only_database, registry_db_path, validate_project_state_schema},
     StoreError,
@@ -120,6 +124,14 @@ pub struct ConnectionProjectInspectionRecord {
     pub project_internal_id: String,
     pub project_id: String,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HostCapabilityStateInspectionRecord {
+    connection_internal_id: String,
+    capability: String,
+    current_verification_internal_id: String,
+    updated_at: String,
 }
 
 /// Guard installation row read from the current registry schema.
@@ -295,6 +307,19 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
             Ok(records) => records,
             Err(issue) => return issue.into_database_inspection(path),
         };
+    let host_capability_verifications =
+        match read_host_capability_verification_rows(&conn, &agent_connections) {
+            Ok(records) => records,
+            Err(issue) => return issue.into_database_inspection(path),
+        };
+    let _host_capability_states = match read_host_capability_state_rows(
+        &conn,
+        &agent_connections,
+        &host_capability_verifications,
+    ) {
+        Ok(records) => records,
+        Err(issue) => return issue.into_database_inspection(path),
+    };
     let guard_installations =
         match read_guard_installation_rows(&conn, &agent_connections, &projects) {
             Ok(records) => records,
@@ -430,6 +455,8 @@ fn validate_registry_required_schema(conn: &Connection) -> Result<(), Inspection
             "project_aliases",
             "agent_connections",
             "connection_projects",
+            "host_capability_verifications",
+            "host_capability_state",
             "guard_installations",
         ],
     )?;
@@ -445,6 +472,44 @@ fn validate_registry_required_schema(conn: &Connection) -> Result<(), Inspection
             "storage_profile",
             "metadata_json",
             "created_at",
+            "updated_at",
+        ],
+    )?;
+    require_columns(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "host_capability_verifications",
+        &[
+            "verification_internal_id",
+            "connection_internal_id",
+            "capability",
+            "outcome",
+            "host_kind",
+            "host_version",
+            "client_name",
+            "client_version",
+            "adapter_profile",
+            "adapter_version",
+            "managed_fingerprint",
+            "volicord_build_id",
+            "source_revision",
+            "target_triple",
+            "executable_sha256",
+            "evidence_artifact_sha256",
+            "observed_at",
+            "expires_at",
+            "metadata_json",
+            "created_at",
+        ],
+    )?;
+    require_columns(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "host_capability_state",
+        &[
+            "connection_internal_id",
+            "capability",
+            "current_verification_internal_id",
             "updated_at",
         ],
     )?;
@@ -944,6 +1009,221 @@ fn read_connection_project_rows(
         memberships.push(membership);
     }
     Ok(memberships)
+}
+
+fn read_host_capability_verification_rows(
+    conn: &Connection,
+    connections: &[AgentConnectionInspectionRecord],
+) -> Result<Vec<HostCapabilityVerificationRecord>, InspectionIssue> {
+    let connection_ids = connections
+        .iter()
+        .map(|record| record.connection_internal_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                verification_internal_id,
+                connection_internal_id,
+                capability,
+                outcome,
+                host_kind,
+                host_version,
+                client_name,
+                client_version,
+                adapter_profile,
+                adapter_version,
+                managed_fingerprint,
+                volicord_build_id,
+                source_revision,
+                target_triple,
+                executable_sha256,
+                evidence_artifact_sha256,
+                observed_at,
+                expires_at,
+                metadata_json,
+                created_at
+             FROM host_capability_verifications
+             ORDER BY connection_internal_id, capability, observed_at,
+                      verification_internal_id",
+        )
+        .map_err(sqlite_unreadable)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(HostCapabilityVerificationRecord {
+                verification_internal_id: row.get(0)?,
+                connection_internal_id: row.get(1)?,
+                capability: row.get(2)?,
+                outcome: row.get(3)?,
+                host_kind: row.get(4)?,
+                host_version: row.get(5)?,
+                client_name: row.get(6)?,
+                client_version: row.get(7)?,
+                adapter_profile: row.get(8)?,
+                adapter_version: row.get(9)?,
+                managed_fingerprint: row.get(10)?,
+                volicord_build_id: row.get(11)?,
+                source_revision: row.get(12)?,
+                target_triple: row.get(13)?,
+                executable_sha256: row.get(14)?,
+                evidence_artifact_sha256: row.get(15)?,
+                observed_at: row.get(16)?,
+                expires_at: row.get(17)?,
+                metadata_json: row.get(18)?,
+                created_at: row.get(19)?,
+            })
+        })
+        .map_err(sqlite_unreadable)?;
+
+    let mut records = Vec::new();
+    for row in rows {
+        let record = row.map_err(registration_decode_error)?;
+        if !connection_ids.contains(record.connection_internal_id.as_str()) {
+            return Err(InspectionIssue::Malformed(format!(
+                "host_capability_verifications references missing connection_internal_id {}",
+                record.connection_internal_id
+            )));
+        }
+        validate_stored_record(&record)
+            .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
+        records.push(record);
+    }
+    Ok(records)
+}
+
+fn read_host_capability_state_rows(
+    conn: &Connection,
+    connections: &[AgentConnectionInspectionRecord],
+    verifications: &[HostCapabilityVerificationRecord],
+) -> Result<Vec<HostCapabilityStateInspectionRecord>, InspectionIssue> {
+    let connection_ids = connections
+        .iter()
+        .map(|record| record.connection_internal_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let verification_by_key = verifications
+        .iter()
+        .map(|record| {
+            (
+                (
+                    record.connection_internal_id.as_str(),
+                    record.capability.as_str(),
+                    record.verification_internal_id.as_str(),
+                ),
+                record,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut observations_by_scope = BTreeMap::<(&str, &str), Vec<(&str, &str)>>::new();
+    for verification in verifications {
+        observations_by_scope
+            .entry((
+                verification.connection_internal_id.as_str(),
+                verification.capability.as_str(),
+            ))
+            .or_default()
+            .push((
+                verification.verification_internal_id.as_str(),
+                verification.observed_at.as_str(),
+            ));
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                connection_internal_id,
+                capability,
+                current_verification_internal_id,
+                updated_at
+             FROM host_capability_state
+             ORDER BY connection_internal_id, capability",
+        )
+        .map_err(sqlite_unreadable)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(HostCapabilityStateInspectionRecord {
+                connection_internal_id: row.get(0)?,
+                capability: row.get(1)?,
+                current_verification_internal_id: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        })
+        .map_err(sqlite_unreadable)?;
+
+    let mut records = Vec::new();
+    let mut state_scopes = BTreeSet::new();
+    for row in rows {
+        let record = row.map_err(registration_decode_error)?;
+        require_nonempty(
+            "host_capability_state.connection_internal_id",
+            &record.connection_internal_id,
+        )?;
+        if record.capability != HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE {
+            return Err(InspectionIssue::Malformed(
+                "host_capability_state.capability is outside the supported value set".to_owned(),
+            ));
+        }
+        require_nonempty(
+            "host_capability_state.current_verification_internal_id",
+            &record.current_verification_internal_id,
+        )?;
+        if !connection_ids.contains(record.connection_internal_id.as_str()) {
+            return Err(InspectionIssue::Malformed(format!(
+                "host_capability_state references missing connection_internal_id {}",
+                record.connection_internal_id
+            )));
+        }
+        let verification = verification_by_key
+            .get(&(
+                record.connection_internal_id.as_str(),
+                record.capability.as_str(),
+                record.current_verification_internal_id.as_str(),
+            ))
+            .ok_or_else(|| {
+                InspectionIssue::Malformed(format!(
+                    "host_capability_state references missing verification_internal_id {}",
+                    record.current_verification_internal_id
+                ))
+            })?;
+        if record.updated_at != verification.created_at {
+            return Err(InspectionIssue::Malformed(format!(
+                "host_capability_state.updated_at does not match verification {} created_at",
+                record.current_verification_internal_id
+            )));
+        }
+        let scope = (
+            record.connection_internal_id.as_str(),
+            record.capability.as_str(),
+        );
+        let observations = observations_by_scope.get(&scope).ok_or_else(|| {
+            InspectionIssue::Malformed(
+                "host_capability_state has no matching verification history".to_owned(),
+            )
+        })?;
+        validate_unique_newest_host_capability_pointer(
+            observations.iter().copied(),
+            &record.current_verification_internal_id,
+        )
+        .map_err(|_| {
+            InspectionIssue::Malformed(
+                "host_capability_state.current_verification_internal_id does not reference the unique newest observation"
+                    .to_owned(),
+            )
+        })?;
+        state_scopes.insert((
+            record.connection_internal_id.clone(),
+            record.capability.clone(),
+        ));
+        records.push(record);
+    }
+    for verification in verifications {
+        if !state_scopes.contains(&(
+            verification.connection_internal_id.clone(),
+            verification.capability.clone(),
+        )) {
+            return Err(InspectionIssue::Malformed(
+                "host-capability verification history has no current state pointer".to_owned(),
+            ));
+        }
+    }
+    Ok(records)
 }
 
 fn read_guard_installation_rows(
@@ -1539,6 +1819,7 @@ mod tests {
              VALUES ('agent_inspected', ?1, 't0')",
             [PROJECT_ID],
         )?;
+        insert_inspected_host_capability(&registry)?;
 
         let inspection = inspect_runtime_home(fixture.runtime_home.path());
         let snapshot = present_registry(&inspection.registry);
@@ -1553,6 +1834,91 @@ mod tests {
         assert_eq!(snapshot.agent_connections[0].mode, CONNECTION_MODE_WORKFLOW);
         assert_eq!(snapshot.connection_projects.len(), 1);
         assert_eq!(snapshot.connection_projects[0].project_id, PROJECT_ID);
+        Ok(())
+    }
+
+    #[test]
+    fn registry_inspection_rejects_mismatched_host_capability_pointer_time(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = current_fixture("inspect-host-capability-pointer-time")?;
+        let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
+        registry.execute(
+            "INSERT INTO agent_connections (
+                connection_internal_id, host_kind, intent, host_scope,
+                server_name, config_target, mode, managed_fingerprint,
+                created_at, updated_at
+            ) VALUES (
+                'agent_inspected', 'codex', 'personal', 'user',
+                'volicord-inspected', 'codex-target', 'workflow',
+                'fingerprint-inspected', 't0', 't0'
+            )",
+            [],
+        )?;
+        insert_inspected_host_capability(&registry)?;
+        registry.execute(
+            "UPDATE host_capability_state
+                SET updated_at = '2026-07-14T00:00:02Z'",
+            [],
+        )?;
+        drop(registry);
+
+        match inspect_registry_database(fixture.runtime_home.path()) {
+            DatabaseInspection::Malformed { detail, .. } => {
+                assert!(detail.contains("host_capability_state.updated_at"));
+            }
+            other => panic!("expected malformed host-capability pointer, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn registry_inspection_rejects_host_capability_pointer_rollback() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = current_fixture("inspect-host-capability-pointer-rollback")?;
+        let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
+        registry.execute(
+            "INSERT INTO agent_connections (
+                connection_internal_id, host_kind, intent, host_scope,
+                server_name, config_target, mode, managed_fingerprint,
+                created_at, updated_at
+            ) VALUES (
+                'agent_inspected', 'codex', 'personal', 'user',
+                'volicord-inspected', 'codex-target', 'workflow',
+                'fingerprint-inspected', 't0', 't0'
+            )",
+            [],
+        )?;
+        insert_inspected_host_capability(&registry)?;
+        registry.execute(
+            "INSERT INTO host_capability_verifications (
+                verification_internal_id, connection_internal_id, capability,
+                outcome, host_kind, host_version, client_name, client_version,
+                adapter_profile, adapter_version, managed_fingerprint,
+                volicord_build_id, source_revision, target_triple,
+                executable_sha256, evidence_artifact_sha256,
+                observed_at, expires_at, metadata_json, created_at
+            )
+            SELECT
+                'verification_newer', connection_internal_id, capability,
+                'failed', host_kind, host_version, client_name, client_version,
+                adapter_profile, adapter_version, managed_fingerprint,
+                volicord_build_id, source_revision, target_triple,
+                executable_sha256,
+                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                '2026-07-14T01:00:00Z', '2026-07-15T01:00:00Z', metadata_json,
+                '2026-07-14T01:00:01Z'
+              FROM host_capability_verifications
+             WHERE verification_internal_id = 'verification_inspected'",
+            [],
+        )?;
+        drop(registry);
+
+        match inspect_registry_database(fixture.runtime_home.path()) {
+            DatabaseInspection::Malformed { detail, .. } => {
+                assert!(detail.contains("unique newest observation"));
+            }
+            other => panic!("expected malformed rolled-back pointer, got {other:?}"),
+        }
         Ok(())
     }
 
@@ -1805,6 +2171,43 @@ mod tests {
         let second = inspect_runtime_home(fixture.runtime_home.path());
 
         assert_eq!(first, second);
+        Ok(())
+    }
+
+    fn insert_inspected_host_capability(conn: &Connection) -> rusqlite::Result<()> {
+        conn.execute(
+            "INSERT INTO host_capability_verifications (
+                verification_internal_id, connection_internal_id, capability,
+                outcome, host_kind, host_version, client_name, client_version,
+                adapter_profile, adapter_version, managed_fingerprint,
+                volicord_build_id, source_revision, target_triple,
+                executable_sha256, evidence_artifact_sha256,
+                observed_at, expires_at, metadata_json, created_at
+            ) VALUES (
+                'verification_inspected', 'agent_inspected',
+                'model_invisible_user_surface', 'passed', 'codex', '1.2.3',
+                'codex-mcp-client', '1.2.3',
+                'mcp_user_channel_local_web_v1', '0.9.0',
+                'fingerprint-inspected', 'build-inspected',
+                '1111111111111111111111111111111111111111',
+                'x86_64-unknown-linux-gnu',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                '2026-07-14T00:00:00Z', '2026-07-15T00:00:00Z', '{}',
+                '2026-07-14T00:00:01Z'
+            )",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO host_capability_state (
+                connection_internal_id, capability,
+                current_verification_internal_id, updated_at
+            ) VALUES (
+                'agent_inspected', 'model_invisible_user_surface',
+                'verification_inspected', '2026-07-14T00:00:01Z'
+            )",
+            [],
+        )?;
         Ok(())
     }
 

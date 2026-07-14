@@ -228,12 +228,15 @@ existing `reused_evidence` chain rather than consuming the intent again.
 
 This clean pre-major selector correction removes the old caller-supplied future
 observation digest shape. It adds no table, column, index, or constraint and is
-part of the current `baseline_sqlite_v5` / `0.8.0` contract batch, so it does
-not create another storage-profile or package-version transition. There is no
+the correction introduced in the `baseline_sqlite_v5` / `0.8.0` contract
+batch, so it did not itself create another storage-profile or package-version
+transition. The same corrected method shape remains current in
+`baseline_sqlite_v6` / `0.9.0`; v6's host-capability Registry addition is
+independent of this method. There is no
 legacy alias or fallback decoder for the removed request/capture-spec shape.
-There is no conversion from an incompatible v3 or v4 Runtime Home;
+There is no conversion from an incompatible v5 or earlier Runtime Home;
 incompatible state fails clearly and must be recreated. The current
-recommended release version remains `0.8.0`.
+recommended release version is `0.9.0`.
 
 Checked-in host fixtures validate adapters only. A supported claim about real
 Codex or Claude Code invocation identity, output completeness, retry, resume,

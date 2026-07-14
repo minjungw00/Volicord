@@ -4,6 +4,7 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
+use chrono::{DateTime, SecondsFormat, Utc};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Condvar, Mutex,
@@ -63,10 +64,19 @@ impl McpDerivedInvocationContext {
 }
 
 /// Transport capabilities that may make a User Channel available for one call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct McpUserChannelCapabilities {
     pub(crate) host_elicitation_available: bool,
     pub(crate) model_invisible_user_surface: bool,
+    pub(crate) launch_origin: &'static str,
+    pub(crate) client_name: Option<String>,
+    pub(crate) client_version: Option<String>,
+}
+
+impl Default for McpUserChannelCapabilities {
+    fn default() -> Self {
+        Self::new(false, false)
+    }
 }
 
 impl McpUserChannelCapabilities {
@@ -77,7 +87,22 @@ impl McpUserChannelCapabilities {
         Self {
             host_elicitation_available,
             model_invisible_user_surface,
+            launch_origin: "unknown",
+            client_name: None,
+            client_version: None,
         }
+    }
+
+    pub(crate) fn with_stdio_session(
+        mut self,
+        launch_origin: &'static str,
+        client_name: Option<&str>,
+        client_version: Option<&str>,
+    ) -> Self {
+        self.launch_origin = launch_origin;
+        self.client_name = client_name.map(str::to_owned);
+        self.client_version = client_version.map(str::to_owned);
+        self
     }
 }
 
@@ -261,6 +286,7 @@ pub struct McpAdapter {
     pub(crate) context: McpConnectionContext,
     pub(crate) local_web_consent: Option<LocalWebConsentContext>,
     pub(crate) local_web_consent_readiness: Option<LocalWebConsentReadiness>,
+    expected_evidence_artifact_sha256: Option<String>,
 }
 
 impl PartialEq for McpAdapter {
@@ -269,6 +295,7 @@ impl PartialEq for McpAdapter {
             && self.runtime_home == other.runtime_home
             && self.context == other.context
             && self.local_web_consent == other.local_web_consent
+            && self.expected_evidence_artifact_sha256 == other.expected_evidence_artifact_sha256
     }
 }
 
@@ -314,6 +341,7 @@ impl McpAdapter {
             context,
             local_web_consent: None,
             local_web_consent_readiness: None,
+            expected_evidence_artifact_sha256: None,
         }
     }
 
@@ -339,11 +367,86 @@ impl McpAdapter {
         self
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_expected_evidence_artifact_sha256_for_test(
+        mut self,
+        evidence_artifact_sha256: impl Into<String>,
+    ) -> Self {
+        self.expected_evidence_artifact_sha256 = Some(evidence_artifact_sha256.into());
+        self
+    }
+
     pub(crate) fn effective_local_web_consent_available(
         &self,
-        model_invisible_user_surface: bool,
+        capabilities: &McpUserChannelCapabilities,
     ) -> bool {
-        model_invisible_user_surface && self.local_web_consent_listener_ready()
+        capabilities.model_invisible_user_surface
+            && capabilities.launch_origin == "managed_host"
+            && self.local_web_consent_listener_ready()
+            && self.current_host_capability_verification_matches(capabilities)
+    }
+
+    fn current_host_capability_verification_matches(
+        &self,
+        capabilities: &McpUserChannelCapabilities,
+    ) -> bool {
+        let Some(evidence_artifact_sha256) = self.expected_evidence_artifact_sha256.as_deref()
+        else {
+            return false;
+        };
+        let Some(client_name) = capabilities
+            .client_name
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return false;
+        };
+        let Some(client_version) = capabilities
+            .client_version
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return false;
+        };
+        let Ok(Some(connection)) = agent_connection_record_read_only(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+        ) else {
+            return false;
+        };
+        if !connection.enabled || connection.host_kind == "generic" {
+            return false;
+        }
+        let Some(executable_sha256) = crate::build_info::current_executable_sha256() else {
+            return false;
+        };
+        let build = crate::build_info();
+        let now =
+            DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Nanos, true);
+        let expectation = HostCapabilityVerificationExpectation {
+            connection_internal_id: connection.connection_internal_id,
+            capability: HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE.to_owned(),
+            host_kind: connection.host_kind,
+            host_version: client_version.to_owned(),
+            client_name: client_name.to_owned(),
+            client_version: client_version.to_owned(),
+            adapter_profile: HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1.to_owned(),
+            adapter_version: build.package_version.to_owned(),
+            managed_fingerprint: connection.managed_fingerprint,
+            volicord_build_id: build.build_id,
+            source_revision: build.git_commit.to_owned(),
+            target_triple: build.target_triple.to_owned(),
+            executable_sha256: executable_sha256.to_owned(),
+            evidence_artifact_sha256: evidence_artifact_sha256.to_owned(),
+        };
+        matches!(
+            evaluate_current_host_capability_verification_read_only(
+                &self.runtime_home,
+                &expectation,
+                &now,
+            ),
+            Ok(Some(_))
+        )
     }
 
     pub(crate) fn local_web_consent_listener_ready(&self) -> bool {
@@ -356,14 +459,20 @@ impl McpAdapter {
 
     pub(crate) fn local_web_consent_issuance_lease(
         &self,
-        model_invisible_user_surface: bool,
+        capabilities: &McpUserChannelCapabilities,
     ) -> Option<LocalWebConsentIssuanceLease<'_>> {
-        if !model_invisible_user_surface || self.local_web_consent.is_none() {
+        if !capabilities.model_invisible_user_surface
+            || capabilities.launch_origin != "managed_host"
+            || self.local_web_consent.is_none()
+        {
             return None;
         }
-        self.local_web_consent_readiness
+        let lease = self
+            .local_web_consent_readiness
             .as_ref()?
-            .acquire_issuance_lease()
+            .acquire_issuance_lease()?;
+        self.current_host_capability_verification_matches(capabilities)
+            .then_some(lease)
     }
 
     pub(crate) fn startup_session_watch_observation_best_effort(
@@ -905,8 +1014,7 @@ impl McpAdapter {
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
             host_elicitation_available: capabilities.host_elicitation_available,
-            local_web_consent_available: self
-                .effective_local_web_consent_available(capabilities.model_invisible_user_surface),
+            local_web_consent_available: self.effective_local_web_consent_available(&capabilities),
             git_workspace_context,
         })
     }
@@ -943,8 +1051,7 @@ impl McpAdapter {
             invocation_binding_basis: self.context.invocation_binding_basis.clone(),
             session_id: session_id.map(str::to_owned),
             host_elicitation_available: capabilities.host_elicitation_available,
-            local_web_consent_available: self
-                .effective_local_web_consent_available(capabilities.model_invisible_user_surface),
+            local_web_consent_available: self.effective_local_web_consent_available(&capabilities),
             git_workspace_context,
         })
     }
@@ -1198,7 +1305,7 @@ impl McpAdapter {
         )
         .with_host_elicitation_available(capabilities.host_elicitation_available)
         .with_local_web_consent_available(
-            self.effective_local_web_consent_available(capabilities.model_invisible_user_surface),
+            self.effective_local_web_consent_available(&capabilities),
         );
         if let Some(session_id) = session_id {
             invocation = invocation.with_session_id(session_id.to_owned());

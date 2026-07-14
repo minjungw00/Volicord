@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.8.0, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.9.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -64,8 +64,11 @@ applicability:
     description: Legacy incompatible `baseline_sqlite_v4` storage profile retained only for
       explicit no-conversion and Runtime Home recreation guidance.
   storage_baseline_sqlite_v5:
-    description: '`baseline_sqlite_v5` storage profile with unified durable user-action requests,
-      immutable closed resolutions, nested observation detail, and request-bound channel tokens.'
+    description: Legacy incompatible `baseline_sqlite_v5` storage profile retained only for
+      explicit no-conversion and Runtime Home recreation guidance.
+  storage_baseline_sqlite_v6:
+    description: '`baseline_sqlite_v6` storage profile with immutable host-capability verification
+      history and current pointers in addition to the unified user-action record families.'
   doc_index_schema_v3:
     description: Documentation index metadata schema version 3 used by `docs/doc-index.yaml` and
       `docs-check`.
@@ -669,8 +672,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -714,6 +717,7 @@ documents:
   - architecture-guide.architecture
   - architecture-guide.source-map
   - architecture-guide.decision.final-output-authority-disclosure
+  - architecture-guide.decision.host-capability-verification
   - reference.admin-cli
   - reference.agent-connection
   - reference.mcp-transport
@@ -795,7 +799,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - implementers
   - reviewers
@@ -820,8 +824,9 @@ documents:
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
   summary: Explanation of test-layer selection, fixture and support structure, generated-output
-    drift checks, durable contract-test authoring, live-host local-web evidence-observation and
-    release-cell separation, and validation responsibilities.
+    drift checks, durable contract-test authoring, verified-manifest and exact-pass negative-test
+    boundaries, live-host local-web evidence-observation, release-cell separation, and validation
+    responsibilities.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -843,8 +848,10 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.architecture
   - architecture-guide.change-guide
+  - architecture-guide.decision.host-capability-verification
   - reference.index
   - reference.conformance
+  - reference.system-requirements
   - reference.mcp-transport
   - reference.api.method-record-run
   - reference.api.method-request-user-action
@@ -862,8 +869,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -877,6 +884,7 @@ documents:
   - architecture-guide.decision.agent-connection-routing
   - architecture-guide.decision.core-adapter-boundary
   - architecture-guide.decision.final-output-authority-disclosure
+  - architecture-guide.decision.host-capability-verification
   - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.unified-user-action-request-resolution
@@ -947,6 +955,41 @@ documents:
   - reference.security
   - reference.system-requirements
   - reference.conformance
+- doc_id: architecture-guide.decision.host-capability-verification
+  path_en: docs/en/architecture-guide/decisions/host-capability-verification.md
+  path_ko: docs/ko/architecture-guide/decisions/host-capability-verification.md
+  kind: explanation
+  summary: Architecture decision explaining exact expiring host-capability verification and external
+    exact-final-artifact release evidence binding before credential delivery.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-14'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - mcp_protocol_2025_11_25
+  - storage_baseline_sqlite_v6
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.agent-connection-routing
+  - architecture-guide.decision.core-adapter-boundary
+  - reference.agent-connection
+  - reference.mcp-transport
+  - reference.admin-cli
+  - reference.security
+  - reference.system-requirements
+  - reference.storage-records
+  - reference.storage-ddl
+  - reference.storage-versioning
 - doc_id: architecture-guide.decision.operation-result-retrieval
   path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
   path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
@@ -956,8 +999,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1023,8 +1066,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1200,9 +1243,11 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
+  - architecture-guide.decision.host-capability-verification
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - reference.index
+  - reference.system-requirements
 - doc_id: architecture-guide.architecture
   path_en: docs/en/architecture-guide/architecture.md
   path_ko: docs/ko/architecture-guide/architecture.md
@@ -1213,8 +1258,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1303,6 +1348,8 @@ documents:
   - shared repository-discovery explicit Runtime Home environment prerequisite
   - host compatibility check policy when no stable Codex or Claude Code minimum version is defined
   - managed final-output fixed-UI authority-disclosure environment applicability and fallback boundary
+  - external exact-final-artifact host-capability release evidence manifest applicability and current
+    trusted-acquisition status
   - stop criteria for unsupported or unverified installation environments
   depends_on:
   - reference.runtime-boundaries
@@ -1416,7 +1463,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - implementers
   - agent integrators
@@ -1446,6 +1493,8 @@ documents:
   - unsupported `volicord setup` command-family rejection behavior
   - 'Agent Connection mode and project routing'
   - administrative command boundary from public Volicord API methods
+  - read-only host-capability verification diagnostics and exact local-web selection boundary
+  - CLI and doctor build-descriptor fields and their non-equivalence to an external release evidence manifest
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -1466,6 +1515,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
+  - storage_baseline_sqlite_v6
   primary_audience:
   - agent integrators
   - implementers
@@ -1492,6 +1542,8 @@ documents:
   - MCP supported request method set
   - '`tools/call` Volicord structured-content and compatibility-text response wrapping'
   - MCP process shutdown and reconnection behavior
+  - centralized exact host-capability evaluation, external exact-final-artifact release evidence
+    manifest requirement, and credential-bearing local-web handoff eligibility
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -1512,6 +1564,7 @@ documents:
   last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
+  - storage_baseline_sqlite_v6
   primary_audience:
   - agents
   - implementers
@@ -1528,6 +1581,8 @@ documents:
   - Agent Connection and actor_source authority non-inference
   - host trust, host approval, and guidance non-guarantees
   - generated final-output display and model-authored text non-authority boundary
+  - host-capability evidence, external release-manifest trust boundary, credential-delivery trust
+    boundary, and non-attestation wording
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
   path_ko: docs/ko/reference/glossary.md
@@ -1699,11 +1754,11 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - API implementers
   - agent integrators
@@ -1959,6 +2014,7 @@ documents:
   last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
+  - storage_baseline_sqlite_v6
   primary_audience:
   - API implementers
   - agent integrators
@@ -1972,6 +2028,7 @@ documents:
   - close-readiness state shapes
   - '`CloseReadinessBlocker` shape'
   - '`CloseReadinessBlocker` fields and nesting'
+  - '`local_web_consent_available` exact evaluator and fail-closed availability semantics'
 - doc_id: reference.api.schema-artifacts
   path_en: docs/en/reference/api/schema-artifacts.md
   path_ko: docs/ko/reference/api/schema-artifacts.md
@@ -2248,7 +2305,7 @@ documents:
   last_verified_on: '2026-07-11'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - implementers
   - maintainers
@@ -2272,7 +2329,7 @@ documents:
   last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - storage implementers
   - maintainers
@@ -2287,6 +2344,7 @@ documents:
   - storage-owned JSON placement
   - persisted canonical-time-floor record placement and commit timestamp relationships
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation record families
+  - immutable host-capability verification history and current-pointer record families
   - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
   - local web consent token record family
 - doc_id: reference.storage-ddl
@@ -2302,7 +2360,7 @@ documents:
   last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - storage implementers
   - API implementers
@@ -2315,6 +2373,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
+  - host-capability verification history, current-pointer tables, indexes, and constraints
   - evidence-capture receipt pairing and project-scoped exclusive source-claim constraints
   - baseline SQLite indexes, foreign keys, and constraints
   - physical canonical-time-floor and cross-row commit timestamp constraints
@@ -2333,7 +2392,7 @@ documents:
   last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - storage implementers
   - API implementers
@@ -2359,7 +2418,7 @@ documents:
   last_verified_on: '2026-07-13'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - storage implementers
   - API implementers
@@ -2385,7 +2444,7 @@ documents:
   last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
-  - storage_baseline_sqlite_v5
+  - storage_baseline_sqlite_v6
   primary_audience:
   - storage implementers
   - maintainers
@@ -2402,6 +2461,7 @@ documents:
   - canonical storage schema initialization boundary
   - unsupported storage-profile failure semantics
   - incompatible Runtime Home recreation boundary
+  - '`baseline_sqlite_v6` host-capability history addition and v5 no-conversion boundary'
 - doc_id: reference.agent-connection
   path_en: docs/en/reference/agent-connection.md
   path_ko: docs/ko/reference/agent-connection.md
@@ -2416,6 +2476,7 @@ documents:
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
+  - storage_baseline_sqlite_v6
   primary_audience:
   - agent integrators
   - agents
@@ -2437,6 +2498,8 @@ documents:
     and fallback boundaries
   - per-call MCP project selection authority
   - agent guidance and MCP server instruction boundaries
+  - immutable host-capability verification history, current state, freshness, external
+    exact-final-artifact release evidence binding, and exact-match eligibility
 - doc_id: reference.projection-and-templates
   path_en: docs/en/reference/projection-and-templates.md
   path_ko: docs/ko/reference/projection-and-templates.md

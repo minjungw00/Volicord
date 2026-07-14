@@ -212,12 +212,29 @@ May claim:
   Agent-visible/model-context or public output projection, including `content`,
   `structuredContent`, compatibility/diagnostic text, exact replay, and
   operation-result bytes.
-  Local-web delivery requires both a loopback listener and exact boolean `true`
-  at
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`;
-  the sole host-only exception is the namespaced top-level tool-result `_meta`
-  handoff outside `outputSchema` and model context. Capability omission,
-  false, or malformed data issues no token and leaves CLI inbox recovery.
+  Local-web delivery requires a managed non-generic stdio host, a ready
+  loopback listener, exact boolean `true` at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`,
+  and current exact-match persisted host-capability state whose immutable
+  result is `outcome=passed`, unexpired, and bounded by
+  `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`.
+  Its `evidence_artifact_sha256` must exactly match the expected digest from a
+  separately verified exact-final-artifact release evidence manifest or
+  receipt outside the executable. That manifest must bind the same capability,
+  host/client, adapter, build, source, target, and executable digest. A missing,
+  unknown, malformed, unverified, or mismatched manifest fails closed; neither
+  the persisted row nor build metadata can self-assert the expected value. The
+  current adapter has no trusted manifest acquisition path, so production
+  local-web eligibility remains unavailable and uses CLI inbox.
+  Twenty-four hours
+  is only the maximum freshness window, not a default lifetime, identity proof,
+  or attestation period. V1 verification `metadata_json` is strict canonical
+  `{}` only; arbitrary metadata cannot become another trust input or carry a
+  token, prompt, transcript, raw host artifact, or private operator data. The
+  sole host-only exception is the
+  namespaced top-level tool-result `_meta` handoff outside `outputSchema` and
+  model context. Any absent, non-passing, expired, revoked, corrupt, or
+  mismatched input issues no token and leaves CLI inbox recovery.
 - A workflow Agent Connection can create a current evidence-capture intent.
   Only a registered local source can fulfill it, and only `record_run` can
   finalize the receipt as a producer and observation. There is no MCP receipt-
@@ -231,6 +248,18 @@ Must not claim:
 - `operation_category` is OS permission, host trust, or broad authority.
 - `actor_source` copied from text is a caller authority token.
 - Environment-controlled labels, public request fields, or arbitrary caller text are trusted authority, audit facts, or verification-basis inputs.
+- A self-declared capability, `clientInfo` name or version, environment marker,
+  process argument, connection `complete` result, copied evidence digest, or
+  fixture result creates credential-delivery eligibility. These values are
+  matching inputs only where the focused owner requires them.
+- A release evidence digest embedded in the executable is a valid trust root.
+  Live-host evidence is generated after the final executable exists; rebuilding
+  to embed that digest changes the executable digest and creates a recursive
+  binding.
+- A host-capability verification is cryptographic host attestation, current
+  user identity, host isolation, or proof that a later host run kept `_meta`
+  outside model context. One host, version, target, adapter profile, connection,
+  fingerprint, build, or validity interval must not be generalized to another.
 - A registered guard event, session-watcher observation, or Volicord command
   runner is a cryptographic host signature, local-principal attestation,
   anti-forgery boundary, or actor-identity proof. These sources are cooperative

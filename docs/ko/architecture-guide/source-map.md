@@ -21,7 +21,7 @@
 | 경로 | Cargo 패키지 | 담당 범위 |
 |---|---|---|
 | `crates/volicord-types` | `volicord-types` | 공유 Rust 요청, 응답, 스키마 형태, 값 집합, MCP 도구 이름, 식별자, 정규화된 해시 타입. |
-| `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, `guard`와 세션 관찰 저장, 로컬 웹 동의 저장, 내보내기 스냅샷, 저장소 오류 구현. |
+| `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, 부트스트랩, 프로젝트 Store, 아티팩트 저장소, 검사, `guard`와 세션 관찰 저장, 변경 불가능한 호스트 역량 검증 이력과 현재 상태 평가, 로컬 웹 동의 저장, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | `volicord-core` | Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | `volicord-cli` | 로컬 `volicord` 관리 바이너리, 재사용 명령 모듈, Runtime Home 설정, 프로젝트와 Agent Connection 등록, 호스트 어댑터, `guard` 훅, User Channel 명령, 공개 `volicord mcp` 프로세스 디스패치. |
 | `crates/volicord-platform-fs` | `volicord-platform-fs` | 로컬 어댑터가 사용하는 플랫폼 고유 파일시스템 이름 공간 연산과 정규 읽기 전용 Git layout snapshot을 위한 내부 안전 파사드. |
@@ -57,6 +57,7 @@
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home 경로 해석과 Runtime Home/Product Repository 위치 검증 도우미. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home 메타데이터 초기화, 설치 프로필 저장, 프로젝트 등록, 현재 프로젝트 도우미. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 행, 자연 키, Connection Projects 멤버십, 모드와 상태 값, Agent Connection 조회와 갱신 도우미. |
+| `crates/volicord-store/src/host_capabilities.rs` | 변경 불가능한 호스트 역량 검증 게시, 현재 포인터 읽기, 정확한 결속 검증, 반개구간 최신성 평가, 닫힌 상태로 실패하는 자격 결과. |
 | `crates/volicord-store/src/schema.rs`와 `crates/volicord-store/src/schema/` | 레지스트리와 프로젝트의 기준 SQL 원본, 스키마 초기화와 검증 연결. |
 | `crates/volicord-store/src/sqlite.rs` | 레지스트리와 프로젝트의 SQLite 경로, 열기, 검증, 트랜잭션 도우미. |
 | `crates/volicord-store/src/core_pipeline.rs` | Store 쪽 Core 기록, 읽기 도우미, 변이 타입, 커밋 입력/출력 타입, 재실행 도우미, Core를 위한 공개 Store 경계. |

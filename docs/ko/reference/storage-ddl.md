@@ -185,6 +185,79 @@ CREATE UNIQUE INDEX idx_agent_connections_target_global
   )
   WHERE project_internal_id IS NULL;
 
+CREATE TABLE host_capability_verifications (
+  verification_internal_id TEXT PRIMARY KEY,
+  connection_internal_id TEXT NOT NULL,
+  capability TEXT NOT NULL
+    CHECK (capability = 'model_invisible_user_surface'),
+  outcome TEXT NOT NULL
+    CHECK (outcome IN ('passed', 'failed', 'unavailable', 'revoked')),
+  host_kind TEXT NOT NULL
+    CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
+  host_version TEXT NOT NULL CHECK (length(trim(host_version)) > 0),
+  client_name TEXT NOT NULL CHECK (length(trim(client_name)) > 0),
+  client_version TEXT NOT NULL CHECK (length(trim(client_version)) > 0),
+  adapter_profile TEXT NOT NULL
+    CHECK (adapter_profile = 'mcp_user_channel_local_web_v1'),
+  adapter_version TEXT NOT NULL CHECK (length(trim(adapter_version)) > 0),
+  managed_fingerprint TEXT NOT NULL CHECK (length(trim(managed_fingerprint)) > 0),
+  volicord_build_id TEXT NOT NULL CHECK (length(trim(volicord_build_id)) > 0),
+  source_revision TEXT NOT NULL CHECK (length(trim(source_revision)) > 0),
+  target_triple TEXT NOT NULL CHECK (length(trim(target_triple)) > 0),
+  executable_sha256 TEXT NOT NULL
+    CHECK (length(executable_sha256) = 64 AND executable_sha256 NOT GLOB '*[^0-9a-f]*'),
+  evidence_artifact_sha256 TEXT NOT NULL
+    CHECK (
+      length(evidence_artifact_sha256) = 64
+      AND evidence_artifact_sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+  observed_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (metadata_json = '{}'),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE CASCADE,
+  UNIQUE (connection_internal_id, capability, verification_internal_id),
+  CHECK (outcome != 'passed' OR host_kind IN ('codex', 'claude_code')),
+  CHECK (outcome != 'passed' OR host_version = client_version),
+  CHECK (
+    outcome != 'passed'
+    OR (
+      length(source_revision) IN (40, 64)
+      AND source_revision NOT GLOB '*[^0-9a-f]*'
+    )
+  )
+);
+
+CREATE TABLE host_capability_state (
+  connection_internal_id TEXT NOT NULL,
+  capability TEXT NOT NULL
+    CHECK (capability = 'model_invisible_user_surface'),
+  current_verification_internal_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (connection_internal_id, capability),
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (
+    connection_internal_id,
+    capability,
+    current_verification_internal_id
+  ) REFERENCES host_capability_verifications (
+    connection_internal_id,
+    capability,
+    verification_internal_id
+  ) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_host_capability_verifications_connection
+  ON host_capability_verifications (connection_internal_id, capability, observed_at);
+CREATE INDEX idx_host_capability_verifications_outcome_expiry
+  ON host_capability_verifications (outcome, expires_at);
+CREATE INDEX idx_host_capability_state_current
+  ON host_capability_state (current_verification_internal_id);
+
 CREATE TABLE guard_installations (
   guard_installation_id TEXT PRIMARY KEY,
   runtime_home_id TEXT NOT NULL,
@@ -250,6 +323,30 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_global
 - `agent_connections.mode`는 `read_only` 또는 `workflow`로 제한됩니다.
 - `agent_connections.last_verification_report_json`은 최신 검증 보고서 JSON 객체를 저장합니다. `agent_connections.last_user_actions_json`은 최신 사용자 동작 JSON 배열을 저장합니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
+- `host_capability_verifications`는 정확한 호스트 역량 관찰 하나에 대해 애플리케이션에서
+  추가만 하는 이력입니다. `outcome`은 `passed`, `failed`, `unavailable`, `revoked`이며,
+  `codex` 또는 `claude_code`의 `passed`만 credential 전달 자격에 기여할 수 있습니다. 각
+  행은 정확한 연결, 호스트·클라이언트 버전, 어댑터 프로필, 관리 지문, Volicord
+  빌드·source·target·실행 파일 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트,
+  관찰·만료 반개구간에 결속됩니다. 애플리케이션 검증은 정규 UTC 값과
+  `observed_at <= created_at`,
+  `observed_at < expires_at <= observed_at + 86,400 seconds`를 요구하고,
+  `outcome=passed`이면 `created_at < expires_at`도 요구합니다. 24시간은
+  기본값이나 attestation 기간이 아니라 최대 최신성 구간입니다. Bearer URL, token,
+  prompt, transcript, screenshot, 원문 호스트 아티팩트는 저장하지 않습니다. `passed`
+  행의 `source_revision`은 정확한 소문자 40자리 또는 64자리 16진수 revision이어야 하며
+  `unknown`은 통과할 수 없습니다. 내장 stdio 어댑터에서 `passed`는
+  `host_version = client_version`도 요구합니다. 애플리케이션의 게시와 평가는 그 단일
+  버전을 실제 아티팩트의 설치 호스트 버전, 정확한 런타임 `clientInfo.version`에
+  결속합니다.
+  v1에서 `metadata_json`은 엄격한 정규 `{}`만 허용합니다. 허용되는 모든 증거 좌표에는
+  전용 열이 있으므로 임의 또는 추가 메타데이터는 유효하지 않습니다.
+- `host_capability_state`는 연결과 역량마다 변경 불가능한 이력 행 하나를 정확히 가리킵니다.
+  더 새로운 failed, unavailable, revoked 행을 게시하면 이 포인터를 원자적으로 교체하므로
+  과거 passed 행이 fallback으로 다시 현재가 되지 않습니다. 소유 Agent Connection을
+  삭제하면 그 연결의 역량 상태와 이력만 연쇄 삭제합니다. 정확히 같은 검증 ID와 내용을
+  다시 게시하는 것은 멱등이며, 이미 더 새로운 행으로 전진한 포인터를 옮기지 않습니다.
+  같은 ID를 다른 내용으로 재사용하면 충돌합니다.
 - `guard_installations`는 Runtime Home 하나, Agent Connection 하나, 선택적 프로젝트 범위에 대한 로컬 호스트 훅 설정 생명주기 상태와 호스트 역량을 저장합니다. 내부 `guard_mode` 값은 `record`, `detective`입니다. `installation_status` 값은 `absent`, `configured`, `reload_required`, `active`, `degraded`, `stale`, `broken`입니다. 이 행은 호스트 관찰을 위한 로컬 권한 기록이며 OS 수준 집행 증명이나 쓰기 방지 증명이 아닙니다.
 
 ## 프로젝트 `state.sqlite`

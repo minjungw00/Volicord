@@ -5517,7 +5517,7 @@ mod unix {
                     "capability_value": true,
                     "handoff_transport": "top_level_call_tool_result_meta",
                     "handoff_meta_key": MODEL_INVISIBLE_USER_CHANNEL_CAPABILITY_NAMESPACE,
-                    "effective_exact_capability_observed": diagnostic.create_calls == 1,
+                    "effective_exact_capability_observed": false,
                     "listener_enabled_for_cell": true,
                     "host_owned_model_invisible_surface_operator_confirmed": delivery_boundary.host_owned_model_invisible_surface_confirmed,
                     "agent_was_not_instructed_to_relay_or_open": true,

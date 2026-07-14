@@ -24,7 +24,7 @@ All source and test paths are relative to the repository root.
 | Path | Cargo package | Source-map role |
 |---|---|---|
 | `crates/volicord-types` | `volicord-types` | Shared Rust request, response, schema-shaped, value-set, MCP tool-name, identifier, and canonical-hash types. |
-| `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, local web consent storage, export snapshots, and storage-error implementation. |
+| `crates/volicord-store` | `volicord-store` | SQLite, Runtime Home, bootstrap, project Store, artifact storage, inspection, guard/session observation storage, immutable host-capability verification history and current-state evaluation, local web consent storage, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | `volicord-core` | Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | `volicord-cli` | Local `volicord` administrative binary, reusable command modules, Runtime Home setup, project and Agent Connection registration, host adapters, guard hooks, User Channel commands, and public `volicord mcp` process dispatch. |
 | `crates/volicord-platform-fs` | `volicord-platform-fs` | Internal safe facade for platform-native filesystem namespace operations and canonical read-only Git layout snapshots used by local adapters. |
@@ -60,6 +60,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-store/src/runtime_home.rs` | Runtime Home path resolution and Runtime Home/Product Repository location validation helpers. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home metadata initialization, installation-profile persistence, project registration, and current-project helpers. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection rows, natural keys, Connection Projects membership, mode/status values, and Agent Connection lookup/update helpers. |
+| `crates/volicord-store/src/host_capabilities.rs` | Immutable host-capability verification publication, current-pointer reads, exact binding validation, half-open freshness evaluation, and fail-closed eligibility results. |
 | `crates/volicord-store/src/schema.rs` and `crates/volicord-store/src/schema/` | Canonical registry and project SQL sources plus schema initialization and validation wiring. |
 | `crates/volicord-store/src/sqlite.rs` | Registry/project SQLite path helpers, open/validation helpers, and transaction helpers. |
 | `crates/volicord-store/src/core_pipeline.rs` | Store-facing Core records, read helpers, mutation types, commit input/output types, replay helpers, and public Store boundary for Core. |

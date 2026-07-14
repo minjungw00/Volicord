@@ -61,7 +61,8 @@ Agent Connection은 `Volicord Runtime Home` 아래에 `connection_internal_id`�
 토큰이 아니며 일반 명령 입력으로 필요하지 않습니다.
 
 레지스트리는 연결의 내부 식별 정보, 호스트와 의도, 설정 대상, 모드, 활성 상태,
-관리 지문, 검증 상태, 관련 메타데이터를 저장합니다. 정확한 기록 필드는
+관리 지문, 설정 검증 상태, 추가만 가능한 호스트 역량 검증 이력, 관련 메타데이터를
+저장합니다. 정확한 기록 필드는
 [저장소 기록](storage-records.md)과 [저장소 DDL](storage-ddl.md)이 담당합니다. 내부
 호스트 설정 키 `server_name`의 기본값은 `volicord`입니다.
 
@@ -89,6 +90,23 @@ Agent Connection 생명주기는 여러 상태 영역에 걸쳐 있습니다. �
 - 검증 상태: `last_verification_status`와 [관리 CLI](admin-cli.md#agent-connection-result-states)가
   담당하는 출력은 최근 점검을 기록합니다. 호스트 설정, 훅 안전성, MCP 시작, 초기화,
   `tools/list` 점검은 관리 생명주기 관찰과 활성 세션 도구 노출과 구분합니다.
+- 호스트 역량 검증 이력: 크기가 제한된 외부 실제 호스트 결과는 정확한 연결, 역량,
+  내장 호스트·클라이언트 버전, 어댑터 프로필, Volicord 빌드, 정확한 source revision,
+  target, 실행 파일 다이제스트, 관리 지문, 증거 다이제스트, 반개구간 유효 기간 하나에
+  결속된 변경 불가능한 검증 행을 만들 수 있습니다.
+  이후 `outcome=revoked`인 변경 불가능한 행이 현재 행이 되면 이력을 바꾸지 않고 이전
+  통과를 무효화할 수 있습니다. 설정 검증은 이 이력을 만들지 않으며 이를 대신할 수
+  없습니다.
+  모든 구간은 `observed_at <= created_at`과
+  `observed_at < expires_at <= observed_at + 86,400 seconds`를 만족해야 하며 통과 행은
+  `created_at < expires_at`도 만족해야 합니다. 24시간은 기본 수명이나 attestation 기간이
+  아니라 최대 최신성 구간이며, 게시자는 더 짧은 만료 시각을 선택할 수 있습니다.
+  통과하는 내장 stdio 행에서 `host_version`과 `client_version`은 독립된 관찰값이 아닙니다.
+  둘 다 정확한 런타임 `clientInfo.version`, 실제 아티팩트의 설치 호스트 버전과 같아야
+  합니다. `source_revision`은 정확한 소문자 40자리 또는 64자리 16진수여야 하며
+  `unknown`은 통과할 수 없습니다. 이 일치를 증명할 수 없으면 통과 결과가 아닙니다.
+  ID와 내용이 정확히 같은 게시는 멱등이고 더 새로운 현재 포인터를 뒤로 옮기지 않으며,
+  같은 ID로 다른 내용을 게시하면 충돌합니다.
 - 호출 가능 여부: MCP 어댑터가 시작 시점과 공개 도구 호출마다 파생합니다. `enabled`,
   프로젝트 가용성, `connection.mode`, `operation_category`가 영향을 줍니다. 레지스트리나
   프로젝트 상태가 바뀌면 호스트 설정을 다시 쓰지 않아도 호출할 수 없게 될 수 있습니다.
@@ -565,13 +583,37 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   text, full-detail 출력, resume replay, operation-result byte를 절대 통과하면 안 됩니다.
   Agent Connection은 요청 자체에 대해 대기 요청 ID, `status=pending`,
   `next_actor=user`만 받습니다.
-- Local web은 loopback listener가 있고 초기화된 client가
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
-  정확한 boolean `true`를 보냈을 때만 사용할 수 있습니다. 이 capability는 협력적 전달
-  계약입니다. Host는
+- `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`의
+  정확한 boolean `true`는 초기화된 클라이언트의 협력적 전달 선언일 뿐입니다. 이 선언만으로
+  local web 자격을 얻지 않습니다.
+- 하나의 평가기가 다음을 모두 확인할 때만 local web을 사용할 수 있습니다. 현재 전송은
+  관리 stdio 호스트 경로이고, loopback listener가 준비되었으며, 정확한 선언이 `true`이고,
+  `outcome=passed`인 `host_capability_verifications` 행 하나가
+  `observed_at <= now < expires_at`에서 현재이며 Agent Connection, generic이 아닌 호스트
+  종류, `clientInfo.name`, `clientInfo.version`, 어댑터 프로필과 버전, Volicord 빌드,
+  정확한 소문자 40자리 또는 64자리 16진수 source revision, target, 실행 파일 다이제스트,
+  관리 지문, 실제 호스트 증거 다이제스트와 정확히 일치해야 합니다. 행은 또한
+  별도로 검증된, 실행 파일 밖의 정확한 최종 아티팩트 릴리스 증거 manifest 또는
+  receipt가 제공하는 예상 `evidence_artifact_sha256`과도 정확히 일치해야 합니다. 그
+  manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target, 실행 파일
+  다이제스트에 결속되어야 합니다. Manifest 입력이 없거나, 알 수 없거나, 잘못됐거나,
+  검증되지 않았거나, 일치하지 않으면 사용할 수 없습니다. 행 자체의 다이제스트와 빌드
+  설명자는 예상값을 제공하지 못합니다. 행은 또한
+  `host_version == client_version == clientInfo.version`을 만족해야 하며 그 버전은
+  아티팩트의 설치 호스트 버전과도 같아야 합니다.
+  입력이 없거나 false이거나 타입·namespace·형태가 잘못되었거나, 만료·취소되었거나,
+  모호·손상·불일치 상태이면 사용할 수 없으며 token을 발급하면 안 됩니다.
+- 현재 어댑터에는 그 외부 manifest 또는 receipt를 신뢰해 획득하는 경로가 없습니다.
+  따라서 운영 local-web 자격은 닫힌 상태로 실패하고 CLI inbox를 사용합니다. 테스트에서만
+  예상값을 주입한 결과는 운영 가용성을 확립하지 않습니다.
+- 수동 stdio, CLI 검증 probe, Local HTTP transport, generic 호스트 연결, 알 수 없거나
+  유효하지 않은 관리 시작 marker는 이 handoff 자격을 얻지 않습니다. 정확한 capability를
+  선언하고 listener가 있어도 CLI inbox 복구를 사용합니다.
+- 일치하는 행은 이름 붙인 호스트와 프로필이 특정 검증 실행에서 이 handoff를 전달했다는
+  크기가 제한된 증거를 기록합니다. 호스트 attestation, 호스트 격리 증명, 현재 사용자
+  신원 증명, 이후 외부 호스트가 모델 비노출을 보존한다는 보장이 아닙니다. 호스트는 계속
   namespaced tool-result `_meta` handoff를 모델 맥락 밖에 두고 사용자 소유 표면에
-  렌더링해야 하지만 host 격리 증명은 아닙니다. Capability가 없거나 false이거나, 타입이나
-  namespace가 다르거나, 형태가 잘못되면 unavailable이며 token을 발급하면 안 됩니다.
+  렌더링해야 합니다.
 - Local-web URL은 그 모델 비가시적 `_meta` handoff에만 나타날 수 있습니다. 에이전트가
   전달하도록 fallback text에 복사하면 안 됩니다. Consent page는 대기 요청, 저장 후보,
   비보장을 보여 주며 bearer credential을 소지해야 그 user-only page를 열 수 있습니다.

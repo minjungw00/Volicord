@@ -269,7 +269,10 @@ Runtime Home과 설치 프로필 선택에 관련된 init 효과:
 `actions_recommended`를 보고할 수 있습니다. `PATH` 또는 명령 링크 권장 동작은 기존
 에이전트 호스트에 재시작이나 설정 다시 불러오기가 필요한 때를 알려야 합니다. 세션
 감시기 관찰이나 로컬 consent URL 같은 런타임 전용 기능은 보고 프로세스가 해당 상태를
-실제로 소유할 때만 사용 가능으로 보고합니다.
+실제로 소유할 때만 사용 가능으로 보고합니다. 연결 수준 `complete` 결과, 성공한 CLI
+handshake, 생성 설정은 호스트 역량 검증을 만들지 않습니다. Doctor는 크기가 제한된 현재
+검증 근거를 읽고 설명할 수 있지만 만들거나, 새로 고치거나, 승격하면 안 됩니다. 호출에
+결속된 입력을 모두 확인할 수 없으면 local web consent를 사용할 수 없다고 보고합니다.
 
 이 점검은 OS 강제, 샌드박싱, 쓰기 방지, 제품 정확성, 닫기 상태를 증명하지 않습니다.
 Doctor는 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연결 모드를 바꾸거나, 사용자
@@ -282,7 +285,10 @@ Doctor는 프로젝트를 만들거나, 호스트 설정을 설치하거나, 연
 `git_dirty`, `metadata_source`, `target_triple`, null일 수 있는 `build_profile`,
 `profile_class`, `profile_exact`, `opt_level`, null일 수 있는 `debug`, `build_id`를
 노출합니다. `metadata_source`는 `repository`, `environment`, `unknown` 중 하나입니다.
-`profile_exact=false`이면 Cargo의 `debug`/`release` 프로필 계열만 알려졌다는 뜻입니다. JSON은
+`profile_exact=false`이면 Cargo의 `debug`/`release` 프로필 계열만 알려졌다는 뜻입니다. 빌드
+객체에는 최종 실행 파일 다이제스트나 릴리스 증거 다이제스트가 없으며 릴리스 증거
+manifest가 아닙니다. 호스트 역량 평가의 예상 `evidence_artifact_sha256`은 별도로 검증된
+외부 정확한 최종 아티팩트 릴리스 증거 manifest 또는 receipt에서 가져와야 합니다. JSON은
 `disclosure.guarantee_class=detective_observation`을 사용하고,
 `NotOsSandbox`, `NotNetworkIsolation`, `NotFullWritePrevention`,
 `NotActorAttributionProof`, `NotCorrectnessProof`,
@@ -1301,10 +1307,19 @@ Connection을 만들거나, MCP 호스트 설정을 설치하거나, Agent Conne
 초기화된 MCP client가 host prompt 지원을 선언하면 native host prompt 입력은
 `volicord.request_user_action`으로 만든 호환 대기 행동의 선호 User Channel 입력
 방법입니다. Agent 대상 fallback 안내에는 요청 결합 chat 명령, 검증 코드, 완전한 form,
-loopback bearer URL이 들어가지 않습니다. Local web consent는 listener가 준비됐고
-초기화한 client가
-`params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에
-정확한 boolean `true`를 보냈을 때만 선택합니다. 짧게 만료되는 URL은 네임스페이스가
+loopback bearer URL이 들어가지 않습니다. Local web consent는 공유 평가기가 관리되는
+generic이 아닌 stdio 경로, 준비된 listener, 정확한 boolean 선언, 만료되지 않은 현재의
+정확히 일치하는 `outcome=passed` 호스트 역량 검증을 모두 확인할 때만 선택합니다. 정규
+UTC 구간은
+`observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`를 만족해야 하고,
+현재 평가는 `observed_at <= now < expires_at`을 사용합니다. 24시간은 기본 수명이나
+attestation 기간이 아니라 최대 최신성 구간입니다. 검증의 `evidence_artifact_sha256`은 같은 역량,
+호스트·클라이언트, 어댑터, 빌드, source, target, 실행 파일 다이제스트에 결속된 별도로
+검증한 외부 정확한 최종 아티팩트 manifest 또는 receipt의 예상 다이제스트와 정확히
+일치해야 합니다. Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지 않았거나,
+일치하지 않으면 닫힌 상태로 실패합니다. 현재 어댑터에는 신뢰된 manifest 획득 경로가
+없으므로 운영 local-web 선택은 CLI inbox fallback을 사용합니다. 짧게
+만료되는 URL은 네임스페이스가
 지정된 최상위 tool-result `_meta` 전달값으로만 보냅니다. 그 밖에는 Agent가 일반 CLI
 inbox 안내만 받습니다. 터미널의 `volicord inbox` 명령은 다른 검증 User Channel을 사용할
 수 없거나, 비활성화됐거나, 저하됐거나, 해당 행동 form에 부적합할 때 완전한 form을
@@ -1409,8 +1424,11 @@ JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 �
   `control_surface.os_enforced`는 Volicord가 OS 수준 집행을 구현하지 않는 한 `false`여야
   합니다. `guard_health` JSON은 더 엄격한 호스트 훅 전제조건을 보여 주기 위해
   `generated_config_verified`, `native_host_output_adapter_verified`,
-  `direct_file_write_matcher_coverage`도 노출할 수 있습니다. 감시기 진단을 보고하는 경우
-  JSON은 `watcher_status`, `watcher_baseline_created_at`, `watcher_coverage_start_at`,
+  `direct_file_write_matcher_coverage`도 노출할 수 있습니다. 현재 호출의 정확한 클라이언트
+  선언, 시작 원천, listener 준비 상태, 영속 검증 tuple을 명령이 관찰할 수 없으면
+  `local_web_consent_available`은 `false`여야 하며, 저장된 연결 검증만으로 `true`가 되면
+  안 됩니다. 감시기 진단을 보고하는 경우 JSON은 `watcher_status`,
+  `watcher_baseline_created_at`, `watcher_coverage_start_at`,
   `watcher_coverage_basis`, `watcher_partial_coverage_warning`, `watcher_scan_summary`도
   노출해야 합니다. `watcher_scan_summary`는 `files_scanned`, `files_skipped`,
   `unreadable_paths_count`, `degraded_reasons`, `degraded_reason_counts`,

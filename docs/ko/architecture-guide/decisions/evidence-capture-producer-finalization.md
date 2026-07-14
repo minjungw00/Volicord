@@ -88,13 +88,15 @@ observation이 둘 이상의 intent나 producer class를 충족하지 못하게 
 observation identity는 unique이므로 완료한 intent를 두 번 소비할 수 없습니다.
 
 초기 producer-finalization 모델은 `baseline_sqlite_v4` / `0.7.0`의 비호환 canonical
-SQLite 형태 변경이었습니다. 현재 baseline은 이 record family를 `baseline_sqlite_v5`에
-유지합니다. 후속 connection-selector 보정은 호출자가 제공하던 미래 observation digest를
+SQLite 형태 변경이었습니다. 당시 기준이던 `baseline_sqlite_v5`가 이 record family를
+담았습니다. 후속 connection-selector 보정은 호출자가 제공하던 미래 observation digest를
 공개 및 영속 capture-spec 형태에서 제거하지만 table, column, index, constraint를 추가하지
-않습니다. 따라서 별도 storage-profile 또는 package-version 전이를 만들지 않고 현재
-pre-major `baseline_sqlite_v5` / `0.8.0` 계약 batch 안에서 완료합니다. 제거된 형태에는
-legacy alias나 fallback decoder가 없습니다. 호환되지 않는 v3과 v4 Runtime Home은
-계속 compatibility 검사에 실패하며 다시 만들어야 합니다.
+않습니다. 따라서 별도 storage-profile 또는 package-version 전이를 만들지 않고 pre-major
+`baseline_sqlite_v5` / `0.8.0` 계약 batch 안에서 완료했습니다. 보정된 record family는
+현재 `baseline_sqlite_v6` / `0.9.0`에 유지되며 v6의 호스트 역량 Registry
+추가는 이 결정과 독립적입니다. 제거된 형태에는 legacy alias나 fallback decoder가
+없습니다. 호환되지 않는 v5 또는 이전 Runtime Home은 compatibility 검사에 실패하며 다시
+만들어야 합니다.
 
 ## 결과
 

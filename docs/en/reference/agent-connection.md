@@ -72,8 +72,9 @@ that value is not a user authority token and is not required as a normal command
 input.
 
 The registry stores the connection's internal identity, host and intent,
-configuration target, mode, enabled state, managed fingerprint, verification
-state, and related metadata. Exact record fields belong to
+configuration target, mode, enabled state, managed fingerprint, configuration
+verification state, append-only host-capability verification history, and
+related metadata. Exact record fields belong to
 [Storage Records](storage-records.md) and [Storage DDL](storage-ddl.md). The
 internal host configuration key `server_name` defaults to `volicord`.
 
@@ -104,6 +105,27 @@ one surface without changing the others.
   latest checks. Host configuration, hook safety, MCP startup, initialization,
   and `tools/list` checks remain distinct from managed lifecycle observation and
   active-session tool exposure.
+- Host-capability verification history: a bounded external live-host result may
+  create an immutable verification row for one exact connection, capability,
+  built-in host/client version, adapter profile, Volicord build, exact source
+  revision, target, executable digest, managed fingerprint, evidence digest,
+  and half-open validity interval. A later immutable row with
+  `outcome=revoked` can become current and invalidate an
+  earlier pass without changing history. Configuration verification does not
+  create this history and cannot substitute for it.
+  Every interval must satisfy
+  `observed_at <= created_at` and
+  `observed_at < expires_at <= observed_at + 86,400 seconds`; a pass also
+  requires `created_at < expires_at`. Twenty-four hours is the maximum freshness
+  window, not a default lifetime or attestation period; a publisher may choose
+  a shorter expiry.
+  For a passing built-in stdio row, `host_version` and `client_version` are not
+  independent observations: both must equal the exact runtime
+  `clientInfo.version` and the live artifact's installed-host version. The
+  `source_revision` must be exact lowercase 40- or 64-hex; `unknown` cannot
+  pass. If either equality cannot be proved, the result is not passing.
+  An exact same-ID/same-content publication is idempotent and never moves a
+  newer current pointer backward; same ID with different content conflicts.
 - Invocation eligibility: the MCP adapter derives it at startup and for each
   public tool call. `enabled`, project availability, `connection.mode`, and
   `operation_category` affect it. Registry or project changes can make a call
@@ -655,14 +677,44 @@ Conditions:
   output, resume replay, or operation-result bytes. An Agent Connection receives
   only the pending request ID, `status=pending`, and `next_actor=user` for the
   request itself.
-- Local web is available only when a loopback listener exists and the
-  initialized client sends exact boolean `true` at
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
-  The capability is a cooperative delivery contract: the host must keep the
-  namespaced tool-result `_meta` handoff outside model context and render it on
-  a user-owned surface. It is not proof of host isolation. Missing, false,
-  wrong-typed, wrong-namespace, or malformed capability data is unavailable
-  and must not issue a token.
+- The exact boolean `true` at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`
+  is only the initialized client's cooperative delivery declaration. It does
+  not grant local-web eligibility by itself.
+- Local web is available only when one evaluator confirms all of the following:
+  the current transport is the managed stdio host path; a loopback listener is
+  ready; the exact declaration is `true`; and one
+  `host_capability_verifications` row with `outcome=passed` is current at
+  `observed_at <= now < expires_at` and exactly matches the Agent Connection,
+  non-generic host kind, `clientInfo.name`, `clientInfo.version`, adapter
+  profile and version, Volicord build, exact lowercase 40- or 64-hex source
+  revision, target and executable digest, managed fingerprint, and live-host
+  evidence digest. The evaluator must obtain the expected
+  `evidence_artifact_sha256` from a separately verified exact-final-artifact
+  release evidence manifest or receipt outside the executable. That manifest
+  must bind the same capability, host/client, adapter, build, source, target,
+  and executable digest, and the row's digest must exactly match its expected
+  value. Missing, unknown, malformed, unverified, or mismatched manifest input
+  is unavailable. The row's own digest and the build descriptor cannot supply
+  the expected value. The row must also have
+  `host_version == client_version == clientInfo.version`, with that same
+  version bound as the artifact's installed-host version. Missing, false,
+  wrong-typed, wrong-namespace, malformed, expired, revoked, ambiguous, corrupt, or
+  mismatched input is unavailable and must not issue a token.
+- The current adapter has no trusted acquisition path for that external
+  manifest or receipt. Production local-web eligibility therefore remains
+  fail-closed and uses CLI inbox; test-only injection of an expected value does
+  not establish production availability.
+- Manual stdio, CLI verification probes, Local HTTP transport, generic host
+  connections, and unknown or invalid managed-launch markers are never
+  eligible for this handoff. They use CLI inbox recovery even when the client
+  declares the exact capability and a listener exists.
+- A matching row records bounded evidence that the named host/profile delivered
+  this handoff during a specific validation run. It is not host attestation,
+  proof of host isolation, proof of current user identity, or a guarantee that
+  a later external host preserves model invisibility. The host must still keep
+  the namespaced tool-result `_meta` handoff outside model context and render it
+  on a user-owned surface.
 - The local-web URL may appear only in that model-invisible `_meta` handoff.
   It must not be copied into fallback text for the agent to relay. The consent
   page identifies the pending request, stored candidates, and non-guarantees;

@@ -16,6 +16,7 @@ pub mod error;
 pub mod evidence_capture;
 pub mod export;
 pub mod guards;
+pub mod host_capabilities;
 pub mod inspection;
 pub mod runtime_home;
 pub mod schema;

@@ -697,13 +697,16 @@ extension capability is:
 }
 ```
 
-Only the exact boolean `true` makes that client eligible for a model-invisible
-local-web handoff. Missing members, `false`, wrong types, wrong namespaces, and
+Only the exact boolean `true` supplies the client's cooperative declaration for
+a model-invisible local-web handoff. It is necessary but never sufficient for
+eligibility. Missing members, `false`, wrong types, wrong namespaces, and
 malformed nested objects are capability-unavailable rather than initialize
 errors. The flag is not user authority or proof of host trust; it is the
-client's cooperative promise that the namespaced tool-result `_meta` value is
-delivered to a user-owned surface and never supplied to model context. Other
-capability entries do not create Volicord behavior by themselves.
+client's promise that the namespaced tool-result `_meta` value is delivered to
+a user-owned surface and never supplied to model context. The adapter retains
+the exact `clientInfo.name` and `clientInfo.version` as verification inputs;
+client text is not identity proof. Other capability entries do not create
+Volicord behavior by themselves.
 
 Examples use the fields listed above. `volicord mcp --stdio` may accept additional MCP
 `Implementation` metadata allowed by the 2025-11-25 schema, such as `title`,
@@ -719,7 +722,11 @@ used. The extension value is the same structured build object documented for
 target, exact profile or approximate profile class, optimization level, and
 debug state. It has no build timestamp. Unknown Git metadata is explicit, and
 a dirty tree is labeled without claiming to identify its exact modified
-contents.
+contents. This build object contains neither the final executable digest nor a
+release evidence digest and is not a release evidence manifest. Host-capability
+evaluation must obtain its expected `evidence_artifact_sha256` from a
+separately verified exact-final-artifact release evidence manifest or receipt
+outside the executable.
 The initialize result also advertises the
 `capabilities.experimental["io.volicord/user-channel"]` extension so clients
 can negotiate this optional handoff; advertisement alone does not make the
@@ -1385,10 +1392,12 @@ leaves the request pending includes exact nested resume guidance and creates no
 second request.
 
 Fallback guidance stays outside Core authority. Unavailable host prompt input
-does not hide another available path. If a loopback listener and the negotiated
-model-invisible surface are both available, a short-lived local web token is
-bound to the exact request, form digest, project, connection, and delivery-
-surface marker. The raw credential-bearing URL is placed only in
+does not hide another available path. If the centralized delivery evaluator
+confirms a managed stdio host path, a ready loopback listener, the exact client
+declaration, and a current exact-match host-capability verification, a
+short-lived local web token is bound to the exact request, form digest,
+project, connection, and delivery-surface marker. The raw credential-bearing
+URL is placed only in
 the following closed top-level handoff; unknown or additional fields are not
 allowed:
 
@@ -1407,7 +1416,7 @@ allowed:
 `CallToolResult._meta["io.volicord/user-channel"]` is outside the public tool
 `outputSchema`. Agent-visible content reports
 only the request ID, pending state, next actor, and safe continuation guidance.
-If either capability input is unavailable, the adapter issues no token and
+If any eligibility input is unavailable, the adapter issues no token and
 points to `volicord inbox`. A pending fallback does not synthesize a second
 request or add a structured continuation object outside the closed public
 response schema. After User Channel completion, a caller that continues the
@@ -1430,9 +1439,34 @@ closed resolution body and token consumption are atomic.
 Listener startup alone never selects this path. The listener context carries a
 shared live-readiness state, and the accept loop makes that state unavailable
 before it exits after a listener failure. One adapter evaluator combines that
-current state with the exact model-invisible client capability for invocation
-derivation, User Channel projection, fallback selection, and final handoff
-materialization. Before issuing a token, the adapter verifies that the complete
+current state with the exact model-invisible client declaration, managed stdio
+launch origin, retained `clientInfo`, and current persisted host-capability
+state for invocation derivation, User Channel projection, fallback selection,
+and final handoff materialization. The pointed-to immutable verification must
+have `outcome=passed`, satisfy `observed_at <= now < expires_at`, and exactly
+match the enabled non-generic connection host kind, managed fingerprint,
+adapter profile/version, Volicord build, source revision, target and executable
+digest, client name/version, and bounded live-host evidence digest.
+The expected evidence digest must come from a separately verified external
+exact-final-artifact release evidence manifest or receipt that binds the same
+capability, host/client, adapter, build, source, target, and executable digest.
+The row's `evidence_artifact_sha256` must exactly match that expected value;
+the row, build descriptor, or copied value cannot self-supply it. Missing,
+unknown, malformed, unverified, or mismatched manifest input fails closed. The
+current adapter has no trusted acquisition path for that manifest, so
+production local-web selection remains unavailable and returns CLI fallback.
+Manual stdio, CLI verification probes, Local HTTP transport, generic connections, and
+invalid or unknown managed markers are ineligible. A passing source revision
+is exact lowercase 40- or 64-hex; `unknown` cannot pass. For the built-in stdio
+adapter, `host_version == client_version == clientInfo.version`, and the same
+version must match the live artifact's installed-host version. If that equality
+cannot be proved, the row is not passing. The verification interval must also
+satisfy `observed_at <= created_at`,
+`observed_at < expires_at <= observed_at + 86,400 seconds`, and
+`created_at < expires_at`. Twenty-four hours is a maximum freshness window
+rather than a default lifetime or attestation period; a publisher may choose a
+shorter expiry. Before issuing a token, the
+adapter verifies that the complete
 safe tool result plus the closed `_meta` handoff fits the selected 65,536- or
 262,144-byte response budget. It then passes the negotiated capability to the
 same evaluator and acquires a shared ready-listener issuance lease across token
@@ -1443,16 +1477,20 @@ issuance lease wins, that token is already issued and retains its bounded TTL
 even if the listener fails later. A result that cannot fit also falls back
 without a token. Budget rejection and readiness invalidation that linearizes
 before issuance create no token, and the adapter never truncates the URL. The
+same no-token, no-`_meta`, and no project-time-floor effect applies when host-
+capability state is absent, non-passing, expired, corrupt, or mismatched. The
 handoff is absent on
 resume, non-pending results, CLI fallback, token issuance failure, unsupported
-or malformed capability, listener startup failure, degradation that linearizes
-before issuance, and response-budget degradation. The URL and token must not
+or malformed declaration, absent, stale, revoked, corrupt, or mismatched
+verification, listener startup failure, degradation that linearizes before
+issuance, and response-budget degradation. The URL and token must not
 appear in MCP `content`,
 `structuredContent`, compatibility or diagnostic text, status or close
 projections, exact Core replay, operation-result bytes, logs, or templates. A
-host declaration is a cooperative promise to preserve model invisibility, not
-proof of host isolation, user identity, or user authority. A host that cannot
-preserve this separation must omit the capability and receives CLI fallback.
+host declaration and a matching bounded verification record remain
+cooperative integration evidence, not host attestation or proof of host
+isolation, user identity, or user authority. A host that cannot preserve this
+separation must omit the capability and receives CLI fallback.
 
 The legacy public programmatic builder that accepts only a base URL is an
 untracked, source-compatible, fail-closed shim: it does not make local web

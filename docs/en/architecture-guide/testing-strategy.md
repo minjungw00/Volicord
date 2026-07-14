@@ -232,20 +232,49 @@ the separately authorized, non-serialized User Channel projection retains the
 complete canonical form for CLI-direct and same-session host submission while
 Agent Connection, MCP, Stop, final-output, and fixture contexts fail closed.
 
+Focused Store tests publish immutable host-capability rows and table the
+passing, failed, unavailable, revoked, expired, malformed, and every exact-
+binding mismatch case. They verify canonical UTC input,
+`observed_at <= created_at`,
+`observed_at < expires_at <= observed_at + 86,400 seconds`, passing
+`created_at < expires_at`, half-open freshness, exact-duplicate idempotency,
+same-ID/different-content conflict, atomic current-pointer supersession, no
+duplicate rollback of a newer pointer, no backward search to an older pass, and
+Agent Connection deletion cascades. Twenty-four hours is tested as a maximum,
+not assumed as a default lifetime.
+
 Focused MCP tests table exact capability `true`, omission, `false`, wrong type,
-malformed namespace, and listener-unavailable combinations. Only exact `true`
-plus a ready listener may issue a token and return the closed host-only `_meta`
-handoff. They separately degrade a previously ready listener between deferred
-selection and final materialization and prove generic CLI fallback, absent
-`_meta`, zero token rows, and no project-clock effect. The model-visible view
-must omit every form and credential field. A separate concurrency invariant
-test proves that invalidation publishes unavailable immediately, blocks new
-leases, and drains any already-granted issuance lease before the listener
-exits. An insertion-boundary assertion proves that the token creator runs while
-that lease is held. Budget-boundary tests must preflight the complete safe
-result and handoff before token creation, proving that the exact compact and
-full limits succeed while the next byte degrades to generic CLI guidance with
-no orphan token. Replay tests cover
+malformed namespace, listener unavailability, managed-launch origin, retained
+`clientInfo`, and current persisted verification. A token and closed host-only
+`_meta` handoff require all evaluator inputs: a managed non-generic stdio path,
+a ready listener, the exact declaration, and a fresh exact-match
+`outcome=passed` row. Production eligibility additionally requires the row's
+`evidence_artifact_sha256` to match the expected digest from a separately
+verified external exact-final-artifact release evidence manifest or receipt
+bound to the same capability, host/client, adapter, build, source, target, and
+executable digest. The current adapter has no trusted acquisition path for that
+manifest, so production selection remains fail-closed.
+
+Current focused tests prove missing and non-passing state, expiry,
+supersession, selected binding mismatches, generic self-declaration without a
+current pass, and the managed positive fixture. Launch-origin tests separately
+classify manual stdio and CLI verification, while Local HTTP has
+transport-focused tests. The suite does not yet publish an otherwise exact
+current pass and prove non-issuance through each manual-stdio,
+CLI-verification, and Local HTTP path. Those exact-pass negative regressions
+are required before claiming those three paths as covered.
+
+The MCP suite separately degrades a previously ready listener or supersedes
+verification between deferred selection and final materialization and proves
+generic CLI fallback, absent `_meta`, zero token rows, and no project-clock
+effect. The model-visible view must omit every form and credential field. A
+separate concurrency invariant test proves that invalidation publishes
+unavailable immediately, blocks new leases, and drains any already-granted
+issuance lease before the listener exits. An insertion-boundary assertion
+proves that the token creator runs while that lease is held. Budget-boundary
+tests must preflight the complete safe result and handoff before token creation,
+proving that the exact compact and full limits succeed while the next byte
+degrades to generic CLI guidance with no orphan token. Replay tests cover
 direct retry, resume, close, and operation-
 result page one with legacy full-form, legacy `StateSummary`, mixed-shape, and
 wrong-method stored rows; rejected rows produce no state or cleanup effects.
@@ -261,12 +290,30 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-evidence-observation.json VOLICORD
 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
+The credential-bearing round trip cannot bootstrap its own passing
+host-capability row. The current workspace has neither the separate non-secret
+challenge/import path nor a trusted path for acquiring and verifying an
+external exact-final-artifact release evidence manifest or receipt. The
+manifest must bind the capability, host/client, adapter, build, source, target,
+final executable digest, and expected `evidence_artifact_sha256`; the current
+row's digest must exactly match that expected value. The local-web portion of
+these cells is therefore currently unverified and cannot record `passed`. A
+selected run records `unavailable` for that portion; fixtures or a direct
+wrapper cannot upgrade it. After a future validation-only path publishes an
+exact row and manifest, a separate normal run must still verify the manifest
+and re-evaluate that current row against the release binary and runtime
+`clientInfo`.
+
 Each cell uses fixture-only setup to establish disposable starting state, then
 requires the actual installed host to create and resume one evidence-observation
 request on the prepared Agent Connection. The captured initialization exchange
 must show exact boolean `true` at
 `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
-The host, not the Agent or harness, presents the
+That declaration is necessary but not sufficient: the current exact-match
+`outcome=passed` verification, verified external manifest, and managed
+launch/listener inputs must also pass the centralized evaluator. Only then does
+the host, not the Agent or harness,
+present the
 `CallToolResult._meta["io.volicord/user-channel"]` handoff outside model
 context; a human uses that surface to open the loopback form and submits the
 prepared target and artifact, `supported`, and a bounded non-secret summary.
@@ -304,7 +351,9 @@ Fresh status and receipt comparisons use the
 The live cell retains no host transcript or raw tool body. Its bounded exchange
 observer must nevertheless establish the safe-shape and forbidden-field facts
 above for create, resume, status, close, and operation-result projections. If
-the installed host omits or malforms the exact capability, cannot present the
+the exact current verification is absent, non-passing, expired, corrupt, or
+mismatched, or the installed host omits or malforms the exact capability,
+cannot present the
 handoff outside model context, or cannot provide an observation boundary that
 distinguishes host-only `_meta` from model-visible result data, the cell records
 `unavailable`, never `passed`. Focused schema and adapter regressions remain

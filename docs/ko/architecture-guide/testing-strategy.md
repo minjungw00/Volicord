@@ -213,18 +213,41 @@ User Channel projection이 CLI 직접 및 같은 session host 제출에서 완�
 유지하는 반면 Agent Connection, MCP, Stop, final-output, fixture 맥락은 닫힌 상태로
 실패함을 증명합니다.
 
-집중 MCP 테스트는 capability의 정확한 `true`, 생략, `false`, 잘못된 타입,
-잘못된 namespace, listener 사용 불가 조합을 table로 구성합니다. 정확한 `true`와
-준비된 listener가 둘 다 있을 때만 token을 발급하고 닫힌 host 전용 `_meta` handoff를
-반환할 수 있습니다. 별도로 준비됐던 listener를 deferred 선택과 최종 materialization
-사이에 저하시켜 일반 CLI fallback, `_meta` 부재, token 행 0개, project clock 효과 없음을
-증명합니다. 모델 가시 상태 보기는 모든 form 및 credential 필드를 빼야 합니다. 별도
-동시성 invariant 테스트는 무효화가 사용 불가 상태를 즉시 게시하고 새 lease를 차단하며,
-listener가 종료되기 전에 이미 부여된 발급 lease를 모두 drain함을 증명합니다. 삽입 경계
-assertion은 token creator가 그 lease를 보유한 동안 실행됨을 증명합니다. Budget 경계
-테스트는 token을 만들기 전에 완전한 안전 결과와 handoff를 사전 검사하여 정확한 compact
-및 full 한계에서는 성공하지만 그 다음 1 byte에서는 일반 CLI 안내로 저하되고 orphan
-token을 만들지 않음을 증명합니다. Replay 테스트는
+집중 Store 테스트는 변경 불가능한 호스트 역량 행을 게시하고 passed, failed,
+unavailable, revoked, 만료, 잘못된 형태, 모든 정확한 결속 불일치 사례를 table로
+구성합니다. 정규 UTC 입력,
+`observed_at <= created_at`, `observed_at < expires_at <= observed_at + 86,400 seconds`,
+통과 행의 `created_at < expires_at`, 반개구간 최신성, 정확한 중복의 멱등성, 같은 ID와 다른
+내용의 충돌, 원자적 현재 포인터 교체, 중복 게시에 의한 더 새로운 포인터 후퇴 없음, 더
+오래된 pass로 뒤로 찾지 않음, Agent Connection 삭제 연쇄 효과를 검증합니다. 24시간은
+기본 수명으로 가정하지 않고 최대값으로 테스트합니다.
+
+집중 MCP 테스트는 capability의 정확한 `true`, 생략, `false`, 잘못된 타입, 잘못된
+namespace, listener 사용 불가, 관리 시작 원천, 보존된 `clientInfo`, 현재 영속 검증을
+table로 구성합니다. Token과 닫힌 host 전용 `_meta` handoff에는 관리되는 generic이 아닌
+stdio 경로, 준비된 listener, 정확한 선언, 최신의 정확히 일치하는 `outcome=passed` 행이라는
+평가기 입력이 모두 필요합니다. 운영 자격에는 행의 `evidence_artifact_sha256`이 같은 역량,
+호스트·클라이언트, 어댑터, 빌드, source, target, 실행 파일 다이제스트에 결속된 별도로
+검증한 외부 정확한 최종 아티팩트 릴리스 증거 manifest 또는 receipt의 예상 다이제스트와
+일치해야 한다는 조건도 있습니다. 현재 어댑터에는 그 manifest를 신뢰해 획득하는 경로가
+없으므로 운영 선택은 닫힌 상태로 실패합니다.
+
+현재 집중 테스트는 누락·비통과 상태, 만료, 교체, 선택된 결속 불일치, 현재 pass가 없는
+generic 자기 선언, 관리 positive fixture를 증명합니다. 시작 원천 테스트는 수동 stdio와
+CLI 검증을 별도로 분류하고 Local HTTP에는 전송 중심 테스트가 있습니다. 그러나 그 밖의
+모든 값이 정확한 현재 pass를 게시한 뒤 수동 stdio, CLI 검증, Local HTTP 각 경로에서
+비발급을 증명하는 테스트는 아직 없습니다. 이 세 경로가 다뤄졌다고 주장하려면 그런
+exact-pass negative 회귀 테스트가 필요합니다.
+
+MCP suite는 별도로 준비됐던 listener를 저하하거나 deferred 선택과 최종 materialization
+사이에 검증을 교체하여 일반 CLI fallback, `_meta` 부재, token 행 0개, project clock 효과
+없음을 증명합니다. 모델 가시 상태 보기는 모든 form 및 credential 필드를 빼야 합니다.
+별도 동시성 invariant 테스트는 무효화가 사용 불가 상태를 즉시 게시하고 새 lease를
+차단하며, listener가 종료되기 전에 이미 부여된 발급 lease를 모두 drain함을 증명합니다.
+삽입 경계 assertion은 token creator가 그 lease를 보유한 동안 실행됨을 증명합니다. Budget
+경계 테스트는 token을 만들기 전에 완전한 안전 결과와 handoff를 사전 검사하여 정확한
+compact 및 full 한계에서는 성공하지만 그 다음 1 byte에서는 일반 CLI 안내로 저하되고
+orphan token을 만들지 않음을 증명합니다. Replay 테스트는
 기존 full-form, 기존 `StateSummary`, 혼합 형태, 잘못된 메서드 저장 행에 대한 직접 retry,
 resume, close, operation-result 첫 page를 다루며 거부된 행이 상태나 정리 효과를 만들지
 않음을 확인합니다.
@@ -239,11 +262,24 @@ VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/codex-evidence-observation.json VOLICORD
 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/claude-code-evidence-observation.json VOLICORD_RUN_CLAUDE_EVIDENCE_OBSERVATION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_evidence_observation_round_trip_is_opt_in -- --ignored --nocapture
 ```
 
+Credential을 포함한 왕복은 자신의 통과 호스트 역량 행을 bootstrap할 수 없습니다. 현재
+workspace에는 별도의 비밀이 아닌 challenge/import 경로도, 외부 정확한 최종 아티팩트
+릴리스 증거 manifest 또는 receipt를 신뢰해 획득하고 검증하는 경로도 없습니다. 그
+manifest는 역량, 호스트·클라이언트, 어댑터, 빌드, source, target, 최종 실행 파일
+다이제스트, 예상 `evidence_artifact_sha256`에 결속되어야 하고 현재 행의 다이제스트가 그
+예상값과 정확히 일치해야 합니다. 따라서 이 셀의 local-web 부분은 현재 검증되지 않았으며
+`passed`를 기록할 수 없습니다. 선택한 실행은 그 부분에 `unavailable`을 기록하며 fixture나
+direct wrapper는 이를 통과로 올릴 수 없습니다. 이후 검증 전용 경로가 정확한 행과
+manifest를 게시하더라도 별도 일반 실행에서 manifest를 검증하고 그 현재 행을 release
+binary와 런타임 `clientInfo`에 맞춰 다시 평가해야 합니다.
+
 각 셀은 픽스처 전용 준비로 폐기 가능한 시작 상태를 만든 뒤, 실제 설치 호스트가 준비된
 Agent Connection에서 증거 관찰 요청 하나를 만들고 재개하도록 요구합니다. 캡처한
 초기화 교환에서
 `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`가
-정확한 boolean `true`임을 관찰해야 합니다. Agent나 하네스가 아닌 호스트가
+정확한 boolean `true`임을 관찰해야 합니다. 이 선언은 필요하지만 충분하지 않습니다. 현재의
+정확히 일치하는 `outcome=passed` 검증, 검증된 외부 manifest, 관리 시작·listener 입력도
+중앙 평가기를 통과해야 합니다. 그때만 Agent나 하네스가 아닌 호스트가
 `CallToolResult._meta["io.volicord/user-channel"]` handoff를 모델 맥락 밖에 표시하고,
 사람은 그 표면을 사용해 루프백 consent form을 열어 준비된 대상과 아티팩트,
 `supported`, 크기가 제한된 비밀값 없는 요약을 제출합니다. 이어서 호스트가 그 해결을
@@ -271,7 +307,8 @@ receipt 비교는 [상태 메서드](../reference/api/method-status.md)와
 실제 셀은 호스트 대화 기록이나 raw tool body를 보존하지 않습니다. 그럼에도 제한된
 교환 observer는 create, resume, status, close, operation-result projection에 대해 위의 안전한
 형태와 금지 필드 사실을 확인해야 합니다. 설치된 호스트가 정확한 capability를
-누락하거나 잘못 표현하거나, 모델 맥락 밖에 handoff를 표시하지 못하거나, host 전용
+누락하거나 잘못 표현하거나, 정확한 현재 검증이 없거나 통과하지 않았거나 만료·손상·불일치
+상태이거나, 모델 맥락 밖에 handoff를 표시하지 못하거나, host 전용
 `_meta`와 모델 가시 결과 데이터를 구별하는 관찰 경계를 제공하지 못하면 셀은
 `passed`가 아닌 `unavailable`을 기록합니다. 집중 스키마와 어댑터 회귀 테스트는
 계속 필요하지만 이 호스트 관찰 불가 결과를 통과로 올릴 수 없습니다.

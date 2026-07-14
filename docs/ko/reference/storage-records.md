@@ -46,7 +46,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 저장 위치:
 
-- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필, 프로젝트 등록 매핑과 별칭, Agent Connection, Connection Projects 멤버십, 호스트 훅 설치, 레지스트리 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
+- `registry.sqlite`는 Runtime Home 식별 정보, 설치 프로필, 프로젝트 등록 매핑과 별칭, Agent Connection, Connection Projects 멤버십, 호스트 역량 검증 이력과 현재 포인터, 호스트 훅 설치, 레지스트리 메타데이터를 저장합니다. 설치 프로필에는 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프가 포함됩니다. 프로젝트 등록에는 `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 등록된 `repo_root`, `project_home`, 프로젝트 `state.sqlite` 경로, 상태, 메타데이터, 타임스탬프가 포함됩니다.
 - `diagnostics.sqlite`는 필요할 때 생성되는 크기 제한 비권한 로컬 운영 진단 저장소입니다. `registry.sqlite` 및 모든 프로젝트 `state.sqlite`와 분리되며 어느 데이터베이스에도 외래 키를 두지 않습니다.
 - `projects/{project_internal_id}/`는 등록된 프로젝트 하나에 대한 기본 Volicord 프로젝트 홈 형태입니다. `repo_root`와 같은 위치나 권한이 아닙니다.
 - `state.sqlite`는 등록된 프로젝트의 로컬 Core 상태와 프로젝트 범위 호스트 관찰 기록을 저장합니다.
@@ -61,7 +61,7 @@ Volicord는 기준 범위 기록을 로컬 `Volicord Runtime Home` 하나와 등
 
 `Product Repository`는 `repo_root`로 등록되는 사용자 제품 파일 경계입니다. Volicord Runtime Home이 아니며, Core 권한 저장소가 아니고, 런타임 기록, 재실행 행, 판단, 쓰기 티켓, 호스트 훅 기록, Agent Connection 레지스트리 상태를 저장하는 위치도 아닙니다.
 
-기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v5`이며, 저장소 프로필과 호환되지 않는 저장소 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+기준 SQLite 테이블 형태, 인덱스, 외래 키, 제약, 기준 SQL 원본은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v6`이며, 저장소 프로필과 호환되지 않는 저장소 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 복사되거나 이동된 Runtime Home은 같은 저장된 `runtime_home_id`를 가질 수 있고, 새 Runtime Home은 새 식별자를 가져야 합니다. 이 식별자는 의심스러운 복사본, 중복 등록, 경로 변경을 감지하는 데 도움이 될 수 있지만 보안 보장은 아닙니다.
 
@@ -88,6 +88,8 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `registry.sqlite` | 프로젝트 등록과 별칭 | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, 별칭에서 내부 식별 정보로 가는 매핑. |
 | `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 영속 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
+| `registry.sqlite` | `host_capability_verifications` | 변경 불가능한 호스트 역량 검증 이력 | 정확한 연결·역량, 결과, 호스트·클라이언트 버전, 어댑터 프로필, 관리 지문, Volicord 빌드·source·target·실행 파일 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트, 관찰·만료 기간, 엄격한 정규 `{}` 메타데이터, 생성 시각. |
+| `registry.sqlite` | `host_capability_state` | 현재 호스트 역량 포인터 | 연결과 역량마다 현재의 변경 불가능한 검증 행 하나를 가리키며 이후 통과·실패·사용 불가·취소 관찰로 원자적으로 교체됩니다. |
 | `registry.sqlite` | 호스트 훅 설치 | 호스트 훅 설정과 호스트 역량 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, 통합 모드, 호스트 역량 JSON, 설치 생명주기 상태, 관찰된 훅 메타데이터, 타임스탬프, 메타데이터. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필, 정규 Core UTC 시계의 영속 하한인 `updated_at`. |
 | `state.sqlite` | `agent_sessions` | 관찰된 에이전트 세션 | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 호스트 훅 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
@@ -130,6 +132,21 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 - 프로젝트 등록에는 고유한 `project_internal_id`, 고유한 프로젝트 별칭, 고유한 저장소 루트, 고유한 프로젝트 홈, 고유한 상태 데이터베이스 경로가 필요합니다. `project_name`은 표시 이름이고 `project_alias`는 CLI 선택 보조 값입니다.
 - Agent Connection 식별 정보는 `connection_internal_id`별로 고유합니다.
 - Connection Projects 멤버십은 `connection_internal_id`와 `project_internal_id`의 조합별로 고유하며, 하나의 연결이 등록된 프로젝트를 주소 지정할 수 있게 하는 유일한 레지스트리 멤버십입니다.
+- 호스트 역량 검증 식별 정보는 `verification_internal_id`별로 고유하며 각 이력 행은 Agent
+  Connection 하나와 정확한 역량 하나에 속합니다. `host_capability_state`는 같은 연결과
+  역량의 행만 가리킬 수 있습니다. 현재의 통과하지 않은 행은 더 오래된 통과 행으로
+  fallback하지 못하게 합니다. 정규 UTC 구간 값은 `observed_at <= created_at`과
+  `observed_at < expires_at <= observed_at + 86,400 seconds`를 만족해야 하며 통과 행은
+  `created_at < expires_at`도 만족해야 합니다. 행은 `observed_at <= now < expires_at`에서만
+  최신입니다. 24시간은 기본 수명이나 attestation 기간이 아니라 최대 최신성 구간입니다.
+  통과하는 내장 stdio 행은
+  `host_version = client_version`을 요구하고 그 단일 버전은 정확한 런타임
+  `clientInfo.version`, 실제 아티팩트의 설치 호스트 버전과 모두 같아야 합니다.
+  `source_revision`은 정확한 소문자 40자리 또는 64자리 16진수이며 `unknown`은 통과할 수
+  없습니다.
+- 정확히 같은 검증 ID와 내용을 게시하는 것은 멱등입니다. 그 이력 행이 더 이상 현재 행이
+  아니면 중복 게시는 더 새로운 포인터를 뒤로 옮기지 않습니다. 같은 ID에 다른 내용을
+  사용하면 충돌합니다.
 - 비활성 connection은 일반적으로 membership을 유지할 수 있으며, 그것만으로 마이그레이션 cleanup 기록이 되지 않습니다. 마지막 project 호스트 마이그레이션 cleanup은 `project_id`와 `replacement_connection_id`를 담은 정확한 `agent_connections.metadata_json.pending_host_cleanup` 객체로만 식별합니다. Cleanup transaction은 호스트 폐기와 membership 제거 전에 이 marker, 비활성 상태, 보존된 membership 하나가 모두 일치하는지 검증해야 합니다.
 - `agent_connections.metadata_json.pending_host_cleanup`은 Store 소유 복구 상태입니다. 일반 Agent Connection 등록과 갱신 입력은 이 예약 키를 거절해야 하고, 일반 활성화·비활성화 또는 Connection Projects membership 변경은 marker가 있는 행을 거절해야 합니다. 마이그레이션은 marker가 있는 행을 요청 대상으로 활성화하면 안 됩니다. 마이그레이션 전환과 cleanup 작업은 project membership을 다시 검증할 때만 대체 inventory의 marker를 다시 연결하거나 제거할 수 있습니다.
 - `pending_host_cleanup` 값에 구성원이 빠졌거나, 추가됐거나, 비어 있거나, 형식이 잘못되면 재개 가능한 cleanup이 아닙니다. Doctor는 이를 유효하지 않은 예약 marker로 보고해야 하며 cleanup과 마이그레이션 발견은 유효한 inventory로 해석하면 안 됩니다.
@@ -453,6 +470,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 |---|---|
 | 설치 프로필 | 호스트 신뢰 결정, 사용자 판단, 공개 API 스키마가 아닌 설치 프로필 메타데이터. |
 | Agent Connection | 권한, 호스트 신뢰 증명, 외부 호스트 설정의 대체물로 쓰지 않는 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터. |
+| 호스트 역량 검증 | V1 `metadata_json`은 엄격한 정규 `{}`만 허용합니다. 허용되는 모든 증거 좌표에는 전용 열이 있으며 bearer URL이나 token, prompt, transcript, screenshot, 원문 호스트 아티팩트, 비공개 운영자 데이터, 임의 또는 추가 구성원은 유효하지 않습니다. |
 | 호스트 훅 설치 | 로컬 호스트 훅 설정 상태를 위한 호스트 역량 JSON과 메타데이터입니다. OS 집행 증명이 아닙니다. |
 | `agent_sessions` | 프로젝트 범위 에이전트 세션에 대한 비권한 메타데이터. |
 | `guard_events` | 로컬 호스트 판단 요청의 호스트 훅 대상 JSON, 결과 JSON, 메타데이터. |

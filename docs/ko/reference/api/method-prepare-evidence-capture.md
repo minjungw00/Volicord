@@ -213,12 +213,14 @@ Receipt 하나는 producer를 최대 하나만 만들고 producer 하나는 obse
 ## 호환성과 외부 검증
 
 이 clean pre-major selector 보정은 호출자에게 미래 observation digest를 요구하던
-이전 형태를 제거합니다. Table, column, index, constraint를 추가하지 않고 현재
-`baseline_sqlite_v5` / `0.8.0` 계약 batch에 포함되므로 별도 storage-profile 또는
-package-version 전이를 만들지 않습니다. 제거된 request/capture-spec 형태를 위한
-legacy alias나 fallback decoder는 없습니다. 호환되지 않는 v3 또는 v4 Runtime Home을
+이전 형태를 제거합니다. Table, column, index, constraint를 추가하지 않고
+`baseline_sqlite_v5` / `0.8.0` 계약 batch에서 도입된 보정이므로 그 자체로 별도
+storage-profile 또는 package-version 전이를 만들지 않았습니다. 같은 보정 메서드 형태는
+`baseline_sqlite_v6` / `0.9.0`에서도 현재 형태로 유지되며, v6의 호스트 역량 Registry
+추가는 이 메서드와 독립적입니다. 제거된 request/capture-spec 형태를 위한 legacy alias나
+fallback decoder는 없습니다. 호환되지 않는 v5 또는 이전 Runtime Home을
 변환하는 경로는 없으며, 호환되지 않는 상태는 명확히 실패하고 다시 만들어야
-합니다. 현재 권장 release version은 계속 `0.8.0`입니다.
+합니다. 현재 권장 release version은 `0.9.0`입니다.
 
 체크인된 host fixture는 adapter만 검증합니다. 실제 Codex 또는 Claude Code의
 invocation identity, output completeness, retry, resume, 병렬 호출 동작에 대한

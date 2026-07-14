@@ -91,6 +91,8 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "project_aliases",
             "agent_connections",
             "connection_projects",
+            "host_capability_verifications",
+            "host_capability_state",
             "guard_installations",
         ],
     );
@@ -133,6 +135,42 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     );
     assert_columns_include(
         &initial_registry_schema,
+        "host_capability_verifications",
+        &[
+            "verification_internal_id",
+            "connection_internal_id",
+            "capability",
+            "outcome",
+            "host_kind",
+            "host_version",
+            "client_name",
+            "client_version",
+            "adapter_profile",
+            "adapter_version",
+            "managed_fingerprint",
+            "volicord_build_id",
+            "source_revision",
+            "target_triple",
+            "executable_sha256",
+            "evidence_artifact_sha256",
+            "observed_at",
+            "expires_at",
+            "metadata_json",
+            "created_at",
+        ],
+    );
+    assert_columns_include(
+        &initial_registry_schema,
+        "host_capability_state",
+        &[
+            "connection_internal_id",
+            "capability",
+            "current_verification_internal_id",
+            "updated_at",
+        ],
+    );
+    assert_columns_include(
+        &initial_registry_schema,
         "guard_installations",
         &[
             "guard_installation_id",
@@ -153,6 +191,16 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
         "connection_projects",
         &["connection_internal_id", "project_internal_id"],
     );
+    assert_primary_key_columns(
+        &initial_registry_schema,
+        "host_capability_verifications",
+        &["verification_internal_id"],
+    );
+    assert_primary_key_columns(
+        &initial_registry_schema,
+        "host_capability_state",
+        &["connection_internal_id", "capability"],
+    );
     assert_foreign_key_columns(
         &initial_registry_schema,
         "connection_projects",
@@ -164,6 +212,37 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
         "connection_projects",
         "projects",
         &[("project_internal_id", "project_internal_id")],
+    );
+    assert_foreign_key_columns(
+        &initial_registry_schema,
+        "host_capability_verifications",
+        "agent_connections",
+        &[("connection_internal_id", "connection_internal_id")],
+    );
+    assert_foreign_key_delete_action(
+        &initial_registry_schema,
+        "host_capability_verifications",
+        "agent_connections",
+        "CASCADE",
+    );
+    assert_foreign_key_columns(
+        &initial_registry_schema,
+        "host_capability_state",
+        "host_capability_verifications",
+        &[
+            ("connection_internal_id", "connection_internal_id"),
+            ("capability", "capability"),
+            (
+                "current_verification_internal_id",
+                "verification_internal_id",
+            ),
+        ],
+    );
+    assert_foreign_key_delete_action(
+        &initial_registry_schema,
+        "host_capability_state",
+        "host_capability_verifications",
+        "CASCADE",
     );
     assert_unique_index_columns(
         &initial_registry_schema,
@@ -193,6 +272,17 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "server_name",
         ],
     );
+    for index in [
+        "idx_host_capability_verifications_connection",
+        "idx_host_capability_verifications_outcome_expiry",
+        "idx_host_capability_state_current",
+    ] {
+        assert!(
+            initial_registry_schema.explicit_indexes.contains_key(index),
+            "expected host-capability index {index}"
+        );
+    }
+    assert_registry_host_capability_contract_behavior(&initial_registry)?;
     assert!(
         !initial_registry_schema
             .tables
@@ -701,6 +791,26 @@ fn assert_foreign_key_columns(
     assert!(
         found,
         "expected {table} foreign key to {parent_table} on {expected:?}"
+    );
+}
+
+fn assert_foreign_key_delete_action(
+    schema: &DatabaseSchema,
+    table: &str,
+    parent_table: &str,
+    on_delete: &str,
+) {
+    let table_schema = schema
+        .tables
+        .get(table)
+        .unwrap_or_else(|| panic!("expected table {table}"));
+    assert!(
+        table_schema
+            .foreign_keys
+            .iter()
+            .any(|foreign_key| foreign_key.parent_table == parent_table
+                && foreign_key.on_delete == on_delete),
+        "expected {table} foreign key to {parent_table} with ON DELETE {on_delete}"
     );
 }
 
@@ -1231,6 +1341,139 @@ fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<()
     assert_artifacts_body_path_shape(label, conn);
     assert_evidence_capture_intent_constraints(label, conn);
     Ok(())
+}
+
+fn assert_registry_host_capability_contract_behavior(
+    conn: &Connection,
+) -> Result<(), Box<dyn Error>> {
+    conn.execute(
+        "INSERT INTO agent_connections (
+            connection_internal_id, host_kind, intent, host_scope, server_name,
+            config_target, mode, managed_fingerprint, created_at, updated_at
+        ) VALUES (
+            'conn_a', 'codex', 'personal', 'user', 'volicord',
+            'codex-target', 'workflow', 'fingerprint-a', 't0', 't0'
+        )",
+        [],
+    )?;
+
+    insert_host_capability_ddl_row(conn, "verification_a", "passed", "codex")?;
+    insert_host_capability_ddl_row(conn, "verification_b", "failed", "codex")?;
+    conn.execute(
+        "INSERT INTO host_capability_state (
+            connection_internal_id, capability,
+            current_verification_internal_id, updated_at
+        ) VALUES (
+            'conn_a', 'model_invisible_user_surface', 'verification_b', 't2'
+        )",
+        [],
+    )?;
+
+    let generic_pass = conn
+        .execute(
+            "INSERT INTO host_capability_verifications (
+                verification_internal_id, connection_internal_id, capability,
+                outcome, host_kind, host_version, client_name, client_version,
+                adapter_profile, adapter_version, managed_fingerprint,
+                volicord_build_id, source_revision, target_triple,
+                executable_sha256, evidence_artifact_sha256,
+                observed_at, expires_at, created_at
+            ) VALUES (
+                'verification_generic', 'conn_a', 'model_invisible_user_surface',
+                'passed', 'generic', '1.0.0', 'generic-client', '1.0.0',
+                'mcp_user_channel_local_web_v1', '0.9.0', 'fingerprint-a',
+                'build-a', '1111111111111111111111111111111111111111',
+                'x86_64-unknown-linux-gnu',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                't0', 't1', 't1'
+            )",
+            [],
+        )
+        .expect_err("generic outcome=passed must be rejected by canonical DDL");
+    assert_constraint_error("initial registry.sqlite", generic_pass);
+
+    for (label, sql) in [
+        (
+            "different passed host/client versions",
+            "UPDATE host_capability_verifications
+                SET host_version = '2.0.0'
+              WHERE verification_internal_id = 'verification_a'",
+        ),
+        (
+            "non-exact passed source revision",
+            "UPDATE host_capability_verifications
+                SET source_revision = 'unknown'
+              WHERE verification_internal_id = 'verification_a'",
+        ),
+        (
+            "nonempty v1 metadata",
+            "UPDATE host_capability_verifications
+                SET metadata_json = '{\"raw\":true}'
+              WHERE verification_internal_id = 'verification_a'",
+        ),
+    ] {
+        let error = conn.execute(sql, []).expect_err(label);
+        assert_constraint_error("initial registry.sqlite", error);
+    }
+
+    let history_count: i64 = conn.query_row(
+        "SELECT COUNT(*)
+           FROM host_capability_verifications
+          WHERE evidence_artifact_sha256 =
+                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        history_count, 2,
+        "one evidence artifact digest may bind multiple exact verification rows"
+    );
+
+    conn.execute(
+        "DELETE FROM agent_connections WHERE connection_internal_id = 'conn_a'",
+        [],
+    )?;
+    let remaining: i64 = conn.query_row(
+        "SELECT
+            (SELECT COUNT(*) FROM host_capability_verifications)
+            + (SELECT COUNT(*) FROM host_capability_state)",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        remaining, 0,
+        "connection deletion must cascade capability rows"
+    );
+    Ok(())
+}
+
+fn insert_host_capability_ddl_row(
+    conn: &Connection,
+    verification_internal_id: &str,
+    outcome: &str,
+    host_kind: &str,
+) -> rusqlite::Result<usize> {
+    conn.execute(
+        "INSERT INTO host_capability_verifications (
+            verification_internal_id, connection_internal_id, capability,
+            outcome, host_kind, host_version, client_name, client_version,
+            adapter_profile, adapter_version, managed_fingerprint,
+            volicord_build_id, source_revision, target_triple,
+            executable_sha256, evidence_artifact_sha256,
+            observed_at, expires_at, created_at
+        ) VALUES (
+            ?1, 'conn_a', 'model_invisible_user_surface',
+            ?2, ?3, '1.0.0', 'codex-mcp-client', '1.0.0',
+            'mcp_user_channel_local_web_v1', '0.9.0', 'fingerprint-a',
+            'build-a', '1111111111111111111111111111111111111111',
+            'x86_64-unknown-linux-gnu',
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            't0', 't1', 't1'
+        )",
+        params![verification_internal_id, outcome, host_kind],
+    )
 }
 
 fn assert_evidence_capture_intent_constraints(label: &str, conn: &Connection) {

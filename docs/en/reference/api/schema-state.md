@@ -362,15 +362,30 @@ Meaning:
 - `prompt_capture_status` reports the machine-readable prompt-capture availability state for the selected connection. `prompt_capture_available=true` only when that state allows verification-code chat commands; it does not mean raw prompt text is included.
 - `prompt_capture_available` reports whether prompt-capture verification-code chat commands may be shown or recorded for the selected connection. It does not include prompt text.
 - `local_web_consent_available=true` only when the current adapter invocation's
-  loopback listener is ready **and** the initialized client sent exact boolean
-  `true` at
-  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`.
-  An omitted, false, wrong-typed, malformed, or wrong-namespace declaration
-  means `false`. This fact does not mean a token was issued, a form was
-  rendered, a user was identified, or model isolation was proved. Status and
-  check-close use the same evaluator and never issue a token merely to report
-  availability; setup diagnostics that cannot observe both runtime inputs also
-  report `false`.
+  centralized evaluator observes a managed non-generic stdio host, a ready
+  loopback listener, the exact boolean `true` declaration at
+  `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`,
+  and current exact-match persisted host-capability state with an unexpired
+  `outcome=passed` result whose interval satisfies
+  `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`;
+  the row's `evidence_artifact_sha256` must also exactly match the expected
+  digest in a separately verified exact-final-artifact release evidence
+  manifest or receipt outside the executable, bound to the same capability,
+  host/client, adapter, build, source, target, and executable digest;
+  current
+  evaluation uses `observed_at <= now < expires_at`. Twenty-four hours is the
+  maximum freshness window, not a default lifetime or attestation period. An
+  omitted, false, wrong-typed, malformed, or wrong-
+  namespace declaration, or absent, non-passing, expired, revoked, corrupt, or
+  mismatched verification, means `false`. This fact does not mean a token was
+  issued, a form was rendered, a user was identified, or model isolation was
+  proved. Status and check-close use the same evaluator and never issue a token
+  merely to report availability; setup diagnostics that cannot observe every
+  runtime and persisted input also report `false`.
+  A missing, unknown, malformed, unverified, or mismatched manifest also means
+  `false`; the row and build metadata cannot self-supply its expected digest.
+  The current adapter has no trusted manifest acquisition path, so production
+  projections report this capability as unavailable.
 - `mcp_connection_healthy` and `mcp_connection_status` summarize the tracked Agent Connection verification state when that state is available.
 - `session_watch_status` reports whether the session-level Product Repository watcher is `disabled`, `active`, `degraded`, `unavailable`, or `pending_project_selection` for the selected connection or session.
 - `last_session_watch_checked_at` is the latest watcher baseline status update timestamp, or `null` when no session-watch baseline is available.

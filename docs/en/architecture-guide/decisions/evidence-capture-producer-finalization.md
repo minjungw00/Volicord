@@ -100,15 +100,17 @@ observation identities are unique so a completed intent cannot be consumed
 twice.
 
 The initial producer-finalization model was the incompatible
-`baseline_sqlite_v4` / `0.7.0` canonical SQLite shape change. The current
-baseline carries the record families in `baseline_sqlite_v5`. The follow-up
+`baseline_sqlite_v4` / `0.7.0` canonical SQLite shape change. The then-current
+`baseline_sqlite_v5` carried these record families. The follow-up
 connection-selector correction removes the caller-supplied future observation
 digest from the public and persisted capture-spec shape but adds no table,
-column, index, or constraint. It is therefore completed inside the current
-pre-major `baseline_sqlite_v5` / `0.8.0` contract batch rather than creating a
-second storage-profile or package-version transition. The removed shape has no
-legacy alias or fallback decoder. Incompatible v3 and v4 Runtime Homes still
-fail compatibility checks and require recreation.
+column, index, or constraint. It was therefore completed inside the pre-major
+`baseline_sqlite_v5` / `0.8.0` contract batch rather than creating a second
+storage-profile or package-version transition. Current `baseline_sqlite_v6` /
+`0.9.0` retains the corrected record families; its host-capability Registry
+addition is independent of this decision. The removed shape has no legacy
+alias or fallback decoder. Incompatible v5 or earlier Runtime Homes fail
+compatibility checks and require recreation.
 
 ## Consequences
 
