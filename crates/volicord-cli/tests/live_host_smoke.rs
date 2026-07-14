@@ -842,6 +842,21 @@ mod unix {
     }
 
     #[test]
+    fn candidate_host_probe_codex_home_is_disposable_and_outside_system_temp(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("candidate-host-version-home")?;
+        let host_home_root = fixture.host_home_root.clone();
+        let system_temp = fs::canonicalize(env::temp_dir())?;
+        let codex_home = fs::canonicalize(&fixture.codex_home)?;
+        assert!(!codex_home.starts_with(system_temp));
+        assert!(codex_home.starts_with(fs::canonicalize(workspace_target_dir())?));
+
+        drop(fixture);
+        assert!(!host_home_root.exists());
+        Ok(())
+    }
+
+    #[test]
     fn operator_choice_confirmation_accepts_only_fixed_native_options() -> Result<(), Box<dyn Error>>
     {
         assert_eq!(
@@ -13606,6 +13621,7 @@ mod unix {
 
     struct LiveSmokeFixture {
         _runtime_home: TempRuntimeHome,
+        host_home_root: PathBuf,
         runtime_home_path: PathBuf,
         repo_root: PathBuf,
         repo_arg: String,
@@ -13617,6 +13633,54 @@ mod unix {
         claude_config_dir: PathBuf,
         volicord_path: PathBuf,
         expected_volicord_sha256: String,
+    }
+
+    impl Drop for LiveSmokeFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.host_home_root);
+        }
+    }
+
+    fn workspace_target_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("volicord-cli crate must remain under the workspace crates directory")
+            .join("target")
+    }
+
+    fn create_disposable_host_home() -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+        let base = workspace_target_dir().join("volicord-live-host-homes");
+        fs::create_dir_all(&base)?;
+        let base_metadata = fs::symlink_metadata(&base)?;
+        if base_metadata.file_type().is_symlink() || !base_metadata.is_dir() {
+            return Err(io::Error::other(
+                "live-host home base must be a real Cargo target directory",
+            )
+            .into());
+        }
+        let canonical_base = fs::canonicalize(&base)?;
+        let canonical_temp = fs::canonicalize(env::temp_dir())?;
+        if canonical_base.starts_with(canonical_temp) {
+            return Err(io::Error::other(
+                "Codex canonical version probes require a disposable home outside the system temporary directory",
+            )
+            .into());
+        }
+        let root = base.join(format!(
+            "host-home-{}-{}",
+            std::process::id(),
+            epoch_duration()?.as_nanos()
+        ));
+        fs::create_dir(&root)?;
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
+        let codex_home = root.join("codex");
+        if let Err(error) = fs::create_dir(&codex_home) {
+            let _ = fs::remove_dir(&root);
+            return Err(error.into());
+        }
+        fs::set_permissions(&codex_home, fs::Permissions::from_mode(0o700))?;
+        Ok((root, codex_home))
     }
 
     impl LiveSmokeFixture {
@@ -13668,10 +13732,10 @@ mod unix {
             write_volicord_shim(&bin_dir, &volicord_path)?;
 
             let home = runtime_home_path.join("isolated-home");
-            let codex_home = runtime_home_path.join("isolated-codex-home");
+            let (host_home_root, codex_home) = create_disposable_host_home()?;
             let xdg_config_home = runtime_home_path.join("isolated-xdg-config");
             let claude_config_dir = runtime_home_path.join("isolated-claude-config");
-            for path in [&home, &codex_home, &xdg_config_home, &claude_config_dir] {
+            for path in [&home, &xdg_config_home, &claude_config_dir] {
                 fs::create_dir_all(path)?;
             }
 
@@ -13680,6 +13744,7 @@ mod unix {
             let runtime_home_arg = path_text(&runtime_home_path);
             Ok(Self {
                 _runtime_home: runtime_home,
+                host_home_root,
                 runtime_home_path,
                 repo_root,
                 repo_arg,
