@@ -19,16 +19,20 @@ use volicord_store::{
     guards::guard_installation,
     runtime_home::resolve_runtime_home,
 };
+#[cfg(test)]
+use volicord_types::HOST_HOOK_CAPABILITY_SCHEMA;
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_string, ActorSource, AuthorityReceipt, EffectKind,
-    IntegrationProfile, OperationCategory, ProjectId, RequestId, ResponseKind, StateRecordKind,
-    StatusInclude, StatusRequest, StatusResult, TaskId, ToolEnvelope,
+    canonical_json_bare_sha256, canonical_json_string, host_hook_capability_matches_owner_binding,
+    ActorSource, AuthorityReceipt, EffectKind, HostHookCapabilityOwnerBinding, IntegrationProfile,
+    OperationCategory, ProjectId, RequestId, ResponseKind, StateRecordKind, StatusInclude,
+    StatusRequest, StatusResult, TaskId, ToolEnvelope,
     VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
 };
 
 use crate::guard_integration::{
     audit::policy_hash,
     files::VOLICORD_POLICY_FILE,
+    git_exclude::git_exclude_path,
     policy::{recorded_local_policy, RecordedLocalPolicy},
 };
 
@@ -651,11 +655,26 @@ fn verify_binding(
     }
     let capability = serde_json::from_str::<Value>(&installation.host_capability_json)
         .map_err(|_| BindingFailure::AdapterUnavailable)?;
-    if capability.get("policy_hash").and_then(Value::as_str) != Some(observed_policy_hash.as_str())
+    let project_git_info_exclude_path =
+        git_exclude_path(&project.repo_root).map_err(|_| BindingFailure::AdapterUnavailable)?;
+    if !host_hook_capability_matches_owner_binding(
+        &capability,
+        HostHookCapabilityOwnerBinding {
+            row_host_kind: &installation.host_kind,
+            row_guard_mode: &installation.guard_mode,
+            row_guard_installation_id: &installation.guard_installation_id,
+            connection_internal_id: &connection.connection_internal_id,
+            connection_host_kind: &connection.host_kind,
+            connection_intent: &connection.intent,
+            project_repo_root: Some(&project.repo_root),
+            project_git_info_exclude_path: project_git_info_exclude_path.as_deref(),
+        },
+    ) || capability.get("policy_hash").and_then(Value::as_str)
+        != Some(observed_policy_hash.as_str())
         || capability.get("selected_profile").and_then(Value::as_str)
             != Some(options.profile.as_str())
         || capability
-            .get("final_output_authority_disclosure_supported")
+            .get("final_output_authority_disclosure_implementation_available")
             .and_then(Value::as_bool)
             != Some(true)
         || capability
@@ -663,7 +682,7 @@ fn verify_binding(
             .and_then(Value::as_str)
             != Some(options.host.cli_value())
         || capability
-            .get("native_host_output_adapter_verified")
+            .get("native_host_output_adapter_config_verified")
             .and_then(Value::as_bool)
             != Some(true)
     {
@@ -947,12 +966,38 @@ mod tests {
         profile: IntegrationProfile,
         installation_id: &str,
     ) -> Result<String, Box<dyn Error>> {
+        let policy_command = |command_name: &str| {
+            let (output_flag, output_format) = if profile == IntegrationProfile::Detective {
+                ("--host-output", "codex")
+            } else {
+                ("--output", "volicord-json")
+            };
+            json!({
+                "command": "volicord",
+                "args": [
+                    "_hook",
+                    command_name,
+                    "--repo",
+                    fixture.product_repo_path().display().to_string(),
+                    "--connection",
+                    fixture.connection_id(),
+                    "--guard-installation",
+                    installation_id,
+                    "--host",
+                    "codex",
+                    "--integration-profile",
+                    profile.as_str(),
+                    output_flag,
+                    output_format,
+                ],
+            })
+        };
         let commands = json!({
-            "session_start": {"command": "volicord", "args": ["_hook", "session-start"]},
-            "pre_tool": {"command": "volicord", "args": ["_hook", "pre-tool"]},
-            "post_tool": {"command": "volicord", "args": ["_hook", "post-tool"]},
-            "prompt_capture": {"command": "volicord", "args": ["_hook", "prompt-capture"]},
-            "stop": {"command": "volicord", "args": ["_hook", "stop"]}
+            "session_start": policy_command("session-start"),
+            "pre_tool": policy_command("pre-tool"),
+            "post_tool": policy_command("post-tool"),
+            "prompt_capture": policy_command("prompt-capture"),
+            "stop": policy_command("stop"),
         });
         let policy = json!({
             "schema": "volicord-policy-v1",
@@ -983,12 +1028,34 @@ mod tests {
                 host_kind: "codex".to_owned(),
                 guard_mode: profile.as_str().to_owned(),
                 host_capability_json: json!({
-                    "schema": "volicord-host-hook-capability-v1",
+                    "schema": HOST_HOOK_CAPABILITY_SCHEMA,
                     "policy_hash": digest,
                     "selected_profile": profile.as_str(),
-                    "final_output_authority_disclosure_supported": true,
+                    "connection_intent": "shared",
+                    "final_output_authority_disclosure_implementation_available": true,
                     "native_host_output_adapter": "codex",
-                    "native_host_output_adapter_verified": true
+                    "native_host_output_adapter_config_verified": true,
+                    "bash_shell_mutation_coverage": false,
+                    "direct_file_write_matcher_coverage": false,
+                    "host_capabilities": {
+                        "stdio_mcp": true,
+                        "http_mcp": false,
+                        "session_start_hook": true,
+                        "pre_tool_hook": true,
+                        "post_tool_hook": true,
+                        "user_prompt_submit_hook": true,
+                        "stop_hook": true,
+                        "rule_file_support": true,
+                        "project_local_configuration": true,
+                    },
+                    "required_hook_phases": [],
+                    "missing_required_hooks": [],
+                    "prompt_capture": false,
+                    "files": [],
+                    "host_hook_commands": [],
+                    "hook_root_resolution": null,
+                    "hook_path_safety": null,
+                    "commands": commands,
                 })
                 .to_string(),
                 installation_status: "configured".to_owned(),
@@ -1032,6 +1099,48 @@ mod tests {
             "--host-output".to_owned(),
             "codex".to_owned(),
         ]
+    }
+
+    fn downgrade_fixture_capability_to_v1(
+        fixture: &CoreFixture,
+        installation_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        mutate_fixture_capability(fixture, installation_id, |object| {
+            object.insert(
+                "schema".to_owned(),
+                Value::String("volicord-host-hook-capability-v1".to_owned()),
+            );
+            object.remove("final_output_authority_disclosure_implementation_available");
+            object.insert(
+                "final_output_authority_disclosure_supported".to_owned(),
+                Value::Bool(true),
+            );
+        })
+    }
+
+    fn mutate_fixture_capability(
+        fixture: &CoreFixture,
+        installation_id: &str,
+        mutate: impl FnOnce(&mut serde_json::Map<String, Value>),
+    ) -> Result<(), Box<dyn Error>> {
+        let installation = guard_installation(fixture.runtime_home_path(), installation_id)?
+            .expect("fixture guard installation");
+        let mut capability: Value = serde_json::from_str(&installation.host_capability_json)?;
+        let object = capability
+            .as_object_mut()
+            .expect("fixture capability should be an object");
+        mutate(object);
+        let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+            fixture.runtime_home_path(),
+        ))?;
+        let updated = registry.execute(
+            "UPDATE guard_installations
+                SET host_capability_json = ?1
+              WHERE guard_installation_id = ?2",
+            rusqlite::params![capability.to_string(), installation_id],
+        )?;
+        assert_eq!(updated, 1, "fixture capability row should exist");
+        Ok(())
     }
 
     fn create_active_task(fixture: &CoreFixture) -> Result<String, Box<dyn Error>> {
@@ -1141,6 +1250,118 @@ mod tests {
         assert!(message.contains("no active Task is available"));
         assert!(message.contains("`volicord status --json`"));
         assert!(!message.contains("volicord status --task"));
+        Ok(())
+    }
+
+    #[test]
+    fn final_output_rejects_v1_capability_instead_of_inferring_adapter_support(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("final-output-v1-capability")?;
+        let task_id = create_active_task(&fixture)?;
+        let installation_id = "guard_final_output_v1_capability";
+        let digest = fixture_policy(&fixture, IntegrationProfile::Record, installation_id)?;
+        downgrade_fixture_capability_to_v1(&fixture, installation_id)?;
+        let event_file = fixture.runtime_home_path().join("final-event.json");
+        fs::write(&event_file, "{}")?;
+
+        let outcome = run_final_output_command(
+            &command_args(
+                &fixture,
+                &event_file,
+                IntegrationProfile::Record,
+                installation_id,
+                &digest,
+            ),
+            |name| {
+                (name == "VOLICORD_HOME")
+                    .then(|| fixture.runtime_home_path().as_os_str().to_owned())
+            },
+            &fixture.product_repo_path(),
+        )?;
+
+        assert_eq!(outcome.exit_code, 0);
+        let response: Value = serde_json::from_str(&outcome.stdout)?;
+        let message = response["systemMessage"].as_str().expect("systemMessage");
+        assert!(message.contains("adapter_unavailable"));
+        assert!(message.contains(&format!("`volicord status --task {task_id} --json`")));
+        assert!(!message.contains(AUTHORITY_RECEIPT_PREFIX));
+        Ok(())
+    }
+
+    #[test]
+    fn final_output_rejects_v2_capability_with_retired_boolean() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("final-output-mixed-v2-capability")?;
+        let task_id = create_active_task(&fixture)?;
+        let installation_id = "guard_final_output_mixed_v2_capability";
+        let digest = fixture_policy(&fixture, IntegrationProfile::Record, installation_id)?;
+        mutate_fixture_capability(&fixture, installation_id, |object| {
+            object.insert(
+                "final_output_authority_disclosure_supported".to_owned(),
+                Value::Bool(true),
+            );
+        })?;
+        let event_file = fixture.runtime_home_path().join("final-event.json");
+        fs::write(&event_file, "{}")?;
+
+        let outcome = run_final_output_command(
+            &command_args(
+                &fixture,
+                &event_file,
+                IntegrationProfile::Record,
+                installation_id,
+                &digest,
+            ),
+            |name| {
+                (name == "VOLICORD_HOME")
+                    .then(|| fixture.runtime_home_path().as_os_str().to_owned())
+            },
+            &fixture.product_repo_path(),
+        )?;
+
+        let response: Value = serde_json::from_str(&outcome.stdout)?;
+        let message = response["systemMessage"].as_str().expect("systemMessage");
+        assert!(message.contains("adapter_unavailable"));
+        assert!(message.contains(&format!("`volicord status --task {task_id} --json`")));
+        assert!(!message.contains(AUTHORITY_RECEIPT_PREFIX));
+        Ok(())
+    }
+
+    #[test]
+    fn final_output_rejects_exact_capability_with_mismatched_owner_intent(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("final-output-binding-intent")?;
+        let task_id = create_active_task(&fixture)?;
+        let installation_id = "guard_final_output_binding_intent";
+        let digest = fixture_policy(&fixture, IntegrationProfile::Record, installation_id)?;
+        mutate_fixture_capability(&fixture, installation_id, |object| {
+            object.insert(
+                "connection_intent".to_owned(),
+                Value::String("personal".to_owned()),
+            );
+        })?;
+        let event_file = fixture.runtime_home_path().join("final-event.json");
+        fs::write(&event_file, "{}")?;
+
+        let outcome = run_final_output_command(
+            &command_args(
+                &fixture,
+                &event_file,
+                IntegrationProfile::Record,
+                installation_id,
+                &digest,
+            ),
+            |name| {
+                (name == "VOLICORD_HOME")
+                    .then(|| fixture.runtime_home_path().as_os_str().to_owned())
+            },
+            &fixture.product_repo_path(),
+        )?;
+
+        let response: Value = serde_json::from_str(&outcome.stdout)?;
+        let message = response["systemMessage"].as_str().expect("systemMessage");
+        assert!(message.contains("adapter_unavailable"));
+        assert!(message.contains(&format!("`volicord status --task {task_id} --json`")));
+        assert!(!message.contains(AUTHORITY_RECEIPT_PREFIX));
         Ok(())
     }
 

@@ -39,12 +39,30 @@ fn binary_final_output_drains_stdin_and_projects_only_fresh_authority() -> Resul
         .expect("intake task ref")
         .to_owned();
     let installation_id = "guard_binary_final_output";
+    let record_command_args = |command_name: &str| {
+        json!([
+            "_hook",
+            command_name,
+            "--repo",
+            fixture.product_repo_path().display().to_string(),
+            "--connection",
+            fixture.connection_id(),
+            "--guard-installation",
+            installation_id,
+            "--host",
+            "codex",
+            "--integration-profile",
+            "record",
+            "--output",
+            "volicord-json"
+        ])
+    };
     let commands = json!({
-        "session_start": {"command": "volicord", "args": ["_hook", "session-start"]},
-        "pre_tool": {"command": "volicord", "args": ["_hook", "pre-tool"]},
-        "post_tool": {"command": "volicord", "args": ["_hook", "post-tool"]},
-        "prompt_capture": {"command": "volicord", "args": ["_hook", "prompt-capture"]},
-        "stop": {"command": "volicord", "args": ["_hook", "stop"]}
+        "session_start": {"command": "volicord", "args": record_command_args("session-start")},
+        "pre_tool": {"command": "volicord", "args": record_command_args("pre-tool")},
+        "post_tool": {"command": "volicord", "args": record_command_args("post-tool")},
+        "prompt_capture": {"command": "volicord", "args": record_command_args("prompt-capture")},
+        "stop": {"command": "volicord", "args": record_command_args("stop")}
     });
     let policy = json!({
         "schema": "volicord-policy-v1",
@@ -76,12 +94,34 @@ fn binary_final_output_drains_stdin_and_projects_only_fresh_authority() -> Resul
             host_kind: "codex".to_owned(),
             guard_mode: "record".to_owned(),
             host_capability_json: json!({
-                "schema": "volicord-host-hook-capability-v1",
+                "schema": "volicord-host-hook-capability-v2",
                 "policy_hash": policy_hash.clone(),
                 "selected_profile": "record",
-                "final_output_authority_disclosure_supported": true,
+                "connection_intent": "shared",
+                "final_output_authority_disclosure_implementation_available": true,
                 "native_host_output_adapter": "codex",
-                "native_host_output_adapter_verified": true
+                "native_host_output_adapter_config_verified": true,
+                "bash_shell_mutation_coverage": false,
+                "direct_file_write_matcher_coverage": false,
+                "host_capabilities": {
+                    "stdio_mcp": true,
+                    "http_mcp": false,
+                    "session_start_hook": true,
+                    "pre_tool_hook": true,
+                    "post_tool_hook": true,
+                    "user_prompt_submit_hook": true,
+                    "stop_hook": true,
+                    "rule_file_support": true,
+                    "project_local_configuration": true,
+                },
+                "required_hook_phases": [],
+                "missing_required_hooks": [],
+                "prompt_capture": false,
+                "files": [],
+                "host_hook_commands": [],
+                "hook_root_resolution": null,
+                "hook_path_safety": null,
+                "commands": commands,
             })
             .to_string(),
             installation_status: "configured".to_owned(),

@@ -9,13 +9,15 @@ use crate::guard_integration::{
     generated_files_json, hook_root_resolution_json, host_hook_commands_json, retired_files_json,
 };
 use json::{
-    actions_json_values, changed_repo_files_json, checks_json, connection_json,
-    connection_states_json, init_checks_json, repo_file_changes_json, verification_json,
+    actions_json_values, changed_repo_files_json, checks_json, connection_json, init_checks_json,
+    repo_file_changes_json, verification_json,
 };
 use summary::connection_diagnostic_summary_card;
 use text::{render_compact_connection_text, render_compact_plan_text, render_init_text_output};
 
-pub(super) use json::{detailed_verification_report_json, json_object_text};
+pub(super) use json::{
+    connection_states_json, detailed_verification_report_json, json_object_text,
+};
 pub(super) use text::{render_connection_remove_dry_run_output, render_connections_output};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +117,7 @@ pub(super) struct ConnectionOutput<'a> {
     pub(super) action: &'a str,
     pub(super) status: AgentResultStatus,
     pub(super) runtime_home: &'a Path,
+    pub(super) host_kind: HostKind,
     pub(super) guard_state: GuardOperationalState,
     pub(super) connection: &'a AgentConnectionRecord,
     pub(super) projects: &'a [ConnectionProjectRecord],
@@ -232,10 +235,16 @@ pub(super) fn render_connection_output(
         &host_display,
         primary_next_action.as_ref(),
     );
+    let host_feature_diagnostic = data
+        .guard_state
+        .host_feature_diagnostic(data.host_kind, data.guard_state.integration_profile());
     match data.format {
-        OutputFormat::Text => {
-            render_compact_connection_text(&data, &mcp_config_state, primary_next_action.as_ref())
-        }
+        OutputFormat::Text => render_compact_connection_text(
+            &data,
+            &mcp_config_state,
+            primary_next_action.as_ref(),
+            host_feature_diagnostic,
+        ),
         OutputFormat::Json => {
             let mut value = json!({
                 "action": data.action,
@@ -247,6 +256,7 @@ pub(super) fn render_connection_output(
                     project_registration_state(data.projects),
                     mcp_config_state.as_str(),
                     &data.guard_state,
+                    host_feature_diagnostic,
                     has_reload_action(&data.user_actions),
                 ),
                 "connection": connection_json(data.connection, &project_ids, Some(&data.user_actions)),
@@ -285,6 +295,8 @@ pub(super) fn render_connection_plan_output(
     let target = host_target_text(&data.plan.target);
     let planned_change = planned_change_text(data.plan.change);
     let guard_state = GuardOperationalState::not_configured();
+    let host_feature_diagnostic =
+        guard_state.host_feature_diagnostic(data.host_kind, guard_state.integration_profile());
     let primary_next_action =
         primary_connection_action(&data.user_actions, None, None, &guard_state, None, &[]);
     let project_state = data.repo_root.map(|_| "planned").unwrap_or("not_selected");
@@ -306,6 +318,7 @@ pub(super) fn render_connection_plan_output(
                     project_state,
                     &format!("planned_{planned_change}"),
                     &guard_state,
+                    host_feature_diagnostic,
                     has_reload_action(&data.user_actions),
                 ),
                 "connection": {
@@ -370,6 +383,8 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
     } else {
         GuardOperationalState::planned(data.init_mode, data.integration)
     };
+    let host_feature_diagnostic = guard_state
+        .host_feature_diagnostic(data.host_kind, Some(data.init_mode.integration_profile()));
     let mcp_config_state = init_mcp_config_state(data.verification, Some(data.host_plan));
     let project_state = if data.project_id.is_some() {
         "registered"
@@ -394,6 +409,7 @@ pub(super) fn render_init_output(data: InitOutput<'_>) -> Result<String, Connect
                     project_state,
                     mcp_config_state.as_str(),
                     &guard_state,
+                    host_feature_diagnostic,
                     has_reload_action(&actions),
                 ),
                 "host": public_host_label(data.host_kind),

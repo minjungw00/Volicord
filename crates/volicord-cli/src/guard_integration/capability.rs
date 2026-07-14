@@ -7,6 +7,10 @@ use volicord_store::guards::{
 };
 use volicord_types::{GuardInstallationStatus, IntegrationProfile};
 
+pub(crate) use volicord_types::{
+    host_hook_capability_has_exact_v2_shape, HOST_HOOK_CAPABILITY_SCHEMA,
+};
+
 use crate::{
     guard_integration::{
         audit::{hook_wrapper_comment_value, hook_wrapper_exec_command, sha256_text},
@@ -92,28 +96,39 @@ pub(crate) fn host_hook_capability_json(
 ) -> Result<String, GuardIntegrationError> {
     let capabilities = serde_json::to_value(plan.capabilities)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    serde_json::to_string(&json!({
-        "schema": "volicord-host-hook-capability-v1",
+    let capability = json!({
+        "schema": HOST_HOOK_CAPABILITY_SCHEMA,
         "policy_hash": plan.policy_hash,
         "selected_profile": plan.guard_profile,
         "connection_intent": plan.connection_intent,
+        "final_output_authority_disclosure_implementation_available": plan.final_output_authority_disclosure_implementation_available,
         "native_host_output_adapter": plan.native_host_output_adapter,
-        "native_host_output_adapter_verified": plan.native_host_output_adapter_verified,
-        "final_output_authority_disclosure_supported": plan.native_host_output_adapter != "none",
+        "native_host_output_adapter_config_verified": plan.native_host_output_adapter_config_verified,
         "bash_shell_mutation_coverage": plan.bash_shell_mutation_coverage,
         "direct_file_write_matcher_coverage": plan.direct_file_write_matcher_coverage,
         "host_capabilities": capabilities,
-        "required_hook_phases": required_guard_phase_names(),
+        "required_hook_phases": if plan.guard_profile == IntegrationProfile::Detective.as_str() {
+            required_guard_phase_names()
+        } else {
+            Vec::new()
+        },
         "missing_required_hooks": lifecycle_phase_names(&plan.missing_required_hooks),
-        "prompt_capture": plan.capabilities.user_prompt_submit_hook
+        "prompt_capture": plan.guard_profile == IntegrationProfile::Detective.as_str()
+            && plan.capabilities.user_prompt_submit_hook
             && guard_has_prompt_capture_commands(&plan.policy),
         "files": generated_files_json(&plan.generated_files),
         "host_hook_commands": host_hook_commands_json(&plan.host_hook_commands),
         "hook_root_resolution": hook_root_resolution_json(&plan.host_hook_commands),
         "hook_path_safety": hook_path_safety_json(&plan.host_hook_commands),
         "commands": plan.policy["host_hook"]["commands"].clone(),
-    }))
-    .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
+    });
+    if !host_hook_capability_has_exact_v2_shape(&capability) {
+        return Err(GuardIntegrationError::runtime(
+            "generated host-hook capability does not match the v2 shape",
+        ));
+    }
+    serde_json::to_string(&capability)
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
 }
 
 pub(crate) fn initial_guard_installation_status(

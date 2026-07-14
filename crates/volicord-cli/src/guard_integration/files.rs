@@ -19,8 +19,8 @@ use serde_json::Value;
 
 use crate::{
     guard_integration::audit::{
-        is_volicord_codex_hook_config, script_is_executable, sha256_text, ManagedJsonProjection,
-        HOOK_WRAPPER_MARKER,
+        hook_wrapper_comment_value, hook_wrapper_exec_command, is_volicord_codex_hook_config,
+        script_is_executable, sha256_text, ManagedJsonProjection, HOOK_WRAPPER_MARKER,
     },
     host_integration::{
         contracts::{
@@ -2807,8 +2807,16 @@ pub(crate) fn plan_managed_file_retirement(
             }
             (!remaining.trim().is_empty()).then_some(remaining.to_owned())
         }
-        Some("managed_json") | Some("managed_script") => {
+        Some("managed_json") => {
             if sha256_text(existing) != expected_hash {
+                return Err(retirement_changed_error(&path));
+            }
+            None
+        }
+        Some("managed_script") => {
+            if sha256_text(existing) != expected_hash
+                || !managed_script_retirement_metadata_matches_content(capability_file, existing)
+            {
                 return Err(retirement_changed_error(&path));
             }
             None
@@ -2952,6 +2960,51 @@ fn retirement_changed_error(path: &Path) -> GuardIntegrationError {
         "managed retirement target changed or no longer matches Volicord ownership: {}",
         path.display()
     ))
+}
+
+fn managed_script_retirement_metadata_matches_content(file: &Value, content: &str) -> bool {
+    if file.get("managed_marker").and_then(Value::as_str) != Some(HOOK_WRAPPER_MARKER)
+        || !content
+            .lines()
+            .any(|line| line == format!("# {HOOK_WRAPPER_MARKER}"))
+    {
+        return false;
+    }
+    match file.get("kind").and_then(Value::as_str) {
+        Some("host_hook_dispatch") => {
+            file.get("managed_script_role").and_then(Value::as_str) == Some("codex_dispatch")
+                && hook_wrapper_comment_value(content, "host_kind")
+                    == file.get("host_kind").and_then(Value::as_str)
+                && hook_wrapper_comment_value(content, "phase")
+                    == file.get("phase").and_then(Value::as_str)
+                && hook_wrapper_comment_value(content, "script_role") == Some("codex_dispatch")
+        }
+        Some("host_hook_wrapper") => {
+            let Some(expected_command) = file
+                .get("managed_script_command")
+                .and_then(Value::as_str)
+                .filter(|command| !command.trim().is_empty())
+            else {
+                return false;
+            };
+            hook_wrapper_exec_command(content) == Some(expected_command)
+                && [
+                    "host_kind",
+                    "phase",
+                    "purpose",
+                    "connection_id",
+                    "guard_installation_id",
+                    "policy_hash",
+                    "host_output",
+                ]
+                .iter()
+                .all(|key| {
+                    hook_wrapper_comment_value(content, key)
+                        == file.get(*key).and_then(Value::as_str)
+                })
+        }
+        _ => false,
+    }
 }
 
 fn remove_verified_managed_block<'a>(
@@ -3642,6 +3695,48 @@ mod tests {
             "managed_projection": ManagedJsonProjection::ClaudeCodeSettingsHooks.as_str(),
             "managed_projection_json": desired_text,
         }))
+    }
+
+    #[test]
+    fn managed_script_retirement_requires_inventory_metadata_to_match_content(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("guard-retire-script-binding")?;
+        let repo = fixture.path().join("repo");
+        let target = repo.join(".codex/hooks/volicord-stop.sh");
+        fs::create_dir_all(target.parent().expect("wrapper parent"))?;
+        let command = "volicord _final-output --connection conn_owner";
+        let content = format!(
+            "#!/bin/sh\n# {HOOK_WRAPPER_MARKER}\n# host_kind=codex\n# phase=stop\n# purpose=final_output_authority_disclosure\n# connection_id=conn_owner\n# guard_installation_id=guard_owner\n# policy_hash=policy-hash\n# host_output=codex\nexec {command}\n"
+        );
+        fs::write(&target, &content)?;
+        let mut capability = json!({
+            "kind": "host_hook_wrapper",
+            "path": target,
+            "content_hash": sha256_text(&content),
+            "ownership": "managed_script",
+            "managed_marker": HOOK_WRAPPER_MARKER,
+            "executable_required": true,
+            "managed_script_command": command,
+            "host_kind": "codex",
+            "phase": "stop",
+            "purpose": "final_output_authority_disclosure",
+            "connection_id": "conn_owner",
+            "guard_installation_id": "guard_owner",
+            "policy_hash": "policy-hash",
+            "host_output": "codex",
+        });
+
+        assert_eq!(
+            plan_managed_file_retirement(&repo, &capability)?.status,
+            RetirementPlanStatus::PlannedRemove
+        );
+        capability["connection_id"] = json!("conn_other");
+        let error = plan_managed_file_retirement(&repo, &capability)
+            .expect_err("cross-bound script metadata must not authorize removal");
+        assert!(error
+            .to_string()
+            .contains("no longer matches Volicord ownership"));
+        Ok(())
     }
 
     #[test]

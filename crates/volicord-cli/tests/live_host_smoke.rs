@@ -20,6 +20,10 @@ mod unix {
 
     use rusqlite::OptionalExtension;
     use serde_json::Value;
+    use volicord_cli::host_integration::{
+        capability_status::{default_host_feature_support_json, HostFeatureDiagnosticProjection},
+        HostKind,
+    };
     use volicord_mcp::{McpAdapter, McpConnectionContext};
     use volicord_store::{
         agent_connections::{
@@ -38,7 +42,7 @@ mod unix {
     use volicord_types::{
         canonical_json_string, ArtifactRef, AuthorityReceipt, EvidenceCoverageItem,
         EvidenceCoverageState, EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceTarget,
-        PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
+        IntegrationProfile, PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
         PersistedUserActionRequest, StateRecordKind, StateRecordRef, StatusCloseState,
         StatusResult, UserActionBasis, UserActionInboxForm, UserActionPresentationPlan,
         UserActionPresentationSafety, UserActionRequestBody, UserActionResolutionBody,
@@ -125,16 +129,38 @@ mod unix {
             .as_str()
             .expect("running result should identify the validation run")
             .to_owned();
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            "codex",
+            IntegrationProfile::Detective,
+            true,
+            true,
+        );
         recorder.record_final(&serde_json::json!({
             "kind": "live_host_user_action_release_validation",
             "result": "passed",
-            "host": { "kind": "codex" }
+            "host": { "kind": "codex" },
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure
         }))?;
         let completed: Value = serde_json::from_slice(&fs::read(&result_path)?)?;
         assert_eq!(completed["result"], "passed");
+        validate_release_host_feature_diagnostics(
+            &completed,
+            Some(IntegrationProfile::Detective),
+            true,
+            true,
+        )?;
         assert_eq!(completed["validation_run"]["run_id"], run_id);
         assert!(completed["validation_run"]["started_at"].is_string());
         assert!(completed["validation_run"]["recorded_at"].is_string());
+        let mut shape_guard = LiveResultRecorder::new("codex", None)?;
+        assert!(shape_guard
+            .record_final(&serde_json::json!({
+                "kind": LIVE_USER_ACTION_RESULT_KIND,
+                "result": "passed",
+                "host": { "kind": "codex" }
+            }))
+            .is_err());
         assert!(atomic_write_live_host_result(&result_path, "{}", "different-run").is_err());
 
         assert!(LiveResultRecorder::new("codex", Some(result_path.clone())).is_err());
@@ -163,6 +189,54 @@ mod unix {
         }
         let early_failure: Value = serde_json::from_slice(&fs::read(&early_failure_path)?)?;
         assert_eq!(early_failure["result"], "failed_before_completion");
+        validate_terminal_release_host_feature_diagnostics(&early_failure)?;
+        assert_eq!(early_failure["host"]["kind"], "claude-code");
+        assert_eq!(
+            early_failure["host_feature_support"]
+                .as_object()
+                .map(serde_json::Map::len),
+            Some(6)
+        );
+        assert_eq!(
+            early_failure["final_output_authority_disclosure"]["configured"],
+            false
+        );
+
+        let final_record_failure_path = result_dir.join("codex-record-final-output.json");
+        {
+            let _recorder = LiveResultRecorder::new_for_kind_and_profile(
+                "codex-record-final-output",
+                "codex",
+                LIVE_FINAL_OUTPUT_RESULT_KIND,
+                Some(IntegrationProfile::Record),
+                Some(final_record_failure_path.clone()),
+            )?;
+        }
+        let final_record_failure: Value =
+            serde_json::from_slice(&fs::read(&final_record_failure_path)?)?;
+        validate_terminal_release_host_feature_diagnostics(&final_record_failure)?;
+        assert_eq!(final_record_failure["result"], "failed_before_completion");
+        assert_eq!(final_record_failure["profile"], "record");
+        assert_eq!(
+            final_record_failure["final_output_authority_disclosure"]["required_subcapabilities"],
+            serde_json::json!(["authority_display", "authenticated_exact_replay"])
+        );
+
+        let unselected_final_failure_path = result_dir.join("codex-unselected-final-output.json");
+        {
+            let _recorder = LiveResultRecorder::new_for_kind_and_profile(
+                "codex-unselected-final-output",
+                "codex",
+                LIVE_FINAL_OUTPUT_RESULT_KIND,
+                None,
+                Some(unselected_final_failure_path.clone()),
+            )?;
+        }
+        let unselected_final_failure: Value =
+            serde_json::from_slice(&fs::read(&unselected_final_failure_path)?)?;
+        validate_terminal_release_host_feature_diagnostics(&unselected_final_failure)?;
+        assert!(unselected_final_failure["profile"].is_null());
+        assert!(unselected_final_failure["final_output_authority_disclosure"].is_null());
         assert!(fs::read_dir(&result_dir)?.all(|entry| {
             entry
                 .ok()
@@ -257,6 +331,17 @@ mod unix {
         assert!(serialize_live_host_result(&result)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
 
         for (path, replacement) in [
+            (
+                &["host_feature_support", "native_user_action"][..],
+                Value::String("verified".to_owned()),
+            ),
+            (
+                &[
+                    "final_output_authority_disclosure",
+                    "configuration_verified",
+                ][..],
+                Value::Bool(false),
+            ),
             (
                 &["local_web_user_channel", "resolution", "channel_kind"][..],
                 Value::String("mcp_elicitation".to_owned()),
@@ -435,12 +520,17 @@ mod unix {
             ("managed_receipt_ui", "failed"),
             ("result_validation", "failed"),
         ] {
-            let incomplete = live_evidence_observation_incomplete_summary("codex", stage);
+            let incomplete = live_evidence_observation_incomplete_summary("codex", stage, None);
             assert_eq!(incomplete["result"], expected_result);
+            assert_eq!(
+                incomplete["final_output_authority_disclosure"]["configured"],
+                false
+            );
             validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
             assert!(serialize_live_host_result(&incomplete)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
         }
-        let unknown_stage = live_evidence_observation_incomplete_summary("codex", "raw-error-text");
+        let unknown_stage =
+            live_evidence_observation_incomplete_summary("codex", "raw-error-text", None);
         assert!(
             validate_live_evidence_observation_incomplete_result_shape(&unknown_stage).is_err()
         );
@@ -817,6 +907,29 @@ mod unix {
     fn cli_fallback_result_shape_keeps_release_cells_separate() -> Result<(), Box<dyn Error>> {
         let result = cli_fallback_result_shape_fixture();
         validate_live_cli_fallback_result_shape(&result)?;
+        let mut mismatched_support = result.clone();
+        mismatched_support["host_feature_support"]["native_user_action"] =
+            Value::String("verified".to_owned());
+        assert!(validate_live_cli_fallback_result_shape(&mismatched_support).is_err());
+        let unavailable = live_cli_fallback_unavailable_summary(
+            "codex",
+            "host_executable",
+            "fixture executable unavailable",
+        );
+        validate_release_host_feature_diagnostics(
+            &unavailable,
+            Some(IntegrationProfile::Detective),
+            false,
+            false,
+        )?;
+        assert_eq!(
+            unavailable["host_feature_support"]["native_user_action"],
+            "implemented_unverified"
+        );
+        assert_eq!(
+            unavailable["final_output_authority_disclosure"]["configured"],
+            false
+        );
 
         let mut native_substitution = result.clone();
         native_substitution["evidence_scope"]["native_judgment_cell"] = Value::Bool(true);
@@ -884,6 +997,42 @@ mod unix {
     }
 
     #[test]
+    fn user_action_preflight_result_keeps_canonical_host_feature_diagnostics(
+    ) -> Result<(), Box<dyn Error>> {
+        let unavailable = live_user_action_unavailable_summary(
+            "claude-code",
+            "interactive_terminal",
+            "fixture terminal unavailable",
+        );
+        validate_release_host_feature_diagnostics(
+            &unavailable,
+            Some(IntegrationProfile::Detective),
+            false,
+            false,
+        )?;
+        assert_eq!(
+            unavailable["host_feature_support"]
+                .as_object()
+                .map(serde_json::Map::len),
+            Some(6)
+        );
+        assert_eq!(
+            unavailable["final_output_authority_disclosure"]["configured"],
+            false
+        );
+        let unselected =
+            canonical_release_host_feature_diagnostics_for_profile("codex", None, false, false);
+        let unselected_result = serde_json::json!({
+            "host": { "kind": "codex" },
+            "host_feature_support": unselected.host_feature_support,
+            "final_output_authority_disclosure": unselected.final_output_authority_disclosure
+        });
+        validate_release_host_feature_diagnostics(&unselected_result, None, false, false)?;
+        assert!(unselected_result["final_output_authority_disclosure"].is_null());
+        Ok(())
+    }
+
+    #[test]
     fn final_output_confirmation_and_result_shape_are_strict() -> Result<(), Box<dyn Error>> {
         assert_eq!(
             parse_final_output_ui_confirmation(
@@ -931,16 +1080,67 @@ mod unix {
         validate_final_output_result_shape(&record, IntegrationProfile::Record)?;
         let detective = final_output_result_shape_fixture(IntegrationProfile::Detective);
         validate_final_output_result_shape(&detective, IntegrationProfile::Detective)?;
+        assert_eq!(
+            record["host_feature_support"],
+            record["evidence"]["config_fixture"]["host_feature_support"]
+        );
+        assert_eq!(
+            record["final_output_authority_disclosure"],
+            record["evidence"]["config_fixture"]["final_output_authority_disclosure"]
+        );
+        let mut missing_top_level_support = record.clone();
+        missing_top_level_support
+            .as_object_mut()
+            .expect("fixture result should be an object")
+            .remove("host_feature_support");
+        assert!(validate_final_output_result_shape(
+            &missing_top_level_support,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut mismatched_top_level_support = record.clone();
+        mismatched_top_level_support["host_feature_support"]["record_final_output"] =
+            Value::String("verified".to_owned());
+        assert!(validate_final_output_result_shape(
+            &mismatched_top_level_support,
+            IntegrationProfile::Record
+        )
+        .is_err());
+        let mut mismatched_nested_disclosure = detective.clone();
+        mismatched_nested_disclosure["evidence"]["config_fixture"]
+            ["final_output_authority_disclosure"]["configured"] = Value::Bool(false);
+        assert!(validate_final_output_result_shape(
+            &mismatched_nested_disclosure,
+            IntegrationProfile::Detective
+        )
+        .is_err());
         for profile in [IntegrationProfile::Record, IntegrationProfile::Detective] {
-            let unavailable = final_output_unavailable_summary(
-                "fixture",
-                profile,
-                "fixture prerequisite missing",
-            );
+            let unavailable =
+                final_output_unavailable_summary("codex", profile, "fixture prerequisite missing");
             validate_final_output_result_shape(&unavailable, profile)?;
             assert_eq!(
                 unavailable["evidence"]["detective_decision"]["status"],
                 "unavailable"
+            );
+            assert_eq!(
+                unavailable["host_feature_support"],
+                unavailable["evidence"]["config_fixture"]["host_feature_support"]
+            );
+            assert_eq!(
+                unavailable["final_output_authority_disclosure"],
+                unavailable["evidence"]["config_fixture"]["final_output_authority_disclosure"]
+            );
+            assert_eq!(
+                unavailable["final_output_authority_disclosure"]["configured"],
+                false
+            );
+            assert_eq!(
+                unavailable["final_output_authority_disclosure"]["configuration_verified"],
+                false
+            );
+            assert_eq!(
+                unavailable["host_feature_support"]["record_final_output"],
+                "unsupported_by_host"
             );
         }
 
@@ -1486,14 +1686,7 @@ mod unix {
             stderr_output(&init)
         );
         let init_json: Value = serde_json::from_slice(&init.stdout)?;
-        assert_eq!(
-            init_json["states"]["final_output_authority_disclosure"],
-            serde_json::json!({
-                "supported": true,
-                "configured": true,
-                "verified": true
-            })
-        );
+        assert_init_host_feature_support(&init_json, "codex", IntegrationProfile::Record);
         let event = serde_json::json!({
             "event_id": "live_advisor_stop_ready",
             "session_id": "live_advisor_stop_ready_session",
@@ -1853,21 +2046,6 @@ mod unix {
         )
     }
 
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    enum IntegrationProfile {
-        Record,
-        Detective,
-    }
-
-    impl IntegrationProfile {
-        fn as_str(self) -> &'static str {
-            match self {
-                Self::Record => "record",
-                Self::Detective => "detective",
-            }
-        }
-    }
-
     fn live_final_output_matrix_cell(
         host: &str,
         executable_name: &str,
@@ -1883,8 +2061,12 @@ mod unix {
             .into());
         }
         let recorder_host = format!("{host}-{}-final-output", profile.as_str());
-        let mut result_recorder =
-            LiveResultRecorder::from_env_for_kind(&recorder_host, LIVE_FINAL_OUTPUT_RESULT_KIND)?;
+        let mut result_recorder = LiveResultRecorder::from_env_for_kind_and_profile(
+            &recorder_host,
+            host,
+            LIVE_FINAL_OUTPUT_RESULT_KIND,
+            Some(profile),
+        )?;
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -2315,6 +2497,9 @@ mod unix {
             "status_fallback_event": no_active_actual_event,
             "authority_receipt_event": receipt_actual_event
         });
+        let host_feature_support = config_fixture["host_feature_support"].clone();
+        let final_output_authority_disclosure =
+            config_fixture["final_output_authority_disclosure"].clone();
 
         let summary = serde_json::json!({
             "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
@@ -2326,6 +2511,8 @@ mod unix {
             "profile": profile.as_str(),
             "volicord": { "build_id": identity.volicord_build_id },
             "connection": { "connection_id": identity.connection_id },
+            "host_feature_support": host_feature_support,
+            "final_output_authority_disclosure": final_output_authority_disclosure,
             "evidence": {
                 "config_fixture": config_fixture,
                 "generated_wrapper_direct_wire": {
@@ -2427,19 +2614,40 @@ mod unix {
             .into());
         }
         let recorder_host = format!("{host}-cli-fallback");
-        let mut result_recorder =
-            LiveResultRecorder::from_env_for_kind(&recorder_host, LIVE_CLI_FALLBACK_RESULT_KIND)?;
-        let executable = find_executable(executable_name).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("`{executable_name}` was not found on PATH"),
-            )
-        })?;
+        let mut result_recorder = LiveResultRecorder::from_env_for_kind_and_profile(
+            &recorder_host,
+            host,
+            LIVE_CLI_FALLBACK_RESULT_KIND,
+            Some(IntegrationProfile::Detective),
+        )?;
+        let executable = match find_executable(executable_name) {
+            Some(executable) => executable,
+            None => {
+                let reason = format!("`{executable_name}` was not found on PATH");
+                let summary =
+                    live_cli_fallback_unavailable_summary(host, "host_executable", &reason);
+                validate_release_host_feature_diagnostics(
+                    &summary,
+                    Some(IntegrationProfile::Detective),
+                    false,
+                    false,
+                )?;
+                result_recorder.record_final(&summary)?;
+                return Err(io::Error::new(io::ErrorKind::NotFound, reason).into());
+            }
+        };
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-            return Err(io::Error::other(
-                "authenticated live CLI-fallback validation requires interactive terminal stdin and stdout",
-            )
-            .into());
+            let reason = "authenticated live CLI-fallback validation requires interactive terminal stdin and stdout";
+            let summary =
+                live_cli_fallback_unavailable_summary(host, "interactive_terminal", reason);
+            validate_release_host_feature_diagnostics(
+                &summary,
+                Some(IntegrationProfile::Detective),
+                false,
+                false,
+            )?;
+            result_recorder.record_final(&summary)?;
+            return Err(io::Error::other(reason).into());
         }
 
         let fixture = LiveSmokeFixture::new(&recorder_host)?;
@@ -2475,6 +2683,11 @@ mod unix {
             IntegrationProfile::Detective,
             expected_host_action,
         );
+        let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+        )?;
         let connection_id = bounded_identity(
             "Agent Connection id",
             init_json["connection"]["connection_id"]
@@ -2603,20 +2816,26 @@ mod unix {
                 canonical_json: canonical_json_string(&receipt.canonical_receipt)?,
             },
         ) {
-            result_recorder.record_final(&live_cli_fallback_completed_summary(
-                LiveCliFallbackSummaryInput {
-                    result: "failed_receipt_ui_confirmation",
-                    identity: &identity,
-                    observation: &observation,
-                    operator_choice_id: &operator_choice_id,
-                    cli_resolution: &cli_resolution,
-                    latest_run: &latest_run,
-                    authority_event_order: &authority_event_order,
-                    stop_observation: &stop_observation,
-                    receipt: &receipt,
-                    stop_receipt_ui_confirmed: false,
-                },
-            ))?;
+            let summary = live_cli_fallback_completed_summary(LiveCliFallbackSummaryInput {
+                result: "failed_receipt_ui_confirmation",
+                identity: &identity,
+                observation: &observation,
+                operator_choice_id: &operator_choice_id,
+                cli_resolution: &cli_resolution,
+                latest_run: &latest_run,
+                authority_event_order: &authority_event_order,
+                stop_observation: &stop_observation,
+                receipt: &receipt,
+                stop_receipt_ui_confirmed: false,
+                host_feature_diagnostics: &host_feature_diagnostics,
+            });
+            validate_release_host_feature_diagnostics(
+                &summary,
+                Some(IntegrationProfile::Detective),
+                true,
+                true,
+            )?;
+            result_recorder.record_final(&summary)?;
             return Err(error);
         }
         let summary = live_cli_fallback_completed_summary(LiveCliFallbackSummaryInput {
@@ -2630,6 +2849,7 @@ mod unix {
             stop_observation: &stop_observation,
             receipt: &receipt,
             stop_receipt_ui_confirmed: true,
+            host_feature_diagnostics: &host_feature_diagnostics,
         });
         validate_live_cli_fallback_result_shape(&summary)?;
         result_recorder.record_final(&summary)?;
@@ -2656,17 +2876,34 @@ mod unix {
             .into());
         }
         let mut result_recorder = LiveResultRecorder::from_env(host)?;
-        let executable = find_executable(executable_name).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("`{executable_name}` was not found on PATH"),
-            )
-        })?;
+        let executable = match find_executable(executable_name) {
+            Some(executable) => executable,
+            None => {
+                let reason = format!("`{executable_name}` was not found on PATH");
+                let summary =
+                    live_user_action_unavailable_summary(host, "host_executable", &reason);
+                validate_release_host_feature_diagnostics(
+                    &summary,
+                    Some(IntegrationProfile::Detective),
+                    false,
+                    false,
+                )?;
+                result_recorder.record_final(&summary)?;
+                return Err(io::Error::new(io::ErrorKind::NotFound, reason).into());
+            }
+        };
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-            return Err(io::Error::other(
-                "authenticated live Judgment validation requires interactive terminal stdin and stdout",
-            )
-            .into());
+            let reason = "authenticated live Judgment validation requires interactive terminal stdin and stdout";
+            let summary =
+                live_user_action_unavailable_summary(host, "interactive_terminal", reason);
+            validate_release_host_feature_diagnostics(
+                &summary,
+                Some(IntegrationProfile::Detective),
+                false,
+                false,
+            )?;
+            result_recorder.record_final(&summary)?;
+            return Err(io::Error::other(reason).into());
         }
         let fixture = LiveSmokeFixture::new(&format!("{host}-user-action"))?;
         let host_version_output = fixture.run_host_command(&executable, ["--version"])?;
@@ -2701,6 +2938,11 @@ mod unix {
             IntegrationProfile::Detective,
             expected_host_action,
         );
+        let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+        )?;
         let connection_id = bounded_identity(
             "Agent Connection id",
             init_json["connection"]["connection_id"]
@@ -2767,11 +3009,19 @@ mod unix {
         }
         if observation.user_action_status.as_deref() != Some("resolved") {
             let fallback = verify_ephemeral_inbox_fallback_shape(&fixture, &observation)?;
-            result_recorder.record_final(&live_host_fallback_summary(
+            let summary = live_host_fallback_summary(
                 &identity,
                 &observation,
                 &fallback,
-            ))?;
+                &host_feature_diagnostics,
+            );
+            validate_release_host_feature_diagnostics(
+                &summary,
+                Some(IntegrationProfile::Detective),
+                true,
+                true,
+            )?;
+            result_recorder.record_final(&summary)?;
             return Err(io::Error::other(format!(
                 "host-native MCP elicitation was unavailable, so user action `{}` remains pending; CLI fallback command shape was verified only inside the disposable fixture",
                 observation.user_action_request_id.as_deref().unwrap_or("unknown")
@@ -2814,12 +3064,20 @@ mod unix {
             .as_deref()
             .expect("a resolved live user action must store selected_option_id");
         if operator_choice_id != selected_option_id {
-            result_recorder.record_final(&live_host_choice_mismatch_summary(
+            let summary = live_host_choice_mismatch_summary(
                 &identity,
                 &observation,
                 &operator_choice_id,
                 selected_option_id,
-            ))?;
+                &host_feature_diagnostics,
+            );
+            validate_release_host_feature_diagnostics(
+                &summary,
+                Some(IntegrationProfile::Detective),
+                true,
+                true,
+            )?;
+            result_recorder.record_final(&summary)?;
             return Err(io::Error::other(format!(
                 "the operator confirmed choice {operator_choice_id:?}, but Volicord stored {selected_option_id:?}"
             ))
@@ -2885,23 +3143,29 @@ mod unix {
                 canonical_json: canonical_json_string(&receipt.canonical_receipt)?,
             },
         ) {
-            result_recorder.record_final(&live_host_completed_summary(
-                LiveCompletedSummaryInput {
-                    result: "failed_receipt_ui_confirmation",
-                    identity: &identity,
-                    observation: &observation,
-                    operator_choice_id: &operator_choice_id,
-                    selected_option_id,
-                    latest_run: &latest_run,
-                    authority_event_order: &authority_event_order,
-                    stop_observation: &stop_observation,
-                    receipt: &receipt,
-                    stop_receipt_ui_confirmed: false,
-                },
-            ))?;
+            let summary = live_host_completed_summary(LiveCompletedSummaryInput {
+                result: "failed_receipt_ui_confirmation",
+                identity: &identity,
+                observation: &observation,
+                operator_choice_id: &operator_choice_id,
+                selected_option_id,
+                latest_run: &latest_run,
+                authority_event_order: &authority_event_order,
+                stop_observation: &stop_observation,
+                receipt: &receipt,
+                stop_receipt_ui_confirmed: false,
+                host_feature_diagnostics: &host_feature_diagnostics,
+            });
+            validate_release_host_feature_diagnostics(
+                &summary,
+                Some(IntegrationProfile::Detective),
+                true,
+                true,
+            )?;
+            result_recorder.record_final(&summary)?;
             return Err(error);
         }
-        result_recorder.record_final(&live_host_completed_summary(LiveCompletedSummaryInput {
+        let summary = live_host_completed_summary(LiveCompletedSummaryInput {
             result: "passed",
             identity: &identity,
             observation: &observation,
@@ -2912,7 +3176,15 @@ mod unix {
             stop_observation: &stop_observation,
             receipt: &receipt,
             stop_receipt_ui_confirmed: true,
-        }))?;
+            host_feature_diagnostics: &host_feature_diagnostics,
+        });
+        validate_release_host_feature_diagnostics(
+            &summary,
+            Some(IntegrationProfile::Detective),
+            true,
+            true,
+        )?;
+        result_recorder.record_final(&summary)?;
         smoke_note(
             host,
             format!(
@@ -2973,17 +3245,23 @@ mod unix {
         let mut result_recorder =
             LiveResultRecorder::from_env_for_kind(host, LIVE_EVIDENCE_OBSERVATION_RESULT_KIND)?;
         let mut stage = "preflight";
+        let mut host_feature_diagnostics = None;
         let outcome = live_evidence_observation_round_trip_inner(
             host,
             executable_name,
             expected_host_action,
             &mut stage,
+            &mut host_feature_diagnostics,
         );
         match outcome {
             Ok(summary) => {
                 stage = "result_validation";
                 if let Err(error) = validate_live_evidence_observation_result_shape(&summary) {
-                    let incomplete = live_evidence_observation_incomplete_summary(host, stage);
+                    let incomplete = live_evidence_observation_incomplete_summary(
+                        host,
+                        stage,
+                        host_feature_diagnostics.as_ref(),
+                    );
                     validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
                     result_recorder.record_final(&incomplete)?;
                     return Err(error);
@@ -2991,7 +3269,11 @@ mod unix {
                 result_recorder.record_final(&summary)
             }
             Err(error) => {
-                let incomplete = live_evidence_observation_incomplete_summary(host, stage);
+                let incomplete = live_evidence_observation_incomplete_summary(
+                    host,
+                    stage,
+                    host_feature_diagnostics.as_ref(),
+                );
                 validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
                 result_recorder.record_final(&incomplete)?;
                 Err(error)
@@ -3004,6 +3286,7 @@ mod unix {
         executable_name: &str,
         expected_host_action: &str,
         stage: &mut &'static str,
+        host_feature_diagnostics: &mut Option<ReleaseHostFeatureDiagnostics>,
     ) -> Result<Value, Box<dyn Error>> {
         *stage = "host_executable";
         let executable = find_executable(executable_name).ok_or_else(|| {
@@ -3054,6 +3337,11 @@ mod unix {
             IntegrationProfile::Detective,
             expected_host_action,
         )?;
+        *host_feature_diagnostics = Some(release_host_feature_diagnostics_from_init(
+            &init_json,
+            host,
+            IntegrationProfile::Detective,
+        )?);
         let connection_id = bounded_identity(
             "Agent Connection id",
             init_json["connection"]["connection_id"]
@@ -3188,6 +3476,9 @@ mod unix {
                 authority_event_order: &authority_event_order,
                 stop_observation: &stop_observation,
                 receipt: &receipt,
+                host_feature_diagnostics: host_feature_diagnostics
+                    .as_ref()
+                    .expect("successful init stores the canonical release diagnostics"),
             },
         ))
     }
@@ -5474,6 +5765,7 @@ mod unix {
         authority_event_order: &'a AuthorityEventOrder,
         stop_observation: &'a VerifiedStopObservation,
         receipt: &'a VerifiedLiveReceipt,
+        host_feature_diagnostics: &'a ReleaseHostFeatureDiagnostics,
     }
 
     fn live_evidence_observation_completed_summary(
@@ -5490,6 +5782,7 @@ mod unix {
             authority_event_order,
             stop_observation,
             receipt,
+            host_feature_diagnostics,
         } = input;
         serde_json::json!({
             "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
@@ -5504,6 +5797,8 @@ mod unix {
             "connection": {
                 "connection_id": identity.connection_id
             },
+            "host_feature_support": host_feature_diagnostics.host_feature_support,
+            "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
             "task": {
                 "project_id": observation.project_id,
                 "task_id": observation.task_id,
@@ -5631,16 +5926,35 @@ mod unix {
         })
     }
 
-    fn live_evidence_observation_incomplete_summary(host: &str, stage: &str) -> Value {
+    fn live_evidence_observation_incomplete_summary(
+        host: &str,
+        stage: &str,
+        initialized_diagnostics: Option<&ReleaseHostFeatureDiagnostics>,
+    ) -> Value {
         let result = match stage {
             "host_executable" | "interactive_terminal" | "host_delivery_boundary" => "unavailable",
             _ => "failed",
+        };
+        let default_diagnostics;
+        let diagnostics = match initialized_diagnostics {
+            Some(diagnostics) => diagnostics,
+            None => {
+                default_diagnostics = canonical_release_host_feature_diagnostics(
+                    host,
+                    IntegrationProfile::Detective,
+                    false,
+                    false,
+                );
+                &default_diagnostics
+            }
         };
         serde_json::json!({
             "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
             "result": result,
             "host": { "kind": host },
             "stage": stage,
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "evidence_scope": {
                 "live_evidence_observation_cell": true,
                 "native_judgment_cell": false,
@@ -5659,10 +5973,18 @@ mod unix {
     }
 
     fn evidence_observation_result_shape_fixture() -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            "codex",
+            IntegrationProfile::Detective,
+            true,
+            true,
+        );
         serde_json::json!({
             "kind": LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
             "result": "passed",
             "host": { "kind": "codex", "version": "fixture-version" },
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "volicord": { "build_id": "fixture-build" },
             "connection": { "connection_id": "CONN-live" },
             "task": {
@@ -5836,6 +6158,8 @@ mod unix {
                 "kind",
                 "result",
                 "host",
+                "host_feature_support",
+                "final_output_authority_disclosure",
                 "volicord",
                 "connection",
                 "task",
@@ -6016,6 +6340,8 @@ mod unix {
                 "result",
                 "host",
                 "stage",
+                "host_feature_support",
+                "final_output_authority_disclosure",
                 "evidence_scope",
                 "sensitive_payloads",
             ],
@@ -6055,6 +6381,12 @@ mod unix {
         value: &Value,
     ) -> Result<(), Box<dyn Error>> {
         validate_live_evidence_observation_passed_result_keys(value)?;
+        validate_release_host_feature_diagnostics(
+            value,
+            Some(IntegrationProfile::Detective),
+            true,
+            true,
+        )?;
         reject_forbidden_live_evidence_result_fields(value)?;
         required_result_string(value, "/host/kind")?;
         required_result_string(value, "/host/version")?;
@@ -6208,6 +6540,27 @@ mod unix {
         value: &Value,
     ) -> Result<(), Box<dyn Error>> {
         validate_live_evidence_observation_incomplete_result_keys(value)?;
+        let configured = value["final_output_authority_disclosure"]["configured"]
+            .as_bool()
+            .ok_or_else(|| io::Error::other("incomplete release result has no configured fact"))?;
+        let configuration_verified = value["final_output_authority_disclosure"]
+            ["configuration_verified"]
+            .as_bool()
+            .ok_or_else(|| {
+                io::Error::other("incomplete release result has no configuration_verified fact")
+            })?;
+        if configuration_verified && !configured {
+            return Err(io::Error::other(
+                "configuration_verified cannot be true when configured is false",
+            )
+            .into());
+        }
+        validate_release_host_feature_diagnostics(
+            value,
+            Some(IntegrationProfile::Detective),
+            configured,
+            configuration_verified,
+        )?;
         reject_forbidden_live_evidence_result_fields(value)?;
         required_result_string(value, "/host/kind")?;
         let stage = required_result_string(value, "/stage")?;
@@ -6356,9 +6709,18 @@ mod unix {
     }
 
     fn cli_fallback_result_shape_fixture() -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            "codex",
+            IntegrationProfile::Detective,
+            true,
+            true,
+        );
         serde_json::json!({
             "kind": LIVE_CLI_FALLBACK_RESULT_KIND,
             "result": "passed",
+            "host": { "kind": "codex" },
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "connection": { "connection_id": "CONN-cli-fallback-fixture" },
             "task": {
                 "project_id": "PRJ-cli-fallback-fixture",
@@ -6430,6 +6792,11 @@ mod unix {
     }
 
     fn final_output_result_shape_fixture(profile: IntegrationProfile) -> Value {
+        let host = "claude-code";
+        let diagnostics = canonical_release_host_feature_diagnostics(host, profile, true, true);
+        let config_host_feature_support = diagnostics.host_feature_support.clone();
+        let config_final_output_authority_disclosure =
+            diagnostics.final_output_authority_disclosure.clone();
         let detective_decision = match profile {
             IntegrationProfile::Record => serde_json::json!({
                 "status": "not_applicable",
@@ -6504,10 +6871,16 @@ mod unix {
         serde_json::json!({
             "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
             "result": "incomplete",
-            "host": { "kind": "fixture" },
+            "host": { "kind": host },
             "profile": profile.as_str(),
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "evidence": {
-                "config_fixture": { "status": "verified" },
+                "config_fixture": {
+                    "status": "verified",
+                    "host_feature_support": config_host_feature_support,
+                    "final_output_authority_disclosure": config_final_output_authority_disclosure
+                },
                 "generated_wrapper_direct_wire": {
                     "status": "verified",
                     "status_fallback": { "status": "verified" },
@@ -6575,13 +6948,24 @@ mod unix {
     ) -> Value {
         let unavailable = || serde_json::json!({ "status": "unavailable", "reason": reason });
         let detective_decision = unavailable();
+        let diagnostics = canonical_release_host_feature_diagnostics(host, profile, false, false);
+        let config_host_feature_support = diagnostics.host_feature_support.clone();
+        let config_final_output_authority_disclosure =
+            diagnostics.final_output_authority_disclosure.clone();
         serde_json::json!({
             "kind": LIVE_FINAL_OUTPUT_RESULT_KIND,
             "result": "incomplete",
             "host": { "kind": host },
             "profile": profile.as_str(),
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "evidence": {
-                "config_fixture": unavailable(),
+                "config_fixture": {
+                    "status": "unavailable",
+                    "reason": reason,
+                    "host_feature_support": config_host_feature_support,
+                    "final_output_authority_disclosure": config_final_output_authority_disclosure
+                },
                 "generated_wrapper_direct_wire": {
                     "status": "unavailable",
                     "reason": reason,
@@ -6659,6 +7043,55 @@ mod unix {
                     .ok_or_else(|| io::Error::other(format!("evidence {key:?} is missing")))?,
                 key,
             )?;
+        }
+        let host = value["host"]["kind"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live final-output result has no host kind"))?;
+        let config_fixture = evidence
+            .get("config_fixture")
+            .expect("config_fixture was required above");
+        let configuration_verified = match status(config_fixture, "config_fixture")? {
+            "verified" => true,
+            "unavailable" | "failed" => false,
+            other => {
+                return Err(io::Error::other(format!(
+                    "final-output config fixture cannot use status {other:?}"
+                ))
+                .into())
+            }
+        };
+        let expected_diagnostics = canonical_release_host_feature_diagnostics(
+            host,
+            profile,
+            configuration_verified,
+            configuration_verified,
+        );
+        let top_level_support = value.get("host_feature_support").ok_or_else(|| {
+            io::Error::other("live final-output result has no top-level host_feature_support")
+        })?;
+        let top_level_disclosure =
+            value
+                .get("final_output_authority_disclosure")
+                .ok_or_else(|| {
+                    io::Error::other(
+                    "live final-output result has no top-level final_output_authority_disclosure",
+                )
+                })?;
+        if top_level_support != &expected_diagnostics.host_feature_support
+            || top_level_disclosure != &expected_diagnostics.final_output_authority_disclosure
+        {
+            return Err(io::Error::other(
+                "live final-output result does not use the canonical host-feature projection",
+            )
+            .into());
+        }
+        if config_fixture.get("host_feature_support") != Some(top_level_support)
+            || config_fixture.get("final_output_authority_disclosure") != Some(top_level_disclosure)
+        {
+            return Err(io::Error::other(
+                "live final-output top-level diagnostics do not exactly match config_fixture",
+            )
+            .into());
         }
         let replay = evidence
             .get("exact_replay")
@@ -7652,6 +8085,7 @@ mod unix {
         stop_observation: &'a VerifiedStopObservation,
         receipt: &'a VerifiedLiveReceipt,
         stop_receipt_ui_confirmed: bool,
+        host_feature_diagnostics: &'a ReleaseHostFeatureDiagnostics,
     }
 
     fn live_cli_fallback_completed_summary(input: LiveCliFallbackSummaryInput<'_>) -> Value {
@@ -7666,6 +8100,7 @@ mod unix {
             stop_observation,
             receipt,
             stop_receipt_ui_confirmed,
+            host_feature_diagnostics,
         } = input;
         serde_json::json!({
             "kind": LIVE_CLI_FALLBACK_RESULT_KIND,
@@ -7680,6 +8115,8 @@ mod unix {
             "connection": {
                 "connection_id": identity.connection_id
             },
+            "host_feature_support": host_feature_diagnostics.host_feature_support,
+            "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
             "task": {
                 "project_id": observation.project_id,
                 "task_id": observation.task_id,
@@ -7759,7 +8196,31 @@ mod unix {
         })
     }
 
+    fn live_cli_fallback_unavailable_summary(host: &str, stage: &str, reason: &str) -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            host,
+            IntegrationProfile::Detective,
+            false,
+            false,
+        );
+        serde_json::json!({
+            "kind": LIVE_CLI_FALLBACK_RESULT_KIND,
+            "result": "unavailable",
+            "host": { "kind": host },
+            "stage": stage,
+            "reason": reason,
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure
+        })
+    }
+
     fn validate_live_cli_fallback_result_shape(value: &Value) -> Result<(), Box<dyn Error>> {
+        validate_release_host_feature_diagnostics(
+            value,
+            Some(IntegrationProfile::Detective),
+            true,
+            true,
+        )?;
         if value["kind"] != LIVE_CLI_FALLBACK_RESULT_KIND || value["result"] != "passed" {
             return Err(io::Error::other(
                 "passing CLI-fallback result has the wrong validation kind or result",
@@ -7910,6 +8371,7 @@ mod unix {
         stop_observation: &'a VerifiedStopObservation,
         receipt: &'a VerifiedLiveReceipt,
         stop_receipt_ui_confirmed: bool,
+        host_feature_diagnostics: &'a ReleaseHostFeatureDiagnostics,
     }
 
     fn live_host_completed_summary(input: LiveCompletedSummaryInput<'_>) -> Value {
@@ -7924,6 +8386,7 @@ mod unix {
             stop_observation,
             receipt,
             stop_receipt_ui_confirmed,
+            host_feature_diagnostics,
         } = input;
         serde_json::json!({
             "kind": "live_host_user_action_release_validation",
@@ -7938,6 +8401,8 @@ mod unix {
             "connection": {
                 "connection_id": identity.connection_id
             },
+            "host_feature_support": host_feature_diagnostics.host_feature_support,
+            "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
             "task": {
                 "project_id": observation.project_id,
                 "task_id": observation.task_id,
@@ -8000,6 +8465,7 @@ mod unix {
         observation: &LiveUserActionObservation,
         operator_choice_id: &str,
         selected_option_id: &str,
+        host_feature_diagnostics: &ReleaseHostFeatureDiagnostics,
     ) -> Value {
         serde_json::json!({
             "kind": "live_host_user_action_release_validation",
@@ -8014,6 +8480,8 @@ mod unix {
             "connection": {
                 "connection_id": identity.connection_id
             },
+            "host_feature_support": host_feature_diagnostics.host_feature_support,
+            "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
             "task": {
                 "project_id": observation.project_id,
                 "task_id": observation.task_id,
@@ -8044,6 +8512,7 @@ mod unix {
         identity: &LiveHostIdentity,
         observation: &LiveUserActionObservation,
         fallback: &LiveInboxFallback,
+        host_feature_diagnostics: &ReleaseHostFeatureDiagnostics,
     ) -> Value {
         serde_json::json!({
             "kind": "live_host_user_action_release_validation",
@@ -8058,6 +8527,8 @@ mod unix {
             "connection": {
                 "connection_id": identity.connection_id
             },
+            "host_feature_support": host_feature_diagnostics.host_feature_support,
+            "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
             "task": {
                 "project_id": observation.project_id,
                 "task_id": observation.task_id,
@@ -8085,8 +8556,27 @@ mod unix {
         })
     }
 
+    fn live_user_action_unavailable_summary(host: &str, stage: &str, reason: &str) -> Value {
+        let diagnostics = canonical_release_host_feature_diagnostics(
+            host,
+            IntegrationProfile::Detective,
+            false,
+            false,
+        );
+        serde_json::json!({
+            "kind": LIVE_USER_ACTION_RESULT_KIND,
+            "result": "unavailable",
+            "host": { "kind": host },
+            "stage": stage,
+            "reason": reason,
+            "host_feature_support": diagnostics.host_feature_support,
+            "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure
+        })
+    }
+
     struct LiveResultRecorder {
-        host: String,
+        result_host: String,
+        profile: Option<IntegrationProfile>,
         result_kind: &'static str,
         result_path: Option<PathBuf>,
         run_id: String,
@@ -8109,13 +8599,52 @@ mod unix {
             Self::new_for_kind(host, result_kind, Some(result_path))
         }
 
+        fn from_env_for_kind_and_profile(
+            recorder_label: &str,
+            result_host: &str,
+            result_kind: &'static str,
+            profile: Option<IntegrationProfile>,
+        ) -> Result<Self, Box<dyn Error>> {
+            let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
+            Self::new_for_kind_and_profile(
+                recorder_label,
+                result_host,
+                result_kind,
+                profile,
+                Some(result_path),
+            )
+        }
+
         fn new(host: &str, result_path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
-            Self::new_for_kind(host, LIVE_USER_ACTION_RESULT_KIND, result_path)
+            Self::new_for_kind_and_profile(
+                host,
+                host,
+                LIVE_USER_ACTION_RESULT_KIND,
+                Some(IntegrationProfile::Detective),
+                result_path,
+            )
         }
 
         fn new_for_kind(
             host: &str,
             result_kind: &'static str,
+            result_path: Option<PathBuf>,
+        ) -> Result<Self, Box<dyn Error>> {
+            let profile = match result_kind {
+                LIVE_USER_ACTION_RESULT_KIND
+                | LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
+                | LIVE_CLI_FALLBACK_RESULT_KIND => Some(IntegrationProfile::Detective),
+                LIVE_FINAL_OUTPUT_RESULT_KIND => None,
+                _ => None,
+            };
+            Self::new_for_kind_and_profile(host, host, result_kind, profile, result_path)
+        }
+
+        fn new_for_kind_and_profile(
+            recorder_label: &str,
+            result_host: &str,
+            result_kind: &'static str,
+            profile: Option<IntegrationProfile>,
             result_path: Option<PathBuf>,
         ) -> Result<Self, Box<dyn Error>> {
             if let Some(path) = result_path.as_deref() {
@@ -8126,14 +8655,15 @@ mod unix {
                 "live validation run_id",
                 &format!(
                     "{}-{}-{}",
-                    host.replace('-', "_"),
+                    recorder_label.replace('-', "_"),
                     std::process::id(),
                     epoch_duration()?.as_nanos()
                 ),
                 MAX_VALIDATION_RUN_ID_CHARS,
             )?;
             let mut recorder = Self {
-                host: host.to_owned(),
+                result_host: result_host.to_owned(),
+                profile,
                 result_kind,
                 result_path,
                 run_id,
@@ -8146,7 +8676,7 @@ mod unix {
                     &serde_json::json!({
                         "kind": result_kind,
                         "result": "running",
-                        "host": { "kind": host }
+                        "host": { "kind": result_host }
                     }),
                     false,
                 )?;
@@ -8155,7 +8685,31 @@ mod unix {
             Ok(recorder)
         }
 
+        fn failed_before_completion_summary(&self) -> Value {
+            let diagnostics = canonical_release_host_feature_diagnostics_for_profile(
+                &self.result_host,
+                self.profile,
+                false,
+                false,
+            );
+            let mut summary = serde_json::json!({
+                "kind": self.result_kind,
+                "result": "failed_before_completion",
+                "host": { "kind": self.result_host },
+                "host_feature_support": diagnostics.host_feature_support,
+                "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure
+            });
+            if self.result_kind == LIVE_FINAL_OUTPUT_RESULT_KIND {
+                summary["profile"] = self
+                    .profile
+                    .map(IntegrationProfile::as_str)
+                    .map_or(Value::Null, |profile| Value::String(profile.to_owned()));
+            }
+            summary
+        }
+
         fn record_final(&mut self, summary: &Value) -> Result<(), Box<dyn Error>> {
+            validate_terminal_release_host_feature_diagnostics(summary)?;
             let summary = self.with_validation_run(summary)?;
             let serialized = serialize_live_host_result(&summary)?;
             if let Some(path) = self.result_path.as_deref() {
@@ -8214,14 +8768,8 @@ mod unix {
             if !self.started || self.finalized || self.result_path.is_none() {
                 return;
             }
-            let _ = self.write_external_summary(
-                &serde_json::json!({
-                    "kind": self.result_kind,
-                    "result": "failed_before_completion",
-                    "host": { "kind": self.host }
-                }),
-                true,
-            );
+            let summary = self.failed_before_completion_summary();
+            let _ = self.record_final(&summary);
         }
     }
 
@@ -9185,18 +9733,7 @@ mod unix {
         profile: IntegrationProfile,
         init: &Value,
     ) -> Result<Value, Box<dyn Error>> {
-        if init["states"]["final_output_authority_disclosure"]
-            != serde_json::json!({
-                "supported": true,
-                "configured": true,
-                "verified": true
-            })
-        {
-            return Err(io::Error::other(
-                "init did not verify final-output authority disclosure capability",
-            )
-            .into());
-        }
+        require_init_host_feature_support(init, host, profile)?;
         let wrapper_path = generated_stop_wrapper_path(&fixture.repo_root, host)?;
         let wrapper = fs::read_to_string(&wrapper_path)?;
         let volicord_command =
@@ -9241,9 +9778,8 @@ mod unix {
             "host_config": host_config.strip_prefix(&fixture.repo_root)?.display().to_string(),
             "generated_wrapper": wrapper_path.strip_prefix(&fixture.repo_root)?.display().to_string(),
             "profile_command_verified": true,
-            "capability_supported": true,
-            "capability_configured": true,
-            "capability_verified": true
+            "host_feature_support": init["states"]["host_feature_support"].clone(),
+            "final_output_authority_disclosure": init["states"]["final_output_authority_disclosure"].clone()
         }))
     }
 
@@ -9390,6 +9926,215 @@ mod unix {
         Ok(())
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ReleaseHostFeatureDiagnostics {
+        host_feature_support: Value,
+        final_output_authority_disclosure: Value,
+    }
+
+    fn maintained_host_kind(host: &str) -> HostKind {
+        match host {
+            "codex" => HostKind::Codex,
+            "claude-code" => HostKind::ClaudeCode,
+            other => panic!("unexpected maintained live-host fixture kind: {other}"),
+        }
+    }
+
+    fn canonical_release_host_feature_diagnostics(
+        host: &str,
+        profile: IntegrationProfile,
+        configured: bool,
+        configuration_verified: bool,
+    ) -> ReleaseHostFeatureDiagnostics {
+        let projection = HostFeatureDiagnosticProjection::baseline(
+            maintained_host_kind(host),
+            profile,
+            configured,
+            configuration_verified,
+        );
+        ReleaseHostFeatureDiagnostics {
+            host_feature_support: projection.host_feature_support_json(),
+            final_output_authority_disclosure: projection.final_output_authority_disclosure_json(),
+        }
+    }
+
+    fn canonical_release_host_feature_diagnostics_for_profile(
+        host: &str,
+        profile: Option<IntegrationProfile>,
+        configured: bool,
+        configuration_verified: bool,
+    ) -> ReleaseHostFeatureDiagnostics {
+        match profile {
+            Some(profile) => canonical_release_host_feature_diagnostics(
+                host,
+                profile,
+                configured,
+                configuration_verified,
+            ),
+            None => ReleaseHostFeatureDiagnostics {
+                host_feature_support: default_host_feature_support_json(maintained_host_kind(host)),
+                final_output_authority_disclosure: Value::Null,
+            },
+        }
+    }
+
+    fn release_host_feature_diagnostics_from_init(
+        value: &Value,
+        host: &str,
+        profile: IntegrationProfile,
+    ) -> Result<ReleaseHostFeatureDiagnostics, Box<dyn Error>> {
+        require_init_host_feature_support(value, host, profile)?;
+        Ok(ReleaseHostFeatureDiagnostics {
+            host_feature_support: value["states"]["host_feature_support"].clone(),
+            final_output_authority_disclosure: value["states"]["final_output_authority_disclosure"]
+                .clone(),
+        })
+    }
+
+    fn validate_release_host_feature_diagnostics(
+        value: &Value,
+        profile: Option<IntegrationProfile>,
+        configured: bool,
+        configuration_verified: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        let host = value["host"]["kind"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("release result has no exact host kind"))?;
+        let expected = canonical_release_host_feature_diagnostics_for_profile(
+            host,
+            profile,
+            configured,
+            configuration_verified,
+        );
+        let actual_support = value
+            .get("host_feature_support")
+            .ok_or_else(|| io::Error::other("release result has no host_feature_support"))?;
+        let actual_disclosure =
+            value
+                .get("final_output_authority_disclosure")
+                .ok_or_else(|| {
+                    io::Error::other("release result has no final_output_authority_disclosure")
+                })?;
+        if actual_support != &expected.host_feature_support
+            || actual_disclosure != &expected.final_output_authority_disclosure
+        {
+            return Err(io::Error::other(
+                "release result does not use the exact canonical host-feature projection",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn validate_terminal_release_host_feature_diagnostics(
+        value: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        let kind = value["kind"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("terminal release result has no kind"))?;
+        let profile = match kind {
+            LIVE_USER_ACTION_RESULT_KIND
+            | LIVE_EVIDENCE_OBSERVATION_RESULT_KIND
+            | LIVE_CLI_FALLBACK_RESULT_KIND => Some(IntegrationProfile::Detective),
+            LIVE_FINAL_OUTPUT_RESULT_KIND => match value["profile"].as_str() {
+                Some("record") => Some(IntegrationProfile::Record),
+                Some("detective") => Some(IntegrationProfile::Detective),
+                Some(_) | None => None,
+            },
+            _ => {
+                return Err(io::Error::other(format!(
+                    "terminal release result has unsupported kind {kind:?}"
+                ))
+                .into())
+            }
+        };
+        let disclosure = value
+            .get("final_output_authority_disclosure")
+            .ok_or_else(|| {
+                io::Error::other("terminal release result has no final_output_authority_disclosure")
+            })?;
+        let (configured, configuration_verified) = if disclosure.is_null() {
+            (false, false)
+        } else {
+            let configured = disclosure["configured"].as_bool().ok_or_else(|| {
+                io::Error::other("terminal release result has no configured fact")
+            })?;
+            let configuration_verified = disclosure["configuration_verified"]
+                .as_bool()
+                .ok_or_else(|| {
+                    io::Error::other("terminal release result has no configuration_verified fact")
+                })?;
+            if configuration_verified && !configured {
+                return Err(io::Error::other(
+                    "configuration_verified cannot be true when configured is false",
+                )
+                .into());
+            }
+            (configured, configuration_verified)
+        };
+        validate_release_host_feature_diagnostics(
+            value,
+            profile,
+            configured,
+            configuration_verified,
+        )
+    }
+
+    fn expected_host_feature_support(host: &str) -> Value {
+        canonical_release_host_feature_diagnostics(host, IntegrationProfile::Record, false, false)
+            .host_feature_support
+    }
+
+    fn expected_final_output_authority_disclosure(
+        host: &str,
+        profile: IntegrationProfile,
+    ) -> Value {
+        canonical_release_host_feature_diagnostics(host, profile, true, true)
+            .final_output_authority_disclosure
+    }
+
+    fn require_init_host_feature_support(
+        value: &Value,
+        host: &str,
+        profile: IntegrationProfile,
+    ) -> Result<(), Box<dyn Error>> {
+        let expected_support = expected_host_feature_support(host);
+        let expected_disclosure = expected_final_output_authority_disclosure(host, profile);
+        if value["states"]["host_feature_support"] != expected_support
+            || value["states"]["final_output_authority_disclosure"] != expected_disclosure
+            || value["host_hook"].get("host_feature_support").is_some()
+            || value["host_hook"]
+                .get("final_output_authority_disclosure")
+                .is_some()
+        {
+            return Err(io::Error::other(format!(
+                "{host}/{} init host-feature diagnostics do not match the canonical projection",
+                profile.as_str()
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn assert_init_host_feature_support(value: &Value, host: &str, profile: IntegrationProfile) {
+        assert_eq!(
+            value["states"]["host_feature_support"],
+            expected_host_feature_support(host),
+            "{host}/{} init did not emit the exact six-key support map: {value}",
+            profile.as_str()
+        );
+        assert_eq!(
+            value["states"]["final_output_authority_disclosure"],
+            expected_final_output_authority_disclosure(host, profile),
+            "{host}/{} init did not emit exact selected-profile final-output detail: {value}",
+            profile.as_str()
+        );
+        assert!(value["host_hook"].get("host_feature_support").is_none());
+        assert!(value["host_hook"]
+            .get("final_output_authority_disclosure")
+            .is_none());
+    }
+
     fn require_live_init_reported_action_required(
         value: &Value,
         host: &str,
@@ -9400,11 +10145,7 @@ mod unix {
             .as_array()
             .ok_or_else(|| io::Error::other("live init actions are not an array"))?;
         let has_action = |expected: &str| actions.iter().any(|action| action["id"] == expected);
-        let expected_disclosure = serde_json::json!({
-            "supported": true,
-            "configured": true,
-            "verified": true
-        });
+        require_init_host_feature_support(value, host, profile)?;
         let profile_state_matches = match profile {
             IntegrationProfile::Record => {
                 value["states"]["hook_config"] == "disabled"
@@ -9421,7 +10162,6 @@ mod unix {
             || value["selected_profile"] != profile.as_str()
             || value["status"] != "action_required"
             || value["states"]["host_reload_required"] != true
-            || value["states"]["final_output_authority_disclosure"] != expected_disclosure
             || !profile_state_matches
             || !has_action("reload_required")
         {
@@ -9453,14 +10193,7 @@ mod unix {
             profile.as_str()
         );
         assert_eq!(value["states"]["host_reload_required"], true);
-        assert_eq!(
-            value["states"]["final_output_authority_disclosure"],
-            serde_json::json!({
-                "supported": true,
-                "configured": true,
-                "verified": true
-            })
-        );
+        assert_init_host_feature_support(value, host, profile);
         match profile {
             IntegrationProfile::Record => {
                 assert_eq!(value["states"]["hook_config"], "disabled");
@@ -9495,14 +10228,7 @@ mod unix {
             profile.as_str()
         );
         assert_eq!(value["states"]["host_reload_required"], true);
-        assert_eq!(
-            value["states"]["final_output_authority_disclosure"],
-            serde_json::json!({
-                "supported": true,
-                "configured": true,
-                "verified": true
-            })
-        );
+        assert_init_host_feature_support(value, host, profile);
         let actions = value["actions"]
             .as_array()
             .expect("matrix init actions should be an array");

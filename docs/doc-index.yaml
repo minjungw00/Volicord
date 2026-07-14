@@ -532,6 +532,7 @@ documents:
   - operate
   depends_on:
   - reference.admin-cli
+  - reference.api.schema-state
   - reference.mcp-transport
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -561,6 +562,7 @@ documents:
   depends_on:
   - reference.system-requirements
   - reference.admin-cli
+  - reference.api.schema-state
   - reference.mcp-transport
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -685,6 +687,7 @@ documents:
   - implement
   depends_on:
   - architecture-guide.architecture
+  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.codebase-tour
   - architecture-guide.cli-workflows
   - architecture-guide.request-lifecycle
@@ -718,6 +721,7 @@ documents:
   - architecture-guide.source-map
   - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.admin-cli
   - reference.agent-connection
   - reference.mcp-transport
@@ -849,6 +853,7 @@ documents:
   - architecture-guide.architecture
   - architecture-guide.change-guide
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-feature-support-state-evaluation
   - reference.index
   - reference.conformance
   - reference.system-requirements
@@ -858,7 +863,9 @@ documents:
   - reference.api.method-resolve-user-action
   - reference.api.method-status
   - reference.api.schema-state
+  - reference.api.schema-value-sets
   - reference.api.schema-user-action
+  - reference.storage-records
   - maintain.validation
 - doc_id: architecture-guide.decisions.index
   path_en: docs/en/architecture-guide/decisions/README.md
@@ -885,6 +892,7 @@ documents:
   - architecture-guide.decision.core-adapter-boundary
   - architecture-guide.decision.final-output-authority-disclosure
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decision.evidence-capture-producer-finalization
   - architecture-guide.decision.operation-result-retrieval
   - architecture-guide.decision.unified-user-action-request-resolution
@@ -905,7 +913,7 @@ documents:
   owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -990,6 +998,38 @@ documents:
   - reference.storage-records
   - reference.storage-ddl
   - reference.storage-versioning
+- doc_id: architecture-guide.decision.host-feature-support-state-evaluation
+  path_en: docs/en/architecture-guide/decisions/host-feature-support-state-evaluation.md
+  path_ko: docs/ko/architecture-guide/decisions/host-feature-support-state-evaluation.md
+  kind: explanation
+  summary: Architecture decision explaining centralized typed host-feature support-state evaluation and pre-major diagnostic compatibility.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: architecture_guide
+  created_on: '2026-07-14'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
+  applies_to:
+  - volicord_workspace_0_2
+  - rust_workspace_1_85
+  - mcp_protocol_2025_11_25
+  - storage_baseline_sqlite_v6
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - architecture-guide.decision.final-output-authority-disclosure
+  - architecture-guide.decision.host-capability-verification
+  - reference.agent-connection
+  - reference.admin-cli
+  - reference.system-requirements
+  - reference.storage-records
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
 - doc_id: architecture-guide.decision.operation-result-retrieval
   path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
   path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
@@ -1224,8 +1264,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1244,10 +1284,16 @@ documents:
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
   - architecture-guide.decision.host-capability-verification
+  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decisions.index
   - architecture-guide.architecture
   - reference.index
   - reference.system-requirements
+  - reference.admin-cli
+  - reference.agent-connection
+  - reference.api.schema-state
+  - reference.api.schema-value-sets
+  - reference.storage-records
 - doc_id: architecture-guide.architecture
   path_en: docs/en/architecture-guide/architecture.md
   path_ko: docs/ko/architecture-guide/architecture.md
@@ -1278,6 +1324,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
+  - architecture-guide.decision.host-feature-support-state-evaluation
   - architecture-guide.decisions.index
   - architecture-guide.change-guide
   - reference.runtime-boundaries
@@ -1350,6 +1397,7 @@ documents:
   - managed final-output fixed-UI authority-disclosure environment applicability and fallback boundary
   - external exact-final-artifact host-capability release evidence manifest applicability and current
     trusted-acquisition status
+  - host feature support applicability, current built-in baseline classification, and runtime-prerequisite boundary
   - stop criteria for unsupported or unverified installation environments
   depends_on:
   - reference.runtime-boundaries
@@ -1365,8 +1413,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1384,7 +1432,11 @@ documents:
   - profile-gated boundary
   - reserved behavior boundary
   - scope-level guarantee boundary
-  - managed final-output authority-disclosure baseline capability boundary
+  - managed final-output best-effort projection and typed support-claim boundary
+  depends_on:
+  - reference.admin-cli
+  - reference.agent-connection
+  - reference.projection-and-templates
 - doc_id: reference.core-model
   path_en: docs/en/reference/core-model.md
   path_ko: docs/ko/reference/core-model.md
@@ -1495,6 +1547,8 @@ documents:
   - administrative command boundary from public Volicord API methods
   - read-only host-capability verification diagnostics and exact local-web selection boundary
   - CLI and doctor build-descriptor fields and their non-equivalence to an external release evidence manifest
+  - administrative host-feature support diagnostics, profile-specific final-output subcapabilities, and configuration-only facts
+  - exact six-key host_feature_support map and Doctor per-connection row projection
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-connection
@@ -1975,6 +2029,7 @@ documents:
   - method-specific close-readiness evaluation order
   - method-specific blocker-producing branches
   - method-specific `CloseReadinessBlocker.code` production behavior
+  - native_host_output_adapter_config_verified configuration-only close gating
   - close-task examples
 - doc_id: reference.api.schema-core
   path_en: docs/en/reference/api/schema-core.md
@@ -2029,6 +2084,10 @@ documents:
   - '`CloseReadinessBlocker` shape'
   - '`CloseReadinessBlocker` fields and nesting'
   - '`local_web_consent_available` exact evaluator and fail-closed availability semantics'
+  - '`FinalOutputAuthorityDisclosureDiagnostic` shared administrative state shape'
+  - '`HostFeatureSupportMap` exact six-feature administrative diagnostic shape'
+  - '`DoctorHostFeatureSupportRow` exact field shape and projection placement'
+  - '`native_host_output_adapter_config_verified` configuration-only field meaning'
 - doc_id: reference.api.schema-artifacts
   path_en: docs/en/reference/api/schema-artifacts.md
   path_ko: docs/ko/reference/api/schema-artifacts.md
@@ -2115,8 +2174,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-14'
+  last_verified_on: '2026-07-14'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2133,6 +2192,8 @@ documents:
   - operation category values
   - '`CloseReadinessBlocker.category` values'
   - enum-like API vocabulary
+  - '`HostFeatureSupportStatus` and managed-host feature identifier values'
+  - final-output subcapability identifier values
 - doc_id: reference.api.errors
   path_en: docs/en/reference/api/errors.md
   path_ko: docs/ko/reference/api/errors.md
@@ -2344,6 +2405,7 @@ documents:
   - storage-owned JSON placement
   - persisted canonical-time-floor record placement and commit timestamp relationships
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation record families
+  - guard_installations host_capability_json v2 shape, v1 rejection, and init-only repair boundary
   - immutable host-capability verification history and current-pointer record families
   - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
   - local web consent token record family
@@ -2500,6 +2562,7 @@ documents:
   - agent guidance and MCP server instruction boundaries
   - immutable host-capability verification history, current state, freshness, external
     exact-final-artifact release evidence binding, and exact-match eligibility
+  - canonical host-feature support status meaning, precedence, current host matrix, replay, and freshness boundaries
 - doc_id: reference.projection-and-templates
   path_en: docs/en/reference/projection-and-templates.md
   path_ko: docs/ko/reference/projection-and-templates.md

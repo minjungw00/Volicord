@@ -8,6 +8,7 @@
 //! adapter behavior.
 
 pub mod canonical;
+pub mod host_capability;
 pub mod ids;
 pub mod methods;
 pub mod presentation;
@@ -16,6 +17,7 @@ pub mod tool_names;
 pub mod values;
 
 pub use canonical::*;
+pub use host_capability::*;
 pub use ids::*;
 pub use methods::*;
 pub use presentation::*;

@@ -4,9 +4,9 @@ pub(super) fn render_compact_connection_text(
     data: &ConnectionOutput<'_>,
     mcp_config_state: &str,
     primary_next_action: Option<&PrimaryNextAction>,
+    host_feature_diagnostic: ConnectionHostFeatureDiagnostics,
 ) -> Result<String, ConnectionCommandError> {
-    let host_kind = parse_host_kind(&data.connection.host_kind)?;
-    let host = public_host_display_name(host_kind);
+    let host = public_host_display_name(data.host_kind);
     if data.action == "removed" {
         return Ok(render_compact_remove_text(data, host));
     }
@@ -51,6 +51,7 @@ pub(super) fn render_compact_connection_text(
         "\nProfile:\n  {}\n\n",
         data.guard_state.selected_profile()
     ));
+    append_host_feature_support(&mut output, host_feature_diagnostic);
     if let Some(repo_root) = data.affected_repo_root {
         append_compact_repository(&mut output, repo_root);
     } else {
@@ -76,6 +77,14 @@ pub(super) fn render_compact_connection_text(
         connection_diagnostics_command(data.connection, data.projects)
     ));
     Ok(output)
+}
+
+fn append_host_feature_support(output: &mut String, diagnostic: ConnectionHostFeatureDiagnostics) {
+    output.push_str("Host feature support:\n");
+    for (feature, status) in diagnostic.host_feature_support_rows() {
+        output.push_str(&format!("  {}: {}\n", feature.as_str(), status.as_str()));
+    }
+    output.push('\n');
 }
 
 fn compact_connection_title(action: &str, host: &str) -> String {

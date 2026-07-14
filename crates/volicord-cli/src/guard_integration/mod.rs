@@ -20,8 +20,9 @@ pub(crate) use audit::{HookWrapperResolutionStatus, ManagedJsonProjection, HOOK_
 pub(crate) use capability::host_hook_capability_json;
 pub(crate) use capability::{
     generated_files_json, guard_installation_upsert, hook_root_resolution_json,
-    host_hook_commands_json, initial_guard_installation_status, record_guard_installation,
-    retired_files_json,
+    host_hook_capability_has_exact_v2_shape, host_hook_commands_json,
+    initial_guard_installation_status, record_guard_installation, retired_files_json,
+    HOST_HOOK_CAPABILITY_SCHEMA,
 };
 pub(crate) use files::{FilePlanStatus, GeneratedFilePlan};
 #[cfg(test)]

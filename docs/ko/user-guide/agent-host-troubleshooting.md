@@ -214,6 +214,41 @@ inbox`를 실행합니다. 선택자가 모호하거나 잘못된 저장소가
 선택되었다면 `--repo PATH`와 `--shared` 또는 `--global` 같은 일치하는 의도 플래그를
 붙여 다시 실행합니다.
 
+<a id="host-feature-support-is-not-verified"></a>
+## 호스트 기능 지원이 검증되지 않음
+
+관찰 증상: 생성 파일이 올바르게 보이거나 최선형 최종 출력 표시가 실행됐는데도
+`volicord connection status ... --json` 또는 Doctor의 `host_feature_support` 값이
+`verified`가 아닙니다.
+
+복구 방법을 고르기 전에 값을 구분합니다.
+
+- `implemented_unverified`는 어댑터 경로가 있지만 정확한 현재 실제 호스트 증거가 없거나,
+  오래됐거나, 만료됐거나, 형식이 잘못됐거나, 다른 바이너리, 호스트, 어댑터, 연결, 증거
+  아티팩트에 결속됐다는 뜻입니다. Init을 다시 실행하면 설정은 복구할 수 있지만 설정만으로
+  기능을 검증할 수 없습니다.
+- `unsupported_by_host`는 현재 호스트에 필요한 호스트 소유 표면이 없다는 뜻입니다. 설정
+  점검을 반복해도 이 상태를 올릴 수 없습니다. 표시된 CLI 또는 상태 fallback을 사용하거나
+  필수 표면이 있는 호스트·프로필을 선택합니다.
+- `temporarily_unavailable`은 정확한 현재 증거가 있지만 현재 런타임 전제 조건이 중단됐다는
+  뜻입니다. 이름 붙은 전제 조건을 복구한 뒤 정확한 평가를 다시 실행하며 과거 통과를
+  재사용하지 않습니다.
+- `verified`는 그 기능과 현재 증거 결속에만 적용됩니다. 다른 모든 기능, 제품 정확성, 사용자
+  신원, OS 집행을 검증하지 않습니다.
+
+현재 증거가 없을 때의 기준 상태는 의도적으로 보수적입니다. Codex의 앞 네 관리 기능은
+`implemented_unverified`이고, 인증된 정확 재생과 안전한 block 전용 최종화 표면이 없으므로
+Codex Record 및 Detective 최종 출력은 `unsupported_by_host`입니다. Claude Code의 여섯
+기능은 모두 `implemented_unverified`, Generic의 여섯 기능은 모두
+`unsupported_by_host`입니다. 구현과 설정이 있으면 최선형 권한 표시가 동작할 수 있지만,
+이를 기능 또는 릴리스 지원으로 표현하면 안 됩니다.
+
+전체 여섯 기능 map은 `states.host_feature_support`, 선택 프로필의 표시, 재생, block
+세부정보는 `states.final_output_authority_disclosure`에서 확인합니다. 후자의
+`configured`와 `configuration_verified` 필드는 설정 사실만 보고합니다. 저장된 v1
+capability 기록을 직접 고치지 말고 일치하는 init 명령을 다시 실행해, 폐기된 boolean에서
+지원 상태를 추론하지 않은 채 현재 v2 기록을 재생성합니다.
+
 <a id="read-only-host-storage"></a>
 ## 읽기 전용 호스트 저장소
 

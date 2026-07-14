@@ -98,6 +98,12 @@ Close condition:
   requires acceptance for write-capable Tasks and for advisor results with
   residual risks. No policy waives evidence, risk acceptance, or other blockers.
 - In `detective` profile, close readiness also checks `GuardHealthSummary` host-hook and observation-state facts, including hook path safety, prompt-capture availability facts, unresolved unrecorded Product Repository changes, hook-detected write-ticket issues, and session-watch availability. The result reports derived `CoverageSummary` coverage facts when guard health is selected. In `record` profile, host hooks are not required; unresolved unrecorded Product Repository changes still block close until reconciliation resolves them.
+- `GuardHealthSummary.native_host_output_adapter_config_verified` participates
+  only in Detective generated-configuration close gating. `false` can
+  contribute the applicable `guard_*` configuration blocker; `true` satisfies
+  only that configuration prerequisite. It does not establish managed final-
+  output support, exact live-host delivery, replay, block finalization, or a
+  `verified` `HostFeatureSupportStatus`.
 - Host hook and session watch observations do not prevent Product Repository writes and do not identify the actor that made a file change. They only support cooperative detection and correlation to expected-write or write-ticket records.
 - Only current acceptance criteria with `evidence_requirement=required` create
   evidence close requirements. Each must have current target-matching evidence

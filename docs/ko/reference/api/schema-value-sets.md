@@ -476,6 +476,38 @@ direct
 
 이 절은 차단 사유 범주 값인 `CloseReadinessBlocker.category`와 인접 상태/차단 사유 값을 담당합니다.
 
+`HostFeatureSupportStatus`는 정확히 다음 값을 사용합니다.
+
+```text
+verified
+implemented_unverified
+unsupported_by_host
+temporarily_unavailable
+```
+
+`verified`에는 현재 최종 Volicord 아티팩트와 설치 호스트에 결속된 정확한 최신 증거와
+준비된 런타임 전제 조건이 필요합니다. `implemented_unverified`는 구현은 있지만 그 증거가
+없거나, 오래됐거나, 만료됐거나, 형식이 잘못됐거나, 일치하지 않는다는 뜻입니다.
+`unsupported_by_host`는 정확한 호스트·버전·플랫폼에 필요한 호스트 소유 역량이 없다는
+뜻입니다. `temporarily_unavailable`은 정확한 증거는 현재 유효하지만 지금의 런타임 전제
+조건이 내려가 있다는 뜻입니다. 우선순위와 기준 호스트 매트릭스는
+[Agent Connection](../agent-connection.md#host-feature-support-state)이 담당합니다.
+
+대응하는 기능 식별자는 정확히 다음과 같습니다.
+
+```text
+native_user_action
+local_web_user_channel
+verified_tool_producer
+registered_connection_observation
+record_final_output
+detective_final_output
+```
+
+최종 출력 `required_subcapabilities`와 `subcapabilities` 키는
+`authority_display`, `authenticated_exact_replay`, `block_finalization`만 사용합니다.
+선택한 프로필에 적용되는 키만 출력하며 제품 지원 상태에는 `not_applicable`이 없습니다.
+
 `PlannedBlocker.source_kind`는 아래 값을 사용합니다.
 
 ```text

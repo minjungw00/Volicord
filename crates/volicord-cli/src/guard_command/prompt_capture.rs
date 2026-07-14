@@ -19,6 +19,7 @@ use volicord_types::{
     VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
 
+use crate::guard_integration::host_hook_capability_has_exact_v2_shape;
 use crate::user_command::{
     canonical_user_action_inbox_items, resolve_user_action_from_record, select_inbox_choice,
     UserActionResolutionRecordingInput, UserCommandError,
@@ -75,6 +76,11 @@ pub(super) fn prompt_capture_availability_for_event(
 
 fn expected_policy_hash(host_capability_json: &str) -> Result<Option<String>, GuardCommandError> {
     let value = serde_json::from_str::<Value>(host_capability_json).map_err(json_error)?;
+    if !host_hook_capability_has_exact_v2_shape(&value) {
+        return Err(GuardCommandError::Runtime(
+            "stored host-hook capability is not current v2 input".to_owned(),
+        ));
+    }
     Ok(value
         .get("policy_hash")
         .and_then(Value::as_str)

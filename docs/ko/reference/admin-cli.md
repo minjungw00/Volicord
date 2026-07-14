@@ -45,7 +45,7 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 | 표면 | 안정성 | 비고 |
 |---|---|---|
 | 지원되는 관리 명령 이름, 옵션, stdout/stderr 처리, 프로세스 종료 코드, `--dry-run` 미리보기 동작, 로컬 User Channel 명령 이름 | `stable` | 로컬 CLI 계약이며 공개 Volicord API 메서드가 아닙니다. |
-| 지원되는 Codex 및 Claude Code 어댑터의 관리 최종 출력 권한 고지 | `beta` | 읽기 전용 상태 보기는 관리되는 `record` 및 `detective` 프로필에서 지원됩니다. 실제 호스트 표시는 호스트에 따라 달라집니다. |
+| 관리 최종 출력 권한 projection과 typed 지원 진단 | `beta` | 관리 어댑터는 최선형 읽기 전용 projection을 설치하고 실행할 수 있습니다. 호스트·프로필 지원 또는 릴리스 주장은 공유 평가기가 `verified`를 보고할 때만 성립하며 현재 기준은 Codex나 Claude Code 최종 출력에 그 주장을 하지 않습니다. |
 | `detective` 프로필 설정, 호스트 훅 관찰, 세션 감시기 관찰, 로컬 consent URL 사용 가능 상태, 호스트별 통합 기능 보고 | `beta` | 기능 조건과 담당 문서가 정한 비보장 안에서 지원됩니다. |
 | 숨겨진 훅 생명주기 명령군, 생성 래퍼 세부사항, 관찰 훅 통합의 조건부 커밋과 복구용 보조 항목 이름, 내부 식별 정보, 호스트 설정 키, 프로세스 바인딩 값 | `internal` | 생성된 호스트 통합을 위한 세부사항입니다. 일반 사용자 입력이나 안정적인 복구 파일 이름이 아닙니다. |
 | 사람이 읽는 초기 설정 요약, 상태 요약, 진단 보고서, 연결 검증 보고서, 간결한 요약 카드, 다음 행동 문구, 진단 고지 | `diagnostic` | 이 문서가 명시한 JSON 필드와 안정적인 ID만 계약입니다. 텍스트 서식은 공개 API 스키마가 아닙니다. |
@@ -567,8 +567,8 @@ Doctor는 파일이나 Git index를 바꾸지 않으며, index 정리는 작업 
 `--profile`은 공개 통합 프로필을 선택합니다.
 
 - `record`가 기본값입니다. MCP 설정, 관리되는 `AGENTS.md` 안내 블록, 정책 메타데이터와,
-  지원되는 관리 Codex 또는 Claude Code 어댑터에서는 권한 고지에 쓰는 최소 최종 출력
-  처리기를 씁니다. 다른 호스트 생명주기 훅이나 세션 감시기 없이 MCP를 통한 협력적
+  구현 경로가 있는 관리 Codex 또는 Claude Code 어댑터에서는 권한 고지에 쓰는 최소
+  최선형 최종 출력 처리기를 씁니다. 다른 호스트 생명주기 훅이나 세션 감시기 없이 MCP를 통한 협력적
   Volicord 작업 흐름 기록을 지원합니다. 이 최종 출력 처리기는 읽기 전용이고 Detective
   상태를 활성화하거나 guard 이벤트를 기록하거나 최종 출력을 차단하지 않습니다.
 - `detective`는 MCP 설정, 관리되는 `AGENTS.md` 안내 블록, `.volicord/policy.json` 훅 명령
@@ -582,11 +582,78 @@ Doctor는 파일이나 Git index를 바꾸지 않으며, index 정리는 작업 
 `host_hooks_active`, `session_watcher_active`,
 `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`, `unrecorded_changes_detectable`,
-`actor_identity_provable`, `os_enforced`를 포함합니다. 별도
-`final_output_authority_disclosure` 진단 객체는 `supported`, `configured`, `verified`
-boolean을 담습니다. 이 값들은 어댑터 기능과 관리 설정만 나타내며 호스트가 고정 UI를
-표시했다는 관찰이 아닙니다. 현재 Volicord 출력은 `os_enforced=false`와
+`actor_identity_provable`, `os_enforced`를 포함합니다. 연결 상태, Doctor, 릴리스 기능
+매트릭스의 각 셀은 정확히 같은 여섯 키 `host_feature_support` map을 사용합니다.
+
+```yaml
+host_feature_support:
+  native_user_action: HostFeatureSupportStatus
+  local_web_user_channel: HostFeatureSupportStatus
+  verified_tool_producer: HostFeatureSupportStatus
+  registered_connection_observation: HostFeatureSupportStatus
+  record_final_output: HostFeatureSupportStatus
+  detective_final_output: HostFeatureSupportStatus
+```
+
+여섯 키는 모두 필수이며 다른 기능 키는 허용하지 않습니다. 별도
+`final_output_authority_disclosure` 객체는 map을 대체하지 않는 선택 프로필 세부정보입니다.
+
+```yaml
+final_output_authority_disclosure:
+  support_status: HostFeatureSupportStatus
+  configured: boolean
+  configuration_verified: boolean
+  required_subcapabilities: string[]
+  subcapabilities: object<string, HostFeatureSupportStatus>
+```
+
+선택한 프로필에 적용되는 하위 역량만 존재합니다. Record에는 `authority_display`와
+`authenticated_exact_replay`가 필요하고, Detective에는 두 항목과
+`block_finalization`이 필요합니다. 폐기한 `supported`와 `verified` boolean은 별칭이
+아닙니다. 설정 필드만으로 `support_status`를 올릴 수 없으며, 이 필드는 중앙의 정확한
+증거·런타임 평가기에서 나옵니다. 현재 Volicord 출력은 `os_enforced=false`와
 `actor_identity_provable=false`를 보고해야 합니다.
+
+연결 상태는 여섯 키 map을 항상 `states.host_feature_support`에 출력합니다. 저장된 설치
+프로필이 정확히 `record` 또는 `detective`일 때만 선택 프로필 세부정보를
+`states.final_output_authority_disclosure`에 출력합니다. 저장 값이
+`not_configured`, `mixed` 또는 인식할 수 없는 프로필이면 그 원래 값을
+`states.selected_profile`과 `states.control_surface.selected_profile`에 그대로 두고,
+`states.final_output_authority_disclosure=null`을 출력하며 Record를 기본값으로 만들지
+않습니다. 이 typed 필드의 소유 위치는 `states`뿐이며, 설정·감사 사실을 담는
+`host_hook` 객체에는 중복하지 않습니다.
+
+`connection add --dry-run --json`에는 선택할 설치 프로필이 없습니다. 따라서 계획 상태는
+`selected_profile=not_configured`를 보존하고 완전한 여섯 키 map을 출력하며,
+`final_output_authority_disclosure=null`을 출력하고 두 typed 필드를 `host_hook`에 넣지
+않습니다.
+
+통과, 미완료, 실패, 사용 불가 결과를 포함한 모든 terminal 릴리스 기능 매트릭스 셀은
+wrapper 없이 `host_feature_support`와 `final_output_authority_disclosure` 필드 이름을
+사용합니다. map은 항상 완전합니다. 정확한 프로필이 없으면 세부정보는 null이고,
+있으면 해당 프로필의 정확한 형태를 사용합니다. init 이후 결과는 제품이 만든 init
+projection을 복사하고, 사전 점검에서 사용 불가인 결과는 설정 사실이 false인 중앙 기본
+projection을 사용합니다. 사용 불가는 정적 지원 상태를 지우거나 별도로 재분류하지
+않습니다. `result=running`은 이 필드에서 제외되는 유일한 비 terminal 기록기
+형태입니다. terminal `result=failed_before_completion` 산출물은 기록기가 가진 정확한
+프로필 힌트와 중앙 기본 projection을 사용합니다. 정확한 프로필이 없으면 세부정보는
+null이며 Record를 기본값으로 만들지 않습니다. Doctor는 `connection_id` 순으로 정렬한 배열을
+`states.host_feature_support_by_connection`에 출력하며 각 원소는 다음 필드만 정확히
+담습니다.
+
+```yaml
+connection_id: string
+host_kind: string
+selected_profile: string | null
+host_feature_support: HostFeatureSupportMap
+final_output_authority_disclosure: FinalOutputAuthorityDisclosureDiagnostic | null
+```
+
+Doctor는 읽을 수 있는 저장 Agent Connection마다 한 행을 출력하고 읽을 수 있는 연결 행이
+없으면 빈 배열을 출력합니다. 정확한 프로필을 선택할 수 없으면 `selected_profile`과
+`final_output_authority_disclosure`를 모두 null로 두며, 읽을 수 없는 연결에서 map을
+만들어 내지 않습니다. 정확한 형태 정의는
+[API 상태 스키마](api/schema-state.md#host-feature-support-diagnostics)가 담당합니다.
 
 `detective` 초기화에는 선택한 호스트 어댑터가 모든 필수 생명주기 훅인
 `session-start`, `pre-tool`, `post-tool`, `prompt-capture`, `stop` 지원을 선언하고
@@ -598,8 +665,8 @@ boolean을 담습니다. 이 값들은 어댑터 기능과 관리 설정만 나�
 `DETECTIVE_WATCHER_UNSUPPORTED`로 실패합니다. 복구 방법은 기록 전용 설정에는
 `--profile record`를 사용하거나, `detective`를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
 저장소 설정을 준비하는 것입니다. `record`는 Detective 생명주기 훅 설치나 세션 감시기
-설정을 요구하지 않습니다. 지원되는 관리 최종 출력 처리기는 프로필과 독립된 별도 표시
-기능입니다.
+설정을 요구하지 않습니다. 구현된 최선형 관리 최종 출력 처리기는 프로필과 독립된 별도
+표시 경로이며, 그 존재만으로 typed 호스트 지원이 성립하지 않습니다.
 
 Codex Detective 설정에서 생성된 `.codex/rules/volicord.rules`는 호스트가 불러올 수 있어야
 합니다. 호스트가 규칙을 검증할 때 모든 `match` 예시는 해당 규칙과 일치해야 합니다. 프롬프트
@@ -674,8 +741,20 @@ init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 MCP 시�
 
 init 재실행은 일치하는 Volicord 관리 내용과 일부만 완료된 호스트·의도·프로필
 마이그레이션에 대해 멱등입니다. 관리 블록, 정책 파일, 호스트 MCP 항목, 탐지 프로필 설치
-기록을 중복 없이 갱신하며 이미 폐기된 일치 상태 보기는 성공한 무동작입니다. 기존 대상에
-Runtime Home 바인딩 계약보다 앞서 생성된 관리 MCP 항목이나 로컬 래퍼는 오래된 관리
+기록을 중복 없이 갱신하며 이미 폐기된 일치 상태 보기는 성공한 무동작입니다. 이전
+`guard_installations.host_capability_json`은 [저장소 기록](storage-records.md)의 정확한 닫힌
+v2 계약을 만족하고 프로필, 의도, 호스트, 어댑터, 명령, managed-script inventory가 소유
+설치 행 및 Agent Connection과 일치할 때만 폐기 권한이 됩니다. 이전 capability가 v1이거나,
+형식이 잘못됐거나, 정확한 형태가 아니거나, 소유자 바인딩이 유효하지 않더라도 같은
+호스트·의도·프로필로 init을 다시 실행하는 것은 복구 동작입니다. Init은 신뢰할 수 없는
+`files` inventory를 폐기 대상으로 decode하지 않고 현재 관리 capability를 재생성합니다.
+호스트, 의도, 프로필을 바꾸는 작업에는 이 단축 경로를 사용할 수 없습니다. 모순된 소유
+정보로 파일을 폐기할 수 있기 때문입니다. 이 경우 폐기 전에
+`INTEGRATION_MIGRATION_INVENTORY_INVALID`로 실패합니다. 복구하려면 먼저 이전 호스트,
+의도 플래그, 프로필로 init을 한 번 다시 실행해 정확한 현재 inventory를 복원한 뒤 요청한
+마이그레이션을 다시 실행합니다.
+
+Runtime Home 바인딩 계약보다 앞서 생성된 기존 관리 MCP 항목이나 로컬 래퍼는 오래된 관리
 상태 보기입니다. 플랫폼 기본 Runtime Home이나 `PATH`로 해석한 래퍼 명령을 사용하는 호환
 대체 경로는 제공하지 않습니다. 사용자는 같은 저장소, 호스트, 의도, 프로필, Runtime
 Home으로 init을 다시 실행해야 합니다. 소유 정보가 일치하는 내용은 이식 가능한 전달
@@ -1221,15 +1300,15 @@ Volicord는 관찰 메타데이터를 기록합니다. 필요한 훅 설정이 �
 <a id="managed-final-output-authority-disclosure"></a>
 ### 관리되는 최종 출력 권한 고지
 
-생성된 Codex 및 Claude Code 어댑터는 어댑터의 플랫폼 및 루트 해석 전제 조건을 사용할 수
-있을 때 `record`와 `detective` 모두에 최종 출력 권한 고지 처리기를 설치합니다. Codex
-처리기에는 로컬 Git 작업 트리가 필요합니다. Git 저장소가 아닌 곳에서 Codex `record`
-초기화는 계속 성공하지만, 이 기능을 사용할 수 없다고 기록하고 최종 출력 처리기를
-설치하지 않으며 적용되는 `volicord status` 대체 경로로 안내합니다. Claude Code에는 이
-Git 루트 전제 조건이 없습니다. 처리기는 호스트 고유 최종 출력 이벤트를 사용하며 그
-이벤트가 기대하는 호스트 응답만 씁니다. `record`에서는 관찰하거나 차단하지 않는 읽기
-경로입니다. `detective`에서는 위에서 설명한 별도 Stop 결정과 함께 실행되며, 영속 guard
-결과를 receipt 원천으로 사용하지 않습니다.
+생성된 Codex 및 Claude Code 어댑터는 설정 전제 조건을 사용할 수 있을 때 구현된 최종 출력
+처리기를 설치할 수 있지만, 중앙 평가기가 선택한 프로필 기능에
+`support_status=verified`를 반환할 때만 지원된다고 표시합니다.
+`implemented_unverified` 상태에서 최선형으로 동작하더라도 그 상태를 유지해야 하며
+검증됐다고 보고하면 안 됩니다. Codex 처리기에는 로컬 Git 작업 트리가 필요합니다. Git
+저장소가 아닌 곳에서 Codex Record 초기화는 계속 성공하지만 처리기를 설치하지 않고
+적용되는 `volicord status` 대체 경로로 안내합니다. Record에서는 관찰하거나 차단하지 않는
+읽기 경로입니다. Detective에서는 별도 Stop 결정과 함께 실행되며 영속 guard 결과를
+receipt 원천으로 사용하지 않습니다.
 
 정확한 이벤트 재생을 포함해 전달할 때마다 처리기는 아래 순서로 동작합니다.
 
@@ -1423,7 +1502,7 @@ JSON 출력은 관리 CLI 출력이지 공개 Volicord API 응답 스키마가 �
   `prompt_capture_available`, `local_web_consent_available`를 노출해야 합니다.
   `control_surface.os_enforced`는 Volicord가 OS 수준 집행을 구현하지 않는 한 `false`여야
   합니다. `guard_health` JSON은 더 엄격한 호스트 훅 전제조건을 보여 주기 위해
-  `generated_config_verified`, `native_host_output_adapter_verified`,
+  `generated_config_verified`, `native_host_output_adapter_config_verified`,
   `direct_file_write_matcher_coverage`도 노출할 수 있습니다. 현재 호출의 정확한 클라이언트
   선언, 시작 원천, listener 준비 상태, 영속 검증 tuple을 명령이 관찰할 수 없으면
   `local_web_consent_available`은 `false`여야 하며, 저장된 연결 검증만으로 `true`가 되면

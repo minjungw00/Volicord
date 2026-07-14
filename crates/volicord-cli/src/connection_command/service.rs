@@ -1223,11 +1223,7 @@ fn apply_connection_provisioning(
     )?;
     let projects =
         list_connection_projects(&plan.runtime_home, &connection.connection_internal_id)?;
-    let guard_state = guard_state_for_connection(
-        &plan.runtime_home,
-        &connection.connection_internal_id,
-        &projects,
-    )?;
+    let guard_state = guard_state_for_connection(&plan.runtime_home, &connection, &projects)?;
 
     Ok(ConnectionProvisioningResult {
         runtime_home: plan.runtime_home,

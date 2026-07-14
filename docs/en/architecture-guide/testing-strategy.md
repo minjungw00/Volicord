@@ -71,6 +71,49 @@ VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke cod
 VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
 ```
 
+### Typed host-feature support evaluator
+
+Host integration unit tests exercise the centralized evaluator independently
+from configuration fixtures and output rendering. The minimum table is:
+
+| Implementation fact | Exact current evidence | Runtime readiness | Expected `HostFeatureSupportStatus` |
+|---|---|---|---|
+| unsupported by the host | any | any | `unsupported_by_host` |
+| implemented | missing, stale, expired, malformed, or mismatched | any | `implemented_unverified` |
+| implemented | current and exactly bound | temporarily unavailable | `temporarily_unavailable` |
+| implemented | current and exactly bound | ready | `verified` |
+
+The tests also cover aggregate precedence in this order:
+`unsupported_by_host`, `implemented_unverified`,
+`temporarily_unavailable`, then `verified`. Configuration presence and
+configuration audit results are varied independently and must never change the
+expected support state.
+
+Table-driven host baselines cover all six stable feature keys. With no live
+evidence, Codex reports the first four features as `implemented_unverified` and
+both final-output features as `unsupported_by_host`; Claude Code reports all
+six as `implemented_unverified`; Generic reports all six as
+`unsupported_by_host`. Final-output tests additionally assert that Record uses
+only `authority_display` and `authenticated_exact_replay`, Detective adds
+`block_finalization`, and only those profile-applicable keys are serialized.
+
+Connection status, Doctor, and every release cell must project the same
+six-key `host_feature_support` map from one evaluation. Binary tests assert the
+exact field paths, all required keys, no extra key, deterministic Doctor rows,
+and that the profile-specific final-output detail does not replace the map.
+Stored guard-capability tests require internal `host_capability_json` schema v2
+with explicit implementation and configuration facts. A v1 record is rejected
+as current input and repaired only by rerunning init; no v1 Boolean may infer a
+typed support state.
+
+The live harness keeps its `verified`, `unavailable`, `not_applicable`, and
+`failed` evidence statuses separate from product support state. In particular,
+harness `not_applicable` is not a product
+`HostFeatureSupportStatus`, and a fixture pass cannot promote a release cell.
+Release tests bind current evidence to the exact final executable and all
+owner-defined host, build, adapter, connection, evidence, and freshness
+coordinates before expecting `verified`.
+
 ### Final-output host/profile matrix
 
 The final-output checks form an explicit four-cell matrix. Each cell has its

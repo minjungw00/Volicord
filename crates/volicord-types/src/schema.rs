@@ -608,7 +608,7 @@ pub struct GuardHealthSummary {
     pub guard_observation_status: GuardObservationStatus,
     pub effective_guard_status: GuardEffectiveStatus,
     pub generated_config_verified: bool,
-    pub native_host_output_adapter_verified: bool,
+    pub native_host_output_adapter_config_verified: bool,
     pub hook_path_safety: String,
     pub hook_commands_cwd_independent: bool,
     pub hook_commands_subdirectory_safe: bool,

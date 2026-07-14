@@ -465,6 +465,40 @@ The Task-mode compatibility matrix above is exhaustive. These values have no com
 
 The `CloseReadinessBlocker` object shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). This section owns the supported `CloseReadinessBlocker.category` values and neighboring state/blocker values.
 
+`HostFeatureSupportStatus` uses exactly:
+
+```text
+verified
+implemented_unverified
+unsupported_by_host
+temporarily_unavailable
+```
+
+`verified` requires exact fresh evidence bound to the current final Volicord
+artifact and installed host plus ready runtime prerequisites.
+`implemented_unverified` means the implementation exists but that evidence is
+missing, stale, expired, malformed, or mismatched. `unsupported_by_host` means
+the exact host/version/platform lacks a required host-owned capability.
+`temporarily_unavailable` means exact evidence is current but a present-time
+runtime prerequisite is down. The precedence and baseline host matrix are
+owned by [Agent Connection](../agent-connection.md#host-feature-support-state).
+
+The corresponding feature identifiers are exactly:
+
+```text
+native_user_action
+local_web_user_channel
+verified_tool_producer
+registered_connection_observation
+record_final_output
+detective_final_output
+```
+
+Final-output `required_subcapabilities` and `subcapabilities` keys use only
+`authority_display`, `authenticated_exact_replay`, and `block_finalization`.
+The selected profile emits only its applicable keys; there is no product
+`not_applicable` support status.
+
 `PlannedBlocker.source_kind` uses:
 
 ```text

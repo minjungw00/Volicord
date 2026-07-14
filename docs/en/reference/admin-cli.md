@@ -51,7 +51,7 @@ Labels follow the canonical vocabulary in
 | Surface | Stability | Notes |
 |---|---|---|
 | Supported administrative command names, options, stdout/stderr routing, process exit codes, dry-run behavior, and local User Channel command names | `stable` | These are local CLI contracts, not public Volicord API methods. |
-| Managed final-output authority disclosure for supported Codex and Claude Code adapters | `beta` | The read-only projection is supported for managed `record` and `detective` profiles; actual host display remains host-dependent. |
+| Managed final-output authority projection and typed support diagnostics | `beta` | Managed adapters may install and run a best-effort read-only projection. A host/profile support or release claim exists only when the shared evaluator reports `verified`; the current baseline does not make that claim for Codex or Claude Code final output. |
 | `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are supported cooperative observation surfaces with capability gates and owner-defined non-guarantees. |
 | Hidden hook lifecycle namespace, generated wrapper details, conditional guard-integration staging and recovery sibling names, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs or stable recovery-file names. |
 | Human-readable init onboarding summaries, status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
@@ -631,8 +631,9 @@ that must not delete working-tree files.
 `--profile` selects the public integration profile:
 
 - `record` is the default. It writes MCP configuration, the managed `AGENTS.md`
-  guidance block, policy metadata, and, for a supported managed Codex or Claude
-  Code adapter, the minimal final-output handler used for authority disclosure.
+  guidance block, policy metadata, and, for a managed Codex or Claude Code
+  adapter with the implementation path, the minimal best-effort final-output
+  handler used for authority disclosure.
   It supports cooperative Volicord workflow recording through MCP without the
   other host lifecycle hooks or a session watcher. Its final-output handler is
   read-only, does not activate Detective state, does not record a guard event,
@@ -650,11 +651,84 @@ raw diagnostic dump. JSON diagnostics carry the exact `selected_profile`,
 `cooperative_pre_tool_warning_available`,
 `cooperative_pre_tool_denial_available`,
 `unrecorded_changes_detectable`, `actor_identity_provable`, and
-`os_enforced`. The separate `final_output_authority_disclosure` diagnostic
-object contains `supported`, `configured`, and `verified` booleans. These
-booleans describe adapter capability and managed configuration only, not an
-observation that the host displayed the fixed UI. Current Volicord output must
-report `os_enforced=false` and `actor_identity_provable=false`.
+`os_enforced`. Connection status, Doctor, and every release-feature matrix cell
+use the same exact six-key `host_feature_support` map:
+
+```yaml
+host_feature_support:
+  native_user_action: HostFeatureSupportStatus
+  local_web_user_channel: HostFeatureSupportStatus
+  verified_tool_producer: HostFeatureSupportStatus
+  registered_connection_observation: HostFeatureSupportStatus
+  record_final_output: HostFeatureSupportStatus
+  detective_final_output: HostFeatureSupportStatus
+```
+
+All six keys are required and no additional feature key is permitted. The
+separate `final_output_authority_disclosure` object is selected-profile detail,
+not a substitute for the map:
+
+```yaml
+final_output_authority_disclosure:
+  support_status: HostFeatureSupportStatus
+  configured: boolean
+  configuration_verified: boolean
+  required_subcapabilities: string[]
+  subcapabilities: object<string, HostFeatureSupportStatus>
+```
+
+Only profile-applicable subcapabilities are present. Record requires
+`authority_display` and `authenticated_exact_replay`. Detective requires those
+two plus `block_finalization`. The retired `supported` and `verified` booleans
+are not aliases. Configuration fields never promote `support_status`; that
+field comes from the centralized exact-evidence and runtime evaluator. Current
+Volicord output must report `os_enforced=false` and
+`actor_identity_provable=false`.
+
+Connection status always emits the six-key map at
+`states.host_feature_support`. It emits selected-profile detail at
+`states.final_output_authority_disclosure` only when the stored installation
+profile is exactly `record` or `detective`. With `not_configured`, `mixed`, or
+an unrecognized stored profile, it preserves that raw value in both
+`states.selected_profile` and `states.control_surface.selected_profile`, emits
+`states.final_output_authority_disclosure=null`, and never defaults to Record.
+These typed fields are owned only by `states`; the `host_hook` config/audit
+object does not duplicate them.
+
+`connection add --dry-run --json` has no installed profile to select. Its
+planned state therefore preserves `selected_profile=not_configured`, emits the
+complete six-key map, emits `final_output_authority_disclosure=null`, and keeps
+both typed fields out of `host_hook`.
+
+Each terminal release-feature matrix cell, including passed, incomplete,
+failed, and unavailable results, uses the unwrapped `host_feature_support` and
+`final_output_authority_disclosure` field names. The map is always complete.
+The detail is null without an exact profile and otherwise uses the exact
+profile shape. A post-init result copies the product-produced init projection;
+a preflight-unavailable result uses the centralized default projection with
+configuration facts false. Unavailability does not erase or independently
+reclassify static support status. `result=running` is the only non-terminal
+recorder shape exempt from these fields. A terminal
+`result=failed_before_completion` artifact uses the recorder's exact profile
+hint and the centralized default projection; without an exact profile its
+detail is null and it does not default to Record. Doctor emits
+`states.host_feature_support_by_connection` as an array ordered by
+`connection_id`; each element contains exactly:
+
+```yaml
+connection_id: string
+host_kind: string
+selected_profile: string | null
+host_feature_support: HostFeatureSupportMap
+final_output_authority_disclosure: FinalOutputAuthorityDisclosureDiagnostic | null
+```
+
+Doctor emits one row per readable stored Agent Connection and an empty array
+when no connection row is readable. It sets both `selected_profile` and
+`final_output_authority_disclosure` to null when the exact profile cannot be
+selected; it does not invent a map from an unreadable connection. Exact shape
+definitions remain in
+[API State Schemas](api/schema-state.md#host-feature-support-diagnostics).
 
 Detective initialization requires the selected host adapter to declare and verify
 support for every required lifecycle hook:
@@ -667,9 +741,9 @@ watcher cannot snapshot the selected repository, init fails with
 `DETECTIVE_WATCHER_UNSUPPORTED`. The recovery is to use `--profile record` for
 record-only setup or prepare a supported host, platform, and repository
 configuration for detective before rerunning init. `record` does not require
-Detective lifecycle-hook installation or session watcher setup. Its supported
-managed final-output handler is a separate profile-independent display
-capability.
+Detective lifecycle-hook installation or session watcher setup. Its implemented
+best-effort final-output handler is a separate profile-independent display path;
+its existence does not establish typed host support.
 
 For Codex Detective setup, the generated `.codex/rules/volicord.rules` must be
 loadable by the host: every `match` example must match its rule during host
@@ -755,6 +829,20 @@ Re-running init is idempotent for matching Volicord-managed content and for a
 partially completed host, intent, or profile migration. It updates managed
 blocks, policy files, host MCP entries, and detective installation records without
 duplicating them; an already retired matching projection is a successful no-op.
+The prior `guard_installations.host_capability_json` is retirement authority
+only when it satisfies the exact closed v2 contract in
+[Storage Records](storage-records.md) and its profile, intent, host, adapter,
+commands, and managed-script inventory match the owning installation row and
+Agent Connection. If that prior capability is v1, malformed, inexact, or
+owner-binding-invalid, rerunning init for the same host, intent, and profile is
+a repair: init regenerates the current managed capability without decoding its
+untrusted `files` inventory for retirement. Changing host, intent, or profile
+cannot use that shortcut because it could retire files under contradictory
+ownership. It fails before retirement with
+`INTEGRATION_MIGRATION_INVENTORY_INVALID`. Recovery is to rerun init once with
+the old host, intent flag, and profile to restore exact current inventory, then
+rerun the requested migration.
+
 Managed MCP entries or local wrappers generated before the Runtime Home binding
 contract are stale managed projections. They receive no compatibility fallback
 to a platform-default Runtime Home or a PATH-resolved wrapper command. The user
@@ -1380,17 +1468,17 @@ Lifecycle behavior:
 <a id="managed-final-output-authority-disclosure"></a>
 ### Managed final-output authority disclosure
 
-Generated Codex and Claude Code adapters install a final-output authority-
-disclosure handler for both `record` and `detective` when the adapter's platform
-and root-resolution prerequisites are available. The Codex handler requires a
-local Git work tree. A non-Git Codex `record` initialization remains successful,
-records this capability as unavailable, installs no final-output handler, and
-routes the user to the applicable `volicord status` fallback. Claude Code does
-not have this Git-root prerequisite. The handler uses the host-native
-final-output event and writes only the host response expected for that event.
-In `record` it is a non-observing, non-gating read path. In `detective` it runs
-alongside the separate Stop decision described above; its receipt source is
-never the persisted guard result.
+Generated Codex and Claude Code adapters may install the implemented final-
+output handler when their configuration prerequisites are available, but the
+handler is claimed as supported only when the centralized evaluator returns
+`support_status=verified` for the selected profile feature. Best-effort
+operation while `implemented_unverified` retains that status and is never
+reported as verified. The Codex handler requires a local Git work tree. A
+non-Git Codex Record initialization remains successful, installs no handler,
+and routes the user to the applicable `volicord status` fallback. In Record the
+handler is a non-observing, non-gating read path. In Detective it runs alongside
+the separate Stop decision; its receipt source is never the persisted guard
+result.
 
 For every delivery, including an exact event replay, the handler:
 
@@ -1611,7 +1699,7 @@ Required diagnostic JSON values:
   diagnostics are reported. `control_surface.os_enforced` must be `false`
   unless Volicord implements OS-level enforcement. Host-hook health JSON may also
   expose `generated_config_verified`,
-  `native_host_output_adapter_verified`, and
+  `native_host_output_adapter_config_verified`, and
   `direct_file_write_matcher_coverage` to show the stricter host-hook
   prerequisites. `local_web_consent_available` must remain `false` when the
   command cannot observe the current invocation's exact client declaration,

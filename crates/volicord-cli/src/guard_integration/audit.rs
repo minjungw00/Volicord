@@ -7,10 +7,13 @@ use std::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
-    agent_connections::ConnectionProjectRecord,
+    agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
     guards::GuardInstallationRecord,
-    inspection::{GuardInstallationInspectionRecord, ProjectInspectionRecord},
+    inspection::{
+        AgentConnectionInspectionRecord, GuardInstallationInspectionRecord, ProjectInspectionRecord,
+    },
 };
+use volicord_types::{host_hook_capability_matches_owner_binding, HostHookCapabilityOwnerBinding};
 
 use crate::host_integration::{
     contracts::{
@@ -21,7 +24,12 @@ use crate::host_integration::{
     MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1, REQUIRED_GUARD_PHASES,
 };
 
-use super::policy::{required_guard_phase_names, validate_policy_schema};
+use super::{
+    git_exclude::git_exclude_path,
+    host_hook_capability_has_exact_v2_shape,
+    policy::{required_guard_phase_names, validate_policy_schema},
+    HOST_HOOK_CAPABILITY_SCHEMA,
+};
 
 pub(crate) const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
 pub(crate) const CODEX_DISPATCH_WRAPPER: &str = ".codex/hooks/volicord-dispatch.sh";
@@ -109,8 +117,8 @@ pub(crate) struct GuardFileFindings {
     pub(crate) managed_sources: Vec<String>,
     pub(crate) managed_bundle_hashes: Vec<String>,
     pub(crate) managed_verification_statuses: Vec<String>,
-    pub(crate) native_host_output_adapter_verified_values: Vec<bool>,
-    pub(crate) final_output_authority_disclosure_supported_values: Vec<bool>,
+    pub(crate) native_host_output_adapter_config_verified_values: Vec<bool>,
+    pub(crate) final_output_authority_disclosure_implementation_available_values: Vec<bool>,
     pub(crate) bash_shell_mutation_coverage_values: Vec<bool>,
     pub(crate) direct_file_write_matcher_coverage_values: Vec<bool>,
     pub(crate) missing_required_hooks: Vec<String>,
@@ -137,10 +145,10 @@ impl GuardFileFindings {
             .extend(other.managed_bundle_hashes);
         self.managed_verification_statuses
             .extend(other.managed_verification_statuses);
-        self.native_host_output_adapter_verified_values
-            .extend(other.native_host_output_adapter_verified_values);
-        self.final_output_authority_disclosure_supported_values
-            .extend(other.final_output_authority_disclosure_supported_values);
+        self.native_host_output_adapter_config_verified_values
+            .extend(other.native_host_output_adapter_config_verified_values);
+        self.final_output_authority_disclosure_implementation_available_values
+            .extend(other.final_output_authority_disclosure_implementation_available_values);
         self.bash_shell_mutation_coverage_values
             .extend(other.bash_shell_mutation_coverage_values);
         self.direct_file_write_matcher_coverage_values
@@ -296,25 +304,27 @@ impl GuardFileFindings {
             && all_recorded_values_true(&self.hook_subdirectory_safe_values)
     }
 
-    pub(crate) fn native_host_output_adapter_verified(&self) -> bool {
+    pub(crate) fn native_host_output_adapter_config_verified(&self) -> bool {
         self.generated_config_verified()
-            && all_recorded_values_true(&self.native_host_output_adapter_verified_values)
+            && all_recorded_values_true(&self.native_host_output_adapter_config_verified_values)
     }
 
-    pub(crate) fn final_output_authority_disclosure_supported(&self) -> bool {
-        all_recorded_values_true(&self.final_output_authority_disclosure_supported_values)
+    pub(crate) fn final_output_authority_disclosure_implementation_available(&self) -> bool {
+        all_recorded_values_true(
+            &self.final_output_authority_disclosure_implementation_available_values,
+        )
     }
 
     pub(crate) fn final_output_authority_disclosure_configured(&self) -> bool {
-        self.final_output_authority_disclosure_supported()
+        self.final_output_authority_disclosure_implementation_available()
             && self.kind_state(HostIntegrationFileKind::VolicordPolicy) == "installed"
             && self.kind_state(HostIntegrationFileKind::HostHookConfig) == "installed"
             && self.kind_state(HostIntegrationFileKind::HostHookWrapper) == "installed"
     }
 
-    pub(crate) fn final_output_authority_disclosure_verified(&self) -> bool {
+    pub(crate) fn final_output_authority_disclosure_configuration_verified(&self) -> bool {
         self.final_output_authority_disclosure_configured()
-            && all_recorded_values_true(&self.native_host_output_adapter_verified_values)
+            && all_recorded_values_true(&self.native_host_output_adapter_config_verified_values)
             && self.hook_path_safety_ok()
     }
 
@@ -386,7 +396,13 @@ pub(crate) fn file_state_rank(value: &str) -> u8 {
 #[derive(Debug, Clone, Copy)]
 struct GuardAuthorityContext<'a> {
     host_kind: &'a str,
+    guard_mode: &'a str,
+    guard_installation_id: &'a str,
+    connection_internal_id: &'a str,
+    connection_host_kind: &'a str,
+    connection_intent: &'a str,
     project_repo_roots: &'a [PathBuf],
+    projectless_owner: bool,
     strict_authority: bool,
 }
 
@@ -397,48 +413,208 @@ pub(crate) fn guard_file_findings(capability_json: &str) -> GuardFileFindings {
 
 pub(crate) fn guard_file_findings_for_installation(
     installation: &GuardInstallationRecord,
+    connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
 ) -> GuardFileFindings {
-    let project_repo_roots = projects
+    let matched_repo_roots = projects
         .iter()
+        .filter(|project| {
+            installation
+                .project_internal_id
+                .as_deref()
+                .is_some_and(|id| id == project.project_internal_id)
+                || (installation.project_internal_id.is_none()
+                    && installation
+                        .project_id
+                        .as_deref()
+                        .is_some_and(|id| id == project.project_id))
+        })
         .map(|project| project.project.repo_root.clone())
         .collect::<Vec<_>>();
+    let project_repo_roots = if matched_repo_roots.len() == 1 {
+        matched_repo_roots
+    } else {
+        Vec::new()
+    };
     let context = GuardAuthorityContext {
         host_kind: &installation.host_kind,
+        guard_mode: &installation.guard_mode,
+        guard_installation_id: &installation.guard_installation_id,
+        connection_internal_id: &connection.connection_internal_id,
+        connection_host_kind: &connection.host_kind,
+        connection_intent: &connection.intent,
         project_repo_roots: &project_repo_roots,
+        projectless_owner: installation.project_internal_id.is_none()
+            && installation.project_id.is_none(),
         strict_authority: false,
     };
     guard_file_findings_with_context(&installation.host_capability_json, Some(context))
 }
 
-pub(crate) fn guard_file_findings_for_inspection(
-    installation: &GuardInstallationInspectionRecord,
-    projects: &[ProjectInspectionRecord],
-) -> GuardFileFindings {
-    let project_repo_roots = installation
-        .project_internal_id
-        .as_deref()
-        .map(|project_internal_id| {
-            projects
-                .iter()
-                .filter(|project| project.project_internal_id == project_internal_id)
-                .map(|project| project.repo_root.clone())
-                .collect::<Vec<_>>()
+pub(crate) fn host_hook_capability_binding_valid_for_installation(
+    installation: &GuardInstallationRecord,
+    connection: &AgentConnectionRecord,
+    projects: &[ConnectionProjectRecord],
+) -> bool {
+    let matched_repo_roots = projects
+        .iter()
+        .filter(|project| {
+            installation
+                .project_internal_id
+                .as_deref()
+                .is_some_and(|id| id == project.project_internal_id)
+                || (installation.project_internal_id.is_none()
+                    && installation
+                        .project_id
+                        .as_deref()
+                        .is_some_and(|id| id == project.project_id))
         })
-        .unwrap_or_default();
+        .map(|project| project.project.repo_root.clone())
+        .collect::<Vec<_>>();
+    let project_repo_roots = if matched_repo_roots.len() == 1 {
+        matched_repo_roots
+    } else {
+        Vec::new()
+    };
     let context = GuardAuthorityContext {
         host_kind: &installation.host_kind,
+        guard_mode: &installation.guard_mode,
+        guard_installation_id: &installation.guard_installation_id,
+        connection_internal_id: &connection.connection_internal_id,
+        connection_host_kind: &connection.host_kind,
+        connection_intent: &connection.intent,
         project_repo_roots: &project_repo_roots,
+        projectless_owner: installation.project_internal_id.is_none()
+            && installation.project_id.is_none(),
+        strict_authority: true,
+    };
+    serde_json::from_str::<Value>(&installation.host_capability_json)
+        .ok()
+        .is_some_and(|value| host_hook_capability_matches_authority_context(&value, context))
+}
+
+pub(crate) fn guard_file_findings_for_inspection(
+    installation: &GuardInstallationInspectionRecord,
+    connection: &AgentConnectionInspectionRecord,
+    projects: &[ProjectInspectionRecord],
+) -> GuardFileFindings {
+    let matched_repo_roots = projects
+        .iter()
+        .filter(|project| {
+            installation
+                .project_internal_id
+                .as_deref()
+                .is_some_and(|id| id == project.project_internal_id)
+                || (installation.project_internal_id.is_none()
+                    && installation
+                        .project_id
+                        .as_deref()
+                        .is_some_and(|id| id == project.project_id))
+        })
+        .map(|project| project.repo_root.clone())
+        .collect::<Vec<_>>();
+    let project_repo_roots = if matched_repo_roots.len() == 1 {
+        matched_repo_roots
+    } else {
+        Vec::new()
+    };
+    let context = GuardAuthorityContext {
+        host_kind: &installation.host_kind,
+        guard_mode: &installation.guard_mode,
+        guard_installation_id: &installation.guard_installation_id,
+        connection_internal_id: &connection.connection_internal_id,
+        connection_host_kind: &connection.host_kind,
+        connection_intent: &connection.intent,
+        project_repo_roots: &project_repo_roots,
+        projectless_owner: installation.project_internal_id.is_none()
+            && installation.project_id.is_none(),
         strict_authority: true,
     };
     guard_file_findings_with_context(&installation.host_capability_json, Some(context))
 }
 
+pub(crate) fn host_hook_capability_binding_valid_for_inspection(
+    installation: &GuardInstallationInspectionRecord,
+    connection: &AgentConnectionInspectionRecord,
+    projects: &[ProjectInspectionRecord],
+) -> bool {
+    let matched_repo_roots = projects
+        .iter()
+        .filter(|project| {
+            installation
+                .project_internal_id
+                .as_deref()
+                .is_some_and(|id| id == project.project_internal_id)
+                || (installation.project_internal_id.is_none()
+                    && installation
+                        .project_id
+                        .as_deref()
+                        .is_some_and(|id| id == project.project_id))
+        })
+        .map(|project| project.repo_root.clone())
+        .collect::<Vec<_>>();
+    let project_repo_roots = if matched_repo_roots.len() == 1 {
+        matched_repo_roots
+    } else {
+        Vec::new()
+    };
+    let context = GuardAuthorityContext {
+        host_kind: &installation.host_kind,
+        guard_mode: &installation.guard_mode,
+        guard_installation_id: &installation.guard_installation_id,
+        connection_internal_id: &connection.connection_internal_id,
+        connection_host_kind: &connection.host_kind,
+        connection_intent: &connection.intent,
+        project_repo_roots: &project_repo_roots,
+        projectless_owner: installation.project_internal_id.is_none()
+            && installation.project_id.is_none(),
+        strict_authority: true,
+    };
+    serde_json::from_str::<Value>(&installation.host_capability_json)
+        .ok()
+        .is_some_and(|value| host_hook_capability_matches_authority_context(&value, context))
+}
+
+fn host_hook_capability_matches_authority_context(
+    value: &Value,
+    context: GuardAuthorityContext<'_>,
+) -> bool {
+    let (project_repo_root, project_git_info_exclude_path) = match context.project_repo_roots {
+        [repo_root] => {
+            let Ok(git_info_exclude_path) = git_exclude_path(repo_root) else {
+                return false;
+            };
+            (Some(repo_root.as_path()), git_info_exclude_path)
+        }
+        [] if context.projectless_owner => (None, None),
+        _ => return false,
+    };
+    host_hook_capability_matches_owner_binding(
+        value,
+        HostHookCapabilityOwnerBinding {
+            row_host_kind: context.host_kind,
+            row_guard_mode: context.guard_mode,
+            row_guard_installation_id: context.guard_installation_id,
+            connection_internal_id: context.connection_internal_id,
+            connection_host_kind: context.connection_host_kind,
+            connection_intent: context.connection_intent,
+            project_repo_root,
+            project_git_info_exclude_path: project_git_info_exclude_path.as_deref(),
+        },
+    )
+}
+
 pub(crate) fn missing_required_hooks_from_capability_json(capability_json: &str) -> Vec<String> {
     serde_json::from_str::<Value>(capability_json)
         .ok()
+        .filter(host_hook_capability_has_exact_v2_shape)
         .map(|value| missing_required_hooks_from_capability(&value))
-        .unwrap_or_default()
+        .unwrap_or_else(|| {
+            required_guard_phase_names()
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        })
 }
 
 fn guard_file_findings_with_context(
@@ -456,6 +632,46 @@ fn guard_file_findings_with_context(
         );
         return findings;
     };
+    if !record_host_hook_capability_schema(&value, &mut findings) {
+        return findings;
+    }
+    if !host_hook_capability_has_exact_v2_shape(&value) {
+        findings
+            .broken_files
+            .push("host_hook_capability_json:shape".to_owned());
+        findings.hook_path_safety_statuses.push(
+            HookWrapperResolutionStatus::MetadataMissing
+                .as_str()
+                .to_owned(),
+        );
+        findings.hook_path_safety_details.push(json!({
+            "source": "host_hook_capability_json",
+            "reason": "invalid_shape",
+            "expected_schema": HOST_HOOK_CAPABILITY_SCHEMA,
+        }));
+        findings.hook_cwd_independent_values.push(false);
+        findings.hook_subdirectory_safe_values.push(false);
+        return findings;
+    }
+    if context
+        .is_some_and(|context| !host_hook_capability_matches_authority_context(&value, context))
+    {
+        findings
+            .broken_files
+            .push("host_hook_capability_json:binding".to_owned());
+        findings.hook_path_safety_statuses.push(
+            HookWrapperResolutionStatus::AuthorityMismatch
+                .as_str()
+                .to_owned(),
+        );
+        findings.hook_path_safety_details.push(json!({
+            "source": "host_hook_capability_json",
+            "reason": "owner_binding_mismatch",
+        }));
+        findings.hook_cwd_independent_values.push(false);
+        findings.hook_subdirectory_safe_values.push(false);
+        return findings;
+    }
     findings.prompt_capture_configured = value
         .get("prompt_capture")
         .and_then(Value::as_bool)
@@ -474,24 +690,17 @@ fn guard_file_findings_with_context(
         findings.guard_profiles.push(value);
     }
     findings
-        .native_host_output_adapter_verified_values
+        .native_host_output_adapter_config_verified_values
         .push(bool_json_field(
             &value,
-            "native_host_output_adapter_verified",
+            "native_host_output_adapter_config_verified",
         ));
     findings
-        .final_output_authority_disclosure_supported_values
-        .push(
-            value
-                .get("final_output_authority_disclosure_supported")
-                .and_then(Value::as_bool)
-                .unwrap_or_else(|| {
-                    value
-                        .get("native_host_output_adapter")
-                        .and_then(Value::as_str)
-                        .is_some_and(|adapter| adapter != "none")
-                }),
-        );
+        .final_output_authority_disclosure_implementation_available_values
+        .push(bool_json_field(
+            &value,
+            "final_output_authority_disclosure_implementation_available",
+        ));
     findings
         .bash_shell_mutation_coverage_values
         .push(bool_json_field(&value, "bash_shell_mutation_coverage"));
@@ -517,6 +726,35 @@ fn guard_file_findings_with_context(
         verify_guard_file(file, &value, &mut findings);
     }
     findings
+}
+
+fn host_hook_capability_schema_is_current(value: &Value) -> bool {
+    value.get("schema").and_then(Value::as_str) == Some(HOST_HOOK_CAPABILITY_SCHEMA)
+}
+
+fn record_host_hook_capability_schema(value: &Value, findings: &mut GuardFileFindings) -> bool {
+    if host_hook_capability_schema_is_current(value) {
+        return true;
+    }
+
+    let (file_state, reason) = match value.get("schema").and_then(Value::as_str) {
+        Some("volicord-host-hook-capability-v1") => (&mut findings.stale_files, "stale_schema"),
+        _ => (&mut findings.broken_files, "invalid_schema"),
+    };
+    file_state.push("host_hook_capability_json:schema".to_owned());
+    findings.hook_path_safety_statuses.push(
+        HookWrapperResolutionStatus::MetadataMissing
+            .as_str()
+            .to_owned(),
+    );
+    findings.hook_path_safety_details.push(json!({
+        "source": "host_hook_capability_json",
+        "reason": reason,
+        "expected_schema": HOST_HOOK_CAPABILITY_SCHEMA,
+    }));
+    findings.hook_cwd_independent_values.push(false);
+    findings.hook_subdirectory_safe_values.push(false);
+    false
 }
 
 fn record_profile_ignores_detective_file(capability: &Value, file: &Value) -> bool {
@@ -2020,6 +2258,224 @@ fn path_text(path: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn current_capability(implementation_available: bool) -> Value {
+        json!({
+            "schema": HOST_HOOK_CAPABILITY_SCHEMA,
+            "policy_hash": "sha256:fixture",
+            "selected_profile": "record",
+            "connection_intent": "shared",
+            "final_output_authority_disclosure_implementation_available": implementation_available,
+            "native_host_output_adapter": if implementation_available { "codex" } else { "none" },
+            "native_host_output_adapter_config_verified": implementation_available,
+            "bash_shell_mutation_coverage": false,
+            "direct_file_write_matcher_coverage": false,
+            "host_capabilities": {
+                "stdio_mcp": true,
+                "http_mcp": false,
+                "session_start_hook": true,
+                "pre_tool_hook": true,
+                "post_tool_hook": true,
+                "user_prompt_submit_hook": true,
+                "stop_hook": true,
+                "rule_file_support": true,
+                "project_local_configuration": true,
+            },
+            "required_hook_phases": [],
+            "missing_required_hooks": [],
+            "prompt_capture": false,
+            "files": [],
+            "host_hook_commands": [],
+            "hook_root_resolution": null,
+            "hook_path_safety": null,
+            "commands": {
+                "session_start": {"command": "volicord", "args": ["_hook", "session-start"]},
+                "pre_tool": {"command": "volicord", "args": ["_hook", "pre-tool"]},
+                "post_tool": {"command": "volicord", "args": ["_hook", "post-tool"]},
+                "prompt_capture": {"command": "volicord", "args": ["_hook", "prompt-capture"]},
+                "stop": {"command": "volicord", "args": ["_hook", "stop"]},
+            },
+        })
+    }
+
+    #[test]
+    fn capability_audit_rejects_non_v2_schema_without_inference() {
+        let cases = [
+            (
+                "v1 is stale",
+                json!({
+                    "schema": "volicord-host-hook-capability-v1",
+                    "native_host_output_adapter": "codex",
+                    "final_output_authority_disclosure_supported": true,
+                    "native_host_output_adapter_config_verified": true,
+                }),
+                true,
+            ),
+            (
+                "missing schema is broken",
+                json!({
+                    "native_host_output_adapter": "codex",
+                    "final_output_authority_disclosure_implementation_available": true,
+                    "native_host_output_adapter_config_verified": true,
+                }),
+                false,
+            ),
+            (
+                "unknown schema is broken",
+                json!({
+                    "schema": "volicord-host-hook-capability-v3",
+                    "native_host_output_adapter": "codex",
+                    "final_output_authority_disclosure_implementation_available": true,
+                    "native_host_output_adapter_config_verified": true,
+                }),
+                false,
+            ),
+        ];
+
+        for (name, capability, stale) in cases {
+            let findings = guard_file_findings(&capability.to_string());
+            let expected_files = if stale {
+                &findings.stale_files
+            } else {
+                &findings.broken_files
+            };
+            assert!(
+                expected_files.contains(&"host_hook_capability_json:schema".to_owned()),
+                "{name}: {findings:#?}"
+            );
+            assert!(
+                findings
+                    .final_output_authority_disclosure_implementation_available_values
+                    .is_empty(),
+                "{name} must not consume implementation facts"
+            );
+            assert!(
+                findings
+                    .native_host_output_adapter_config_verified_values
+                    .is_empty(),
+                "{name} must not consume configuration facts"
+            );
+            assert!(
+                !findings.final_output_authority_disclosure_implementation_available(),
+                "{name} must not infer implementation from the adapter or retired boolean"
+            );
+        }
+    }
+
+    #[test]
+    fn capability_audit_uses_explicit_v2_implementation_fact() {
+        let capability = current_capability(false);
+        let findings = guard_file_findings(&capability.to_string());
+
+        assert_eq!(
+            findings.final_output_authority_disclosure_implementation_available_values,
+            [false]
+        );
+        assert_eq!(
+            findings.native_host_output_adapter_config_verified_values,
+            [false]
+        );
+        assert!(!findings.final_output_authority_disclosure_implementation_available());
+    }
+
+    #[test]
+    fn projectless_fileless_capability_uses_the_explicit_no_project_owner_branch() {
+        let capability = current_capability(false).to_string();
+        let connection = AgentConnectionInspectionRecord {
+            connection_internal_id: "conn_projectless".to_owned(),
+            host_kind: "codex".to_owned(),
+            intent: "shared".to_owned(),
+            host_scope: "user".to_owned(),
+            project_internal_id: None,
+            server_name: "volicord".to_owned(),
+            config_target: "/tmp/config.toml".to_owned(),
+            mode: "workflow".to_owned(),
+            enabled: true,
+            managed_fingerprint: "fingerprint".to_owned(),
+            last_verification_status: "not_verified".to_owned(),
+            last_verification_report_json: "{}".to_owned(),
+            last_user_actions_json: "[]".to_owned(),
+            created_at: "2026-07-14T00:00:00Z".to_owned(),
+            updated_at: "2026-07-14T00:00:00Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        };
+        let mut installation = GuardInstallationInspectionRecord {
+            guard_installation_id: "guard_projectless".to_owned(),
+            connection_internal_id: connection.connection_internal_id.clone(),
+            project_internal_id: None,
+            project_id: None,
+            host_kind: "codex".to_owned(),
+            guard_mode: "record".to_owned(),
+            host_capability_json: capability,
+            installation_status: "configured".to_owned(),
+            installed_at: None,
+            last_checked_at: "2026-07-14T00:00:00Z".to_owned(),
+            first_seen_at: None,
+            last_seen_at: None,
+            last_seen_phase: None,
+            observed_host_kind: None,
+            observed_policy_hash: None,
+            observed_binary_version: None,
+            metadata_json: "{}".to_owned(),
+            created_at: "2026-07-14T00:00:00Z".to_owned(),
+            updated_at: "2026-07-14T00:00:00Z".to_owned(),
+        };
+
+        assert!(host_hook_capability_binding_valid_for_inspection(
+            &installation,
+            &connection,
+            &[],
+        ));
+        let findings = guard_file_findings_for_inspection(&installation, &connection, &[]);
+        assert!(!findings
+            .broken_files
+            .contains(&"host_hook_capability_json:binding".to_owned()));
+
+        installation.project_internal_id = Some("missing_project".to_owned());
+        installation.project_id = Some("missing_project".to_owned());
+        assert!(!host_hook_capability_binding_valid_for_inspection(
+            &installation,
+            &connection,
+            &[],
+        ));
+    }
+
+    #[test]
+    fn capability_audit_rejects_non_closed_v2_shapes_before_consuming_facts() {
+        let mut retired = current_capability(true);
+        retired["final_output_authority_disclosure_supported"] = Value::Bool(true);
+        let mut unexpected = current_capability(true);
+        unexpected["unowned_extension"] = Value::Bool(true);
+        let mut missing = current_capability(true);
+        missing
+            .as_object_mut()
+            .expect("capability object")
+            .remove("commands");
+        let mut malformed_nested = current_capability(true);
+        malformed_nested["host_hook_commands"] = json!([null]);
+
+        for (name, capability) in [
+            ("retired boolean", retired),
+            ("unexpected member", unexpected),
+            ("missing member", missing),
+            ("malformed nested member", malformed_nested),
+        ] {
+            let findings = guard_file_findings(&capability.to_string());
+            assert!(
+                findings
+                    .broken_files
+                    .contains(&"host_hook_capability_json:shape".to_owned()),
+                "{name}: {findings:#?}"
+            );
+            assert!(
+                findings
+                    .final_output_authority_disclosure_implementation_available_values
+                    .is_empty(),
+                "{name} must be rejected before facts are consumed"
+            );
+            assert!(!findings.final_output_authority_disclosure_implementation_available());
+        }
+    }
+
     #[test]
     fn codex_record_stop_wrapper_is_classified_as_git_root_safe() {
         let wrapper = "/repo/.codex/hooks/volicord-stop.sh";
@@ -2254,9 +2710,10 @@ mod tests {
                         {
                             "type": "command",
                             "command": format!(
-                                "volicord _hook {} --host claude-code --host-output claude-code",
+                                "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/volicord-{}.sh",
                                 phase.command_name()
                             ),
+                            "args": [],
                             "timeout": 30
                         }
                     ]

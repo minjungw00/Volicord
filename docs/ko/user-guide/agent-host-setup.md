@@ -74,6 +74,17 @@ CLI MCP 성공은 현재 호스트의 도구 노출을 증명하지 않습니다
 Code 세션 안에서 도구 가용성을 확인합니다. 도구가 없으면 설정을 직접 고치기 전에
 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 따릅니다.
 
+JSON 연결 상태에는 여섯 호스트 기능을 각각 보고하는
+`states.host_feature_support`도 있습니다. `implemented_unverified`는 생성 설정 실패가
+아니라 “어댑터 경로는 구현됐지만 정확한 현재 실제 호스트 증거가 없음”으로 읽습니다.
+`unsupported_by_host`는 호스트 소유 표면이 없는 것으로 알려진 상태이고,
+`temporarily_unavailable`은 현재 검증된 경로의 런타임 전제 조건이 중단된 경우에만
+사용합니다. 현재 기능을 지원한다고 주장할 수 있는 상태는 `verified`뿐입니다. 별도 최종
+출력 세부정보의 `configured`와 `configuration_verified`는 이 상태를 바꾸지 않습니다.
+복구 방법은 [호스트 기능 지원이 검증되지 않음](agent-host-troubleshooting.md#host-feature-support-is-not-verified),
+정확한 계약은 [Agent Connection](../reference/agent-connection.md#host-feature-support-state)을
+봅니다.
+
 ## Codex
 
 일반적인 프로젝트 범위 경로는 아래와 같습니다.

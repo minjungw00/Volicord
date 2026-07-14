@@ -1018,14 +1018,6 @@ const REQUIRED_GUARD_HOOK_PHASES: &[&str] = &[
     "stop_hook",
 ];
 
-const KNOWN_GUARD_OBSERVATION_PHASES: &[&str] = &[
-    "session_start",
-    "pre_tool",
-    "post_tool",
-    "prompt_capture",
-    "stop",
-];
-
 const HOOK_WRAPPER_MARKER: &str = "VOLICORD_MANAGED_HOOK_WRAPPER";
 const MANAGED_PROCESS_BINDING_ENV: &str = "VOLICORD_MANAGED_PROCESS_BINDING";
 const MANAGED_PROCESS_BINDING_V1: &str = "runtime-home-and-profile-command-v1";
@@ -1035,7 +1027,7 @@ struct GuardCapabilityFacts {
     expected_policy_hash: Option<String>,
     required_hook_phases: Vec<String>,
     missing_required_hook_phases: Vec<String>,
-    native_host_output_adapter_verified: bool,
+    native_host_output_adapter_config_verified: bool,
     bash_shell_mutation_coverage_configured: bool,
     direct_file_write_matcher_coverage_configured: bool,
     generated_config_verified: bool,
@@ -1047,6 +1039,24 @@ struct GuardCapabilityFacts {
 pub(super) fn guard_health_summary_from_record(
     record: GuardHealthRecord,
 ) -> Result<Option<GuardHealthSummary>, PlanError> {
+    if let Some(installation) = record.guard_installation.as_ref() {
+        let connection = record.connection.as_ref().ok_or_else(|| {
+            PlanError::Core(CorePipelineError::Store(
+                StoreError::corrupt_owner_state_json(
+                    "guard_installations",
+                    installation.guard_installation_id.clone(),
+                    "host_capability_json",
+                ),
+            ))
+        })?;
+        volicord_store::guards::validate_stored_guard_installation_capability_binding(
+            installation,
+            connection,
+            &record.project_repo_root,
+        )
+        .map_err(CorePipelineError::from)
+        .map_err(PlanError::Core)?;
+    }
     let selected_profile = guard_health_profile(&record)?;
     let guard_installation_status = if let Some(installation) = record.guard_installation.as_ref() {
         parse_guard_installation_status(
@@ -1065,8 +1075,7 @@ pub(super) fn guard_health_summary_from_record(
         .unwrap_or_else(default_guard_capability_facts);
     let guard_configuration_status =
         guard_configuration_status(guard_installation_status, &capability);
-    let guard_observation_status =
-        guard_observation_status(record.guard_installation.as_ref(), &capability)?;
+    let guard_observation_status = guard_observation_status(record.guard_installation.as_ref())?;
     let effective_guard_status = effective_guard_status(
         selected_profile,
         guard_configuration_status,
@@ -1176,7 +1185,8 @@ pub(super) fn guard_health_summary_from_record(
         guard_observation_status,
         effective_guard_status,
         generated_config_verified: capability.generated_config_verified,
-        native_host_output_adapter_verified: capability.native_host_output_adapter_verified,
+        native_host_output_adapter_config_verified: capability
+            .native_host_output_adapter_config_verified,
         hook_path_safety: capability.hook_path_safety,
         hook_commands_cwd_independent: capability.hook_commands_cwd_independent,
         hook_commands_subdirectory_safe: capability.hook_commands_subdirectory_safe,
@@ -1232,7 +1242,7 @@ fn default_guard_capability_facts() -> GuardCapabilityFacts {
         expected_policy_hash: None,
         required_hook_phases: Vec::new(),
         missing_required_hook_phases: Vec::new(),
-        native_host_output_adapter_verified: false,
+        native_host_output_adapter_config_verified: false,
         bash_shell_mutation_coverage_configured: false,
         direct_file_write_matcher_coverage_configured: false,
         generated_config_verified: false,
@@ -1251,6 +1261,16 @@ fn guard_capability_facts(
         "host_capability_json",
         Some(&installation.host_capability_json),
     )?;
+    if !host_hook_capability_has_exact_v2_shape(&Value::Object(capability.clone())) {
+        return Err(
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "guard_installations",
+                installation.guard_installation_id.clone(),
+                "host_capability_json",
+            ))
+            .into(),
+        );
+    }
     let expected_policy_hash = capability
         .get("policy_hash")
         .and_then(Value::as_str)
@@ -1268,9 +1288,9 @@ fn guard_capability_facts(
         expected_policy_hash,
         required_hook_phases,
         missing_required_hook_phases,
-        native_host_output_adapter_verified: capability_bool_field(
+        native_host_output_adapter_config_verified: capability_bool_field(
             &capability,
-            "native_host_output_adapter_verified",
+            "native_host_output_adapter_config_verified",
         ),
         bash_shell_mutation_coverage_configured: capability_bool_field(
             &capability,
@@ -2222,7 +2242,7 @@ fn host_hooks_active(summary: &GuardHealthSummary) -> bool {
         && summary.guard_observation_status == GuardObservationStatus::Observed
         && summary.guard_hook_observed
         && summary.generated_config_verified
-        && summary.native_host_output_adapter_verified
+        && summary.native_host_output_adapter_config_verified
         && summary.hook_path_safety == "ok"
         && summary.hook_commands_cwd_independent
         && summary.hook_commands_subdirectory_safe
@@ -2317,31 +2337,17 @@ fn guard_configuration_status(
 
 fn guard_observation_status(
     installation: Option<&volicord_store::guards::GuardInstallationRecord>,
-    capability: &GuardCapabilityFacts,
 ) -> Result<GuardObservationStatus, PlanError> {
     let Some(installation) = installation else {
         return Ok(GuardObservationStatus::NotObserved);
     };
-    let Some(last_seen_at) = installation.last_seen_at.as_deref() else {
+    if installation.last_seen_at.is_none() {
         return Ok(GuardObservationStatus::NotObserved);
     };
-    parse_owner_storage_value::<UtcTimestamp>(
-        "guard_installations",
-        installation.guard_installation_id.clone(),
-        "last_seen_at",
-        last_seen_at,
-    )?;
-    let current_host_kind =
-        installation.observed_host_kind.as_deref() == Some(installation.host_kind.as_str());
-    let current_policy_hash = capability
-        .expected_policy_hash
-        .as_deref()
-        .is_some_and(|expected| installation.observed_policy_hash.as_deref() == Some(expected));
-    let known_phase = installation
-        .last_seen_phase
-        .as_deref()
-        .is_some_and(|phase| KNOWN_GUARD_OBSERVATION_PHASES.contains(&phase));
-    if current_host_kind && current_policy_hash && known_phase {
+    let observation_is_current = guard_installation_observation_is_current(installation)
+        .map_err(CorePipelineError::from)
+        .map_err(PlanError::Core)?;
+    if observation_is_current {
         Ok(GuardObservationStatus::Observed)
     } else {
         Ok(GuardObservationStatus::StaleObservation)

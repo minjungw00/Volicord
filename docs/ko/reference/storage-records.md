@@ -300,8 +300,151 @@ Agent Session, session-watch baseline, session-watch observation 하나를 요�
 
 `guard_installations`는 Runtime Home, Agent Connection, 선택적 프로젝트 범위별 설정 생명주기, 관찰된 훅 메타데이터, 호스트 역량을 기록합니다.
 
-- `configured`와 `reload_required`는 파일이나 메타데이터가 설치되었지만, 일치하는 호스트 훅 관찰은 아직 기록되지 않았다는 뜻입니다.
+- `configured`는 파일이나 메타데이터가 설치되어 있지만 설정 생명주기 행 자체가 새 활성 관찰을 주장하지 않는다는 뜻입니다. 동일 identity 설정을 갱신하면 이전 관찰 메타데이터가 보존될 수 있고, 그 관찰은 현재 호스트·정책·단계·capability와 계속 일치할 수 있습니다. 따라서 소비자는 생명주기 상태에서 관찰 부재를 추론하지 않고 이 사실들을 평가합니다. `reload_required`는 호스트 reload와 현재 일치하는 관찰이 여전히 필요하다는 뜻이며, 보존된 관찰 메타데이터는 진단용으로만 남습니다.
 - `active`는 기록된 프로젝트, Agent Connection, 호스트 종류, 통합 프로필, 정책 해시와 일치하는 유효한 호스트 훅을 Volicord가 관찰했다는 뜻입니다. OS 수준 집행이나 샌드박싱을 증명하지 않습니다.
+
+#### 닫힌 호스트 훅 capability v2 기록
+
+`guard_installations.host_capability_json`은 닫힌 내부
+`volicord-host-hook-capability-v2` 계약을 사용합니다. 최상위 객체에는 다음 18개 구성원만
+정확히 있어야 합니다.
+
+- `schema`, `policy_hash`, `selected_profile`, `connection_intent`
+- `final_output_authority_disclosure_implementation_available`,
+  `native_host_output_adapter`,
+  `native_host_output_adapter_config_verified`,
+  `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`
+- `host_capabilities`, `required_hook_phases`, `missing_required_hooks`,
+  `prompt_capture`
+- `files`, `host_hook_commands`, `hook_root_resolution`, `hook_path_safety`,
+  `commands`
+
+`schema`는 정확히 `volicord-host-hook-capability-v2`이고, `policy_hash`는 비어 있지 않은
+문자열이며, `selected_profile`은 `record` 또는 `detective`이고,
+`connection_intent`는 `personal`, `shared`, `global` 중 하나입니다.
+`native_host_output_adapter`는 `none`, `codex`, `claude-code` 중 하나입니다.
+`final_output_authority_disclosure_implementation_available`은 어댑터가 `codex` 또는
+`claude-code`일 때만 참이고, 그때 반드시 참입니다.
+`native_host_output_adapter_config_verified=true`도 구현된 두 어댑터에서만 허용됩니다. 두
+적용 범위 구성원과 `prompt_capture`는 boolean입니다. `record` capability의
+`prompt_capture`는 `false`입니다.
+
+`host_capabilities`는 `stdio_mcp`, `http_mcp`, `session_start_hook`,
+`pre_tool_hook`, `post_tool_hook`, `user_prompt_submit_hook`, `stop_hook`,
+`rule_file_support`, `project_local_configuration`이라는 정확한 boolean 구성원만 갖는 닫힌
+객체입니다. `commands`는 `session_start`, `pre_tool`, `post_tool`,
+`prompt_capture`, `stop`만 정확히 갖는 닫힌 map입니다. 각 값은 정확히
+`{command,args}`이며, `command`는 비어 있지 않은 문자열이고 `args`는 문자열 배열입니다.
+
+`required_hook_phases`와 `missing_required_hooks`는 중복이 없는 배열입니다.
+`detective`에서 `required_hook_phases`는 정확히 `session_start_hook`,
+`pre_tool_hook`, `post_tool_hook`, `user_prompt_submit_hook`, `stop_hook`이며,
+`missing_required_hooks`는 이 집합의 부분집합입니다. `record`에서는 두 배열이 모두
+비어 있습니다. 이 정규 저장 규칙은 [API 상태 스키마](api/schema-state.md)의
+`GuardHealthSummary`가 닫힌 상태에서 실패하기 위해 적용하는 “부재 또는 명시적 나열”
+완전성 projection과 구별됩니다.
+
+각 `host_hook_commands[]` 항목은 `host_kind`, `phase`, `purpose`, `policy_key`,
+`command_shape`, `command`, `args`, `expected_wrapper_path`,
+`expected_phase_wrapper_path`, `root_resolution_basis`,
+`hook_command_path_basis`, `cwd_independent`, `subdirectory_safe`,
+`wrapper_resolution_status`, `verification`만 정확히 갖는 닫힌 객체입니다.
+`verification`은 정확히 `{basis_verified_by,host_contract_source}`입니다.
+`command_shape`은 `args=null`인 `shell_command_string` 또는 문자열 배열 `args`를 갖는
+`exec_form`입니다. 루트 근거는 `git_work_tree` 또는 `claude_project_dir`, 경로 근거는
+`git_root_runtime` 또는 `claude_project_dir`입니다. 래퍼 상태는 `ok`,
+`relative_path_unsafe`, `wrapper_missing`, `wrapper_not_executable`,
+`dispatch_missing`, `placeholder_unsupported`, `absolute_path_stale`,
+`policy_hash_mismatch`, `host_output_mismatch`, `authority_mismatch`,
+`metadata_missing` 중 하나입니다. 단계는 중복 없이 정확한 phase-to-policy-key 대응을
+사용합니다. `purpose`는 `detective`에서 `detective_guard`, `record`에서
+`final_output_authority_disclosure`이고 모든 항목은 비어 있지 않은 같은 호스트 종류를
+사용합니다. `detective` 기록에는 필수 단계 중 누락 목록에 없는 단계만 정확히 있습니다.
+`record` 기록에는 항목이 없거나 `stop_hook` 하나만 있습니다.
+
+소유자 바인딩은 생성된 호스트 명령 자체도 요구합니다. Codex는 `args=null`인
+`shell_command_string`만 정확히 사용합니다. Detective 명령은 정확히
+`sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec
+"$root/.codex/hooks/volicord-dispatch.sh" <command-name>'`이며 마지막 인자는 해당 항목의
+`policy_key`에서 대응한 명령 이름입니다. Record의 `stop` 명령은 dispatch 대신 정확한 단계
+wrapper를 가리키며 단계 인자가 없습니다. Claude Code는 정확히 `exec_form`, 빈 `args` 배열,
+`${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-<command-name>.sh`를 사용합니다. Volicord 직접
+호출, 절대 wrapper 경로, 잘못된 단계 인자, 다른 셸 형식, 이전 형식은 정확한 v2 소유자
+바인딩 명령이 아닙니다.
+
+호스트 훅 명령이 없으면 `hook_root_resolution`과 `hook_path_safety`는 모두 `null`입니다.
+그 밖에는 `hook_root_resolution`이 정확히
+`{basis,all_cwd_independent,all_subdirectory_safe,overall_status,phases}`이고, 각
+`phases[]` 항목은 정확히
+`{phase,root_resolution_basis,hook_command_path_basis,cwd_independent,subdirectory_safe,wrapper_resolution_status}`입니다.
+`hook_path_safety`는 정확히
+`{overall_status,all_cwd_independent,all_subdirectory_safe,commands}`이고, 각
+`commands[]` 항목은 정확히
+`{phase,hook_command_path_basis,cwd_independent,subdirectory_safe,wrapper_resolution_status}`입니다.
+두 배열은 `host_hook_commands`를 일대일로 projection해야 하며 집계 boolean, basis,
+`ok` 또는 `relative_path_unsafe` 상태가 기초 항목과 정확히 같아야 합니다.
+
+각 `files[]` 값은 닫힌 ownership-tagged union입니다. 모든 variant는 문자열 `kind`,
+`path`, `status`, `content_hash`, `ownership`을 가집니다. `kind`는
+`volicord_policy`, `git_info_exclude`, `host_mcp_config`, `host_hook_config`,
+`host_hook_dispatch`, `host_hook_wrapper`, `host_rule_instruction`,
+`agents_managed_block` 중 하나이고, `status`는 `planned_create`, `planned_update`,
+`unchanged`, `created`, `updated` 중 하나입니다. `managed_json`은 공통 구성원 다섯 개만
+가집니다. `managed_block`은 `managed_marker_start`, `managed_marker_end`만 정확히
+추가합니다. `managed_json_projection`은 `managed_projection`,
+`managed_projection_json`만 정확히 추가합니다. `managed_script`는 `managed_marker`와
+boolean `executable_required`를 추가한 뒤, 정확히 `managed_script_role=codex_dispatch`,
+`host_kind`, `phase`를 갖는 `host_hook_dispatch`이거나, 정확히
+`managed_script_command`, `host_kind`, `phase`, `purpose`, `connection_id`,
+`guard_installation_id`, `policy_hash`, `host_output`을 갖는 `host_hook_wrapper`입니다.
+
+JSON 형태만으로는 권한이 충분하지 않습니다. Capability 프로필과 의도는 소유
+`guard_installations` 행 및 Agent Connection과 일치해야 하고, 행과 연결의 호스트 종류도
+일치해야 합니다. 어댑터, 모든 호스트 훅 명령의 호스트 종류, 모든 managed-script의 호스트
+종류도 해당 소유 호스트와 일치해야 합니다. 저장소 인벤토리도 정확한 소유 프로젝트의
+정규화된 절대 `repo_root`에 바인딩됩니다. `volicord_policy`는 정확히
+`.volicord/policy.json`, `agents_managed_block`은 정확히 `AGENTS.md`, Claude Code
+`host_mcp_config`는 정확히 `.mcp.json`입니다. 훅 설정은 Codex의
+`.codex/hooks.json`, 개인 Claude Code 연결의 `.claude/settings.local.json`, 그 밖의
+Claude Code 연결의 `.claude/settings.json` 중 해당 경로여야 합니다. 단계 wrapper는 정확히
+`.codex/hooks/volicord-<command-name>.sh` 또는
+`.claude/hooks/volicord-<command-name>.sh`, Codex Detective dispatch는 정확히
+`.codex/hooks/volicord-dispatch.sh`, 규칙 지시는 정확히
+`.codex/rules/volicord.rules` 또는 `.claude/rules/volicord.md`여야 합니다. 명령의
+wrapper 경로도 같은 정규 경로를 가리켜야 합니다.
+
+프로젝트 범위 capability에서는 최상위 `commands` 항목 다섯 개가 모두 비어 있지 않은 같은
+실행 파일을 사용합니다. 인자는 정확히 `_hook`, 단계에 대응하는 명령 이름, `--repo`와
+정규화된 소유 루트, `--connection`과 소유 연결 ID, `--guard-installation`과 소유 설치 ID,
+`--host`와 공개 소유 호스트 레이블, `--integration-profile`과 소유 프로필에 이어 생성된
+출력 쌍을 사용합니다. 해당 출력 쌍은 Detective의 각 어댑터에 대해
+`--host-output codex` 또는 `--host-output claude-code`이고, 그 밖에는
+`--output volicord-json`입니다. 정책 해시는 이 명령을 포함한 정책을 대상으로 계산하므로 이
+정책 명령에는 `--policy-hash`가 없습니다. 모든 관리 wrapper 명령은 같은 실행 파일과 정확한
+소유 좌표를 다시 사용해야 합니다. Detective wrapper는 호스트 출력 쌍 앞에 capability의
+`policy_hash`를 추가하고, Record의 `stop` wrapper는 `_final-output`, 같은 소유 좌표,
+capability의 `policy_hash`, 정확한 호스트 출력 쌍을 사용합니다. 생성기가 적용한 셸 단어
+인용도 이 정확한 명령 텍스트의 일부이며 호환 대체 경로는 없습니다.
+
+연결 worktree에서 해석한 공통 Git
+디렉터리의 `info/exclude`가 worktree 밖에 있을 수 있으므로 `git_info_exclude`만
+`repo_root` 아래 경로 규칙의 예외이며, 이 예외는 임의 경로 제거 권한을 부여하지 않습니다.
+프로젝트가 없는 capability는 호스트 훅 명령이나 `git_info_exclude`를 포함한 저장소
+인벤토리를 가질 수 없습니다. 필수 닫힌 최상위 `commands` map은 계속 형태 검증을 받지만
+저장소 권한은 아니며 프로젝트 명령 사실로 소비해서는 안 됩니다. 운영 쓰기는 형태, 의미
+관계, 소유자 바인딩이 불일치하면
+거부합니다. 기존 불일치 행은 제한된 원시 검사를 통한 진단에는 계속 보이지만, Store,
+Core, 최종 출력, 연결, Doctor의 사실 소비자는 guard-event 증거 이행을 포함해 capability
+사실을 사용하지 않고 닫힌 상태에서 실패합니다.
+
+제거된 `final_output_authority_disclosure_supported` boolean은 v2 구성원이 아닙니다. 현재
+최종 출력 구성원 세 개는 구현, `native_host_output_adapter`, 생성 설정 감사 사실을 서로
+구분합니다. 어느 것도 `HostFeatureSupportStatus`, 정확한 실제 호스트 증거,
+`verified` projection 권한이 아닙니다. 닫힌 어느 수준에서든 구성원이 빠지거나 알 수 없는
+구성원 또는 제거된 구성원이 있거나, v1 스키마이면 현재 capability 입력으로 유효하지
+않습니다. 조회 경로는 v1을 v2로 decode하거나 이전 boolean을 새 필드로 복사하거나 거기서
+지원 상태를 추론하면 안 됩니다. 지원되는 동일 신원 복구와 마이그레이션 거부 동작은
+[관리 CLI](admin-cli.md)가 담당합니다.
 
 `expected_writes`는 쓰기 상관관계를 결정적으로 기록합니다.
 
@@ -471,7 +614,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | 설치 프로필 | 호스트 신뢰 결정, 사용자 판단, 공개 API 스키마가 아닌 설치 프로필 메타데이터. |
 | Agent Connection | 권한, 호스트 신뢰 증명, 외부 호스트 설정의 대체물로 쓰지 않는 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터. |
 | 호스트 역량 검증 | V1 `metadata_json`은 엄격한 정규 `{}`만 허용합니다. 허용되는 모든 증거 좌표에는 전용 열이 있으며 bearer URL이나 token, prompt, transcript, screenshot, 원문 호스트 아티팩트, 비공개 운영자 데이터, 임의 또는 추가 구성원은 유효하지 않습니다. |
-| 호스트 훅 설치 | 로컬 호스트 훅 설정 상태를 위한 호스트 역량 JSON과 메타데이터입니다. OS 집행 증명이 아닙니다. |
+| 호스트 훅 설치 | 로컬 호스트 훅 설정 상태를 위한 닫힌 내부 `volicord-host-hook-capability-v2` JSON과 메타데이터입니다. V2는 구현 가용성과 설정 검증을 분리합니다. V1은 현재 입력으로 유효하지 않으며 추론 없이 init으로만 복구합니다. 이 기록은 typed 호스트 지원, 정확한 실제 증거, OS 집행 증명이 아닙니다. |
 | `agent_sessions` | 프로젝트 범위 에이전트 세션에 대한 비권한 메타데이터. |
 | `guard_events` | 로컬 호스트 판단 요청의 호스트 훅 대상 JSON, 결과 JSON, 메타데이터. |
 | `prompt_captures` | 캡처된 프롬프트 기록의 비권한 메타데이터. 프롬프트 본문은 `null`을 허용하는 별도 텍스트 열입니다. |

@@ -2527,7 +2527,7 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
         true
     );
     assert_eq!(
-        status.response_value["guard_health"]["native_host_output_adapter_verified"],
+        status.response_value["guard_health"]["native_host_output_adapter_config_verified"],
         true
     );
     assert_eq!(
@@ -2688,8 +2688,9 @@ fn guarded_close_complete_success_reports_guard_health() -> Result<(), Box<dyn E
 #[test]
 fn host_hook_strength_requires_native_output_adapter() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let mut capability = complete_guard_capability_value(&harness)?;
-    capability["native_host_output_adapter_verified"] = json!(false);
+    let mut capability =
+        complete_guard_capability_value(&harness, "guard_installation_native_output_unverified")?;
+    capability["native_host_output_adapter_config_verified"] = json!(false);
     record_guard_installation(
         &harness,
         "native_output_unverified",
@@ -2722,7 +2723,7 @@ fn host_hook_strength_requires_native_output_adapter() -> Result<(), Box<dyn Err
         false
     );
     assert_eq!(
-        response.response_value["guard_health"]["native_host_output_adapter_verified"],
+        response.response_value["guard_health"]["native_host_output_adapter_config_verified"],
         false
     );
     assert_eq!(
@@ -2733,9 +2734,115 @@ fn host_hook_strength_requires_native_output_adapter() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn host_hook_strength_rejects_v1_capability_even_with_v2_config_fact() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let mut capability =
+        complete_guard_capability_value(&harness, "guard_installation_v1_mixed_native_output")?;
+    let guard_installation_id = record_guard_installation(
+        &harness,
+        "v1_mixed_native_output",
+        "detective",
+        "active",
+        &capability.to_string(),
+    )?;
+    let (task_id, _, _) = create_close_ready_task(&harness, "v1_mixed_native_output")?;
+    capability["schema"] = json!("volicord-host-hook-capability-v1");
+    capability["native_host_output_adapter_config_verified"] = json!(true);
+    let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+        &harness.runtime_home_path,
+    ))?;
+    let updated = registry.execute(
+        "UPDATE guard_installations
+            SET host_capability_json = ?1
+          WHERE guard_installation_id = ?2",
+        rusqlite::params![capability.to_string(), &guard_installation_id],
+    )?;
+    assert_eq!(updated, 1, "fixture capability row should exist");
+    let before = harness.counts()?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_v1_mixed_native_output",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "guard_installations",
+        &guard_installation_id,
+        "host_capability_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn host_hook_strength_rejects_exact_capability_with_mismatched_owner_intent(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let mut capability =
+        complete_guard_capability_value(&harness, "guard_installation_binding_intent_mismatch")?;
+    let guard_installation_id = record_guard_installation(
+        &harness,
+        "binding_intent_mismatch",
+        "detective",
+        "active",
+        &capability.to_string(),
+    )?;
+    let (task_id, _, _) = create_close_ready_task(&harness, "binding_intent_mismatch")?;
+    capability["connection_intent"] = json!("personal");
+    let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+        &harness.runtime_home_path,
+    ))?;
+    let updated = registry.execute(
+        "UPDATE guard_installations
+            SET host_capability_json = ?1
+          WHERE guard_installation_id = ?2",
+        rusqlite::params![capability.to_string(), &guard_installation_id],
+    )?;
+    assert_eq!(updated, 1, "fixture capability row should exist");
+    let before = harness.counts()?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_binding_intent_mismatch",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "guard_installations",
+        &guard_installation_id,
+        "host_capability_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn host_hook_strength_requires_generated_config_verification() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let capability = complete_guard_capability_value(&harness)?;
+    let capability =
+        complete_guard_capability_value(&harness, "guard_installation_generated_config_missing")?;
     let wrapper_path = capability["files"]
         .as_array()
         .and_then(|files| {
@@ -2793,14 +2900,20 @@ fn host_hook_strength_requires_generated_config_verification() -> Result<(), Box
 fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box<dyn Error>> {
     let suffix = "hook_path_unsafe_observe";
     let harness = MethodHarness::new()?;
-    let mut capability = complete_guard_capability_value(&harness)?;
-    capability["host_hook_commands"][0]["command"] =
-        json!(".codex/hooks/volicord-dispatch.sh session-start");
+    let mut capability =
+        complete_guard_capability_value(&harness, "guard_installation_hook_path_unsafe_observe")?;
     capability["host_hook_commands"][0]["cwd_independent"] = json!(false);
     capability["host_hook_commands"][0]["subdirectory_safe"] = json!(false);
+    capability["hook_root_resolution"]["overall_status"] = json!("relative_path_unsafe");
+    capability["hook_root_resolution"]["all_cwd_independent"] = json!(false);
+    capability["hook_root_resolution"]["all_subdirectory_safe"] = json!(false);
+    capability["hook_root_resolution"]["phases"][0]["cwd_independent"] = json!(false);
+    capability["hook_root_resolution"]["phases"][0]["subdirectory_safe"] = json!(false);
     capability["hook_path_safety"]["overall_status"] = json!("relative_path_unsafe");
     capability["hook_path_safety"]["all_cwd_independent"] = json!(false);
     capability["hook_path_safety"]["all_subdirectory_safe"] = json!(false);
+    capability["hook_path_safety"]["commands"][0]["cwd_independent"] = json!(false);
+    capability["hook_path_safety"]["commands"][0]["subdirectory_safe"] = json!(false);
     record_guard_installation(
         &harness,
         suffix,
@@ -2849,7 +2962,8 @@ fn host_hook_strength_requires_hook_path_safety_and_recovers() -> Result<(), Box
         false
     );
 
-    let safe_capability = complete_guard_capability_value(&harness)?;
+    let safe_capability =
+        complete_guard_capability_value(&harness, "guard_installation_hook_path_unsafe_observe")?;
     record_guard_installation(
         &harness,
         suffix,
@@ -2900,7 +3014,8 @@ fn host_hook_strength_requires_shell_and_direct_write_matcher_coverage(
         ),
     ] {
         let harness = MethodHarness::new()?;
-        let mut capability = complete_guard_capability_value(&harness)?;
+        let guard_installation_id = format!("guard_installation_{suffix}");
+        let mut capability = complete_guard_capability_value(&harness, &guard_installation_id)?;
         capability[field] = json!(false);
         record_guard_installation(
             &harness,
@@ -3151,6 +3266,32 @@ fn guarded_configured_guard_becomes_effectively_active_after_valid_observation(
     )?
     .expect("matching observation should record guard activation");
     assert_eq!(observed.installation_status, "active");
+    let repaired_guard_installation_id = record_guard_installation(
+        &harness,
+        "guarded_configured_observed",
+        "detective",
+        "configured",
+        "{}",
+    )?;
+    assert_eq!(repaired_guard_installation_id, guard_installation_id);
+    let repaired_health =
+        guard_health_record(&harness.runtime_home_path, PROJECT_ID, CONNECTION_ID)?;
+    let repaired_installation = repaired_health
+        .guard_installation
+        .as_ref()
+        .expect("same-identity repair should retain the installation");
+    assert_eq!(
+        repaired_installation.installation_status, "active",
+        "same-identity setup refresh preserves an already observed active lifecycle row"
+    );
+    assert_eq!(
+        repaired_installation.last_seen_at.as_deref(),
+        Some("2026-06-30T00:03:00Z")
+    );
+    assert_eq!(
+        repaired_installation.observed_policy_hash.as_deref(),
+        Some("sha256:guardedfixture")
+    );
     let session_id = "session_guarded_configured_observed";
     initialize_full_watch_baseline(
         &harness,
@@ -3212,23 +3353,27 @@ fn guarded_configured_guard_becomes_effectively_active_after_valid_observation(
 fn guarded_degraded_installation_with_valid_event_still_blocks_missing_required_hooks(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let degraded_capability = json!({
-        "schema": "volicord-host-hook-capability-v1",
-        "policy_hash": "sha256:guardedfixture",
-        "host_capabilities": {
-            "user_prompt_submit_hook": true
-        },
-        "required_hook_phases": [
-            "session_start_hook",
-            "pre_tool_hook",
-            "post_tool_hook",
-            "user_prompt_submit_hook",
-            "stop_hook"
-        ],
-        "missing_required_hooks": ["pre_tool_hook"],
-        "prompt_capture": true
-    })
-    .to_string();
+    let mut degraded_capability =
+        complete_guard_capability_value(&harness, "guard_installation_guarded_degraded_observed")?;
+    degraded_capability["missing_required_hooks"] = json!(["pre_tool_hook"]);
+    degraded_capability["host_capabilities"]["pre_tool_hook"] = json!(false);
+    degraded_capability["host_hook_commands"]
+        .as_array_mut()
+        .expect("command array")
+        .retain(|command| command["phase"] != "pre_tool_hook");
+    degraded_capability["files"]
+        .as_array_mut()
+        .expect("file array")
+        .retain(|file| file["kind"] != "host_hook_wrapper" || file["phase"] != "pre_tool");
+    degraded_capability["hook_root_resolution"]["phases"]
+        .as_array_mut()
+        .expect("root phases")
+        .retain(|phase| phase["phase"] != "pre_tool_hook");
+    degraded_capability["hook_path_safety"]["commands"]
+        .as_array_mut()
+        .expect("safety commands")
+        .retain(|command| command["phase"] != "pre_tool_hook");
+    let degraded_capability = degraded_capability.to_string();
     let guard_installation_id = record_guard_installation(
         &harness,
         "guarded_degraded_observed",
@@ -3328,61 +3473,44 @@ fn guarded_degraded_installation_with_valid_event_still_blocks_missing_required_
 }
 
 #[test]
-fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_required_hooks(
+fn guarded_partial_required_phase_capability_is_rejected_as_corrupt_owner_state(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let partial_capability = json!({
-        "schema": "volicord-host-hook-capability-v1",
-        "policy_hash": "sha256:guardedfixture",
-        "host_capabilities": {
-            "user_prompt_submit_hook": true
-        },
-        "required_hook_phases": ["session_start_hook"],
-        "missing_required_hooks": [],
-        "prompt_capture": true
-    })
-    .to_string();
+    let mut capability =
+        complete_guard_capability_value(&harness, "guard_installation_guarded_partial_observed")?;
     let guard_installation_id = record_guard_installation(
         &harness,
         "guarded_partial_observed",
         "detective",
         "configured",
-        &partial_capability,
+        &capability.to_string(),
     )?;
-    let observed = observe_guard_installation(
-        &harness.runtime_home_path,
-        GuardInstallationObservation {
-            guard_installation_id: guard_installation_id.clone(),
-            connection_internal_id: CONNECTION_ID.to_owned(),
-            project_id: PROJECT_ID.to_owned(),
-            host_kind: HOST_KIND_CODEX.to_owned(),
-            guard_mode: "detective".to_owned(),
-            observed_policy_hash: "sha256:guardedfixture".to_owned(),
-            observed_binary_version: Some("0.0.0-test".to_owned()),
-            observed_phase: "session_start".to_owned(),
-            observed_at: "2026-06-30T00:03:00Z".to_owned(),
-        },
-    )?
-    .expect("matching partial observation should record metadata");
-    assert_eq!(observed.installation_status, "configured");
+    let (task_id, _, _) = create_close_ready_task(&harness, "guarded_partial_observed")?;
 
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, "guarded_partial_observed")?;
-    let after_evidence = record_close_evidence(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        2,
-        "guarded_partial_observed",
-        true,
+    capability["required_hook_phases"] = json!(["session_start_hook"]);
+    capability["host_hook_commands"]
+        .as_array_mut()
+        .expect("command array")
+        .retain(|command| command["phase"] == "session_start_hook");
+    capability["hook_root_resolution"]["phases"]
+        .as_array_mut()
+        .expect("root phases")
+        .retain(|phase| phase["phase"] == "session_start_hook");
+    capability["hook_path_safety"]["commands"]
+        .as_array_mut()
+        .expect("safety commands")
+        .retain(|command| command["phase"] == "session_start_hook");
+    let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+        &harness.runtime_home_path,
+    ))?;
+    let updated = registry.execute(
+        "UPDATE guard_installations
+            SET host_capability_json = ?1
+          WHERE guard_installation_id = ?2",
+        rusqlite::params![capability.to_string(), &guard_installation_id],
     )?;
-    record_final_acceptance(
-        &harness,
-        &task_id,
-        &change_unit_id,
-        after_evidence,
-        "guarded_partial_observed",
-    )?;
+    assert_eq!(updated, 1, "fixture capability row should exist");
+    let before = harness.counts()?;
 
     let response = harness.service.check_close(
         check_close_request(CloseTaskFixture {
@@ -3398,34 +3526,14 @@ fn guarded_partial_required_phase_configuration_with_event_still_blocks_missing_
         invocation(OperationCategory::Read),
     )?;
 
-    assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "guard_required_hooks_missing");
-    assert_eq!(
-        response.response_value["guard_health"]["guard_configuration_status"],
-        "degraded"
+    assert_owner_state_rejection(
+        &response,
+        "guard_installations",
+        &guard_installation_id,
+        "host_capability_json",
+        &harness.runtime_home_path,
     );
-    assert_eq!(
-        response.response_value["guard_health"]["guard_observation_status"],
-        "observed"
-    );
-    assert_eq!(
-        response.response_value["guard_health"]["effective_guard_status"],
-        "degraded"
-    );
-    let missing = response.response_value["guard_health"]["missing_required_hook_phases"]
-        .as_array()
-        .expect("missing required hook phases should be an array");
-    assert_eq!(missing.len(), 4);
-    assert!(missing.iter().any(|phase| phase == "pre_tool_hook"));
-    assert!(missing.iter().all(|phase| phase != "session_start_hook"));
-    assert_eq!(
-        response.response_value["guard_health"]["control_surface"]["host_hooks_active"],
-        false
-    );
-    assert_eq!(
-        response.response_value["guard_health"]["control_surface"]["os_enforced"],
-        false
-    );
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 

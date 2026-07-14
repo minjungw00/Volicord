@@ -70,7 +70,7 @@ use super::{
     fake_mcp::write_basic_fake_mcp,
 };
 
-pub(crate) const PROMPT_CAPTURE_TEST_HOST_KIND: &str = "prompt_capture_test_host";
+pub(crate) const PROMPT_CAPTURE_TEST_HOST_KIND: &str = "codex";
 pub(crate) const CODEX_SESSION_START_EVENT: &str =
     include_str!("../fixtures/host_contracts/codex/events/session_start.json");
 pub(crate) const CODEX_PRE_TOOL_WRITE_EVENT: &str =
@@ -97,6 +97,57 @@ pub(crate) const CLAUDE_USER_PROMPT_ACTION_EVENT: &str = include_str!(
 );
 pub(crate) const CLAUDE_STOP_EVENT: &str =
     include_str!("../fixtures/host_contracts/claude_code/events/stop.json");
+
+#[cfg(unix)]
+fn guard_fixture_command_args(
+    repo_root: &Path,
+    connection_id: &str,
+    guard_installation_id: &str,
+    host_output: &str,
+    command_name: &str,
+    policy_hash: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec![
+        "_hook".to_owned(),
+        command_name.to_owned(),
+        "--repo".to_owned(),
+        repo_root.display().to_string(),
+        "--connection".to_owned(),
+        connection_id.to_owned(),
+        "--guard-installation".to_owned(),
+        guard_installation_id.to_owned(),
+        "--host".to_owned(),
+        host_output.to_owned(),
+        "--integration-profile".to_owned(),
+        "detective".to_owned(),
+    ];
+    if let Some(policy_hash) = policy_hash {
+        args.extend(["--policy-hash".to_owned(), policy_hash.to_owned()]);
+    }
+    args.extend(["--host-output".to_owned(), host_output.to_owned()]);
+    args
+}
+
+#[cfg(unix)]
+fn guard_fixture_command_line(command: &str, args: &[String]) -> String {
+    std::iter::once(command)
+        .chain(args.iter().map(String::as_str))
+        .map(guard_fixture_shell_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(unix)]
+fn guard_fixture_shell_word(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
+    {
+        return value.to_owned();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
 
 pub(crate) struct GuardCliFixture {
     inner: CoreFixture,
@@ -776,16 +827,137 @@ impl GuardCliFixture {
         installation_status: &str,
     ) -> Result<(String, String), Box<dyn Error>> {
         let guard_installation_id = format!("guard_installation_cli_activation_{connection_id}");
+        let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+            self.runtime_home(),
+        ))?;
+        let updated = registry.execute(
+            "UPDATE agent_connections
+                SET host_kind = ?1
+              WHERE connection_internal_id = ?2",
+            rusqlite::params![host_kind, connection_id],
+        )?;
+        if updated != 1 {
+            return Err(format!("fixture connection {connection_id} should exist").into());
+        }
         let policy_host = match host_kind {
             "claude_code" => "claude-code",
             other => other,
         };
+        let root_resolution_basis = if host_kind == "claude_code" {
+            "claude_project_dir"
+        } else {
+            "git_work_tree"
+        };
+        let hook_command_path_basis = if host_kind == "claude_code" {
+            "claude_project_dir"
+        } else {
+            "git_root_runtime"
+        };
+        let phases = [
+            ("session_start_hook", "session_start", "session-start"),
+            ("pre_tool_hook", "pre_tool", "pre-tool"),
+            ("post_tool_hook", "post_tool", "post-tool"),
+            (
+                "user_prompt_submit_hook",
+                "prompt_capture",
+                "prompt-capture",
+            ),
+            ("stop_hook", "stop", "stop"),
+        ];
+        let host_hook_commands = phases
+            .iter()
+            .filter(|(phase, _, _)| {
+                *phase != "user_prompt_submit_hook" || host_supports_prompt_capture
+            })
+            .map(|(phase, policy_key, command_name)| {
+                let hook_directory = if host_kind == "claude_code" {
+                    ".claude/hooks"
+                } else {
+                    ".codex/hooks"
+                };
+                let expected_phase_wrapper_path = self
+                    .repo_root
+                    .join(hook_directory)
+                    .join(format!("volicord-{command_name}.sh"));
+                let expected_wrapper_path = if host_kind == "codex" {
+                    self.repo_root.join(".codex/hooks/volicord-dispatch.sh")
+                } else {
+                    expected_phase_wrapper_path.clone()
+                };
+                let (command_shape, command, args) = if host_kind == "claude_code" {
+                    (
+                        "exec_form",
+                        format!(
+                            "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/volicord-{command_name}.sh"
+                        ),
+                        json!([]),
+                    )
+                } else {
+                    (
+                        "shell_command_string",
+                        format!(
+                            "sh -c '{}'",
+                            format!(
+                                "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}"
+                            )
+                            .replace('\'', "'\\''")
+                        ),
+                        Value::Null,
+                    )
+                };
+                json!({
+                    "host_kind": host_kind,
+                    "phase": phase,
+                    "purpose": "detective_guard",
+                    "policy_key": policy_key,
+                    "command_shape": command_shape,
+                    "command": command,
+                    "args": args,
+                    "expected_wrapper_path": expected_wrapper_path,
+                    "expected_phase_wrapper_path": expected_phase_wrapper_path,
+                    "root_resolution_basis": root_resolution_basis,
+                    "hook_command_path_basis": hook_command_path_basis,
+                    "cwd_independent": true,
+                    "subdirectory_safe": true,
+                    "wrapper_resolution_status": "ok",
+                    "verification": {
+                        "basis_verified_by": "test_fixture",
+                        "host_contract_source": "test_fixture",
+                    },
+                })
+            })
+            .collect::<Vec<_>>();
+        let root_phases = host_hook_commands
+            .iter()
+            .map(|command| {
+                json!({
+                    "phase": command["phase"],
+                    "root_resolution_basis": command["root_resolution_basis"],
+                    "hook_command_path_basis": command["hook_command_path_basis"],
+                    "cwd_independent": command["cwd_independent"],
+                    "subdirectory_safe": command["subdirectory_safe"],
+                    "wrapper_resolution_status": command["wrapper_resolution_status"],
+                })
+            })
+            .collect::<Vec<_>>();
+        let safety_commands = host_hook_commands
+            .iter()
+            .map(|command| {
+                json!({
+                    "phase": command["phase"],
+                    "hook_command_path_basis": command["hook_command_path_basis"],
+                    "cwd_independent": command["cwd_independent"],
+                    "subdirectory_safe": command["subdirectory_safe"],
+                    "wrapper_resolution_status": command["wrapper_resolution_status"],
+                })
+            })
+            .collect::<Vec<_>>();
         let commands = json!({
-            "session_start": {"command": "volicord", "args": ["_hook", "session-start"]},
-            "pre_tool": {"command": "volicord", "args": ["_hook", "pre-tool"]},
-            "post_tool": {"command": "volicord", "args": ["_hook", "post-tool"]},
-            "prompt_capture": {"command": "volicord", "args": ["_hook", "prompt-capture"]},
-            "stop": {"command": "volicord", "args": ["_hook", "stop"]}
+            "session_start": {"command": "volicord", "args": guard_fixture_command_args(&self.repo_root, connection_id, &guard_installation_id, policy_host, "session-start", None)},
+            "pre_tool": {"command": "volicord", "args": guard_fixture_command_args(&self.repo_root, connection_id, &guard_installation_id, policy_host, "pre-tool", None)},
+            "post_tool": {"command": "volicord", "args": guard_fixture_command_args(&self.repo_root, connection_id, &guard_installation_id, policy_host, "post-tool", None)},
+            "prompt_capture": {"command": "volicord", "args": guard_fixture_command_args(&self.repo_root, connection_id, &guard_installation_id, policy_host, "prompt-capture", None)},
+            "stop": {"command": "volicord", "args": guard_fixture_command_args(&self.repo_root, connection_id, &guard_installation_id, policy_host, "stop", None)}
         });
         let policy = json!({
             "schema": "volicord-policy-v1",
@@ -807,6 +979,103 @@ impl GuardCliFixture {
             policy_dir.join("policy.json"),
             serde_json::to_string_pretty(&policy)?,
         )?;
+        let mut files = host_hook_commands
+            .iter()
+            .map(|command| {
+                let command_name = phases
+                    .iter()
+                    .find_map(|(_, policy_key, command_name)| {
+                        (command["policy_key"].as_str() == Some(*policy_key))
+                            .then_some(*command_name)
+                    })
+                    .expect("fixture command policy key must be canonical");
+                let wrapper_args = guard_fixture_command_args(
+                    &self.repo_root,
+                    connection_id,
+                    &guard_installation_id,
+                    policy_host,
+                    command_name,
+                    Some(&policy_hash),
+                );
+                json!({
+                    "kind": "host_hook_wrapper",
+                    "path": command["expected_phase_wrapper_path"],
+                    "status": "unchanged",
+                    "content_hash": "wrapper-hash",
+                    "ownership": "managed_script",
+                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                    "executable_required": true,
+                    "managed_script_command": guard_fixture_command_line("volicord", &wrapper_args),
+                    "host_kind": policy_host,
+                    "phase": command["policy_key"],
+                    "purpose": "detective_guard",
+                    "connection_id": connection_id,
+                    "guard_installation_id": guard_installation_id.as_str(),
+                    "policy_hash": policy_hash.as_str(),
+                    "host_output": policy_host,
+                })
+            })
+            .collect::<Vec<_>>();
+        files.push(json!({
+            "kind": "volicord_policy",
+            "path": policy_dir.join("policy.json"),
+            "status": "unchanged",
+            "content_hash": "policy-file-hash",
+            "ownership": "managed_json",
+        }));
+        if host_kind == "codex" {
+            files.extend([
+                json!({
+                    "kind": "host_hook_dispatch",
+                    "path": self.repo_root.join(".codex/hooks/volicord-dispatch.sh"),
+                    "status": "unchanged",
+                    "content_hash": "dispatch-hash",
+                    "ownership": "managed_script",
+                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                    "executable_required": true,
+                    "managed_script_role": "codex_dispatch",
+                    "host_kind": "codex",
+                    "phase": "dispatch",
+                }),
+                json!({
+                    "kind": "host_hook_config",
+                    "path": self.repo_root.join(".codex/hooks.json"),
+                    "status": "unchanged",
+                    "content_hash": "config-hash",
+                    "ownership": "managed_json",
+                }),
+                json!({
+                    "kind": "host_rule_instruction",
+                    "path": self.repo_root.join(".codex/rules/volicord.rules"),
+                    "status": "unchanged",
+                    "content_hash": "rule-hash",
+                    "ownership": "managed_block",
+                    "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
+                    "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
+                }),
+            ]);
+        } else if host_kind == "claude_code" {
+            files.extend([
+                json!({
+                    "kind": "host_hook_config",
+                    "path": self.repo_root.join(".claude/settings.json"),
+                    "status": "unchanged",
+                    "content_hash": "config-hash",
+                    "ownership": "managed_json_projection",
+                    "managed_projection": "claude_code_settings_hooks",
+                    "managed_projection_json": "{}",
+                }),
+                json!({
+                    "kind": "host_rule_instruction",
+                    "path": self.repo_root.join(".claude/rules/volicord.md"),
+                    "status": "unchanged",
+                    "content_hash": "rule-hash",
+                    "ownership": "managed_block",
+                    "managed_marker_start": "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->",
+                    "managed_marker_end": "<!-- END VOLICORD MANAGED GUIDANCE -->",
+                }),
+            ]);
+        }
         upsert_guard_installation(
             self.runtime_home(),
             GuardInstallationUpsert {
@@ -816,14 +1085,25 @@ impl GuardCliFixture {
                 host_kind: host_kind.to_owned(),
                 guard_mode: "detective".to_owned(),
                 host_capability_json: json!({
-                    "schema": "volicord-host-hook-capability-v1",
+                    "schema": "volicord-host-hook-capability-v2",
                     "policy_hash": policy_hash.clone(),
                     "selected_profile": "detective",
-                    "native_host_output_adapter": policy_host,
-                    "native_host_output_adapter_verified": true,
-                    "final_output_authority_disclosure_supported": true,
+                    "connection_intent": "shared",
+                    "native_host_output_adapter": if matches!(host_kind, "codex" | "claude_code") { policy_host } else { "none" },
+                    "native_host_output_adapter_config_verified": matches!(host_kind, "codex" | "claude_code"),
+                    "final_output_authority_disclosure_implementation_available": matches!(host_kind, "codex" | "claude_code"),
+                    "bash_shell_mutation_coverage": true,
+                    "direct_file_write_matcher_coverage": true,
                     "host_capabilities": {
-                        "user_prompt_submit_hook": host_supports_prompt_capture
+                        "stdio_mcp": true,
+                        "http_mcp": false,
+                        "session_start_hook": true,
+                        "pre_tool_hook": true,
+                        "post_tool_hook": true,
+                        "user_prompt_submit_hook": host_supports_prompt_capture,
+                        "stop_hook": true,
+                        "rule_file_support": true,
+                        "project_local_configuration": true,
                     },
                     "required_hook_phases": [
                         "session_start_hook",
@@ -832,8 +1112,24 @@ impl GuardCliFixture {
                         "user_prompt_submit_hook",
                         "stop_hook"
                     ],
-                    "missing_required_hooks": [],
-                    "prompt_capture": prompt_capture_configured
+                    "missing_required_hooks": if host_supports_prompt_capture { json!([]) } else { json!(["user_prompt_submit_hook"]) },
+                    "prompt_capture": prompt_capture_configured,
+                    "files": files,
+                    "host_hook_commands": host_hook_commands,
+                    "hook_root_resolution": {
+                        "basis": root_resolution_basis,
+                        "all_cwd_independent": true,
+                        "all_subdirectory_safe": true,
+                        "overall_status": "ok",
+                        "phases": root_phases,
+                    },
+                    "hook_path_safety": {
+                        "overall_status": "ok",
+                        "all_cwd_independent": true,
+                        "all_subdirectory_safe": true,
+                        "commands": safety_commands,
+                    },
+                    "commands": commands,
                 })
                 .to_string(),
                 installation_status: installation_status.to_owned(),
@@ -1096,6 +1392,22 @@ impl GuardedLifecycleFixture {
             "project_local_configuration": true
         });
         capability["prompt_capture"] = json!(true);
+        capability["host_hook_commands"]
+            .as_array_mut()
+            .ok_or("fixture capability should contain host_hook_commands")?
+            .retain(|command| command["phase"] != "pre_tool_hook");
+        capability["hook_root_resolution"]["phases"]
+            .as_array_mut()
+            .ok_or("fixture capability should contain root-resolution phases")?
+            .retain(|phase| phase["phase"] != "pre_tool_hook");
+        capability["hook_path_safety"]["commands"]
+            .as_array_mut()
+            .ok_or("fixture capability should contain path-safety commands")?
+            .retain(|command| command["phase"] != "pre_tool_hook");
+        capability["files"]
+            .as_array_mut()
+            .ok_or("fixture capability should contain managed files")?
+            .retain(|file| file["kind"] != "host_hook_wrapper" || file["phase"] != "pre_tool");
         upsert_guard_installation(
             self.runtime_home(),
             GuardInstallationUpsert {

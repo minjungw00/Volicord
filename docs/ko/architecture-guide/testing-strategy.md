@@ -67,6 +67,43 @@ VOLICORD_RUN_CODEX_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke cod
 VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_smoke_is_opt_in -- --ignored --nocapture
 ```
 
+### Typed 호스트 기능 지원 평가기
+
+호스트 통합 단위 테스트는 설정 픽스처 및 출력 렌더링과 분리해 중앙 평가기를 검증합니다.
+최소 표는 다음과 같습니다.
+
+| 구현 사실 | 정확한 현재 증거 | 런타임 준비 상태 | 예상 `HostFeatureSupportStatus` |
+|---|---|---|---|
+| 호스트가 지원하지 않음 | 모두 | 모두 | `unsupported_by_host` |
+| 구현됨 | 누락, 오래됨, 만료, 형식 오류, 불일치 | 모두 | `implemented_unverified` |
+| 구현됨 | 현재 상태이며 정확히 결속됨 | 일시적으로 사용할 수 없음 | `temporarily_unavailable` |
+| 구현됨 | 현재 상태이며 정확히 결속됨 | 준비됨 | `verified` |
+
+테스트는 `unsupported_by_host`, `implemented_unverified`,
+`temporarily_unavailable`, `verified` 순서의 집계 우선순위도 검증합니다. 설정 존재 여부와
+설정 감사 결과는 독립적으로 바꾸며 예상 지원 상태를 변경해서는 안 됩니다.
+
+표 기반 호스트 기준 테스트는 안정된 여섯 기능 키를 모두 다룹니다. 실제 증거가 없을 때
+Codex는 앞의 네 기능을 `implemented_unverified`, 두 최종 출력 기능을
+`unsupported_by_host`로 보고합니다. Claude Code는 여섯 기능을 모두
+`implemented_unverified`, Generic은 모두 `unsupported_by_host`로 보고합니다. 최종 출력
+테스트는 Record가 `authority_display`, `authenticated_exact_replay`만 사용하고 Detective가
+`block_finalization`을 더하며, 프로필에 적용되는 키만 직렬화하는지도 검증합니다.
+
+연결 상태, Doctor, 릴리스의 모든 셀은 하나의 평가에서 같은 여섯 키
+`host_feature_support` map을 projection해야 합니다. 바이너리 테스트는 정확한 필드 경로,
+모든 필수 키, 추가 키 부재, 결정적인 Doctor 행, 프로필별 최종 출력 세부정보가 map을
+대체하지 않는다는 사실을 검증합니다. 저장 guard capability 테스트는 명시적인 구현 및
+설정 사실을 담은 내부 `host_capability_json` schema v2를 요구합니다. V1 기록은 현재
+입력으로 거부하고 init을 다시 실행해야만 복구하며, v1 boolean에서 typed 지원 상태를
+추론하면 안 됩니다.
+
+실제 테스트 harness의 `verified`, `unavailable`, `not_applicable`, `failed` 증거 상태는 제품
+지원 상태와 분리해 유지합니다. 특히 harness의 `not_applicable`은 제품
+`HostFeatureSupportStatus`가 아니며 픽스처 통과로 릴리스 셀을 올릴 수 없습니다. 릴리스
+테스트는 `verified`를 기대하기 전에 현재 증거를 정확한 최종 실행 파일과 담당 문서가
+정의한 모든 호스트, 빌드, 어댑터, 연결, 증거, 최신성 좌표에 결속합니다.
+
 ### 최종 출력 호스트·프로필 매트릭스
 
 최종 출력 점검은 명시적인 네 개 셀로 구성됩니다. 각 셀은 고유한 선택 변수와 테스트를

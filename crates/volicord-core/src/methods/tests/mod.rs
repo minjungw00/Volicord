@@ -1197,8 +1197,12 @@ fn record_guard_installation(
     host_capability_json: &str,
 ) -> Result<String, Box<dyn Error>> {
     let guard_installation_id = format!("guard_installation_{suffix}");
-    let host_capability_json = if host_capability_json == "{}" && guard_mode != "record" {
-        complete_host_hook_capability_json(harness)?
+    let host_capability_json = if host_capability_json == "{}" {
+        if guard_mode == "record" {
+            record_host_hook_capability_json(harness, &guard_installation_id)?
+        } else {
+            complete_host_hook_capability_json(harness, &guard_installation_id)?
+        }
     } else {
         host_capability_json.to_owned()
     };
@@ -1231,14 +1235,124 @@ fn record_guard_installation(
     Ok(guard_installation_id)
 }
 
-fn complete_host_hook_capability_json(harness: &MethodHarness) -> Result<String, Box<dyn Error>> {
-    Ok(complete_guard_capability_value(harness)?.to_string())
+fn complete_host_hook_capability_json(
+    harness: &MethodHarness,
+    guard_installation_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    Ok(complete_guard_capability_value(harness, guard_installation_id)?.to_string())
 }
 
-fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box<dyn Error>> {
+fn record_host_hook_capability_json(
+    harness: &MethodHarness,
+    guard_installation_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let repo_root = product_repo_root(harness)?;
+    Ok(json!({
+        "schema": "volicord-host-hook-capability-v2",
+        "policy_hash": "sha256:recordfixture",
+        "selected_profile": "record",
+        "connection_intent": "shared",
+        "final_output_authority_disclosure_implementation_available": false,
+        "native_host_output_adapter": "none",
+        "native_host_output_adapter_config_verified": false,
+        "bash_shell_mutation_coverage": false,
+        "direct_file_write_matcher_coverage": false,
+        "host_capabilities": {
+            "stdio_mcp": true,
+            "http_mcp": false,
+            "session_start_hook": false,
+            "pre_tool_hook": false,
+            "post_tool_hook": false,
+            "user_prompt_submit_hook": false,
+            "stop_hook": false,
+            "rule_file_support": false,
+            "project_local_configuration": true,
+        },
+        "required_hook_phases": [],
+        "missing_required_hooks": [],
+        "prompt_capture": false,
+        "files": [],
+        "host_hook_commands": [],
+        "hook_root_resolution": null,
+        "hook_path_safety": null,
+        "commands": policy_commands_value(
+            "volicord",
+            &repo_root,
+            CONNECTION_ID,
+            guard_installation_id,
+            "record",
+        ),
+    })
+    .to_string())
+}
+
+fn complete_host_capabilities_value() -> Value {
+    json!({
+        "stdio_mcp": true,
+        "http_mcp": false,
+        "session_start_hook": true,
+        "pre_tool_hook": true,
+        "post_tool_hook": true,
+        "user_prompt_submit_hook": true,
+        "stop_hook": true,
+        "rule_file_support": true,
+        "project_local_configuration": true,
+    })
+}
+
+fn policy_commands_value(
+    executable: &str,
+    repo_root: &Path,
+    connection_id: &str,
+    guard_installation_id: &str,
+    profile: &str,
+) -> Value {
+    let policy_command = |command_name: &str| {
+        let (output_flag, output_format) = if profile == "detective" {
+            ("--host-output", "codex")
+        } else {
+            ("--output", "volicord-json")
+        };
+        json!({
+            "command": executable,
+            "args": [
+                "_hook",
+                command_name,
+                "--repo",
+                path_text(repo_root),
+                "--connection",
+                connection_id,
+                "--guard-installation",
+                guard_installation_id,
+                "--host",
+                "codex",
+                "--integration-profile",
+                profile,
+                output_flag,
+                output_format,
+            ],
+        })
+    };
+    json!({
+        "session_start": policy_command("session-start"),
+        "pre_tool": policy_command("pre-tool"),
+        "post_tool": policy_command("post-tool"),
+        "prompt_capture": policy_command("prompt-capture"),
+        "stop": policy_command("stop"),
+    })
+}
+
+fn complete_guard_capability_value(
+    harness: &MethodHarness,
+    guard_installation_id: &str,
+) -> Result<Value, Box<dyn Error>> {
     let repo_root = product_repo_root(harness)?;
     let policy_path = repo_root.join(".volicord").join("policy.json");
     let hook_config_path = repo_root.join(".codex").join("hooks.json");
+    let rule_path = repo_root
+        .join(".codex")
+        .join("rules")
+        .join("volicord.rules");
     let hooks_dir = repo_root.join(".codex").join("hooks");
     fs::create_dir_all(policy_path.parent().expect("policy path has parent"))?;
     fs::create_dir_all(
@@ -1247,10 +1361,17 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             .expect("hook config path has parent"),
     )?;
     fs::create_dir_all(&hooks_dir)?;
+    fs::create_dir_all(rule_path.parent().expect("rule path has parent"))?;
     let policy_text = r#"{"managed_by":"volicord","host_hook": {"commands":{}}}"#;
     let hook_config_text = r#"{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" session-start'"}]}],"PreToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" pre-tool'"}]}],"PostToolUse":[{"matcher":"Bash|apply_patch|Edit|Write|mcp__.*__(write|edit|create|update|delete|remove|move|patch).*","hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" post-tool'"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" prompt-capture'"}]}],"Stop":[{"hooks":[{"type":"command","command":"sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" stop'"}]}]}}"#;
     fs::write(&policy_path, policy_text)?;
     fs::write(&hook_config_path, hook_config_text)?;
+    let rule_text = concat!(
+        "# BEGIN VOLICORD MANAGED CODEX RULES\n",
+        "# test fixture\n",
+        "# END VOLICORD MANAGED CODEX RULES\n",
+    );
+    fs::write(&rule_path, rule_text)?;
     let dispatch_path = hooks_dir.join("volicord-dispatch.sh");
     let dispatch_text = concat!(
         "#!/bin/sh\n",
@@ -1291,17 +1412,18 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
     for (capability_phase, command_name, policy_key) in phases {
         let wrapper_path = hooks_dir.join(format!("volicord-{command_name}.sh"));
         let wrapper_command = format!(
-            "/opt/volicord _hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation guard_installation --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
+            "/opt/volicord _hook {command_name} --repo {} --connection {CONNECTION_ID} --guard-installation {guard_installation_id} --host codex --integration-profile detective --policy-hash sha256:guardedfixture --host-output codex",
             path_text(&repo_root),
         );
         let wrapper_text = format!(
-            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER\n# host_kind=codex\n# phase={policy_key}\n# purpose=detective_guard\n# connection_id={CONNECTION_ID}\n# guard_installation_id=guard_installation\n# policy_hash=sha256:guardedfixture\n# host_output=codex\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME=/runtime/home\nVOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1\nexport VOLICORD_HOME\nexport VOLICORD_MANAGED_PROCESS_BINDING\nexec {wrapper_command}\n"
+            "#!/bin/sh\n# VOLICORD_MANAGED_HOOK_WRAPPER\n# host_kind=codex\n# phase={policy_key}\n# purpose=detective_guard\n# connection_id={CONNECTION_ID}\n# guard_installation_id={guard_installation_id}\n# policy_hash=sha256:guardedfixture\n# host_output=codex\n# runtime_home_binding=selected_init_runtime_home\nVOLICORD_HOME=/runtime/home\nVOLICORD_MANAGED_PROCESS_BINDING=runtime-home-and-profile-command-v1\nexport VOLICORD_HOME\nexport VOLICORD_MANAGED_PROCESS_BINDING\nexec {wrapper_command}\n"
         );
         fs::write(&wrapper_path, &wrapper_text)?;
         set_test_executable(&wrapper_path)?;
         wrapper_files.push(json!({
             "kind": "host_hook_wrapper",
             "path": path_text(&wrapper_path),
+            "status": "unchanged",
             "content_hash": sha256_text(&wrapper_text),
             "ownership": "managed_script",
             "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
@@ -1311,13 +1433,14 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             "phase": policy_key,
             "purpose": "detective_guard",
             "connection_id": CONNECTION_ID,
-            "guard_installation_id": "guard_installation",
+            "guard_installation_id": guard_installation_id,
             "policy_hash": "sha256:guardedfixture",
             "host_output": "codex"
         }));
         host_hook_commands.push(json!({
             "host_kind": "codex",
             "phase": capability_phase,
+            "purpose": "detective_guard",
             "policy_key": policy_key,
             "command_shape": "shell_command_string",
             "command": format!("sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}'"),
@@ -1335,22 +1458,50 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             }
         }));
     }
+    let hook_root_phases = host_hook_commands
+        .iter()
+        .map(|command| {
+            json!({
+                "phase": command["phase"],
+                "root_resolution_basis": command["root_resolution_basis"],
+                "hook_command_path_basis": command["hook_command_path_basis"],
+                "cwd_independent": command["cwd_independent"],
+                "subdirectory_safe": command["subdirectory_safe"],
+                "wrapper_resolution_status": command["wrapper_resolution_status"],
+            })
+        })
+        .collect::<Vec<_>>();
+    let hook_path_commands = host_hook_commands
+        .iter()
+        .map(|command| {
+            json!({
+                "phase": command["phase"],
+                "hook_command_path_basis": command["hook_command_path_basis"],
+                "cwd_independent": command["cwd_independent"],
+                "subdirectory_safe": command["subdirectory_safe"],
+                "wrapper_resolution_status": command["wrapper_resolution_status"],
+            })
+        })
+        .collect::<Vec<_>>();
     let mut files = vec![
         json!({
             "kind": "volicord_policy",
             "path": path_text(&policy_path),
+            "status": "unchanged",
             "content_hash": sha256_text(policy_text),
             "ownership": "managed_json"
         }),
         json!({
             "kind": "host_hook_config",
             "path": path_text(&hook_config_path),
+            "status": "unchanged",
             "content_hash": sha256_text(hook_config_text),
             "ownership": "managed_json"
         }),
         json!({
             "kind": "host_hook_dispatch",
             "path": path_text(&dispatch_path),
+            "status": "unchanged",
             "content_hash": sha256_text(dispatch_text),
             "ownership": "managed_script",
             "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
@@ -1359,18 +1510,28 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
             "host_kind": "codex",
             "phase": "dispatch"
         }),
+        json!({
+            "kind": "host_rule_instruction",
+            "path": path_text(&rule_path),
+            "status": "unchanged",
+            "content_hash": sha256_text(rule_text),
+            "ownership": "managed_block",
+            "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
+            "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES"
+        }),
     ];
     files.extend(wrapper_files);
     Ok(json!({
-        "schema": "volicord-host-hook-capability-v1",
+        "schema": "volicord-host-hook-capability-v2",
         "policy_hash": "sha256:guardedfixture",
+        "selected_profile": "detective",
+        "connection_intent": "shared",
+        "final_output_authority_disclosure_implementation_available": true,
         "native_host_output_adapter": "codex",
-        "native_host_output_adapter_verified": true,
+        "native_host_output_adapter_config_verified": true,
         "bash_shell_mutation_coverage": true,
         "direct_file_write_matcher_coverage": true,
-        "host_capabilities": {
-            "user_prompt_submit_hook": true
-        },
+        "host_capabilities": complete_host_capabilities_value(),
         "required_hook_phases": [
             "session_start_hook",
             "pre_tool_hook",
@@ -1382,11 +1543,26 @@ fn complete_guard_capability_value(harness: &MethodHarness) -> Result<Value, Box
         "prompt_capture": true,
         "files": files,
         "host_hook_commands": host_hook_commands,
+        "hook_root_resolution": {
+            "basis": "git_work_tree",
+            "all_cwd_independent": true,
+            "all_subdirectory_safe": true,
+            "overall_status": "ok",
+            "phases": hook_root_phases,
+        },
         "hook_path_safety": {
             "overall_status": "ok",
             "all_cwd_independent": true,
-            "all_subdirectory_safe": true
-        }
+            "all_subdirectory_safe": true,
+            "commands": hook_path_commands,
+        },
+        "commands": policy_commands_value(
+            "/opt/volicord",
+            &repo_root,
+            CONNECTION_ID,
+            guard_installation_id,
+            "detective",
+        ),
     }))
 }
 

@@ -2409,7 +2409,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_staged",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )
         .expect_err("an active target membership must not bypass staged activation");
         assert!(matches!(invalid, StoreError::InvalidInput { .. }));
@@ -2424,7 +2429,12 @@ mod tests {
         );
         crate::guards::upsert_guard_installation(
             fixture.runtime_home.path(),
-            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_staged",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )?;
         assert!(remove_connection_project(
             fixture.runtime_home.path(),
@@ -2439,7 +2449,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_conflicting", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_conflicting",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )
         .expect_err("a guard scope conflict must roll back the registry transition");
         assert!(matches!(conflict, StoreError::Conflict { .. }));
@@ -2479,7 +2494,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_staged",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )
         .expect_err("a competing project binding must invalidate the staged inventory");
         assert!(matches!(stale_inventory, StoreError::Conflict { .. }));
@@ -2493,7 +2513,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_staged",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )?;
 
         assert!(activated.enabled);
@@ -2552,7 +2577,12 @@ mod tests {
         )?;
         crate::guards::upsert_guard_installation(
             fixture.runtime_home.path(),
-            guard_installation_upsert("guard_existing", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_existing",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )?;
         assert!(remove_connection_project(
             fixture.runtime_home.path(),
@@ -2568,7 +2598,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_conflicting", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_conflicting",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )
         .expect_err("the late guard conflict must roll back connection flags and memberships");
 
@@ -2605,7 +2640,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_existing", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_existing",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )?;
         assert_eq!(pending_host_cleanup, vec!["conn_prior"]);
         assert!(
@@ -2661,7 +2701,12 @@ mod tests {
             "conn_prior",
             TARGET_OTHER_PROJECT_ID,
             &[],
-            guard_installation_upsert("guard_marked_target", "conn_prior", TARGET_OTHER_PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_marked_target",
+                "conn_prior",
+                TARGET_OTHER_PROJECT_ID,
+            ),
         )
         .expect_err("a pending-cleanup row must not be activated for another project");
         assert!(matches!(marked_target, StoreError::Conflict { .. }));
@@ -2816,7 +2861,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_middle", "conn_middle", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_middle",
+                "conn_middle",
+                PROJECT_ID,
+            ),
         )?;
         assert_eq!(first_pending, ["conn_prior"]);
 
@@ -2834,7 +2884,12 @@ mod tests {
                     project_id: PROJECT_ID.to_owned(),
                 },
             ],
-            guard_installation_upsert("guard_next", "conn_next", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_next",
+                "conn_next",
+                PROJECT_ID,
+            ),
         )?;
 
         assert_eq!(
@@ -2951,7 +3006,12 @@ mod tests {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             }],
-            guard_installation_upsert("guard_staged", "conn_staged", PROJECT_ID),
+            guard_installation_upsert(
+                fixture.runtime_home.path(),
+                "guard_staged",
+                "conn_staged",
+                PROJECT_ID,
+            ),
         )
         .expect_err("non-rebasable cleanup metadata must block staged activation");
 
@@ -3001,17 +3061,159 @@ mod tests {
     }
 
     fn guard_installation_upsert(
+        runtime_home: &Path,
         guard_installation_id: &str,
         connection_internal_id: &str,
         project_id: &str,
     ) -> GuardInstallationUpsert {
+        let repo_root = crate::bootstrap::project_record(runtime_home, project_id)
+            .expect("fixture project lookup should succeed")
+            .expect("fixture project should exist")
+            .repo_root;
+        let policy_hash = "sha256:fixture-policy";
+        let wrapper_path = repo_root.join(".codex/hooks/volicord-stop.sh");
+        let policy_command = |command_name: &str| {
+            serde_json::json!({
+                "command": "volicord",
+                "args": [
+                    "_hook",
+                    command_name,
+                    "--repo",
+                    repo_root.display().to_string(),
+                    "--connection",
+                    connection_internal_id,
+                    "--guard-installation",
+                    guard_installation_id,
+                    "--host",
+                    "codex",
+                    "--integration-profile",
+                    "record",
+                    "--output",
+                    "volicord-json",
+                ],
+            })
+        };
+        let capability = serde_json::json!({
+            "schema": volicord_types::HOST_HOOK_CAPABILITY_SCHEMA,
+            "policy_hash": policy_hash,
+            "selected_profile": "record",
+            "connection_intent": "personal",
+            "final_output_authority_disclosure_implementation_available": true,
+            "native_host_output_adapter": "codex",
+            "native_host_output_adapter_config_verified": true,
+            "bash_shell_mutation_coverage": false,
+            "direct_file_write_matcher_coverage": false,
+            "host_capabilities": {
+                "stdio_mcp": true,
+                "http_mcp": false,
+                "session_start_hook": false,
+                "pre_tool_hook": false,
+                "post_tool_hook": false,
+                "user_prompt_submit_hook": false,
+                "stop_hook": true,
+                "rule_file_support": false,
+                "project_local_configuration": true,
+            },
+            "required_hook_phases": [],
+            "missing_required_hooks": [],
+            "prompt_capture": false,
+            "files": [
+                {
+                    "kind": "volicord_policy",
+                    "path": repo_root.join(".volicord/policy.json"),
+                    "status": "unchanged",
+                    "content_hash": "policy-file-hash",
+                    "ownership": "managed_json",
+                },
+                {
+                    "kind": "host_hook_wrapper",
+                    "path": &wrapper_path,
+                    "status": "unchanged",
+                    "content_hash": "wrapper-file-hash",
+                    "ownership": "managed_script",
+                    "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                    "executable_required": true,
+                    "managed_script_command": format!(
+                        "volicord _final-output --repo {} --connection {connection_internal_id} --guard-installation {guard_installation_id} --host codex --integration-profile record --policy-hash {policy_hash} --host-output codex",
+                        repo_root.display(),
+                    ),
+                    "host_kind": "codex",
+                    "phase": "stop",
+                    "purpose": "final_output_authority_disclosure",
+                    "connection_id": connection_internal_id,
+                    "guard_installation_id": guard_installation_id,
+                    "policy_hash": policy_hash,
+                    "host_output": "codex",
+                },
+                {
+                    "kind": "host_hook_config",
+                    "path": repo_root.join(".codex/hooks.json"),
+                    "status": "unchanged",
+                    "content_hash": "hook-config-hash",
+                    "ownership": "managed_json",
+                },
+            ],
+            "host_hook_commands": [{
+                "host_kind": "codex",
+                "phase": "stop_hook",
+                "purpose": "final_output_authority_disclosure",
+                "policy_key": "stop",
+                "command_shape": "shell_command_string",
+                "command": "sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-stop.sh\"'",
+                "args": null,
+                "expected_wrapper_path": &wrapper_path,
+                "expected_phase_wrapper_path": &wrapper_path,
+                "root_resolution_basis": "git_work_tree",
+                "hook_command_path_basis": "git_root_runtime",
+                "cwd_independent": true,
+                "subdirectory_safe": true,
+                "wrapper_resolution_status": "ok",
+                "verification": {
+                    "basis_verified_by": "repo_root_git_marker",
+                    "host_contract_source": "codex_hook_command_string",
+                },
+            }],
+            "hook_root_resolution": {
+                "basis": "git_work_tree",
+                "all_cwd_independent": true,
+                "all_subdirectory_safe": true,
+                "overall_status": "ok",
+                "phases": [{
+                    "phase": "stop_hook",
+                    "root_resolution_basis": "git_work_tree",
+                    "hook_command_path_basis": "git_root_runtime",
+                    "cwd_independent": true,
+                    "subdirectory_safe": true,
+                    "wrapper_resolution_status": "ok",
+                }],
+            },
+            "hook_path_safety": {
+                "overall_status": "ok",
+                "all_cwd_independent": true,
+                "all_subdirectory_safe": true,
+                "commands": [{
+                    "phase": "stop_hook",
+                    "hook_command_path_basis": "git_root_runtime",
+                    "cwd_independent": true,
+                    "subdirectory_safe": true,
+                    "wrapper_resolution_status": "ok",
+                }],
+            },
+            "commands": {
+                "session_start": policy_command("session-start"),
+                "pre_tool": policy_command("pre-tool"),
+                "post_tool": policy_command("post-tool"),
+                "prompt_capture": policy_command("prompt-capture"),
+                "stop": policy_command("stop"),
+            },
+        });
         GuardInstallationUpsert {
             guard_installation_id: guard_installation_id.to_owned(),
             connection_internal_id: connection_internal_id.to_owned(),
             project_id: Some(project_id.to_owned()),
             host_kind: HOST_KIND_CODEX.to_owned(),
             guard_mode: "record".to_owned(),
-            host_capability_json: "{}".to_owned(),
+            host_capability_json: capability.to_string(),
             installation_status: "configured".to_owned(),
             installed_at: None,
             last_checked_at: "2026-07-13T00:00:00Z".to_owned(),

@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_mcp::{RepositoryDiscoveryDescriptor, RepositoryDiscoveryHost};
 
+pub mod capability_status;
 pub mod claude_code;
 pub mod codex;
 pub mod config_edit;

@@ -232,6 +232,46 @@ the URL. Otherwise run `volicord inbox` in the terminal. If the
 selector is ambiguous or the wrong repository is selected, rerun with
 `--repo PATH` and the matching intent flag such as `--shared` or `--global`.
 
+<a id="host-feature-support-is-not-verified"></a>
+## Host Feature Support Is Not Verified
+
+Observable symptom: `volicord connection status ... --json` or Doctor reports
+a non-`verified` value in `host_feature_support`, even though generated files
+look correct or a best-effort final-output display ran.
+
+Read the value before choosing recovery:
+
+- `implemented_unverified` means the adapter path exists, but exact current
+  live-host evidence is absent, stale, expired, malformed, or bound to another
+  binary, host, adapter, connection, or evidence artifact. Rerunning init may
+  repair configuration, but configuration alone cannot verify the feature.
+- `unsupported_by_host` means the current host lacks a required host-owned
+  surface. Repeated configuration checks cannot promote it. Use the named CLI
+  or status fallback, or choose a host/profile whose required surfaces exist.
+- `temporarily_unavailable` means exact current evidence exists but a current
+  runtime prerequisite is down. Restore the named prerequisite, then rerun the
+  exact evaluation; do not reuse a historical pass.
+- `verified` applies only to that feature and current evidence binding. It does
+  not verify every other feature, product correctness, user identity, or OS
+  enforcement.
+
+The current no-evidence baseline is intentionally conservative: Codex reports
+its first four managed features as `implemented_unverified`, while Codex Record
+and Detective final output are `unsupported_by_host` because authenticated
+exact replay and safe block-only finalization surfaces are absent. Claude Code
+reports all six as `implemented_unverified`; Generic reports all six as
+`unsupported_by_host`. A best-effort authority display can still run when its
+implementation and configuration are present, but it must not be presented as
+feature or release support.
+
+Inspect `states.host_feature_support` for the complete six-feature map and
+`states.final_output_authority_disclosure` for selected-profile display,
+replay, and block detail. The latter's `configured` and
+`configuration_verified` fields report setup facts only. Do not hand-edit a
+stored v1 capability record; rerun the matching init command so Volicord can
+regenerate the current v2 record without inferring support from the retired
+Boolean.
+
 <a id="read-only-host-storage"></a>
 ## Read-Only Host Storage
 

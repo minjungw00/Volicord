@@ -15,7 +15,9 @@ use volicord_store::{
         EvidenceCaptureIntentInsert, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
         EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     },
-    guards::{GuardHealthRecord, UnrecordedChangeRecord},
+    guards::{
+        guard_installation_observation_is_current, GuardHealthRecord, UnrecordedChangeRecord,
+    },
     user_action_channel::{
         user_action_channel_token_hash, validate_user_action_channel_token,
         UserActionChannelTokenCheck, UserActionChannelTokenRejection,

@@ -28,17 +28,22 @@ use volicord_store::{
         project_record_by_repo_root, write_installation_profile, InstallationProfileRecord,
         InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
-    guards::{guard_health_record, list_guard_installations, GuardInstallationRecord},
+    guards::{
+        guard_health_record, guard_installation_observation_is_current, list_guard_installations,
+        GuardInstallationRecord,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
 use volicord_types::{
-    GuardInstallationStatus, IntegrationProfile, PromptCaptureStatus, UtcTimestamp,
+    GuardInstallationStatus, HostFeatureSupportStatus, IntegrationProfile, PromptCaptureStatus,
+    UtcTimestamp,
 };
 
 use crate::guard_integration::audit::{
     all_recorded_values_true, combine_optional_file_states, file_state_rank,
-    guard_file_findings_for_installation, GuardFileFindings,
+    guard_file_findings_for_installation, host_hook_capability_binding_valid_for_installation,
+    GuardFileFindings,
 };
 #[cfg(test)]
 use crate::guard_integration::audit::{guard_file_findings, script_is_executable, sha256_text};
@@ -60,6 +65,10 @@ use crate::guard_integration::{
 #[cfg(test)]
 use crate::host_integration::REQUIRED_GUARD_PHASES;
 use crate::host_integration::{
+    capability_status::{
+        default_host_feature_support_matrix, host_feature_support_json, HostFeature,
+        HostFeatureDiagnosticProjection, HostFeatureSupportMatrix,
+    },
     claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
     codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
     generic::{GenericAdapter, USER_MANAGED_CONFIGURATION_GUIDANCE},
@@ -99,6 +108,8 @@ use args::{
     parse_user_connection_mode, InitMode, OutputFormat, ParsedConnectionOptions, ParsedInitOptions,
 };
 use mcp_process::mcp_launch_from_host_plan;
+#[cfg(test)]
+use output::connection_states_json;
 use output::{
     detailed_verification_report_json, render_connection_output, render_connection_plan_output,
     render_connection_remove_dry_run_output, render_connections_output, render_init_output,
@@ -262,6 +273,7 @@ pub fn run_connect_command(
                 action: "connected",
                 status: outcome.verification.status,
                 runtime_home: &outcome.runtime_home,
+                host_kind: parse_host_kind(&outcome.connection.host_kind)?,
                 guard_state: outcome.guard_state,
                 connection: &outcome.connection,
                 projects: &outcome.projects,
@@ -369,11 +381,8 @@ fn command_connection_status(
         action: "status",
         status,
         runtime_home: &runtime_home,
-        guard_state: guard_state_for_connection(
-            &runtime_home,
-            &connection.connection_internal_id,
-            &projects,
-        )?,
+        host_kind: parse_host_kind(&connection.host_kind)?,
+        guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
         user_actions,
         connection: &connection,
         projects: &projects,
@@ -422,11 +431,8 @@ fn command_connection_verify(
         action: "verified",
         status: verification.status,
         runtime_home: &runtime_home,
-        guard_state: guard_state_for_connection(
-            &runtime_home,
-            &connection.connection_internal_id,
-            &projects,
-        )?,
+        host_kind: parse_host_kind(&connection.host_kind)?,
+        guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
         user_actions: verification.host.user_actions.clone(),
         connection: &connection,
         projects: &projects,
@@ -479,11 +485,8 @@ fn command_connection_mode(
         action: "mode_updated",
         status: status_from_store(&connection.last_verification_status),
         runtime_home: &runtime_home,
-        guard_state: guard_state_for_connection(
-            &runtime_home,
-            &connection.connection_internal_id,
-            &projects,
-        )?,
+        host_kind: parse_host_kind(&connection.host_kind)?,
+        guard_state: guard_state_for_connection(&runtime_home, &connection, &projects)?,
         user_actions: actions,
         connection: &connection,
         projects: &projects,
@@ -553,11 +556,8 @@ fn command_connection_remove(
         action: "removed",
         status: AgentResultStatus::Complete,
         runtime_home: &runtime_home,
-        guard_state: guard_state_for_connection(
-            &runtime_home,
-            &connection.connection_internal_id,
-            &remaining_projects,
-        )?,
+        host_kind: parse_host_kind(&connection.host_kind)?,
+        guard_state: guard_state_for_connection(&runtime_home, &connection, &remaining_projects)?,
         user_actions: Vec::new(),
         connection: &connection,
         projects: &remaining_projects,
@@ -1229,7 +1229,7 @@ struct GuardOperationalState {
     observation_state: String,
     effective_state: String,
     generated_config_verified: bool,
-    native_host_output_adapter_verified: bool,
+    native_host_output_adapter_config_verified: bool,
     final_output_authority_disclosure: FinalOutputAuthorityDisclosureState,
     hook_path_safety_state: String,
     hook_commands_cwd_independent: bool,
@@ -1258,22 +1258,64 @@ struct GuardOperationalState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FinalOutputAuthorityDisclosureState {
-    supported: bool,
     configured: bool,
-    verified: bool,
+    configuration_verified: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConnectionHostFeatureDiagnostics {
+    support: HostFeatureSupportMatrix,
+    final_output: Option<HostFeatureDiagnosticProjection>,
+}
+
+impl ConnectionHostFeatureDiagnostics {
+    fn baseline(
+        host_kind: HostKind,
+        profile: Option<IntegrationProfile>,
+        configured: bool,
+        configuration_verified: bool,
+    ) -> Self {
+        let support = default_host_feature_support_matrix(host_kind);
+        let final_output = profile.map(|profile| {
+            HostFeatureDiagnosticProjection::from_matrix(
+                support,
+                profile,
+                configured,
+                configuration_verified,
+            )
+        });
+        Self {
+            support,
+            final_output,
+        }
+    }
+
+    fn host_feature_support_json(self) -> Value {
+        host_feature_support_json(self.support)
+    }
+
+    fn final_output_authority_disclosure_json(self) -> Option<Value> {
+        self.final_output
+            .map(HostFeatureDiagnosticProjection::final_output_authority_disclosure_json)
+    }
+
+    fn host_feature_support_rows(
+        self,
+    ) -> [(HostFeature, HostFeatureSupportStatus); HostFeature::ALL.len()] {
+        self.support.rows()
+    }
 }
 
 impl FinalOutputAuthorityDisclosureState {
     const fn unavailable() -> Self {
         Self {
-            supported: false,
             configured: false,
-            verified: false,
+            configuration_verified: false,
         }
     }
 
     fn from_integration(integration: &GuardIntegrationPlan, applied: bool) -> Self {
-        let supported = integration.native_host_output_adapter != "none";
+        let has_native_adapter = integration.native_host_output_adapter != "none";
         let has_config = integration.generated_files.iter().any(|file| {
             file.kind == HostIntegrationFileKind::HostHookConfig
                 && (!applied
@@ -1294,34 +1336,25 @@ impl FinalOutputAuthorityDisclosureState {
                             | FilePlanStatus::Updated
                     ))
         });
-        let configured = supported && applied && has_config && has_wrapper;
-        let verified = configured
-            && integration.native_host_output_adapter_verified
+        let configured = has_native_adapter && applied && has_config && has_wrapper;
+        let configuration_verified = configured
+            && integration.native_host_output_adapter_config_verified
             && integration
                 .host_hook_commands
                 .iter()
                 .all(|command| command.cwd_independent && command.subdirectory_safe);
         Self {
-            supported,
             configured,
-            verified,
+            configuration_verified,
         }
     }
 
     fn from_findings(findings: &GuardFileFindings) -> Self {
         Self {
-            supported: findings.final_output_authority_disclosure_supported(),
             configured: findings.final_output_authority_disclosure_configured(),
-            verified: findings.final_output_authority_disclosure_verified(),
+            configuration_verified: findings
+                .final_output_authority_disclosure_configuration_verified(),
         }
-    }
-
-    fn to_json(self) -> Value {
-        json!({
-            "supported": self.supported,
-            "configured": self.configured,
-            "verified": self.verified,
-        })
     }
 }
 
@@ -1335,7 +1368,7 @@ impl GuardOperationalState {
             observation_state: "not_observed".to_owned(),
             effective_state: "inactive".to_owned(),
             generated_config_verified: false,
-            native_host_output_adapter_verified: false,
+            native_host_output_adapter_config_verified: false,
             final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::unavailable(),
             hook_path_safety_state: "not_checked".to_owned(),
             hook_commands_cwd_independent: false,
@@ -1387,7 +1420,8 @@ impl GuardOperationalState {
             observation_state: observation_state.clone(),
             effective_state,
             generated_config_verified: false,
-            native_host_output_adapter_verified: integration.native_host_output_adapter_verified,
+            native_host_output_adapter_config_verified: integration
+                .native_host_output_adapter_config_verified,
             final_output_authority_disclosure:
                 FinalOutputAuthorityDisclosureState::from_integration(integration, false),
             hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
@@ -1468,7 +1502,8 @@ impl GuardOperationalState {
                     .generated_files
                     .iter()
                     .all(|file| file.status == FilePlanStatus::Unchanged),
-            native_host_output_adapter_verified: integration.native_host_output_adapter_verified,
+            native_host_output_adapter_config_verified: integration
+                .native_host_output_adapter_config_verified,
             final_output_authority_disclosure:
                 FinalOutputAuthorityDisclosureState::from_integration(integration, true),
             hook_path_safety_state: planned_hook_path_safety_state(init_mode, integration),
@@ -1524,6 +1559,20 @@ impl GuardOperationalState {
         }
     }
 
+    fn host_feature_diagnostic(
+        &self,
+        host_kind: HostKind,
+        profile: Option<IntegrationProfile>,
+    ) -> ConnectionHostFeatureDiagnostics {
+        ConnectionHostFeatureDiagnostics::baseline(
+            host_kind,
+            profile,
+            self.final_output_authority_disclosure.configured,
+            self.final_output_authority_disclosure
+                .configuration_verified,
+        )
+    }
+
     fn to_json(&self) -> Value {
         json!({
             "selected_profile": &self.guard_profile_state,
@@ -1533,8 +1582,7 @@ impl GuardOperationalState {
             "observation_health": &self.observation_state,
             "effective_health": &self.effective_state,
             "generated_config_verified": self.generated_config_verified,
-            "native_host_output_adapter_verified": self.native_host_output_adapter_verified,
-            "final_output_authority_disclosure": self.final_output_authority_disclosure.to_json(),
+            "native_host_output_adapter_config_verified": self.native_host_output_adapter_config_verified,
             "hook_path_safety": &self.hook_path_safety_state,
             "hook_commands_cwd_independent": self.hook_commands_cwd_independent,
             "hook_commands_subdirectory_safe": self.hook_commands_subdirectory_safe,
@@ -1584,9 +1632,14 @@ impl GuardOperationalState {
     }
 
     fn selected_profile(&self) -> &str {
-        match self.guard_profile_state.as_str() {
-            "detective" => "detective",
-            _ => "record",
+        self.guard_profile_state.as_str()
+    }
+
+    fn integration_profile(&self) -> Option<IntegrationProfile> {
+        match self.selected_profile() {
+            "record" => Some(IntegrationProfile::Record),
+            "detective" => Some(IntegrationProfile::Detective),
+            _ => None,
         }
     }
 
@@ -1600,7 +1653,7 @@ impl GuardOperationalState {
             && self.effective_state == "active"
             && self.missing_required_hooks.is_empty()
             && self.generated_config_verified
-            && self.native_host_output_adapter_verified
+            && self.native_host_output_adapter_config_verified
             && self.hook_path_safety_state == HookWrapperResolutionStatus::Ok.as_str()
             && self.hook_commands_cwd_independent
             && self.hook_commands_subdirectory_safe
@@ -1782,9 +1835,10 @@ fn init_prompt_capture_state(
 
 fn guard_state_for_connection(
     runtime_home: &Path,
-    connection_id: &str,
+    connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
 ) -> Result<GuardOperationalState, ConnectionCommandError> {
+    let connection_id = &connection.connection_internal_id;
     let mut installations = Vec::new();
     for project in projects {
         installations.extend(list_guard_installations(
@@ -1803,25 +1857,35 @@ fn guard_state_for_connection(
     let mut file_findings = GuardFileFindings::default();
     let mut prompt_capture_configured = false;
     let mut prompt_capture_host_supported = false;
-    let mut prompt_capture_observed = false;
     let prompt_capture_disabled = installations
         .iter()
         .all(|installation| installation.guard_mode == IntegrationProfile::Record.as_str());
-    let mut observed = false;
+    let mut detective_installation_count = 0usize;
+    let mut every_detective_observation_current = true;
+    let mut every_detective_prompt_capture_observed = true;
     let mut last_observed_at = None;
     for installation in &installations {
-        let findings = guard_file_findings_for_installation(installation, projects);
+        let findings = guard_file_findings_for_installation(installation, connection, projects);
         file_findings.merge(findings);
         if installation.last_seen_at.is_some() {
-            observed = true;
             last_observed_at = max_optional_utc_timestamp(
                 last_observed_at,
                 installation.last_seen_at.as_deref(),
                 "guard_installations.last_seen_at",
             )?;
         }
-        if installation.last_seen_phase.as_deref() == Some("prompt_capture") {
-            prompt_capture_observed = true;
+        if installation.guard_mode == IntegrationProfile::Detective.as_str() {
+            detective_installation_count += 1;
+            let binding_is_current = host_hook_capability_binding_valid_for_installation(
+                installation,
+                connection,
+                projects,
+            );
+            let observation_is_current =
+                binding_is_current && guard_installation_observation_is_current(installation)?;
+            every_detective_observation_current &= observation_is_current;
+            every_detective_prompt_capture_observed &= observation_is_current
+                && installation.last_seen_phase.as_deref() == Some("prompt_capture");
         }
         if installation.guard_mode != IntegrationProfile::Record.as_str()
             && file_findings.prompt_capture_configured
@@ -1830,6 +1894,9 @@ fn guard_state_for_connection(
         }
         prompt_capture_host_supported |= file_findings.prompt_capture_host_supported;
     }
+    let observed = detective_installation_count > 0 && every_detective_observation_current;
+    let prompt_capture_observed =
+        detective_installation_count > 0 && every_detective_prompt_capture_observed;
     let last_observed_at = last_observed_at.map(|timestamp| timestamp.to_canonical_string());
     file_findings.sort_dedup();
     let guard_profile_state = guard_profile_state_for_installations(&installations, &file_findings);
@@ -1879,8 +1946,8 @@ fn guard_state_for_connection(
             observation_state,
             effective_state,
             generated_config_verified: false,
-            native_host_output_adapter_verified: file_findings
-                .native_host_output_adapter_verified(),
+            native_host_output_adapter_config_verified: file_findings
+                .native_host_output_adapter_config_verified(),
             final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
                 &file_findings,
             ),
@@ -1948,8 +2015,8 @@ fn guard_state_for_connection(
             observation_state,
             effective_state,
             generated_config_verified: false,
-            native_host_output_adapter_verified: file_findings
-                .native_host_output_adapter_verified(),
+            native_host_output_adapter_config_verified: file_findings
+                .native_host_output_adapter_config_verified(),
             final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
                 &file_findings,
             ),
@@ -2013,8 +2080,8 @@ fn guard_state_for_connection(
             observation_state,
             effective_state,
             generated_config_verified: false,
-            native_host_output_adapter_verified: file_findings
-                .native_host_output_adapter_verified(),
+            native_host_output_adapter_config_verified: file_findings
+                .native_host_output_adapter_config_verified(),
             final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
                 &file_findings,
             ),
@@ -2133,7 +2200,8 @@ fn guard_state_for_connection(
         observation_state,
         effective_state,
         generated_config_verified: file_findings.generated_config_verified(),
-        native_host_output_adapter_verified: file_findings.native_host_output_adapter_verified(),
+        native_host_output_adapter_config_verified: file_findings
+            .native_host_output_adapter_config_verified(),
         final_output_authority_disclosure: FinalOutputAuthorityDisclosureState::from_findings(
             &file_findings,
         ),
@@ -2192,11 +2260,8 @@ fn guard_mode_state(installations: &[GuardInstallationRecord]) -> String {
 
 fn guard_profile_state_for_installations(
     installations: &[GuardInstallationRecord],
-    findings: &GuardFileFindings,
+    _findings: &GuardFileFindings,
 ) -> String {
-    if let Some(value) = single_or_mixed(&findings.guard_profiles) {
-        return value;
-    }
     match guard_mode_state(installations).as_str() {
         "record" => "record",
         "detective" => "detective",
@@ -2309,7 +2374,8 @@ fn guard_blockers_for_state(
     match installation_state {
         "not_configured" | "files_missing" => vec!["guard_not_installed".to_owned()],
         "reload_required" => vec!["guard_reload_required".to_owned()],
-        "configured" => vec!["guard_not_observed".to_owned()],
+        "configured" if !host_hook_observed => vec!["guard_not_observed".to_owned()],
+        "configured" => Vec::new(),
         "active" if !host_hook_observed => vec!["guard_not_observed".to_owned()],
         "stale" => vec!["guard_stale".to_owned()],
         "broken" => vec!["guard_broken".to_owned()],
@@ -2637,6 +2703,85 @@ mod tests {
         );
     }
 
+    #[test]
+    fn inexact_connection_profiles_keep_support_but_do_not_invent_record_detail() {
+        for profile_state in ["mixed", "future_profile"] {
+            let mut guard_state = GuardOperationalState::not_configured();
+            guard_state.guard_profile_state = profile_state.to_owned();
+            guard_state.final_output_authority_disclosure = FinalOutputAuthorityDisclosureState {
+                configured: true,
+                configuration_verified: true,
+            };
+            let diagnostic = guard_state
+                .host_feature_diagnostic(HostKind::ClaudeCode, guard_state.integration_profile());
+            let states = connection_states_json(
+                "complete",
+                "registered",
+                "match",
+                &guard_state,
+                diagnostic,
+                false,
+            );
+
+            assert_eq!(states["selected_profile"], profile_state);
+            assert_eq!(
+                states["host_feature_support"]
+                    .as_object()
+                    .map(serde_json::Map::len),
+                Some(HostFeature::ALL.len())
+            );
+            for feature in HostFeature::ALL {
+                assert_eq!(
+                    states["host_feature_support"][feature.as_str()],
+                    "implemented_unverified"
+                );
+            }
+            assert!(states["final_output_authority_disclosure"].is_null());
+
+            let host_hook = guard_state.to_json();
+            assert_eq!(host_hook["selected_profile"], profile_state);
+            assert!(host_hook.get("host_feature_support").is_none());
+            assert!(host_hook.get("final_output_authority_disclosure").is_none());
+        }
+    }
+
+    #[test]
+    fn no_installation_profile_remains_unselected_without_record_detail() {
+        let guard_state = GuardOperationalState::not_configured();
+        let diagnostic = guard_state
+            .host_feature_diagnostic(HostKind::ClaudeCode, guard_state.integration_profile());
+        let states = connection_states_json(
+            "complete",
+            "registered",
+            "match",
+            &guard_state,
+            diagnostic,
+            false,
+        );
+
+        assert_eq!(states["selected_profile"], "not_configured");
+        assert_eq!(
+            states["control_surface"]["selected_profile"],
+            "not_configured"
+        );
+        assert_eq!(
+            states["host_feature_support"]
+                .as_object()
+                .map(serde_json::Map::len),
+            Some(HostFeature::ALL.len())
+        );
+        assert!(states["final_output_authority_disclosure"].is_null());
+
+        let host_hook = guard_state.to_json();
+        assert_eq!(host_hook["selected_profile"], "not_configured");
+        assert_eq!(
+            host_hook["control_surface"]["selected_profile"],
+            "not_configured"
+        );
+        assert!(host_hook.get("host_feature_support").is_none());
+        assert!(host_hook.get("final_output_authority_disclosure").is_none());
+    }
+
     fn plan_guard_integration_for_test(
         host_kind: HostKind,
         init_mode: InitMode,
@@ -2877,7 +3022,7 @@ mod tests {
         )?;
 
         assert_eq!(plan.native_host_output_adapter, "none");
-        assert!(!plan.native_host_output_adapter_verified);
+        assert!(!plan.native_host_output_adapter_config_verified);
         assert!(plan.host_hook_commands.is_empty());
         assert!(!plan.generated_files.iter().any(|file| {
             matches!(
@@ -2923,7 +3068,10 @@ mod tests {
         assert_eq!(capability["prompt_capture"], true);
         assert_eq!(capability["selected_profile"], "detective");
         assert_eq!(capability["native_host_output_adapter"], "codex");
-        assert_eq!(capability["native_host_output_adapter_verified"], true);
+        assert_eq!(
+            capability["native_host_output_adapter_config_verified"],
+            true
+        );
         assert_eq!(capability["bash_shell_mutation_coverage"], true);
         assert_eq!(capability["direct_file_write_matcher_coverage"], true);
         assert_eq!(capability["hook_root_resolution"]["basis"], "git_work_tree");
@@ -3850,7 +3998,9 @@ mod tests {
             },
         )?;
         let projects = list_connection_projects(&runtime_home, "conn_alpha")?;
-        let guard_state = guard_state_for_connection(&runtime_home, "conn_alpha", &projects)?;
+        let connection = agent_connection_record(&runtime_home, "conn_alpha")?
+            .expect("test connection should exist");
+        let guard_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
 
         assert_eq!(guard_state.installation_state, "active");
         assert_eq!(guard_state.hook_observed_state, "observed");
@@ -3873,7 +4023,7 @@ mod tests {
         assert!(guard_state.cooperative_pre_tool_denial_available());
         assert!(guard_state.post_tool_correlation_available());
         assert!(guard_state.generated_config_verified);
-        assert!(guard_state.native_host_output_adapter_verified);
+        assert!(guard_state.native_host_output_adapter_config_verified);
         assert!(guard_state.bash_shell_mutation_coverage);
         assert!(guard_state.direct_file_write_matcher_coverage);
         assert!(!guard_state.bypass_detection_active());
@@ -3881,6 +4031,129 @@ mod tests {
         assert_eq!(guard_state.managed_bundle_hash, None);
         assert_eq!(guard_state.managed_verification_state, "not_applicable");
         assert_eq!(guard_state.prompt_capture_state, "observed");
+
+        let registry =
+            rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(&runtime_home))?;
+        registry.execute(
+            "UPDATE guard_installations
+                SET installation_status = 'configured'
+              WHERE guard_installation_id = 'guard_installation_alpha'",
+            [],
+        )?;
+        let configured_current = guard_state_for_connection(&runtime_home, &connection, &projects)?;
+        assert_eq!(configured_current.installation_state, "configured");
+        assert_eq!(configured_current.hook_observed_state, "observed");
+        assert_eq!(configured_current.effective_state, "active");
+        assert!(configured_current.unresolved_blockers.is_empty());
+
+        registry.execute(
+            "UPDATE guard_installations
+                SET observed_policy_hash = 'sha256:stale-policy'
+              WHERE guard_installation_id = 'guard_installation_alpha'",
+            [],
+        )?;
+        let stale_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
+        assert_eq!(stale_state.installation_state, "configured");
+        assert_eq!(stale_state.hook_observed_state, "not_observed");
+        assert_eq!(stale_state.observation_state, "not_observed");
+        assert_eq!(stale_state.effective_state, "action_required");
+        assert_eq!(
+            stale_state.last_observed_at.as_deref(),
+            Some("2026-07-01T00:01:00Z")
+        );
+        assert_eq!(stale_state.prompt_capture_state, "configured");
+        assert_eq!(
+            stale_state.unresolved_blockers,
+            vec!["guard_not_observed".to_owned()]
+        );
+
+        let repo_beta = temp_dir("claude-guard-detective-beta")?;
+        fs::create_dir_all(repo_beta.join(".git"))?;
+        let project_beta = ensure_project_for_repo(
+            &runtime_home,
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root: repo_beta.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        let integration_beta = apply_guard_integration(plan_guard_integration_for_test(
+            HostKind::ClaudeCode,
+            InitMode::Detective,
+            &repo_beta,
+            "conn_alpha",
+            "guard_installation_beta",
+            &entry,
+        )?)?;
+        add_connection_project(
+            &runtime_home,
+            ConnectionProjectRegistration {
+                connection_internal_id: "conn_alpha".to_owned(),
+                project_id: project_beta.project_id.clone(),
+            },
+        )?;
+        upsert_guard_installation(
+            &runtime_home,
+            GuardInstallationUpsert {
+                guard_installation_id: "guard_installation_beta".to_owned(),
+                connection_internal_id: "conn_alpha".to_owned(),
+                project_id: Some(project_beta.project_id.clone()),
+                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
+                host_capability_json: host_hook_capability_json(&integration_beta)?,
+                installation_status: GuardInstallationStatus::ReloadRequired.as_str().to_owned(),
+                installed_at: Some("2026-07-01T00:00:00Z".to_owned()),
+                last_checked_at: "2026-07-01T00:00:00Z".to_owned(),
+                first_seen_at: None,
+                last_seen_at: None,
+                last_seen_phase: None,
+                observed_host_kind: None,
+                observed_policy_hash: None,
+                observed_binary_version: None,
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        volicord_store::guards::observe_guard_installation(
+            &runtime_home,
+            volicord_store::guards::GuardInstallationObservation {
+                guard_installation_id: "guard_installation_beta".to_owned(),
+                connection_internal_id: "conn_alpha".to_owned(),
+                project_id: project_beta.project_id,
+                host_kind: HostKind::ClaudeCode.as_str().to_owned(),
+                guard_mode: IntegrationProfile::Detective.as_str().to_owned(),
+                observed_policy_hash: integration_beta.policy_hash,
+                observed_binary_version: Some("test".to_owned()),
+                observed_phase: "session_start".to_owned(),
+                observed_at: "2026-07-01T00:02:00Z".to_owned(),
+            },
+        )?;
+        let projects = list_connection_projects(&runtime_home, "conn_alpha")?;
+        let mixed_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
+        assert_eq!(mixed_state.installation_state, "active");
+        assert_eq!(mixed_state.hook_observed_state, "not_observed");
+        assert_eq!(mixed_state.effective_state, "action_required");
+        assert_eq!(
+            mixed_state.last_observed_at.as_deref(),
+            Some("2026-07-01T00:02:00Z")
+        );
+        assert_eq!(
+            mixed_state.unresolved_blockers,
+            vec!["guard_not_observed".to_owned()]
+        );
+
+        registry.execute(
+            "UPDATE guard_installations
+                SET observed_policy_hash = ?1
+              WHERE guard_installation_id = 'guard_installation_alpha'",
+            [&integration.policy_hash],
+        )?;
+        let all_current = guard_state_for_connection(&runtime_home, &connection, &projects)?;
+        assert_eq!(all_current.hook_observed_state, "observed");
+        assert_eq!(all_current.effective_state, "active");
+        assert!(all_current.unresolved_blockers.is_empty());
         Ok(())
     }
 
@@ -3989,8 +4262,9 @@ mod tests {
         )?;
 
         let projects = list_connection_projects(&runtime_home, "conn_codex_missing_bash")?;
-        let guard_state =
-            guard_state_for_connection(&runtime_home, "conn_codex_missing_bash", &projects)?;
+        let connection = agent_connection_record(&runtime_home, "conn_codex_missing_bash")?
+            .expect("test connection should exist");
+        let guard_state = guard_state_for_connection(&runtime_home, &connection, &projects)?;
 
         assert_eq!(guard_state.hook_config_state, "stale");
         assert_eq!(guard_state.effective_state, "degraded");

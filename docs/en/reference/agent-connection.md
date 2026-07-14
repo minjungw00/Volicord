@@ -53,7 +53,7 @@ Labels follow the canonical vocabulary in
 |---|---|---|
 | Agent Connection meaning, connection intents, Connection Projects membership, connection modes, and current connection context boundaries | `stable` | These are local integration contracts, not OS permissions or user authority. |
 | Managed host lifecycle and verification observations | `beta` | The observations are supported but remain host- and capability-dependent. |
-| Managed final-output authority disclosure capability | `beta` | Supported managed Codex and Claude Code adapters can project a fresh receipt in fixed host UI; availability and actual host display remain host-dependent. |
+| Managed final-output authority projection and support-state evaluation | `beta` | Managed adapters may run a best-effort fixed-UI projection. Support remains feature- and evidence-specific, and only `support_status=verified` establishes a current support claim. |
 | Stored identities, process-binding values, host configuration keys, and derived invocation metadata | `internal` | Public MCP inputs must not expose these details as caller-owned authority. |
 | Human-readable status, verification, fallback, and guidance text | `diagnostic` | Exact fields are stable only where a focused owner explicitly defines them. |
 
@@ -425,13 +425,79 @@ Rules:
   improve tool selection, but they are not enforcement mechanisms and cannot
   guarantee that a model will choose Volicord tools.
 
+<a id="host-feature-support-state"></a>
+## Host feature support state
+
+`HostFeatureSupportStatus` is the canonical support state for these six exact
+managed-host features:
+
+```text
+native_user_action
+local_web_user_channel
+verified_tool_producer
+registered_connection_observation
+record_final_output
+detective_final_output
+```
+
+Its values are exactly `verified`, `implemented_unverified`,
+`unsupported_by_host`, and `temporarily_unavailable`. Configuration and file
+checks are orthogonal facts: `configured=true` or
+`configuration_verified=true` never promotes a feature to `verified`.
+
+The centralized evaluator applies this order to a feature and all of its
+required subcapabilities:
+
+1. If the exact host, host version, platform, or host-owned surface does not
+   provide any required capability, the result is `unsupported_by_host`.
+2. Otherwise, if an implementation exists but exact, current, final-binary
+   live evidence is absent, stale, expired, malformed, or mismatched, the
+   result is `implemented_unverified`.
+3. Otherwise, if the evidence matches but a current runtime prerequisite such
+   as configuration, connection binding, host approval, listener readiness, or
+   event delivery is down, the result is `temporarily_unavailable`.
+4. Only when every required capability has matching fresh evidence and every
+   current runtime prerequisite is ready is the result `verified`.
+
+Aggregation uses the same precedence: any required
+`unsupported_by_host` result wins; otherwise any
+`implemented_unverified` result wins; otherwise any unavailable current
+runtime prerequisite yields `temporarily_unavailable`; only an all-exact and
+ready set yields `verified`. A default with no evidence is therefore
+`implemented_unverified` for an implemented built-in feature and
+`unsupported_by_host` for a generic or absent host feature. An exact replay
+re-evaluates the current evidence, freshness, host identity, final Volicord
+artifact, and runtime prerequisites; it cannot inherit an earlier
+`verified` result.
+
+The current baseline is:
+
+| Host | Feature state |
+|---|---|
+| Codex | `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, and `registered_connection_observation` are `implemented_unverified`. `record_final_output` is `unsupported_by_host` because the authenticated actual-host exact-replay entry point is absent. `detective_final_output` is `unsupported_by_host` because a safe block-only finalization surface is absent. |
+| Claude Code | All six features are `implemented_unverified` pending exact live evidence bound to the final Volicord artifact and installed host version. |
+| Generic | All six features are `unsupported_by_host`. |
+
+`volicord connection status`, `volicord doctor`, and the release feature matrix
+consume this one evaluator. They must not independently reinterpret
+configuration findings, fixtures, direct-wrapper results, ignored tests, or
+historical live results as feature support.
+
 <a id="managed-final-output-authority-disclosure"></a>
 ## Managed final-output authority disclosure
 
-Supported managed Codex and Claude Code adapters provide a final-output-only
-authority-disclosure capability for both `record` and `detective` profiles. The
-capability belongs to the host adapter, not to model-authored final prose. It
-uses a host-owned fixed UI surface after a final-output event and is separate
+The final-output-only authority-disclosure display may operate best-effort when
+its `authority_display` implementation and configuration are available, but a
+support or release claim requires the profile feature to have
+`support_status=verified`. Record support requires `authority_display` and
+`authenticated_exact_replay`. Detective support requires
+`authority_display`, `authenticated_exact_replay`, and `block_finalization`;
+replay remains required because every owner-defined delivery, including
+Detective replay, refreshes current authority. An unsupported replay or block
+surface keeps the aggregate unsupported even if the display runs. Only
+profile-applicable subcapabilities are emitted, and best-effort output never
+promotes their typed state. The display belongs to the host adapter, not to
+model-authored final prose, and uses a host-owned fixed UI surface separate
 from MCP tool context.
 
 Before refreshing status, the adapter must read-only verify the enabled Agent

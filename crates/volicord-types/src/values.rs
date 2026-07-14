@@ -812,6 +812,28 @@ impl SessionWatchCoverageBasis {
     }
 }
 
+/// Support state for one exact managed-host feature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HostFeatureSupportStatus {
+    Verified,
+    ImplementedUnverified,
+    UnsupportedByHost,
+    TemporarilyUnavailable,
+}
+
+impl HostFeatureSupportStatus {
+    /// Returns the stable value name for this host-feature support state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Verified => "verified",
+            Self::ImplementedUnverified => "implemented_unverified",
+            Self::UnsupportedByHost => "unsupported_by_host",
+            Self::TemporarilyUnavailable => "temporarily_unavailable",
+        }
+    }
+}
+
 /// Derived prompt-capture availability for host-observed User Channel chat commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1743,9 +1765,13 @@ pub enum ErrorCode {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Duration, Utc};
+    use std::collections::BTreeSet;
 
-    use super::UtcTimestamp;
+    use chrono::{DateTime, Duration, Utc};
+    use schemars::schema_for;
+    use serde_json::{json, Value};
+
+    use super::{HostFeatureSupportStatus, UtcTimestamp};
 
     #[test]
     fn utc_timestamp_checked_add_enforces_canonical_four_digit_range() {
@@ -1766,5 +1792,62 @@ mod tests {
         let chrono_max = UtcTimestamp::from_datetime(DateTime::<Utc>::MAX_UTC);
         assert!(chrono_max.ensure_canonical_rfc3339_representable().is_err());
         assert!(chrono_max.checked_add(Duration::zero()).is_err());
+    }
+
+    #[test]
+    fn host_feature_support_status_has_exact_public_values() {
+        let cases = [
+            (HostFeatureSupportStatus::Verified, "verified"),
+            (
+                HostFeatureSupportStatus::ImplementedUnverified,
+                "implemented_unverified",
+            ),
+            (
+                HostFeatureSupportStatus::UnsupportedByHost,
+                "unsupported_by_host",
+            ),
+            (
+                HostFeatureSupportStatus::TemporarilyUnavailable,
+                "temporarily_unavailable",
+            ),
+        ];
+
+        for (status, expected) in cases {
+            assert_eq!(status.as_str(), expected);
+            assert_eq!(
+                serde_json::to_value(status).expect("support status should serialize"),
+                json!(expected)
+            );
+            assert_eq!(
+                serde_json::from_value::<HostFeatureSupportStatus>(json!(expected))
+                    .expect("support status should deserialize"),
+                status
+            );
+        }
+        assert!(serde_json::from_value::<HostFeatureSupportStatus>(json!("unverified")).is_err());
+
+        let schema = serde_json::to_value(schema_for!(HostFeatureSupportStatus))
+            .expect("support status schema should serialize");
+        let values = schema
+            .get("enum")
+            .and_then(Value::as_array)
+            .expect("support status schema should expose a direct enum")
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .expect("support status schema values should be strings")
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            values,
+            BTreeSet::from([
+                "implemented_unverified".to_owned(),
+                "temporarily_unavailable".to_owned(),
+                "unsupported_by_host".to_owned(),
+                "verified".to_owned(),
+            ])
+        );
     }
 }

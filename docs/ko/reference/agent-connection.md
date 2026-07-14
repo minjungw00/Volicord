@@ -44,7 +44,7 @@
 |---|---|---|
 | Agent Connection 의미, 연결 의도, Connection Projects 멤버십, 연결 모드, 현재 연결 맥락 경계 | `stable` | 로컬 통합 계약입니다. OS 권한이나 사용자 권한이 아닙니다. |
 | 관리 호스트 생명주기와 검증 관찰 | `beta` | 지원되지만 호스트와 사용 가능한 기능에 따라 달라집니다. |
-| 관리되는 최종 출력 권한 고지 기능 | `beta` | 지원되는 관리 Codex 및 Claude Code 어댑터는 새 receipt를 호스트 고정 UI에 상태 보기로 표시할 수 있습니다. 사용 가능 상태와 실제 호스트 표시는 호스트에 따라 달라집니다. |
+| 관리 최종 출력 권한 projection과 지원 상태 평가 | `beta` | 관리 어댑터는 최선형 고정 UI projection을 실행할 수 있습니다. 지원은 기능과 증거별로 평가하며 현재 지원 주장은 `support_status=verified`일 때만 성립합니다. |
 | 저장된 식별 정보, 프로세스 바인딩 값, 호스트 설정 키, 파생 호출 메타데이터 | `internal` | 공개 MCP 입력에서 호출자 소유 권한처럼 노출하면 안 됩니다. |
 | 사람이 읽는 상태, 검증, 대체 안내, 지침 문구 | `diagnostic` | 집중 담당 문서가 명시한 필드만 안정적인 계약입니다. |
 
@@ -357,13 +357,73 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
   호스트 규칙 파일, MCP 서버 지침은 도구 선택을 개선할 수 있지만 강제 메커니즘이 아니며
   모델이 항상 Volicord 도구를 선택한다고 보장할 수 없습니다.
 
+<a id="host-feature-support-state"></a>
+## 호스트 기능 지원 상태
+
+`HostFeatureSupportStatus`는 다음 여섯 개의 정확한 관리 호스트 기능에 쓰는 정규 지원
+상태입니다.
+
+```text
+native_user_action
+local_web_user_channel
+verified_tool_producer
+registered_connection_observation
+record_final_output
+detective_final_output
+```
+
+허용되는 값은 정확히 `verified`, `implemented_unverified`,
+`unsupported_by_host`, `temporarily_unavailable`입니다. 설정과 파일 점검은 별도
+사실입니다. `configured=true`나 `configuration_verified=true`만으로 기능 상태를
+`verified`로 올릴 수 없습니다.
+
+중앙 평가기는 기능과 그 기능에 필요한 모든 하위 역량에 다음 순서를 적용합니다.
+
+1. 정확한 호스트, 호스트 버전, 플랫폼 또는 호스트 소유 표면이 필요한 역량 하나라도
+   제공하지 않으면 `unsupported_by_host`입니다.
+2. 그렇지 않고 구현은 있지만 정확한 현재 최종 바이너리 실제 증거가 없거나, 오래됐거나,
+   만료됐거나, 형식이 잘못됐거나, 일치하지 않으면 `implemented_unverified`입니다.
+3. 그렇지 않고 증거는 일치하지만 설정, 연결 결속, 호스트 승인, listener 준비 상태,
+   이벤트 전달 같은 현재 런타임 전제 조건이 내려가 있으면
+   `temporarily_unavailable`입니다.
+4. 필요한 모든 역량에 일치하는 최신 증거가 있고 현재 런타임 전제 조건도 모두 준비됐을
+   때만 `verified`입니다.
+
+집계도 같은 우선순위를 사용합니다. 필요한 항목 중 하나라도
+`unsupported_by_host`이면 그 값이 우선하고, 그렇지 않으면
+`implemented_unverified`가 하나라도 있을 때 그 값이 우선합니다. 그다음 현재 런타임
+전제 조건이 내려가 있으면 `temporarily_unavailable`이며, 모든 증거가 정확하고 준비된
+경우에만 `verified`입니다. 따라서 증거가 없는 기본 상태는 구현된 내장 기능이면
+`implemented_unverified`, generic 또는 없는 호스트 기능이면
+`unsupported_by_host`입니다. 정확한 재생도 현재 증거와 최신성, 호스트 신원, 최종
+Volicord 아티팩트, 런타임 전제 조건을 다시 평가하며 이전 `verified` 결과를 물려받을 수
+없습니다.
+
+현재 기준은 다음과 같습니다.
+
+| 호스트 | 기능 상태 |
+|---|---|
+| Codex | `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, `registered_connection_observation`는 `implemented_unverified`입니다. `record_final_output`은 인증된 실제 호스트 정확 재생 진입점이 없으므로 `unsupported_by_host`입니다. `detective_final_output`은 안전한 block 전용 최종화 표면이 없으므로 `unsupported_by_host`입니다. |
+| Claude Code | 여섯 기능 모두 최종 Volicord 아티팩트와 설치 호스트 버전에 결속된 정확한 실제 증거가 생길 때까지 `implemented_unverified`입니다. |
+| Generic | 여섯 기능 모두 `unsupported_by_host`입니다. |
+
+`volicord connection status`, `volicord doctor`, 릴리스 기능 매트릭스는 이 평가기 하나를
+사용합니다. 설정 발견 사항, 픽스처, 직접 래퍼 결과, 무시된 테스트, 과거 실제 결과를 각각
+다시 해석하여 기능 지원으로 올리면 안 됩니다.
+
 <a id="managed-final-output-authority-disclosure"></a>
 ## 관리되는 최종 출력 권한 고지
 
-지원되는 관리 Codex 및 Claude Code 어댑터는 `record`와 `detective` 프로필 모두에
-최종 출력 전용 권한 고지 기능을 제공합니다. 이 기능은 모델이 작성한 최종 산문이 아니라
-호스트 어댑터에 속합니다. 최종 출력 이벤트 뒤에 호스트 소유 고정 UI 표면을 사용하며
-MCP 도구 맥락과 구분됩니다.
+최종 출력 전용 권한 고지 표시는 `authority_display` 구현과 설정을 사용할 수 있으면
+최선형으로 동작할 수 있지만, 지원 또는 릴리스 주장을 하려면 프로필 기능이
+`support_status=verified`여야 합니다. Record 지원에는 `authority_display`와
+`authenticated_exact_replay`가 필요합니다. Detective 지원에는 `authority_display`,
+`authenticated_exact_replay`, `block_finalization`이 필요합니다. 담당 문서가 정의한 모든
+전달은 Detective 재생을 포함해 현재 권한을 다시 읽으므로 재생 역량도 필요합니다. 표시가
+동작하더라도 재생이나 block 표면이 지원되지 않으면 집계 상태는 계속 지원되지 않습니다.
+출력에는 해당 프로필에 적용되는 하위 역량만 담고, 최선형 출력은 그 상태를 올리지 않습니다.
+표시는 모델이 작성한 최종 산문이 아니라 호스트 어댑터에 속하며 MCP 도구 맥락과 분리된
+호스트 소유 고정 UI 표면을 사용합니다.
 
 상태를 새로 읽기 전에 어댑터는 활성 Agent Connection, 선택 프로젝트 멤버십, 고정된
 Product Repository, 호스트 종류, 설치 프로필을 읽기 전용으로 검증해야 합니다. 이벤트

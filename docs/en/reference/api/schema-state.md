@@ -22,6 +22,7 @@ This document owns state-shaped API fields, nesting, references, summaries, snap
 | Data you need | Start here |
 |---|---|
 | State references, current Task position, lifecycle, and shaping readiness | [State references](#state-references) |
+| Administrative host-feature support diagnostics | [Host feature support diagnostics](#host-feature-support-diagnostics) |
 | Host-hook observation and session-watch coverage | [Guard health summary](#guard-health-summary) |
 | Unrecorded changes and project continuity | [Unrecorded change reconciliation shapes](#unrecorded-change-reconciliation-shapes) |
 | Status cards, next actions, and write tickets | [Current-position display shapes](#current-position-display-shapes) |
@@ -261,6 +262,86 @@ Meaning:
   not every historical Run. The receipt does not itself commit, close, accept,
   or prove product correctness.
 
+<a id="host-feature-support-diagnostics"></a>
+## Host feature support diagnostics
+
+Every administrative support evaluation first exposes the same exact six-key
+map:
+
+```yaml
+HostFeatureSupportMap:
+  native_user_action: HostFeatureSupportStatus
+  local_web_user_channel: HostFeatureSupportStatus
+  verified_tool_producer: HostFeatureSupportStatus
+  registered_connection_observation: HostFeatureSupportStatus
+  record_final_output: HostFeatureSupportStatus
+  detective_final_output: HostFeatureSupportStatus
+```
+
+All six keys are required and no additional feature key is allowed. A final-
+output diagnostic is profile-specific detail alongside that map, not a
+replacement for it:
+
+```yaml
+FinalOutputAuthorityDisclosureDiagnostic:
+  support_status: HostFeatureSupportStatus
+  configured: boolean
+  configuration_verified: boolean
+  required_subcapabilities: string[]
+  subcapabilities: object<string, HostFeatureSupportStatus>
+
+DoctorHostFeatureSupportRow:
+  connection_id: string
+  host_kind: string
+  selected_profile: string | null
+  host_feature_support: HostFeatureSupportMap
+  final_output_authority_disclosure: FinalOutputAuthorityDisclosureDiagnostic | null
+```
+
+Record emits exactly `authority_display` and `authenticated_exact_replay` in
+both `required_subcapabilities` and `subcapabilities`. Detective emits those
+two plus `block_finalization`. No non-applicable key is emitted. The aggregate
+`support_status` uses the precedence owned by
+[Agent Connection](../agent-connection.md#host-feature-support-state).
+`configured` and `configuration_verified` are independent configuration facts
+and never imply `verified`.
+
+The machine-readable projections are exact:
+
+- connection status always places `HostFeatureSupportMap` at
+  `states.host_feature_support`; it places profile detail at
+  `states.final_output_authority_disclosure` only for an exact `record` or
+  `detective` installation profile. Otherwise it preserves the raw
+  `states.selected_profile` value, mirrors it at
+  `states.control_surface.selected_profile`, and emits null detail rather than
+  defaulting to Record. The `host_hook` config/audit object does not duplicate
+  either typed field;
+- `connection add --dry-run --json` has no exact installed profile, so its
+  planned state preserves `selected_profile=not_configured`, keeps the complete
+  map, emits null profile detail, and does not duplicate either typed field in
+  `host_hook`;
+- doctor places one `DoctorHostFeatureSupportRow` per readable stored Agent
+  Connection at `states.host_feature_support_by_connection`, ordered by
+  `connection_id`; each row contains exactly the five fields shown above;
+- every terminal release-feature matrix cell, regardless of passed,
+  incomplete, failed, or unavailable result, places the complete
+  `HostFeatureSupportMap` at `host_feature_support` and exact selected-profile
+  detail at `final_output_authority_disclosure`, or null detail when no exact
+  profile exists. Post-init cells copy the product-produced init projection;
+  preflight-unavailable cells use the centralized default projection with
+  configuration facts false, without erasing or reclassifying static support
+  status. `result=running` is the only exempt non-terminal recorder shape. A
+  terminal `result=failed_before_completion` artifact uses the recorder's exact
+  profile hint and the default projection, or null detail when no exact profile
+  is available; it never defaults to Record.
+
+Doctor emits an empty `host_feature_support_by_connection` array when the
+Registry has no readable connection rows; it does not synthesize a feature map
+from an unreadable connection. `selected_profile` and the profile detail are
+both null when no exact profile can be selected for that connection. This
+administrative diagnostic schema is not added to Core method results merely by
+being defined here.
+
 ## Guard health summary
 
 `GuardHealthSummary` is the compact detective host-hook and observation-state projection returned by close-readiness and status views when the method owner selects it. The `guard_*` field names are schema identifiers for internal host observation records and hook-related implementation state; they are not a public security mode or security boundary.
@@ -285,7 +366,7 @@ GuardHealthSummary:
   guard_observation_status: string
   effective_guard_status: string
   generated_config_verified: boolean
-  native_host_output_adapter_verified: boolean
+  native_host_output_adapter_config_verified: boolean
   hook_path_safety: string
   hook_commands_cwd_independent: boolean
   hook_commands_subdirectory_safe: boolean
@@ -352,13 +433,13 @@ Meaning:
 - `selected_profile` and `guard_installation_status` are controlled value strings.
 - `control_surface` is the public observation summary of what Volicord can currently observe or decide. It reports the selected profile, whether host hooks and a session watcher are active, whether cooperative pre-tool warning or denial is available, whether unrecorded changes can be detected, whether actor identity can be proven, and whether OS enforcement is provided.
 - `guard_installation_id`, when non-null, is an opaque internal host-hook installation identifier.
-- `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective detective-profile close-readiness status.
-- `generated_config_verified`, `native_host_output_adapter_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, and `local_web_consent_available` expose capability facts for the selected profile. Detective host hooks require verified generated config, native host output, `hook_path_safety=ok`, cwd-independent and subdirectory-safe required hook commands, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current matching host-hook observation. Unrecorded-change detection requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
-- `guard_hook_observed` reports whether a current matching host-hook observation is recorded for the selected internal host-hook installation record.
-- `last_guard_observed_at` is the latest stored internal host-hook installation observation timestamp, or `null` when no observation is recorded.
+- `guard_configuration_status`, `guard_observation_status`, and `effective_guard_status` separate file/config health, runtime hook observation, and the effective detective-profile close-readiness status. Stored `configured` and `active` installation rows both project configured configuration health; for `detective`, that configured health plus a current matching observation projects effective `active`. A same-identity setup refresh may therefore leave the lifecycle row `configured` while a preserved matching observation keeps effective health active. `reload_required`, `degraded`, `stale`, and `broken` remain non-active.
+- `generated_config_verified`, `native_host_output_adapter_config_verified`, `hook_path_safety`, `hook_commands_cwd_independent`, `hook_commands_subdirectory_safe`, `cooperative_pre_tool_warning_available`, `cooperative_pre_tool_denial_available`, `post_tool_correlation_available`, `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`, `bypass_detection_active`, `prompt_capture_available`, and `local_web_consent_available` expose capability or configuration facts for the selected profile. `native_host_output_adapter_config_verified` is configuration-only close gating and does not claim host-feature support or live delivery. Detective host hooks require verified generated config, native host output configuration, `hook_path_safety=ok`, cwd-independent and subdirectory-safe required hook commands, required lifecycle phases, Bash/shell and direct file-write matcher coverage, a matching policy hash, and a current matching host-hook observation. Unrecorded-change detection requires an active session watch; a partial coverage warning remains visible in `session_watch_partial_coverage_warning`. A setup diagnostic that cannot observe a runtime-only capability reports that capability as false.
+- `guard_hook_observed` reports whether a current matching host-hook observation is recorded for the selected internal host-hook installation record. A current matching observation has a parseable timestamp, an observed host and policy hash matching the current installation and its exact `volicord-host-hook-capability-v2` capability, and a known observation phase configured by that capability's current lifecycle commands; any missing, malformed, unknown, or mismatched fact fails closed. When a connection-wide projection aggregates one Agent Connection across Connection Projects, this field is true only when every applicable Detective installation has a current matching observation.
+- `last_guard_observed_at` is the latest stored internal host-hook installation observation timestamp, or `null` when no observation is recorded. Its value reports the latest stored timestamp even when that observation is no longer current; observation currentness is represented by `guard_hook_observed` and the effective guard state.
 - `last_guard_event_at` is the latest host-hook event timestamp available to the projection, or `null` when no host-hook event is available.
 - `host_kind`, `observed_hook_phase`, `observed_host_kind`, `expected_policy_hash`, `observed_policy_hash`, and `observed_binary_version` report the selected installation and latest stored observation metadata when available.
-- `required_hook_phases` and `missing_required_hook_phases` report required host-hook configuration completeness. A required phase is missing when it is absent from `required_hook_phases` or listed in `missing_required_hook_phases`. Missing required phases keep effective detective health non-active even when a valid hook event has been observed.
+- `required_hook_phases` and `missing_required_hook_phases` report required host-hook configuration completeness. This public projection deliberately fails closed: a required phase is missing when it is absent from `required_hook_phases` or listed in `missing_required_hook_phases`. By contrast, a valid stored `volicord-host-hook-capability-v2` Detective record always declares the canonical five required phases and represents degradation only by listing a duplicate-free subset in `missing_required_hooks`; [Storage Records](../storage-records.md) owns that stored contract. The projection retains the absent-or-listed rule so corrupt or independently constructed input cannot become complete by omission. Missing required phases keep effective detective health non-active even when a valid hook event has been observed.
 - `prompt_capture_status` reports the machine-readable prompt-capture availability state for the selected connection. `prompt_capture_available=true` only when that state allows verification-code chat commands; it does not mean raw prompt text is included.
 - `prompt_capture_available` reports whether prompt-capture verification-code chat commands may be shown or recorded for the selected connection. It does not include prompt text.
 - `local_web_consent_available=true` only when the current adapter invocation's

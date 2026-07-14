@@ -315,8 +315,164 @@ state unless a focused owner explicitly defines a set-valued aggregation.
 
 `guard_installations` records setup lifecycle state, observed hook metadata, and host capability by Runtime Home, Agent Connection, and optional project scope:
 
-- `configured` and `reload_required` mean files or metadata are installed, but no matching host-hook observation has been recorded.
+- `configured` means files or metadata are installed and the setup lifecycle row is not itself asserting a new active observation. A same-identity refresh can preserve earlier observation metadata, and that preserved observation can still match the current host, policy, phase, and capability; consumers therefore evaluate those facts rather than inferring observation absence from the lifecycle status. `reload_required` means a host reload and a current matching observation are still required; any retained observation metadata remains diagnostic only.
 - `active` means Volicord observed a valid host hook for the recorded project, Agent Connection, host kind, integration profile, and policy hash. It does not prove OS enforcement or sandboxing.
+
+#### Closed host-hook capability v2 record
+
+`guard_installations.host_capability_json` uses the internal closed
+`volicord-host-hook-capability-v2` contract. Its top-level object has exactly
+these 18 members and no others:
+
+- `schema`, `policy_hash`, `selected_profile`, `connection_intent`
+- `final_output_authority_disclosure_implementation_available`,
+  `native_host_output_adapter`,
+  `native_host_output_adapter_config_verified`,
+  `bash_shell_mutation_coverage`, `direct_file_write_matcher_coverage`
+- `host_capabilities`, `required_hook_phases`, `missing_required_hooks`,
+  `prompt_capture`
+- `files`, `host_hook_commands`, `hook_root_resolution`, `hook_path_safety`,
+  `commands`
+
+`schema` is exactly `volicord-host-hook-capability-v2`; `policy_hash` is a
+nonempty string; `selected_profile` is `record` or `detective`; and
+`connection_intent` is `personal`, `shared`, or `global`.
+`native_host_output_adapter` is `none`, `codex`, or `claude-code`.
+`final_output_authority_disclosure_implementation_available` is true exactly
+when that adapter is `codex` or `claude-code`, while
+`native_host_output_adapter_config_verified=true` is permitted only for one of
+those implemented adapters. The two coverage members and `prompt_capture` are
+Booleans. A `record` capability has `prompt_capture=false`.
+
+`host_capabilities` is a closed object containing exactly these Boolean
+members: `stdio_mcp`, `http_mcp`, `session_start_hook`, `pre_tool_hook`,
+`post_tool_hook`, `user_prompt_submit_hook`, `stop_hook`, `rule_file_support`,
+and `project_local_configuration`. `commands` is a closed map with exactly
+`session_start`, `pre_tool`, `post_tool`, `prompt_capture`, and `stop`. Each
+value is exactly `{command,args}`, where `command` is a nonempty string and
+`args` is an array of strings.
+
+`required_hook_phases` and `missing_required_hooks` are duplicate-free arrays.
+For `detective`, `required_hook_phases` is exactly
+`session_start_hook`, `pre_tool_hook`, `post_tool_hook`,
+`user_prompt_submit_hook`, and `stop_hook`; `missing_required_hooks` is a subset
+of that set. For `record`, both arrays are empty. This canonical stored rule is
+distinct from the defensive absent-or-listed completeness projection defined
+for `GuardHealthSummary` in [API State Schemas](api/schema-state.md).
+
+Each `host_hook_commands[]` entry is a closed object with exactly
+`host_kind`, `phase`, `purpose`, `policy_key`, `command_shape`, `command`,
+`args`, `expected_wrapper_path`, `expected_phase_wrapper_path`,
+`root_resolution_basis`, `hook_command_path_basis`, `cwd_independent`,
+`subdirectory_safe`, `wrapper_resolution_status`, and `verification`.
+`verification` is exactly `{basis_verified_by,host_contract_source}`.
+`command_shape` is `shell_command_string` with `args=null`, or `exec_form` with
+a string array for `args`. Root basis is `git_work_tree` or
+`claude_project_dir`; path basis is `git_root_runtime` or
+`claude_project_dir`; and wrapper status is one of `ok`,
+`relative_path_unsafe`, `wrapper_missing`, `wrapper_not_executable`,
+`dispatch_missing`, `placeholder_unsupported`, `absolute_path_stale`,
+`policy_hash_mismatch`, `host_output_mismatch`, `authority_mismatch`, or
+`metadata_missing`. Phases are unique and use the exact phase-to-policy-key
+mapping. Purpose is `detective_guard` for `detective` and
+`final_output_authority_disclosure` for `record`; all entries use one nonempty
+host kind. A `detective` record has exactly the required phases not listed as
+missing. A `record` record has no entry or only `stop_hook`.
+
+Owner binding further requires the generated host command itself. Codex uses
+exactly `shell_command_string` with `args=null`. Detective commands are exactly
+`sh -c 'root=$(git rev-parse --show-toplevel) || exit $?; exec
+"$root/.codex/hooks/volicord-dispatch.sh" <command-name>'`, where the final
+argument is the command name mapped from that entry's `policy_key`; a Record
+`stop` command names the exact phase wrapper instead of the dispatch and has no
+phase argument. Claude Code uses exactly `exec_form`, an empty `args` array,
+and `${CLAUDE_PROJECT_DIR}/.claude/hooks/volicord-<command-name>.sh`. A direct
+Volicord invocation, absolute wrapper path, wrong phase argument, alternate
+shell form, or legacy form is not an exact-v2 owner-bound command.
+
+When there are no host-hook commands, `hook_root_resolution` and
+`hook_path_safety` are both `null`. Otherwise, `hook_root_resolution` is exactly
+`{basis,all_cwd_independent,all_subdirectory_safe,overall_status,phases}` and
+each `phases[]` entry is exactly
+`{phase,root_resolution_basis,hook_command_path_basis,cwd_independent,subdirectory_safe,wrapper_resolution_status}`.
+`hook_path_safety` is exactly
+`{overall_status,all_cwd_independent,all_subdirectory_safe,commands}` and each
+`commands[]` entry is exactly
+`{phase,hook_command_path_basis,cwd_independent,subdirectory_safe,wrapper_resolution_status}`.
+Both arrays are one-to-one projections of `host_hook_commands`; their aggregate
+Booleans, basis, and `ok` or `relative_path_unsafe` status must equal the
+underlying entries.
+
+Each `files[]` value is a closed ownership-tagged union. Every variant has
+string `kind`, `path`, `status`, `content_hash`, and `ownership`. `kind` is one
+of `volicord_policy`, `git_info_exclude`, `host_mcp_config`,
+`host_hook_config`, `host_hook_dispatch`, `host_hook_wrapper`,
+`host_rule_instruction`, or `agents_managed_block`; `status` is one of
+`planned_create`, `planned_update`, `unchanged`, `created`, or `updated`.
+`managed_json` has only the five common members. `managed_block` adds exactly
+`managed_marker_start` and `managed_marker_end`.
+`managed_json_projection` adds exactly `managed_projection` and
+`managed_projection_json`. `managed_script` adds `managed_marker` and Boolean
+`executable_required`, then is either a `host_hook_dispatch` with exactly
+`managed_script_role=codex_dispatch`, `host_kind`, and `phase`, or a
+`host_hook_wrapper` with exactly `managed_script_command`, `host_kind`,
+`phase`, `purpose`, `connection_id`, `guard_installation_id`, `policy_hash`,
+and `host_output`.
+
+The JSON shape alone is insufficient authority. The capability profile and
+intent must match the owning `guard_installations` row and Agent Connection;
+the row and connection host kinds must match; the adapter, every host-hook
+command host kind, and every managed-script host kind must agree with that
+owner host. Repository inventory is also bound to the normalized absolute
+`repo_root` of the exact owning project. `volicord_policy` is exactly
+`.volicord/policy.json`; `agents_managed_block` is exactly `AGENTS.md`; the
+Claude Code `host_mcp_config` is exactly `.mcp.json`; hook configuration is
+exactly `.codex/hooks.json`, `.claude/settings.local.json` for a personal
+Claude Code connection, or `.claude/settings.json` otherwise; phase wrappers
+are exactly `.codex/hooks/volicord-<command-name>.sh` or
+`.claude/hooks/volicord-<command-name>.sh`; the Codex Detective dispatch is
+exactly `.codex/hooks/volicord-dispatch.sh`; and rule instructions are exactly
+`.codex/rules/volicord.rules` or `.claude/rules/volicord.md`. Command wrapper
+paths must name those same canonical paths.
+
+For a project-scoped capability, all five top-level `commands` entries use one
+identical nonempty executable. Their arguments are exactly `_hook`, the
+phase-mapped command name, `--repo` and the owning normalized root,
+`--connection` and the owning connection ID, `--guard-installation` and the
+owning installation ID, `--host` and the public owner-host label, and
+`--integration-profile` and the owning profile, followed by the generated
+output pair. That pair is `--host-output codex` or `--host-output claude-code`
+for the corresponding Detective adapter and `--output volicord-json`
+otherwise. These policy commands omit `--policy-hash` because the policy hash
+is computed over the policy containing them. Every managed wrapper command
+must reuse that executable and the exact owner coordinates: a Detective
+wrapper adds the capability `policy_hash` before its host-output pair, while a
+Record `stop` wrapper uses `_final-output`, the same owner coordinates, the
+capability `policy_hash`, and the exact host-output pair. Generated shell-word
+quoting is part of this exact command text; there is no compatibility fallback.
+
+`git_info_exclude` is the sole
+under-`repo_root` location exception because a linked worktree's resolved
+common-Git-directory `info/exclude` can be outside the worktree; it does not
+authorize arbitrary-path retirement. A projectless capability cannot carry
+host-hook commands or any repository inventory, including `git_info_exclude`.
+Its required closed top-level `commands` map remains shape-validated but is not
+repository authority and must not be consumed as project command facts.
+Production writes reject a shape, semantic relation, or owner binding mismatch.
+Existing mismatched rows remain visible to bounded raw inspection for diagnosis,
+but Store, Core, final-output, connection, and Doctor fact consumers, including
+guard-event evidence fulfillment, fail closed instead of consuming their
+capability facts.
+
+The removed `final_output_authority_disclosure_supported` Boolean is not a v2
+member. The three current final-output members keep implementation,
+`native_host_output_adapter`, and generated-configuration audit distinct. None
+is `HostFeatureSupportStatus`, exact live-host evidence, or permission to
+project `verified`. Missing members, unknown members at any closed level, a v1
+schema, or a retired member make the value invalid current capability input.
+Reads must not decode v1 as v2, copy its old Boolean into a new field, or infer
+a support state from it. Supported same-identity repair and migration rejection
+behavior belongs to [Administrative CLI](admin-cli.md).
 
 `expected_writes` records deterministic write correlation:
 
@@ -500,7 +656,7 @@ Rules:
 | Installation profile | Installation-profile metadata that is not a host trust decision, user judgment, or public API schema. |
 | Agent Connection | Verification report JSON, user-action JSON, and metadata that are not used as authority, host trust proof, or a replacement for external host configuration. |
 | Host-capability verification | V1 `metadata_json` is strict canonical `{}` only. Every allowed evidence coordinate has a dedicated column; a bearer URL or token, prompt, transcript, screenshot, raw host artifact, private operator data, and arbitrary or additional members are invalid. |
-| Host-hook installation | Host capability JSON and metadata for local host-hook setup health, not OS enforcement proof. |
+| Host-hook installation | Closed internal `volicord-host-hook-capability-v2` JSON and metadata for local host-hook setup health. V2 separates implementation availability from configuration verification; v1 is invalid current input and is repaired only through init without inference. These records are not typed host support, exact live evidence, or OS enforcement proof. |
 | `agent_sessions` | Non-authority metadata for a project-scoped Agent Session. |
 | `guard_events` | Host-hook subject JSON, result JSON, and metadata for a local host decision request. |
 | `prompt_captures` | Non-authority metadata for a captured prompt record; prompt text is a direct nullable text column. |

@@ -839,6 +839,86 @@ fn evidence_capture_tool_requires_exact_complete_pre_post_pair_and_keeps_raw_res
 
 #[cfg(unix)]
 #[test]
+fn evidence_capture_tool_rejects_persisted_v1_guard_capability_without_receipt(
+) -> Result<(), Box<dyn Error>> {
+    let tool_input = json!({"path": "src/lib.rs"});
+    let input_sha256 = bare_canonical_sha256(&tool_input)?;
+    let (fixture, intent_id) = prepared_capture(
+        "cli-evidence-tool-v1-capability",
+        EvidenceCaptureSpec::VerifiedToolInvocation {
+            tool_name: "Read".to_owned(),
+            tool_input_sha256: input_sha256.clone(),
+            expected_success: RequiredNullable::null(),
+        },
+        Some("session_evidence_tool_v1"),
+        Some("guard_evidence_tool_v1"),
+    )?;
+    let source_timestamp = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_tool_v1_pre",
+        "pre_tool",
+        "session_evidence_tool_v1",
+        "guard_evidence_tool_v1",
+        json!({
+            "tool_name": "Read",
+            "tool_use_id": "tool-use-v1",
+            "tool_input": tool_input,
+        }),
+        &input_sha256,
+        None,
+        &source_timestamp,
+    )?;
+    let tool_response = json!({"success": true, "exit_code": 0});
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_tool_v1_post",
+        "post_tool",
+        "session_evidence_tool_v1",
+        "guard_evidence_tool_v1",
+        json!({
+            "tool_name": "Read",
+            "tool_use_id": "tool-use-v1",
+            "tool_input": {"path": "src/lib.rs"},
+            "tool_response": tool_response,
+        }),
+        &input_sha256,
+        Some(&bare_canonical_sha256(&tool_response)?),
+        &source_timestamp,
+    )?;
+    let mut capability = evidence_guard_capability(&fixture, "guard_evidence_tool_v1", "shared");
+    capability["schema"] = json!("volicord-host-hook-capability-v1");
+    overwrite_guard_capability(&fixture, "guard_evidence_tool_v1", &capability)?;
+    let before = fixture.counts()?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-tool",
+            "--intent",
+            &intent_id,
+            "--pre-event",
+            "guard_event_tool_v1_pre",
+            "--post-event",
+            "guard_event_tool_v1_post",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("host_capability_json"));
+    assert_eq!(fixture.counts()?, before);
+    assert!(fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .is_none());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn evidence_capture_tool_rejects_post_only_and_mismatched_invocation_without_receipt(
 ) -> Result<(), Box<dyn Error>> {
     let tool_input = json!({"path": "src/lib.rs"});
@@ -1121,6 +1201,69 @@ fn evidence_capture_connection_accepts_exact_registered_guard_event() -> Result<
         })
     );
     assert_eq!(rendered["observed_at"], source_timestamp);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn evidence_capture_connection_rejects_persisted_guard_owner_intent_mismatch(
+) -> Result<(), Box<dyn Error>> {
+    let (fixture, intent_id) = prepared_capture(
+        "cli-evidence-connection-binding-mismatch",
+        EvidenceCaptureSpec::RegisteredConnectionObservation {
+            source_selector: ConnectionObservationSourceSelector::GuardEvent {
+                event_kind: ConnectionObservationGuardEventKind::Stop,
+            },
+            expected_complete: RequiredNullable::null(),
+        },
+        Some("session_evidence_connection_binding"),
+        Some("guard_evidence_connection_binding"),
+    )?;
+    let source_timestamp = capture_intent_timestamp(&fixture, &intent_id, "created_at")?;
+    insert_tool_guard_event(
+        &fixture,
+        "guard_event_connection_binding",
+        "stop",
+        "session_evidence_connection_binding",
+        "guard_evidence_connection_binding",
+        json!({
+            "hook_event_name": "Stop",
+            "status": "complete",
+            "content": {"omitted": true, "sha256": "sha256:redacted"}
+        }),
+        &"0".repeat(64),
+        None,
+        &source_timestamp,
+    )?;
+    let capability =
+        evidence_guard_capability(&fixture, "guard_evidence_connection_binding", "personal");
+    assert!(volicord_types::host_hook_capability_has_exact_v2_shape(
+        &capability
+    ));
+    overwrite_guard_capability(&fixture, "guard_evidence_connection_binding", &capability)?;
+    let before = fixture.counts()?;
+
+    let output = run_with_home_env_in_dir(
+        fixture.runtime_home_path(),
+        [
+            "evidence",
+            "capture-connection",
+            "--intent",
+            &intent_id,
+            "--guard-event",
+            "guard_event_connection_binding",
+        ],
+        &[],
+        &fixture.product_repo_path(),
+    )?;
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("host_capability_json"));
+    assert_eq!(fixture.counts()?, before);
+    assert!(fixture
+        .store()?
+        .evidence_capture_receipt_for_intent(&intent_id)?
+        .is_none());
     Ok(())
 }
 
@@ -3143,11 +3286,17 @@ fn init_defaults_to_personal_claude_code_connection() -> Result<(), Box<dyn Erro
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "supported": true,
+            "support_status": "implemented_unverified",
             "configured": true,
-            "verified": true
+            "configuration_verified": true,
+            "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
+            "subcapabilities": {
+                "authority_display": "implemented_unverified",
+                "authenticated_exact_replay": "implemented_unverified"
+            }
         })
     );
+    assert_complete_host_feature_support(&value, HostKind::ClaudeCode);
     let settings: Value = serde_json::from_str(&fs::read_to_string(
         repo_root.join(".claude/settings.local.json"),
     )?)?;
@@ -3230,11 +3379,22 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "supported": true,
+            "support_status": "unsupported_by_host",
             "configured": true,
-            "verified": true
+            "configuration_verified": true,
+            "required_subcapabilities": [
+                "authority_display",
+                "authenticated_exact_replay",
+                "block_finalization"
+            ],
+            "subcapabilities": {
+                "authority_display": "implemented_unverified",
+                "authenticated_exact_replay": "unsupported_by_host",
+                "block_finalization": "unsupported_by_host"
+            }
         })
     );
+    assert_complete_host_feature_support(&value, HostKind::Codex);
     let connection_id = value["connection"]["connection_id"]
         .as_str()
         .expect("connection_id should be present");
@@ -3314,11 +3474,22 @@ fn init_claude_code_guarded_without_degraded_opt_in_generates_hooks() -> Result<
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "supported": true,
+            "support_status": "implemented_unverified",
             "configured": true,
-            "verified": true
+            "configuration_verified": true,
+            "required_subcapabilities": [
+                "authority_display",
+                "authenticated_exact_replay",
+                "block_finalization"
+            ],
+            "subcapabilities": {
+                "authority_display": "implemented_unverified",
+                "authenticated_exact_replay": "implemented_unverified",
+                "block_finalization": "implemented_unverified"
+            }
         })
     );
+    assert_complete_host_feature_support(&value, HostKind::ClaudeCode);
     assert!(repo_root.join(".mcp.json").exists());
     assert!(repo_root.join("AGENTS.md").exists());
     assert!(repo_root.join(".volicord/policy.json").exists());
@@ -3767,11 +3938,17 @@ fn init_codex_record_profile_installs_only_final_output_handler() -> Result<(), 
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "supported": true,
+            "support_status": "unsupported_by_host",
             "configured": true,
-            "verified": true
+            "configuration_verified": true,
+            "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
+            "subcapabilities": {
+                "authority_display": "implemented_unverified",
+                "authenticated_exact_replay": "unsupported_by_host"
+            }
         })
     );
+    assert_complete_host_feature_support(&value, HostKind::Codex);
     assert_eq!(
         value["states"]["cooperative_pre_tool_denial_available"],
         false
@@ -3819,7 +3996,7 @@ fn init_codex_record_profile_installs_only_final_output_handler() -> Result<(), 
     assert_eq!(capability["selected_profile"], "record");
     assert_eq!(capability["native_host_output_adapter"], "codex");
     assert_eq!(
-        capability["final_output_authority_disclosure_supported"],
+        capability["final_output_authority_disclosure_implementation_available"],
         true
     );
     assert_eq!(
@@ -3833,7 +4010,7 @@ fn init_codex_record_profile_installs_only_final_output_handler() -> Result<(), 
         capability["host_hook_commands"][0]["purpose"],
         "final_output_authority_disclosure"
     );
-    assert_eq!(capability["prompt_capture"], true);
+    assert_eq!(capability["prompt_capture"], false);
     assert!(capability["missing_required_hooks"]
         .as_array()
         .expect("missing hooks should be an array")
@@ -3943,11 +4120,17 @@ fn init_codex_record_profile_succeeds_without_detective_hooks_or_watcher(
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "supported": true,
+            "support_status": "unsupported_by_host",
             "configured": true,
-            "verified": true
+            "configuration_verified": true,
+            "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
+            "subcapabilities": {
+                "authority_display": "implemented_unverified",
+                "authenticated_exact_replay": "unsupported_by_host"
+            }
         })
     );
+    assert_complete_host_feature_support(&value, HostKind::Codex);
     assert!(repo_root.join(".codex/config.toml").exists());
     assert!(repo_root.join(".codex/hooks.json").exists());
     assert!(repo_root.join(".codex/hooks/volicord-stop.sh").exists());
@@ -4147,11 +4330,17 @@ fn record_final_output_status_degrades_without_activating_detective_hooks(
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "supported": true,
+            "support_status": "unsupported_by_host",
             "configured": false,
-            "verified": false
+            "configuration_verified": false,
+            "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
+            "subcapabilities": {
+                "authority_display": "implemented_unverified",
+                "authenticated_exact_replay": "unsupported_by_host"
+            }
         })
     );
+    assert_complete_host_feature_support(&value, HostKind::Codex);
     assert_eq!(value["states"]["hook_config"], "disabled");
     assert_eq!(
         value["states"]["control_surface"]["host_hooks_active"],
@@ -5463,7 +5652,7 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(guard_installations[0].guard_mode, "detective");
     assert_eq!(guard_installations[0].installation_status, "configured");
     let capability: Value = serde_json::from_str(&guard_installations[0].host_capability_json)?;
-    assert_eq!(capability["schema"], "volicord-host-hook-capability-v1");
+    assert_eq!(capability["schema"], "volicord-host-hook-capability-v2");
     assert_eq!(
         capability["policy_hash"],
         value["guard_installation"]["policy_hash"]
@@ -5472,7 +5661,14 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(capability["selected_profile"], "detective");
     assert_eq!(capability["connection_intent"], "shared");
     assert_eq!(capability["native_host_output_adapter"], "codex");
-    assert_eq!(capability["native_host_output_adapter_verified"], true);
+    assert_eq!(
+        capability["final_output_authority_disclosure_implementation_available"],
+        true
+    );
+    assert_eq!(
+        capability["native_host_output_adapter_config_verified"],
+        true
+    );
     assert_eq!(capability["bash_shell_mutation_coverage"], true);
     assert_eq!(capability["direct_file_write_matcher_coverage"], true);
     assert_eq!(capability["missing_required_hooks"], serde_json::json!([]));
@@ -6122,6 +6318,13 @@ fn connect_respects_explicit_read_only_and_uses_same_dry_run_plan() -> Result<()
         dry_run_json["connection"]["mode"],
         CONNECTION_MODE_READ_ONLY
     );
+    assert_eq!(dry_run_json["states"]["selected_profile"], "not_configured");
+    assert_eq!(
+        dry_run_json["states"]["control_surface"]["selected_profile"],
+        "not_configured"
+    );
+    assert_complete_host_feature_support(&dry_run_json, HostKind::Codex);
+    assert!(dry_run_json["states"]["final_output_authority_disclosure"].is_null());
     assert_eq!(dry_run_json["planned_change"], "create");
     assert_eq!(list_projects(runtime_home.path())?.len(), 0);
 
@@ -6535,7 +6738,7 @@ fn connection_verify_complete_when_active_codex_tools_are_confirmed() -> Result<
     )?;
     assert_success(&managed_verify);
     let managed_value = json_stdout(&managed_verify)?;
-    assert_complete_codex_connection_json(&managed_value);
+    assert_complete_codex_connection_json(&managed_value, "not_configured");
     assert!(managed_value["checks"]
         .as_array()
         .expect("checks should be an array")
@@ -6559,7 +6762,7 @@ fn connection_verify_complete_when_active_codex_tools_are_confirmed() -> Result<
     )?;
     assert_success(&status);
     let status_value = json_stdout(&status)?;
-    assert_complete_codex_connection_json(&status_value);
+    assert_complete_codex_connection_json(&status_value, "not_configured");
     Ok(())
 }
 
@@ -6624,7 +6827,7 @@ fn connection_status_complete_when_managed_codex_tool_call_is_observed(
         &env,
     )?;
     assert_success(&verify);
-    assert_complete_codex_connection_json(&json_stdout(&verify)?);
+    assert_complete_codex_connection_json(&json_stdout(&verify)?, "record");
 
     let status = run_with_home_env(
         runtime_home.path(),
@@ -6641,7 +6844,7 @@ fn connection_status_complete_when_managed_codex_tool_call_is_observed(
     )?;
     assert_success(&status);
     let status_value = json_stdout(&status)?;
-    assert_complete_codex_connection_json(&status_value);
+    assert_complete_codex_connection_json(&status_value, "record");
     Ok(())
 }
 
@@ -6782,7 +6985,7 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     assert!(add_text.contains("Agent Connection configured for Codex"));
     assert!(add_text
         .contains("Status:\n  Connection: enabled\n  Verification: complete\n  Mode: workflow"));
-    assert!(add_text.contains("Profile:\n  record"));
+    assert!(add_text.contains("Profile:\n  not_configured"));
     assert!(add_text.contains(&format!("Repository:\n  {}", repo_root.display())));
     assert!(add_text.contains("Host configuration:"));
     assert!(add_text.contains("  Change: create"));
@@ -6832,7 +7035,7 @@ fn connect_defaults_to_workflow_mode() -> Result<(), Box<dyn Error>> {
     assert!(status_text.contains(
         "Status:\n  Connection: enabled\n  Mode: workflow\n  Last verification: complete"
     ));
-    assert!(status_text.contains("Profile:\n  record"));
+    assert!(status_text.contains("Profile:\n  not_configured"));
     assert!(status_text.contains("  Current MCP configuration: match"));
     assert!(status_text.contains("  Host follow-up: ready"));
     assert!(status_text.contains("Next:\n  none"));
@@ -7343,7 +7546,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&verify);
     let verify_json = json_stdout(&verify)?;
-    assert_complete_codex_connection_json(&verify_json);
+    assert_complete_codex_connection_json(&verify_json, "record");
     assert_eq!(verify_json["states"]["mcp_config"], "match");
     assert_eq!(
         verify_json["verification"]["host"]["managed_config"],
@@ -7391,7 +7594,7 @@ fn codex_tool_approval_overlay_is_match_and_preserved_by_init() -> Result<(), Bo
     )?;
     assert_success(&complete_status);
     let complete_status_json = json_stdout(&complete_status)?;
-    assert_complete_codex_connection_json(&complete_status_json);
+    assert_complete_codex_connection_json(&complete_status_json, "record");
     assert_eq!(complete_status_json["states"]["mcp_config"], "match");
     assert!(!stdout(&complete_status).contains("volicord init --host codex"));
     Ok(())
@@ -7649,6 +7852,138 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
 
 #[cfg(unix)]
 #[test]
+fn init_repairs_v1_host_capability_after_current_audit_rejects_it() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-v1-capability-repair")?;
+    let repo_root = create_git_repo(&runtime_home, "product-repo")?;
+    let bin_dir = runtime_home.path().join("bin");
+    write_fake_codex(&bin_dir)?;
+    write_fake_mcp(&bin_dir)?;
+    let repo_text = path_text(&repo_root);
+    let init_args = [
+        "init",
+        "--shared",
+        "--host",
+        "codex",
+        "--repo",
+        repo_text.as_str(),
+        "--profile",
+        "detective",
+        "--json",
+    ];
+    let init_env = [
+        ("PATH", path_env(&[bin_dir.as_path()])),
+        ("VOLICORD_TEST_CONNECTION_MODE", "workflow".to_owned()),
+    ];
+
+    let init = run_with_home_env(runtime_home.path(), init_args, &init_env)?;
+    assert_success(&init);
+    let init_json = json_stdout(&init)?;
+    let connection_id = init_json["connection"]["connection_id"]
+        .as_str()
+        .expect("connection id")
+        .to_owned();
+    let projects = list_connection_projects(runtime_home.path(), &connection_id)?;
+    let installations = list_guard_installations(
+        runtime_home.path(),
+        &connection_id,
+        Some(&projects[0].project_id),
+    )?;
+    let installation = installations
+        .into_iter()
+        .next()
+        .expect("guard installation");
+    let mut capability: Value = serde_json::from_str(&installation.host_capability_json)?;
+    let capability_object = capability
+        .as_object_mut()
+        .expect("capability should be an object");
+    capability_object.insert(
+        "schema".to_owned(),
+        Value::String("volicord-host-hook-capability-v1".to_owned()),
+    );
+    capability_object.remove("final_output_authority_disclosure_implementation_available");
+    capability_object.insert(
+        "final_output_authority_disclosure_supported".to_owned(),
+        Value::Bool(true),
+    );
+    let registry = rusqlite::Connection::open(runtime_home.registry_db_path())?;
+    let updated = registry.execute(
+        "UPDATE guard_installations
+            SET host_capability_json = ?1
+          WHERE guard_installation_id = ?2",
+        rusqlite::params![capability.to_string(), installation.guard_installation_id],
+    )?;
+    assert_eq!(updated, 1, "fixture capability row should exist");
+
+    let stale_status = run_with_home_env(
+        runtime_home.path(),
+        [
+            "connection",
+            "status",
+            "codex",
+            "--shared",
+            "--repo",
+            path_text(&repo_root).as_str(),
+            "--json",
+        ],
+        &[],
+    )?;
+    assert_success(&stale_status);
+    let stale_json = json_stdout(&stale_status)?;
+    assert_eq!(stale_json["states"]["generated_config_verified"], false);
+    assert!(stale_json["host_hook"]["stale_files"]
+        .as_array()
+        .expect("stale files")
+        .iter()
+        .any(|value| value == "host_hook_capability_json:schema"));
+
+    let refused_migration = run_with_home_env(
+        runtime_home.path(),
+        [
+            "init",
+            "--shared",
+            "--host",
+            "codex",
+            "--repo",
+            repo_text.as_str(),
+            "--profile",
+            "record",
+            "--json",
+        ],
+        &init_env,
+    )?;
+    assert_ne!(refused_migration.status.code(), Some(0));
+    assert!(stderr(&refused_migration).contains("INTEGRATION_MIGRATION_INVENTORY_INVALID"));
+
+    let repaired = run_with_home_env(runtime_home.path(), init_args, &init_env)?;
+    assert_success(&repaired);
+    let repaired_installations = list_guard_installations(
+        runtime_home.path(),
+        &connection_id,
+        Some(&projects[0].project_id),
+    )?;
+    assert_eq!(repaired_installations.len(), 1);
+    let repaired_capability: Value =
+        serde_json::from_str(&repaired_installations[0].host_capability_json)?;
+    assert_eq!(
+        repaired_capability["schema"],
+        "volicord-host-hook-capability-v2"
+    );
+    assert_eq!(
+        repaired_capability["final_output_authority_disclosure_implementation_available"],
+        true
+    );
+    assert_eq!(
+        repaired_capability["native_host_output_adapter_config_verified"],
+        true
+    );
+    assert!(repaired_capability
+        .get("final_output_authority_disclosure_supported")
+        .is_none());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn connection_selector_distinguishes_project_registration_and_allowlist(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-selector-actions")?;
@@ -7843,6 +8178,21 @@ fn connection_status_mode_and_remove_use_natural_selectors() -> Result<(), Box<d
     let status_json = json_stdout(&status)?;
     assert_eq!(status_json["connection"]["connection_id"], connection_id);
     assert_diagnostic_disclosure(&status_json);
+    assert_eq!(status_json["states"]["selected_profile"], "not_configured");
+    assert_eq!(
+        status_json["states"]["control_surface"]["selected_profile"],
+        "not_configured"
+    );
+    assert_eq!(
+        status_json["host_hook"]["selected_profile"],
+        "not_configured"
+    );
+    assert_eq!(
+        status_json["host_hook"]["control_surface"]["selected_profile"],
+        "not_configured"
+    );
+    assert_complete_host_feature_support(&status_json, HostKind::Codex);
+    assert!(status_json["states"]["final_output_authority_disclosure"].is_null());
 
     let verify = run_with_home_env(
         runtime_home.path(),
@@ -8641,6 +8991,7 @@ fn install_active_guard(
     installation_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let observed_at = "2026-07-13T00:00:00Z";
+    let capability = evidence_guard_capability(fixture, installation_id, "shared");
     upsert_guard_installation(
         fixture.runtime_home_path(),
         GuardInstallationUpsert {
@@ -8649,7 +9000,7 @@ fn install_active_guard(
             project_id: Some(fixture.project_id().to_owned()),
             host_kind: HOST_KIND_CODEX.to_owned(),
             guard_mode: "detective".to_owned(),
-            host_capability_json: "{}".to_owned(),
+            host_capability_json: capability.to_string(),
             installation_status: "active".to_owned(),
             installed_at: Some(observed_at.to_owned()),
             last_checked_at: observed_at.to_owned(),
@@ -8657,7 +9008,7 @@ fn install_active_guard(
             last_seen_at: Some(observed_at.to_owned()),
             last_seen_phase: Some("post_tool".to_owned()),
             observed_host_kind: Some(HOST_KIND_CODEX.to_owned()),
-            observed_policy_hash: None,
+            observed_policy_hash: Some("policy-hash".to_owned()),
             observed_binary_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
             metadata_json: "{}".to_owned(),
         },
@@ -8675,6 +9026,264 @@ fn install_active_guard(
             metadata_json: "{}".to_owned(),
         },
     )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn evidence_guard_capability(
+    fixture: &CoreFixture,
+    installation_id: &str,
+    connection_intent: &str,
+) -> Value {
+    let repo_root = fixture.product_repo_path();
+    let phases = [
+        ("session_start_hook", "session_start", "session-start"),
+        ("pre_tool_hook", "pre_tool", "pre-tool"),
+        ("post_tool_hook", "post_tool", "post-tool"),
+        (
+            "user_prompt_submit_hook",
+            "prompt_capture",
+            "prompt-capture",
+        ),
+        ("stop_hook", "stop", "stop"),
+    ];
+    let host_hook_commands = phases
+        .iter()
+        .map(|(phase, policy_key, command_name)| {
+            json!({
+                "host_kind": "codex",
+                "phase": phase,
+                "purpose": "detective_guard",
+                "policy_key": policy_key,
+                "command_shape": "shell_command_string",
+                "command": format!(
+                    "sh -c '{}'",
+                    format!(
+                        "root=$(git rev-parse --show-toplevel) || exit $?; exec \"$root/.codex/hooks/volicord-dispatch.sh\" {command_name}"
+                    )
+                    .replace('\'', "'\\''")
+                ),
+                "args": null,
+                "expected_wrapper_path": repo_root.join(".codex/hooks/volicord-dispatch.sh").display().to_string(),
+                "expected_phase_wrapper_path": repo_root.join(format!(".codex/hooks/volicord-{command_name}.sh")).display().to_string(),
+                "root_resolution_basis": "git_work_tree",
+                "hook_command_path_basis": "git_root_runtime",
+                "cwd_independent": true,
+                "subdirectory_safe": true,
+                "wrapper_resolution_status": "ok",
+                "verification": {
+                    "basis_verified_by": "test_fixture",
+                    "host_contract_source": "test_fixture",
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut files = host_hook_commands
+        .iter()
+        .zip(phases.iter())
+        .map(|(command, (_, _, command_name))| {
+            let wrapper_args = evidence_guard_command_args(
+                &repo_root,
+                fixture.connection_id(),
+                installation_id,
+                command_name,
+                Some("policy-hash"),
+            );
+            json!({
+                "kind": "host_hook_wrapper",
+                "path": command["expected_phase_wrapper_path"],
+                "status": "unchanged",
+                "content_hash": format!("wrapper-hash-{}", command["policy_key"].as_str().expect("policy key")),
+                "ownership": "managed_script",
+                "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+                "executable_required": true,
+                "managed_script_command": evidence_command_line("volicord", &wrapper_args),
+                "host_kind": "codex",
+                "phase": command["policy_key"],
+                "purpose": "detective_guard",
+                "connection_id": fixture.connection_id(),
+                "guard_installation_id": installation_id,
+                "policy_hash": "policy-hash",
+                "host_output": "codex",
+            })
+        })
+        .collect::<Vec<_>>();
+    files.extend([
+        json!({
+            "kind": "host_hook_dispatch",
+            "path": repo_root.join(".codex/hooks/volicord-dispatch.sh").display().to_string(),
+            "status": "unchanged",
+            "content_hash": "dispatch-hash",
+            "ownership": "managed_script",
+            "managed_marker": "VOLICORD_MANAGED_HOOK_WRAPPER",
+            "executable_required": true,
+            "managed_script_role": "codex_dispatch",
+            "host_kind": "codex",
+            "phase": "dispatch",
+        }),
+        json!({
+            "kind": "host_hook_config",
+            "path": repo_root.join(".codex/hooks.json").display().to_string(),
+            "status": "unchanged",
+            "content_hash": "config-hash",
+            "ownership": "managed_json",
+        }),
+        json!({
+            "kind": "host_rule_instruction",
+            "path": repo_root.join(".codex/rules/volicord.rules").display().to_string(),
+            "status": "unchanged",
+            "content_hash": "rule-hash",
+            "ownership": "managed_block",
+            "managed_marker_start": "# BEGIN VOLICORD MANAGED CODEX RULES",
+            "managed_marker_end": "# END VOLICORD MANAGED CODEX RULES",
+        }),
+    ]);
+    let root_phases = host_hook_commands
+        .iter()
+        .map(|command| {
+            json!({
+                "phase": command["phase"],
+                "root_resolution_basis": command["root_resolution_basis"],
+                "hook_command_path_basis": command["hook_command_path_basis"],
+                "cwd_independent": command["cwd_independent"],
+                "subdirectory_safe": command["subdirectory_safe"],
+                "wrapper_resolution_status": command["wrapper_resolution_status"],
+            })
+        })
+        .collect::<Vec<_>>();
+    let safety_commands = host_hook_commands
+        .iter()
+        .map(|command| {
+            json!({
+                "phase": command["phase"],
+                "hook_command_path_basis": command["hook_command_path_basis"],
+                "cwd_independent": command["cwd_independent"],
+                "subdirectory_safe": command["subdirectory_safe"],
+                "wrapper_resolution_status": command["wrapper_resolution_status"],
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "schema": "volicord-host-hook-capability-v2",
+        "policy_hash": "policy-hash",
+        "selected_profile": "detective",
+        "connection_intent": connection_intent,
+        "final_output_authority_disclosure_implementation_available": true,
+        "native_host_output_adapter": "codex",
+        "native_host_output_adapter_config_verified": true,
+        "bash_shell_mutation_coverage": true,
+        "direct_file_write_matcher_coverage": true,
+        "host_capabilities": {
+            "stdio_mcp": true,
+            "http_mcp": false,
+            "session_start_hook": true,
+            "pre_tool_hook": true,
+            "post_tool_hook": true,
+            "user_prompt_submit_hook": true,
+            "stop_hook": true,
+            "rule_file_support": true,
+            "project_local_configuration": true,
+        },
+        "required_hook_phases": [
+            "session_start_hook",
+            "pre_tool_hook",
+            "post_tool_hook",
+            "user_prompt_submit_hook",
+            "stop_hook"
+        ],
+        "missing_required_hooks": [],
+        "prompt_capture": true,
+        "files": files,
+        "host_hook_commands": host_hook_commands,
+        "hook_root_resolution": {
+            "basis": "git_work_tree",
+            "all_cwd_independent": true,
+            "all_subdirectory_safe": true,
+            "overall_status": "ok",
+            "phases": root_phases,
+        },
+        "hook_path_safety": {
+            "overall_status": "ok",
+            "all_cwd_independent": true,
+            "all_subdirectory_safe": true,
+            "commands": safety_commands,
+        },
+        "commands": {
+            "session_start": {"command": "volicord", "args": evidence_guard_command_args(&repo_root, fixture.connection_id(), installation_id, "session-start", None)},
+            "pre_tool": {"command": "volicord", "args": evidence_guard_command_args(&repo_root, fixture.connection_id(), installation_id, "pre-tool", None)},
+            "post_tool": {"command": "volicord", "args": evidence_guard_command_args(&repo_root, fixture.connection_id(), installation_id, "post-tool", None)},
+            "prompt_capture": {"command": "volicord", "args": evidence_guard_command_args(&repo_root, fixture.connection_id(), installation_id, "prompt-capture", None)},
+            "stop": {"command": "volicord", "args": evidence_guard_command_args(&repo_root, fixture.connection_id(), installation_id, "stop", None)},
+        },
+    })
+}
+
+#[cfg(unix)]
+fn evidence_guard_command_args(
+    repo_root: &Path,
+    connection_id: &str,
+    installation_id: &str,
+    command_name: &str,
+    policy_hash: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec![
+        "_hook".to_owned(),
+        command_name.to_owned(),
+        "--repo".to_owned(),
+        repo_root.display().to_string(),
+        "--connection".to_owned(),
+        connection_id.to_owned(),
+        "--guard-installation".to_owned(),
+        installation_id.to_owned(),
+        "--host".to_owned(),
+        "codex".to_owned(),
+        "--integration-profile".to_owned(),
+        "detective".to_owned(),
+    ];
+    if let Some(policy_hash) = policy_hash {
+        args.extend(["--policy-hash".to_owned(), policy_hash.to_owned()]);
+    }
+    args.extend(["--host-output".to_owned(), "codex".to_owned()]);
+    args
+}
+
+#[cfg(unix)]
+fn evidence_command_line(command: &str, args: &[String]) -> String {
+    std::iter::once(command)
+        .chain(args.iter().map(String::as_str))
+        .map(evidence_shell_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(unix)]
+fn evidence_shell_word(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
+    {
+        return value.to_owned();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(unix)]
+fn overwrite_guard_capability(
+    fixture: &CoreFixture,
+    installation_id: &str,
+    capability: &Value,
+) -> Result<(), Box<dyn Error>> {
+    let registry = rusqlite::Connection::open(volicord_store::sqlite::registry_db_path(
+        fixture.runtime_home_path(),
+    ))?;
+    let updated = registry.execute(
+        "UPDATE guard_installations
+            SET host_capability_json = ?1
+          WHERE guard_installation_id = ?2",
+        rusqlite::params![capability.to_string(), installation_id],
+    )?;
+    assert_eq!(updated, 1, "fixture capability row should exist");
     Ok(())
 }
 
@@ -9116,7 +9725,55 @@ fn assert_connection_text_omits_diagnostic_dump_fields(text: &str) {
 }
 
 #[cfg(unix)]
-fn assert_complete_codex_connection_json(value: &Value) {
+fn assert_complete_host_feature_support(value: &Value, host_kind: HostKind) {
+    let expected = match host_kind {
+        HostKind::Codex => json!({
+            "native_user_action": "implemented_unverified",
+            "local_web_user_channel": "implemented_unverified",
+            "verified_tool_producer": "implemented_unverified",
+            "registered_connection_observation": "implemented_unverified",
+            "record_final_output": "unsupported_by_host",
+            "detective_final_output": "unsupported_by_host"
+        }),
+        HostKind::ClaudeCode => json!({
+            "native_user_action": "implemented_unverified",
+            "local_web_user_channel": "implemented_unverified",
+            "verified_tool_producer": "implemented_unverified",
+            "registered_connection_observation": "implemented_unverified",
+            "record_final_output": "implemented_unverified",
+            "detective_final_output": "implemented_unverified"
+        }),
+        HostKind::Generic => json!({
+            "native_user_action": "unsupported_by_host",
+            "local_web_user_channel": "unsupported_by_host",
+            "verified_tool_producer": "unsupported_by_host",
+            "registered_connection_observation": "unsupported_by_host",
+            "record_final_output": "unsupported_by_host",
+            "detective_final_output": "unsupported_by_host"
+        }),
+    };
+    assert_eq!(value["states"]["host_feature_support"], expected, "{value}");
+    assert_eq!(
+        value["states"]["host_feature_support"]
+            .as_object()
+            .map(serde_json::Map::len),
+        Some(6),
+        "host support must use the exact six-key contract: {value}"
+    );
+    assert!(
+        value["host_hook"].get("host_feature_support").is_none(),
+        "host_hook must not duplicate the owner states.host_feature_support projection: {value}"
+    );
+    assert!(
+        value["host_hook"]
+            .get("final_output_authority_disclosure")
+            .is_none(),
+        "host_hook must not duplicate the owner states.final_output_authority_disclosure projection: {value}"
+    );
+}
+
+#[cfg(unix)]
+fn assert_complete_codex_connection_json(value: &Value, expected_profile: &str) {
     assert_eq!(value["status"], VERIFIED_STATUS_COMPLETE, "{value}");
     assert_eq!(
         value["connection"]["verification_status"], VERIFIED_STATUS_COMPLETE,
@@ -9169,7 +9826,18 @@ fn assert_complete_codex_connection_json(value: &Value) {
     );
     assert_eq!(value["primary_next_action"], Value::Null);
     assert_eq!(value["summary_card"]["next"], "none");
-    assert_record_profile_detective_checks_are_skipped(value);
+    assert_complete_host_feature_support(value, HostKind::Codex);
+    if expected_profile == "record" {
+        assert_record_profile_detective_checks_are_skipped(value);
+    } else {
+        assert_eq!(expected_profile, "not_configured");
+        assert_eq!(value["states"]["selected_profile"], expected_profile);
+        assert_eq!(
+            value["states"]["control_surface"]["selected_profile"],
+            expected_profile
+        );
+        assert!(value["states"]["final_output_authority_disclosure"].is_null());
+    }
     assert_complete_codex_json_omits_known_regressions(value);
 
     let checks = value["checks"]

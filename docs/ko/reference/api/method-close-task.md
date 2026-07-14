@@ -98,6 +98,10 @@ API 경계 블록:
   잔여 위험이 있는 advisor 결과에 수락을 요구합니다. 어떤 정책도 Evidence,
   위험 수락, 다른 blocker를 면제하지 않습니다.
 - `detective` 프로필에서는 호스트 훅 경로 안전성, 프롬프트 캡처 가능 여부, 미해결 미기록 변경, 호스트 훅이 감지한 쓰기 티켓 문제, `session-watch` 가용성을 포함한 `GuardHealthSummary` 상태도 확인합니다. 호스트 훅 상태를 선택하면 도출된 `CoverageSummary`도 보고합니다. `record` 프로필에서는 호스트 훅이 필요하지 않습니다. 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다.
+- `GuardHealthSummary.native_host_output_adapter_config_verified`는 Detective의 생성 설정
+  닫기 gating에만 참여합니다. `false`이면 적용되는 `guard_*` 설정 차단 사유에 기여할 수
+  있고, `true`이면 그 설정 전제 조건만 충족합니다. 관리 최종 출력 지원, 정확한 실제 호스트
+  전달, 재생, block 최종화, `verified` `HostFeatureSupportStatus`를 성립시키지 않습니다.
 - 호스트 훅과 `session-watch` 관찰은 Product Repository 쓰기를 막거나 파일을 바꾼 행위자를 식별하지 않습니다. 예상 쓰기 또는 쓰기 티켓 기록과의 협력형 탐지 및 상관관계만 지원합니다.
 - 현재 수락 기준 중 `evidence_requirement=required`인 항목만 증거 닫기
   요구사항을 만듭니다. 각 항목에는 현재 상태이고 대상이 일치하는 증거 관찰

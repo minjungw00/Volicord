@@ -799,6 +799,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "volicord-platform-fs",
  "volicord-test-support",
  "volicord-types",
 ]

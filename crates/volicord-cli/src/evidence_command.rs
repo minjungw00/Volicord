@@ -25,10 +25,13 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::{
-    agent_connections::agent_connection_project_access,
+    agent_connections::{agent_connection_project_access, agent_connection_record_read_only},
     bootstrap::{ProjectRecord, ACTIVE_PROJECT_STATUS},
     core_pipeline::{CoreProjectStore, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptInsert},
-    guards::{agent_session, guard_event, guard_installation, GuardEventRecord},
+    guards::{
+        agent_session, guard_event, guard_installation,
+        validate_stored_guard_installation_capability_binding, GuardEventRecord,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     session_watch::validate_current_complete_watch_observation,
     StoreError,
@@ -1361,6 +1364,13 @@ fn validate_active_guard_installation(
             "guard installation is not active for this connection and project",
         ));
     }
+    let connection = agent_connection_record_read_only(&context.runtime_home, connection_id)?
+        .ok_or_else(|| EvidenceCommandError::runtime("guard connection is not registered"))?;
+    validate_stored_guard_installation_capability_binding(
+        &installation,
+        &connection,
+        &context.project.repo_root,
+    )?;
     let session = agent_session(
         &context.runtime_home,
         &context.project.project_id,
