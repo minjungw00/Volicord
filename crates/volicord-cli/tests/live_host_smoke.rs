@@ -1332,6 +1332,7 @@ mod unix {
             ("host_executable", "unavailable"),
             ("interactive_terminal", "unavailable"),
             ("host_delivery_boundary", "unavailable"),
+            ("static_unsupported_by_host", "unavailable"),
             ("fixture_setup", "failed"),
             ("connection_observation", "failed"),
             ("host_process", "failed"),
@@ -6189,6 +6190,10 @@ mod unix {
             &mut result_recorder,
         );
         match outcome {
+            Ok(summary) if stage == "static_unsupported_by_host" => {
+                validate_live_evidence_observation_incomplete_result_shape(&summary)?;
+                result_recorder.record_final(&summary)
+            }
             Ok(summary) => {
                 stage = "result_validation";
                 if let Err(error) = validate_live_evidence_observation_result_shape(&summary) {
@@ -6247,6 +6252,26 @@ mod unix {
             executable_name,
             &executable,
         )?;
+        let maintained_host_kind = match host {
+            "codex" => HostKind::Codex,
+            "claude-code" => HostKind::ClaudeCode,
+            _ => {
+                return Err(
+                    io::Error::other("unsupported managed evidence-observation host").into(),
+                )
+            }
+        };
+        if host_feature_implementation_for_version(
+            maintained_host_kind,
+            Some(&host_version),
+            HostFeature::LocalWebUserChannel,
+        ) == HostFeatureImplementation::UnsupportedByHost
+        {
+            *stage = "static_unsupported_by_host";
+            return Ok(live_evidence_observation_incomplete_summary(
+                host, stage, None,
+            ));
+        }
         *stage = "interactive_terminal";
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             return Err(io::Error::other(
@@ -8876,7 +8901,10 @@ mod unix {
         initialized_diagnostics: Option<&ReleaseHostFeatureDiagnostics>,
     ) -> Value {
         let result = match stage {
-            "host_executable" | "interactive_terminal" | "host_delivery_boundary" => "unavailable",
+            "host_executable"
+            | "interactive_terminal"
+            | "host_delivery_boundary"
+            | "static_unsupported_by_host" => "unavailable",
             _ => "failed",
         };
         let default_diagnostics;
@@ -9751,7 +9779,10 @@ mod unix {
         required_result_string(value, "/host/kind")?;
         let stage = required_result_string(value, "/stage")?;
         let expected_result = match stage {
-            "host_executable" | "interactive_terminal" | "host_delivery_boundary" => "unavailable",
+            "host_executable"
+            | "interactive_terminal"
+            | "host_delivery_boundary"
+            | "static_unsupported_by_host" => "unavailable",
             "fixture_setup"
             | "connection_observation"
             | "host_process"
