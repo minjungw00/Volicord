@@ -316,6 +316,45 @@ Exact connection-verification behavior and state meaning remain with
 [Administrative CLI](../reference/admin-cli.md#agent-connection-result-states);
 this section owns release-validation order only.
 
+<a id="live-host-controlling-terminal-foreground"></a>
+## Live-Host Controlling-Terminal Foreground Control
+
+Apply this procedure to every maintained interactive selected-host turn. An
+interactive stdin/stdout check alone is insufficient: a child in a dedicated
+background process group can be stopped when it reads from the controlling
+terminal. The runner's original process group must first be the terminal
+foreground group. Before the host can read, the maintained harness starts a
+bounded foreground controller in the dedicated operating-system process group,
+waits for its bounded readiness signal, transfers the controlling-terminal
+foreground to that exact group, starts the selected host in the same group,
+verifies group membership, retains the turn ownership marker, and keeps the
+complete pre-transfer terminal-attribute snapshot.
+
+After the selected host exits and the direct child is reaped, the bounded
+controller must restore the terminal foreground to the original runner process
+group and itself be reaped. Only after exact foreground restoration may the
+harness signal the dedicated group. Complete group and marker-boundary
+quiescence, then reapply the complete pre-transfer terminal attributes and
+require an exact read-back match. Bound controller readiness, restoration, and
+reap waits. Complete quiescence and attribute restoration before after-turn
+baseline capture, result classification, or terminal publication. Continue to
+use both the dedicated group and the marker-retaining process check for
+cooperative containment. This procedure neither creates nor
+claims a pseudo-terminal (PTY); invoke the live producer from an environment
+that already supplies a controlling terminal. Require `TOSTOP` to be disabled
+before transfer. Do not suspend the foreground host turn with job-control keys
+such as `Ctrl-Z`; abandon an interrupted or later-resumed turn and use a fresh
+result root.
+
+Failure to establish or verify the initial foreground owner, controller
+readiness or liveness, exact host group membership, disabled `TOSTOP`, foreground transfer,
+foreground restoration, terminal-attribute restoration or exact verification,
+or controller reap is a structural publication
+failure. The recorder must forbid terminal publication, leave the result root
+poisoned, and apply fresh-root recovery; do not convert the failure into
+`unavailable`, `completed`, or another non-passing cell. The exact invariant is
+owned by [Host Release Evidence](../reference/host-release-evidence.md#append-only-live-cell-publication).
+
 <a id="live-cell-result-root"></a>
 ## Live-Cell Result-Root Setup And Recovery
 
@@ -343,6 +382,17 @@ Preserve and report the failed root as appropriate, create a fresh result root
 with both child directories precreated, and rerun all twelve cells. The gate
 and audit do not perform recovery. This rule applies to the twelve release
 cells, not to the separate auxiliary CLI-fallback result under `auxiliary/`.
+
+A selected feature or host-child failure that is classified after child reap,
+after-turn baseline capture, and retained-integrity revalidation, and is then
+successfully published as a strict non-passing cell with exact `clean`, is not a
+publication error or abnormal producer termination. Keep that cell, do not
+retry or replace it in the same root, and continue the matrix; the gate will
+derive `implemented_unverified` and fail any still-requested verified claim.
+Fresh-root recovery applies when child finalization or retained-integrity
+revalidation is incomplete, or terminal publication itself is missing,
+uncommitted, or reported failed. Do not convert those structural failures into
+a non-passing cell.
 
 <a id="live-host-final-output-release-validation"></a>
 ## Live-Host Final-Output Release Validation
@@ -788,6 +838,29 @@ actual-host turn on the same registered connection must finalize exactly one
 receipt-linked producer, artifact, Strong Evidence observation, criterion
 coverage, Run, current status receipt, and close result.
 
+Monitor the interactive source child and the bound Runtime Home concurrently.
+For `verified_tool_producer`, the source-observation barrier is the persisted
+complete `post_tool` matched to the post-intent exact `pre_tool` whose decision
+was not `deny`; do not request or wait for a Stop event. For
+`registered_connection_observation`, it is the persisted exact post-intent Stop
+event, regardless of allow or deny. Immediately after the applicable barrier,
+run the mismatched zero-effect check and exact receipt capture before the
+15-minute intent expires. Receipt capture is the distinct source-fulfillment
+transaction. Do not wait for model-response, turn, or process completion first.
+End and reap the direct source child after capture, terminate every remaining
+member of the dedicated process group and, where the runner supports discovery,
+every out-of-group process that retains the turn's ownership marker. Require
+that cooperative containment boundary to be quiescent before taking the
+after-turn managed-baseline snapshot or starting producer finalization. This is
+not an adversarial sandbox: a host adapter that both leaves the assigned group
+and removes the inherited marker is outside the validated runner profile. If
+the runner cannot establish the dedicated process group and its quiescence, or
+the reviewed host profile is known to violate that precondition, it must stop
+the selected live cell as a structural no-cell failure rather than infer
+quiescence. A bounded wait that
+ends without the exact barrier is a failed selected attempt, not permission to
+use session/time correlation or extend the intent window.
+
 The harness takes a bounded snapshot of exact managed-baseline identities and
 metadata digests in the bound clean disposable Runtime Home before the
 authenticated cell host turn, then takes the same snapshot before recording the
@@ -825,6 +898,25 @@ credential, or authentication cache. A missing host is represented by a
 present null-identity ignored cell. Keep `VOLICORD_RELEASE_REQUEST_VERIFIED=1`
 when the claim is required, which makes that absence fail the gate; choose `0`
 before the run only for an intentional reported exclusion.
+
+If an installed host was bound but a classifiable source-observation, capture,
+or producer-chain attempt fails, finish and reap the direct source child,
+establish quiescence for the cooperative process-group and marker-retaining
+boundary defined above, capture the
+after-turn baseline, and revalidate retained identity, candidate integrity, and
+the publication domain. Only after those checks succeed, publish a strict
+bounded terminal result while the disposable Runtime Home is still available.
+The cell uses `run_state=completed`, claims `implemented_unverified`, and marks
+every unproven required assertion false with bounded finding codes. Safe
+failure evidence may retain only a stable stage/code and bounded aggregate
+facts such as exact-pair candidate count, event-kind ordering class, pre-event
+decision class, and invocation-identity equality; it must not retain the
+underlying raw values. Return the live validation as `FAIL`, but keep a
+successfully committed clean cell as matrix input. Failure to reap the direct
+child, establish that cooperative-boundary quiescence, capture the after-turn baseline,
+preserve retained integrity, or publish those
+terminal bytes is a structural publication failure and triggers fresh-root
+recovery without a final cell.
 
 <a id="live-host-cli-fallback-release-validation"></a>
 ## Live-Host CLI-Fallback Release Validation

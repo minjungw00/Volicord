@@ -48,6 +48,21 @@ transaction과 이후 Run commit 사이로 권한이 분리되고 Run에 속하�
   요구합니다. Event/observation identity, observation time, raw-event 또는 snapshot
   digest는 source 소유 receipt에서만 확정됩니다.
 
+실제 하네스의 source 가용성은 호스트 생명주기 장벽이나 source fulfillment 자체가 아니라
+영속적인 source 관찰 장벽입니다. 등록 tool에서는 불변 intent 및 intent 이후의 일치하는
+pre 이벤트와 함께 완전한 post 이벤트가 영속 저장되면 이 장벽에 도달하며, 짝이 되는 pre
+결정은 `deny`가 아니어야 합니다. Stop으로 선택한 등록 connection 관찰에서는 intent 이후의
+정확한 Stop 이벤트가 영속 저장되면 도달하며, Stop 결정은 종료 전제가 아니라 source
+결과입니다. 어느 장벽도 모델 응답, 호스트 turn, Stop `allow`, 닫기 준비 상태, 호스트
+프로세스 종료를 기다리지 않습니다. 소비자는 장벽을 관찰한 뒤 intent가 만료되기 전에
+별도의 fulfillment 트랜잭션으로 정확한 source를 claim해야 합니다. 생명주기 신호는 15분
+기간을 연장하거나 누락된 source 사실을 대신하지 않습니다.
+정확한 릴리스 셀 결과는 [호스트 릴리스 증거](../../reference/host-release-evidence.md)가
+계속 담당합니다. 정확한 source fulfillment는
+[`volicord.prepare_evidence_capture`](../../reference/api/method-prepare-evidence-capture.md)가
+담당하고, 거부된 트랜잭션의 효과는 [저장 효과](../../reference/storage-effects.md)가
+담당합니다.
+
 Store는 호출자가 고른 claim을 받지 않고 엄격한 receipt와 불변 capture spec에서 claim
 집합을 파생합니다. Command capture는 정규화한 host invocation을 claim합니다. Tool
 capture는 정규화한 host invocation과 서로 다른 guard event 두 개를 모두 claim합니다.
@@ -131,6 +146,9 @@ SQLite 형태 변경이었습니다. 당시 기준이던 `baseline_sqlite_v5`가
   거부했습니다.
 - Session과 시각으로 tool event를 결합하는 방법은 동시 실행, retry, resume에서
   충돌할 수 있으므로 Strong Evidence에는 사용하지 않습니다.
+- 이미 영속 저장된 source를 claim하기 전에 호스트 turn이나 프로세스 종료를 기다리는
+  방법은 거부했습니다. Task가 닫기 준비 상태가 아닐 때 Detective Stop이 정당하게 deny할
+  수 있고, 관련 없는 생명주기 대기 중에 불변 intent가 만료될 수 있기 때문입니다.
 - 미래 host-generated event 또는 watcher observation의 digest에 connection intent를
   결합하는 방법은 intent 이후 source identity, timestamp, snapshot/raw-event digest가
   호출자가 알 수 있는 intent 사실이 아니므로 거부했습니다.
@@ -146,5 +164,7 @@ SQLite 형태 변경이었습니다. 당시 기준이던 `baseline_sqlite_v5`가
 - `crates/volicord-cli/src`: 관리용 command 및 등록 source adapter
 - `crates/volicord-mcp/src`: intent-only Agent Connection tool projection
 - [`volicord.prepare_evidence_capture`](../../reference/api/method-prepare-evidence-capture.md)
+- [호스트 릴리스 증거](../../reference/host-release-evidence.md)
 - [Core 모델](../../reference/core-model.md#9-evidence-and-run-authority)
+- [저장 효과](../../reference/storage-effects.md)
 - [저장 버전 관리](../../reference/storage-versioning.md)

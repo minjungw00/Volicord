@@ -281,6 +281,40 @@ preflight를 실행합니다. 그 정확한 폐기 가능한 저장소에서 프
 [관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 계속 담당합니다.
 이 절은 릴리스 검증 순서만 담당합니다.
 
+<a id="live-host-controlling-terminal-foreground"></a>
+## 실제 호스트 제어 터미널 전경 제어
+
+유지되는 모든 대화형 선택 호스트 turn에 이 절차를 적용합니다. 대화형 stdin/stdout인지
+확인하는 것만으로는 충분하지 않습니다. 전용 background 프로세스 그룹의 자식은 제어
+터미널에서 입력을 읽을 때 중지될 수 있습니다. 먼저 runner의 원래 프로세스 그룹이 터미널
+전경 그룹이어야 합니다. 호스트가 입력을 읽기 전에 유지되는 하네스는 제한 시간 안에서
+동작하는 전경 controller를 전용 운영체제 프로세스 그룹에서 시작하고, 제한된 준비 신호를
+기다린 뒤, 제어 터미널의 전경을 정확히 그 그룹으로 이전합니다. 이어서 선택 호스트를 같은
+그룹에서 시작하고 그룹 구성원임을 검증하며 turn ownership 표식과 전경 이전 전의 전체
+터미널 속성 snapshot을 유지합니다.
+
+선택 호스트가 종료되고 직접 자식 프로세스를 회수한 뒤에는 그 controller가 터미널 전경을
+runner의 원래 프로세스 그룹으로 복원하고 자신도 회수되어야 합니다. 정확한 전경 복원을
+확인한 뒤에만 전용 그룹에 신호를 보냅니다. 그룹과 ownership 표식 경계의 정지를 확인한
+다음, 이전에 보관한 전체 터미널 속성을 다시 적용하고 정확한 재조회 일치를 확인합니다.
+controller 준비, 복원, 회수 대기에는 모두 제한 시간을 둡니다. 격리 경계 정지와 터미널
+속성 복원은 turn 이후 기준선 확보, 결과 분류, 종단 게시보다 먼저 끝냅니다. 협력적 격리에는
+계속 전용 그룹과 ownership 표식 유지 프로세스 검사를 함께 사용합니다. 이 절차는
+pseudo-terminal(PTY)을 만들거나 사용한다고 주장하지 않습니다. 실제 생산자는 이미 제어
+터미널을 제공하는 환경에서 실행해야 합니다. 전경을 이전하기 전에 `TOSTOP`이 꺼져 있는지
+확인합니다. `Ctrl-Z` 같은 job-control 키로 전경 호스트 turn을 중지하면 안 됩니다. 중단한
+turn이나 나중에 다시 시작한 turn은 폐기하고 새 result root를 사용합니다.
+
+초기 전경 소유자 확정 또는 검증, controller 준비나 생존, 정확한 호스트 그룹 구성원 확인,
+비활성화된 `TOSTOP` 확인,
+전경 이전, 전경 복원, 터미널 속성 복원 또는 정확한 검증, controller 회수 중 하나라도
+실패하면 구조적 게시 실패입니다.
+Recorder는 종단 게시를 금지하고 result root를 사용할 수 없는 상태로 남긴 뒤 새 root 복구를
+적용해야 합니다. 이 실패를 `unavailable`, `completed` 또는 다른 비통과 셀로 바꾸면 안
+됩니다. 정확한 불변조건은
+[호스트 릴리스 증거](../reference/host-release-evidence.md#append-only-live-cell-publication)가
+담당합니다.
+
 <a id="live-cell-result-root"></a>
 ## 실제 셀 result root 준비와 복구
 
@@ -304,6 +338,14 @@ sidecar를 sibling `evidence` 디렉터리 아래에서 도출합니다. 생산�
 하위 디렉터리를 미리 만든 새 result root에서 12개 셀을 모두 다시 실행합니다. 게이트와
 audit은 복구를 수행하지 않습니다. 이 규칙은 12개 릴리스 셀에 적용하며 `auxiliary/` 아래의
 별도 CLI fallback 결과에는 적용하지 않습니다.
+
+선택한 기능 또는 호스트 자식 실패를 자식 프로세스 회수, turn 이후 기준선 확보, 보존한
+무결성 재검증 뒤에 분류하고 엄격한 비통과 셀로 정확한 `clean`까지 게시한 경우는 게시 오류나
+비정상 생산자 종료가 아닙니다. 같은 root에서 그 셀을 재시도하거나 교체하지 말고 보존한 채
+행렬을 계속합니다. 게이트는 이를 `implemented_unverified`로 도출하고 계속 요청된 검증됨
+주장을 실패시킵니다. 자식 프로세스 최종화나 보존한 무결성 재검증이 끝나지 않았거나 종단
+게시 자체가 누락됐거나 커밋되지 않았거나 실패로 보고된 경우에는 새 root 복구를 적용합니다.
+그런 구조적 실패를 비통과 셀로 바꾸면 안 됩니다.
 
 <a id="live-host-final-output-release-validation"></a>
 ## 실제 호스트 최종 출력 릴리스 검증
@@ -678,6 +720,25 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
 receipt에 결속된 생산자, 아티팩트, Strong Evidence 관찰, criterion coverage, Run, 현재
 status receipt, close 결과를 정확히 하나씩 완결해야 합니다.
 
+대화형 source 자식 프로세스와 결속된 Runtime Home을 동시에 감시합니다.
+`verified_tool_producer`의 source 관찰 장벽은 intent 이후의 정확한 `pre_tool`과 짝을 이루는
+완전한 `post_tool`이 영속 저장되는 시점이며, 짝이 되는 `pre_tool` 결정은 `deny`가 아니어야
+합니다. Stop 이벤트를 요청하거나 기다리지 않습니다. `registered_connection_observation`의
+장벽은 allow 또는 deny와 관계없이 intent 이후의 정확한 Stop 이벤트가 영속 저장되는
+시점입니다. 해당 장벽 직후 15분 intent가 만료되기 전에 불일치 zero-effect 검사와 정확한
+receipt capture를 수행합니다. Receipt capture는 별도의 source fulfillment
+트랜잭션입니다. 그보다 먼저 모델 응답, turn, 프로세스 완료를 기다리지 않습니다. Capture
+뒤 직접 source 자식 프로세스를 끝내고 회수하고, 전용 프로세스 그룹의 나머지 구성원과
+runner가 발견을 지원하는 경우 그룹 밖에서도 turn ownership 표식을 유지하는 모든
+프로세스를 종료합니다. 이 협력적 격리 경계가 정지했음을 확인한 다음 turn 이후 관리 기준선
+snapshot을 만들고 producer 최종화 turn을 시작합니다. 이는 적대적 sandbox가 아닙니다.
+부여된 그룹을 벗어나면서 상속한 표식도 제거하는 host adapter는 검증된 runner profile 밖에
+있습니다. runner가 전용 프로세스 그룹과 그 정지를 확인할 수 없거나 검토 host profile이 그
+전제를 위반하는 것으로 알려졌다면 정지를 추론하지 말고 선택한 실제 셀을 종단 셀 없는
+구조적 실패로 중단합니다. 크기가 제한된 대기 안에 정확한 장벽이 나타나지
+않으면 선택한 시도 실패이며, session/시각 상관관계를 사용하거나 intent 기간을 늘릴 근거가
+아닙니다.
+
 하네스는 인증된 셀 호스트 turn 전에 결속된 깨끗하고 폐기 가능한 Runtime Home에서 정확한
 관리 기준선 정체성과 메타데이터 digest를 크기가 제한된 형태로 snapshot하고, 셀을 기록하기
 전에 같은 snapshot을 다시 만듭니다. 해당 turn의 정확한 불투명 관리 세션 행 가운데 두
@@ -710,6 +771,21 @@ invocation identifier, URL, token, credential, 인증 cache를 보존하면 안 
 없으면 실제 null 정체성 ignored 셀로 표현합니다. 주장이 필요하면
 `VOLICORD_RELEASE_REQUEST_VERIFIED=1`을 유지하여 부재가 게이트를 실패시키게 합니다. 실행
 전에 의도적으로 보고할 제외를 결정한 경우에만 `0`을 선택합니다.
+
+설치된 호스트를 결속했지만 분류 가능한 source 관찰, capture 또는 producer chain 시도가
+실패하면 먼저 직접 source 자식 프로세스를 끝내고 회수하고 위에서 정의한 협력적 프로세스
+그룹 및 표식 유지 경계의 정지를 확인한 뒤 turn 이후 기준선을 확보하고, 보존한
+정체성, 후보 무결성, 게시 영역을 재검증합니다. 이 검사가 모두 성공한 경우에만 폐기 가능한
+Runtime Home이 남아 있는 동안 엄격하고 크기가 제한된 종단 결과를 게시합니다. 셀은
+`run_state=completed`, `implemented_unverified` 주장을 사용하고 입증하지 못한 모든 필수
+assertion을 크기가 제한된 finding code와 함께 false로 둡니다. 안전한 실패 증거에는 안정된
+stage/code와 정확한 짝 후보 수, 이벤트 종류 순서 분류, 사전 이벤트 결정 분류, invocation
+identity 일치 여부 같은 크기가 제한된 집계 사실만 둘 수 있으며 원본 값은 보존하면 안
+됩니다. 실제 검증은 `FAIL`로 반환하지만 `clean`까지 성공적으로 커밋한 셀은 행렬 입력으로
+유지합니다. 직접 자식 프로세스 회수, 협력적 격리 경계 정지, turn 이후 기준선 확보,
+보존한 무결성 유지, 종단 바이트
+게시 중 하나라도 실패하면 최종 셀 없이 구조적 게시 실패로 처리하고 새 root 복구를
+적용합니다.
 
 <a id="live-host-cli-fallback-release-validation"></a>
 ## 실제 호스트 CLI 대체 경로 릴리스 검증

@@ -134,6 +134,62 @@ final cell is the only commit marker for that cell/evidence pair. A static
 `unsupported_by_host` cell has null evidence and stages and publishes only its
 final cell. No producer publishes a provisional `running` cell.
 
+A selected feature failure or selected-host child-process failure that the
+producer can classify into strict bounded terminal bytes is not a publication
+failure, provided that the direct child was reaped, the maintained cooperative
+process-containment boundary was made quiescent, and the after-turn managed
+baseline, retained identity, candidate digest, and publication domain were all
+revalidated. The maintained boundary is the dedicated operating-system process
+group assigned when the selected host is launched, supplemented, where the
+runner supports it, by discovery of processes that retain the turn's inherited
+ownership marker after leaving that group. Quiescence requires the direct child
+to be reaped, the process group to have no live member, and every discoverable
+marker-retaining process to have terminated. This is cooperative containment,
+not an adversarial sandbox: a host adapter that both daemonizes outside the
+assigned group and removes the inherited marker is outside the validated runner
+profile and must not be claimed as live-host verified.
+
+An interactive selected host that reads from a controlling terminal has an
+additional job-control invariant. The runner's original process group must
+initially own that terminal's foreground. Before the selected child can read,
+a bounded foreground controller must become ready in the dedicated operating-
+system process group, transfer the controlling-terminal foreground to that
+exact group, and keep the restoration path available. The producer starts the
+selected host in that same group, verifies its membership, and retains the
+turn ownership marker. After the direct child exits and is reaped, the bounded
+controller restores the foreground to the original runner process group and
+is itself reaped. After the dedicated group and marker boundary reach
+quiescence, the producer reapplies and exactly verifies the complete terminal
+attributes captured before transfer. Foreground restoration gates group
+signaling; quiescence and attribute restoration must both finish before
+after-turn baseline capture or terminal publication. Controller readiness,
+restoration, and reap waits are all bounded. The dedicated group remains the containment group;
+foreground transfer does not replace the ownership-marker supplement. This
+invariant neither creates nor attests a pseudo-terminal (PTY); the runner must
+already have a controlling terminal. The validated runner profile requires the
+terminal's `TOSTOP` local mode to be disabled and excludes operator-initiated
+job-control suspension of the selected turn, such as `Ctrl-Z`; a suspended or
+resumed turn is not release evidence. Controller readiness, liveness, or reap
+failure, a group mismatch, enabled `TOSTOP`, or foreground transfer,
+verification, foreground restoration, or terminal-attribute restoration failure
+forbids final-name publication, poisons the result root, and cannot be
+represented by a non-passing cell.
+
+If the producer then
+publishes those evidence and cell bytes and
+commits the exact `clean` record, the non-passing cell is admissible matrix
+input and the result root remains structurally usable. It must not be replaced
+or retried in that root. Failure to reap the direct child, verify that
+cooperative containment boundary as quiescent, or establish the after-turn
+baseline, any retained-baseline or identity replacement, a producer exit before
+exact `clean`, a publication I/O failure, or inability to construct strict
+terminal bytes instead forbids final-name publication, poisons the result root,
+and requires the fresh-root recovery below. None of those integrity failures is
+converted into an `implemented_unverified` cell. A runner on which the
+maintained producer cannot establish the dedicated process group, or a reviewed
+host profile known to violate the cooperative-containment precondition, must
+reject the selected live attempt structurally rather than publish a cell.
+
 Publication is append-only. The producer never unlinks, replaces, renames
 away, or rolls back a published final name and never removes the result root or
 its `cells/` or `evidence/` directory. On an I/O error, abnormal termination,
@@ -411,6 +467,41 @@ the set selected by disposition and feature:
 | `record_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed` |
 | `detective_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed`, `block_finalization_observed` |
 
+For `verified_tool_producer`, the live-harness source-observation barrier is
+durable persistence of the complete `post_tool` event matched to the immutable
+intent and post-intent exact `pre_tool` event whose decision was not `deny`. A
+Stop event or decision, close-readiness result, model response completion,
+host-turn completion, or host-process exit is not part of that barrier. For
+`registered_connection_observation` selected by Stop, the source-observation
+barrier is durable persistence of the exact post-intent Stop event; its allow
+or deny decision is captured source outcome, not a process-exit prerequisite.
+Because guard-event rows are append-only, an observed lone `post_tool` or an
+observed incomplete `post_tool` is a terminal source-shape failure: neither can
+become the exact pair through a later append. Only no candidate or one
+non-denied exact `pre_tool` remains a pending pair state. The bounded deadline
+performs one final persisted inspection so a just-committed exact pair is not
+relabelled as a timeout.
+The maintained harness performs mismatch rejection and exact receipt capture
+immediately after the applicable barrier and before intent expiry, without
+waiting for the host turn or process to exit. Receipt capture is the separate
+source-fulfillment transaction. Lifecycle signals neither extend the intent
+window nor substitute for a missing source event.
+
+For these two producer cells, `negative_rejections_zero_effect` has a narrow
+v3 meaning. It proves one actual-host mismatch probe and equality of the
+capture-owned Core tables, selected immutable intent and source rows, Project
+clock and version, and bounded whole artifact-store file set sampled around
+that rejected command: reversed pre/post references for the tool producer, or
+the retained pre-intent, wrong-session Stop reference for the connection
+producer. Concurrent host-lifecycle session and watch rows are outside that
+snapshot and are revalidated separately after the turn. It does not prove that
+missing or mismatched invocation identity,
+actor, scope revision, baseline, connection, session, or freshness was exercised
+as an independent actual-host case. Fixture-only tables can protect the shared
+predicate but cannot be reported as those actual-host observations. The v3
+sidecar has no per-case provenance field, so a cell or gate verdict must not be
+cited as evidence for any broader negative matrix.
+
 For `native_user_action`, `authority_receipt_observed` means that the live cell
 observed the complete fresh receipt stored by the exact authenticated,
 same-connection, Task-bound Stop event. The receipt must bind the selected
@@ -465,6 +556,21 @@ value. A duplicate-copy mismatch also fails the
 may keep a null client group without either
 finding and still derives `unsupported_by_host`. Divergent non-null identities
 for one host fail the `single_host_client_identity_per_host` invariant.
+
+For an implemented cell, `run_state=completed` means that the selected attempt
+reached terminal classification and the recorder produced immutable terminal
+bytes; it does not mean that the feature passed. When an installed host was
+bound but a classifiable feature, source-observation, capture, or producer-chain
+attempt failed before every required assertion was determined, and all
+publication-integrity revalidation still succeeded, the producer records
+bounded evidence, marks every unproven required assertion `passed=false` with
+bounded finding codes, and claims no more than `implemented_unverified`.
+Child-reaping, after-baseline, retained-identity, candidate-integrity, and
+publication failures remain structural failures with no final cell. `ignored`
+is reserved for an implemented host path that was not run. `running` is never
+emitted as a terminal cell. A strict committed `completed` cell with one or
+more failed required assertions is the canonical representation of a failed
+selected attempt and derives `implemented_unverified`.
 
 ## Canonical Evaluation And Freshness
 

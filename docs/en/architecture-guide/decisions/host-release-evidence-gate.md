@@ -38,6 +38,13 @@ the quarantine move can itself displace a foreign replacement from the
 expected final name. Release-cell publication therefore needs a protocol that
 never deletes a published namespace entry.
 
+The dedicated operating-system process group needed for cooperative host-turn
+containment introduces a separate terminal job-control problem. If that group
+remains in the background, an interactive host can be stopped when it reads
+from the controlling terminal, so a timeout or absent source event would
+describe the runner rather than the host feature. Reusing the runner's process
+group would preserve terminal access but discard the containment coordinate.
+
 ## Decision
 
 Volicord uses the versioned contract in
@@ -132,6 +139,36 @@ fails the gate; otherwise a matrix with an implemented-feature downgrade is an
 explicit `pass_with_downgrades`. An explicit
 `requested_verified=false` exclusion remains such a downgrade even when the
 cell's evidence derives `verified`.
+
+For an implemented cell, `completed` means terminal recording, not success. A
+classifiable selected attempt that binds an installed host and then fails is
+represented by a strict committed `completed` cell with bounded evidence and
+every unproven required assertion false only after child finalization,
+after-turn baseline capture, and retained-integrity revalidation succeed. That
+clean cell derives `implemented_unverified` and remains admissible matrix input.
+It is distinct from a structural publication failure: incomplete child
+finalization or after-turn baseline capture, retained-integrity failure,
+failure to commit exact `clean`, publication I/O failure, or inability to
+construct strict terminal bytes forbids a final cell and poisons the result
+root.
+
+For every interactive selected-host turn, the runner's process group must
+initially own the controlling-terminal foreground. A bounded foreground
+controller becomes ready in the dedicated containment group and transfers the
+foreground to that exact group before the selected host can read. The host is
+started in the same verified group and retains the existing ownership marker.
+After the host exits and the direct child is reaped, the controller restores
+the foreground to the original runner group and is itself reaped. After the
+dedicated containment boundary reaches quiescence, the producer reapplies and
+exactly verifies the complete pre-transfer terminal attributes before
+after-turn baseline capture or terminal publication. Its readiness,
+restoration, and reap waits are bounded. The
+dedicated group and marker-retaining process discovery remain the cooperative
+containment boundary. Controller readiness, liveness, transfer, restoration,
+or reap failure, any host group mismatch, and terminal-attribute restoration or
+verification failure forbid terminal publication and poison the result root.
+This job-control protocol assumes an existing
+controlling terminal; it neither creates nor claims a pseudo-terminal (PTY).
 
 The gate creates a bounded external
 `volicord-host-release-manifest-v3` file without overwriting. After the gate
@@ -238,6 +275,9 @@ maintains a source-only approximation or repairs a failed publication root.
 - Cooperative producers serialize per result root; an uncooperative concurrent
   name can make publication fail but cannot be overwritten or later deleted by
   the producer.
+- Interactive selected hosts keep terminal input and containment aligned: the
+  dedicated containment group owns the controlling-terminal foreground only
+  for the bounded host turn, after which the original runner group is restored.
 - A committed implemented cell can become visible only after its complete
   evidence final name; static unsupported cells remain cell-only.
 - A crash or I/O failure may leave bounded private stages, orphan evidence, or
@@ -256,6 +296,7 @@ maintains a source-only approximation or repairs a failed publication root.
 - It does not establish minimum Codex or Claude Code versions.
 - It does not prove OS isolation, host identity, user identity, or absence of
   later host changes.
+- It does not create, provision, or attest a pseudo-terminal (PTY).
 - The cooperative lease is not hostile same-user exclusion or a claim about
   non-conforming writers or non-standard network-filesystem lock semantics.
 - It does not prove build reproducibility or attest source-to-binary provenance
@@ -316,6 +357,33 @@ Previously generated evidence that claimed whole-receipt equality across
 LocalUser and Agent Connection contexts must be regenerated; it is not
 reinterpreted or migrated.
 
+Clarifying terminal failed-cell recording and the durable source barrier is
+likewise a v3 conformance correction. It changes no serialized member or
+allowed value in the four versioned release schemas, no assertion identifier,
+and no v3 evaluator cell-input digest-preimage definition, status derivation,
+or verdict. The producer's referenced diagnostic evidence bytes and their
+digest may change and must be regenerated; they are not a fifth versioned
+schema. The four current schema identifiers and workspace SemVer therefore
+remain unchanged. A producer that waited for host-process exit or omitted a
+classifiable failed cell must be rerun against a fresh exact candidate and
+result root.
+
+The same correction closes the previously undefined Claude Code installed-
+version probe envelope. Only a successful stdout-only canonical line can bind
+the existing exact `host_version` coordinate; merged streams, selected or
+trimmed lines, malformed UTF-8, and non-success exits cannot. Existing cells
+whose Claude coordinate came from those ambiguous forms must be regenerated,
+but the coordinate's 1–1,024-byte contract and every versioned release-schema
+member remain unchanged.
+
+Controlling-terminal foreground transfer and restoration are likewise a v3
+producer conformance correction. They change no candidate, cell, manifest, or
+audit member, digest preimage, assertion identifier, status derivation, or
+verdict. Evidence from an interactive run whose dedicated group never owned
+the terminal foreground, or whose original runner foreground was not restored,
+must be regenerated in a fresh result root; no compatibility fallback converts
+that structurally invalid run into a non-passing cell.
+
 ## Rejected alternatives
 
 - Embedding live evidence in the candidate was rejected because rebuilding
@@ -344,6 +412,13 @@ reinterpreted or migrated.
 - Keeping a smaller source-only validator in the live producer was rejected
   because it permits host work and filesystem effects that the canonical gate
   and audit must later discard.
+- Assigning the interactive host to a dedicated process group without also
+  transferring the controlling-terminal foreground was rejected because a
+  background group can be stopped on terminal input and produce a runner-
+  induced timeout.
+- Keeping the interactive host in the runner's foreground process group was
+  rejected because it removes the dedicated containment coordinate and weakens
+  group-wide cleanup.
 - Direct final-file reservation followed by rollback deletion was rejected
   because a concurrent replacement can be deleted after the identity check.
 - Quarantine rename followed by identity check and unlink was rejected because
@@ -357,6 +432,13 @@ reinterpreted or migrated.
   close state, or byte-identical LocalUser receipt was rejected because close
   blockers are invocation-context projections and those requirements conflate
   native elicitation with the separately owned final-output features.
+- Treating `completed` as a passing result, or waiting for Stop, turn, or
+  process completion after a producer source-observation event is durably
+  persisted, was rejected because it would hide failed assertions and can let
+  the short-lived capture intent expire for an unrelated lifecycle reason.
+- Merging version-probe stdout and stderr, trimming lines, or selecting one
+  plausible line was rejected because those transformations cannot preserve an
+  exact installed-host availability coordinate or distinguish ambiguous output.
 
 ## Related owners and planned validation location
 

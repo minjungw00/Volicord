@@ -115,6 +115,50 @@ create-new stage 파일을 최대 하나씩 만듭니다. 증거 stage를 완전
 표식입니다. 정적인 `unsupported_by_host` 셀은 null 증거를 사용하며 최종 셀 하나만
 스테이징하고 게시합니다. 생산자는 임시 `running` 셀을 게시하지 않습니다.
 
+선택한 기능 실패 또는 선택한 호스트 자식 프로세스 실패를 생산자가 엄격하고 크기가 제한된
+종단 바이트로 분류할 수 있고, 직접 자식 프로세스를 회수하고 유지되는 협력적 프로세스 격리
+경계를 정지시킨 뒤 turn 이후 관리 기준선, 보존한 정체성, 후보 digest, 게시 영역
+재검증까지 모두 끝냈다면 이는 게시 실패가 아닙니다. 유지되는 경계는 선택한 호스트를 시작할
+때 부여한 전용 운영체제 프로세스 그룹이며, runner가 지원하는 경우 그 그룹을 벗어난 뒤에도
+turn에서 상속한 ownership 표식을 유지하는 프로세스를 찾는 검사를 보조로 사용합니다. 정지는
+직접 자식 프로세스를 회수하고, 프로세스 그룹에 살아 있는 구성원이 없으며, 발견 가능한
+ownership 표식 유지 프로세스가 모두 종료되어야 성립합니다. 이는 협력적 격리이지 적대적
+sandbox가 아닙니다. 부여된 그룹 밖으로 daemonize하면서 상속한 표식도 제거하는 host
+adapter는 검증된 runner profile 밖에 있으므로 실제 host 검증됨으로 주장하면 안 됩니다.
+
+제어 터미널에서 입력을 읽는 대화형 선택 호스트에는 별도의 job-control 불변조건이
+적용됩니다. 처음에는 runner의 원래 프로세스 그룹이 그 터미널의 전경을 소유해야 합니다.
+선택 자식 프로세스가 입력을 읽기 전에 제한 시간 안에서 동작하는 전경 controller가 전용
+운영체제 프로세스 그룹에서 준비를 마치고, 제어 터미널의 전경을 정확히 그 그룹으로
+이전하며, 복원 경로를 계속 유지해야 합니다. 생산자는 선택 호스트를 같은 그룹에서
+시작하고 그 구성원임을 검증하며 turn ownership 표식을 유지합니다. 직접 자식 프로세스가
+종료되어 회수된 뒤에는 그 controller가 전경을 runner의 원래 프로세스 그룹으로 복원하고
+자신도 회수되어야 합니다. 전용 그룹과 ownership 표식 경계가 정지한 뒤 생산자는 전경 이전
+전에 보관한 전체 터미널 속성을 다시 적용하고 정확히 검증해야 합니다. 정확한 전경 복원은
+그룹 신호 전송의 선행 조건이며, 격리 경계 정지와 터미널 속성 복원은 모두 turn 이후 기준선
+확보와 종단 게시보다 앞서 끝나야 합니다. controller 준비, 복원, 회수 대기에는 모두 제한
+시간이 있습니다. 전용 그룹은 계속 격리 그룹이며, 전경 이전이 ownership 표식
+보조 검사를 대신하지 않습니다. 이 불변조건은 pseudo-terminal(PTY)을 만들거나 그 존재를
+보증하지 않습니다. runner에는 이미 제어 터미널이 있어야 합니다. 검증되는 runner
+profile에서는 터미널의 `TOSTOP` local mode가 꺼져 있어야 하며, `Ctrl-Z`처럼 운영자가
+선택 turn을 job-control로 중지하는 동작은 검증 범위 밖입니다. 중지했거나 다시 시작한
+turn은 릴리스 증거가 아닙니다. controller의 준비·생존·회수 실패, 그룹 불일치,
+활성화된 `TOSTOP`, 전경 이전·검증·복원 실패는 최종 이름 게시를 금지하고 result root를
+사용할 수 없게 하며 비통과 셀로 표현할 수 없습니다. 전체 터미널 속성을 복원하거나 정확히
+검증하지 못한 경우에도 같은 규칙을 적용합니다.
+
+이후 생산자가
+그 증거와 셀 바이트를 게시하고 정확한 `clean` 레코드를 커밋하면, 통과하지 않은 셀도
+허용되는 행렬 입력이고 result root는 구조적으로 계속 사용할 수 있습니다. 같은 root에서
+그 셀을 교체하거나 재시도하면 안 됩니다. 직접 자식 프로세스를 회수하지 못했거나 협력적
+격리 경계의 정지를 확인하지 못했거나 turn 이후 기준선을 확정하지 못한 경우, 보존한
+기준선이나 정체성이 교체된 경우, 정확한 `clean` 전의
+생산자 종료, 게시 I/O 실패, 엄격한 종단 바이트를 만들지 못한 경우에는 최종 이름 게시를
+금지하고 result root를 사용할 수 없게 하므로 아래의 새 root 복구가 필요합니다. 이런
+무결성 실패를 `implemented_unverified` 셀로 바꾸면 안 됩니다. 유지 생산자가 전용 프로세스
+그룹을 확정할 수 없는 runner 또는 협력적 격리 전제 위반이 알려진 검토 host profile에서는
+셀을 게시하지 말고 선택한 실제 시도를 구조적으로 거부해야 합니다.
+
 게시는 append-only입니다. 생산자는 게시된 최종 이름을 unlink, 교체, 다른 이름으로 이동,
 rollback하지 않으며 result root나 그 `cells/`, `evidence/` 디렉터리를 제거하지 않습니다.
 I/O 오류, 비정상 종료, 동시 이름 경쟁에서 패한 경우에도 검사 후 삭제하는 정리 동작을
@@ -356,6 +400,35 @@ canonical `adapter_profile`은 `record_final_output`에서만 `record`이고,
 | `record_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed` |
 | `detective_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed`, `block_finalization_observed` |
 
+`verified_tool_producer`에서 실제 하네스의 source 관찰 장벽은 불변 intent 및 intent 이후의
+정확한 `pre_tool` 이벤트와 짝을 이루는 완전한 `post_tool` 이벤트가 영속 저장되는
+시점입니다. 이때 짝이 되는 `pre_tool` 결정은 `deny`가 아니어야 합니다. Stop 이벤트나
+결정, 닫기 준비 결과, 모델 응답 완료, 호스트 turn 완료, 호스트 프로세스 종료는 이 장벽의
+일부가 아닙니다. Stop으로 선택한 `registered_connection_observation`의 source 관찰 장벽은
+intent 이후의 정확한 Stop 이벤트가 영속 저장되는 시점입니다. 그 allow 또는 deny 결정은
+캡처하는 source 결과이며 프로세스 종료 전제 조건이 아닙니다. `guard_events` 행은
+append-only이므로 단독 `post_tool` 또는 불완전한 `post_tool`을 관찰하면 종단 source-shape
+실패입니다. 나중에 행을 추가해도 어느 상태도 정확한 쌍이 될 수 없습니다. 후보가 없거나
+deny가 아닌 정확한 `pre_tool` 하나만 있는 경우에만 쌍을 기다리는 상태로 남습니다. 제한
+시간 경계에서는 영속 상태를 마지막으로 한 번 더 검사하여 막 커밋된 정확한 쌍을 timeout으로
+바꾸지 않습니다. 유지되는 하네스는 해당 장벽
+직후 intent 만료 전에 불일치 거부와 정확한 receipt capture를 수행하며, 호스트 turn이나
+프로세스 종료를 기다리지 않습니다. Receipt capture는 별도의 source fulfillment
+트랜잭션입니다. 생명주기 신호는 intent 기간을 연장하지 않으며 누락된 source 이벤트를
+대신하지 않습니다.
+
+이 두 producer 셀에서 `negative_rejections_zero_effect`의 v3 의미는 좁습니다. Tool
+producer에서는 pre/post 참조를 뒤집은 경우, connection producer에서는 보존한 intent 이전
+다른 세션 Stop 참조를 사용한 경우라는 실제 host 불일치 탐침 하나에 대해, 거부된 명령 전후로
+표본화한 capture 소유 Core 테이블, 선택한 불변 intent 및 source 행, Project clock과 version,
+범위가 제한된 전체 artifact-store 파일 집합이 같음을 증명합니다. 동시에 변할 수 있는 host
+생명주기 session 및 watch 행은 이 snapshot에서 제외하고 turn 뒤에 별도로 다시 검증합니다.
+Invocation identity, actor, scope revision, baseline, connection,
+session, freshness의 누락이나 불일치를 각각 독립적인 실제 host 사례로 실행했다는 뜻은
+아닙니다. Fixture-only 표는 공유 predicate를 보호할 수 있지만 해당 실제 host 관찰로 보고할
+수 없습니다. v3 sidecar에는 사례별 provenance 필드가 없으므로 셀이나 gate 판정을 더 넓은
+negative 행렬의 증거로 인용하면 안 됩니다.
+
 `native_user_action`의 `authority_receipt_observed`는 실제 셀이 정확히 인증된 세션, 같은
 연결, Task에 결속된 Stop 이벤트가 저장한 완전하고 최신인 영수증을 관찰했다는 뜻입니다.
 영수증은 선택한 Project, Task, 현재 `state_version`, 선택지를 소비한 정확한 Run에
@@ -377,7 +450,7 @@ LocalUser CLI 상태 영수증과 Agent Connection Stop 영수증은 권한 좌�
 어느 최종 출력 기능도 승격하지 않습니다. 해당 검증 단언은 계속 각 최종 출력
 셀만 담당합니다.
 
-정직하게 실행하지 못한 구현 셀은 `run_state=ignored`이고 필수 assertion이 실패하며 크기가
+정직하게 실행하지 않은 구현 셀은 `run_state=ignored`이고 필수 assertion이 실패하며 크기가
 제한된 증거 아티팩트를 가진 실제 셀로 표현합니다. 호스트를 사용할 수 없으면 호스트 가용성
 집합과 클라이언트 집합을 모두 null로 사용합니다. 호스트를 사용할 수 있지만 성공한 관리
 initialize 정체성을 관찰하지 못했으면 null이 아닌 호스트 가용성 집합과 null 클라이언트
@@ -402,6 +475,18 @@ finding도 `implemented_unverified`를 강제하며 다른 셀이나 추론한 �
 집합을 두 finding 없이 유지하면서 `unsupported_by_host`로 도출될 수 있습니다. 한
 호스트의 null이 아닌 정체성이 서로 다르면
 `single_host_client_identity_per_host` 불변조건이 실패합니다.
+
+구현된 셀에서 `run_state=completed`는 선택한 시도가 종단 분류에 도달하고 기록기가 변경할
+수 없는 종단 바이트를 만들었다는 뜻이며 기능이 통과했다는 뜻이 아닙니다. 설치된 호스트를
+결속한 뒤 분류 가능한 기능, source 관찰, capture 또는 producer chain 시도가 모든 필수
+assertion의 판정을 확정하기 전에 실패했고 게시 무결성 재검증은 모두 성공했다면, 생산자는
+크기가 제한된 증거를 기록하고 입증하지 못한 모든 필수 assertion을 크기가 제한된 finding
+code와 함께 `passed=false`로 두며 `implemented_unverified`보다 강한 상태를 주장하지
+않습니다. 자식 프로세스 회수, turn 이후 기준선, 보존한 정체성, 후보 무결성, 게시 자체의
+실패는 최종 셀이 없는 구조적 실패로 유지합니다. `ignored`는 구현된 호스트 경로를 실행하지
+않은 경우에만 사용합니다. `running`은 종단 셀로 게시하지 않습니다. 필수 assertion 하나
+이상이 실패한 엄격한 커밋 `completed` 셀이 선택한 시도 실패의 정규 표현이며
+`implemented_unverified`로 도출됩니다.
 
 ## 정규 평가와 최신성
 

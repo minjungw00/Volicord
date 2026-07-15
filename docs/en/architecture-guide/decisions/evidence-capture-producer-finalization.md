@@ -55,6 +55,24 @@ is shared:
   observation time, and raw-event or snapshot digest are fixed only by the
   source-owned receipt.
 
+Live-harness source availability is a durable source-observation barrier, not a
+host-lifecycle barrier or source fulfillment itself. For a registered tool, the
+barrier is reached when the complete post event is durably persisted with its
+immutable intent and matching post-intent pre event whose decision was not
+`deny`. For a Stop-selected registered connection observation, it is reached
+when the exact post-intent Stop event is durably persisted; the Stop decision
+is source outcome rather than an exit prerequisite. Neither barrier waits for a
+model response, host turn, Stop `allow`, close readiness, or host-process exit.
+After observing the barrier, a consumer must claim the exact source through the
+separate fulfillment transaction before the intent expires; lifecycle signals
+do not extend the 15-minute window or replace a missing source fact.
+The exact release-cell consequences remain owned by
+[Host Release Evidence](../../reference/host-release-evidence.md). Source
+fulfillment remains owned by
+[`volicord.prepare_evidence_capture`](../../reference/api/method-prepare-evidence-capture.md)
+and rejected-transaction effects remain owned by
+[Storage Effects](../../reference/storage-effects.md).
+
 The Store derives the claim set from the strict receipt and immutable capture
 spec rather than accepting caller-selected claims. Command capture claims its
 normalized host invocation. Tool capture claims its normalized host invocation
@@ -148,6 +166,10 @@ compatibility checks and require recreation.
   persistent artifact transaction.
 - Correlating tool events by session and time was rejected for Strong Evidence
   because concurrent, retried, and resumed invocations can collide.
+- Waiting for host-turn or process exit before claiming an already durable
+  source was rejected because a Detective Stop can legitimately deny while the
+  Task is not close-ready and the immutable intent can expire during that
+  unrelated lifecycle wait.
 - Binding a connection intent to a digest over a future host-generated event or
   watcher observation was rejected because a post-intent source identity,
   timestamp, and snapshot/raw-event digest are not caller-known intent facts.
@@ -163,5 +185,7 @@ compatibility checks and require recreation.
 - `crates/volicord-cli/src`: administrative command and registered-source adapters
 - `crates/volicord-mcp/src`: intent-only Agent Connection tool projection
 - [`volicord.prepare_evidence_capture`](../../reference/api/method-prepare-evidence-capture.md)
+- [Host Release Evidence](../../reference/host-release-evidence.md)
 - [Core Model](../../reference/core-model.md#9-evidence-and-run-authority)
+- [Storage Effects](../../reference/storage-effects.md)
 - [Storage Versioning](../../reference/storage-versioning.md)

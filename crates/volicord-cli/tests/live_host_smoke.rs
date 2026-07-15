@@ -5,22 +5,36 @@ mod support;
 #[cfg(unix)]
 mod unix {
     use std::{
+        any::Any,
         collections::{BTreeMap, BTreeSet},
         env,
         error::Error,
         ffi::{OsStr, OsString},
+        fmt,
         fs::{self, OpenOptions},
         io::{self, IsTerminal, Read, Seek, SeekFrom, Write},
-        os::unix::fs::{MetadataExt, PermissionsExt},
+        os::unix::{
+            fs::{MetadataExt, PermissionsExt},
+            process::{CommandExt, ExitStatusExt},
+        },
         panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
         path::{Path, PathBuf},
-        process::{Command, ExitStatus, Output, Stdio},
+        process::{Child, Command, ExitStatus, Output, Stdio},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
     use chrono::{DateTime, SecondsFormat, Utc};
-    use rusqlite::OptionalExtension;
+    use rusqlite::{types::ValueRef, OptionalExtension, Params};
+    #[cfg(target_os = "linux")]
+    use rustix::process::kill_process;
+    use rustix::{
+        io::Errno,
+        process::{getpgid, getpgrp, kill_process_group, test_kill_process_group, Pid, Signal},
+        termios::{
+            tcgetattr, tcgetpgrp, tcsetattr, tcsetpgrp, LocalModes, OptionalActions, Termios,
+        },
+    };
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use sha2::{Digest, Sha256};
@@ -32,9 +46,12 @@ mod unix {
         },
         HostKind,
     };
+    use volicord_core::GitWorkspaceContext;
     use volicord_mcp::{McpAdapter, McpConnectionContext};
+    use volicord_platform_fs::capture_git_workspace_snapshot;
     use volicord_release_validation_tests::io::{
-        read_bounded_external_file, sha256_external_file, ResultRootLease, ValidationContext,
+        parse_candidate_version, read_bounded_external_file, sha256_external_file, ResultRootLease,
+        ValidationContext,
     };
     use volicord_store::{
         agent_connections::{
@@ -46,24 +63,31 @@ mod unix {
             DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
             DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         },
+        evidence_capture::{
+            derive_evidence_capture_source_claims, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
+        },
         inspection::{inspect_runtime_home, DatabaseInspection},
         session_watch::{
             latest_watch_baseline_for_session, update_watch_status, watch_baseline,
             SessionWatchStatus, WatchBaselineRecord, WatchStatusUpdate,
         },
-        sqlite::open_project_state_database_read_only,
+        sqlite::{open_project_state_database_read_only, ARTIFACTS_DIR},
     };
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
     use volicord_types::{
         canonical_json_bare_sha256, canonical_json_string, managed_host_session_id,
-        validate_managed_host_session_id, ArtifactRef, AuthorityReceipt, CloseReadinessBlocker,
-        CloseReadinessBlockerCategory, EvidenceCoverageItem, EvidenceCoverageState,
+        validate_evidence_capture_expected_outcome, validate_evidence_capture_observed_outcome,
+        validate_managed_host_session_id, AgentSessionId, ArtifactAvailability,
+        ArtifactIntegrityStatus, ArtifactRef, AuthorityReceipt, CloseReadinessBlocker,
+        CloseReadinessBlockerCategory, EvidenceCaptureSpec, EvidenceCoverageItem,
+        EvidenceCoverageState, EvidenceCoverageUpdate, EvidenceCoverageUpdateState,
         EvidenceProducer, EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceTarget,
-        IntegrationProfile, ManagedMcpClientInfo, PersistedEvidenceCaptureReceiptBody,
-        PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
-        PersistedUserActionRequest, StateRecordKind, StateRecordRef, StatusCloseState,
-        StatusResult, UserActionBasis, UserActionInboxForm, UserActionPresentationPlan,
-        UserActionPresentationSafety, UserActionRequestBody, UserActionResolutionBody,
+        IntegrationProfile, ManagedMcpClientInfo, ObservedChanges, PersistedArtifactProducer,
+        PersistedEvidenceCaptureReceiptBody, PersistedEvidenceMetadata,
+        PersistedEvidenceObservationAuthority, PersistedUserActionRequest, RedactionState,
+        StateRecordKind, StateRecordRef, StatusCloseState, StatusResult, UserActionBasis,
+        UserActionInboxForm, UserActionPresentationPlan, UserActionPresentationSafety,
+        UserActionRequestBody, UserActionResolutionBody, UtcTimestamp,
         USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
         VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -153,7 +177,7 @@ mod unix {
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
     const LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE: &str = "VOLICORD_HOME=<runtime-home> volicord inbox resolve <user-action-request-id> --choice <option-id> --repo <repo> --json";
     const LIVE_INBOX_RESOLVE_USAGE: &str = "volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]";
-    const MAX_HOST_VERSION_BYTES: usize = 256;
+    const MAX_HOST_VERSION_BYTES: usize = 1_024;
     const MAX_CONNECTION_ID_BYTES: usize = 256;
     const MAX_BUILD_ID_BYTES: usize = 1_024;
     const MAX_VALIDATION_RUN_ID_BYTES: usize = 192;
@@ -173,6 +197,54 @@ mod unix {
     const MAX_RELEASE_CANDIDATE_BINARY_BYTES: u64 = 256 * 1024 * 1024;
     const MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN: u64 = 8;
     const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
+    const LIVE_PRODUCER_SOURCE_BARRIER_TIMEOUT: Duration = Duration::from_secs(300);
+    const LIVE_PRODUCER_SOURCE_POLL_INTERVAL: Duration = Duration::from_millis(100);
+    const LIVE_HOST_TURN_OWNERSHIP_ENV: &str = "VOLICORD_LIVE_HOST_TURN_OWNERSHIP";
+    const LIVE_HOST_FOREGROUND_CONTROLLER_ENV: &str = "VOLICORD_LIVE_HOST_FOREGROUND_CONTROLLER";
+    const LIVE_HOST_FOREGROUND_CONTROLLER_READY_PATH_ENV: &str =
+        "VOLICORD_LIVE_HOST_FOREGROUND_CONTROLLER_READY_PATH";
+    const LIVE_HOST_FOREGROUND_CONTROLLER_ORIGINAL_PGID_ENV: &str =
+        "VOLICORD_LIVE_HOST_FOREGROUND_CONTROLLER_ORIGINAL_PGID";
+    const LIVE_HOST_FOREGROUND_CONTROLLER_EMERGENCY_ENV: &str =
+        "VOLICORD_LIVE_HOST_FOREGROUND_CONTROLLER_EMERGENCY";
+    const LIVE_HOST_FOREGROUND_CONTROLLER_TEST: &str =
+        "unix::live_host_terminal_foreground_controller";
+    const LIVE_HOST_FOREGROUND_REGRESSION_ENV: &str = "VOLICORD_LIVE_HOST_FOREGROUND_REGRESSION";
+    const LIVE_HOST_FOREGROUND_REGRESSION_TEST: &str =
+        "unix::interactive_host_turn_transfers_and_restores_terminal_foreground";
+    const LIVE_HOST_RETAINED_EXECUTABLE_REGRESSION_ENV: &str =
+        "VOLICORD_LIVE_HOST_RETAINED_EXECUTABLE_REGRESSION";
+    const LIVE_HOST_RETAINED_EXECUTABLE_REGRESSION_TEST: &str =
+        "unix::authenticated_host_turns_poison_publication_when_retained_executable_changes";
+    const LIVE_HOST_PROCESS_TREE_TIMEOUT: Duration = Duration::from_secs(5);
+    const MAX_LIVE_CAPTURE_STAGING_FILES: usize = 256;
+    const MAX_LIVE_CAPTURE_STAGING_FILE_BYTES: u64 = 1024 * 1024;
+    const MAX_LIVE_CAPTURE_SNAPSHOT_ROWS: usize = 16 * 1024;
+    const MAX_LIVE_CAPTURE_SNAPSHOT_VALUE_BYTES: usize = 16 * 1024 * 1024;
+    const LIVE_CAPTURE_DURABLE_TABLES: &[&str] = &[
+        "project_state",
+        "tasks",
+        "acceptance_criteria",
+        "evidence_claims",
+        "change_units",
+        "evidence_capture_intents",
+        "user_action_requests",
+        "user_action_resolutions",
+        "project_continuity_records",
+        "write_tickets",
+        "runs",
+        "artifact_staging",
+        "evidence_capture_receipts",
+        "evidence_capture_source_claims",
+        "artifacts",
+        "artifact_links",
+        "evidence_summaries",
+        "evidence_observations",
+        "evidence_producers",
+        "blockers",
+        "authority_events",
+        "tool_invocations",
+    ];
 
     #[test]
     fn live_result_helpers_create_one_bounded_immutable_result() -> Result<(), Box<dyn Error>> {
@@ -809,10 +881,12 @@ mod unix {
         let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
         recorder.release_candidate = Some(candidate.clone());
         recorder.release_feature = Some(HostFeature::NativeUserAction);
+        recorder.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         recorder.bind_observed_initialized_client_info(ObservedInitializedClientInfo::new(
             "claude-code".to_owned(),
             "fixture-host 1.0".to_owned(),
         )?)?;
+        recorder.mark_selected_attempt_started();
         recorder.record_final(&native_user_action_result_shape_fixture(
             "claude-code",
             &binary_sha256,
@@ -883,16 +957,55 @@ mod unix {
             "release-cell directory must contain only the release cell, not its evidence sidecar"
         );
 
+        for conflict in ["host-version", "connection-id"] {
+            let conflict_root = release_root.join(format!("{conflict}-conflict-results"));
+            let (conflict_dir, _, _) = create_live_result_root(&conflict_root)?;
+            let conflict_path = conflict_dir.join("claude-native-user-action.json");
+            let conflict_evidence_path = release_evidence_path(&conflict_path)?;
+            let mut conflict_recorder =
+                LiveResultRecorder::new("claude-code", Some(conflict_path.clone()))?;
+            conflict_recorder.release_candidate = Some(candidate.clone());
+            conflict_recorder.release_feature = Some(HostFeature::NativeUserAction);
+            conflict_recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+                "fixture-host 1.0".to_owned(),
+                binary_sha256.clone(),
+                "fixture-build-id".to_owned(),
+            )?)?;
+            conflict_recorder.bind_observed_connection_id("CONN-native-fixture".to_owned())?;
+            conflict_recorder.mark_selected_attempt_started();
+            let corrected = native_user_action_result_shape_fixture("claude-code", &binary_sha256);
+            let mut conflicting = corrected.clone();
+            match conflict {
+                "host-version" => {
+                    conflicting["host"]["version"] =
+                        Value::String("replacement-host-version".to_owned());
+                }
+                "connection-id" => {
+                    conflicting["connection"]["connection_id"] =
+                        Value::String("CONN-replacement".to_owned());
+                }
+                _ => unreachable!("bounded conflict fixture"),
+            }
+            assert!(conflict_recorder.record_final(&conflicting).is_err());
+            assert!(conflict_recorder.terminal_publication_is_forbidden());
+            assert!(conflict_recorder.record_final(&corrected).is_err());
+            drop(conflict_recorder);
+            assert!(!conflict_path.exists());
+            assert!(!conflict_evidence_path.exists());
+        }
+
         let forced_false_path = result_dir.join("claude-native-user-action-unrequested.json");
         let mut forced_false =
             LiveResultRecorder::new("claude-code", Some(forced_false_path.clone()))?;
         forced_false.release_candidate = Some(candidate.clone());
         forced_false.release_feature = Some(HostFeature::NativeUserAction);
+        forced_false.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         forced_false.release_requested_verified = Some(false);
         forced_false.bind_observed_initialized_client_info(ObservedInitializedClientInfo::new(
             "claude-code".to_owned(),
             "fixture-host 1.0".to_owned(),
         )?)?;
+        forced_false.mark_selected_attempt_started();
         forced_false.record_final(&native_user_action_result_shape_fixture(
             "claude-code",
             &binary_sha256,
@@ -906,7 +1019,9 @@ mod unix {
             LiveResultRecorder::new("claude-code", Some(missing_client_path.clone()))?;
         missing_client.release_candidate = Some(candidate.clone());
         missing_client.release_feature = Some(HostFeature::NativeUserAction);
+        missing_client.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         missing_client.release_requested_verified = Some(false);
+        missing_client.mark_selected_attempt_started();
         missing_client.record_final(&native_user_action_result_shape_fixture(
             "claude-code",
             &binary_sha256,
@@ -938,6 +1053,7 @@ mod unix {
             LiveResultRecorder::new("claude-code", Some(mismatched_client_path.clone()))?;
         mismatched_client.release_candidate = Some(candidate.clone());
         mismatched_client.release_feature = Some(HostFeature::NativeUserAction);
+        mismatched_client.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         mismatched_client.release_requested_verified = Some(false);
         mismatched_client.bind_observed_initialized_client_info(
             ObservedInitializedClientInfo::new(
@@ -945,6 +1061,7 @@ mod unix {
                 "fixture-host 2.0".to_owned(),
             )?,
         )?;
+        mismatched_client.mark_selected_attempt_started();
         mismatched_client.record_final(&native_user_action_result_shape_fixture(
             "claude-code",
             &binary_sha256,
@@ -961,6 +1078,7 @@ mod unix {
             LiveResultRecorder::new("claude-code", Some(unavailable_path.clone()))?;
         unavailable.release_candidate = Some(candidate.clone());
         unavailable.release_feature = Some(HostFeature::NativeUserAction);
+        unavailable.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         unavailable.record_final(&live_user_action_unavailable_summary(
             "claude-code",
             None,
@@ -1009,13 +1127,14 @@ mod unix {
             observed_failure_cell["adapter_version"],
             "fixture-observed-build"
         );
-        assert_eq!(observed_failure_cell["run_state"], "completed");
+        assert_eq!(observed_failure_cell["run_state"], "ignored");
 
         let excluded_null_path = result_dir.join("claude-null-host-unrequested.json");
         let mut excluded_null =
             LiveResultRecorder::new("claude-code", Some(excluded_null_path.clone()))?;
         excluded_null.release_candidate = Some(candidate.clone());
         excluded_null.release_feature = Some(HostFeature::NativeUserAction);
+        excluded_null.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         excluded_null.release_requested_verified = Some(false);
         excluded_null.record_final(&live_user_action_unavailable_summary(
             "claude-code",
@@ -1038,6 +1157,7 @@ mod unix {
         )?;
         static_final.release_candidate = Some(candidate.clone());
         static_final.release_feature = Some(HostFeature::RecordFinalOutput);
+        static_final.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         let static_summary = final_output_unavailable_summary_with_host_identity(
             "codex",
             IntegrationProfile::Record,
@@ -1108,6 +1228,7 @@ mod unix {
         )?;
         forbidden_static.release_candidate = Some(candidate.clone());
         forbidden_static.release_feature = Some(HostFeature::RecordFinalOutput);
+        forbidden_static.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
         forbidden_static.release_requested_verified = Some(true);
         assert!(forbidden_static.record_final(&static_summary).is_err());
         assert!(!forbidden_static_path.exists());
@@ -1116,24 +1237,23 @@ mod unix {
         let rejected_result_root = release_root.join("rejected-cell-results");
         let (rejected_result_dir, _, _) = create_live_result_root(&rejected_result_root)?;
         let rejected_cell_path = rejected_result_dir.join("claude-native-user-action-mutated.json");
+        let rejected_evidence_path = release_evidence_path(&rejected_cell_path)?;
         {
             let mut rejected =
                 LiveResultRecorder::new("claude-code", Some(rejected_cell_path.clone()))?;
             rejected.release_candidate = Some(candidate);
             rejected.release_feature = Some(HostFeature::NativeUserAction);
+            rejected.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
             let mut semantically_false =
                 native_user_action_result_shape_fixture("claude-code", &binary_sha256);
             semantically_false["native_ui"]["operator_choice_confirmed"] = Value::Bool(false);
+            rejected.mark_selected_attempt_started();
             assert!(rejected.record_final(&semantically_false).is_err());
+            assert!(rejected.terminal_publication_is_forbidden());
             assert!(!rejected_cell_path.exists());
         }
-        let rejected_cell: Value = serde_json::from_slice(&fs::read(&rejected_cell_path)?)?;
-        assert_ne!(rejected_cell["claimed_status"], "verified");
-        assert!(rejected_cell["assertions"]
-            .as_array()
-            .is_some_and(|assertions| assertions
-                .iter()
-                .all(|assertion| assertion["passed"] == false)));
+        assert!(!rejected_cell_path.exists());
+        assert!(!rejected_evidence_path.exists());
         assert!(LiveResultRecorder::new("claude-code", Some(cell_path)).is_err());
         Ok(())
     }
@@ -1224,6 +1344,22 @@ mod unix {
         let tampered_cell_path =
             tampered_cell_directory.join("claude-native-user-action-tampered.json");
         let tampered_evidence_path = release_evidence_path(&tampered_cell_path)?;
+        let producer_failure_result_root = fixture
+            .release_artifact_root
+            .join("release-results-producer-failure");
+        let (producer_failure_cell_directory, _, _) =
+            create_live_result_root(&producer_failure_result_root)?;
+        let producer_failure_cell_path =
+            producer_failure_cell_directory.join("claude-verified-tool-producer.json");
+        let producer_failure_evidence_path = release_evidence_path(&producer_failure_cell_path)?;
+        let identity_poison_result_root = fixture
+            .release_artifact_root
+            .join("release-results-identity-poison");
+        let (identity_poison_cell_directory, _, _) =
+            create_live_result_root(&identity_poison_result_root)?;
+        let identity_poison_cell_path =
+            identity_poison_cell_directory.join("claude-verified-tool-producer-poisoned.json");
+        let identity_poison_evidence_path = release_evidence_path(&identity_poison_cell_path)?;
 
         let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
         recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
@@ -1233,6 +1369,18 @@ mod unix {
         let mut tampered_recorder =
             LiveResultRecorder::new("claude-code", Some(tampered_cell_path.clone()))?;
         tampered_recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
+        let mut producer_failure_recorder = LiveResultRecorder::new_for_kind(
+            "claude-code",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            Some(producer_failure_cell_path.clone()),
+        )?;
+        producer_failure_recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
+        let mut identity_poison_recorder = LiveResultRecorder::new_for_kind(
+            "claude-code",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            Some(identity_poison_cell_path.clone()),
+        )?;
+        identity_poison_recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
         let binary_sha256 =
             sha256_file(&fixture.volicord_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
         let candidate = ReleaseCandidate {
@@ -1267,6 +1415,13 @@ mod unix {
         tampered_recorder.release_candidate = Some(candidate);
         tampered_recorder.release_feature = Some(HostFeature::NativeUserAction);
         tampered_recorder.release_requested_verified = Some(true);
+        producer_failure_recorder.release_candidate = tampered_recorder.release_candidate.clone();
+        producer_failure_recorder.release_feature = Some(HostFeature::VerifiedToolProducer);
+        producer_failure_recorder.release_requested_verified = Some(true);
+        identity_poison_recorder.release_candidate =
+            producer_failure_recorder.release_candidate.clone();
+        identity_poison_recorder.release_feature = Some(HostFeature::VerifiedToolProducer);
+        identity_poison_recorder.release_requested_verified = Some(true);
 
         let init = fixture.run_volicord([
             "init",
@@ -1291,6 +1446,15 @@ mod unix {
             MAX_CONNECTION_ID_BYTES,
         )?;
         let project_id = live_fixture_project_id(&fixture)?;
+        for recorder in [
+            &mut recorder,
+            &mut stale_only_recorder,
+            &mut tampered_recorder,
+            &mut producer_failure_recorder,
+            &mut identity_poison_recorder,
+        ] {
+            recorder.bind_observed_connection_id(connection_id.clone())?;
+        }
 
         let historical_name = "historical-client";
         let historical_version = "historical-host 0.9";
@@ -1350,6 +1514,7 @@ mod unix {
             Value::String(format!("agent_connection:{connection_id}"));
         stale_only_summary["user_action"]["requested_by_actor_source"] =
             Value::String(format!("agent_connection:{connection_id}"));
+        stale_only_recorder.mark_selected_attempt_started();
         stale_only_recorder.record_final(&stale_only_summary)?;
 
         let stale_only_cell: Value = serde_json::from_slice(&fs::read(&stale_only_cell_path)?)?;
@@ -1419,13 +1584,17 @@ mod unix {
             historical_after_observation.metadata_fingerprint
         );
         assert_eq!(
-            historical_before_observation.initialize_event_fingerprints,
-            historical_after_observation.initialize_event_fingerprints
+            historical_before_observation.initialize_events,
+            historical_after_observation.initialize_events
         );
         recorder.bind_observed_host_turn_baselines(&before, &after)?;
         tampered_recorder.bind_observed_host_turn_baselines(&before, &after)?;
+        producer_failure_recorder.bind_observed_host_turn_baselines(&before, &after)?;
+        identity_poison_recorder.bind_observed_host_turn_baselines(&before, &after)?;
         recorder.bind_observed_host_turn_baselines(&after, &after)?;
         tampered_recorder.bind_observed_host_turn_baselines(&after, &after)?;
+        producer_failure_recorder.bind_observed_host_turn_baselines(&after, &after)?;
+        identity_poison_recorder.bind_observed_host_turn_baselines(&after, &after)?;
 
         let current_session_id =
             managed_host_session_id("claude_code", &connection_id, current_session)?;
@@ -1496,8 +1665,26 @@ mod unix {
         let repeated_before = fixture.managed_baseline_observations()?;
         assert_eq!(repeated_before, after);
         let mut repeated_metadata = current_metadata.clone();
-        repeated_metadata["captured_repeated_turn"] = Value::Bool(true);
-        let repeated_baseline = update_watch_status(
+        let repeated_at =
+            DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Nanos, true);
+        let mut repeated_initialize = repeated_metadata["lifecycle_events"]
+            .as_array()
+            .and_then(|events| {
+                events
+                    .iter()
+                    .find(|event| event["lifecycle_event"] == "managed_host_initialize_response")
+            })
+            .cloned()
+            .ok_or_else(|| io::Error::other("current baseline has no initialize event"))?;
+        repeated_initialize["timestamp"] = Value::String(repeated_at.clone());
+        repeated_metadata["latest_lifecycle_event"] =
+            Value::String("managed_host_initialize_response".to_owned());
+        repeated_metadata["latest_lifecycle_observed_at"] = Value::String(repeated_at);
+        repeated_metadata["lifecycle_events"]
+            .as_array_mut()
+            .ok_or_else(|| io::Error::other("current lifecycle events are not an array"))?
+            .push(repeated_initialize);
+        update_watch_status(
             &fixture.runtime_home_path,
             &project_id,
             &current_baseline.watch_baseline_id,
@@ -1514,11 +1701,21 @@ mod unix {
         );
         recorder.bind_observed_host_turn_baselines(&repeated_before, &repeated_after)?;
         tampered_recorder.bind_observed_host_turn_baselines(&repeated_before, &repeated_after)?;
+        producer_failure_recorder
+            .bind_observed_host_turn_baselines(&repeated_before, &repeated_after)?;
+        identity_poison_recorder
+            .bind_observed_host_turn_baselines(&repeated_before, &repeated_after)?;
         let repeated_fingerprint = repeated_after
             .get(&current_key)
             .ok_or_else(|| io::Error::other("repeated managed baseline has no fingerprint"))?
             .metadata_fingerprint
             .clone();
+        let repeated_baseline = latest_watch_baseline_for_session(
+            &fixture.runtime_home_path,
+            &project_id,
+            &current_session_id,
+        )?
+        .ok_or_else(|| io::Error::other("repeated managed baseline disappeared"))?;
         assert_eq!(
             recorder.observed_host_turn_baselines,
             BTreeMap::from([(current_key.clone(), repeated_fingerprint)])
@@ -1534,6 +1731,173 @@ mod unix {
             host_executable_sha256.clone(),
             volicord_build_id.clone(),
         )?)?;
+        producer_failure_recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            current_version.to_owned(),
+            host_executable_sha256.clone(),
+            volicord_build_id.clone(),
+        )?)?;
+        identity_poison_recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            current_version.to_owned(),
+            host_executable_sha256.clone(),
+            volicord_build_id.clone(),
+        )?)?;
+        producer_failure_recorder.bind_observed_connection_id(connection_id.clone())?;
+        identity_poison_recorder.bind_observed_connection_id(connection_id.clone())?;
+        assert!(identity_poison_recorder
+            .bind_observed_connection_id("CONN-replacement-must-fail".to_owned())
+            .is_err());
+        assert!(identity_poison_recorder.terminal_publication_is_forbidden());
+        let raw_generic_error = io::Error::other(
+            "forbidden-command-sentinel forbidden-prompt-sentinel https://forbidden-url.invalid forbidden-token-sentinel",
+        );
+        let generic_failure =
+            live_producer_failed_summary(&producer_failure_recorder, Some(&raw_generic_error));
+        assert!(!is_classified_live_producer_failure(&raw_generic_error));
+        let generic_failure_text = serde_json::to_string(&generic_failure)?;
+        for forbidden in [
+            "forbidden-command-sentinel",
+            "forbidden-prompt-sentinel",
+            "https://forbidden-url.invalid",
+            "forbidden-token-sentinel",
+        ] {
+            assert!(!generic_failure_text.contains(forbidden));
+        }
+        let source_failure = LiveProducerSourceBarrierFailure::tool(
+            "exact_tool_event_pair_missing",
+            false,
+            &[LiveToolSourceCandidate {
+                event_id: "forbidden-raw-event-id".to_owned(),
+                event_kind: "pre_tool".to_owned(),
+                decision: "allow".to_owned(),
+                occurred_at: "forbidden-raw-event-time".to_owned(),
+                installation_id: Some("forbidden-raw-installation-id".to_owned()),
+                invocation_id: Some("forbidden-raw-invocation-id".to_owned()),
+                matches_expected_source: true,
+                matches_expected_connection: true,
+                matches_expected_session: true,
+                event_time_is_exact: true,
+                complete_post_result: true,
+            }],
+        );
+        assert!(is_classified_live_producer_failure(&source_failure));
+        let producer_failure =
+            live_producer_failed_summary(&producer_failure_recorder, Some(&source_failure));
+        validate_live_producer_failed_summary(&producer_failure)?;
+        identity_poison_recorder.mark_selected_attempt_started();
+        assert!(identity_poison_recorder
+            .record_final(&producer_failure)
+            .is_err());
+        assert!(!identity_poison_cell_path.exists());
+        assert!(!identity_poison_evidence_path.exists());
+        producer_failure_recorder.mark_selected_attempt_started();
+        producer_failure_recorder.record_final(&producer_failure)?;
+
+        let producer_failure_cell_text = fs::read_to_string(&producer_failure_cell_path)?;
+        let producer_failure_cell: Value = serde_json::from_str(&producer_failure_cell_text)?;
+        assert_eq!(producer_failure_cell["schema"], RELEASE_CELL_SCHEMA);
+        assert_eq!(
+            producer_failure_cell["feature"],
+            HostFeature::VerifiedToolProducer.as_str()
+        );
+        assert_eq!(producer_failure_cell["requested_verified"], true);
+        assert_eq!(
+            producer_failure_cell["claimed_status"],
+            "implemented_unverified"
+        );
+        assert_eq!(producer_failure_cell["run_state"], "completed");
+        assert!(producer_failure_cell["assertions"].as_array().is_some_and(
+            |assertions| assertions.len() == 7
+                && assertions
+                    .iter()
+                    .all(|assertion| assertion["passed"] == false)
+        ));
+        assert!(producer_failure_evidence_path.exists());
+        let producer_failure_evidence_text = fs::read_to_string(&producer_failure_evidence_path)?;
+        assert!(producer_failure_evidence_text.len() < MAX_LIVE_HOST_RESULT_BYTES);
+        let producer_failure_evidence: Value =
+            serde_json::from_str(&producer_failure_evidence_text)?;
+        require_exact_live_evidence_result_keys(
+            &producer_failure_evidence,
+            "",
+            &[
+                "kind",
+                "result",
+                "host",
+                "volicord",
+                "connection",
+                "host_feature_support",
+                "final_output_authority_disclosure",
+                "failure",
+                "validation_run",
+            ],
+        )?;
+        require_exact_live_evidence_result_keys(
+            &producer_failure_evidence,
+            "/validation_run",
+            &[
+                "run_id",
+                "started_at",
+                "recorded_at",
+                "client_name",
+                "client_version",
+            ],
+        )?;
+        validate_enriched_live_producer_failed_summary(&producer_failure_evidence)?;
+        let mut url_like_identity_failure = producer_failure_evidence.clone();
+        url_like_identity_failure["host"]["version"] =
+            Value::String("https://host-version.example/release".to_owned());
+        url_like_identity_failure["validation_run"]["client_name"] =
+            Value::String("https://vendor.example/client".to_owned());
+        url_like_identity_failure["validation_run"]["client_version"] =
+            Value::String("https://vendor.example/client-version".to_owned());
+        validate_enriched_live_producer_failed_summary(&url_like_identity_failure)?;
+        let mut injected_enriched_failure = producer_failure_evidence.clone();
+        injected_enriched_failure["validation_run"]["prompt"] =
+            Value::String("forbidden-enriched-prompt".to_owned());
+        assert!(
+            validate_enriched_live_producer_failed_summary(&injected_enriched_failure).is_err()
+        );
+        assert_eq!(producer_failure_evidence["result"], "failed");
+        assert_eq!(
+            producer_failure_evidence["connection"]["connection_id"],
+            connection_id
+        );
+        assert_eq!(
+            producer_failure_evidence["failure"]["finding_code"],
+            "exact_tool_event_pair_missing"
+        );
+        assert_eq!(
+            producer_failure_evidence["failure"]["safe_aggregates"]["candidate_count"],
+            1
+        );
+        assert_eq!(
+            producer_failure_cell["evidence_artifact_sha256"],
+            sha256_file(
+                &producer_failure_evidence_path,
+                MAX_LIVE_HOST_RESULT_BYTES as u64 + 1,
+            )?
+        );
+        for forbidden in [
+            "forbidden-raw-event-id",
+            "forbidden-raw-event-time",
+            "forbidden-raw-installation-id",
+            "forbidden-raw-invocation-id",
+        ] {
+            assert!(!producer_failure_evidence_text.contains(forbidden));
+        }
+        let producer_failure_cell_bytes = fs::read(&producer_failure_cell_path)?;
+        let producer_failure_evidence_bytes = fs::read(&producer_failure_evidence_path)?;
+        assert!(producer_failure_recorder
+            .record_final(&producer_failure)
+            .is_err());
+        assert_eq!(
+            fs::read(&producer_failure_cell_path)?,
+            producer_failure_cell_bytes
+        );
+        assert_eq!(
+            fs::read(&producer_failure_evidence_path)?,
+            producer_failure_evidence_bytes
+        );
         let mut summary =
             native_user_action_result_shape_fixture("claude-code", &host_executable_sha256);
         summary["host"]["version"] = Value::String(current_version.to_owned());
@@ -1544,6 +1908,7 @@ mod unix {
             Value::String(format!("agent_connection:{connection_id}"));
         summary["user_action"]["requested_by_actor_source"] =
             Value::String(format!("agent_connection:{connection_id}"));
+        recorder.mark_selected_attempt_started();
         recorder.record_final(&summary)?;
 
         let cell_text = fs::read_to_string(&cell_path)?;
@@ -1610,9 +1975,15 @@ mod unix {
         ) -> ManagedBaselineObservation {
             ManagedBaselineObservation {
                 metadata_fingerprint: metadata_fingerprint.to_owned(),
-                initialize_event_fingerprints: initialize_event_fingerprints
+                initialize_events: initialize_event_fingerprints
                     .iter()
-                    .map(|fingerprint| (*fingerprint).to_owned())
+                    .map(|fingerprint| ManagedInitializeEventObservation {
+                        fingerprint: (*fingerprint).to_owned(),
+                        launch_origin: Some("managed_host".to_owned()),
+                        host_kind: Some("claude_code".to_owned()),
+                        connection_id: Some("CONN-fixture".to_owned()),
+                        project_id: Some("project_fixture".to_owned()),
+                    })
                     .collect(),
             }
         }
@@ -1620,11 +1991,28 @@ mod unix {
         let runtime_home = TempRuntimeHome::new("release-baseline-repeated-turn")?;
         let mut recorder = LiveResultRecorder::new("claude-code", None)?;
         recorder.bind_observed_runtime_home(runtime_home.path())?;
+        recorder.bind_observed_connection_id("CONN-fixture".to_owned())?;
         let baseline = ObservedHostTurnBaseline {
             project_id: "project_fixture".to_owned(),
             watch_baseline_id: "watch_base_fixture".to_owned(),
         };
         let empty = ManagedBaselineObservations::new();
+        let baseline_without_initialize = ObservedHostTurnBaseline {
+            project_id: "project_fixture".to_owned(),
+            watch_baseline_id: "watch_base_without_initialize".to_owned(),
+        };
+        let no_initialize_after = BTreeMap::from([(
+            baseline_without_initialize,
+            observation(&"0".repeat(64), &[]),
+        )]);
+        let mut no_initialize_recorder = LiveResultRecorder::new("claude-code", None)?;
+        no_initialize_recorder.bind_observed_runtime_home(runtime_home.path())?;
+        no_initialize_recorder.bind_observed_connection_id("CONN-fixture".to_owned())?;
+        no_initialize_recorder.bind_observed_host_turn_baselines(&empty, &no_initialize_after)?;
+        assert!(no_initialize_recorder
+            .observed_host_turn_baselines
+            .is_empty());
+
         let first = BTreeMap::from([(
             baseline.clone(),
             observation(&"a".repeat(64), &["initialize-a"]),
@@ -1638,10 +2026,25 @@ mod unix {
 
         let second = BTreeMap::from([(
             baseline.clone(),
-            observation(&"b".repeat(64), &["initialize-a"]),
+            observation(&"b".repeat(64), &["initialize-a", "initialize-b"]),
         )]);
         let second_fingerprints = BTreeMap::from([(baseline.clone(), "b".repeat(64))]);
         recorder.bind_observed_host_turn_baselines(&first, &second)?;
+        assert_eq!(recorder.observed_host_turn_baselines, second_fingerprints);
+
+        let replaced_initialize = BTreeMap::from([(
+            baseline.clone(),
+            observation(&"c".repeat(64), &["initialize-forged"]),
+        )]);
+        assert!(recorder
+            .bind_observed_host_turn_baselines(&second, &replaced_initialize)
+            .is_err());
+        assert_eq!(recorder.observed_host_turn_baselines, second_fingerprints);
+        let removed_initialize =
+            BTreeMap::from([(baseline.clone(), observation(&"d".repeat(64), &[]))]);
+        assert!(recorder
+            .bind_observed_host_turn_baselines(&second, &removed_initialize)
+            .is_err());
         assert_eq!(recorder.observed_host_turn_baselines, second_fingerprints);
 
         assert!(recorder
@@ -1667,8 +2070,33 @@ mod unix {
         )]);
         let mut historical_recorder = LiveResultRecorder::new("claude-code", None)?;
         historical_recorder.bind_observed_runtime_home(runtime_home.path())?;
+        historical_recorder.bind_observed_connection_id("CONN-fixture".to_owned())?;
         historical_recorder
             .bind_observed_host_turn_baselines(&historical_before, &historical_unrelated_after)?;
+        assert!(historical_recorder.observed_host_turn_baselines.is_empty());
+        let mut wrong_initialize_events = historical_before
+            .get(&historical_baseline)
+            .expect("historical baseline fixture")
+            .initialize_events
+            .clone();
+        wrong_initialize_events.insert(ManagedInitializeEventObservation {
+            fingerprint: "initialize-wrong-binding".to_owned(),
+            launch_origin: Some("managed_host".to_owned()),
+            host_kind: Some("claude_code".to_owned()),
+            connection_id: Some("CONN-other".to_owned()),
+            project_id: Some("project_fixture".to_owned()),
+        });
+        let historical_wrong_binding_after = BTreeMap::from([(
+            historical_baseline.clone(),
+            ManagedBaselineObservation {
+                metadata_fingerprint: "f".repeat(64),
+                initialize_events: wrong_initialize_events,
+            },
+        )]);
+        historical_recorder.bind_observed_host_turn_baselines(
+            &historical_before,
+            &historical_wrong_binding_after,
+        )?;
         assert!(historical_recorder.observed_host_turn_baselines.is_empty());
         let historical_initialized_after = BTreeMap::from([(
             historical_baseline.clone(),
@@ -1747,6 +2175,60 @@ mod unix {
         fs::set_permissions(&fixture.volicord_path, read_only)?;
         assert!(fixture.run_volicord(["--version"]).is_err());
 
+        let launch_fixture = LiveSmokeFixture::new_with_release_candidate(
+            "candidate-prelaunch-integrity",
+            &candidate,
+        )?;
+        let fake_host = launch_fixture.runtime_home_path.join("fake-host");
+        let fake_host_log = launch_fixture.runtime_home_path.join("fake-host.log");
+        fs::write(
+            &fake_host,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'fixture-host 1.0\\n'\n  exit 0\nfi\nprintf 'launched\\n' >> {}\n",
+                shell_quote(&fake_host_log),
+            ),
+        )?;
+        make_executable(&fake_host)?;
+        let launch_result_root = launch_fixture
+            .release_artifact_root
+            .join("prelaunch-results");
+        let (launch_cells, _, _) = create_live_result_root(&launch_result_root)?;
+        let launch_cell_path = launch_cells.join("candidate-integrity.json");
+        let launch_evidence_path = release_evidence_path(&launch_cell_path)?;
+        {
+            let mut recorder =
+                LiveResultRecorder::new("claude-code", Some(launch_cell_path.clone()))?;
+            recorder.release_candidate = Some(candidate.clone());
+            recorder.release_feature = Some(HostFeature::NativeUserAction);
+            launch_fixture.observe_and_bind_installed_host_identity(
+                &mut recorder,
+                "fake-host",
+                &fake_host,
+            )?;
+            let mut writable = fs::metadata(&launch_fixture.volicord_path)?.permissions();
+            writable.set_mode(0o755);
+            fs::set_permissions(&launch_fixture.volicord_path, writable)?;
+            OpenOptions::new()
+                .append(true)
+                .open(&launch_fixture.volicord_path)?
+                .write_all(b"candidate-prelaunch-mutation")?;
+            let mut read_only = fs::metadata(&launch_fixture.volicord_path)?.permissions();
+            read_only.set_mode(0o555);
+            fs::set_permissions(&launch_fixture.volicord_path, read_only)?;
+            assert!(launch_fixture
+                .start_authenticated_interactive_host(
+                    "claude-code",
+                    &fake_host,
+                    "fixture prompt",
+                    &mut recorder,
+                )
+                .is_err());
+            assert!(recorder.terminal_publication_is_forbidden());
+        }
+        assert!(!fake_host_log.exists());
+        assert!(!launch_cell_path.exists());
+        assert!(!launch_evidence_path.exists());
+
         let replacement_path = release_root.join("replacement-candidate-volicord");
         fs::copy(volicord_bin(), &replacement_path)?;
         let mut replacement_permissions = fs::metadata(&replacement_path)?.permissions();
@@ -1782,7 +2264,337 @@ mod unix {
     }
 
     #[test]
-    fn installed_host_preflight_retains_real_coordinates_and_rejects_false_null_availability(
+    fn release_cell_uses_the_once_bound_private_candidate_build_identity(
+    ) -> Result<(), Box<dyn Error>> {
+        let temp = TempRuntimeHome::new("private-candidate-build-identity")?;
+        let release_root = temp.product_repo_path("release-artifacts");
+        fs::create_dir_all(&release_root)?;
+        let candidate_path = release_root.join("candidate-volicord");
+        let probe_log = release_root.join("version-probes.log");
+        let build_id = "0.9.0;git=0123456789abcdef;tree=clean;metadata_source=environment;target=x86_64-unknown-linux-gnu;profile=release;profile_class=release;profile_exact=true;opt=3;debug=false";
+        fs::write(
+            &candidate_path,
+            format!(
+                "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = \"--version\" ] || exit 64\nprintf '%s\\n' \"$0\" >> {}\nprintf '%s\\n' 'volicord 0.9.0 (build_id={build_id})'\n",
+                shell_quote(&probe_log),
+            ),
+        )?;
+        make_executable(&candidate_path)?;
+        let candidate = ReleaseCandidate {
+            descriptor_path: None,
+            schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+            candidate_id: "candidate_private_build_identity".to_owned(),
+            candidate_path: path_text(&candidate_path),
+            source_revision: "1".repeat(40),
+            source_clean: true,
+            source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+            source_archive_sha256: "2".repeat(64),
+            target_triple: "x86_64-unknown-linux-gnu".to_owned(),
+            release_profile: "release".to_owned(),
+            binary_sha256: sha256_file(&candidate_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?,
+            build_environment: ReleaseCandidateBuildEnvironment {
+                runner_os: "fixture-os".to_owned(),
+                runner_os_version: "fixture-version".to_owned(),
+                runner_arch: "fixture-arch".to_owned(),
+                git_version: "git fixture".to_owned(),
+                rustc_version: "rustc fixture".to_owned(),
+                cargo_version: "cargo fixture".to_owned(),
+            },
+            recorded_at: "2026-07-14T00:00:00Z".to_owned(),
+        };
+        candidate.validate()?;
+
+        let result_root = release_root.join("successful-results");
+        let (cell_directory, _, _) = create_live_result_root(&result_root)?;
+        let cell_path = cell_directory.join("claude-unavailable.json");
+        let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
+        recorder.release_candidate = Some(candidate.clone());
+        recorder.release_feature = Some(HostFeature::NativeUserAction);
+        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            "private-build-success",
+            &candidate,
+            &mut recorder,
+        )?;
+        assert_eq!(
+            recorder.observed_volicord_build_id.as_deref(),
+            Some(build_id)
+        );
+        assert_eq!(fixture.private_volicord_build_id.as_deref(), Some(build_id));
+        recorder.record_final(&live_user_action_unavailable_summary(
+            "claude-code",
+            None,
+            "host_executable",
+            "fixture host unavailable",
+        ))?;
+        let cell: Value = serde_json::from_slice(&fs::read(&cell_path)?)?;
+        assert_eq!(cell["adapter_version"], build_id);
+        assert_eq!(
+            fs::read_to_string(&probe_log)?.lines().collect::<Vec<_>>(),
+            [path_text(&fixture.volicord_path)],
+            "publication must not execute the descriptor's external candidate path"
+        );
+
+        let replacement_result_root = release_root.join("replacement-results");
+        let (replacement_cell_directory, _, _) = create_live_result_root(&replacement_result_root)?;
+        let replacement_cell = replacement_cell_directory.join("claude-unavailable.json");
+        let replacement_evidence = release_evidence_path(&replacement_cell)?;
+        let mut replacement_recorder =
+            LiveResultRecorder::new("claude-code", Some(replacement_cell.clone()))?;
+        replacement_recorder.release_candidate = Some(candidate.clone());
+        replacement_recorder.release_feature = Some(HostFeature::NativeUserAction);
+        let replacement_fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            "private-build-replacement",
+            &candidate,
+            &mut replacement_recorder,
+        )?;
+        let original_external = release_root.join("candidate-volicord-original");
+        fs::rename(&candidate_path, &original_external)?;
+        let replacement_probe_log = release_root.join("replacement-probe.log");
+        fs::write(
+            &candidate_path,
+            format!(
+                "#!/bin/sh\nprintf 'invoked\\n' >> {}\nprintf '%s\\n' 'volicord 9.9.9 (build_id=9.9.9;git=replaced;tree=clean;metadata_source=environment;target=replaced;profile=release;profile_class=release;profile_exact=true;opt=3;debug=false)'\n",
+                shell_quote(&replacement_probe_log),
+            ),
+        )?;
+        make_executable(&candidate_path)?;
+        let unavailable = live_user_action_unavailable_summary(
+            "claude-code",
+            None,
+            "host_executable",
+            "fixture host unavailable",
+        );
+        let enriched = replacement_recorder.with_observed_host_identity(&unavailable)?;
+        assert_eq!(enriched["volicord"]["build_id"], build_id);
+        assert_eq!(
+            replacement_fixture.private_volicord_build_id.as_deref(),
+            Some(build_id)
+        );
+        assert!(replacement_recorder.record_final(&unavailable).is_err());
+        assert!(!replacement_probe_log.exists());
+        assert!(!replacement_cell.exists());
+        assert!(!replacement_evidence.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn executable_lookup_skips_non_executable_path_shadows() -> Result<(), Box<dyn Error>> {
+        let temp = TempRuntimeHome::new("executable-path-shadow")?;
+        let shadow_dir = temp.path().join("shadow");
+        let executable_dir = temp.path().join("executable");
+        fs::create_dir_all(&shadow_dir)?;
+        fs::create_dir_all(&executable_dir)?;
+        let shadow = shadow_dir.join("fixture-host");
+        let executable = executable_dir.join("fixture-host");
+        fs::write(&shadow, "not executable")?;
+        fs::write(&executable, "#!/bin/sh\nexit 0\n")?;
+        make_executable(&executable)?;
+        let path = env::join_paths([shadow_dir.as_path(), executable_dir.as_path()])?;
+        assert_eq!(
+            find_executable_on_path("fixture-host", &path),
+            Some(executable)
+        );
+        assert_eq!(
+            find_executable_on_path("fixture-host", shadow_dir.as_os_str()),
+            None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn claude_host_version_probe_is_exact_bounded_and_fail_closed() -> Result<(), Box<dyn Error>> {
+        let output = |stdout: Vec<u8>, stderr: Vec<u8>| TimedOutput {
+            output: Output {
+                status: ExitStatus::from_raw(0),
+                stdout,
+                stderr,
+            },
+            timed_out: false,
+        };
+
+        for length in [256, 257, 1_024] {
+            let version = "v".repeat(length);
+            let probe = output(format!("{version}\n").into_bytes(), Vec::new());
+            assert_eq!(host_version_summary(&probe)?, version);
+        }
+        let oversized = "v".repeat(1_025);
+        assert!(
+            host_version_summary(&output(format!("{oversized}\n").into_bytes(), Vec::new(),))
+                .is_err()
+        );
+
+        let exact = "Claude Code 1.2.3+테스트";
+        assert_eq!(
+            host_version_summary(&output(format!("{exact}\n").into_bytes(), Vec::new()))?,
+            exact
+        );
+
+        for (case, stdout, stderr) in [
+            ("missing_lf", b"version".to_vec(), Vec::new()),
+            ("empty_line", b"\n".to_vec(), Vec::new()),
+            ("extra_line", b"version\nextra\n".to_vec(), Vec::new()),
+            ("extra_lf", b"version\n\n".to_vec(), Vec::new()),
+            ("crlf", b"version\r\n".to_vec(), Vec::new()),
+            ("leading_whitespace", b" version\n".to_vec(), Vec::new()),
+            ("trailing_whitespace", b"version \n".to_vec(), Vec::new()),
+            ("whitespace_only", b"   \n".to_vec(), Vec::new()),
+            ("control", b"ver\tsion\n".to_vec(), Vec::new()),
+            ("stderr", b"version\n".to_vec(), b"warning\n".to_vec()),
+            ("invalid_utf8", vec![0xff, b'\n'], Vec::new()),
+        ] {
+            assert!(
+                host_version_summary(&output(stdout, stderr)).is_err(),
+                "Claude host-version probe case {case} must fail closed"
+            );
+        }
+
+        assert!(ObservedInitializedClientInfo::new("client".to_owned(), "v".repeat(256),).is_ok());
+        assert!(ObservedInitializedClientInfo::new("client".to_owned(), "v".repeat(257),).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn codex_host_version_probe_rejects_invalid_utf8_without_substitution(
+    ) -> Result<(), Box<dyn Error>> {
+        let output = |stdout: Vec<u8>, stderr: Vec<u8>| TimedOutput {
+            output: Output {
+                status: ExitStatus::from_raw(0),
+                stdout,
+                stderr,
+            },
+            timed_out: false,
+        };
+
+        assert_eq!(
+            canonical_codex_version_summary(&output(b"codex-cli 0.144.4\n".to_vec(), Vec::new(),))?,
+            "0.144.4"
+        );
+        assert!(canonical_codex_version_summary(&output(vec![0xff, b'\n'], Vec::new(),)).is_err());
+        assert!(canonical_codex_version_summary(&output(
+            b"codex-cli 0.144.4\n".to_vec(),
+            vec![0xff],
+        ))
+        .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn release_candidate_build_id_probe_reuses_the_strict_shared_parser(
+    ) -> Result<(), Box<dyn Error>> {
+        let output = |stdout: Vec<u8>, stderr: Vec<u8>| TimedOutput {
+            output: Output {
+                status: ExitStatus::from_raw(0),
+                stdout,
+                stderr,
+            },
+            timed_out: false,
+        };
+        let build_id = "0.9.0;git=0123456789abcdef;tree=clean;metadata_source=environment;target=x86_64-unknown-linux-gnu;profile=release;profile_class=release;profile_exact=true;opt=3;debug=false";
+        let canonical = format!("volicord 0.9.0 (build_id={build_id})\n");
+        assert_eq!(
+            release_build_id_from_version_output(
+                "fixture release candidate --version",
+                &output(canonical.as_bytes().to_vec(), Vec::new()),
+            )?,
+            build_id
+        );
+
+        let line = canonical
+            .strip_suffix('\n')
+            .expect("canonical fixture has one LF");
+        let outer_mismatch = canonical.replacen("volicord 0.9.0", "volicord 0.9.1", 1);
+        let malformed_component = canonical.replacen(";git=", ";git", 1);
+        let additional_component =
+            canonical.replacen(";debug=false)", ";debug=false;additional=value)", 1);
+        for (case, stdout, stderr) in [
+            ("invalid_stdout_utf8", vec![0xff, b'\n'], Vec::new()),
+            (
+                "nonempty_stderr",
+                canonical.as_bytes().to_vec(),
+                b"warning\n".to_vec(),
+            ),
+            (
+                "invalid_stderr_utf8",
+                canonical.as_bytes().to_vec(),
+                vec![0xff],
+            ),
+            (
+                "leading_whitespace",
+                format!(" {canonical}").into_bytes(),
+                Vec::new(),
+            ),
+            (
+                "trailing_whitespace",
+                format!("{line} \n").into_bytes(),
+                Vec::new(),
+            ),
+            ("missing_lf", line.as_bytes().to_vec(), Vec::new()),
+            (
+                "extra_lf",
+                format!("{canonical}\n").into_bytes(),
+                Vec::new(),
+            ),
+            (
+                "extra_line",
+                format!("{canonical}extra\n").into_bytes(),
+                Vec::new(),
+            ),
+            (
+                "outer_embedded_package_mismatch",
+                outer_mismatch.into_bytes(),
+                Vec::new(),
+            ),
+            (
+                "malformed_build_component",
+                malformed_component.into_bytes(),
+                Vec::new(),
+            ),
+            (
+                "additional_build_component",
+                additional_component.into_bytes(),
+                Vec::new(),
+            ),
+        ] {
+            assert!(
+                release_build_id_from_version_output(
+                    "fixture release candidate --version",
+                    &output(stdout, stderr),
+                )
+                .is_err(),
+                "release candidate version case {case} must fail closed"
+            );
+        }
+        let nonzero = TimedOutput {
+            output: Output {
+                status: ExitStatus::from_raw(7 << 8),
+                stdout: canonical.as_bytes().to_vec(),
+                stderr: Vec::new(),
+            },
+            timed_out: false,
+        };
+        assert!(release_build_id_from_version_output(
+            "fixture release candidate --version",
+            &nonzero,
+        )
+        .is_err());
+        let timed_out = TimedOutput {
+            output: Output {
+                status: ExitStatus::from_raw(0),
+                stdout: canonical.into_bytes(),
+                stderr: Vec::new(),
+            },
+            timed_out: true,
+        };
+        assert!(release_build_id_from_version_output(
+            "fixture release candidate --version",
+            &timed_out,
+        )
+        .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn installed_host_preflight_requires_a_successful_probe_before_retaining_coordinates(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = LiveSmokeFixture::new("installed-host-preflight")?;
         let fake_host = fixture.runtime_home_path.join("fake-installed-host");
@@ -1798,11 +2610,10 @@ mod unix {
             .is_err());
         let enriched =
             recorder.with_observed_host_identity(&recorder.failed_before_completion_summary())?;
-        assert_eq!(enriched["host"]["version"], "fixture-host 1.0");
-        assert_eq!(
-            enriched["host"]["executable_sha256"],
-            sha256_file(&fake_host, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?
-        );
+        assert!(enriched["host"].get("version").is_none());
+        assert!(enriched["host"].get("executable_sha256").is_none());
+        assert!(recorder.observed_host_coordinates.is_none());
+        assert!(recorder.observed_volicord_build_id.is_none());
 
         let candidate = ReleaseCandidate {
             descriptor_path: None,
@@ -1829,10 +2640,7 @@ mod unix {
         candidate.validate()?;
 
         let successful_host = fixture.runtime_home_path.join("successful-installed-host");
-        fs::write(
-            &successful_host,
-            "#!/bin/sh\nprintf 'fixture-host 1.0\\n'\n",
-        )?;
+        fs::write(&successful_host, "#!/bin/sh\nprintf '0.144.4\\n'\n")?;
         make_executable(&successful_host)?;
         let result_root = fixture.release_artifact_root.join("release-results");
         let (cell_dir, _, _) = create_live_result_root(&result_root)?;
@@ -1847,17 +2655,109 @@ mod unix {
         )?;
         terminal.record_final(&live_user_action_unavailable_summary(
             "codex",
-            Some("fixture-host 1.0"),
+            Some("0.144.4"),
             "interactive_terminal",
             "fixture terminal unavailable after installed-host preflight",
         ))?;
         let terminal_cell: Value = serde_json::from_slice(&fs::read(&terminal_path)?)?;
-        assert_eq!(terminal_cell["host_version"], "fixture-host 1.0");
+        assert_eq!(terminal_cell["host_version"], "0.144.4");
         assert_eq!(
             terminal_cell["environment"]["host_executable_sha256"],
             sha256_file(&successful_host, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?
         );
-        assert_eq!(terminal_cell["run_state"], "completed");
+        assert_eq!(terminal_cell["run_state"], "ignored");
+
+        let producer_preflight_path = cell_dir.join("producer-preflight-failure.json");
+        let mut producer_preflight = LiveResultRecorder::new_for_kind_and_profile(
+            "codex-producer-preflight-fixture",
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            Some(IntegrationProfile::Detective),
+            Some(producer_preflight_path.clone()),
+        )?;
+        producer_preflight.release_candidate = Some(candidate.clone());
+        producer_preflight.release_feature = Some(HostFeature::VerifiedToolProducer);
+        fixture.observe_and_bind_installed_host_identity(
+            &mut producer_preflight,
+            "fake-host",
+            &successful_host,
+        )?;
+        let observed_diagnostics = canonical_release_host_feature_diagnostics_for_version(
+            "codex",
+            Some("0.144.4"),
+            IntegrationProfile::Detective,
+            true,
+            true,
+        );
+        producer_preflight.bind_observed_host_feature_diagnostics(observed_diagnostics.clone())?;
+        let preflight_error = ClassifiedLiveProducerFailure::boxed(
+            "producer_preflight",
+            "producer_init_state_mismatch",
+            io::Error::other("fixture safe init preflight rejection"),
+        );
+        let preflight_summary =
+            live_producer_failed_summary(&producer_preflight, Some(preflight_error.as_ref()));
+        validate_live_producer_failed_summary(&preflight_summary)?;
+        producer_preflight.record_final(&preflight_summary)?;
+        let producer_preflight_cell: Value =
+            serde_json::from_slice(&fs::read(&producer_preflight_path)?)?;
+        assert_eq!(producer_preflight_cell["host_version"], "0.144.4");
+        assert_eq!(producer_preflight_cell["run_state"], "ignored");
+        assert_eq!(
+            producer_preflight_cell["claimed_status"],
+            "implemented_unverified"
+        );
+        let producer_preflight_evidence_path = PathBuf::from(
+            producer_preflight_cell["evidence_artifact_path"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("producer preflight cell has no evidence path"))?,
+        );
+        let producer_preflight_evidence: Value =
+            serde_json::from_slice(&fs::read(producer_preflight_evidence_path)?)?;
+        assert_eq!(
+            producer_preflight_evidence["failure"]["finding_code"],
+            "producer_init_state_mismatch"
+        );
+        assert_eq!(
+            producer_preflight_evidence["host_feature_support"],
+            observed_diagnostics.host_feature_support
+        );
+        assert_eq!(
+            producer_preflight_evidence["final_output_authority_disclosure"],
+            observed_diagnostics.final_output_authority_disclosure
+        );
+
+        let changed_host = fixture.runtime_home_path.join("changed-installed-host");
+        fs::write(&changed_host, "#!/bin/sh\nprintf '0.144.4\\n'\n")?;
+        make_executable(&changed_host)?;
+        let changed_path = cell_dir.join("changed-installed-host-cell.json");
+        let changed_evidence_path = release_evidence_path(&changed_path)?;
+        {
+            let mut changed = LiveResultRecorder::new("codex", Some(changed_path.clone()))?;
+            changed.release_candidate = Some(candidate.clone());
+            changed.release_feature = Some(HostFeature::NativeUserAction);
+            fixture.observe_and_bind_installed_host_identity(
+                &mut changed,
+                "fake-host",
+                &changed_host,
+            )?;
+            fs::write(
+                &changed_host,
+                "#!/bin/sh\nprintf 'fixture-host replaced\\n'\n",
+            )?;
+            make_executable(&changed_host)?;
+            assert!(changed
+                .record_final(&live_user_action_unavailable_summary(
+                    "codex",
+                    Some("0.144.4"),
+                    "interactive_terminal",
+                    "fixture terminal unavailable after executable replacement",
+                ))
+                .is_err());
+            assert!(changed.terminal_publication_is_forbidden());
+        }
+        assert!(!changed_path.exists());
+        assert!(!changed_evidence_path.exists());
 
         let unresolved_path = cell_dir.join("unresolved-installed-host-cell.json");
         {
@@ -1878,6 +2778,80 @@ mod unix {
             !unresolved_path.exists(),
             "an installed host with unresolved coordinates must not become a null-identity cell"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn authenticated_host_turns_poison_publication_when_retained_executable_changes(
+    ) -> Result<(), Box<dyn Error>> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        if env::var_os(LIVE_HOST_RETAINED_EXECUTABLE_REGRESSION_ENV).as_deref()
+            != Some(OsStr::new("1"))
+        {
+            return run_test_in_fresh_controlling_terminal(
+                LIVE_HOST_RETAINED_EXECUTABLE_REGRESSION_TEST,
+                LIVE_HOST_RETAINED_EXECUTABLE_REGRESSION_ENV,
+                b"",
+            );
+        }
+
+        fn write_self_mutating_host(path: &Path, launch_log: &Path) -> Result<(), Box<dyn Error>> {
+            fs::write(
+                path,
+                format!(
+                    "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  printf 'fixture-host 1.0\\n'\n  exit 0\nfi\nprintf 'launched\\n' >> {}\nprintf '\\n# changed after launch\\n' >> {}\n",
+                    shell_quote(launch_log),
+                    shell_quote(path),
+                ),
+            )?;
+            make_executable(path)
+        }
+
+        let fixture = LiveSmokeFixture::new("retained-host-turn-identity")?;
+        let one_shot_host = fixture.runtime_home_path.join("one-shot-host");
+        let one_shot_log = fixture.runtime_home_path.join("one-shot-launch.log");
+        write_self_mutating_host(&one_shot_host, &one_shot_log)?;
+        let mut one_shot = LiveResultRecorder::new("claude-code", None)?;
+        fixture.observe_and_bind_installed_host_identity(
+            &mut one_shot,
+            "fake-host",
+            &one_shot_host,
+        )?;
+        let one_shot_error = fixture
+            .run_authenticated_interactive_host(
+                "claude-code",
+                &one_shot_host,
+                "fixture prompt",
+                &mut one_shot,
+            )
+            .expect_err("self-mutating one-shot host must fail retained identity revalidation");
+        assert!(one_shot_error
+            .to_string()
+            .contains("observed host executable identity changed after measurement"));
+        assert!(one_shot.terminal_publication_is_forbidden());
+        assert_eq!(fs::read_to_string(&one_shot_log)?, "launched\n");
+
+        let split_host = fixture.runtime_home_path.join("split-host");
+        let split_log = fixture.runtime_home_path.join("split-launch.log");
+        write_self_mutating_host(&split_host, &split_log)?;
+        let mut split = LiveResultRecorder::new("claude-code", None)?;
+        fixture.observe_and_bind_installed_host_identity(&mut split, "fake-host", &split_host)?;
+        let turn = fixture.start_authenticated_interactive_host(
+            "claude-code",
+            &split_host,
+            "fixture prompt",
+            &mut split,
+        )?;
+        let split_error = fixture
+            .finish_authenticated_interactive_host(turn, &mut split, false)
+            .expect_err("self-mutating split host must fail retained identity revalidation");
+        assert!(split_error
+            .to_string()
+            .contains("observed host executable identity changed after measurement"));
+        assert!(split.terminal_publication_is_forbidden());
+        assert_eq!(fs::read_to_string(&split_log)?, "launched\n");
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        print_controlling_terminal_success_marker()?;
         Ok(())
     }
 
@@ -2422,7 +3396,8 @@ mod unix {
             assert!(validate_live_producer_result_shape(&stale_close, feature).is_err());
 
             let mut forbidden_payload = result.clone();
-            forbidden_payload["host"]["version"] = Value::String("https://secret.invalid".into());
+            forbidden_payload["unexpected_payload"] =
+                Value::String("https://secret.invalid".into());
             assert!(validate_live_producer_result_shape(&forbidden_payload, feature).is_err());
 
             let mut missing_semantic = result.clone();
@@ -2432,6 +3407,2155 @@ mod unix {
                 .remove("capture_receipt_bound");
             assert!(validate_release_cell_passed_summary(feature, &missing_semantic).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn live_producer_payload_scanner_exempts_only_exact_contract_identity_paths() {
+        let exact_identity = serde_json::json!({
+            "host": { "version": "https://host-version.example/release" },
+            "volicord": { "build_id": "https://build.example/id" },
+            "connection": { "connection_id": "https://connection.example/id" },
+            "validation_run": {
+                "client_name": "https://client.example/name",
+                "client_version": "https://client.example/version"
+            }
+        });
+        assert!(reject_forbidden_live_producer_fields(&exact_identity).is_ok());
+
+        for forbidden in [
+            serde_json::json!({ "payload": "https://secret.invalid" }),
+            serde_json::json!({ "host": { "executable_sha256": "https://secret.invalid" } }),
+            serde_json::json!({ "validation_run": { "run_id": "bearer secret" } }),
+        ] {
+            assert!(reject_forbidden_live_producer_fields(&forbidden).is_err());
+        }
+    }
+
+    #[test]
+    fn exact_live_tool_source_pair_classification_is_bounded_and_table_driven(
+    ) -> Result<(), Box<dyn Error>> {
+        fn candidate(
+            event_kind: &str,
+            decision: &str,
+            invocation_id: Option<&str>,
+        ) -> LiveToolSourceCandidate {
+            let event_label = format!("{event_kind}:{decision}:{invocation_id:?}");
+            let event_digest = format!("{:x}", Sha256::digest(event_label.as_bytes()));
+            LiveToolSourceCandidate {
+                event_id: format!("guard_event_{}", &event_digest[..16]),
+                event_kind: event_kind.to_owned(),
+                decision: decision.to_owned(),
+                occurred_at: "2026-07-15T00:00:00Z".to_owned(),
+                installation_id: Some("raw-installation-must-not-be-published".to_owned()),
+                invocation_id: invocation_id.map(|label| {
+                    let digest = format!("{:x}", Sha256::digest(label.as_bytes()));
+                    format!("managed_native_id_{}", &digest[..16])
+                }),
+                matches_expected_source: true,
+                matches_expected_connection: true,
+                matches_expected_session: true,
+                event_time_is_exact: true,
+                complete_post_result: true,
+            }
+        }
+
+        const EXPECTED_INSTALLATION_ID: &str = "raw-installation-must-not-be-published";
+
+        let valid = vec![
+            candidate("pre_tool", "allow", Some("raw-shared-invocation")),
+            candidate("post_tool", "allow", Some("raw-shared-invocation")),
+        ];
+        require_exact_live_tool_source_pair(&valid, EXPECTED_INSTALLATION_ID)?;
+        let mut fractional_ordered = valid.clone();
+        fractional_ordered[1].occurred_at = "2026-07-15T00:00:00.500Z".to_owned();
+        require_exact_live_tool_source_pair(&fractional_ordered, EXPECTED_INSTALLATION_ID)?;
+        let mut warn_pre = valid.clone();
+        warn_pre[0].decision = "warn".to_owned();
+        require_exact_live_tool_source_pair(&warn_pre, EXPECTED_INSTALLATION_ID)?;
+        let failure_recorder = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+
+        let cases = vec![
+            (
+                "empty_missing",
+                Vec::new(),
+                "exact_tool_event_pair_missing",
+                false,
+            ),
+            (
+                "missing",
+                vec![candidate(
+                    "pre_tool",
+                    "allow",
+                    Some("raw-missing-invocation"),
+                )],
+                "exact_tool_event_pair_missing",
+                false,
+            ),
+            (
+                "lone_wrong_input",
+                {
+                    let mut candidates =
+                        vec![candidate("pre_tool", "allow", Some("raw-lone-wrong-input"))];
+                    candidates[0].matches_expected_source = false;
+                    candidates
+                },
+                "exact_tool_source_binding_mismatch",
+                true,
+            ),
+            (
+                "lone_missing_invocation",
+                vec![candidate("pre_tool", "allow", None)],
+                "exact_tool_invocation_identity_missing",
+                true,
+            ),
+            (
+                "lone_invalid_invocation",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-invalid-invocation"),
+                    )];
+                    candidates[0].invocation_id = Some("raw-native-invocation".to_owned());
+                    candidates
+                },
+                "exact_tool_invocation_identity_invalid",
+                true,
+            ),
+            (
+                "lone_conflicting_invocation_aliases",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-conflicting-invocation-aliases"),
+                    )];
+                    candidates[0].invocation_id = host_event_invocation_id(&serde_json::json!({
+                        "tool_use_id": format!("managed_native_id_{}", "1".repeat(16)),
+                        "invocation_id": format!("managed_native_id_{}", "2".repeat(16)),
+                    }));
+                    candidates
+                },
+                "exact_tool_invocation_identity_invalid",
+                true,
+            ),
+            (
+                "lone_whitespace_invocation_alias",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-whitespace-invocation-alias"),
+                    )];
+                    candidates[0].invocation_id = host_event_invocation_id(&serde_json::json!({
+                        "tool_use_id": format!(" managed_native_id_{}", "3".repeat(16)),
+                    }));
+                    candidates
+                },
+                "exact_tool_invocation_identity_invalid",
+                true,
+            ),
+            (
+                "lone_missing_installation",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-missing-installation"),
+                    )];
+                    candidates[0].installation_id = None;
+                    candidates
+                },
+                "exact_tool_guard_installation_missing",
+                true,
+            ),
+            (
+                "lone_wrong_installation",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-wrong-installation"),
+                    )];
+                    candidates[0].installation_id = Some("other-installation".to_owned());
+                    candidates
+                },
+                "exact_tool_guard_installation_mismatch",
+                true,
+            ),
+            (
+                "lone_invalid_event_id",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-invalid-event-id"),
+                    )];
+                    candidates[0].event_id = "raw-event-id".to_owned();
+                    candidates
+                },
+                "exact_tool_event_id_invalid",
+                true,
+            ),
+            (
+                "lone_invalid_time",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-invalid-time"),
+                    )];
+                    candidates[0].event_time_is_exact = false;
+                    candidates
+                },
+                "exact_tool_event_time_order_mismatch",
+                true,
+            ),
+            (
+                "lone_wrong_connection",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-wrong-connection"),
+                    )];
+                    candidates[0].matches_expected_connection = false;
+                    candidates
+                },
+                "exact_tool_connection_session_mismatch",
+                true,
+            ),
+            (
+                "lone_wrong_session",
+                {
+                    let mut candidates = vec![candidate(
+                        "pre_tool",
+                        "allow",
+                        Some("raw-lone-wrong-session"),
+                    )];
+                    candidates[0].matches_expected_session = false;
+                    candidates
+                },
+                "exact_tool_connection_session_mismatch",
+                true,
+            ),
+            (
+                "lone_warn_pending",
+                vec![candidate(
+                    "pre_tool",
+                    "warn",
+                    Some("raw-lone-warn-invocation"),
+                )],
+                "exact_tool_event_pair_missing",
+                false,
+            ),
+            (
+                "missing_pre",
+                vec![candidate(
+                    "post_tool",
+                    "allow",
+                    Some("raw-post-only-invocation"),
+                )],
+                "exact_tool_pre_event_missing",
+                true,
+            ),
+            (
+                "single_denied",
+                vec![candidate(
+                    "pre_tool",
+                    "deny",
+                    Some("raw-single-denied-invocation"),
+                )],
+                "exact_tool_pre_event_denied",
+                true,
+            ),
+            (
+                "ambiguous",
+                vec![
+                    candidate("pre_tool", "allow", Some("raw-ambiguous-invocation")),
+                    candidate("post_tool", "allow", Some("raw-ambiguous-invocation")),
+                    candidate("post_tool", "allow", Some("raw-ambiguous-invocation")),
+                ],
+                "exact_tool_event_pair_ambiguous",
+                true,
+            ),
+            (
+                "ambiguous_bounded",
+                vec![
+                    candidate("pre_tool", "allow", Some("raw-bounded-invocation")),
+                    candidate("post_tool", "allow", Some("raw-bounded-invocation")),
+                    candidate("post_tool", "allow", Some("raw-bounded-invocation")),
+                    candidate("unknown", "allow", Some("raw-bounded-invocation")),
+                    candidate("pre_tool", "allow", Some("raw-bounded-invocation")),
+                ],
+                "exact_tool_event_pair_ambiguous",
+                true,
+            ),
+            (
+                "order",
+                vec![
+                    candidate("post_tool", "allow", Some("raw-order-invocation")),
+                    candidate("pre_tool", "allow", Some("raw-order-invocation")),
+                ],
+                "exact_tool_event_order_mismatch",
+                true,
+            ),
+            (
+                "denied",
+                vec![
+                    candidate("pre_tool", "deny", Some("raw-denied-invocation")),
+                    candidate("post_tool", "allow", Some("raw-denied-invocation")),
+                ],
+                "exact_tool_pre_event_denied",
+                true,
+            ),
+            (
+                "missing_identity",
+                vec![
+                    candidate("pre_tool", "allow", Some("raw-present-invocation")),
+                    candidate("post_tool", "allow", None),
+                ],
+                "exact_tool_invocation_identity_missing",
+                true,
+            ),
+            (
+                "mismatched_identity",
+                vec![
+                    candidate("pre_tool", "allow", Some("raw-left-invocation")),
+                    candidate("post_tool", "allow", Some("raw-right-invocation")),
+                ],
+                "exact_tool_invocation_identity_mismatch",
+                true,
+            ),
+            (
+                "raw_identity",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[0].invocation_id = Some("raw-native-invocation".to_owned());
+                    candidates[1].invocation_id = Some("raw-native-invocation".to_owned());
+                    candidates
+                },
+                "exact_tool_invocation_identity_invalid",
+                true,
+            ),
+            (
+                "unexpected_source",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[1].matches_expected_source = false;
+                    candidates
+                },
+                "exact_tool_source_binding_mismatch",
+                true,
+            ),
+            (
+                "missing_installation",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[1].installation_id = None;
+                    candidates
+                },
+                "exact_tool_guard_installation_missing",
+                true,
+            ),
+            (
+                "mismatched_installation",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[1].installation_id = Some("other-installation".to_owned());
+                    candidates
+                },
+                "exact_tool_guard_installation_mismatch",
+                true,
+            ),
+            (
+                "time_order",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[0].occurred_at = "2026-07-15T00:00:01Z".to_owned();
+                    candidates[1].occurred_at = "2026-07-15T00:00:00Z".to_owned();
+                    candidates
+                },
+                "exact_tool_event_time_order_mismatch",
+                true,
+            ),
+            (
+                "fractional_time_order",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[0].occurred_at = "2026-07-15T00:00:00.500Z".to_owned();
+                    candidates[1].occurred_at = "2026-07-15T00:00:00Z".to_owned();
+                    candidates
+                },
+                "exact_tool_event_time_order_mismatch",
+                true,
+            ),
+            (
+                "invalid_time",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[1].occurred_at = "not-a-time".to_owned();
+                    candidates
+                },
+                "exact_tool_event_time_order_mismatch",
+                true,
+            ),
+            (
+                "incomplete_post",
+                {
+                    let mut candidates = valid.clone();
+                    candidates[1].complete_post_result = false;
+                    candidates
+                },
+                "exact_tool_post_event_incomplete",
+                true,
+            ),
+        ];
+        for (name, candidates, expected_code, expected_terminal) in cases {
+            let failure =
+                require_exact_live_tool_source_pair(&candidates, EXPECTED_INSTALLATION_ID)
+                    .expect_err("table case must fail exact pair validation");
+            assert_eq!(failure.finding_code, expected_code, "case {name}");
+            assert_eq!(failure.terminal, expected_terminal, "case {name}");
+            assert_eq!(failure.candidate_count, candidates.len(), "case {name}");
+            let (expected_order, expected_pre_decision, expected_invocation_identity) = match name {
+                "empty_missing" => (vec![], "not_observed", "not_comparable"),
+                "missing"
+                | "lone_wrong_input"
+                | "lone_missing_invocation"
+                | "lone_invalid_invocation"
+                | "lone_conflicting_invocation_aliases"
+                | "lone_whitespace_invocation_alias"
+                | "lone_missing_installation"
+                | "lone_wrong_installation"
+                | "lone_invalid_event_id"
+                | "lone_invalid_time"
+                | "lone_wrong_connection"
+                | "lone_wrong_session"
+                | "lone_warn_pending" => (vec!["pre_tool"], "not_deny", "not_comparable"),
+                "missing_pre" => (vec!["post_tool"], "not_observed", "not_comparable"),
+                "single_denied" => (vec!["pre_tool"], "deny", "not_comparable"),
+                "ambiguous" => (
+                    vec!["pre_tool", "post_tool", "post_tool"],
+                    "not_deny",
+                    "not_comparable",
+                ),
+                "ambiguous_bounded" => (
+                    vec!["pre_tool", "post_tool", "post_tool", "other"],
+                    "ambiguous",
+                    "not_comparable",
+                ),
+                "order" => (vec!["post_tool", "pre_tool"], "not_deny", "equal"),
+                "denied" => (vec!["pre_tool", "post_tool"], "deny", "equal"),
+                "missing_identity" => (vec!["pre_tool", "post_tool"], "not_deny", "missing"),
+                "mismatched_identity" => (vec!["pre_tool", "post_tool"], "not_deny", "different"),
+                "raw_identity" => (vec!["pre_tool", "post_tool"], "not_deny", "equal"),
+                "unexpected_source"
+                | "missing_installation"
+                | "mismatched_installation"
+                | "time_order"
+                | "fractional_time_order"
+                | "invalid_time"
+                | "incomplete_post" => (vec!["pre_tool", "post_tool"], "not_deny", "equal"),
+                _ => unreachable!("all exact-pair table cases are classified"),
+            };
+            assert_eq!(failure.event_order, expected_order, "case {name}");
+            assert_eq!(
+                failure.pre_decision_class, expected_pre_decision,
+                "case {name}"
+            );
+            assert_eq!(
+                failure.invocation_identity_class, expected_invocation_identity,
+                "case {name}"
+            );
+            let summary = live_producer_failed_summary(&failure_recorder, Some(&failure));
+            validate_live_producer_failed_summary(&summary)?;
+            let serialized = serde_json::to_string(&summary)?;
+            for candidate in &candidates {
+                assert!(!serialized.contains(&candidate.event_id), "case {name}");
+                assert!(!serialized.contains(&candidate.occurred_at), "case {name}");
+                if let Some(installation_id) = &candidate.installation_id {
+                    assert!(!serialized.contains(installation_id), "case {name}");
+                }
+                if let Some(invocation_id) = &candidate.invocation_id {
+                    if !invocation_id.is_empty() {
+                        assert!(!serialized.contains(invocation_id), "case {name}");
+                    }
+                }
+            }
+        }
+
+        let pending_candidates = vec![candidate(
+            "pre_tool",
+            "allow",
+            Some("raw-timeout-invocation"),
+        )];
+        let pending =
+            require_exact_live_tool_source_pair(&pending_candidates, EXPECTED_INSTALLATION_ID)
+                .expect_err("one allowed pre event remains pending");
+        let timeout =
+            LiveProducerSourceBarrierFailure::timeout(HostFeature::VerifiedToolProducer, &pending);
+        assert_eq!(timeout.finding_code, "exact_tool_source_barrier_timeout");
+        assert!(timeout.terminal);
+        assert_eq!(timeout.candidate_count, 1);
+        assert_eq!(timeout.event_order, vec!["pre_tool"]);
+        assert_eq!(timeout.pre_decision_class, "not_deny");
+        assert_eq!(timeout.invocation_identity_class, "not_comparable");
+
+        let complete_tool_response =
+            serde_json::json!({"success": true, "exit_code": 0, "complete": true});
+        let complete_post = serde_json::json!({
+            "tool_result_sha256": canonical_json_bare_sha256(&complete_tool_response)?,
+            "tool_result_size_bytes": canonical_json_string(&complete_tool_response)?.len(),
+            "raw_event": {"tool_response": complete_tool_response}
+        });
+        assert!(live_tool_post_result_is_complete(&complete_post));
+        for incomplete in [
+            serde_json::json!({
+                "tool_result_sha256": "a".repeat(64),
+                "tool_result_size_bytes": 0,
+                "raw_event": {"tool_response": {"success": true, "partial": true}}
+            }),
+            serde_json::json!({
+                "tool_result_sha256": "not-a-digest",
+                "tool_result_size_bytes": 0,
+                "raw_event": {"tool_response": {"success": true}}
+            }),
+            serde_json::json!({
+                "tool_result_sha256": "a".repeat(64),
+                "raw_event": {"tool_response": {"success": true}}
+            }),
+        ] {
+            assert!(!live_tool_post_result_is_complete(&incomplete));
+        }
+
+        let mut invalid_aggregate = live_producer_failed_summary(&failure_recorder, Some(&pending));
+        invalid_aggregate["failure"]["safe_aggregates"]["event_order"][0] =
+            Value::String("raw_tool_name".to_owned());
+        assert!(validate_live_producer_failed_summary(&invalid_aggregate).is_err());
+        let mut injected_raw = live_producer_failed_summary(&failure_recorder, Some(&pending));
+        injected_raw["raw_source_event"] = serde_json::json!({
+            "prompt": "forbidden-prompt",
+            "source_event_ids": ["raw-event-id"]
+        });
+        assert!(validate_live_producer_failed_summary(&injected_raw).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn live_tool_source_recomputes_the_exact_raw_input_binding() -> Result<(), Box<dyn Error>> {
+        let expected_input = serde_json::json!({"command": LIVE_VERIFIED_TOOL_COMMAND});
+        let expected_input_sha256 = canonical_json_bare_sha256(&expected_input)?;
+        let exact = serde_json::json!({
+            "tool_input_sha256": expected_input_sha256.clone(),
+            "raw_event": {
+                "tool_name": LIVE_VERIFIED_TOOL_NAME,
+                "tool_input": expected_input,
+            }
+        });
+        assert!(live_verified_tool_source_matches(
+            &exact,
+            &expected_input_sha256
+        ));
+
+        let mut forged_raw_input = exact.clone();
+        forged_raw_input["raw_event"]["tool_input"]["command"] = Value::String("false".into());
+        assert!(!live_verified_tool_source_matches(
+            &forged_raw_input,
+            &expected_input_sha256
+        ));
+
+        let mut self_consistent_but_wrong = forged_raw_input;
+        self_consistent_but_wrong["tool_input_sha256"] = Value::String(
+            canonical_json_bare_sha256(&self_consistent_but_wrong["raw_event"]["tool_input"])
+                .expect("wrong raw input remains canonical"),
+        );
+        assert!(!live_verified_tool_source_matches(
+            &self_consistent_but_wrong,
+            &expected_input_sha256
+        ));
+
+        let mut forged_subject_digest = exact.clone();
+        forged_subject_digest["tool_input_sha256"] = Value::String("b".repeat(64));
+        assert!(!live_verified_tool_source_matches(
+            &forged_subject_digest,
+            &expected_input_sha256
+        ));
+
+        let mut wrong_tool = exact;
+        wrong_tool["raw_event"]["tool_name"] = Value::String("OtherTool".into());
+        assert!(!live_verified_tool_source_matches(
+            &wrong_tool,
+            &expected_input_sha256
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn registered_stop_source_decision_accepts_only_owner_defined_values(
+    ) -> Result<(), Box<dyn Error>> {
+        for decision in ["allow", "deny"] {
+            require_exact_registered_stop_source_decision(decision)
+                .expect("owner-defined Stop decision must be accepted");
+        }
+
+        let recorder = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND,
+            None,
+        )?;
+        for decision in ["warn", "inject_context", "invalid"] {
+            let failure = require_exact_registered_stop_source_decision(decision)
+                .expect_err("non-Stop guard decision must be terminal");
+            assert_eq!(failure.finding_code, "exact_stop_event_decision_invalid");
+            assert!(failure.terminal);
+            assert_eq!(failure.candidate_count, 1);
+            assert_eq!(failure.pre_decision_class, "not_applicable");
+            assert_eq!(failure.invocation_identity_class, "not_applicable");
+            validate_live_producer_failed_summary(&live_producer_failed_summary(
+                &recorder,
+                Some(&failure),
+            ))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capture_intent_ambiguity_classification_caps_safe_candidate_count() {
+        let failure =
+            exact_capture_intent_cardinality_failure(HostFeature::VerifiedToolProducer, usize::MAX);
+        assert_eq!(failure.finding_code, "exact_capture_intent_ambiguous");
+        assert!(failure.terminal);
+        assert_eq!(failure.candidate_count, 2);
+        assert_eq!(failure.event_order, Vec::<&str>::new());
+        assert_eq!(failure.pre_decision_class, "not_observed");
+        assert_eq!(failure.invocation_identity_class, "not_comparable");
+
+        let missing = exact_capture_intent_cardinality_failure(
+            HostFeature::RegisteredConnectionObservation,
+            0,
+        );
+        assert_eq!(missing.finding_code, "exact_capture_intent_missing");
+        assert!(!missing.terminal);
+        assert_eq!(missing.candidate_count, 0);
+    }
+
+    #[test]
+    fn fixture_only_live_producer_source_binding_rejects_each_negative_dimension_independently() {
+        fn mismatch_change_unit(input: &mut LiveProducerSourceBindingInput) {
+            input.change_unit_id = "CU-other".to_owned();
+        }
+        fn clear_requested_actor(input: &mut LiveProducerSourceBindingInput) {
+            input.requested_actor.clear();
+        }
+        fn mismatch_authority_actor(input: &mut LiveProducerSourceBindingInput) {
+            input.authority_actor = "agent_connection:CONN-other".to_owned();
+        }
+        fn zero_scope_revision(input: &mut LiveProducerSourceBindingInput) {
+            input.scope_revision = 0;
+        }
+        fn stale_scope_revision(input: &mut LiveProducerSourceBindingInput) {
+            input.scope_revision += 1;
+        }
+        fn mismatch_baseline(input: &mut LiveProducerSourceBindingInput) {
+            input.baseline_ref = "baseline_other".to_owned();
+        }
+        fn mismatch_target(input: &mut LiveProducerSourceBindingInput) {
+            input.target = EvidenceTarget::SupplementalClaim {
+                evidence_claim_id: volicord_types::EvidenceClaimId::new("claim_other"),
+                statement: "unrelated claim".to_owned(),
+            };
+        }
+        fn mismatch_input(input: &mut LiveProducerSourceBindingInput) {
+            input.input_sha256 = "f".repeat(64);
+        }
+        fn mismatch_capture(input: &mut LiveProducerSourceBindingInput) {
+            input.expected_capture = false;
+        }
+        fn wrong_intent_connection(input: &mut LiveProducerSourceBindingInput) {
+            input.requesting_connection_id = "CONN-other".to_owned();
+        }
+        fn stale_workspace(input: &mut LiveProducerSourceBindingInput) {
+            input.workspace.workspace_fingerprint = format!("sha256:{}", "f".repeat(64));
+        }
+        fn wrong_watch_session(input: &mut LiveProducerSourceBindingInput) {
+            input.watch_session_id = format!("mhs_{}", "e".repeat(64));
+        }
+        fn wrong_watch_connection(input: &mut LiveProducerSourceBindingInput) {
+            input.watch_connection_id = "CONN-other".to_owned();
+        }
+        fn wrong_watch_guard_installation(input: &mut LiveProducerSourceBindingInput) {
+            input.watch_guard_installation_id = Some("GUARD-other".to_owned());
+        }
+        fn inactive_watch_baseline(input: &mut LiveProducerSourceBindingInput) {
+            input.watch_status = "degraded".to_owned();
+        }
+        fn unmanaged_launch(input: &mut LiveProducerSourceBindingInput) {
+            input.watch_launch_origin = Some("fixture".to_owned());
+        }
+
+        let target = EvidenceTarget::AcceptanceCriterion {
+            acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new("AC-fixture"),
+        };
+        let workspace = GitWorkspaceContext {
+            git_common_dir: "/tmp/fixture/.git".to_owned(),
+            worktree_id: "fixture-worktree".to_owned(),
+            branch_ref: Some("refs/heads/fixture".to_owned()),
+            head_sha: Some("a".repeat(40)),
+            workspace_fingerprint: format!("sha256:{}", "b".repeat(64)),
+        };
+        let exact = LiveProducerSourceBindingInput {
+            change_unit_id: "CU-fixture".to_owned(),
+            expected_change_unit_id: "CU-fixture".to_owned(),
+            scope_revision: 1,
+            expected_scope_revision: 1,
+            baseline_ref: "baseline_fixture".to_owned(),
+            expected_baseline_ref: "baseline_fixture".to_owned(),
+            target: target.clone(),
+            expected_target: target,
+            input_sha256: "a".repeat(64),
+            expected_input_sha256: "a".repeat(64),
+            expected_capture: true,
+            requested_actor: "agent_connection:CONN-fixture".to_owned(),
+            authority_actor: "agent_connection:CONN-fixture".to_owned(),
+            expected_actor: "agent_connection:CONN-fixture".to_owned(),
+            requesting_connection_id: "CONN-fixture".to_owned(),
+            expected_connection_id: "CONN-fixture".to_owned(),
+            workspace: workspace.clone(),
+            expected_workspace: workspace,
+            session_id: format!("mhs_{}", "b".repeat(64)),
+            watch_session_id: format!("mhs_{}", "b".repeat(64)),
+            watch_connection_id: "CONN-fixture".to_owned(),
+            source_guard_installation_id: "GUARD-fixture".to_owned(),
+            watch_guard_installation_id: Some("GUARD-fixture".to_owned()),
+            watch_status: "active".to_owned(),
+            watch_launch_origin: Some("managed_host".to_owned()),
+        };
+        assert!(exact.is_exact());
+        require_exact_live_producer_source_independent_basis(
+            HostFeature::VerifiedToolProducer,
+            &exact,
+        )
+        .expect("exact immutable producer basis remains eligible to wait for a source");
+
+        let exact_intent_ref: StateRecordRef = serde_json::from_value(serde_json::json!({
+            "record_kind": "evidence_capture_intent",
+            "record_id": "ECI-fixture",
+            "project_id": "PRJ-fixture",
+            "task_id": "TASK-fixture",
+            "produced_at_state_version": 7
+        }))
+        .expect("fixture intent ref is valid");
+        assert!(live_capture_intent_authority_ref_is_exact(
+            &exact_intent_ref,
+            7,
+            "PRJ-fixture",
+            "TASK-fixture",
+            "ECI-fixture",
+        ));
+        for (name, reference, event_state_version) in [
+            (
+                "wrong_kind",
+                serde_json::json!({
+                    "record_kind": "run",
+                    "record_id": "ECI-fixture",
+                    "project_id": "PRJ-fixture",
+                    "task_id": "TASK-fixture",
+                    "produced_at_state_version": 7
+                }),
+                7,
+            ),
+            (
+                "wrong_project",
+                serde_json::json!({
+                    "record_kind": "evidence_capture_intent",
+                    "record_id": "ECI-fixture",
+                    "project_id": "PRJ-other",
+                    "task_id": "TASK-fixture",
+                    "produced_at_state_version": 7
+                }),
+                7,
+            ),
+            (
+                "wrong_task",
+                serde_json::json!({
+                    "record_kind": "evidence_capture_intent",
+                    "record_id": "ECI-fixture",
+                    "project_id": "PRJ-fixture",
+                    "task_id": "TASK-other",
+                    "produced_at_state_version": 7
+                }),
+                7,
+            ),
+            (
+                "wrong_state_version",
+                serde_json::json!({
+                    "record_kind": "evidence_capture_intent",
+                    "record_id": "ECI-fixture",
+                    "project_id": "PRJ-fixture",
+                    "task_id": "TASK-fixture",
+                    "produced_at_state_version": 8
+                }),
+                7,
+            ),
+        ] {
+            let reference: StateRecordRef =
+                serde_json::from_value(reference).expect("negative ref remains structurally valid");
+            assert!(
+                !live_capture_intent_authority_ref_is_exact(
+                    &reference,
+                    event_state_version,
+                    "PRJ-fixture",
+                    "TASK-fixture",
+                    "ECI-fixture",
+                ),
+                "authority-ref case {name}"
+            );
+        }
+
+        type BindingMutation = fn(&mut LiveProducerSourceBindingInput);
+        let cases: [(&str, BindingMutation); 16] = [
+            ("mismatched_change_unit", mismatch_change_unit),
+            ("missing_requested_actor", clear_requested_actor),
+            ("mismatched_authority_actor", mismatch_authority_actor),
+            ("missing_scope_revision", zero_scope_revision),
+            ("stale_scope_revision", stale_scope_revision),
+            ("mismatched_baseline", mismatch_baseline),
+            ("mismatched_target", mismatch_target),
+            ("mismatched_input", mismatch_input),
+            ("mismatched_capture", mismatch_capture),
+            ("wrong_intent_connection", wrong_intent_connection),
+            ("stale_workspace", stale_workspace),
+            ("wrong_watch_session", wrong_watch_session),
+            ("wrong_watch_connection", wrong_watch_connection),
+            (
+                "wrong_watch_guard_installation",
+                wrong_watch_guard_installation,
+            ),
+            ("inactive_watch_baseline", inactive_watch_baseline),
+            ("unmanaged_launch", unmanaged_launch),
+        ];
+        for (name, mutate) in cases {
+            let mut negative = exact.clone();
+            mutate(&mut negative);
+            assert!(!negative.is_exact(), "negative dimension {name}");
+            if matches!(
+                name,
+                "missing_requested_actor" | "stale_workspace" | "mismatched_capture"
+            ) {
+                let failure = require_exact_live_producer_source_independent_basis(
+                    HostFeature::VerifiedToolProducer,
+                    &negative,
+                )
+                .expect_err("immutable mismatch must not wait for a missing source");
+                assert_eq!(failure.finding_code, "exact_source_binding_mismatch");
+                assert!(failure.terminal);
+                assert_eq!(failure.candidate_count, 0);
+            }
+        }
+
+        for (name, intent_created_at, intent_expires_at, source_times, expected) in [
+            (
+                "equal_boundary",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:00:00Z"],
+                true,
+            ),
+            (
+                "fresh",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:00:01Z"],
+                true,
+            ),
+            (
+                "fractional_fresh",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:00:00.500Z"],
+                true,
+            ),
+            (
+                "fractional_stale",
+                "2026-07-15T00:00:00.500Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:00:00Z"],
+                false,
+            ),
+            (
+                "stale",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-14T23:59:59Z"],
+                false,
+            ),
+            (
+                "mixed_stale",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:00:01Z", "2026-07-14T23:59:59Z"],
+                false,
+            ),
+            (
+                "invalid_source_time",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["not-a-time"],
+                false,
+            ),
+            (
+                "expiry_boundary",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:01:00Z"],
+                false,
+            ),
+            (
+                "fractional_before_expiry",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:00:59.999Z"],
+                true,
+            ),
+            (
+                "invalid_window",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:01:00Z",
+                vec!["2026-07-15T00:01:00Z"],
+                false,
+            ),
+        ] {
+            assert_eq!(
+                live_producer_source_within_intent_window(
+                    intent_created_at,
+                    intent_expires_at,
+                    source_times.into_iter(),
+                ),
+                expected,
+                "source-window case {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn live_producer_source_deadline_uses_one_final_inspection_result() -> Result<(), Box<dyn Error>>
+    {
+        let feature = HostFeature::VerifiedToolProducer;
+
+        let mut success_inspections = 0;
+        let late_source = inspect_live_producer_source_at_deadline(feature, || {
+            success_inspections += 1;
+            Ok::<_, Box<dyn Error>>("late exact source")
+        })?;
+        assert_eq!(success_inspections, 1);
+        assert_eq!(late_source, "late exact source");
+
+        let final_pending = LiveProducerSourceBarrierFailure::source(
+            feature,
+            "exact_tool_event_pair_missing",
+            false,
+            2,
+        );
+        let mut pending_inspections = 0;
+        let timeout = inspect_live_producer_source_at_deadline::<()>(feature, || {
+            pending_inspections += 1;
+            Err::<(), Box<dyn Error>>(Box::new(final_pending.clone()))
+        })
+        .expect_err("a final pending inspection must become a timeout");
+        assert_eq!(pending_inspections, 1);
+        let timeout = timeout
+            .downcast_ref::<LiveProducerSourceBarrierFailure>()
+            .expect("deadline timeout retains its bounded failure type");
+        assert_eq!(timeout.finding_code, "exact_tool_source_barrier_timeout");
+        assert_eq!(timeout.candidate_count, 2);
+        assert!(timeout.terminal);
+
+        let terminal = LiveProducerSourceBarrierFailure::source(
+            feature,
+            "exact_tool_event_pair_ambiguous",
+            true,
+            3,
+        );
+        let returned_terminal = inspect_live_producer_source_at_deadline::<()>(feature, || {
+            Err::<(), Box<dyn Error>>(Box::new(terminal.clone()))
+        })
+        .expect_err("a final terminal inspection must be returned unchanged");
+        assert_eq!(
+            returned_terminal.downcast_ref::<LiveProducerSourceBarrierFailure>(),
+            Some(&terminal)
+        );
+
+        let structural_sentinel = "deadline-final-inspection-structural-sentinel";
+        let structural = inspect_live_producer_source_at_deadline::<()>(feature, || {
+            Err::<(), Box<dyn Error>>(io::Error::other(structural_sentinel).into())
+        })
+        .expect_err("a final structural inspection failure must remain structural");
+        assert!(structural.downcast_ref::<io::Error>().is_some());
+        assert_eq!(structural.to_string(), structural_sentinel);
+        Ok(())
+    }
+
+    #[test]
+    fn live_capture_intent_and_source_times_require_an_exact_current_window() {
+        let audit_now =
+            parse_canonical_utc_timestamp("2026-07-15T00:10:00Z").expect("canonical audit time");
+        assert!(live_capture_intent_window_is_exact(
+            "2026-07-15T00:00:00Z",
+            "2026-07-15T00:15:00Z",
+            audit_now,
+            LiveProducerSourceInspectionPhase::InitialBarrier,
+        ));
+        for (name, created_at, expires_at, inspected_at) in [
+            (
+                "short_ttl",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:14:59Z",
+                "2026-07-15T00:10:00Z",
+            ),
+            (
+                "long_ttl",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:15:01Z",
+                "2026-07-15T00:10:00Z",
+            ),
+            (
+                "noncanonical_created_at",
+                "2026-07-15T09:00:00+09:00",
+                "2026-07-15T00:15:00Z",
+                "2026-07-15T00:10:00Z",
+            ),
+            (
+                "future_intent",
+                "2026-07-15T00:11:00Z",
+                "2026-07-15T00:26:00Z",
+                "2026-07-15T00:10:00Z",
+            ),
+            (
+                "expired_intent",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:15:00Z",
+                "2026-07-15T00:16:00Z",
+            ),
+            (
+                "expiry_boundary",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:15:00Z",
+                "2026-07-15T00:15:00Z",
+            ),
+        ] {
+            let inspected_at =
+                parse_canonical_utc_timestamp(inspected_at).expect("canonical inspection time");
+            assert!(
+                !live_capture_intent_window_is_exact(
+                    created_at,
+                    expires_at,
+                    inspected_at,
+                    LiveProducerSourceInspectionPhase::InitialBarrier,
+                ),
+                "intent-window case {name}"
+            );
+        }
+
+        let after_expiry =
+            parse_canonical_utc_timestamp("2026-07-15T00:16:00Z").expect("canonical audit time");
+        assert!(live_capture_intent_window_is_exact(
+            "2026-07-15T00:00:00Z",
+            "2026-07-15T00:15:00Z",
+            after_expiry,
+            LiveProducerSourceInspectionPhase::ImmutableRevalidation,
+        ));
+        assert!(!live_capture_intent_window_is_exact(
+            "2026-07-15T00:00:00Z",
+            "2026-07-15T00:15:01Z",
+            after_expiry,
+            LiveProducerSourceInspectionPhase::ImmutableRevalidation,
+        ));
+
+        assert!(live_capture_source_times_are_current(
+            ["2026-07-15T00:09:59Z", "2026-07-15T00:10:00Z"].into_iter(),
+            audit_now,
+        ));
+        let post_read_audit = parse_canonical_utc_timestamp("2026-07-15T00:10:00.001Z")
+            .expect("canonical post-read audit time");
+        assert!(!live_capture_source_times_are_current(
+            ["2026-07-15T00:10:00.001Z"].into_iter(),
+            audit_now,
+        ));
+        assert!(live_capture_source_times_are_current(
+            ["2026-07-15T00:10:00.001Z"].into_iter(),
+            post_read_audit,
+        ));
+        for (name, occurred_at) in [
+            ("future", "2026-07-15T00:10:00.001Z"),
+            ("offset_equivalent", "2026-07-15T09:10:00+09:00"),
+            ("invalid", "not-a-time"),
+        ] {
+            assert!(
+                !live_capture_source_times_are_current([occurred_at].into_iter(), audit_now),
+                "source-time case {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn live_negative_capture_accepts_only_the_runtime_conflict_exit_class() {
+        assert_eq!(exact_negative_capture_exit_code(false, Some(1)), Some(1));
+        for (timed_out, exit_code) in [
+            (true, Some(1)),
+            (false, Some(0)),
+            (false, Some(2)),
+            (false, None),
+        ] {
+            assert_eq!(exact_negative_capture_exit_code(timed_out, exit_code), None);
+        }
+    }
+
+    #[test]
+    fn live_capture_staging_fingerprint_distinguishes_directory_and_file_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let temp = TempRuntimeHome::new("capture-staging-fingerprint")?;
+        let project_home = temp.path().join("project-home");
+        fs::create_dir_all(&project_home)?;
+        let missing_artifacts = live_capture_staging_file_set_sha256(&project_home)?;
+        let artifacts = project_home.join("artifacts");
+        fs::create_dir(&artifacts)?;
+        let empty_artifacts = live_capture_staging_file_set_sha256(&project_home)?;
+        let staging = artifacts.join("tmp");
+        fs::create_dir(&staging)?;
+        let empty_staging = live_capture_staging_file_set_sha256(&project_home)?;
+        fs::write(staging.join("receipt.json"), b"{}")?;
+        let staged_file = live_capture_staging_file_set_sha256(&project_home)?;
+        let bodies = artifacts.join("bodies");
+        fs::create_dir(&bodies)?;
+        fs::write(bodies.join("receipt.json"), b"persistent-one")?;
+        let persistent_body = live_capture_staging_file_set_sha256(&project_home)?;
+        fs::write(bodies.join("receipt.json"), b"persistent-two")?;
+        let modified_persistent_body = live_capture_staging_file_set_sha256(&project_home)?;
+        assert_eq!(
+            BTreeSet::from([
+                missing_artifacts,
+                empty_artifacts,
+                empty_staging,
+                staged_file,
+                persistent_body,
+                modified_persistent_body,
+            ])
+            .len(),
+            6
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn live_capture_durable_row_digest_detects_same_count_mutations() -> Result<(), Box<dyn Error>>
+    {
+        let conn = rusqlite::Connection::open_in_memory()?;
+        for table in LIVE_CAPTURE_DURABLE_TABLES {
+            conn.execute(
+                &format!("CREATE TABLE {table} (project_id TEXT NOT NULL, value TEXT NOT NULL)"),
+                [],
+            )?;
+            conn.execute(
+                &format!("INSERT INTO {table} (project_id, value) VALUES (?1, ?2)"),
+                rusqlite::params!["PRJ-snapshot", format!("{table}-before")],
+            )?;
+        }
+        conn.execute(
+            "CREATE TABLE guard_events (
+                project_id TEXT NOT NULL,
+                guard_event_id TEXT NOT NULL,
+                value TEXT NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO guard_events (project_id, guard_event_id, value)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params!["PRJ-snapshot", "GE-selected", "guard-before"],
+        )?;
+        let selected_guard_events = BTreeSet::from(["GE-selected".to_owned()]);
+        let before =
+            live_capture_durable_rows_sha256(&conn, "PRJ-snapshot", &selected_guard_events)?;
+        conn.execute(
+            "UPDATE artifact_staging SET value = 'same-count-after' WHERE project_id = ?1",
+            ["PRJ-snapshot"],
+        )?;
+        let after =
+            live_capture_durable_rows_sha256(&conn, "PRJ-snapshot", &selected_guard_events)?;
+        assert_ne!(before, after);
+        let before_guard_mutation = after;
+        conn.execute(
+            "UPDATE guard_events SET value = 'guard-after'
+              WHERE project_id = ?1 AND guard_event_id = ?2",
+            rusqlite::params!["PRJ-snapshot", "GE-selected"],
+        )?;
+        let after_guard_mutation =
+            live_capture_durable_rows_sha256(&conn, "PRJ-snapshot", &selected_guard_events)?;
+        assert_ne!(before_guard_mutation, after_guard_mutation);
+        Ok(())
+    }
+
+    #[test]
+    fn live_capture_receipt_requires_exact_canonical_source_claim_tuples(
+    ) -> Result<(), Box<dyn Error>> {
+        let project_id = "PRJ-source-claim-fixture";
+        let capture_intent_id = "ECI-source-claim-fixture";
+        let capture_receipt_id = "ECR-source-claim-fixture";
+        let capture_kind = "verified_tool_invocation";
+        let claimed_at = "2026-07-16T00:01:00Z";
+        let session_id = AgentSessionId::new("mhs_source_claim_fixture");
+        let capture_spec: EvidenceCaptureSpec = serde_json::from_value(serde_json::json!({
+            "capture_kind": capture_kind,
+            "tool_name": "Bash",
+            "tool_input_sha256": "a".repeat(64),
+            "expected_success": true
+        }))?;
+        let body: PersistedEvidenceCaptureReceiptBody =
+            serde_json::from_value(serde_json::json!({
+                "schema_version": "volicord.evidence_capture_receipt.v1",
+                "capture_kind": capture_kind,
+                "capture_intent_id": capture_intent_id,
+                "input_sha256": "a".repeat(64),
+                "result_sha256": "b".repeat(64),
+                "expected_outcome": { "success": true },
+                "observed_outcome": { "success": true },
+                "source": {
+                    "connection_id": "CONN-source-claim-fixture",
+                    "session_id": session_id.as_str(),
+                    "guard_installation_id": "GI-source-claim-fixture",
+                    "guard_event_ids": [
+                        "guard_event_source_claim_pre",
+                        "guard_event_source_claim_post"
+                    ],
+                    "watch_observation_refs": [],
+                    "host_invocation_id": "host_invocation_source_claim_fixture"
+                },
+                "complete": true,
+                "limitations": [],
+                "redaction_state": "redacted",
+                "observed_by_actor_source": "agent_connection:CONN-source-claim-fixture",
+                "observed_at": "2026-07-16T00:00:30Z"
+            }))?;
+        let expected = expected_live_capture_source_claims(
+            LiveCaptureSourceClaimBasis {
+                project_id,
+                capture_intent_id,
+                capture_receipt_id,
+                capture_kind,
+                claimed_at,
+            },
+            &capture_spec,
+            Some(&session_id),
+            &body,
+        )?;
+        assert_eq!(expected.len(), 3);
+
+        let conn = rusqlite::Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE evidence_capture_source_claims (
+                project_id TEXT NOT NULL,
+                source_claim_kind TEXT NOT NULL,
+                source_claim_id TEXT NOT NULL,
+                evidence_capture_intent_id TEXT NOT NULL,
+                evidence_capture_receipt_id TEXT NOT NULL,
+                capture_kind TEXT NOT NULL,
+                claimed_at TEXT NOT NULL
+            );",
+        )?;
+        let insert_expected = |conn: &rusqlite::Connection| -> rusqlite::Result<()> {
+            for claim in &expected {
+                conn.execute(
+                    "INSERT INTO evidence_capture_source_claims (
+                        project_id, source_claim_kind, source_claim_id,
+                        evidence_capture_intent_id, evidence_capture_receipt_id,
+                        capture_kind, claimed_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        claim.project_id,
+                        claim.source_claim_kind,
+                        claim.source_claim_id,
+                        claim.capture_intent_id,
+                        claim.capture_receipt_id,
+                        claim.capture_kind,
+                        claim.claimed_at,
+                    ],
+                )?;
+            }
+            Ok(())
+        };
+        insert_expected(&conn)?;
+        assert_eq!(
+            read_live_capture_source_claims(&conn, project_id, capture_receipt_id)?,
+            expected
+        );
+
+        for (column, mismatch) in [
+            ("project_id", "PRJ-mismatched"),
+            ("source_claim_kind", "session_watch_observation"),
+            ("source_claim_id", "guard_event_mismatched"),
+            ("evidence_capture_intent_id", "ECI-mismatched"),
+            ("evidence_capture_receipt_id", "ECR-mismatched"),
+            ("capture_kind", "registered_connection_observation"),
+            ("claimed_at", "2026-07-16T00:02:00Z"),
+        ] {
+            conn.execute("DELETE FROM evidence_capture_source_claims", [])?;
+            insert_expected(&conn)?;
+            conn.execute(
+                &format!(
+                    "UPDATE evidence_capture_source_claims
+                        SET {column} = ?1
+                      WHERE rowid = (
+                          SELECT rowid
+                            FROM evidence_capture_source_claims
+                           WHERE source_claim_kind = 'guard_event'
+                           ORDER BY source_claim_id
+                           LIMIT 1
+                      )"
+                ),
+                [mismatch],
+            )?;
+            let physical_count: u64 = conn.query_row(
+                "SELECT COUNT(*) FROM evidence_capture_source_claims",
+                [],
+                |row| row.get(0),
+            )?;
+            assert_eq!(physical_count, 3, "{column} mutation preserves row count");
+            assert_ne!(
+                read_live_capture_source_claims(&conn, project_id, capture_receipt_id)?,
+                expected,
+                "{column} mutation must break exact claim binding"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn live_capture_receipt_time_window_is_canonical_bounded_and_expiry_stable() {
+        for (
+            name,
+            intent_created_at,
+            observed_at,
+            receipt_created_at,
+            expires_at,
+            audit_at,
+            expected,
+        ) in [
+            (
+                "equal_observation_boundary",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:30Z",
+                true,
+            ),
+            (
+                "fractional_after_observation",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00.500Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:00.750Z",
+                true,
+            ),
+            (
+                "fractional_before_observation",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00.500Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:30Z",
+                false,
+            ),
+            (
+                "expiry_boundary",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:59Z",
+                false,
+            ),
+            (
+                "noncanonical_observation_offset",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T09:00:00+09:00",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:30Z",
+                false,
+            ),
+            (
+                "future_receipt",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:31Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:30Z",
+                false,
+            ),
+            (
+                "expired_after_successful_capture",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:30Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:02:00Z",
+                true,
+            ),
+            (
+                "future_created_intent",
+                "2026-07-15T00:00:01Z",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:30Z",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:30Z",
+                false,
+            ),
+            (
+                "invalid_receipt_created_at",
+                "2026-07-15T00:00:00Z",
+                "2026-07-15T00:00:00Z",
+                "not-a-time",
+                "2026-07-15T00:01:00Z",
+                "2026-07-15T00:00:30Z",
+                false,
+            ),
+        ] {
+            let audit_now =
+                parse_canonical_utc_timestamp(audit_at).expect("canonical test audit time");
+            assert_eq!(
+                live_capture_receipt_time_window_is_valid(
+                    intent_created_at,
+                    observed_at,
+                    receipt_created_at,
+                    expires_at,
+                    audit_now,
+                ),
+                expected,
+                "receipt window case {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn live_producer_status_parse_failures_are_bounded_and_classified() -> Result<(), Box<dyn Error>>
+    {
+        for payload in [
+            "raw-status-output-sentinel",
+            r#"{"unexpected":"status-schema-sentinel"}"#,
+        ] {
+            let output = Command::new("printf").args(["%s", payload]).output()?;
+            let timed = TimedOutput {
+                output,
+                timed_out: false,
+            };
+            let error = parse_live_producer_status_output(&timed)
+                .expect_err("invalid status output must be classified");
+            let classified = error
+                .downcast_ref::<ClassifiedLiveProducerFailure>()
+                .expect("status parse failure retains its bounded class");
+            assert_eq!(classified.stage, "producer_attempt");
+            assert_eq!(classified.finding_code, "producer_status_output_invalid");
+            assert!(!format!("{classified:?}").contains(payload));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn persisted_producer_semantic_decode_failures_are_bounded_and_publishable(
+    ) -> Result<(), Box<dyn Error>> {
+        let recorder = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        for payload in ["raw-semantic-sentinel", "{}"] {
+            let source_error = serde_json::from_str::<GitWorkspaceContext>(payload)
+                .map_err(|_| live_source_record_invalid(HostFeature::VerifiedToolProducer, 1))
+                .expect_err("invalid persisted source record must be classified");
+            let source = source_error
+                .downcast_ref::<LiveProducerSourceBarrierFailure>()
+                .expect("source decode failure retains its bounded source class");
+            assert_eq!(source.finding_code, "exact_source_record_invalid");
+            assert!(source.terminal);
+            let source_summary =
+                live_producer_failed_summary(&recorder, Some(source_error.as_ref()));
+            validate_live_producer_failed_summary(&source_summary)?;
+            assert!(!source_summary.to_string().contains(payload));
+
+            let receipt_error =
+                serde_json::from_str::<PersistedEvidenceCaptureReceiptBody>(payload)
+                    .map_err(exact_capture_receipt_record_invalid)
+                    .expect_err("invalid persisted receipt record must be classified");
+            let receipt = receipt_error
+                .downcast_ref::<ClassifiedLiveProducerFailure>()
+                .expect("receipt decode failure retains its bounded class");
+            assert_eq!(receipt.finding_code, "exact_capture_receipt_record_invalid");
+            let receipt_summary =
+                live_producer_failed_summary(&recorder, Some(receipt_error.as_ref()));
+            validate_live_producer_failed_summary(&receipt_summary)?;
+            assert!(!receipt_summary.to_string().contains(payload));
+
+            let chain_error = serde_json::from_str::<EvidenceProducer>(payload)
+                .map_err(producer_chain_record_invalid)
+                .expect_err("invalid persisted producer-chain record must be classified");
+            let chain = chain_error
+                .downcast_ref::<ClassifiedLiveProducerFailure>()
+                .expect("chain decode failure retains its bounded class");
+            assert_eq!(chain.finding_code, "producer_chain_record_invalid");
+            let chain_summary = live_producer_failed_summary(&recorder, Some(chain_error.as_ref()));
+            validate_live_producer_failed_summary(&chain_summary)?;
+            assert!(!chain_summary.to_string().contains(payload));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn live_result_recorder_connection_binding_is_monotonic_and_conflict_checked(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut recorder = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let connection_id = "CONN-observed-producer".to_owned();
+        recorder.bind_observed_connection_id(connection_id.clone())?;
+        recorder.bind_observed_connection_id(connection_id.clone())?;
+        assert!(recorder
+            .bind_observed_connection_id("CONN-replacement".to_owned())
+            .is_err());
+        assert!(recorder
+            .bind_observed_connection_id("CONN-invalid\nline".to_owned())
+            .is_err());
+
+        let enriched =
+            recorder.with_observed_connection_id(&recorder.failed_before_completion_summary())?;
+        assert_eq!(enriched["connection"]["connection_id"], connection_id);
+        let mut conflicting = recorder.failed_before_completion_summary();
+        conflicting["connection"] =
+            serde_json::json!({ "connection_id": "CONN-conflicting-summary" });
+        assert!(recorder.with_observed_connection_id(&conflicting).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn source_child_finalization_failure_forbids_terminal_publication() -> Result<(), Box<dyn Error>>
+    {
+        let source_failure = LiveProducerSourceBarrierFailure::tool(
+            "exact_tool_event_pair_missing",
+            false,
+            &[LiveToolSourceCandidate {
+                event_id: "raw-source-event".to_owned(),
+                event_kind: "pre_tool".to_owned(),
+                decision: "allow".to_owned(),
+                occurred_at: "raw-source-time".to_owned(),
+                installation_id: Some("raw-installation".to_owned()),
+                invocation_id: Some("raw-invocation".to_owned()),
+                matches_expected_source: true,
+                matches_expected_connection: true,
+                matches_expected_session: true,
+                event_time_is_exact: true,
+                complete_post_result: true,
+            }],
+        );
+        let mut dual_failure = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let returned = resolve_live_producer_source_attempt::<()>(
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            &mut dual_failure,
+            Err(Box::new(source_failure.clone())),
+            Err(io::Error::other("source child was not reaped").into()),
+        )
+        .expect_err("dual source/finalization failure must fail");
+        assert_eq!(
+            returned.downcast_ref::<LiveProducerSourceBarrierFailure>(),
+            Some(&source_failure)
+        );
+        assert!(dual_failure.terminal_publication_is_forbidden());
+        let forbidden_summary = dual_failure.failed_before_completion_summary();
+        let publication_error = dual_failure
+            .record_final(&forbidden_summary)
+            .expect_err("incomplete child finalization must poison publication");
+        assert!(publication_error
+            .to_string()
+            .contains("terminal recorder-integrity failure"));
+
+        let mut reaped_dual_failure = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let natural_unsuccessful_status = Command::new("false").status()?;
+        let reaped_dual_error = resolve_live_producer_source_attempt::<()>(
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            &mut reaped_dual_failure,
+            Err(Box::new(source_failure.clone())),
+            Ok(InteractiveHostFinish {
+                status: natural_unsuccessful_status,
+                termination_requested: false,
+            }),
+        )
+        .expect_err("a source-barrier failure and natural non-success exit must both be reported");
+        let reaped_dual_source = reaped_dual_error
+            .downcast_ref::<LiveProducerSourceBarrierFailure>()
+            .expect("reaped dual failure retains bounded source aggregates");
+        assert_eq!(
+            reaped_dual_source.finding_code,
+            "source_barrier_and_host_exit_unsuccessful"
+        );
+        assert_eq!(
+            reaped_dual_source.safe_aggregates(),
+            source_failure.safe_aggregates()
+        );
+        assert!(!reaped_dual_failure.terminal_publication_is_forbidden());
+        let reaped_dual_summary =
+            live_producer_failed_summary(&reaped_dual_failure, Some(reaped_dual_error.as_ref()));
+        validate_live_producer_failed_summary(&reaped_dual_summary)?;
+        assert_eq!(reaped_dual_summary["failure"]["stage"], "source_barrier");
+        assert_eq!(
+            reaped_dual_summary["failure"]["finding_code"],
+            "source_barrier_and_host_exit_unsuccessful"
+        );
+        assert_eq!(
+            reaped_dual_summary["failure"]["safe_aggregates"],
+            source_failure.safe_aggregates()
+        );
+
+        let mut finish_only = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        resolve_live_producer_source_attempt(
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            &mut finish_only,
+            Ok(()),
+            Err(io::Error::other("after-baseline snapshot failed").into()),
+        )
+        .expect_err("finish-only failure must fail");
+        assert!(finish_only.terminal_publication_is_forbidden());
+
+        let mut source_only = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let successful_finish = Command::new("true").status()?;
+        resolve_live_producer_source_attempt::<()>(
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            &mut source_only,
+            Err(Box::new(source_failure.clone())),
+            Ok(InteractiveHostFinish {
+                status: successful_finish,
+                termination_requested: false,
+            }),
+        )
+        .expect_err("classified source-only failure must remain a non-pass");
+        assert!(!source_only.terminal_publication_is_forbidden());
+
+        let mut unsuccessful_exit = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let unsuccessful_status = Command::new("false").status()?;
+        let unsuccessful_error = resolve_live_producer_source_attempt(
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            &mut unsuccessful_exit,
+            Ok(()),
+            Ok(InteractiveHostFinish {
+                status: unsuccessful_status,
+                termination_requested: false,
+            }),
+        )
+        .expect_err("a pre-existing unsuccessful source-host exit must not pass");
+        assert_eq!(
+            unsuccessful_error
+                .downcast_ref::<ClassifiedLiveProducerFailure>()
+                .map(|failure| failure.finding_code),
+            Some("source_host_exit_unsuccessful")
+        );
+        assert!(!unsuccessful_exit.terminal_publication_is_forbidden());
+
+        let killed_status = Command::new("sh").args(["-c", "kill -9 $$"]).status()?;
+        assert_eq!(killed_status.signal(), Some(9));
+        let mut harness_terminated = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let captured = resolve_live_producer_source_attempt(
+            "codex",
+            HostFeature::VerifiedToolProducer,
+            &mut harness_terminated,
+            Ok("captured"),
+            Ok(InteractiveHostFinish {
+                status: killed_status,
+                termination_requested: true,
+            }),
+        )?;
+        assert_eq!(captured, "captured");
+        assert!(!harness_terminated.terminal_publication_is_forbidden());
+
+        let classified_source_sentinel = "raw-classified-source-debug-sentinel";
+        let classified = ClassifiedLiveProducerFailure::boxed(
+            "producer_attempt",
+            "exact_capture_command_failed",
+            io::Error::other(classified_source_sentinel),
+        );
+        assert!(is_classified_live_producer_failure(classified.as_ref()));
+        let classified_failure = classified
+            .downcast_ref::<ClassifiedLiveProducerFailure>()
+            .expect("classified failure retains its concrete type");
+        let classified_debug = format!("{classified_failure:?}");
+        assert!(classified_debug.contains("exact_capture_command_failed"));
+        assert!(classified_debug.contains("<discarded>"));
+        assert!(!classified_debug.contains(classified_source_sentinel));
+        assert!(classified_failure.source().is_none());
+        let classified_summary =
+            live_producer_failed_summary(&source_only, Some(classified.as_ref()));
+        validate_live_producer_failed_summary(&classified_summary)?;
+        assert_eq!(
+            classified_summary["failure"]["finding_code"],
+            "exact_capture_command_failed"
+        );
+        assert!(!serde_json::to_string(&classified_summary)?.contains(classified_source_sentinel));
+
+        let mut panic_recorder = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let panic_payload: Box<dyn Any + Send> = Box::new("producer panic sentinel");
+        let panic_result = catch_unwind(AssertUnwindSafe(|| {
+            resume_live_producer_panic(&mut panic_recorder, panic_payload)
+        }));
+        assert!(panic_result.is_err());
+        assert!(panic_recorder.terminal_publication_is_forbidden());
+        Ok(())
+    }
+
+    #[test]
+    fn finalized_source_comparison_ignores_only_the_retained_negative_fixture() {
+        let captured = ActualLiveProducerSource {
+            capture_intent_id: "CAPTURE-fixture".to_owned(),
+            capture_input_sha256: "a".repeat(64),
+            intent_state_version: 7,
+            session_id: format!("mhs_{}", "b".repeat(64)),
+            watch_baseline_id: "WB-fixture".to_owned(),
+            guard_installation_id: "GUARD-fixture".to_owned(),
+            source_event_ids: vec!["GE-pre".to_owned(), "GE-post".to_owned()],
+            mismatched_event_id: "GE-negative-before".to_owned(),
+            host_invocation_id: Some("INV-fixture".to_owned()),
+            observed_outcome: serde_json::json!({
+                "success": true,
+                "exit_code": 0,
+                "tool_result_sha256": "c".repeat(64),
+                "tool_result_size_bytes": 4
+            }),
+            observed_at: "2026-07-16T00:00:00Z".to_owned(),
+            intent_precedes_source: true,
+            exact_session_connection_actor_scope_baseline: true,
+        };
+        let mut negative_only_changed = captured.clone();
+        negative_only_changed.mismatched_event_id = "GE-negative-after".to_owned();
+        assert!(negative_only_changed.same_positive_source_coordinates(&captured));
+
+        let mut positive_changed = captured.clone();
+        positive_changed.source_event_ids[1] = "GE-other-post".to_owned();
+        assert!(!positive_changed.same_positive_source_coordinates(&captured));
+
+        let mut outcome_changed = captured.clone();
+        outcome_changed.observed_outcome["tool_result_size_bytes"] = Value::from(5);
+        assert!(!outcome_changed.same_positive_source_coordinates(&captured));
+
+        let mut observed_at_changed = captured.clone();
+        observed_at_changed.observed_at = "2026-07-16T00:00:01Z".to_owned();
+        assert!(!observed_at_changed.same_positive_source_coordinates(&captured));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn run_test_in_fresh_controlling_terminal(
+        test_name: &str,
+        nested_env: &str,
+        input: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        let current_exe = env::current_exe()?;
+        let success_marker = format!("volicord-controlling-terminal-ok:{test_name}");
+        let mut script = Command::new("script");
+        #[cfg(target_os = "linux")]
+        {
+            let nested_command = format!(
+                "{} --exact {} --test-threads=1 --nocapture",
+                shell_quote(&current_exe),
+                test_name
+            );
+            script.args([
+                "--quiet",
+                "--return",
+                "--echo",
+                "never",
+                "--command",
+                &nested_command,
+                "/dev/null",
+            ]);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            script.arg("-q").arg("/dev/null").arg(&current_exe).args([
+                "--exact",
+                test_name,
+                "--test-threads=1",
+                "--nocapture",
+            ]);
+        }
+        let mut script = script
+            .env(nested_env, "1")
+            .env(
+                "VOLICORD_LIVE_HOST_CONTROLLING_TERMINAL_SUCCESS_MARKER",
+                &success_marker,
+            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        script
+            .stdin
+            .as_mut()
+            .ok_or_else(|| io::Error::other("script regression child has no stdin"))?
+            .write_all(input)?;
+        drop(script.stdin.take());
+        let output = script.wait_with_output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() || !stdout.contains(&success_marker) {
+            return Err(io::Error::other(format!(
+                "controlling-terminal regression {test_name} failed with {}: stdout={stdout:?}, stderr={:?}",
+                status_text(output.status),
+                String::from_utf8_lossy(&output.stderr)
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    fn print_controlling_terminal_success_marker() -> Result<(), Box<dyn Error>> {
+        let marker = env::var("VOLICORD_LIVE_HOST_CONTROLLING_TERMINAL_SUCCESS_MARKER")?;
+        bounded_identity("controlling-terminal test success marker", &marker, 256)?;
+        println!("{marker}");
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "private helper for live-host controlling-terminal foreground restoration"]
+    fn live_host_terminal_foreground_controller() -> Result<(), Box<dyn Error>> {
+        if env::var_os(LIVE_HOST_FOREGROUND_CONTROLLER_ENV).as_deref() != Some(OsStr::new("1")) {
+            return Ok(());
+        }
+        let original_process_group_id =
+            env::var(LIVE_HOST_FOREGROUND_CONTROLLER_ORIGINAL_PGID_ENV)?.parse::<i32>()?;
+        let original_process_group_id =
+            Pid::from_raw(original_process_group_id).ok_or_else(|| {
+                io::Error::other(
+                    "live host foreground controller has invalid original process-group id",
+                )
+            })?;
+        let process_group_id = getpgrp();
+        let tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+        if env::var_os(LIVE_HOST_FOREGROUND_CONTROLLER_EMERGENCY_ENV).as_deref()
+            == Some(OsStr::new("1"))
+        {
+            if process_group_id != original_process_group_id {
+                return Err(io::Error::other(
+                    "emergency live host foreground controller is not in the original runner process group",
+                )
+                .into());
+            }
+            tcsetpgrp(&tty, original_process_group_id)?;
+            if tcgetpgrp(&tty)? != original_process_group_id {
+                return Err(io::Error::other(
+                    "emergency live host foreground controller did not restore the original process group",
+                )
+                .into());
+            }
+            return Ok(());
+        }
+
+        let controller_result = (|| -> Result<(), Box<dyn Error>> {
+            if process_group_id == original_process_group_id {
+                return Err(io::Error::other(
+                    "live host foreground controller did not start in a dedicated process group",
+                )
+                .into());
+            }
+            let foreground = tcgetpgrp(&tty)?;
+            if foreground != original_process_group_id {
+                return Err(io::Error::other(format!(
+                    "live host foreground controller observed unexpected initial foreground group {} (expected={})",
+                    foreground.as_raw_pid(),
+                    original_process_group_id.as_raw_pid()
+                ))
+                .into());
+            }
+            let ready_path = PathBuf::from(
+                env::var_os(LIVE_HOST_FOREGROUND_CONTROLLER_READY_PATH_ENV).ok_or_else(|| {
+                    io::Error::other("live host foreground controller has no readiness path")
+                })?,
+            );
+            let mut ready = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&ready_path)?;
+            writeln!(ready, "{}", process_group_id.as_raw_pid())?;
+            ready.sync_all()?;
+
+            let mut restore = String::new();
+            let read = io::stdin().read_line(&mut restore)?;
+            if read == 0 {
+                return Err(io::Error::other(
+                    "live host foreground controller restore channel closed without a command",
+                )
+                .into());
+            }
+            if restore != "restore\n" {
+                return Err(io::Error::other(
+                    "live host foreground controller received an invalid restore command",
+                )
+                .into());
+            }
+            Ok(())
+        })();
+
+        let foreground_before_restore = tcgetpgrp(&tty)?;
+        let unexpected_foreground = foreground_before_restore != process_group_id
+            && foreground_before_restore != original_process_group_id;
+        if foreground_before_restore != original_process_group_id {
+            tcsetpgrp(&tty, original_process_group_id)?;
+        }
+        if tcgetpgrp(&tty)? != original_process_group_id {
+            return Err(io::Error::other(format!(
+                "live host foreground controller did not restore the original process group from foreground {}",
+                foreground_before_restore.as_raw_pid()
+            ))
+            .into());
+        }
+        if unexpected_foreground {
+            return Err(io::Error::other(format!(
+                "live host foreground controller restored from unexpected foreground group {}",
+                foreground_before_restore.as_raw_pid()
+            ))
+            .into());
+        }
+        controller_result
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn interactive_host_turn_transfers_and_restores_terminal_foreground(
+    ) -> Result<(), Box<dyn Error>> {
+        if env::var_os(LIVE_HOST_FOREGROUND_REGRESSION_ENV).as_deref() == Some(OsStr::new("1")) {
+            let tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+            let original_process_group_id = getpgrp();
+            let original_terminal_attributes = tcgetattr(&tty)?;
+            assert_eq!(tcgetpgrp(&tty)?, original_process_group_id);
+            let ownership_marker = live_host_turn_ownership_marker()?;
+            let mut foreground = LiveHostTerminalForeground::acquire()?;
+            let process_group_id = foreground.process_group_id();
+            assert_ne!(process_group_id, original_process_group_id);
+            assert_eq!(tcgetpgrp(&tty)?, process_group_id);
+
+            let mut child = Command::new("sh")
+                .args([
+                    "-c",
+                    "IFS= read -r line && test \"$line\" = foreground-ready",
+                ])
+                .env(LIVE_HOST_TURN_OWNERSHIP_ENV, &ownership_marker)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(process_group_id.as_raw_pid())
+                .spawn()?;
+            require_live_host_process_group(&child, process_group_id)?;
+            let deadline = Instant::now() + LIVE_HOST_PROCESS_TREE_TIMEOUT;
+            let status = loop {
+                if let Some(status) = child.try_wait()? {
+                    break status;
+                }
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    restore_live_host_terminal_and_quiesce(
+                        &mut foreground,
+                        &ownership_marker,
+                        process_group_id,
+                    )?;
+                    return Err(io::Error::other(
+                        "foreground live-host regression child did not consume controlling-terminal input before its deadline",
+                    )
+                    .into());
+                }
+                thread::sleep(Duration::from_millis(10));
+            };
+            restore_live_host_terminal_and_quiesce(
+                &mut foreground,
+                &ownership_marker,
+                process_group_id,
+            )?;
+            assert!(status.success(), "foreground child exited with {status:?}");
+            assert_eq!(tcgetpgrp(&tty)?, original_process_group_id);
+
+            let failed_ownership_marker = live_host_turn_ownership_marker()?;
+            let mut failed_foreground = LiveHostTerminalForeground::acquire()?;
+            let failed_process_group_id = failed_foreground.process_group_id();
+            assert_eq!(tcgetpgrp(&tty)?, failed_process_group_id);
+            let failed_controller = failed_foreground
+                .controller
+                .as_mut()
+                .ok_or_else(|| io::Error::other("failure fixture has no foreground controller"))?;
+            failed_controller.kill()?;
+            let failed_status = failed_controller.wait()?;
+            assert!(!failed_status.success());
+            let cleanup = restore_live_host_terminal_and_quiesce(
+                &mut failed_foreground,
+                &failed_ownership_marker,
+                failed_process_group_id,
+            );
+            assert!(
+                cleanup.is_err(),
+                "primary controller loss must remain a structural failure after emergency restoration"
+            );
+            assert_eq!(tcgetpgrp(&tty)?, original_process_group_id);
+            assert_eq!(getpgrp(), original_process_group_id);
+            assert!(test_kill_process_group(original_process_group_id).is_ok());
+            assert!(matches!(
+                test_kill_process_group(failed_process_group_id),
+                Err(Errno::SRCH)
+            ));
+
+            let raw_ownership_marker = live_host_turn_ownership_marker()?;
+            let raw_ready_path = env::temp_dir().join(format!(
+                "volicord-live-host-raw-terminal-{}-{}",
+                std::process::id(),
+                epoch_duration()?.as_nanos()
+            ));
+            let mut raw_foreground = LiveHostTerminalForeground::acquire()?;
+            let raw_process_group_id = raw_foreground.process_group_id();
+            let mut raw_child = Command::new("sh")
+                .args([
+                    "-c",
+                    &format!(
+                        "stty raw -echo < /dev/tty; : > {}; sleep 30",
+                        shell_quote(&raw_ready_path)
+                    ),
+                ])
+                .env(LIVE_HOST_TURN_OWNERSHIP_ENV, &raw_ownership_marker)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(raw_process_group_id.as_raw_pid())
+                .spawn()?;
+            require_live_host_process_group(&raw_child, raw_process_group_id)?;
+            let raw_deadline = Instant::now() + LIVE_HOST_PROCESS_TREE_TIMEOUT;
+            while !raw_ready_path.exists() && Instant::now() < raw_deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            if !raw_ready_path.exists() {
+                let _ = raw_child.kill();
+                let _ = raw_child.wait();
+                let _ = restore_live_host_terminal_and_quiesce(
+                    &mut raw_foreground,
+                    &raw_ownership_marker,
+                    raw_process_group_id,
+                );
+                return Err(
+                    io::Error::other("raw-terminal regression child did not become ready").into(),
+                );
+            }
+            assert!(!terminal_attributes_match(
+                &tcgetattr(&tty)?,
+                &original_terminal_attributes
+            ));
+            raw_child.kill()?;
+            let raw_status = raw_child.wait()?;
+            assert!(!raw_status.success());
+            restore_live_host_terminal_and_quiesce(
+                &mut raw_foreground,
+                &raw_ownership_marker,
+                raw_process_group_id,
+            )?;
+            assert_eq!(tcgetpgrp(&tty)?, original_process_group_id);
+            assert!(terminal_attributes_match(
+                &tcgetattr(&tty)?,
+                &original_terminal_attributes
+            ));
+            let _ = fs::remove_file(raw_ready_path);
+            print_controlling_terminal_success_marker()?;
+            return Ok(());
+        }
+
+        run_test_in_fresh_controlling_terminal(
+            LIVE_HOST_FOREGROUND_REGRESSION_TEST,
+            LIVE_HOST_FOREGROUND_REGRESSION_ENV,
+            b"foreground-ready\n",
+        )
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn interactive_host_turn_drop_kills_and_reaps_its_process_tree() -> Result<(), Box<dyn Error>> {
+        let temp = TempRuntimeHome::new("interactive-host-process-tree")?;
+        let descendant_pid_path = temp.path().join("descendant.pid");
+        let ownership_marker = live_host_turn_ownership_marker()?;
+        let child = Command::new("sh")
+            .args([
+                "-c",
+                &format!(
+                    "env -i sleep 30 & descendant=$!; printf '%s\\n' \"$descendant\" > {}; wait",
+                    shell_quote(&descendant_pid_path)
+                ),
+            ])
+            .env(LIVE_HOST_TURN_OWNERSHIP_ENV, &ownership_marker)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()?;
+        let process_group_id = live_host_process_group_id(&child)?;
+        let child_proc = PathBuf::from(format!("/proc/{}", child.id()));
+        assert!(child_proc.exists());
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !descendant_pid_path.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let descendant_pid = fs::read_to_string(&descendant_pid_path)?
+            .trim()
+            .parse::<u32>()?;
+        let descendant_proc = PathBuf::from(format!("/proc/{descendant_pid}"));
+        assert!(descendant_proc.exists());
+        let turn = InteractiveHostTurn {
+            child: Some(child),
+            before: BTreeMap::new(),
+            ownership_marker,
+            process_group_id,
+            terminal_foreground: None,
+        };
+        drop(turn);
+        assert!(!child_proc.exists());
+        assert!(!descendant_proc.exists());
         Ok(())
     }
 
@@ -4309,254 +7433,667 @@ mod unix {
             result_kind,
             Some(IntegrationProfile::Detective),
         )?;
-        let release_candidate = result_recorder.release_candidate()?.clone();
-        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+        let release_candidate = match result_recorder.release_candidate() {
+            Ok(candidate) => candidate.clone(),
+            Err(error) => {
+                result_recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+        };
+        let fixture = match LiveSmokeFixture::new_with_release_candidate_for_recorder(
             &recorder_label,
             &release_candidate,
             &mut result_recorder,
-        )?;
-        let executable = find_executable(executable_name).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("`{executable_name}` was not found on PATH"),
-            )
-        })?;
-        result_recorder.mark_installed_host_detected();
-        let observed_identity = fixture.observe_and_bind_installed_host_identity(
-            &mut result_recorder,
-            executable_name,
-            &executable,
-        )?;
-        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-            return Err(io::Error::other(
-                "authenticated live producer validation requires interactive terminal stdin and stdout",
-            )
-            .into());
-        }
-        let ObservedReleaseHostIdentity {
-            host_version,
-            host_executable_sha256,
-            volicord_build_id,
-        } = observed_identity;
-        let init = fixture.run_volicord([
-            "init",
-            "--shared",
-            "--host",
-            host,
-            "--repo",
-            fixture.repo_arg(),
-            "--profile",
-            "detective",
-            "--home",
-            fixture.runtime_home_arg(),
-            "--json",
-        ])?;
-        require_success("volicord init for live producer cell", &init)?;
-        let init_json = json_stdout(&init)?;
-        assert_live_init_reported_action_required(
-            &init_json,
-            host,
-            Some(&host_version),
-            IntegrationProfile::Detective,
-            expected_host_action,
-        );
-        let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
-            &init_json,
-            host,
-            Some(&host_version),
-            IntegrationProfile::Detective,
-        )?;
-        let connection_id = bounded_identity(
-            "Agent Connection id",
-            init_json["connection"]["connection_id"]
-                .as_str()
-                .ok_or_else(|| io::Error::other("producer init result has no connection id"))?,
-            MAX_CONNECTION_ID_BYTES,
-        )?;
-        let identity = LiveHostIdentity {
-            host: host.to_owned(),
-            host_version,
-            host_executable_sha256,
-            volicord_build_id,
-            connection_id,
+        ) {
+            Ok(fixture) => fixture,
+            Err(error) => {
+                result_recorder.forbid_terminal_publication();
+                return Err(error);
+            }
         };
-        observe_and_verify_live_connection_before_task(
-            &fixture,
-            host,
-            &executable,
-            &identity.connection_id,
-            &mut result_recorder,
-        )?;
+        let attempt = catch_unwind(AssertUnwindSafe(|| -> Result<(), Box<dyn Error>> {
+            let executable = find_executable(executable_name).ok_or_else(|| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "selected_host_unavailable",
+                    io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("`{executable_name}` was not found on PATH"),
+                    ),
+                )
+            })?;
+            result_recorder.mark_installed_host_detected();
+            let observed_identity = fixture.observe_and_bind_installed_host_identity(
+                &mut result_recorder,
+                executable_name,
+                &executable,
+            )?;
+            if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+                return Err(ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "interactive_terminal_unavailable",
+                    io::Error::other(
+                        "authenticated live producer validation requires interactive terminal stdin and stdout",
+                    ),
+                ));
+            }
+            let ObservedReleaseHostIdentity {
+                host_version,
+                host_executable_sha256,
+                volicord_build_id,
+            } = observed_identity;
+            let init = fixture.run_volicord([
+                "init",
+                "--shared",
+                "--host",
+                host,
+                "--repo",
+                fixture.repo_arg(),
+                "--profile",
+                "detective",
+                "--home",
+                fixture.runtime_home_arg(),
+                "--json",
+            ])?;
+            require_success("volicord init for live producer cell", &init).map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "producer_init_command_failed",
+                    source,
+                )
+            })?;
+            let init_json = json_stdout(&init).map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "producer_init_output_invalid",
+                    source,
+                )
+            })?;
+            require_live_init_reported_action_required(
+                &init_json,
+                host,
+                Some(&host_version),
+                IntegrationProfile::Detective,
+                expected_host_action,
+            )
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "producer_init_state_mismatch",
+                    source,
+                )
+            })?;
+            let host_feature_diagnostics = release_host_feature_diagnostics_from_init(
+                &init_json,
+                host,
+                Some(&host_version),
+                IntegrationProfile::Detective,
+            )
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "producer_init_diagnostics_mismatch",
+                    source,
+                )
+            })?;
+            result_recorder
+                .bind_observed_host_feature_diagnostics(host_feature_diagnostics.clone())
+                .map_err(|source| {
+                    ClassifiedLiveProducerFailure::boxed(
+                        "producer_preflight",
+                        "producer_init_diagnostics_binding_failed",
+                        source,
+                    )
+                })?;
+            let connection_id = (|| -> Result<String, Box<dyn Error>> {
+                bounded_identity(
+                    "Agent Connection id",
+                    init_json["connection"]["connection_id"]
+                        .as_str()
+                        .ok_or_else(|| {
+                            io::Error::other("producer init result has no connection id")
+                        })?,
+                    MAX_CONNECTION_ID_BYTES,
+                )
+            })()
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "producer_init_connection_identity_invalid",
+                    source,
+                )
+            })?;
+            result_recorder
+                .bind_observed_connection_id(connection_id.clone())
+                .map_err(|source| {
+                    ClassifiedLiveProducerFailure::boxed(
+                        "producer_preflight",
+                        "producer_init_connection_binding_failed",
+                        source,
+                    )
+                })?;
+            let identity = LiveHostIdentity {
+                host: host.to_owned(),
+                host_version,
+                host_executable_sha256,
+                volicord_build_id,
+                connection_id,
+            };
+            observe_and_verify_live_connection_before_task(
+                &fixture,
+                host,
+                &executable,
+                &identity.connection_id,
+                &mut result_recorder,
+            )?;
 
-        let marker = format!(
-            "VOLICORD_LIVE_{}_{}",
-            feature.as_str().to_ascii_uppercase(),
-            host.replace('-', "_").to_ascii_uppercase()
-        );
-        let prepared = prepare_live_producer_authority_basis(
-            &fixture,
-            &identity.connection_id,
-            &marker,
-            baseline_ref,
-        )?;
-        let source_prompt = live_producer_source_prompt(&prepared, feature)?;
-        println!(
+            let marker = format!(
+                "VOLICORD_LIVE_{}_{}",
+                feature.as_str().to_ascii_uppercase(),
+                host.replace('-', "_").to_ascii_uppercase()
+            );
+            let prepared = prepare_live_producer_authority_basis(
+                &fixture,
+                &identity.connection_id,
+                &marker,
+                baseline_ref,
+                feature,
+            )?;
+            let source_prompt = live_producer_source_prompt(&prepared, feature)?;
+            println!(
             "\n=== Volicord live {host}/{} source turn ===\nThe authenticated host must prepare an exact short-lived capture intent before producing the registered source event in the same opaque managed session. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{source_prompt}\n=== end instruction ===\n",
             feature.as_str()
         );
-        let source_status = fixture.run_authenticated_interactive_host(
-            host,
-            &executable,
-            &source_prompt,
-            &mut result_recorder,
-        )?;
-        if !source_status.success() {
-            return Err(io::Error::other(format!(
-                "the live {host}/{} source turn exited unsuccessfully with {}",
-                feature.as_str(),
-                status_text(source_status)
-            ))
-            .into());
-        }
-
-        let captured_source = inspect_actual_live_producer_source(
-            &fixture,
-            &prepared,
-            &identity.connection_id,
-            feature,
-        )?;
-        let before_negative = live_capture_durable_snapshot(&fixture, &prepared.project_id)?;
-        let negative = run_mismatched_live_capture(&fixture, &captured_source, feature, &prepared)?;
-        let after_negative = live_capture_durable_snapshot(&fixture, &prepared.project_id)?;
-        if before_negative != after_negative {
-            return Err(io::Error::other(
-                "mismatched live capture changed durable receipt, staging, producer, artifact, authority-event, or state-version counts",
-            )
-            .into());
-        }
-
-        let capture_output =
-            run_exact_live_capture(&fixture, &captured_source, feature, &prepared)?;
-        let receipt = inspect_live_capture_receipt(
-            &fixture,
-            &prepared,
-            &captured_source,
-            feature,
-            &capture_output,
-        )?;
-        let resume_cursor = diagnostic_event_cursor(&fixture)?;
-        let resume_prompt = live_producer_resume_prompt(&prepared, &captured_source, feature)?;
-        println!(
+            let mut source_turn = match fixture.start_authenticated_interactive_host(
+                host,
+                &executable,
+                &source_prompt,
+                &mut result_recorder,
+            ) {
+                Ok(turn) => turn,
+                Err(error) => {
+                    if result_recorder.terminal_publication_is_forbidden()
+                        || is_classified_live_producer_failure(error.as_ref())
+                    {
+                        return Err(error);
+                    }
+                    return Err(ClassifiedLiveProducerFailure::boxed(
+                        "producer_attempt",
+                        "source_host_preflight_failed",
+                        error,
+                    ));
+                }
+            };
+            let source_attempt = (|| -> Result<_, Box<dyn Error>> {
+                let captured_source = wait_for_actual_live_producer_source(
+                    &fixture,
+                    &mut source_turn,
+                    &prepared,
+                    &identity.connection_id,
+                    feature,
+                )?;
+                let before_negative = live_capture_durable_snapshot(
+                    &fixture,
+                    &prepared.project_id,
+                    &captured_source,
+                )?;
+                let negative =
+                    run_mismatched_live_capture(&fixture, &captured_source, feature, &prepared)?;
+                let after_negative = live_capture_durable_snapshot(
+                    &fixture,
+                    &prepared.project_id,
+                    &captured_source,
+                )?;
+                if before_negative != after_negative {
+                    return Err(ClassifiedLiveProducerFailure::boxed(
+                        "producer_attempt",
+                        "negative_capture_changed_durable_state",
+                        io::Error::other(
+                            "mismatched live capture changed the durable receipt, source-claim, staging row/file set, project clock floor, producer, artifact, authority-event, or state-version snapshot",
+                        ),
+                    ));
+                }
+                let capture_output =
+                    run_exact_live_capture(&fixture, &captured_source, feature, &prepared)?;
+                let receipt = inspect_live_capture_receipt(
+                    &fixture,
+                    &prepared,
+                    &captured_source,
+                    feature,
+                    &capture_output,
+                )?;
+                Ok((
+                    captured_source,
+                    negative,
+                    receipt,
+                    before_negative == after_negative,
+                ))
+            })();
+            let source_finish = fixture.finish_authenticated_interactive_host(
+                source_turn,
+                &mut result_recorder,
+                true,
+            );
+            let (captured_source, negative, receipt, negative_zero_effect) =
+                resolve_live_producer_source_attempt(
+                    host,
+                    feature,
+                    &mut result_recorder,
+                    source_attempt,
+                    source_finish,
+                )?;
+            let captured_source = revalidate_finalized_live_producer_source(
+                &fixture,
+                &prepared,
+                &identity.connection_id,
+                feature,
+                &captured_source,
+                &mut result_recorder,
+            )?;
+            let resume_cursor = diagnostic_event_cursor(&fixture)?;
+            let resume_prompt = live_producer_resume_prompt(&prepared, &captured_source, feature)?;
+            println!(
             "\n=== Volicord live {host}/{} producer finalization turn ===\nThe authenticated host must use the same registered Agent Connection to finalize the captured receipt into one Run, one Strong Evidence observation, criterion coverage, status, and check-close.\n\n{resume_prompt}\n=== end instruction ===\n",
             feature.as_str()
         );
-        let resume_status = fixture.run_authenticated_interactive_host(
-            host,
-            &executable,
-            &resume_prompt,
-            &mut result_recorder,
-        )?;
-        if !resume_status.success() {
-            return Err(io::Error::other(format!(
-                "the live {host}/{} producer finalization turn exited unsuccessfully with {}",
-                feature.as_str(),
-                status_text(resume_status)
-            ))
-            .into());
-        }
-        assert_live_connection_verified(&fixture, &identity.connection_id)?;
-        let host_resume = assert_live_producer_resume_diagnostic(
-            &fixture,
-            &identity.connection_id,
-            &prepared.project_id,
-            resume_cursor,
-        )?;
-        let chain = inspect_live_producer_chain(
-            &fixture,
-            &prepared,
-            &captured_source,
-            &receipt,
-            &identity.connection_id,
-            feature,
-            &marker,
-        )?;
-        let status_output = fixture.run_volicord([
-            "status",
-            "--repo",
-            fixture.repo_arg(),
-            "--task",
-            &prepared.task_id,
-            "--json",
-        ])?;
-        require_success(
-            "volicord status after live producer finalization",
-            &status_output,
-        )?;
-        let observation = LiveUserActionObservation {
-            project_id: prepared.project_id.clone(),
-            task_id: prepared.task_id.clone(),
-            lifecycle_phase: chain.lifecycle_phase.clone(),
-            state_version: chain.state_version,
-            user_action_request_id: None,
-            user_action_status: None,
-            requested_by_actor_source: None,
-            user_action_resolution_id: None,
-            resolved_by_actor_source: None,
-            resolved_verification_basis: None,
-            resolved_channel_kind: None,
-            selected_option_id: None,
-            option_ids: Vec::new(),
-        };
-        let authority_receipt =
-            verify_fresh_authority_receipt(json_stdout(&status_output)?, &observation, &marker)?;
-        if authority_receipt.latest_run_id != chain.run_id {
-            return Err(io::Error::other(
-                "fresh producer AuthorityReceipt does not name the producer-linked Run",
+            let resume_turn = match fixture.start_authenticated_interactive_host(
+                host,
+                &executable,
+                &resume_prompt,
+                &mut result_recorder,
+            ) {
+                Ok(turn) => turn,
+                Err(error) => {
+                    if result_recorder.terminal_publication_is_forbidden()
+                        || is_classified_live_producer_failure(error.as_ref())
+                    {
+                        return Err(error);
+                    }
+                    return Err(ClassifiedLiveProducerFailure::boxed(
+                        "producer_attempt",
+                        "producer_finalization_host_preflight_failed",
+                        error,
+                    ));
+                }
+            };
+            let resume_finish = match fixture.finish_authenticated_interactive_host(
+                resume_turn,
+                &mut result_recorder,
+                false,
+            ) {
+                Ok(status) => status,
+                Err(error) => {
+                    result_recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            if !resume_finish.status.success() {
+                return Err(ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "producer_finalization_host_exit_unsuccessful",
+                    io::Error::other(format!(
+                        "the live {host}/{} producer finalization turn exited unsuccessfully with {}",
+                        feature.as_str(),
+                        status_text(resume_finish.status)
+                    )),
+                ));
+            }
+            assert_live_connection_verified(&fixture, &identity.connection_id)?;
+            let host_resume = assert_live_producer_resume_diagnostic(
+                &fixture,
+                &identity.connection_id,
+                &prepared.project_id,
+                resume_cursor,
+            )?;
+            let chain = inspect_live_producer_chain(
+                &fixture,
+                &prepared,
+                &captured_source,
+                &receipt,
+                &identity.connection_id,
+                feature,
+                &marker,
+            )?;
+            let post_chain_snapshot =
+                live_capture_durable_snapshot(&fixture, &prepared.project_id, &captured_source)?;
+            let status_output = fixture.run_volicord([
+                "status",
+                "--repo",
+                fixture.repo_arg(),
+                "--task",
+                &prepared.task_id,
+                "--json",
+            ])?;
+            require_success(
+                "volicord status after live producer finalization",
+                &status_output,
             )
-            .into());
-        }
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "producer_status_command_failed",
+                    source,
+                )
+            })?;
+            let observation = LiveUserActionObservation {
+                project_id: prepared.project_id.clone(),
+                task_id: prepared.task_id.clone(),
+                lifecycle_phase: chain.lifecycle_phase.clone(),
+                state_version: chain.state_version,
+                user_action_request_id: None,
+                user_action_status: None,
+                requested_by_actor_source: None,
+                user_action_resolution_id: None,
+                resolved_by_actor_source: None,
+                resolved_verification_basis: None,
+                resolved_channel_kind: None,
+                selected_option_id: None,
+                option_ids: Vec::new(),
+            };
+            let typed_status = parse_live_producer_status_output(&status_output)?;
+            let authority_receipt =
+                verify_typed_authority_receipt_binding(typed_status, &observation, &marker, true)
+                    .map_err(|source| {
+                    ClassifiedLiveProducerFailure::boxed(
+                        "producer_attempt",
+                        "producer_authority_receipt_invalid",
+                        source,
+                    )
+                })?;
+            if authority_receipt.latest_run_id != chain.run_id {
+                return Err(ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "producer_authority_receipt_run_mismatch",
+                    io::Error::other(
+                        "fresh producer AuthorityReceipt does not name the producer-linked Run",
+                    ),
+                ));
+            }
 
-        let assertions = LiveProducerAssertionFamilies {
-            actual_host_event: true,
-            intent_precedes_source: captured_source.intent_precedes_source,
-            exact_session_connection_actor_scope_baseline: captured_source
-                .exact_session_connection_actor_scope_baseline,
-            capture_receipt_bound: receipt.capture_receipt_bound,
-            strong_producer_chain: chain.strong_producer_chain,
-            criterion_coverage_projected: chain.criterion_coverage_projected,
-            negative_rejections_zero_effect: negative.rejected && before_negative == after_negative,
-        };
-        if !assertions.all_passed() {
-            return Err(io::Error::other(
-                "live producer cell did not close all seven assertion families",
-            )
-            .into());
+            let captured_source = revalidate_finalized_live_producer_source(
+                &fixture,
+                &prepared,
+                &identity.connection_id,
+                feature,
+                &captured_source,
+                &mut result_recorder,
+            )?;
+            let post_status_snapshot =
+                live_capture_durable_snapshot(&fixture, &prepared.project_id, &captured_source)?;
+            if post_status_snapshot != post_chain_snapshot {
+                return Err(ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "producer_state_changed_after_chain_inspection",
+                    io::Error::other(
+                        "status projection or final source revalidation changed the inspected producer chain, capture authority, project clock/version, or bounded artifact-store file set",
+                    ),
+                ));
+            }
+
+            let assertions = LiveProducerAssertionFamilies {
+                actual_host_event: true,
+                intent_precedes_source: captured_source.intent_precedes_source,
+                exact_session_connection_actor_scope_baseline: captured_source
+                    .exact_session_connection_actor_scope_baseline,
+                capture_receipt_bound: receipt.capture_receipt_bound,
+                strong_producer_chain: chain.strong_producer_chain,
+                criterion_coverage_projected: chain.criterion_coverage_projected,
+                negative_rejections_zero_effect: negative.rejected && negative_zero_effect,
+            };
+            if !assertions.all_passed() {
+                return Err(ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "producer_assertion_family_failed",
+                    io::Error::other(
+                        "live producer cell did not close all seven assertion families",
+                    ),
+                ));
+            }
+            let summary = live_producer_completed_summary(LiveProducerSummaryInput {
+                identity: &identity,
+                feature,
+                prepared: &prepared,
+                source: &captured_source,
+                negative: &negative,
+                receipt: &receipt,
+                host_resume: &host_resume,
+                chain: &chain,
+                authority_receipt: &authority_receipt,
+                assertions: &assertions,
+                host_feature_diagnostics: &host_feature_diagnostics,
+            });
+            validate_live_producer_result_shape(&summary, feature)?;
+            result_recorder.record_final(&summary)?;
+            Ok(())
+        }));
+        match attempt {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => {
+                if result_recorder.terminal_publication_is_forbidden()
+                    || !is_classified_live_producer_failure(error.as_ref())
+                {
+                    result_recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+                let failure = live_producer_failed_summary(&result_recorder, Some(error.as_ref()));
+                if let Err(validation_error) = validate_live_producer_failed_summary(&failure) {
+                    result_recorder.forbid_terminal_publication();
+                    return Err(validation_error);
+                }
+                if let Err(publication_error) = result_recorder.record_final(&failure) {
+                    result_recorder.forbid_terminal_publication();
+                    return Err(io::Error::other(format!(
+                        "live producer attempt failed and terminal failure publication also failed: {publication_error}"
+                    ))
+                    .into());
+                }
+                Err(error)
+            }
+            Err(payload) => resume_live_producer_panic(&mut result_recorder, payload),
         }
-        let summary = live_producer_completed_summary(LiveProducerSummaryInput {
-            identity: &identity,
+    }
+
+    fn resume_live_producer_panic(
+        recorder: &mut LiveResultRecorder,
+        payload: Box<dyn Any + Send>,
+    ) -> ! {
+        recorder.forbid_terminal_publication();
+        resume_unwind(payload)
+    }
+
+    fn parse_live_producer_status_output(
+        output: &TimedOutput,
+    ) -> Result<StatusResult, Box<dyn Error>> {
+        let status_json = json_stdout(output).map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_status_output_invalid",
+                source,
+            )
+        })?;
+        serde_json::from_value(status_json).map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_status_output_invalid",
+                source,
+            )
+        })
+    }
+
+    fn resolve_live_producer_source_attempt<T>(
+        host: &str,
+        feature: HostFeature,
+        recorder: &mut LiveResultRecorder,
+        source_attempt: Result<T, Box<dyn Error>>,
+        source_finish: Result<InteractiveHostFinish, Box<dyn Error>>,
+    ) -> Result<T, Box<dyn Error>> {
+        match (source_attempt, source_finish) {
+            (Ok(captured), Ok(source_finish))
+                if live_source_child_finish_is_accepted(&source_finish) =>
+            {
+                smoke_note(
+                    host,
+                    format!(
+                        "{} source child ended with {} after bounded source capture",
+                        feature.as_str(),
+                        status_text(source_finish.status)
+                    ),
+                );
+                Ok(captured)
+            }
+            (Ok(_), Ok(source_finish)) => Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "source_host_exit_unsuccessful",
+                io::Error::other(format!(
+                    "the live {host}/{} source turn exited unsuccessfully with {} before a harness-initiated termination was confirmed",
+                    feature.as_str(),
+                    status_text(source_finish.status)
+                )),
+            )),
+            (Err(source_error), Ok(source_finish))
+                if live_source_child_finish_is_accepted(&source_finish) =>
+            {
+                Err(source_error)
+            }
+            (Err(source_error), Ok(source_finish)) => {
+                let Some(source_failure) = source_error
+                    .downcast_ref::<LiveProducerSourceBarrierFailure>()
+                else {
+                    return Err(ClassifiedLiveProducerFailure::boxed(
+                        "producer_attempt",
+                        "source_attempt_and_host_exit_unsuccessful",
+                        source_error,
+                    ));
+                };
+                let mut combined_failure = source_failure.clone();
+                combined_failure.finding_code = "source_barrier_and_host_exit_unsuccessful";
+                smoke_note(
+                    host,
+                    format!(
+                        "{} source barrier ended with {}, and the reaped source child also exited naturally with {}; recording a bounded combined failure",
+                        feature.as_str(),
+                        source_failure.finding_code,
+                        status_text(source_finish.status)
+                    ),
+                );
+                Err(Box::new(combined_failure))
+            }
+            (Ok(_), Err(finish_error)) => {
+                recorder.forbid_terminal_publication();
+                Err(finish_error)
+            }
+            (Err(source_error), Err(_finish_error)) => {
+                recorder.forbid_terminal_publication();
+                let finding_code = source_error
+                    .downcast_ref::<LiveProducerSourceBarrierFailure>()
+                    .map_or("unclassified", |failure| failure.finding_code);
+                smoke_note(
+                    host,
+                    format!(
+                        "{} source barrier ended with {finding_code}, and source-child finalization also failed; terminal publication is forbidden",
+                        feature.as_str()
+                    ),
+                );
+                Err(source_error)
+            }
+        }
+    }
+
+    fn live_source_child_finish_is_accepted(source_finish: &InteractiveHostFinish) -> bool {
+        source_finish.status.success()
+            || (source_finish.termination_requested && source_finish.status.signal() == Some(9))
+    }
+
+    fn revalidate_finalized_live_producer_source(
+        fixture: &LiveSmokeFixture,
+        prepared: &PreparedLiveProducerBasis,
+        connection_id: &str,
+        feature: HostFeature,
+        captured: &ActualLiveProducerSource,
+        recorder: &mut LiveResultRecorder,
+    ) -> Result<ActualLiveProducerSource, Box<dyn Error>> {
+        match inspect_actual_live_producer_source(
+            fixture,
+            prepared,
+            connection_id,
             feature,
-            prepared: &prepared,
-            source: &captured_source,
-            negative: &negative,
-            receipt: &receipt,
-            host_resume: &host_resume,
-            chain: &chain,
-            authority_receipt: &authority_receipt,
-            assertions: &assertions,
-            host_feature_diagnostics: &host_feature_diagnostics,
-        });
-        validate_live_producer_result_shape(&summary, feature)?;
-        result_recorder.record_final(&summary)?;
-        Ok(())
+            LiveProducerSourceInspectionPhase::ImmutableRevalidation,
+        ) {
+            Ok(mut finalized) if finalized.same_positive_source_coordinates(captured) => {
+                finalized.mismatched_event_id = captured.mismatched_event_id.clone();
+                Ok(finalized)
+            }
+            Ok(_) => {
+                recorder.forbid_terminal_publication();
+                Err(io::Error::other(
+                    "exact live producer source changed after source-child finalization",
+                )
+                .into())
+            }
+            Err(error) => {
+                let classifiable_extra_source = error
+                    .downcast_ref::<LiveProducerSourceBarrierFailure>()
+                    .is_some_and(|failure| {
+                        matches!(
+                            failure.finding_code,
+                            "exact_capture_intent_ambiguous"
+                                | "exact_tool_event_pair_ambiguous"
+                                | "exact_stop_event_ambiguous"
+                        )
+                    });
+                if !classifiable_extra_source {
+                    recorder.forbid_terminal_publication();
+                }
+                Err(error)
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct RegisteredNegativeStopPrerequisite {
+        event_id: String,
+        session_id: String,
+        occurred_at: String,
+        row_sha256: String,
+    }
+
+    struct RegisteredNegativeStopRow<'a> {
+        event_id: &'a str,
+        project_id: &'a str,
+        connection_id: &'a str,
+        session_id: &'a str,
+        event_kind: &'a str,
+        decision: &'a str,
+        subject_json: &'a str,
+        occurred_at: &'a str,
+        guard_installation_id: &'a str,
+    }
+
+    fn registered_negative_stop_row_sha256(
+        row: RegisteredNegativeStopRow<'_>,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok(canonical_json_bare_sha256(&serde_json::json!({
+            "event_id": row.event_id,
+            "project_id": row.project_id,
+            "connection_id": row.connection_id,
+            "session_id": row.session_id,
+            "event_kind": row.event_kind,
+            "decision": row.decision,
+            "subject_json": row.subject_json,
+            "occurred_at": row.occurred_at,
+            "guard_installation_id": row.guard_installation_id,
+        }))?)
     }
 
     struct PreparedLiveProducerBasis {
         project_id: String,
         task_id: String,
         change_unit_id: String,
+        scope_revision: u64,
         target: EvidenceTarget,
         baseline_ref: String,
         run_marker: String,
+        registered_negative_stop: Option<RegisteredNegativeStopPrerequisite>,
     }
 
     fn prepare_live_producer_authority_basis(
@@ -4564,6 +8101,7 @@ mod unix {
         connection_id: &str,
         marker: &str,
         baseline_ref: &str,
+        feature: HostFeature,
     ) -> Result<PreparedLiveProducerBasis, Box<dyn Error>> {
         let context = McpConnectionContext::resolve(&fixture.runtime_home_path, connection_id)?
             .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
@@ -4623,6 +8161,10 @@ mod unix {
             .as_str()
             .ok_or_else(|| io::Error::other("live producer setup returned no Change Unit id"))?
             .to_owned();
+        let scope_revision = scope.response_value["state"]["scope_revision"]
+            .as_u64()
+            .filter(|revision| *revision > 0)
+            .ok_or_else(|| io::Error::other("live producer setup returned no scope revision"))?;
         let criterion_id = scope.response_value["state"]["acceptance_criteria"]
             .as_array()
             .filter(|criteria| criteria.len() == 1)
@@ -4631,17 +8173,201 @@ mod unix {
                 io::Error::other("live producer setup did not preserve exactly one criterion")
             })?
             .to_owned();
+        let project_id = live_fixture_project_id(fixture)?;
+        let registered_negative_stop = match feature {
+            HostFeature::VerifiedToolProducer => None,
+            HostFeature::RegisteredConnectionObservation => {
+                let project = list_projects(&fixture.runtime_home_path)?
+                    .into_iter()
+                    .find(|project| project.project_id == project_id)
+                    .ok_or_else(|| {
+                        io::Error::other("live producer project registration is missing")
+                    })?;
+                let conn = open_project_state_database_read_only(&project.state_db_path)?;
+                let row = conn
+                    .query_row(
+                        "SELECT guard_event_id, project_id, connection_internal_id,
+                                session_id, event_kind, decision, subject_json,
+                                occurred_at, guard_installation_id
+                           FROM guard_events
+                          WHERE project_id = ?1
+                            AND connection_internal_id = ?2
+                            AND event_kind = 'stop'
+                          ORDER BY rowid DESC
+                          LIMIT 1",
+                        rusqlite::params![project_id, connection_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, Option<String>>(3)?,
+                                row.get::<_, String>(4)?,
+                                row.get::<_, String>(5)?,
+                                row.get::<_, String>(6)?,
+                                row.get::<_, String>(7)?,
+                                row.get::<_, Option<String>>(8)?,
+                            ))
+                        },
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        io::Error::other(
+                            "registered-connection negative capture prerequisite is missing before source launch",
+                        )
+                    })?;
+                let session_id = row.3.ok_or_else(|| {
+                    io::Error::other("registered-connection negative Stop has no managed session")
+                })?;
+                validate_managed_host_session_id(&session_id)?;
+                let guard_installation_id = row.8.ok_or_else(|| {
+                    io::Error::other(
+                        "registered-connection negative Stop has no guard installation",
+                    )
+                })?;
+                let occurred_at = parse_canonical_utc_timestamp(&row.7)
+                    .filter(|occurred_at| *occurred_at <= DateTime::<Utc>::from(SystemTime::now()));
+                let subject: Value = serde_json::from_str(&row.6)?;
+                let raw_event_complete = subject
+                    .get("raw_event")
+                    .filter(|value| value.is_object())
+                    .is_some_and(live_capture_value_is_complete);
+                if occurred_at.is_none()
+                    || row.1 != project_id
+                    || row.2 != connection_id
+                    || row.4 != "stop"
+                    || !matches!(row.5.as_str(), "allow" | "deny")
+                    || !raw_event_complete
+                {
+                    return Err(io::Error::other(
+                        "registered-connection negative Stop prerequisite is not one complete exact managed event",
+                    )
+                    .into());
+                }
+                let row_sha256 = registered_negative_stop_row_sha256(RegisteredNegativeStopRow {
+                    event_id: &row.0,
+                    project_id: &row.1,
+                    connection_id: &row.2,
+                    session_id: &session_id,
+                    event_kind: &row.4,
+                    decision: &row.5,
+                    subject_json: &row.6,
+                    occurred_at: &row.7,
+                    guard_installation_id: &guard_installation_id,
+                })?;
+                Some(RegisteredNegativeStopPrerequisite {
+                    event_id: row.0,
+                    session_id,
+                    occurred_at: row.7,
+                    row_sha256,
+                })
+            }
+            _ => return Err(io::Error::other("unsupported producer feature").into()),
+        };
         Ok(PreparedLiveProducerBasis {
-            project_id: live_fixture_project_id(fixture)?,
+            project_id,
             task_id,
             change_unit_id,
+            scope_revision,
             target: serde_json::from_value(serde_json::json!({
                 "target_kind": "acceptance_criterion",
                 "acceptance_criterion_id": criterion_id
             }))?,
             baseline_ref: baseline_ref.to_owned(),
             run_marker: marker.to_owned(),
+            registered_negative_stop,
         })
+    }
+
+    fn revalidate_registered_negative_stop(
+        conn: &rusqlite::Connection,
+        prepared: &PreparedLiveProducerBasis,
+        connection_id: &str,
+        captured_session_id: &str,
+        intent_created_at: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let feature = HostFeature::RegisteredConnectionObservation;
+        let prerequisite = prepared
+            .registered_negative_stop
+            .as_ref()
+            .ok_or_else(|| live_source_record_invalid(feature, 0))?;
+        validate_domain_separated_correlation_id(
+            "registered negative guard event id",
+            &prerequisite.event_id,
+            "guard_event",
+        )
+        .map_err(|_| live_source_record_invalid(feature, 1))?;
+        validate_managed_host_session_id(&prerequisite.session_id)
+            .map_err(|_| live_source_record_invalid(feature, 1))?;
+        let row = conn
+            .query_row(
+                "SELECT guard_event_id, project_id, connection_internal_id,
+                        session_id, event_kind, decision, subject_json,
+                        occurred_at, guard_installation_id
+                   FROM guard_events
+                  WHERE project_id = ?1 AND guard_event_id = ?2",
+                rusqlite::params![prepared.project_id, prerequisite.event_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, Option<String>>(8)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| live_source_record_invalid(feature, 0))?;
+        let session_id = row
+            .3
+            .as_deref()
+            .ok_or_else(|| live_source_record_invalid(feature, 1))?;
+        let guard_installation_id = row
+            .8
+            .as_deref()
+            .ok_or_else(|| live_source_record_invalid(feature, 1))?;
+        let subject: Value =
+            serde_json::from_str(&row.6).map_err(|_| live_source_record_invalid(feature, 1))?;
+        let raw_event_complete = subject
+            .get("raw_event")
+            .filter(|value| value.is_object())
+            .is_some_and(live_capture_value_is_complete);
+        let occurred_at = parse_canonical_utc_timestamp(&row.7)
+            .ok_or_else(|| live_source_record_invalid(feature, 1))?;
+        let intent_created_at = parse_canonical_utc_timestamp(intent_created_at)
+            .ok_or_else(|| live_source_record_invalid(feature, 1))?;
+        let row_sha256 = registered_negative_stop_row_sha256(RegisteredNegativeStopRow {
+            event_id: &row.0,
+            project_id: &row.1,
+            connection_id: &row.2,
+            session_id,
+            event_kind: &row.4,
+            decision: &row.5,
+            subject_json: &row.6,
+            occurred_at: &row.7,
+            guard_installation_id,
+        })
+        .map_err(|_| live_source_record_invalid(feature, 1))?;
+        if row.0 != prerequisite.event_id
+            || row.1 != prepared.project_id
+            || row.2 != connection_id
+            || session_id != prerequisite.session_id
+            || session_id == captured_session_id
+            || row.4 != "stop"
+            || !matches!(row.5.as_str(), "allow" | "deny")
+            || row.7 != prerequisite.occurred_at
+            || occurred_at >= intent_created_at
+            || !raw_event_complete
+            || row_sha256 != prerequisite.row_sha256
+        {
+            return Err(live_source_record_invalid(feature, 1));
+        }
+        Ok(prerequisite.event_id.clone())
     }
 
     fn live_producer_source_prompt(
@@ -4677,11 +8403,17 @@ mod unix {
             }
         };
         let capture = canonical_json_string(&capture)?;
-        let source_step = match feature {
-            HostFeature::VerifiedToolProducer => format!(
-                "2. After the committed intent result is returned, invoke the host Bash tool exactly once with the exact input object `{{\"command\":\"{LIVE_VERIFIED_TOOL_COMMAND}\"}}`; do not add description, timeout, or any other input field. This benign command must complete successfully and must not write a Product Repository file."
+        let (source_step, completion_step) = match feature {
+            HostFeature::VerifiedToolProducer => (
+                format!(
+                    "2. After the committed intent result is returned, invoke the host shell tool exactly once so its canonical hook-facing Bash input is `{{\"command\":\"{LIVE_VERIFIED_TOOL_COMMAND}\"}}`; the model-facing tool argument name may differ, but do not add optional arguments or make another shell call. This benign command must complete successfully and must not write a Product Repository file."
+                ),
+                "3. After that shell call completes, call no further tool and do not try to close the Task. Report only whether the intent and shell source completed. The harness monitors the persisted post-tool barrier and terminates this source child without waiting for a Stop event.".to_owned(),
             ),
-            HostFeature::RegisteredConnectionObservation => "2. After the committed intent result is returned, call no further tool. Reply with exactly VOLICORD_LIVE_REGISTERED_CONNECTION_SOURCE and stop so the installed host emits its actual Stop event in this same session.".to_owned(),
+            HostFeature::RegisteredConnectionObservation => (
+                "2. After the committed intent result is returned, call no further tool. Reply with exactly VOLICORD_LIVE_REGISTERED_CONNECTION_SOURCE and stop so the installed host emits its actual Stop event in this same session.".to_owned(),
+                "3. Do not emit any other prose or invoke another tool before the host Stop event.".to_owned(),
+            ),
             _ => unreachable!("producer feature was validated above"),
         };
         Ok(format!(
@@ -4690,7 +8422,7 @@ mod unix {
                 "Do not edit files, inspect authentication material, print a prompt or transcript, or use a fixture event.\n\n",
                 "1. Call `volicord.prepare_evidence_capture` exactly once with `detail=full`, `task_id={task_id}`, `change_unit_id={change_unit_id}`, `baseline_ref={baseline_ref}`, target `{target}`, and capture `{capture}`. Require a committed result and retain only its capture-intent ref.\n",
                 "{source_step}\n",
-                "3. Report only whether the intent and actual source completed, then stop. Do not print tool input, tool output, a prompt, transcript, URL, token, or credential."
+                "{completion_step} Do not print tool input, tool output, a prompt, transcript, URL, token, or credential."
             ),
             routing = live_project_routing_instruction(&prepared.project_id),
             task_id = prepared.task_id,
@@ -4699,20 +8431,607 @@ mod unix {
             target = target,
             capture = capture,
             source_step = source_step,
+            completion_step = completion_step,
         ))
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
     struct ActualLiveProducerSource {
         capture_intent_id: String,
         capture_input_sha256: String,
         intent_state_version: u64,
         session_id: String,
+        watch_baseline_id: String,
         guard_installation_id: String,
         source_event_ids: Vec<String>,
         mismatched_event_id: String,
         host_invocation_id: Option<String>,
+        observed_outcome: Value,
+        observed_at: String,
         intent_precedes_source: bool,
         exact_session_connection_actor_scope_baseline: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    struct LiveProducerSourceBindingInput {
+        change_unit_id: String,
+        expected_change_unit_id: String,
+        scope_revision: u64,
+        expected_scope_revision: u64,
+        baseline_ref: String,
+        expected_baseline_ref: String,
+        target: EvidenceTarget,
+        expected_target: EvidenceTarget,
+        input_sha256: String,
+        expected_input_sha256: String,
+        expected_capture: bool,
+        requested_actor: String,
+        authority_actor: String,
+        expected_actor: String,
+        requesting_connection_id: String,
+        expected_connection_id: String,
+        workspace: GitWorkspaceContext,
+        expected_workspace: GitWorkspaceContext,
+        session_id: String,
+        watch_session_id: String,
+        watch_connection_id: String,
+        source_guard_installation_id: String,
+        watch_guard_installation_id: Option<String>,
+        watch_status: String,
+        watch_launch_origin: Option<String>,
+    }
+
+    impl LiveProducerSourceBindingInput {
+        fn source_independent_is_exact(&self) -> bool {
+            self.change_unit_id == self.expected_change_unit_id
+                && self.scope_revision > 0
+                && self.scope_revision == self.expected_scope_revision
+                && self.baseline_ref == self.expected_baseline_ref
+                && self.target == self.expected_target
+                && self.input_sha256 == self.expected_input_sha256
+                && self.expected_capture
+                && self.requested_actor == self.expected_actor
+                && self.authority_actor == self.expected_actor
+                && self.requesting_connection_id == self.expected_connection_id
+                && self.workspace == self.expected_workspace
+                && self.watch_session_id == self.session_id
+                && self.watch_connection_id == self.expected_connection_id
+                && self
+                    .watch_guard_installation_id
+                    .as_deref()
+                    .is_some_and(|installation_id| !installation_id.is_empty())
+                && self.watch_status == "active"
+                && self.watch_launch_origin.as_deref() == Some("managed_host")
+        }
+
+        fn is_exact(&self) -> bool {
+            self.source_independent_is_exact()
+                && self.watch_guard_installation_id.as_deref()
+                    == Some(self.source_guard_installation_id.as_str())
+        }
+    }
+
+    fn live_producer_source_within_intent_window<'a>(
+        intent_created_at: &str,
+        intent_expires_at: &str,
+        mut source_times: impl Iterator<Item = &'a str>,
+    ) -> bool {
+        let Ok(intent_created_at) = DateTime::parse_from_rfc3339(intent_created_at) else {
+            return false;
+        };
+        let Ok(intent_expires_at) = DateTime::parse_from_rfc3339(intent_expires_at) else {
+            return false;
+        };
+        if intent_created_at >= intent_expires_at {
+            return false;
+        }
+        source_times.all(|occurred_at| {
+            DateTime::parse_from_rfc3339(occurred_at).is_ok_and(|occurred_at| {
+                occurred_at >= intent_created_at && occurred_at < intent_expires_at
+            })
+        })
+    }
+
+    fn parse_canonical_utc_timestamp(raw: &str) -> Option<DateTime<Utc>> {
+        let timestamp = UtcTimestamp::parse(raw).ok()?;
+        timestamp.ensure_canonical_rfc3339_representable().ok()?;
+        (timestamp.to_canonical_string() == raw).then(|| timestamp.into_datetime())
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum LiveProducerSourceInspectionPhase {
+        InitialBarrier,
+        ImmutableRevalidation,
+    }
+
+    fn live_capture_intent_window_is_exact(
+        intent_created_at: &str,
+        intent_expires_at: &str,
+        audit_now: DateTime<Utc>,
+        phase: LiveProducerSourceInspectionPhase,
+    ) -> bool {
+        let Some(created_at) = parse_canonical_utc_timestamp(intent_created_at) else {
+            return false;
+        };
+        let Some(expires_at) = parse_canonical_utc_timestamp(intent_expires_at) else {
+            return false;
+        };
+        let exact_window = created_at
+            .checked_add_signed(chrono::Duration::minutes(15))
+            .is_some_and(|expected_expiry| expected_expiry == expires_at);
+        exact_window
+            && match phase {
+                LiveProducerSourceInspectionPhase::InitialBarrier => {
+                    created_at <= audit_now && audit_now < expires_at
+                }
+                LiveProducerSourceInspectionPhase::ImmutableRevalidation => true,
+            }
+    }
+
+    fn live_capture_source_times_are_current<'a>(
+        mut source_times: impl Iterator<Item = &'a str>,
+        audit_now: DateTime<Utc>,
+    ) -> bool {
+        source_times.all(|raw| {
+            parse_canonical_utc_timestamp(raw).is_some_and(|timestamp| timestamp <= audit_now)
+        })
+    }
+
+    fn live_capture_intent_authority_ref_is_exact(
+        reference: &StateRecordRef,
+        event_state_version: u64,
+        project_id: &str,
+        task_id: &str,
+        capture_intent_id: &str,
+    ) -> bool {
+        reference.record_kind == StateRecordKind::EvidenceCaptureIntent
+            && reference.record_id.as_str() == capture_intent_id
+            && reference.project_id.as_str() == project_id
+            && reference.task_id.as_ref().map(|value| value.as_str()) == Some(task_id)
+            && reference.produced_at_state_version.as_ref() == Some(&event_state_version)
+    }
+
+    impl ActualLiveProducerSource {
+        fn same_positive_source_coordinates(&self, other: &Self) -> bool {
+            self.capture_intent_id == other.capture_intent_id
+                && self.capture_input_sha256 == other.capture_input_sha256
+                && self.intent_state_version == other.intent_state_version
+                && self.session_id == other.session_id
+                && self.watch_baseline_id == other.watch_baseline_id
+                && self.guard_installation_id == other.guard_installation_id
+                && self.source_event_ids == other.source_event_ids
+                && self.host_invocation_id == other.host_invocation_id
+                && self.observed_outcome == other.observed_outcome
+                && self.observed_at == other.observed_at
+                && self.intent_precedes_source == other.intent_precedes_source
+                && self.exact_session_connection_actor_scope_baseline
+                    == other.exact_session_connection_actor_scope_baseline
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct LiveToolSourceCandidate {
+        event_id: String,
+        event_kind: String,
+        decision: String,
+        occurred_at: String,
+        installation_id: Option<String>,
+        invocation_id: Option<String>,
+        matches_expected_source: bool,
+        matches_expected_connection: bool,
+        matches_expected_session: bool,
+        event_time_is_exact: bool,
+        complete_post_result: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct LiveProducerSourceBarrierFailure {
+        finding_code: &'static str,
+        terminal: bool,
+        candidate_count: usize,
+        event_order: Vec<&'static str>,
+        pre_decision_class: &'static str,
+        invocation_identity_class: &'static str,
+    }
+
+    impl LiveProducerSourceBarrierFailure {
+        fn tool(
+            finding_code: &'static str,
+            terminal: bool,
+            candidates: &[LiveToolSourceCandidate],
+        ) -> Self {
+            let event_order = candidates
+                .iter()
+                .take(4)
+                .map(|candidate| match candidate.event_kind.as_str() {
+                    "pre_tool" => "pre_tool",
+                    "post_tool" => "post_tool",
+                    _ => "other",
+                })
+                .collect();
+            let mut pre_candidates = candidates
+                .iter()
+                .filter(|candidate| candidate.event_kind == "pre_tool");
+            let pre_decision_class = match (pre_candidates.next(), pre_candidates.next()) {
+                (None, _) => "not_observed",
+                (Some(candidate), None) if candidate.decision == "deny" => "deny",
+                (Some(_), None) => "not_deny",
+                (Some(_), Some(_)) => "ambiguous",
+            };
+            let invocation_identity_class = match candidates {
+                [pre, post] => match (&pre.invocation_id, &post.invocation_id) {
+                    (Some(left), Some(right)) if left == right => "equal",
+                    (Some(_), Some(_)) => "different",
+                    _ => "missing",
+                },
+                _ => "not_comparable",
+            };
+            Self {
+                finding_code,
+                terminal,
+                candidate_count: candidates.len(),
+                event_order,
+                pre_decision_class,
+                invocation_identity_class,
+            }
+        }
+
+        fn stop(finding_code: &'static str, terminal: bool, candidate_count: usize) -> Self {
+            Self {
+                finding_code,
+                terminal,
+                candidate_count,
+                event_order: Vec::new(),
+                pre_decision_class: "not_applicable",
+                invocation_identity_class: "not_applicable",
+            }
+        }
+
+        fn source(
+            feature: HostFeature,
+            finding_code: &'static str,
+            terminal: bool,
+            candidate_count: usize,
+        ) -> Self {
+            match feature {
+                HostFeature::VerifiedToolProducer => Self {
+                    finding_code,
+                    terminal,
+                    candidate_count,
+                    event_order: Vec::new(),
+                    pre_decision_class: "not_observed",
+                    invocation_identity_class: "not_comparable",
+                },
+                HostFeature::RegisteredConnectionObservation => {
+                    Self::stop(finding_code, terminal, candidate_count)
+                }
+                _ => unreachable!("source barrier requires a producer feature"),
+            }
+        }
+
+        fn timeout(feature: HostFeature, latest: &Self) -> Self {
+            let mut failure = latest.clone();
+            failure.finding_code = match feature {
+                HostFeature::VerifiedToolProducer => "exact_tool_source_barrier_timeout",
+                HostFeature::RegisteredConnectionObservation => "exact_stop_source_barrier_timeout",
+                _ => unreachable!("source barrier requires a producer feature"),
+            };
+            failure.terminal = true;
+            failure
+        }
+
+        fn safe_aggregates(&self) -> Value {
+            serde_json::json!({
+                "candidate_count": self.candidate_count,
+                "event_order": self.event_order,
+                "pre_decision_class": self.pre_decision_class,
+                "invocation_identity_class": self.invocation_identity_class
+            })
+        }
+    }
+
+    impl fmt::Display for LiveProducerSourceBarrierFailure {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str(self.finding_code)
+        }
+    }
+
+    impl Error for LiveProducerSourceBarrierFailure {}
+
+    fn live_source_record_invalid(feature: HostFeature, candidate_count: usize) -> Box<dyn Error> {
+        Box::new(LiveProducerSourceBarrierFailure::source(
+            feature,
+            "exact_source_record_invalid",
+            true,
+            candidate_count,
+        ))
+    }
+
+    fn bounded_live_source_candidate_count(observed_count: usize) -> usize {
+        observed_count.min(2)
+    }
+
+    fn exact_capture_intent_cardinality_failure(
+        feature: HostFeature,
+        observed_count: usize,
+    ) -> LiveProducerSourceBarrierFailure {
+        let candidate_count = bounded_live_source_candidate_count(observed_count);
+        let terminal = candidate_count > 1;
+        LiveProducerSourceBarrierFailure::source(
+            feature,
+            if terminal {
+                "exact_capture_intent_ambiguous"
+            } else {
+                "exact_capture_intent_missing"
+            },
+            terminal,
+            candidate_count,
+        )
+    }
+
+    fn require_exact_live_producer_source_independent_basis(
+        feature: HostFeature,
+        basis: &LiveProducerSourceBindingInput,
+    ) -> Result<(), LiveProducerSourceBarrierFailure> {
+        if basis.source_independent_is_exact() {
+            Ok(())
+        } else {
+            Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_source_binding_mismatch",
+                true,
+                0,
+            ))
+        }
+    }
+
+    struct ClassifiedLiveProducerFailure {
+        stage: &'static str,
+        finding_code: &'static str,
+    }
+
+    impl fmt::Debug for ClassifiedLiveProducerFailure {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .debug_struct("ClassifiedLiveProducerFailure")
+                .field("stage", &self.stage)
+                .field("finding_code", &self.finding_code)
+                .field("source", &"<discarded>")
+                .finish()
+        }
+    }
+
+    impl ClassifiedLiveProducerFailure {
+        fn boxed(
+            stage: &'static str,
+            finding_code: &'static str,
+            source: impl Into<Box<dyn Error>>,
+        ) -> Box<dyn Error> {
+            let _: Box<dyn Error> = source.into();
+            Box::new(Self {
+                stage,
+                finding_code,
+            })
+        }
+    }
+
+    impl fmt::Display for ClassifiedLiveProducerFailure {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str(self.finding_code)
+        }
+    }
+
+    impl Error for ClassifiedLiveProducerFailure {}
+
+    fn exact_capture_receipt_record_invalid(source: impl Into<Box<dyn Error>>) -> Box<dyn Error> {
+        ClassifiedLiveProducerFailure::boxed(
+            "producer_attempt",
+            "exact_capture_receipt_record_invalid",
+            source,
+        )
+    }
+
+    fn producer_chain_record_invalid(source: impl Into<Box<dyn Error>>) -> Box<dyn Error> {
+        ClassifiedLiveProducerFailure::boxed(
+            "producer_attempt",
+            "producer_chain_record_invalid",
+            source,
+        )
+    }
+
+    fn is_classified_live_producer_failure(error: &(dyn Error + 'static)) -> bool {
+        error.is::<LiveProducerSourceBarrierFailure>()
+            || error.is::<ClassifiedLiveProducerFailure>()
+    }
+
+    fn require_exact_live_tool_source_pair(
+        candidates: &[LiveToolSourceCandidate],
+        expected_guard_installation_id: &str,
+    ) -> Result<(), LiveProducerSourceBarrierFailure> {
+        if candidates.len() > 2 {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_pair_ambiguous",
+                true,
+                candidates,
+            ));
+        }
+        if candidates.is_empty() {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_pair_missing",
+                false,
+                candidates,
+            ));
+        }
+        if candidates.first().is_some_and(|candidate| {
+            candidate.event_kind == "pre_tool" && candidate.decision == "deny"
+        }) {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_pre_event_denied",
+                true,
+                candidates,
+            ));
+        }
+        if candidates.len() == 1 && candidates[0].event_kind == "post_tool" {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_pre_event_missing",
+                true,
+                candidates,
+            ));
+        }
+        if candidates[0].event_kind != "pre_tool"
+            || candidates
+                .get(1)
+                .is_some_and(|candidate| candidate.event_kind != "post_tool")
+        {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_order_mismatch",
+                true,
+                candidates,
+            ));
+        }
+        if !candidates
+            .iter()
+            .all(|candidate| candidate.matches_expected_source)
+        {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_source_binding_mismatch",
+                true,
+                candidates,
+            ));
+        }
+        if !candidates
+            .iter()
+            .all(|candidate| candidate.matches_expected_connection)
+            || !candidates
+                .iter()
+                .all(|candidate| candidate.matches_expected_session)
+        {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_connection_session_mismatch",
+                true,
+                candidates,
+            ));
+        }
+        if candidates
+            .iter()
+            .any(|candidate| candidate.installation_id.is_none())
+        {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_guard_installation_missing",
+                true,
+                candidates,
+            ));
+        }
+        if !candidates.iter().all(|candidate| {
+            candidate.installation_id.as_deref() == Some(expected_guard_installation_id)
+        }) {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_guard_installation_mismatch",
+                true,
+                candidates,
+            ));
+        }
+        if candidates.iter().any(|candidate| {
+            validate_domain_separated_correlation_id(
+                "selected tool guard event id",
+                &candidate.event_id,
+                "guard_event",
+            )
+            .is_err()
+        }) {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_id_invalid",
+                true,
+                candidates,
+            ));
+        }
+        if !candidates
+            .iter()
+            .all(|candidate| candidate.event_time_is_exact)
+        {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_time_order_mismatch",
+                true,
+                candidates,
+            ));
+        }
+        for candidate in candidates {
+            let Some(invocation_id) = candidate.invocation_id.as_deref() else {
+                return Err(LiveProducerSourceBarrierFailure::tool(
+                    "exact_tool_invocation_identity_missing",
+                    true,
+                    candidates,
+                ));
+            };
+            if validate_domain_separated_correlation_id(
+                "managed host invocation id",
+                invocation_id,
+                "managed_native_id",
+            )
+            .is_err()
+            {
+                return Err(LiveProducerSourceBarrierFailure::tool(
+                    "exact_tool_invocation_identity_invalid",
+                    true,
+                    candidates,
+                ));
+            }
+        }
+        if candidates.len() == 1 {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_pair_missing",
+                false,
+                candidates,
+            ));
+        }
+        let event_time_ordered = DateTime::parse_from_rfc3339(&candidates[0].occurred_at)
+            .ok()
+            .zip(DateTime::parse_from_rfc3339(&candidates[1].occurred_at).ok())
+            .is_some_and(|(pre, post)| pre <= post);
+        if !event_time_ordered {
+            return Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_event_time_order_mismatch",
+                true,
+                candidates,
+            ));
+        }
+        match (&candidates[0].invocation_id, &candidates[1].invocation_id) {
+            (Some(left), Some(right)) if left == right => {
+                if candidates[1].complete_post_result {
+                    Ok(())
+                } else {
+                    Err(LiveProducerSourceBarrierFailure::tool(
+                        "exact_tool_post_event_incomplete",
+                        true,
+                        candidates,
+                    ))
+                }
+            }
+            (Some(_), Some(_)) => Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_invocation_identity_mismatch",
+                true,
+                candidates,
+            )),
+            _ => Err(LiveProducerSourceBarrierFailure::tool(
+                "exact_tool_invocation_identity_missing",
+                true,
+                candidates,
+            )),
+        }
+    }
+
+    fn require_exact_registered_stop_source_decision(
+        decision: &str,
+    ) -> Result<(), LiveProducerSourceBarrierFailure> {
+        if matches!(decision, "allow" | "deny") {
+            Ok(())
+        } else {
+            Err(LiveProducerSourceBarrierFailure::stop(
+                "exact_stop_event_decision_invalid",
+                true,
+                1,
+            ))
+        }
     }
 
     fn inspect_actual_live_producer_source(
@@ -4720,6 +9039,7 @@ mod unix {
         prepared: &PreparedLiveProducerBasis,
         connection_id: &str,
         feature: HostFeature,
+        inspection_phase: LiveProducerSourceInspectionPhase,
     ) -> Result<ActualLiveProducerSource, Box<dyn Error>> {
         let project = list_projects(&fixture.runtime_home_path)?
             .into_iter()
@@ -4736,9 +9056,12 @@ mod unix {
                 "SELECT evidence_capture_intent_id, scope_revision, baseline_ref,
                         target_json, capture_spec_json, input_sha256,
                         requested_by_actor_source, requesting_connection_internal_id,
-                        session_context_json, workspace_context_json, created_at
+                        session_context_json, workspace_context_json, created_at,
+                        expires_at, change_unit_id
                    FROM evidence_capture_intents
-                  WHERE project_id = ?1 AND task_id = ?2 AND capture_kind = ?3",
+                  WHERE project_id = ?1 AND task_id = ?2 AND capture_kind = ?3
+                  ORDER BY evidence_capture_intent_id
+                  LIMIT 2",
             )?
             .query_map(
                 rusqlite::params![prepared.project_id, prepared.task_id, capture_kind],
@@ -4755,16 +9078,14 @@ mod unix {
                         row.get::<_, String>(8)?,
                         row.get::<_, String>(9)?,
                         row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
                     ))
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
         let [row] = rows.as_slice() else {
-            return Err(io::Error::other(format!(
-                "actual host must prepare exactly one {capture_kind} intent; found {}",
-                rows.len()
-            ))
-            .into());
+            return Err(exact_capture_intent_cardinality_failure(feature, rows.len()).into());
         };
         let (
             capture_intent_id,
@@ -4778,19 +9099,51 @@ mod unix {
             session_context_json,
             workspace_context_json,
             intent_created_at,
+            intent_expires_at,
+            intent_change_unit_id,
         ) = row;
-        let session_context: Value = serde_json::from_str(session_context_json)?;
-        let session_id = session_context["session_id"]
+        let source_audit_now = DateTime::<Utc>::from(SystemTime::now());
+        if !live_capture_intent_window_is_exact(
+            intent_created_at,
+            intent_expires_at,
+            source_audit_now,
+            inspection_phase,
+        ) {
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "capture_intent_window_invalid",
+                true,
+                0,
+            )
+            .into());
+        }
+        let session_id = live_capture_intent_session_id(session_context_json)
+            .map_err(|_| live_source_record_invalid(feature, 1))?
+            .ok_or_else(|| live_source_record_invalid(feature, 1))?
             .as_str()
-            .ok_or_else(|| io::Error::other("actual producer intent has no exact session id"))?
             .to_owned();
-        let managed_digest = session_id.strip_prefix("mhs_").ok_or_else(|| {
-            io::Error::other("actual producer intent is not opaque-session bound")
-        })?;
-        validate_lower_hex("managed host session digest", managed_digest, &[64])?;
-        let target: EvidenceTarget = serde_json::from_str(target_json)?;
-        let capture_spec: Value = serde_json::from_str(capture_spec_json)?;
-        let workspace: Value = serde_json::from_str(workspace_context_json)?;
+        let managed_digest = session_id
+            .strip_prefix("mhs_")
+            .ok_or_else(|| live_source_record_invalid(feature, 1))?;
+        validate_lower_hex("managed host session digest", managed_digest, &[64])
+            .map_err(|_| live_source_record_invalid(feature, 1))?;
+        let target: EvidenceTarget = serde_json::from_str(target_json)
+            .map_err(|_| live_source_record_invalid(feature, 1))?;
+        let capture_spec: Value = serde_json::from_str(capture_spec_json)
+            .map_err(|_| live_source_record_invalid(feature, 1))?;
+        let workspace: GitWorkspaceContext = serde_json::from_str(workspace_context_json)
+            .map_err(|_| live_source_record_invalid(feature, 1))?;
+        let current_workspace =
+            capture_git_workspace_snapshot(&fixture.repo_root)?.ok_or_else(|| {
+                io::Error::other("live producer fixture has no current Git workspace")
+            })?;
+        let expected_workspace = GitWorkspaceContext {
+            git_common_dir: current_workspace.layout.common_dir.display().to_string(),
+            worktree_id: current_workspace.worktree_id,
+            branch_ref: current_workspace.branch_ref,
+            head_sha: current_workspace.head_sha,
+            workspace_fingerprint: current_workspace.workspace_fingerprint,
+        };
         let expected_input_sha256 = match feature {
             HostFeature::VerifiedToolProducer => canonical_json_bare_sha256(&serde_json::json!({
                 "command": LIVE_VERIFIED_TOOL_COMMAND
@@ -4813,12 +9166,15 @@ mod unix {
             }
             _ => unreachable!("producer feature was validated above"),
         };
+        let expected_target_value = serde_json::to_value(&target)?;
         let event_rows = conn
             .prepare(
                 "SELECT state_version, actor_source, payload_json
                    FROM authority_events
                   WHERE project_id = ?1 AND task_id = ?2
-                    AND event_type = 'evidence_capture_prepared'",
+                    AND event_type = 'evidence_capture_prepared'
+                  ORDER BY state_version
+                  LIMIT 2",
             )?
             .query_map(
                 rusqlite::params![prepared.project_id, prepared.task_id],
@@ -4831,40 +9187,127 @@ mod unix {
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
+        let authority_event_count = bounded_live_source_candidate_count(event_rows.len());
         let matching_events = event_rows
             .into_iter()
             .filter_map(|(state_version, actor, payload_json)| {
                 let payload = serde_json::from_str::<Value>(&payload_json).ok()?;
-                (payload["capture_intent_ref"]["record_id"] == *capture_intent_id)
-                    .then_some((state_version, actor))
+                let capture_intent_ref = serde_json::from_value::<StateRecordRef>(
+                    payload.get("capture_intent_ref")?.clone(),
+                )
+                .ok()?;
+                let exact_payload = payload.as_object().is_some_and(|object| object.len() == 8)
+                    && live_capture_intent_authority_ref_is_exact(
+                        &capture_intent_ref,
+                        state_version,
+                        &prepared.project_id,
+                        &prepared.task_id,
+                        capture_intent_id,
+                    )
+                    && payload["capture_kind"].as_str() == Some(capture_kind)
+                    && payload["task_id"].as_str() == Some(prepared.task_id.as_str())
+                    && payload["change_unit_id"].as_str() == Some(prepared.change_unit_id.as_str())
+                    && payload["scope_revision"].as_u64() == Some(*scope_revision)
+                    && payload["baseline_ref"].as_str() == Some(baseline_ref.as_str())
+                    && payload.get("target") == Some(&expected_target_value)
+                    && payload["input_sha256"].as_str() == Some(input_sha256.as_str())
+                    && payload["expires_at"].as_str() == Some(intent_expires_at.as_str());
+                exact_payload.then_some((state_version, actor))
             })
             .collect::<Vec<_>>();
         let [(intent_state_version, authority_actor)] = matching_events.as_slice() else {
-            return Err(io::Error::other(
-                "actual producer intent has no unique matching authority event",
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_capture_intent_authority_event_mismatch",
+                true,
+                authority_event_count,
             )
             .into());
         };
+        if authority_event_count != 1 {
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_capture_intent_authority_event_mismatch",
+                true,
+                authority_event_count,
+            )
+            .into());
+        }
         let expected_actor = format!("agent_connection:{connection_id}");
         let watch_baseline = latest_watch_baseline_for_session(
             &fixture.runtime_home_path,
             &prepared.project_id,
             &session_id,
         )?
-        .ok_or_else(|| io::Error::other("actual producer session has no managed watch baseline"))?;
-        let watch_metadata: Value = serde_json::from_str(&watch_baseline.metadata_json)?;
+        .ok_or_else(|| {
+            LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_managed_watch_baseline_missing",
+                true,
+                0,
+            )
+        })?;
+        let watch_metadata: Value = serde_json::from_str(&watch_baseline.metadata_json)
+            .map_err(|_| live_source_record_invalid(feature, 1))?;
+        let mut source_binding_basis = LiveProducerSourceBindingInput {
+            change_unit_id: intent_change_unit_id.clone(),
+            expected_change_unit_id: prepared.change_unit_id.clone(),
+            scope_revision: *scope_revision,
+            expected_scope_revision: prepared.scope_revision,
+            baseline_ref: baseline_ref.clone(),
+            expected_baseline_ref: prepared.baseline_ref.clone(),
+            target: target.clone(),
+            expected_target: prepared.target.clone(),
+            input_sha256: input_sha256.clone(),
+            expected_input_sha256: expected_input_sha256.clone(),
+            expected_capture,
+            requested_actor: requested_by_actor_source.clone(),
+            authority_actor: authority_actor.clone(),
+            expected_actor,
+            requesting_connection_id: requesting_connection_internal_id.clone(),
+            expected_connection_id: connection_id.to_owned(),
+            workspace,
+            expected_workspace,
+            session_id: session_id.clone(),
+            watch_session_id: watch_baseline.session_id.clone(),
+            watch_connection_id: watch_baseline.connection_internal_id.clone(),
+            source_guard_installation_id: String::new(),
+            watch_guard_installation_id: watch_baseline.guard_installation_id.clone(),
+            watch_status: watch_baseline.status.clone(),
+            watch_launch_origin: watch_metadata["launch_origin"].as_str().map(str::to_owned),
+        };
+        require_exact_live_producer_source_independent_basis(feature, &source_binding_basis)?;
 
         let guard_rows = conn
             .prepare(
                 "SELECT guard_event_id, event_kind, decision, subject_json,
-                        occurred_at, guard_installation_id
+                        occurred_at, guard_installation_id,
+                        connection_internal_id, session_id
                    FROM guard_events
-                  WHERE project_id = ?1 AND connection_internal_id = ?2
-                    AND session_id = ?3
-                  ORDER BY rowid",
+                  WHERE project_id = ?1
+                    AND (
+                      (?2 = 'verified_tool_invocation'
+                       AND event_kind IN ('pre_tool', 'post_tool')
+                       AND ((connection_internal_id = ?3 AND session_id = ?4)
+                            OR (julianday(occurred_at) >= julianday(?5)
+                                AND julianday(occurred_at) < julianday(?6))))
+                      OR
+                      (?2 = 'registered_connection_observation'
+                       AND event_kind = 'stop'
+                       AND connection_internal_id = ?3 AND session_id = ?4)
+                    )
+                  ORDER BY rowid
+                  LIMIT 4",
             )?
             .query_map(
-                rusqlite::params![prepared.project_id, connection_id, session_id],
+                rusqlite::params![
+                    prepared.project_id,
+                    capture_kind,
+                    connection_id,
+                    session_id,
+                    intent_created_at,
+                    intent_expires_at,
+                ],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -4873,133 +9316,258 @@ mod unix {
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
                     ))
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
-        let mismatched_event_id = match feature {
-            HostFeature::VerifiedToolProducer => guard_rows
-                .iter()
-                .find(|(_, event_kind, _, _, _, _)| event_kind != "pre_tool")
-                .map(|row| row.0.clone())
-                .ok_or_else(|| io::Error::other("actual tool session has no mismatched event"))?,
-            HostFeature::RegisteredConnectionObservation => conn
-                .query_row(
-                    "SELECT guard_event_id
-                       FROM guard_events
-                      WHERE project_id = ?1
-                        AND connection_internal_id = ?2
-                        AND event_kind = 'stop'
-                        AND (session_id <> ?3 OR occurred_at < ?4)
-                      ORDER BY rowid DESC
-                      LIMIT 1",
-                    rusqlite::params![
-                        prepared.project_id,
-                        connection_id,
-                        session_id,
-                        intent_created_at
-                    ],
-                    |row| row.get::<_, String>(0),
+        let source_time_audit_now = DateTime::<Utc>::from(SystemTime::now());
+        let (
+            source_event_ids,
+            source_times,
+            source_installation,
+            host_invocation_id,
+            mismatched_event_id,
+            observed_outcome,
+            source_observed_at,
+        ) = match feature {
+            HostFeature::VerifiedToolProducer => {
+                let mut matching = Vec::new();
+                for (
+                    event_id,
+                    event_kind,
+                    decision,
+                    subject_json,
+                    occurred_at,
+                    installation,
+                    event_connection_id,
+                    event_session_id,
+                ) in &guard_rows
+                {
+                    let within_intent_window = live_producer_source_within_intent_window(
+                        intent_created_at,
+                        intent_expires_at,
+                        std::iter::once(occurred_at.as_str()),
+                    );
+                    let matches_expected_connection = event_connection_id == connection_id;
+                    let matches_expected_session = event_session_id == &session_id;
+                    if !matches!(event_kind.as_str(), "pre_tool" | "post_tool")
+                        || !(within_intent_window
+                            || matches_expected_connection && matches_expected_session)
+                    {
+                        continue;
+                    }
+                    let subject: Value = serde_json::from_str(subject_json)
+                        .map_err(|_| live_source_record_invalid(feature, guard_rows.len()))?;
+                    let raw_event = &subject["raw_event"];
+                    let matches_expected_source =
+                        live_verified_tool_source_matches(&subject, &expected_input_sha256);
+                    matching.push(LiveToolSourceCandidate {
+                        event_id: event_id.clone(),
+                        event_kind: event_kind.clone(),
+                        decision: decision.clone(),
+                        occurred_at: occurred_at.clone(),
+                        installation_id: installation.clone(),
+                        invocation_id: host_event_invocation_id(raw_event),
+                        matches_expected_source,
+                        matches_expected_connection,
+                        matches_expected_session,
+                        event_time_is_exact: within_intent_window
+                            && live_capture_source_times_are_current(
+                                std::iter::once(occurred_at.as_str()),
+                                source_time_audit_now,
+                            ),
+                        complete_post_result: event_kind != "post_tool"
+                            || live_tool_post_result_is_complete(&subject),
+                    });
+                }
+                require_exact_live_tool_source_pair(
+                    &matching,
+                    source_binding_basis
+                        .watch_guard_installation_id
+                        .as_deref()
+                        .expect("source-independent watch installation was validated"),
+                )?;
+                let invocation_id = matching[0]
+                    .invocation_id
+                    .as_ref()
+                    .expect("validated exact tool pair has invocation identity")
+                    .clone();
+                let post_subject_json = guard_rows
+                    .iter()
+                    .find(|event| event.0 == matching[1].event_id)
+                    .map(|event| event.3.as_str())
+                    .ok_or_else(|| live_source_record_invalid(feature, guard_rows.len()))?;
+                let post_subject: Value = serde_json::from_str(post_subject_json)
+                    .map_err(|_| live_source_record_invalid(feature, guard_rows.len()))?;
+                let observed_outcome =
+                    live_tool_post_observed_outcome(&post_subject).ok_or_else(|| {
+                        LiveProducerSourceBarrierFailure::tool(
+                            "exact_tool_post_event_incomplete",
+                            true,
+                            &matching,
+                        )
+                    })?;
+                (
+                    matching
+                        .iter()
+                        .map(|event| event.event_id.clone())
+                        .collect(),
+                    matching
+                        .iter()
+                        .map(|event| event.occurred_at.clone())
+                        .collect(),
+                    matching[0].installation_id.clone(),
+                    Some(invocation_id),
+                    matching[1].event_id.clone(),
+                    observed_outcome,
+                    matching[1].occurred_at.clone(),
                 )
-                .optional()?
-                .ok_or_else(|| {
-                    io::Error::other(
-                        "registered-connection negative capture has no prior actual-host Stop event with a stale or different session binding",
+            }
+            HostFeature::RegisteredConnectionObservation => {
+                let matching = guard_rows
+                    .iter()
+                    .filter(
+                        |(
+                            _,
+                            event_kind,
+                            _,
+                            _,
+                            occurred_at,
+                            _,
+                            event_connection_id,
+                            event_session_id,
+                        )| {
+                            event_kind == "stop"
+                                && event_connection_id == connection_id
+                                && event_session_id == &session_id
+                                && live_producer_source_within_intent_window(
+                                    intent_created_at,
+                                    intent_expires_at,
+                                    std::iter::once(occurred_at.as_str()),
+                                )
+                        },
                     )
-                })?,
+                    .collect::<Vec<_>>();
+                let [event] = matching.as_slice() else {
+                    let terminal = matching.len() > 1;
+                    let finding_code = if terminal {
+                        "exact_stop_event_ambiguous"
+                    } else {
+                        "exact_stop_event_missing"
+                    };
+                    return Err(LiveProducerSourceBarrierFailure::stop(
+                        finding_code,
+                        terminal,
+                        matching.len(),
+                    )
+                    .into());
+                };
+                validate_domain_separated_correlation_id(
+                    "selected Stop guard event id",
+                    &event.0,
+                    "guard_event",
+                )
+                .map_err(|_| live_source_record_invalid(feature, matching.len()))?;
+                require_exact_registered_stop_source_decision(&event.2)?;
+                let mismatched_event_id = revalidate_registered_negative_stop(
+                    &conn,
+                    prepared,
+                    connection_id,
+                    &session_id,
+                    intent_created_at,
+                )?;
+                let subject: Value = serde_json::from_str(&event.3)
+                    .map_err(|_| live_source_record_invalid(feature, guard_rows.len()))?;
+                let raw_event = subject
+                    .get("raw_event")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        LiveProducerSourceBarrierFailure::stop(
+                            "exact_stop_event_incomplete",
+                            true,
+                            1,
+                        )
+                    })?;
+                if !live_capture_value_is_complete(raw_event) {
+                    return Err(LiveProducerSourceBarrierFailure::stop(
+                        "exact_stop_event_incomplete",
+                        true,
+                        1,
+                    )
+                    .into());
+                }
+                let observation_sha256 = canonical_json_bare_sha256(raw_event)
+                    .map_err(|_| live_source_record_invalid(feature, guard_rows.len()))?;
+                (
+                    vec![event.0.clone()],
+                    vec![event.4.clone()],
+                    event.5.clone(),
+                    None,
+                    mismatched_event_id,
+                    serde_json::json!({
+                        "complete": true,
+                        "guard_event_kind": event.1,
+                        "guard_decision": event.2,
+                        "observation_sha256": observation_sha256,
+                    }),
+                    event.4.clone(),
+                )
+            }
             _ => unreachable!("producer feature was validated above"),
         };
-        let (source_event_ids, source_times, source_installation, host_invocation_id) =
-            match feature {
-                HostFeature::VerifiedToolProducer => {
-                    let mut matching = Vec::new();
-                    for (event_id, event_kind, decision, subject_json, occurred_at, installation) in
-                        &guard_rows
-                    {
-                        if !matches!(event_kind.as_str(), "pre_tool" | "post_tool") {
-                            continue;
-                        }
-                        let subject: Value = serde_json::from_str(subject_json)?;
-                        if subject["tool_input_sha256"] != expected_input_sha256
-                            || subject["raw_event"]["tool_name"] != LIVE_VERIFIED_TOOL_NAME
-                        {
-                            continue;
-                        }
-                        let invocation = host_event_invocation_id(&subject["raw_event"])?;
-                        matching.push((
-                            event_id.clone(),
-                            event_kind.clone(),
-                            decision.clone(),
-                            occurred_at.clone(),
-                            installation.clone(),
-                            invocation,
-                        ));
-                    }
-                    if matching.len() != 2
-                        || matching[0].1 != "pre_tool"
-                        || matching[1].1 != "post_tool"
-                        || matching[0].2 == "deny"
-                        || matching[0].5 != matching[1].5
-                    {
-                        return Err(io::Error::other(
-                            "actual host did not emit one allowed exact pre/post Bash event pair",
-                        )
-                        .into());
-                    }
-                    (
-                        matching.iter().map(|event| event.0.clone()).collect(),
-                        matching.iter().map(|event| event.3.clone()).collect(),
-                        matching[0].4.clone(),
-                        Some(matching[0].5.clone()),
-                    )
-                }
-                HostFeature::RegisteredConnectionObservation => {
-                    let matching = guard_rows
-                        .iter()
-                        .filter(|(_, event_kind, _, _, occurred_at, _)| {
-                            event_kind == "stop" && occurred_at >= intent_created_at
-                        })
-                        .collect::<Vec<_>>();
-                    let [event] = matching.as_slice() else {
-                        return Err(io::Error::other(format!(
-                            "actual host must emit exactly one post-intent Stop event; found {}",
-                            matching.len()
-                        ))
-                        .into());
-                    };
-                    (
-                        vec![event.0.clone()],
-                        vec![event.4.clone()],
-                        event.5.clone(),
-                        None,
-                    )
-                }
-                _ => unreachable!("producer feature was validated above"),
-            };
         let guard_installation_id = source_installation.ok_or_else(|| {
-            io::Error::other("actual producer source has no registered guard installation")
+            LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_source_guard_installation_missing",
+                true,
+                source_event_ids.len(),
+            )
         })?;
-        let intent_precedes_source = source_times
-            .iter()
-            .all(|occurred_at| occurred_at >= intent_created_at);
-        let exact_basis = *scope_revision > 0
-            && baseline_ref == &prepared.baseline_ref
-            && target == prepared.target
-            && input_sha256 == &expected_input_sha256
-            && expected_capture
-            && requested_by_actor_source == &expected_actor
-            && authority_actor == &expected_actor
-            && requesting_connection_internal_id == connection_id
-            && workspace
-                .as_object()
-                .is_some_and(|object| !object.is_empty())
-            && watch_baseline.session_id == session_id
-            && watch_baseline.connection_internal_id == connection_id
-            && watch_baseline.status == "active"
-            && watch_metadata["launch_origin"] == "managed_host";
-        if !intent_precedes_source || !exact_basis {
-            return Err(io::Error::other(
-                "actual producer intent/source does not preserve exact time, session, connection, actor, scope, baseline, target, and workspace binding",
+        if !live_capture_source_times_are_current(
+            source_times.iter().map(String::as_str),
+            DateTime::<Utc>::from(SystemTime::now()),
+        ) {
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "source_timestamp_future_or_noncanonical",
+                true,
+                source_event_ids.len(),
+            )
+            .into());
+        }
+        if watch_baseline.guard_installation_id.as_deref() != Some(guard_installation_id.as_str()) {
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_source_guard_installation_mismatch",
+                true,
+                source_event_ids.len(),
+            )
+            .into());
+        }
+        let intent_precedes_source = live_producer_source_within_intent_window(
+            intent_created_at,
+            intent_expires_at,
+            source_times.iter().map(String::as_str),
+        );
+        source_binding_basis.source_guard_installation_id = guard_installation_id.clone();
+        let exact_basis = source_binding_basis.is_exact();
+        if !intent_precedes_source {
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "source_did_not_follow_capture_intent",
+                true,
+                source_event_ids.len(),
+            )
+            .into());
+        }
+        if !exact_basis {
+            return Err(LiveProducerSourceBarrierFailure::source(
+                feature,
+                "exact_source_binding_mismatch",
+                true,
+                source_event_ids.len(),
             )
             .into());
         }
@@ -5008,16 +9576,20 @@ mod unix {
             capture_input_sha256: input_sha256.clone(),
             intent_state_version: *intent_state_version,
             session_id,
+            watch_baseline_id: watch_baseline.watch_baseline_id,
             guard_installation_id,
             source_event_ids,
             mismatched_event_id,
             host_invocation_id,
+            observed_outcome,
+            observed_at: source_observed_at,
             intent_precedes_source,
             exact_session_connection_actor_scope_baseline: exact_basis,
         })
     }
 
-    fn host_event_invocation_id(event: &Value) -> Result<String, Box<dyn Error>> {
+    fn host_event_invocation_id(event: &Value) -> Option<String> {
+        let mut observed = None;
         for pointer in [
             "/tool_use_id",
             "/tool_invocation_id",
@@ -5027,39 +9599,442 @@ mod unix {
             "/tool/id",
             "/tool_use/id",
         ] {
-            if let Some(value) = event.pointer(pointer).and_then(Value::as_str) {
-                if !value.trim().is_empty() {
-                    return Ok(value.trim().to_owned());
-                }
+            let Some(value) = event.pointer(pointer) else {
+                continue;
+            };
+            let Some(value) = value.as_str() else {
+                return Some(String::new());
+            };
+            if value.is_empty() || value.trim() != value {
+                return Some(String::new());
             }
+            if observed.as_deref().is_some_and(|prior| prior != value) {
+                return Some(String::new());
+            }
+            observed = Some(value.to_owned());
         }
-        Err(io::Error::other("actual host tool event has no invocation id").into())
+        observed
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    fn host_event_tool_name(event: &Value) -> Option<&str> {
+        ["/tool_name", "/tool/name"]
+            .into_iter()
+            .find_map(|pointer| event.pointer(pointer).and_then(Value::as_str))
+    }
+
+    fn host_event_tool_input(event: &Value) -> Option<&Value> {
+        [
+            "/tool_input",
+            "/input",
+            "/tool/input",
+            "/tool/arguments",
+            "/tool_use/input",
+        ]
+        .into_iter()
+        .find_map(|pointer| event.pointer(pointer))
+    }
+
+    fn host_event_tool_result(event: &Value) -> Option<&Value> {
+        ["/tool_response", "/tool_result", "/result", "/output"]
+            .into_iter()
+            .find_map(|pointer| event.pointer(pointer))
+            .filter(|value| !value.is_null())
+    }
+
+    fn live_verified_tool_source_matches(subject: &Value, expected_input_sha256: &str) -> bool {
+        let raw_event = &subject["raw_event"];
+        let expected_tool_input = serde_json::json!({"command": LIVE_VERIFIED_TOOL_COMMAND});
+        subject["tool_input_sha256"].as_str() == Some(expected_input_sha256)
+            && host_event_tool_name(raw_event) == Some(LIVE_VERIFIED_TOOL_NAME)
+            && host_event_tool_input(raw_event).is_some_and(|input| {
+                input == &expected_tool_input
+                    && canonical_json_bare_sha256(input)
+                        .is_ok_and(|digest| digest == expected_input_sha256)
+            })
+    }
+
+    fn live_capture_value_is_complete(value: &Value) -> bool {
+        match value {
+            Value::Object(object) => {
+                object.get("truncated").and_then(Value::as_bool) != Some(true)
+                    && object.get("partial").and_then(Value::as_bool) != Some(true)
+                    && object.get("complete").and_then(Value::as_bool) != Some(false)
+                    && object.get("is_complete").and_then(Value::as_bool) != Some(false)
+                    && object.values().all(live_capture_value_is_complete)
+            }
+            Value::Array(items) => items.iter().all(live_capture_value_is_complete),
+            _ => true,
+        }
+    }
+
+    fn live_tool_post_observed_outcome(subject: &Value) -> Option<Value> {
+        let raw_event = &subject["raw_event"];
+        let response = host_event_tool_result(raw_event)?;
+        let response_sha256 = canonical_json_bare_sha256(response).ok()?;
+        let response_size_bytes =
+            u64::try_from(canonical_json_string(response).ok()?.len()).ok()?;
+        if subject["tool_result_sha256"].as_str() != Some(response_sha256.as_str())
+            || subject["tool_result_size_bytes"].as_u64() != Some(response_size_bytes)
+        {
+            return None;
+        }
+        let success = [
+            "/tool_response/success",
+            "/tool_result/success",
+            "/result/success",
+            "/output/success",
+            "/success",
+        ]
+        .into_iter()
+        .find_map(|pointer| raw_event.pointer(pointer).and_then(Value::as_bool));
+        let exit_code = [
+            "/tool_response/exit_code",
+            "/tool_result/exit_code",
+            "/result/exit_code",
+            "/output/exit_code",
+            "/exit_code",
+        ]
+        .into_iter()
+        .find_map(|pointer| raw_event.pointer(pointer).and_then(Value::as_i64));
+        let success = success.or_else(|| exit_code.map(|code| code == 0))?;
+        live_capture_value_is_complete(response).then_some(())?;
+        Some(serde_json::json!({
+            "success": success,
+            "exit_code": exit_code,
+            "tool_result_sha256": response_sha256,
+            "tool_result_size_bytes": response_size_bytes,
+        }))
+    }
+
+    fn live_tool_post_result_is_complete(subject: &Value) -> bool {
+        live_tool_post_observed_outcome(subject).is_some()
+    }
+
+    fn inspect_live_producer_source_at_deadline<T>(
+        feature: HostFeature,
+        inspect: impl FnOnce() -> Result<T, Box<dyn Error>>,
+    ) -> Result<T, Box<dyn Error>> {
+        let error = match inspect() {
+            Ok(source) => return Ok(source),
+            Err(error) => error,
+        };
+        let Some(failure) = error
+            .downcast_ref::<LiveProducerSourceBarrierFailure>()
+            .cloned()
+        else {
+            return Err(error);
+        };
+        if failure.terminal {
+            return Err(error);
+        }
+        Err(LiveProducerSourceBarrierFailure::timeout(feature, &failure).into())
+    }
+
+    fn wait_for_actual_live_producer_source(
+        fixture: &LiveSmokeFixture,
+        turn: &mut InteractiveHostTurn,
+        prepared: &PreparedLiveProducerBasis,
+        connection_id: &str,
+        feature: HostFeature,
+    ) -> Result<ActualLiveProducerSource, Box<dyn Error>> {
+        let deadline = Instant::now() + LIVE_PRODUCER_SOURCE_BARRIER_TIMEOUT;
+        loop {
+            let error = match inspect_actual_live_producer_source(
+                fixture,
+                prepared,
+                connection_id,
+                feature,
+                LiveProducerSourceInspectionPhase::InitialBarrier,
+            ) {
+                Ok(source) => return Ok(source),
+                Err(error) => error,
+            };
+            let Some(failure) = error
+                .downcast_ref::<LiveProducerSourceBarrierFailure>()
+                .cloned()
+            else {
+                return Err(error);
+            };
+            if failure.terminal {
+                return Err(error);
+            }
+            if turn.child_mut()?.try_wait()?.is_some() {
+                thread::sleep(LIVE_PRODUCER_SOURCE_POLL_INTERVAL);
+                return inspect_actual_live_producer_source(
+                    fixture,
+                    prepared,
+                    connection_id,
+                    feature,
+                    LiveProducerSourceInspectionPhase::InitialBarrier,
+                );
+            }
+            if Instant::now() >= deadline {
+                return inspect_live_producer_source_at_deadline(feature, || {
+                    inspect_actual_live_producer_source(
+                        fixture,
+                        prepared,
+                        connection_id,
+                        feature,
+                        LiveProducerSourceInspectionPhase::InitialBarrier,
+                    )
+                });
+            }
+            thread::sleep(LIVE_PRODUCER_SOURCE_POLL_INTERVAL);
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
     struct LiveCaptureDurableSnapshot {
         state_version: u64,
+        project_updated_at: String,
+        durable_rows_sha256: String,
         authority_events: u64,
         capture_receipts: u64,
+        capture_source_claims: u64,
         staged_artifacts: u64,
+        staging_file_set_sha256: String,
         artifacts: u64,
         evidence_observations: u64,
         evidence_producers: u64,
     }
 
+    fn hash_live_capture_snapshot_field(hasher: &mut Sha256, bytes: &[u8]) {
+        hasher.update(u64::try_from(bytes.len()).unwrap_or(u64::MAX).to_be_bytes());
+        hasher.update(bytes);
+    }
+
+    fn hash_live_capture_snapshot_rows<P: Params>(
+        conn: &rusqlite::Connection,
+        hasher: &mut Sha256,
+        total_rows: &mut usize,
+        total_value_bytes: &mut usize,
+        domain_label: &str,
+        query: &str,
+        params: P,
+    ) -> Result<(), Box<dyn Error>> {
+        hash_live_capture_snapshot_field(hasher, domain_label.as_bytes());
+        let mut statement = conn.prepare(query)?;
+        let column_names = statement
+            .column_names()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        for column_name in &column_names {
+            hash_live_capture_snapshot_field(hasher, column_name.as_bytes());
+        }
+        let mut rows = statement.query(params)?;
+        while let Some(row) = rows.next()? {
+            *total_rows = total_rows.checked_add(1).ok_or_else(|| {
+                io::Error::other("live capture durable snapshot row count overflow")
+            })?;
+            if *total_rows > MAX_LIVE_CAPTURE_SNAPSHOT_ROWS {
+                return Err(io::Error::other(
+                    "live capture durable snapshot exceeds its row-count budget",
+                )
+                .into());
+            }
+            hasher.update(b"row\0");
+            for index in 0..column_names.len() {
+                match row.get_ref(index)? {
+                    ValueRef::Null => {
+                        hasher.update([0]);
+                        hash_live_capture_snapshot_field(hasher, &[]);
+                    }
+                    ValueRef::Integer(value) => {
+                        hasher.update([1]);
+                        hasher.update(value.to_be_bytes());
+                        *total_value_bytes = total_value_bytes.checked_add(8).ok_or_else(|| {
+                            io::Error::other("live capture durable snapshot byte count overflow")
+                        })?;
+                    }
+                    ValueRef::Real(value) => {
+                        hasher.update([2]);
+                        hasher.update(value.to_bits().to_be_bytes());
+                        *total_value_bytes = total_value_bytes.checked_add(8).ok_or_else(|| {
+                            io::Error::other("live capture durable snapshot byte count overflow")
+                        })?;
+                    }
+                    ValueRef::Text(bytes) => {
+                        hasher.update([3]);
+                        hash_live_capture_snapshot_field(hasher, bytes);
+                        *total_value_bytes =
+                            total_value_bytes.checked_add(bytes.len()).ok_or_else(|| {
+                                io::Error::other(
+                                    "live capture durable snapshot byte count overflow",
+                                )
+                            })?;
+                    }
+                    ValueRef::Blob(bytes) => {
+                        hasher.update([4]);
+                        hash_live_capture_snapshot_field(hasher, bytes);
+                        *total_value_bytes =
+                            total_value_bytes.checked_add(bytes.len()).ok_or_else(|| {
+                                io::Error::other(
+                                    "live capture durable snapshot byte count overflow",
+                                )
+                            })?;
+                    }
+                }
+                if *total_value_bytes > MAX_LIVE_CAPTURE_SNAPSHOT_VALUE_BYTES {
+                    return Err(io::Error::other(
+                        "live capture durable snapshot exceeds its byte budget",
+                    )
+                    .into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn live_capture_durable_rows_sha256(
+        conn: &rusqlite::Connection,
+        project_id: &str,
+        selected_guard_event_ids: &BTreeSet<String>,
+    ) -> Result<String, Box<dyn Error>> {
+        let mut hasher = Sha256::new();
+        hasher.update(b"volicord-live-capture-durable-snapshot-v2\0");
+        let mut total_rows = 0_usize;
+        let mut total_value_bytes = 0_usize;
+        for table in LIVE_CAPTURE_DURABLE_TABLES {
+            let query = format!("SELECT * FROM {table} WHERE project_id = ?1 ORDER BY rowid");
+            hash_live_capture_snapshot_rows(
+                conn,
+                &mut hasher,
+                &mut total_rows,
+                &mut total_value_bytes,
+                table,
+                &query,
+                [project_id],
+            )?;
+        }
+        for guard_event_id in selected_guard_event_ids {
+            hash_live_capture_snapshot_rows(
+                conn,
+                &mut hasher,
+                &mut total_rows,
+                &mut total_value_bytes,
+                "selected_guard_event",
+                "SELECT * FROM guard_events
+                  WHERE project_id = ?1 AND guard_event_id = ?2
+                  ORDER BY rowid",
+                rusqlite::params![project_id, guard_event_id],
+            )?;
+        }
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    fn live_capture_staging_file_set_sha256(project_home: &Path) -> Result<String, Box<dyn Error>> {
+        let artifacts_dir = project_home.join("artifacts");
+        let artifacts_directory_present = match fs::symlink_metadata(&artifacts_dir) {
+            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => true,
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "live capture artifacts path must remain a non-symlink directory",
+                )
+                .into())
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error.into()),
+        };
+        if !artifacts_directory_present {
+            return canonical_json_bare_sha256(&serde_json::json!({
+                "artifacts_directory_present": false,
+                "directories": [],
+                "files": []
+            }))
+            .map_err(Into::into);
+        }
+
+        let mut pending_directories = vec![(artifacts_dir.clone(), String::new())];
+        let mut directories = Vec::new();
+        let mut files = Vec::new();
+        let mut entry_count = 0_usize;
+        while let Some((directory, relative_directory)) = pending_directories.pop() {
+            for entry in fs::read_dir(&directory)? {
+                let entry = entry?;
+                entry_count = entry_count.checked_add(1).ok_or_else(|| {
+                    io::Error::other("live capture artifact-store entry count overflow")
+                })?;
+                if entry_count > MAX_LIVE_CAPTURE_STAGING_FILES {
+                    return Err(io::Error::other(
+                        "live capture artifact store exceeds its bounded entry-count budget",
+                    )
+                    .into());
+                }
+                let name = entry.file_name().into_string().map_err(|_| {
+                    io::Error::other("live capture artifact-store entry name is not valid UTF-8")
+                })?;
+                bounded_identity("live capture artifact-store entry name", &name, 256)?;
+                let relative = if relative_directory.is_empty() {
+                    name
+                } else {
+                    format!("{relative_directory}/{name}")
+                };
+                bounded_identity("live capture artifact-store relative path", &relative, 4096)?;
+                let metadata = fs::symlink_metadata(entry.path())?;
+                if metadata.file_type().is_symlink() {
+                    return Err(
+                        io::Error::other("live capture artifact store contains a symlink").into(),
+                    );
+                }
+                if metadata.is_dir() {
+                    directories.push(relative.clone());
+                    pending_directories.push((entry.path(), relative));
+                } else if metadata.is_file() {
+                    if metadata.len() > MAX_LIVE_CAPTURE_STAGING_FILE_BYTES {
+                        return Err(io::Error::other(
+                            "live capture artifact-store file exceeds its bounded size budget",
+                        )
+                        .into());
+                    }
+                    files.push((
+                        relative,
+                        metadata.len(),
+                        sha256_file(&entry.path(), MAX_LIVE_CAPTURE_STAGING_FILE_BYTES)?,
+                    ));
+                } else {
+                    return Err(io::Error::other(
+                        "live capture artifact store contains a non-regular entry",
+                    )
+                    .into());
+                }
+            }
+        }
+        directories.sort();
+        files.sort();
+        canonical_json_bare_sha256(&serde_json::json!({
+            "artifacts_directory_present": true,
+            "directories": directories,
+            "files": files
+        }))
+        .map_err(Into::into)
+    }
+
     fn live_capture_durable_snapshot(
         fixture: &LiveSmokeFixture,
         project_id: &str,
+        source: &ActualLiveProducerSource,
     ) -> Result<LiveCaptureDurableSnapshot, Box<dyn Error>> {
         let project = list_projects(&fixture.runtime_home_path)?
             .into_iter()
             .find(|project| project.project_id == project_id)
             .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
         let conn = open_project_state_database_read_only(&project.state_db_path)?;
-        conn.query_row(
-            "SELECT ps.state_version,
+        let staging_file_set_sha256 = live_capture_staging_file_set_sha256(&project.project_home)?;
+        let transaction = conn.unchecked_transaction()?;
+        let selected_guard_event_ids = source
+            .source_event_ids
+            .iter()
+            .chain(std::iter::once(&source.mismatched_event_id))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let durable_rows_sha256 =
+            live_capture_durable_rows_sha256(&transaction, project_id, &selected_guard_event_ids)?;
+        let snapshot = transaction.query_row(
+            "SELECT ps.state_version, ps.updated_at,
                     (SELECT COUNT(*) FROM authority_events WHERE project_id = ps.project_id),
                     (SELECT COUNT(*) FROM evidence_capture_receipts WHERE project_id = ps.project_id),
+                    (SELECT COUNT(*) FROM evidence_capture_source_claims WHERE project_id = ps.project_id),
                     (SELECT COUNT(*) FROM artifact_staging WHERE project_id = ps.project_id),
                     (SELECT COUNT(*) FROM artifacts WHERE project_id = ps.project_id),
                     (SELECT COUNT(*) FROM evidence_observations WHERE project_id = ps.project_id),
@@ -5070,21 +10045,38 @@ mod unix {
             |row| {
                 Ok(LiveCaptureDurableSnapshot {
                     state_version: row.get(0)?,
-                    authority_events: row.get(1)?,
-                    capture_receipts: row.get(2)?,
-                    staged_artifacts: row.get(3)?,
-                    artifacts: row.get(4)?,
-                    evidence_observations: row.get(5)?,
-                    evidence_producers: row.get(6)?,
+                    project_updated_at: row.get(1)?,
+                    durable_rows_sha256: durable_rows_sha256.clone(),
+                    authority_events: row.get(2)?,
+                    capture_receipts: row.get(3)?,
+                    capture_source_claims: row.get(4)?,
+                    staged_artifacts: row.get(5)?,
+                    staging_file_set_sha256: staging_file_set_sha256.clone(),
+                    artifacts: row.get(6)?,
+                    evidence_observations: row.get(7)?,
+                    evidence_producers: row.get(8)?,
                 })
             },
-        )
-        .map_err(Into::into)
+        )?;
+        transaction.rollback()?;
+        let confirmed_staging_file_set_sha256 =
+            live_capture_staging_file_set_sha256(&project.project_home)?;
+        if confirmed_staging_file_set_sha256 != staging_file_set_sha256 {
+            return Err(io::Error::other(
+                "live capture staging file set changed while taking its durable snapshot",
+            )
+            .into());
+        }
+        Ok(snapshot)
     }
 
     struct NegativeLiveCapture {
         rejected: bool,
         exit_code: i32,
+    }
+
+    fn exact_negative_capture_exit_code(timed_out: bool, exit_code: Option<i32>) -> Option<i32> {
+        (!timed_out && exit_code == Some(1)).then_some(1)
     }
 
     fn run_mismatched_live_capture(
@@ -5128,17 +10120,22 @@ mod unix {
             ])?,
             _ => return Err(io::Error::other("unsupported negative producer capture").into()),
         };
-        if output.timed_out || output.output.status.success() {
-            return Err(io::Error::other(format!(
-                "mismatched {}/{} capture did not fail closed",
-                prepared.project_id,
-                feature.as_str()
-            ))
-            .into());
-        }
+        let Some(exit_code) =
+            exact_negative_capture_exit_code(output.timed_out, output.output.status.code())
+        else {
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "negative_capture_rejection_class_mismatch",
+                io::Error::other(format!(
+                    "mismatched {}/{} capture did not produce the exact runtime/conflict rejection class",
+                    prepared.project_id,
+                    feature.as_str()
+                )),
+            ));
+        };
         Ok(NegativeLiveCapture {
             rejected: true,
-            exit_code: output.output.status.code().unwrap_or(-1),
+            exit_code,
         })
     }
 
@@ -5198,18 +10195,56 @@ mod unix {
             }
             _ => return Err(io::Error::other("unsupported exact producer capture").into()),
         };
-        require_success("exact release-candidate evidence capture", &output)?;
-        let value = json_stdout(&output)?;
-        let capture_intent_id = required_result_string(&value, "/capture_intent_id")?.to_owned();
-        let capture_receipt_id = required_result_string(&value, "/capture_receipt_id")?.to_owned();
-        let staged_receipt_handle_id =
-            required_result_string(&value, "/staged_receipt_handle_id")?.to_owned();
+        require_success("exact release-candidate evidence capture", &output).map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "exact_capture_command_failed",
+                source,
+            )
+        })?;
+        let value = json_stdout(&output).map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "exact_capture_output_invalid",
+                source,
+            )
+        })?;
+        let capture_intent_id = required_result_string(&value, "/capture_intent_id")
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_output_invalid",
+                    source,
+                )
+            })?
+            .to_owned();
+        let capture_receipt_id = required_result_string(&value, "/capture_receipt_id")
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_output_invalid",
+                    source,
+                )
+            })?
+            .to_owned();
+        let staged_receipt_handle_id = required_result_string(&value, "/staged_receipt_handle_id")
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_output_invalid",
+                    source,
+                )
+            })?
+            .to_owned();
         let complete = value["complete"] == true;
         if capture_intent_id != source.capture_intent_id || !complete {
-            return Err(io::Error::other(
-                "exact evidence capture output does not name the complete selected intent",
-            )
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "exact_capture_output_mismatch",
+                io::Error::other(
+                    "exact evidence capture output does not name the complete selected intent",
+                ),
+            ));
         }
         Ok(LiveCaptureCommandOutput {
             capture_intent_id,
@@ -5222,10 +10257,233 @@ mod unix {
     struct InspectedLiveCaptureReceipt {
         capture_receipt_id: String,
         staged_receipt_handle_id: String,
+        safe_receipt_json: String,
         safe_receipt_sha256: String,
+        safe_receipt_size_bytes: u64,
         result_sha256: String,
+        receipt_created_at: String,
+        intent_expires_at: String,
+        staging_artifact_json: String,
+        staging_safe_metadata_json: String,
+        staging_metadata_json: String,
+        body: PersistedEvidenceCaptureReceiptBody,
         source_claim_count: u64,
         capture_receipt_bound: bool,
+    }
+
+    #[derive(Clone)]
+    struct PersistedLiveStagedReceiptRow {
+        project_id: String,
+        handle_id: String,
+        task_id: String,
+        created_by_actor_source: String,
+        artifact_json: String,
+        safe_metadata_json: String,
+        tmp_path: String,
+        sha256: String,
+        size_bytes: u64,
+        content_type: String,
+        redaction_state: String,
+        status: String,
+        expires_at: String,
+        consumed_by_run_id: Option<String>,
+        promoted_artifact_id: Option<String>,
+        consumed_at: Option<String>,
+        created_at: String,
+        metadata_json: String,
+    }
+
+    #[derive(Clone, Copy)]
+    struct LiveStagedReceiptAuthorityBasis<'a> {
+        project_id: &'a str,
+        handle_id: &'a str,
+        task_id: &'a str,
+        actor_source: &'a str,
+        sha256: &'a str,
+        size_bytes: u64,
+        expires_at: &'a str,
+        created_at: &'a str,
+    }
+
+    fn live_staged_receipt_authority_matches(
+        row: &PersistedLiveStagedReceiptRow,
+        basis: LiveStagedReceiptAuthorityBasis<'_>,
+    ) -> bool {
+        row.project_id == basis.project_id
+            && row.handle_id == basis.handle_id
+            && row.task_id == basis.task_id
+            && row.created_by_actor_source == basis.actor_source
+            && row.sha256 == basis.sha256
+            && row.size_bytes == basis.size_bytes
+            && row.content_type == "application/json"
+            && row.redaction_state == "redacted"
+            && row.status == "staged"
+            && row.expires_at == basis.expires_at
+            && row.consumed_by_run_id.is_none()
+            && row.promoted_artifact_id.is_none()
+            && row.consumed_at.is_none()
+            && row.created_at == basis.created_at
+    }
+
+    fn is_canonical_json_object_text(raw: &str) -> bool {
+        serde_json::from_str::<Value>(raw)
+            .ok()
+            .is_some_and(|value| {
+                value.is_object()
+                    && canonical_json_string(&value).is_ok_and(|canonical| canonical == raw)
+            })
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    struct LiveCaptureSourceClaimTuple {
+        project_id: String,
+        source_claim_kind: String,
+        source_claim_id: String,
+        capture_intent_id: String,
+        capture_receipt_id: String,
+        capture_kind: String,
+        claimed_at: String,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct LiveCaptureSourceClaimBasis<'a> {
+        project_id: &'a str,
+        capture_intent_id: &'a str,
+        capture_receipt_id: &'a str,
+        capture_kind: &'a str,
+        claimed_at: &'a str,
+    }
+
+    fn live_capture_intent_session_id(
+        session_context_json: &str,
+    ) -> Result<Option<AgentSessionId>, Box<dyn Error>> {
+        let context: Value = serde_json::from_str(session_context_json)?;
+        let object = context
+            .as_object()
+            .filter(|object| object.len() == 1 && object.contains_key("session_id"))
+            .ok_or_else(|| {
+                io::Error::other("capture intent session context is not the exact stored shape")
+            })?;
+        match &object["session_id"] {
+            Value::String(session_id) if !session_id.trim().is_empty() => {
+                Ok(Some(AgentSessionId::new(session_id)))
+            }
+            Value::Null => Ok(None),
+            _ => Err(io::Error::other(
+                "capture intent session context has no valid session identifier",
+            )
+            .into()),
+        }
+    }
+
+    fn live_capture_receipt_time_window_is_valid(
+        intent_created_at: &str,
+        observed_at: &str,
+        receipt_created_at: &str,
+        intent_expires_at: &str,
+        audit_now: DateTime<Utc>,
+    ) -> bool {
+        let Some(intent_created_at) = parse_canonical_utc_timestamp(intent_created_at) else {
+            return false;
+        };
+        let Some(observed_at) = parse_canonical_utc_timestamp(observed_at) else {
+            return false;
+        };
+        let Some(receipt_created_at) = parse_canonical_utc_timestamp(receipt_created_at) else {
+            return false;
+        };
+        let Some(intent_expires_at) = parse_canonical_utc_timestamp(intent_expires_at) else {
+            return false;
+        };
+        intent_created_at <= observed_at
+            && observed_at <= receipt_created_at
+            && receipt_created_at <= audit_now
+            && receipt_created_at < intent_expires_at
+    }
+
+    fn expected_live_capture_source_claims(
+        basis: LiveCaptureSourceClaimBasis<'_>,
+        capture_spec: &EvidenceCaptureSpec,
+        intent_session_id: Option<&AgentSessionId>,
+        body: &PersistedEvidenceCaptureReceiptBody,
+    ) -> Result<Vec<LiveCaptureSourceClaimTuple>, Box<dyn Error>> {
+        let mut expected =
+            derive_evidence_capture_source_claims(capture_spec, intent_session_id, body)?
+                .into_iter()
+                .map(|claim| LiveCaptureSourceClaimTuple {
+                    project_id: basis.project_id.to_owned(),
+                    source_claim_kind: claim.source_claim_kind.as_str().to_owned(),
+                    source_claim_id: claim.source_claim_id,
+                    capture_intent_id: basis.capture_intent_id.to_owned(),
+                    capture_receipt_id: basis.capture_receipt_id.to_owned(),
+                    capture_kind: basis.capture_kind.to_owned(),
+                    claimed_at: basis.claimed_at.to_owned(),
+                })
+                .collect::<Vec<_>>();
+        expected.sort();
+        Ok(expected)
+    }
+
+    fn read_live_capture_source_claims(
+        conn: &rusqlite::Connection,
+        project_id: &str,
+        capture_receipt_id: &str,
+    ) -> Result<Vec<LiveCaptureSourceClaimTuple>, Box<dyn Error>> {
+        let mut statement = conn.prepare(
+            "SELECT project_id, source_claim_kind, source_claim_id,
+                    evidence_capture_intent_id, evidence_capture_receipt_id,
+                    capture_kind, claimed_at
+               FROM evidence_capture_source_claims
+              WHERE project_id = ?1 AND evidence_capture_receipt_id = ?2
+              ORDER BY project_id, source_claim_kind, source_claim_id",
+        )?;
+        let rows =
+            statement.query_map(rusqlite::params![project_id, capture_receipt_id], |row| {
+                Ok(LiveCaptureSourceClaimTuple {
+                    project_id: row.get(0)?,
+                    source_claim_kind: row.get(1)?,
+                    source_claim_id: row.get(2)?,
+                    capture_intent_id: row.get(3)?,
+                    capture_receipt_id: row.get(4)?,
+                    capture_kind: row.get(5)?,
+                    claimed_at: row.get(6)?,
+                })
+            })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    fn inspect_live_staged_receipt_body(
+        project_home: &Path,
+        tmp_path: &str,
+    ) -> Result<Option<InspectedLivePromotedReceiptBody>, Box<dyn Error>> {
+        let relative = Path::new(tmp_path);
+        if tmp_path.contains('\\') || relative.is_absolute() {
+            return Ok(None);
+        }
+        let mut components = relative.components();
+        if !matches!(
+            components.next(),
+            Some(std::path::Component::Normal(component))
+                if component == OsStr::new(ARTIFACTS_DIR)
+        ) || !matches!(
+            components.next(),
+            Some(std::path::Component::Normal(component)) if component == OsStr::new("tmp")
+        ) {
+            return Ok(None);
+        }
+        let Some(std::path::Component::Normal(_)) = components.next() else {
+            return Ok(None);
+        };
+        if !components.all(|component| matches!(component, std::path::Component::Normal(_))) {
+            return Ok(None);
+        }
+        let Ok(artifact_relative) = relative.strip_prefix(Path::new(ARTIFACTS_DIR)) else {
+            return Ok(None);
+        };
+        let Some(artifact_relative) = artifact_relative.to_str() else {
+            return Ok(None);
+        };
+        inspect_live_promoted_receipt_body(project_home, Some(artifact_relative))
     }
 
     fn inspect_live_capture_receipt(
@@ -5240,14 +10498,23 @@ mod unix {
             .find(|project| project.project_id == prepared.project_id)
             .ok_or_else(|| io::Error::other("live producer project registration is missing"))?;
         let conn = open_project_state_database_read_only(&project.state_db_path)?;
+        let receipt_audit_now = DateTime::<Utc>::from(SystemTime::now());
         let row = conn
             .query_row(
-                "SELECT evidence_capture_receipt_id, evidence_capture_intent_id,
-                        staging_handle_id, capture_kind, input_sha256, result_sha256,
-                        safe_receipt_json, safe_receipt_sha256, safe_receipt_size_bytes,
-                        completeness
-                   FROM evidence_capture_receipts
-                  WHERE project_id = ?1 AND evidence_capture_intent_id = ?2",
+                "SELECT r.evidence_capture_receipt_id, r.evidence_capture_intent_id,
+                        r.staging_handle_id, r.capture_kind, r.input_sha256, r.result_sha256,
+                        r.safe_receipt_json, r.safe_receipt_sha256,
+                        r.safe_receipt_size_bytes, r.completeness, r.created_at,
+                        i.capture_kind, i.capture_spec_json, i.session_context_json,
+                        r.expected_outcome_json, r.observed_outcome_json,
+                        r.observed_by_actor_source, r.observed_at, r.limitations_json,
+                        r.source_refs_json, r.metadata_json, i.expected_outcome_json,
+                        i.expires_at, i.created_at
+                   FROM evidence_capture_receipts r
+                   JOIN evidence_capture_intents i
+                     ON i.project_id = r.project_id
+                    AND i.evidence_capture_intent_id = r.evidence_capture_intent_id
+                  WHERE r.project_id = ?1 AND r.evidence_capture_intent_id = ?2",
                 rusqlite::params![prepared.project_id, source.capture_intent_id],
                 |row| {
                     Ok((
@@ -5261,11 +10528,31 @@ mod unix {
                         row.get::<_, String>(7)?,
                         row.get::<_, u64>(8)?,
                         row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, String>(13)?,
+                        row.get::<_, String>(14)?,
+                        row.get::<_, String>(15)?,
+                        row.get::<_, String>(16)?,
+                        row.get::<_, String>(17)?,
+                        row.get::<_, String>(18)?,
+                        row.get::<_, String>(19)?,
+                        row.get::<_, String>(20)?,
+                        row.get::<_, String>(21)?,
+                        row.get::<_, String>(22)?,
+                        row.get::<_, String>(23)?,
                     ))
                 },
             )
             .optional()?
-            .ok_or_else(|| io::Error::other("exact capture created no durable receipt"))?;
+            .ok_or_else(|| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_receipt_missing",
+                    io::Error::other("exact capture created no durable receipt"),
+                )
+            })?;
         let (
             receipt_id,
             intent_id,
@@ -5277,10 +10564,45 @@ mod unix {
             safe_receipt_sha256,
             safe_receipt_size_bytes,
             completeness,
+            receipt_created_at,
+            intent_capture_kind,
+            capture_spec_json,
+            session_context_json,
+            receipt_expected_outcome_json,
+            receipt_observed_outcome_json,
+            receipt_observed_by_actor_source,
+            receipt_observed_at,
+            receipt_limitations_json,
+            receipt_source_refs_json,
+            receipt_metadata_json,
+            intent_expected_outcome_json,
+            intent_expires_at,
+            intent_created_at,
         ) = row;
-        validate_lower_hex("safe receipt sha256", &safe_receipt_sha256, &[64])?;
-        validate_lower_hex("capture result sha256", &result_sha256, &[64])?;
-        let body: PersistedEvidenceCaptureReceiptBody = serde_json::from_str(&safe_receipt_json)?;
+        validate_lower_hex("safe receipt sha256", &safe_receipt_sha256, &[64]).map_err(
+            |source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_receipt_record_invalid",
+                    source,
+                )
+            },
+        )?;
+        validate_lower_hex("capture result sha256", &result_sha256, &[64]).map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "exact_capture_receipt_record_invalid",
+                source,
+            )
+        })?;
+        let body: PersistedEvidenceCaptureReceiptBody = serde_json::from_str(&safe_receipt_json)
+            .map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_receipt_record_invalid",
+                    source,
+                )
+            })?;
         let guard_event_ids = body
             .source
             .guard_event_ids
@@ -5292,18 +10614,127 @@ mod unix {
             HostFeature::RegisteredConnectionObservation => "registered_connection_observation",
             _ => return Err(io::Error::other("unsupported producer receipt kind").into()),
         };
-        let source_claim_count: u64 = conn.query_row(
-            "SELECT COUNT(*)
-               FROM evidence_capture_source_claims
-              WHERE project_id = ?1 AND evidence_capture_receipt_id = ?2",
-            rusqlite::params![prepared.project_id, receipt_id],
-            |row| row.get(0),
-        )?;
-        let expected_claim_count = if feature == HostFeature::VerifiedToolProducer {
-            3
-        } else {
-            1
-        };
+        let capture_spec: EvidenceCaptureSpec =
+            serde_json::from_str(&capture_spec_json).map_err(|source| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_receipt_record_invalid",
+                    source,
+                )
+            })?;
+        let canonical_body =
+            canonical_json_string(&body).map_err(exact_capture_receipt_record_invalid)?;
+        let canonical_body_expected_outcome = canonical_json_string(&body.expected_outcome)
+            .map_err(exact_capture_receipt_record_invalid)?;
+        let canonical_body_observed_outcome = canonical_json_string(&body.observed_outcome)
+            .map_err(exact_capture_receipt_record_invalid)?;
+        let canonical_body_limitations = canonical_json_string(&body.limitations)
+            .map_err(exact_capture_receipt_record_invalid)?;
+        let canonical_body_source_metadata =
+            canonical_json_string(&serde_json::json!({"source": &body.source}))
+                .map_err(exact_capture_receipt_record_invalid)?;
+        let source_observed_outcome = serde_json::to_value(&body.observed_outcome)
+            .map_err(exact_capture_receipt_record_invalid)?;
+        let recomputed_result_sha256 = canonical_json_bare_sha256(&body.observed_outcome)
+            .map_err(exact_capture_receipt_record_invalid)?;
+        let intent_session_id = live_capture_intent_session_id(&session_context_json)
+            .map_err(exact_capture_receipt_record_invalid)?;
+        let expected_source_claims = expected_live_capture_source_claims(
+            LiveCaptureSourceClaimBasis {
+                project_id: &prepared.project_id,
+                capture_intent_id: &source.capture_intent_id,
+                capture_receipt_id: &receipt_id,
+                capture_kind: &capture_kind,
+                claimed_at: &receipt_created_at,
+            },
+            &capture_spec,
+            intent_session_id.as_ref(),
+            &body,
+        )
+        .map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "exact_capture_source_claim_derivation_failed",
+                source,
+            )
+        })?;
+        let source_claims =
+            read_live_capture_source_claims(&conn, &prepared.project_id, &receipt_id)?;
+        let source_claim_count = u64::try_from(source_claims.len())?;
+        let expected_claim_count = u64::try_from(expected_source_claims.len())?;
+        let connection_id = prepared_connection_id(fixture, prepared)?;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
+        let staged_receipt = conn
+            .query_row(
+                "SELECT project_id, handle_id, task_id, created_by_actor_source,
+                        artifact_json, safe_metadata_json, tmp_path, sha256, size_bytes,
+                        content_type, redaction_state,
+                        status, expires_at, consumed_by_run_id, promoted_artifact_id,
+                        consumed_at, created_at, metadata_json
+                   FROM artifact_staging
+                  WHERE project_id = ?1 AND handle_id = ?2",
+                rusqlite::params![prepared.project_id, staging_handle_id],
+                |row| {
+                    Ok(PersistedLiveStagedReceiptRow {
+                        project_id: row.get(0)?,
+                        handle_id: row.get(1)?,
+                        task_id: row.get(2)?,
+                        created_by_actor_source: row.get(3)?,
+                        artifact_json: row.get(4)?,
+                        safe_metadata_json: row.get(5)?,
+                        tmp_path: row.get(6)?,
+                        sha256: row.get(7)?,
+                        size_bytes: row.get(8)?,
+                        content_type: row.get(9)?,
+                        redaction_state: row.get(10)?,
+                        status: row.get(11)?,
+                        expires_at: row.get(12)?,
+                        consumed_by_run_id: row.get(13)?,
+                        promoted_artifact_id: row.get(14)?,
+                        consumed_at: row.get(15)?,
+                        created_at: row.get(16)?,
+                        metadata_json: row.get(17)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or_else(|| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "exact_capture_staging_missing",
+                    io::Error::other("exact capture created no matching transient staging row"),
+                )
+            })?;
+        let staged_body =
+            inspect_live_staged_receipt_body(&project.project_home, &staged_receipt.tmp_path)?;
+        let staged_body_exact = staged_body.as_ref().is_some_and(|staged| {
+            live_retained_receipt_body_matches(
+                staged,
+                &safe_receipt_json,
+                &safe_receipt_sha256,
+                safe_receipt_size_bytes,
+            ) && serde_json::from_slice::<PersistedEvidenceCaptureReceiptBody>(&staged.bytes)
+                .ok()
+                .as_ref()
+                == Some(&body)
+        });
+        let staged_authority_exact = live_staged_receipt_authority_matches(
+            &staged_receipt,
+            LiveStagedReceiptAuthorityBasis {
+                project_id: &prepared.project_id,
+                handle_id: &staging_handle_id,
+                task_id: &prepared.task_id,
+                actor_source: &expected_actor_source,
+                sha256: &safe_receipt_sha256,
+                size_bytes: safe_receipt_size_bytes,
+                expires_at: &intent_expires_at,
+                created_at: &receipt_created_at,
+            },
+        );
+        let staged_metadata_canonical =
+            is_canonical_json_object_text(&staged_receipt.artifact_json)
+                && is_canonical_json_object_text(&staged_receipt.safe_metadata_json)
+                && is_canonical_json_object_text(&staged_receipt.metadata_json);
         let host_invocation_matches = match feature {
             HostFeature::VerifiedToolProducer => {
                 body.source.host_invocation_id.as_ref().map(String::as_str)
@@ -5320,16 +10751,49 @@ mod unix {
             && output.complete
             && intent_id == source.capture_intent_id
             && capture_kind == expected_kind
+            && intent_capture_kind == capture_kind
             && input_sha256 == source.capture_input_sha256
             && completeness == "complete"
             && safe_receipt_size_bytes == u64::try_from(safe_receipt_json.len())?
             && format!("{:x}", Sha256::digest(safe_receipt_json.as_bytes())) == safe_receipt_sha256
+            && canonical_body == safe_receipt_json
+            && body.schema_version == "volicord.evidence_capture_receipt.v1"
             && body.capture_intent_id.as_str() == source.capture_intent_id
             && evidence_producer_kind_text(body.capture_kind) == expected_kind
             && body.input_sha256 == source.capture_input_sha256
             && body.result_sha256 == result_sha256
+            && recomputed_result_sha256 == result_sha256
+            && receipt_expected_outcome_json == intent_expected_outcome_json
+            && canonical_body_expected_outcome == receipt_expected_outcome_json
+            && validate_evidence_capture_expected_outcome(&capture_spec, &body.expected_outcome)
+                .is_ok()
+            && canonical_body_observed_outcome == receipt_observed_outcome_json
+            && validate_evidence_capture_observed_outcome(&capture_spec, &body.observed_outcome)
+                .is_ok()
+            && source_observed_outcome == source.observed_outcome
+            && receipt_observed_at == source.observed_at
+            && body.observed_at.to_canonical_string() == source.observed_at
+            && live_capture_intent_window_is_exact(
+                &intent_created_at,
+                &intent_expires_at,
+                receipt_audit_now,
+                LiveProducerSourceInspectionPhase::ImmutableRevalidation,
+            )
+            && live_capture_receipt_time_window_is_valid(
+                &intent_created_at,
+                &source.observed_at,
+                &receipt_created_at,
+                &intent_expires_at,
+                receipt_audit_now,
+            )
+            && receipt_observed_by_actor_source == expected_actor_source
+            && body.observed_by_actor_source.to_canonical_string() == expected_actor_source
+            && canonical_body_limitations == receipt_limitations_json
+            && receipt_source_refs_json == "[]"
+            && receipt_metadata_json == canonical_body_source_metadata
             && body.complete
-            && body.source.connection_id.as_str() == prepared_connection_id(fixture, prepared)?
+            && body.redaction_state == RedactionState::Redacted
+            && body.source.connection_id.as_str() == connection_id
             && body.source.session_id.as_ref().map(|value| value.as_str())
                 == Some(source.session_id.as_str())
             && body
@@ -5347,18 +10811,33 @@ mod unix {
                     .as_slice()
             && body.source.watch_observation_refs.is_empty()
             && host_invocation_matches
-            && source_claim_count == expected_claim_count;
+            && source_claim_count == expected_claim_count
+            && source_claims == expected_source_claims
+            && staged_authority_exact
+            && staged_metadata_canonical
+            && staged_body_exact;
         if !bound {
-            return Err(io::Error::other(
-                "durable capture receipt is not exactly bound to the live intent and source",
-            )
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "exact_capture_receipt_binding_mismatch",
+                io::Error::other(
+                    "durable capture receipt is not exactly bound to the live intent and source",
+                ),
+            ));
         }
         Ok(InspectedLiveCaptureReceipt {
             capture_receipt_id: receipt_id,
             staged_receipt_handle_id: staging_handle_id,
+            safe_receipt_json,
             safe_receipt_sha256,
+            safe_receipt_size_bytes,
             result_sha256,
+            receipt_created_at,
+            intent_expires_at,
+            staging_artifact_json: staged_receipt.artifact_json,
+            staging_safe_metadata_json: staged_receipt.safe_metadata_json,
+            staging_metadata_json: staged_receipt.metadata_json,
+            body,
             source_claim_count,
             capture_receipt_bound: bound,
         })
@@ -5444,6 +10923,73 @@ mod unix {
         ordered: bool,
     }
 
+    #[derive(Clone)]
+    struct LiveProducerResumeDiagnosticObservation {
+        total_tool_calls: u64,
+        record_run_calls: u64,
+        record_run_successes: u64,
+        status_calls: u64,
+        status_successes: u64,
+        check_close_calls: u64,
+        check_close_successes: u64,
+        record_run_event_id: Option<i64>,
+        status_event_id: Option<i64>,
+        check_close_event_id: Option<i64>,
+    }
+
+    impl LiveProducerResumeDiagnosticObservation {
+        fn ordered(&self) -> bool {
+            self.record_run_event_id
+                .zip(self.status_event_id)
+                .zip(self.check_close_event_id)
+                .is_some_and(|((record_run, status), check_close)| {
+                    record_run < status && status < check_close
+                })
+        }
+
+        fn is_exact(&self) -> bool {
+            self.total_tool_calls == 3
+                && self.record_run_calls == 1
+                && self.record_run_successes == 1
+                && self.status_calls == 1
+                && self.status_successes == 1
+                && self.check_close_calls == 1
+                && self.check_close_successes == 1
+                && self.ordered()
+        }
+    }
+
+    #[test]
+    fn live_producer_resume_diagnostics_reject_retries_and_extra_tools() {
+        let exact = LiveProducerResumeDiagnosticObservation {
+            total_tool_calls: 3,
+            record_run_calls: 1,
+            record_run_successes: 1,
+            status_calls: 1,
+            status_successes: 1,
+            check_close_calls: 1,
+            check_close_successes: 1,
+            record_run_event_id: Some(10),
+            status_event_id: Some(11),
+            check_close_event_id: Some(12),
+        };
+        assert!(exact.is_exact());
+
+        let mut failed_then_retried = exact.clone();
+        failed_then_retried.total_tool_calls = 4;
+        failed_then_retried.record_run_calls = 2;
+        assert!(!failed_then_retried.is_exact());
+        let mut extra_tool = exact.clone();
+        extra_tool.total_tool_calls = 4;
+        assert!(!extra_tool.is_exact());
+        let mut noncommitting_record_run = exact.clone();
+        noncommitting_record_run.record_run_successes = 0;
+        assert!(!noncommitting_record_run.is_exact());
+        let mut wrong_order = exact;
+        wrong_order.status_event_id = Some(9);
+        assert!(!wrong_order.is_exact());
+    }
+
     fn assert_live_producer_resume_diagnostic(
         fixture: &LiveSmokeFixture,
         connection_id: &str,
@@ -5456,13 +11002,23 @@ mod unix {
         )?;
         let observed = conn.query_row(
             "SELECT
+                 COALESCE(SUM(CASE WHEN e.tool_name IS NOT NULL THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                   WHEN e.tool_name = 'volicord.record_run'
+                   THEN 1 ELSE 0 END), 0),
                  COALESCE(SUM(CASE
                    WHEN e.tool_name = 'volicord.record_run'
                     AND e.core_committed = 1 AND e.outcome = 'success'
                    THEN 1 ELSE 0 END), 0),
                  COALESCE(SUM(CASE
                    WHEN e.tool_name = 'volicord.status'
+                   THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                   WHEN e.tool_name = 'volicord.status'
                     AND e.core_committed = 0 AND e.outcome = 'success'
+                   THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
+                   WHEN e.tool_name = 'volicord.check_close'
                    THEN 1 ELSE 0 END), 0),
                  COALESCE(SUM(CASE
                    WHEN e.tool_name = 'volicord.check_close'
@@ -5476,30 +11032,41 @@ mod unix {
               WHERE s.connection_id = ?1 AND s.project_id = ?2 AND e.event_id > ?3",
             rusqlite::params![connection_id, project_id, cursor.0],
             |row| {
-                Ok((
-                    row.get::<_, u64>(0)?,
-                    row.get::<_, u64>(1)?,
-                    row.get::<_, u64>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                ))
+                Ok(LiveProducerResumeDiagnosticObservation {
+                    total_tool_calls: row.get(0)?,
+                    record_run_calls: row.get(1)?,
+                    record_run_successes: row.get(2)?,
+                    status_calls: row.get(3)?,
+                    status_successes: row.get(4)?,
+                    check_close_calls: row.get(5)?,
+                    check_close_successes: row.get(6)?,
+                    record_run_event_id: row.get(7)?,
+                    status_event_id: row.get(8)?,
+                    check_close_event_id: row.get(9)?,
+                })
             },
         )?;
-        let ordered = observed.3.zip(observed.4).zip(observed.5).is_some_and(
-            |((record_run, status), check_close)| record_run < status && status < check_close,
-        );
-        if observed.0 != 1 || observed.1 != 1 || observed.2 != 1 || !ordered {
-            return Err(io::Error::other(format!(
-                "actual producer resume diagnostics are not exact and ordered: record_run={}, status={}, check_close={}, ordered={ordered}",
-                observed.0, observed.1, observed.2
-            ))
-            .into());
+        let ordered = observed.ordered();
+        if !observed.is_exact() {
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_resume_calls_not_exact_and_ordered",
+                io::Error::other(format!(
+                    "actual producer resume diagnostics are not exact and ordered: total={}, record_run={}/{}, status={}/{}, check_close={}/{}, ordered={ordered}",
+                    observed.total_tool_calls,
+                    observed.record_run_successes,
+                    observed.record_run_calls,
+                    observed.status_successes,
+                    observed.status_calls,
+                    observed.check_close_successes,
+                    observed.check_close_calls,
+                )),
+            ));
         }
         Ok(LiveProducerHostResume {
-            record_run_calls: observed.0,
-            status_calls: observed.1,
-            check_close_calls: observed.2,
+            record_run_calls: observed.record_run_calls,
+            status_calls: observed.status_calls,
+            check_close_calls: observed.check_close_calls,
             ordered,
         })
     }
@@ -5513,6 +11080,1014 @@ mod unix {
         lifecycle_phase: String,
         strong_producer_chain: bool,
         criterion_coverage_projected: bool,
+    }
+
+    struct InspectedLivePromotedReceiptBody {
+        sha256: String,
+        size_bytes: u64,
+        bytes: Vec<u8>,
+    }
+
+    fn inspect_live_promoted_receipt_body(
+        project_home: &Path,
+        body_path: Option<&str>,
+    ) -> Result<Option<InspectedLivePromotedReceiptBody>, Box<dyn Error>> {
+        let Some(body_path) = body_path.filter(|value| !value.is_empty()) else {
+            return Ok(None);
+        };
+        let relative = Path::new(body_path);
+        if body_path.contains('\\')
+            || relative.is_absolute()
+            || !relative
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_)))
+        {
+            return Ok(None);
+        }
+
+        let artifact_root = project_home.join(ARTIFACTS_DIR);
+        let canonical_root = match artifact_root.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        if !fs::metadata(&canonical_root)?.is_dir() {
+            return Ok(None);
+        }
+        let candidate = artifact_root.join(relative);
+        let canonical_body = match candidate.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        if !canonical_body.starts_with(&canonical_root) {
+            return Ok(None);
+        }
+
+        let mut file = match fs::File::open(&canonical_body) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let before = file.metadata()?;
+        let max_bytes = u64::try_from(MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES)?;
+        if !before.is_file() || before.len() > max_bytes {
+            return Ok(None);
+        }
+        let mut hasher = Sha256::new();
+        let mut total = 0_u64;
+        let mut bytes = Vec::with_capacity(usize::try_from(before.len())?);
+        let mut buffer = [0_u8; 8 * 1024];
+        loop {
+            let count = file.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            total = total
+                .checked_add(u64::try_from(count)?)
+                .ok_or_else(|| io::Error::other("promoted receipt body size overflow"))?;
+            if total > max_bytes {
+                return Ok(None);
+            }
+            hasher.update(&buffer[..count]);
+            bytes.extend_from_slice(&buffer[..count]);
+        }
+        let after = file.metadata()?;
+        let final_body = match candidate.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let final_metadata = fs::metadata(&final_body)?;
+        if final_body != canonical_body
+            || !final_metadata.is_file()
+            || before.dev() != after.dev()
+            || before.ino() != after.ino()
+            || before.len() != after.len()
+            || after.dev() != final_metadata.dev()
+            || after.ino() != final_metadata.ino()
+            || after.len() != final_metadata.len()
+            || total != after.len()
+        {
+            return Ok(None);
+        }
+        Ok(Some(InspectedLivePromotedReceiptBody {
+            sha256: format!("{:x}", hasher.finalize()),
+            size_bytes: total,
+            bytes,
+        }))
+    }
+
+    fn live_retained_receipt_body_matches(
+        body: &InspectedLivePromotedReceiptBody,
+        safe_receipt_json: &str,
+        safe_receipt_sha256: &str,
+        safe_receipt_size_bytes: u64,
+    ) -> bool {
+        body.bytes.as_slice() == safe_receipt_json.as_bytes()
+            && body.sha256 == safe_receipt_sha256
+            && body.size_bytes == safe_receipt_size_bytes
+    }
+
+    #[test]
+    fn live_staged_receipt_authority_rejects_preconsumption_mutations() {
+        let basis = LiveStagedReceiptAuthorityBasis {
+            project_id: "PRJ-staged",
+            handle_id: "STG-staged",
+            task_id: "TASK-staged",
+            actor_source: "agent_connection:CONN-staged",
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            size_bytes: 17,
+            expires_at: "2026-07-15T00:15:00Z",
+            created_at: "2026-07-15T00:01:00Z",
+        };
+        let exact = PersistedLiveStagedReceiptRow {
+            project_id: basis.project_id.to_owned(),
+            handle_id: basis.handle_id.to_owned(),
+            task_id: basis.task_id.to_owned(),
+            created_by_actor_source: basis.actor_source.to_owned(),
+            artifact_json: r#"{"display_name":"receipt.json"}"#.to_owned(),
+            safe_metadata_json: r#"{"payload_kind":"safe_text_body"}"#.to_owned(),
+            tmp_path: "artifacts/tmp/STG-staged.txt".to_owned(),
+            sha256: basis.sha256.to_owned(),
+            size_bytes: basis.size_bytes,
+            content_type: "application/json".to_owned(),
+            redaction_state: "redacted".to_owned(),
+            status: "staged".to_owned(),
+            expires_at: basis.expires_at.to_owned(),
+            consumed_by_run_id: None,
+            promoted_artifact_id: None,
+            consumed_at: None,
+            created_at: basis.created_at.to_owned(),
+            metadata_json: r#"{"store_owned":true}"#.to_owned(),
+        };
+        assert!(live_staged_receipt_authority_matches(&exact, basis));
+        assert!(is_canonical_json_object_text(&exact.artifact_json));
+        assert!(!is_canonical_json_object_text(
+            r#"{ "display_name": "receipt.json" }"#
+        ));
+
+        let mut wrong_task = exact.clone();
+        wrong_task.task_id = "TASK-other".to_owned();
+        assert!(!live_staged_receipt_authority_matches(&wrong_task, basis));
+        let mut wrong_actor = exact.clone();
+        wrong_actor.created_by_actor_source = "agent_connection:CONN-other".to_owned();
+        assert!(!live_staged_receipt_authority_matches(&wrong_actor, basis));
+        let mut wrong_expiry = exact.clone();
+        wrong_expiry.expires_at = "2026-07-15T00:16:00Z".to_owned();
+        assert!(!live_staged_receipt_authority_matches(&wrong_expiry, basis));
+        let mut wrong_bytes = exact.clone();
+        wrong_bytes.sha256 = "b".repeat(64);
+        assert!(!live_staged_receipt_authority_matches(&wrong_bytes, basis));
+        let mut prematurely_consumed = exact;
+        prematurely_consumed.status = "consumed".to_owned();
+        prematurely_consumed.consumed_by_run_id = Some("RUN-too-early".to_owned());
+        assert!(!live_staged_receipt_authority_matches(
+            &prematurely_consumed,
+            basis
+        ));
+    }
+
+    #[test]
+    fn live_promoted_receipt_body_inspection_is_bounded_and_rejects_escape(
+    ) -> Result<(), Box<dyn Error>> {
+        let temp = TempRuntimeHome::new("live-promoted-receipt-body")?;
+        let project_home = temp.product_repo_path("project-home");
+        let artifact_root = project_home.join("artifacts");
+        fs::create_dir_all(artifact_root.join("tmp"))?;
+        let body = br#"{"safe":"receipt"}"#;
+        fs::write(artifact_root.join("tmp/receipt.json"), body)?;
+
+        let inspected =
+            inspect_live_promoted_receipt_body(&project_home, Some("tmp/receipt.json"))?
+                .ok_or_else(|| io::Error::other("safe promoted receipt body was rejected"))?;
+        let staged = inspect_live_staged_receipt_body(&project_home, "artifacts/tmp/receipt.json")?
+            .ok_or_else(|| io::Error::other("safe staged receipt body was rejected"))?;
+        assert_eq!(staged.bytes, body);
+        for invalid in [
+            "tmp/receipt.json",
+            "artifacts/bodies/receipt.json",
+            "artifacts/tmp",
+            "../artifacts/tmp/receipt.json",
+        ] {
+            assert!(
+                inspect_live_staged_receipt_body(&project_home, invalid)?.is_none(),
+                "invalid staged path {invalid}"
+            );
+        }
+        assert_eq!(inspected.size_bytes, u64::try_from(body.len())?);
+        assert_eq!(inspected.sha256, format!("{:x}", Sha256::digest(body)));
+        assert_eq!(inspected.bytes, body);
+        let sha256 = format!("{:x}", Sha256::digest(body));
+        assert!(live_retained_receipt_body_matches(
+            &inspected,
+            std::str::from_utf8(body)?,
+            &sha256,
+            u64::try_from(body.len())?,
+        ));
+        let mut wrong_bytes = body.to_vec();
+        wrong_bytes[0] = b'[';
+        let wrong_body = InspectedLivePromotedReceiptBody {
+            sha256,
+            size_bytes: u64::try_from(wrong_bytes.len())?,
+            bytes: wrong_bytes,
+        };
+        assert!(!live_retained_receipt_body_matches(
+            &wrong_body,
+            std::str::from_utf8(body)?,
+            &wrong_body.sha256,
+            wrong_body.size_bytes,
+        ));
+        assert!(inspect_live_promoted_receipt_body(&project_home, Some("../outside"))?.is_none());
+
+        let outside = temp.product_repo_path("outside.json");
+        fs::write(&outside, body)?;
+        std::os::unix::fs::symlink(&outside, artifact_root.join("escape.json"))?;
+        assert!(inspect_live_promoted_receipt_body(&project_home, Some("escape.json"))?.is_none());
+
+        fs::write(
+            artifact_root.join("tmp/oversized.json"),
+            vec![b'x'; MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES + 1],
+        )?;
+        assert!(
+            inspect_live_promoted_receipt_body(&project_home, Some("tmp/oversized.json"))?
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    struct LiveArtifactOwnerLink {
+        task_id: String,
+        owner_record_kind: String,
+        owner_record_id: String,
+        created_by_run_id: Option<String>,
+    }
+
+    fn expected_live_receipt_artifact_links(
+        task_id: &str,
+        run_id: &str,
+        observation_id: &str,
+        producer_id: &str,
+        evidence_summary_id: &str,
+    ) -> Vec<LiveArtifactOwnerLink> {
+        let mut links = [
+            ("run", run_id),
+            ("evidence_observation", observation_id),
+            ("evidence_producer", producer_id),
+            ("evidence_summary", evidence_summary_id),
+        ]
+        .into_iter()
+        .map(
+            |(owner_record_kind, owner_record_id)| LiveArtifactOwnerLink {
+                task_id: task_id.to_owned(),
+                owner_record_kind: owner_record_kind.to_owned(),
+                owner_record_id: owner_record_id.to_owned(),
+                created_by_run_id: Some(run_id.to_owned()),
+            },
+        )
+        .collect::<Vec<_>>();
+        links.sort();
+        links
+    }
+
+    #[test]
+    fn live_receipt_artifact_links_require_the_exact_owner_set() {
+        let expected = expected_live_receipt_artifact_links(
+            "TASK-fixture",
+            "RUN-fixture",
+            "EO-fixture",
+            "EP-fixture",
+            "ES-fixture",
+        );
+        assert_eq!(expected.len(), 4);
+
+        let mut missing = expected.clone();
+        missing.pop();
+        assert_ne!(missing, expected);
+
+        let mut extra = expected.clone();
+        extra.push(LiveArtifactOwnerLink {
+            task_id: "TASK-fixture".to_owned(),
+            owner_record_kind: "task".to_owned(),
+            owner_record_id: "TASK-fixture".to_owned(),
+            created_by_run_id: Some("RUN-fixture".to_owned()),
+        });
+        extra.sort();
+        assert_ne!(extra, expected);
+
+        let mut wrong_creator = expected.clone();
+        wrong_creator[0].created_by_run_id = Some("RUN-other".to_owned());
+        wrong_creator.sort();
+        assert_ne!(wrong_creator, expected);
+    }
+
+    #[derive(Clone)]
+    struct LiveProducerArtifactChainBinding {
+        relational_scope_revision: u64,
+        canonical_scope_revision: u64,
+        prepared_scope_revision: u64,
+        artifact_source_staging_handle_id: Option<String>,
+        receipt_staging_handle_id: String,
+        artifact_sha256: Option<String>,
+        artifact_size_bytes: Option<u64>,
+        receipt_safe_receipt_sha256: String,
+        receipt_safe_receipt_size_bytes: u64,
+        canonical_artifact_sha256: Option<String>,
+        canonical_artifact_size_bytes: Option<u64>,
+        promoted_body_sha256: Option<String>,
+        promoted_body_size_bytes: Option<u64>,
+        staging_handle_id: Option<String>,
+        staging_status: Option<String>,
+        staging_consumed_by_run_id: Option<String>,
+        run_id: String,
+        staging_promoted_artifact_id: Option<String>,
+        artifact_id: String,
+    }
+
+    impl LiveProducerArtifactChainBinding {
+        fn is_exact(&self) -> bool {
+            self.relational_scope_revision > 0
+                && self.relational_scope_revision == self.canonical_scope_revision
+                && self.relational_scope_revision == self.prepared_scope_revision
+                && self.artifact_source_staging_handle_id.as_deref()
+                    == Some(self.receipt_staging_handle_id.as_str())
+                && self.artifact_sha256.as_deref()
+                    == Some(self.receipt_safe_receipt_sha256.as_str())
+                && self.artifact_size_bytes == Some(self.receipt_safe_receipt_size_bytes)
+                && self.canonical_artifact_sha256.as_deref()
+                    == Some(self.receipt_safe_receipt_sha256.as_str())
+                && self.canonical_artifact_size_bytes == Some(self.receipt_safe_receipt_size_bytes)
+                && self.promoted_body_sha256.as_deref()
+                    == Some(self.receipt_safe_receipt_sha256.as_str())
+                && self.promoted_body_size_bytes == Some(self.receipt_safe_receipt_size_bytes)
+                && self.staging_handle_id.as_deref()
+                    == Some(self.receipt_staging_handle_id.as_str())
+                && self.staging_status.as_deref() == Some("consumed")
+                && self.staging_consumed_by_run_id.as_deref() == Some(self.run_id.as_str())
+                && self.staging_promoted_artifact_id.as_deref() == Some(self.artifact_id.as_str())
+        }
+    }
+
+    type LiveProducerArtifactChainMutation = fn(&mut LiveProducerArtifactChainBinding);
+
+    #[test]
+    fn live_producer_artifact_chain_binding_rejects_each_independent_mismatch() {
+        fn stale_relational_scope(input: &mut LiveProducerArtifactChainBinding) {
+            input.relational_scope_revision += 1;
+        }
+        fn stale_canonical_scope(input: &mut LiveProducerArtifactChainBinding) {
+            input.canonical_scope_revision += 1;
+        }
+        fn stale_prepared_scope(input: &mut LiveProducerArtifactChainBinding) {
+            input.prepared_scope_revision += 1;
+        }
+        fn wrong_artifact_source(input: &mut LiveProducerArtifactChainBinding) {
+            input.artifact_source_staging_handle_id = Some("STAGE-other".to_owned());
+        }
+        fn missing_artifact_source(input: &mut LiveProducerArtifactChainBinding) {
+            input.artifact_source_staging_handle_id = None;
+        }
+        fn wrong_artifact_sha(input: &mut LiveProducerArtifactChainBinding) {
+            input.artifact_sha256 = Some("b".repeat(64));
+        }
+        fn wrong_artifact_size(input: &mut LiveProducerArtifactChainBinding) {
+            input.artifact_size_bytes = Some(129);
+        }
+        fn wrong_canonical_artifact_sha(input: &mut LiveProducerArtifactChainBinding) {
+            input.canonical_artifact_sha256 = Some("b".repeat(64));
+        }
+        fn wrong_canonical_artifact_size(input: &mut LiveProducerArtifactChainBinding) {
+            input.canonical_artifact_size_bytes = Some(129);
+        }
+        fn wrong_promoted_body_sha(input: &mut LiveProducerArtifactChainBinding) {
+            input.promoted_body_sha256 = Some("b".repeat(64));
+        }
+        fn wrong_promoted_body_size(input: &mut LiveProducerArtifactChainBinding) {
+            input.promoted_body_size_bytes = Some(129);
+        }
+        fn missing_staging_row(input: &mut LiveProducerArtifactChainBinding) {
+            input.staging_handle_id = None;
+        }
+        fn wrong_staging_handle(input: &mut LiveProducerArtifactChainBinding) {
+            input.staging_handle_id = Some("STAGE-other".to_owned());
+        }
+        fn unconsumed_staging(input: &mut LiveProducerArtifactChainBinding) {
+            input.staging_status = Some("staged".to_owned());
+        }
+        fn wrong_consuming_run(input: &mut LiveProducerArtifactChainBinding) {
+            input.staging_consumed_by_run_id = Some("RUN-other".to_owned());
+        }
+        fn wrong_promoted_artifact(input: &mut LiveProducerArtifactChainBinding) {
+            input.staging_promoted_artifact_id = Some("ART-other".to_owned());
+        }
+
+        let valid = LiveProducerArtifactChainBinding {
+            relational_scope_revision: 2,
+            canonical_scope_revision: 2,
+            prepared_scope_revision: 2,
+            artifact_source_staging_handle_id: Some("STAGE-receipt".to_owned()),
+            receipt_staging_handle_id: "STAGE-receipt".to_owned(),
+            artifact_sha256: Some("a".repeat(64)),
+            artifact_size_bytes: Some(128),
+            receipt_safe_receipt_sha256: "a".repeat(64),
+            receipt_safe_receipt_size_bytes: 128,
+            canonical_artifact_sha256: Some("a".repeat(64)),
+            canonical_artifact_size_bytes: Some(128),
+            promoted_body_sha256: Some("a".repeat(64)),
+            promoted_body_size_bytes: Some(128),
+            staging_handle_id: Some("STAGE-receipt".to_owned()),
+            staging_status: Some("consumed".to_owned()),
+            staging_consumed_by_run_id: Some("RUN-producer".to_owned()),
+            run_id: "RUN-producer".to_owned(),
+            staging_promoted_artifact_id: Some("ART-receipt".to_owned()),
+            artifact_id: "ART-receipt".to_owned(),
+        };
+        assert!(valid.is_exact());
+
+        let cases: [(&str, LiveProducerArtifactChainMutation); 16] = [
+            ("relational_scope_revision", stale_relational_scope),
+            ("canonical_scope_revision", stale_canonical_scope),
+            ("prepared_scope_revision", stale_prepared_scope),
+            ("artifact_source_staging_handle_id", wrong_artifact_source),
+            ("artifact_source_staging_missing", missing_artifact_source),
+            ("artifact_sha256", wrong_artifact_sha),
+            ("artifact_size_bytes", wrong_artifact_size),
+            ("canonical_artifact_sha256", wrong_canonical_artifact_sha),
+            (
+                "canonical_artifact_size_bytes",
+                wrong_canonical_artifact_size,
+            ),
+            ("promoted_body_sha256", wrong_promoted_body_sha),
+            ("promoted_body_size_bytes", wrong_promoted_body_size),
+            ("staging_row_missing", missing_staging_row),
+            ("staging_handle_id", wrong_staging_handle),
+            ("staging_status", unconsumed_staging),
+            ("staging_consumed_by_run_id", wrong_consuming_run),
+            ("staging_promoted_artifact_id", wrong_promoted_artifact),
+        ];
+        for (case, mutate) in cases {
+            let mut candidate = valid.clone();
+            mutate(&mut candidate);
+            assert!(!candidate.is_exact(), "{case} mismatch was accepted");
+        }
+    }
+
+    struct PersistedLiveProducerObservation {
+        project_id: String,
+        task_id: String,
+        change_unit_id: Option<String>,
+        run_id: Option<String>,
+        acceptance_criterion_id: Option<String>,
+        evidence_claim_id: Option<String>,
+        observed_by_actor_source: Option<String>,
+        tool_name: Option<String>,
+        tool_invocation_id: Option<String>,
+        tool_metadata: Value,
+        source_refs: Value,
+        limitations: Vec<String>,
+        observed_at: String,
+        recorded_at: String,
+    }
+
+    struct PersistedLiveArtifactAuthority {
+        project_id: String,
+        task_id: String,
+        producer_run_id: Option<String>,
+        uri: String,
+        content_type: Option<String>,
+        producer: PersistedArtifactProducer,
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct PersistedLiveRunAuthority {
+        project_id: String,
+        run_id: String,
+        task_id: String,
+        change_unit_id: Option<String>,
+        scope_revision: u64,
+        write_ticket_id: Option<String>,
+        kind: String,
+        status: String,
+        summary: Value,
+        observed_changes: ObservedChanges,
+        evidence_updates: Vec<EvidenceCoverageUpdate>,
+        write_ticket_effect: Value,
+        created_by_actor_source: String,
+        started_at: Option<String>,
+        completed_at: Option<String>,
+        created_at: String,
+        metadata: Value,
+    }
+
+    struct PersistedLiveRunRow {
+        project_id: String,
+        run_id: String,
+        task_id: String,
+        change_unit_id: Option<String>,
+        scope_revision: u64,
+        write_ticket_id: Option<String>,
+        kind: String,
+        status: String,
+        summary_json: String,
+        observed_changes_json: String,
+        evidence_updates_json: String,
+        write_ticket_effect_json: String,
+        created_by_actor_source: String,
+        started_at: Option<String>,
+        completed_at: Option<String>,
+        created_at: String,
+        metadata_json: String,
+    }
+
+    #[derive(Clone, Copy)]
+    struct LiveProducerRunAuthorityBasis<'a> {
+        project_id: &'a str,
+        run_id: &'a str,
+        task_id: &'a str,
+        change_unit_id: &'a str,
+        scope_revision: u64,
+        marker: &'a str,
+        baseline_ref: &'a str,
+        target: &'a EvidenceTarget,
+        actor_source: &'a str,
+        committed_at: &'a str,
+    }
+
+    fn live_producer_run_authority_matches(
+        authority: &PersistedLiveRunAuthority,
+        basis: LiveProducerRunAuthorityBasis<'_>,
+    ) -> bool {
+        let [update] = authority.evidence_updates.as_slice() else {
+            return false;
+        };
+        authority.project_id == basis.project_id
+            && authority.run_id == basis.run_id
+            && authority.task_id == basis.task_id
+            && authority.change_unit_id.as_deref() == Some(basis.change_unit_id)
+            && authority.scope_revision == basis.scope_revision
+            && authority.write_ticket_id.is_none()
+            && authority.kind == "shaping_update"
+            && authority.status == "recorded"
+            && authority.summary == serde_json::json!({"summary": basis.marker})
+            && authority.observed_changes.changed_paths.is_empty()
+            && !authority.observed_changes.product_file_write_observed
+            && authority.observed_changes.sensitive_categories.is_empty()
+            && authority
+                .observed_changes
+                .baseline_ref
+                .as_ref()
+                .is_some_and(|value| value.as_str() == basis.baseline_ref)
+            && update.target == *basis.target
+            && update.coverage_state == EvidenceCoverageUpdateState::Supported
+            && update.provenance.is_none()
+            && update.supporting_run_refs.is_empty()
+            && update.observation_refs.is_empty()
+            && update.supporting_artifact_refs.is_empty()
+            && update.gap_refs.is_empty()
+            && authority.write_ticket_effect
+                == serde_json::json!({"write_ticket_id": null, "effect": "none"})
+            && authority.created_by_actor_source == basis.actor_source
+            && authority.started_at.as_deref() == Some(basis.committed_at)
+            && authority.completed_at.as_deref() == Some(basis.committed_at)
+            && authority.created_at == basis.committed_at
+            && authority.metadata
+                == serde_json::json!({
+                    "verification_basis": VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+                })
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct PersistedLiveStagingAuthority {
+        project_id: String,
+        handle_id: String,
+        task_id: String,
+        created_by_actor_source: String,
+        artifact_json: String,
+        safe_metadata_json: String,
+        tmp_path: String,
+        sha256: String,
+        size_bytes: u64,
+        content_type: String,
+        redaction_state: String,
+        status: String,
+        expires_at: String,
+        consumed_by_run_id: Option<String>,
+        promoted_artifact_id: Option<String>,
+        consumed_at: Option<String>,
+        created_at: String,
+        metadata_json: String,
+    }
+
+    struct PersistedLiveStagingRow {
+        project_id: String,
+        handle_id: String,
+        task_id: String,
+        created_by_actor_source: String,
+        artifact_json: String,
+        safe_metadata_json: String,
+        tmp_path: String,
+        sha256: String,
+        size_bytes: u64,
+        content_type: String,
+        redaction_state: String,
+        status: String,
+        expires_at: String,
+        consumed_by_run_id: Option<String>,
+        promoted_artifact_id: Option<String>,
+        consumed_at: Option<String>,
+        created_at: String,
+        metadata_json: String,
+    }
+
+    #[derive(Clone, Copy)]
+    struct LiveReceiptStagingAuthorityBasis<'a> {
+        project_id: &'a str,
+        handle_id: &'a str,
+        task_id: &'a str,
+        actor_source: &'a str,
+        artifact_json: &'a str,
+        safe_metadata_json: &'a str,
+        tmp_path: &'a str,
+        sha256: &'a str,
+        size_bytes: u64,
+        expires_at: &'a str,
+        run_id: &'a str,
+        artifact_id: &'a str,
+        created_at: &'a str,
+        consumed_at: &'a str,
+        metadata_json: &'a str,
+    }
+
+    fn expected_live_receipt_staging_authority(
+        basis: LiveReceiptStagingAuthorityBasis<'_>,
+    ) -> PersistedLiveStagingAuthority {
+        PersistedLiveStagingAuthority {
+            project_id: basis.project_id.to_owned(),
+            handle_id: basis.handle_id.to_owned(),
+            task_id: basis.task_id.to_owned(),
+            created_by_actor_source: basis.actor_source.to_owned(),
+            artifact_json: basis.artifact_json.to_owned(),
+            safe_metadata_json: basis.safe_metadata_json.to_owned(),
+            tmp_path: basis.tmp_path.to_owned(),
+            sha256: basis.sha256.to_owned(),
+            size_bytes: basis.size_bytes,
+            content_type: "application/json".to_owned(),
+            redaction_state: "redacted".to_owned(),
+            status: "consumed".to_owned(),
+            expires_at: basis.expires_at.to_owned(),
+            consumed_by_run_id: Some(basis.run_id.to_owned()),
+            promoted_artifact_id: Some(basis.artifact_id.to_owned()),
+            consumed_at: Some(basis.consumed_at.to_owned()),
+            created_at: basis.created_at.to_owned(),
+            metadata_json: basis.metadata_json.to_owned(),
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct PersistedLiveEvidenceSummaryAuthority {
+        project_id: String,
+        evidence_summary_id: String,
+        task_id: String,
+        change_unit_id: Option<String>,
+        produced_at_state_version: u64,
+        status: String,
+        coverage_items: Vec<EvidenceCoverageItem>,
+        supporting_refs: Vec<StateRecordRef>,
+        gap_refs: Vec<StateRecordRef>,
+        created_at: String,
+        updated_at: String,
+        metadata: PersistedEvidenceMetadata,
+    }
+
+    struct PersistedLiveEvidenceSummaryRow {
+        project_id: String,
+        evidence_summary_id: String,
+        task_id: String,
+        change_unit_id: Option<String>,
+        produced_at_state_version: u64,
+        status: String,
+        coverage_json: String,
+        supporting_refs_json: String,
+        gap_refs_json: String,
+        created_at: String,
+        updated_at: String,
+        metadata_json: String,
+    }
+
+    struct LiveEvidenceSummaryAuthorityBasis<'a> {
+        project_id: &'a str,
+        task_id: &'a str,
+        change_unit_id: &'a str,
+        produced_at_state_version: u64,
+        expected_coverage: &'a EvidenceCoverageItem,
+        supporting_run_ref: &'a StateRecordRef,
+        run_id: &'a str,
+        committed_at: &'a str,
+    }
+
+    fn live_evidence_summary_authority_matches(
+        authority: &PersistedLiveEvidenceSummaryAuthority,
+        basis: &LiveEvidenceSummaryAuthorityBasis<'_>,
+    ) -> bool {
+        authority.project_id == basis.project_id
+            && authority.task_id == basis.task_id
+            && authority.change_unit_id.as_deref() == Some(basis.change_unit_id)
+            && authority.produced_at_state_version == basis.produced_at_state_version
+            && authority.status == "sufficient"
+            && authority.coverage_items.as_slice() == [basis.expected_coverage.clone()]
+            && authority.supporting_refs.as_slice() == [basis.supporting_run_ref.clone()]
+            && authority.gap_refs.is_empty()
+            && authority.created_at == basis.committed_at
+            && authority.updated_at == basis.committed_at
+            && authority.metadata.updated_by_run_id.as_str() == basis.run_id
+    }
+
+    #[test]
+    fn live_producer_run_authority_rejects_noncanonical_run_fields() -> Result<(), Box<dyn Error>> {
+        let target: EvidenceTarget = serde_json::from_value(serde_json::json!({
+            "target_kind": "acceptance_criterion",
+            "acceptance_criterion_id": "AC-run-authority"
+        }))?;
+        let observed_changes: ObservedChanges = serde_json::from_value(serde_json::json!({
+            "changed_paths": [],
+            "product_file_write_observed": false,
+            "sensitive_categories": [],
+            "baseline_ref": "baseline-run-authority"
+        }))?;
+        let evidence_updates: Vec<EvidenceCoverageUpdate> =
+            serde_json::from_value(serde_json::json!([{
+                "target": target,
+                "coverage_state": "supported",
+                "supporting_run_refs": [],
+                "observation_refs": [],
+                "supporting_artifact_refs": [],
+                "gap_refs": []
+            }]))?;
+        let valid = PersistedLiveRunAuthority {
+            project_id: "PRJ-run-authority".to_owned(),
+            run_id: "RUN-run-authority".to_owned(),
+            task_id: "TASK-run-authority".to_owned(),
+            change_unit_id: Some("CU-run-authority".to_owned()),
+            scope_revision: 7,
+            write_ticket_id: None,
+            kind: "shaping_update".to_owned(),
+            status: "recorded".to_owned(),
+            summary: serde_json::json!({"summary": "run-authority-marker"}),
+            observed_changes,
+            evidence_updates,
+            write_ticket_effect: serde_json::json!({
+                "write_ticket_id": null,
+                "effect": "none"
+            }),
+            created_by_actor_source: "agent_connection:CONN-run-authority".to_owned(),
+            started_at: Some("2026-07-16T00:00:00Z".to_owned()),
+            completed_at: Some("2026-07-16T00:00:00Z".to_owned()),
+            created_at: "2026-07-16T00:00:00Z".to_owned(),
+            metadata: serde_json::json!({
+                "verification_basis": VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING
+            }),
+        };
+        let basis = LiveProducerRunAuthorityBasis {
+            project_id: "PRJ-run-authority",
+            run_id: "RUN-run-authority",
+            task_id: "TASK-run-authority",
+            change_unit_id: "CU-run-authority",
+            scope_revision: 7,
+            marker: "run-authority-marker",
+            baseline_ref: "baseline-run-authority",
+            target: &target,
+            actor_source: "agent_connection:CONN-run-authority",
+            committed_at: "2026-07-16T00:00:00Z",
+        };
+        assert!(live_producer_run_authority_matches(&valid, basis));
+
+        let mut sensitive = valid.clone();
+        sensitive
+            .observed_changes
+            .sensitive_categories
+            .push("credential".to_owned());
+        assert!(!live_producer_run_authority_matches(&sensitive, basis));
+        let mut wrong_update = valid.clone();
+        wrong_update.evidence_updates[0].coverage_state = EvidenceCoverageUpdateState::Partial;
+        assert!(!live_producer_run_authority_matches(&wrong_update, basis));
+        let mut wrong_ticket_effect = valid.clone();
+        wrong_ticket_effect.write_ticket_effect =
+            serde_json::json!({"write_ticket_id": null, "effect": "consumed"});
+        assert!(!live_producer_run_authority_matches(
+            &wrong_ticket_effect,
+            basis
+        ));
+        let mut wrong_metadata = valid.clone();
+        wrong_metadata.metadata = serde_json::json!({"verification_basis": "caller_asserted"});
+        assert!(!live_producer_run_authority_matches(&wrong_metadata, basis));
+        assert!(
+            serde_json::from_value::<ObservedChanges>(serde_json::json!({
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": "baseline-run-authority",
+                "unexpected": true
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<EvidenceCoverageUpdate>(serde_json::json!({
+                "target": target,
+                "coverage_state": "supported",
+                "supporting_run_refs": [],
+                "observation_refs": [],
+                "supporting_artifact_refs": [],
+                "gap_refs": [],
+                "unexpected": true
+            }))
+            .is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn live_receipt_staging_authority_requires_every_safe_staging_fact() {
+        let basis = LiveReceiptStagingAuthorityBasis {
+            project_id: "PRJ-staging-authority",
+            handle_id: "STG-staging-authority",
+            task_id: "TASK-staging-authority",
+            actor_source: "agent_connection:CONN-staging-authority",
+            artifact_json: r#"{"display_name":"receipt.json"}"#,
+            safe_metadata_json: r#"{"payload_kind":"safe_text_body"}"#,
+            tmp_path: "artifacts/tmp/STG-staging-authority.txt",
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            size_bytes: 17,
+            expires_at: "2026-07-16T01:00:00Z",
+            run_id: "RUN-staging-authority",
+            artifact_id: "ART-staging-authority",
+            created_at: "2026-07-16T00:00:00Z",
+            consumed_at: "2026-07-16T00:01:00Z",
+            metadata_json: r#"{"store_owned":true}"#,
+        };
+        let expected = expected_live_receipt_staging_authority(basis);
+        assert_eq!(expected, expected_live_receipt_staging_authority(basis));
+
+        let mut wrong_actor = expected.clone();
+        wrong_actor.created_by_actor_source = "agent_connection:CONN-other".to_owned();
+        assert_ne!(wrong_actor, expected_live_receipt_staging_authority(basis));
+        let mut wrong_digest = expected.clone();
+        wrong_digest.sha256 = "b".repeat(64);
+        assert_ne!(wrong_digest, expected_live_receipt_staging_authority(basis));
+        let mut wrong_path = expected.clone();
+        wrong_path.tmp_path = "artifacts/tmp/other.txt".to_owned();
+        assert_ne!(wrong_path, expected_live_receipt_staging_authority(basis));
+        let mut wrong_expiry = expected.clone();
+        wrong_expiry.expires_at = "2026-07-16T02:00:00Z".to_owned();
+        assert_ne!(wrong_expiry, expected_live_receipt_staging_authority(basis));
+        let mut changed_store_metadata = expected.clone();
+        changed_store_metadata.metadata_json = r#"{"store_owned":false}"#.to_owned();
+        assert_ne!(
+            changed_store_metadata,
+            expected_live_receipt_staging_authority(basis)
+        );
+        let mut wrong_consumer = expected;
+        wrong_consumer.consumed_by_run_id = Some("RUN-other".to_owned());
+        assert_ne!(
+            wrong_consumer,
+            expected_live_receipt_staging_authority(basis)
+        );
+    }
+
+    #[test]
+    fn live_evidence_summary_authority_requires_exact_state_and_refs() -> Result<(), Box<dyn Error>>
+    {
+        let run_ref: StateRecordRef = serde_json::from_value(serde_json::json!({
+            "record_kind": "run",
+            "record_id": "RUN-summary-authority",
+            "project_id": "PRJ-summary-authority",
+            "task_id": "TASK-summary-authority",
+            "produced_at_state_version": 8
+        }))?;
+        let target: EvidenceTarget = serde_json::from_value(serde_json::json!({
+            "target_kind": "acceptance_criterion",
+            "acceptance_criterion_id": "AC-summary-authority"
+        }))?;
+        let coverage = EvidenceCoverageItem {
+            target,
+            coverage_state: EvidenceCoverageState::Supported,
+            supporting_run_refs: vec![run_ref.clone()],
+            observation_refs: Vec::new(),
+            supporting_artifact_refs: Vec::new(),
+            gap_refs: Vec::new(),
+        };
+        let metadata: PersistedEvidenceMetadata = serde_json::from_value(serde_json::json!({
+            "updated_by_run_id": "RUN-summary-authority"
+        }))?;
+        let valid = PersistedLiveEvidenceSummaryAuthority {
+            project_id: "PRJ-summary-authority".to_owned(),
+            evidence_summary_id: "ES-summary-authority".to_owned(),
+            task_id: "TASK-summary-authority".to_owned(),
+            change_unit_id: Some("CU-summary-authority".to_owned()),
+            produced_at_state_version: 8,
+            status: "sufficient".to_owned(),
+            coverage_items: vec![coverage.clone()],
+            supporting_refs: vec![run_ref.clone()],
+            gap_refs: Vec::new(),
+            created_at: "2026-07-16T00:00:00Z".to_owned(),
+            updated_at: "2026-07-16T00:00:00Z".to_owned(),
+            metadata,
+        };
+        let basis = LiveEvidenceSummaryAuthorityBasis {
+            project_id: "PRJ-summary-authority",
+            task_id: "TASK-summary-authority",
+            change_unit_id: "CU-summary-authority",
+            produced_at_state_version: 8,
+            expected_coverage: &coverage,
+            supporting_run_ref: &run_ref,
+            run_id: "RUN-summary-authority",
+            committed_at: "2026-07-16T00:00:00Z",
+        };
+        assert!(live_evidence_summary_authority_matches(&valid, &basis));
+        let mut wrong_version = valid.clone();
+        wrong_version.produced_at_state_version += 1;
+        assert!(!live_evidence_summary_authority_matches(
+            &wrong_version,
+            &basis
+        ));
+        let mut missing_support = valid.clone();
+        missing_support.supporting_refs.clear();
+        assert!(!live_evidence_summary_authority_matches(
+            &missing_support,
+            &basis
+        ));
+        let mut wrong_gap = valid;
+        wrong_gap.gap_refs.push(run_ref.clone());
+        assert!(!live_evidence_summary_authority_matches(&wrong_gap, &basis));
+        Ok(())
+    }
+
+    fn live_evidence_target_columns_match(
+        target: &EvidenceTarget,
+        acceptance_criterion_id: Option<&str>,
+        evidence_claim_id: Option<&str>,
+    ) -> bool {
+        match target {
+            EvidenceTarget::AcceptanceCriterion {
+                acceptance_criterion_id: expected,
+            } => acceptance_criterion_id == Some(expected.as_str()) && evidence_claim_id.is_none(),
+            EvidenceTarget::SupplementalClaim {
+                evidence_claim_id: expected,
+                ..
+            } => evidence_claim_id == Some(expected.as_str()) && acceptance_criterion_id.is_none(),
+        }
+    }
+
+    fn live_state_ref_matches(
+        record_ref: &StateRecordRef,
+        record_kind: StateRecordKind,
+        record_id: &str,
+        project_id: &str,
+        task_id: &str,
+        state_version: u64,
+    ) -> bool {
+        record_ref.record_kind == record_kind
+            && record_ref.record_id.as_str() == record_id
+            && record_ref.project_id.as_str() == project_id
+            && record_ref.task_id.as_ref().map(|value| value.as_str()) == Some(task_id)
+            && record_ref.produced_at_state_version.as_ref() == Some(&state_version)
+    }
+
+    fn live_capture_assessment_ref_matches(
+        assessment_ref: Option<&StateRecordRef>,
+        intent_ref: &StateRecordRef,
+    ) -> bool {
+        assessment_ref == Some(intent_ref)
+    }
+
+    #[test]
+    fn live_capture_relevance_assessment_requires_the_exact_intent_ref(
+    ) -> Result<(), Box<dyn Error>> {
+        let intent_ref: StateRecordRef = serde_json::from_value(serde_json::json!({
+            "record_kind": "evidence_capture_intent",
+            "record_id": "ECI-assessment-fixture",
+            "project_id": "PRJ-assessment-fixture",
+            "task_id": "TASK-assessment-fixture",
+            "produced_at_state_version": 3
+        }))?;
+        assert!(live_capture_assessment_ref_matches(
+            Some(&intent_ref),
+            &intent_ref
+        ));
+        assert!(!live_capture_assessment_ref_matches(None, &intent_ref));
+
+        let other_ref: StateRecordRef = serde_json::from_value(serde_json::json!({
+            "record_kind": "evidence_capture_intent",
+            "record_id": "ECI-other",
+            "project_id": "PRJ-assessment-fixture",
+            "task_id": "TASK-assessment-fixture",
+            "produced_at_state_version": 3
+        }))?;
+        assert!(!live_capture_assessment_ref_matches(
+            Some(&other_ref),
+            &intent_ref
+        ));
+        Ok(())
     }
 
     fn inspect_live_producer_chain(
@@ -5538,13 +12113,19 @@ mod unix {
                         o.output_artifact_refs_json, o.metadata_json,
                         r.kind, r.status, r.summary_json, r.observed_changes_json,
                         r.created_by_actor_source,
-                        a.integrity_status, a.availability, a.redaction_state
+                        a.integrity_status, a.status, a.redaction_state,
+                        a.source_staging_handle_id, a.sha256, a.body_path, a.size_bytes,
+                        s.handle_id, s.status, s.consumed_by_run_id,
+                        s.promoted_artifact_id
                    FROM evidence_producers p
                    JOIN evidence_observations o
                      ON o.project_id = p.project_id
                     AND o.evidence_observation_id = p.evidence_observation_id
                    JOIN runs r ON r.project_id = p.project_id AND r.run_id = p.run_id
                    JOIN artifacts a ON a.project_id = p.project_id AND a.artifact_id = p.artifact_id
+              LEFT JOIN artifact_staging s
+                     ON s.project_id = a.project_id
+                    AND s.handle_id = a.source_staging_handle_id
                   WHERE p.project_id = ?1 AND p.evidence_capture_intent_id = ?2",
             )?
             .query_map(
@@ -5572,16 +12153,27 @@ mod unix {
                         row.get::<_, String>(18)?,
                         row.get::<_, String>(19)?,
                         row.get::<_, String>(20)?,
+                        row.get::<_, Option<String>>(21)?,
+                        row.get::<_, Option<String>>(22)?,
+                        row.get::<_, Option<String>>(23)?,
+                        row.get::<_, Option<u64>>(24)?,
+                        row.get::<_, Option<String>>(25)?,
+                        row.get::<_, Option<String>>(26)?,
+                        row.get::<_, Option<String>>(27)?,
+                        row.get::<_, Option<String>>(28)?,
                     ))
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
         let [row] = producer_rows.as_slice() else {
-            return Err(io::Error::other(format!(
-                "producer finalization must create exactly one chain; found {}",
-                producer_rows.len()
-            ))
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_chain_count_mismatch",
+                io::Error::other(format!(
+                    "producer finalization must create exactly one chain; found {}",
+                    producer_rows.len()
+                )),
+            ));
         };
         let (
             producer_id,
@@ -5605,20 +12197,228 @@ mod unix {
             artifact_integrity,
             artifact_availability,
             artifact_redaction,
+            artifact_source_staging_handle_id,
+            artifact_sha256,
+            artifact_body_path,
+            artifact_size_bytes,
+            staging_handle_id,
+            staging_status,
+            staging_consumed_by_run_id,
+            staging_promoted_artifact_id,
         ) = row;
-        let producer: EvidenceProducer = serde_json::from_str(canonical_producer_json)?;
-        let input_refs: Vec<StateRecordRef> = serde_json::from_str(input_refs_json)?;
+        let producer: EvidenceProducer =
+            serde_json::from_str(canonical_producer_json).map_err(producer_chain_record_invalid)?;
+        let input_refs: Vec<StateRecordRef> =
+            serde_json::from_str(input_refs_json).map_err(producer_chain_record_invalid)?;
         let output_artifact_refs: Vec<ArtifactRef> =
-            serde_json::from_str(output_artifact_refs_json)?;
+            serde_json::from_str(output_artifact_refs_json)
+                .map_err(producer_chain_record_invalid)?;
         let authority: PersistedEvidenceObservationAuthority =
-            serde_json::from_str(observation_metadata_json)?;
+            serde_json::from_str(observation_metadata_json)
+                .map_err(producer_chain_record_invalid)?;
         let run = live_run_observation(
             run_id,
             run_kind,
             run_summary_json,
             observed_changes_json,
             created_by_actor_source,
+        )
+        .map_err(producer_chain_record_invalid)?;
+        let observation_storage = conn.query_row(
+            "SELECT project_id, task_id, change_unit_id, run_id,
+                    acceptance_criterion_id, evidence_claim_id,
+                    observed_by_actor_source, tool_name, tool_invocation_id,
+                    tool_metadata_json, source_refs_json, limitations_json,
+                    observed_at, recorded_at
+               FROM evidence_observations
+              WHERE project_id = ?1 AND evidence_observation_id = ?2",
+            rusqlite::params![prepared.project_id, evidence_observation_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, String>(12)?,
+                    row.get::<_, String>(13)?,
+                ))
+            },
         )?;
+        let observation_storage = PersistedLiveProducerObservation {
+            project_id: observation_storage.0,
+            task_id: observation_storage.1,
+            change_unit_id: observation_storage.2,
+            run_id: observation_storage.3,
+            acceptance_criterion_id: observation_storage.4,
+            evidence_claim_id: observation_storage.5,
+            observed_by_actor_source: observation_storage.6,
+            tool_name: observation_storage.7,
+            tool_invocation_id: observation_storage.8,
+            tool_metadata: serde_json::from_str(&observation_storage.9)
+                .map_err(producer_chain_record_invalid)?,
+            source_refs: serde_json::from_str(&observation_storage.10)
+                .map_err(producer_chain_record_invalid)?,
+            limitations: serde_json::from_str(&observation_storage.11)
+                .map_err(producer_chain_record_invalid)?,
+            observed_at: observation_storage.12,
+            recorded_at: observation_storage.13,
+        };
+        let artifact_storage = conn.query_row(
+            "SELECT project_id, task_id, producer_run_id, uri, content_type, producer_json
+               FROM artifacts
+              WHERE project_id = ?1 AND artifact_id = ?2",
+            rusqlite::params![prepared.project_id, artifact_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        )?;
+        let artifact_storage = PersistedLiveArtifactAuthority {
+            project_id: artifact_storage.0,
+            task_id: artifact_storage.1,
+            producer_run_id: artifact_storage.2,
+            uri: artifact_storage.3,
+            content_type: artifact_storage.4,
+            producer: serde_json::from_str(&artifact_storage.5)
+                .map_err(producer_chain_record_invalid)?,
+        };
+        let run_storage = conn.query_row(
+            "SELECT project_id, run_id, task_id, change_unit_id, scope_revision,
+                    write_ticket_id, kind, status, summary_json, observed_changes_json,
+                    evidence_updates_json, write_ticket_effect_json,
+                    created_by_actor_source, started_at, completed_at, created_at,
+                    metadata_json
+               FROM runs
+              WHERE project_id = ?1 AND run_id = ?2",
+            rusqlite::params![prepared.project_id, run_id],
+            |row| {
+                Ok(PersistedLiveRunRow {
+                    project_id: row.get(0)?,
+                    run_id: row.get(1)?,
+                    task_id: row.get(2)?,
+                    change_unit_id: row.get(3)?,
+                    scope_revision: row.get(4)?,
+                    write_ticket_id: row.get(5)?,
+                    kind: row.get(6)?,
+                    status: row.get(7)?,
+                    summary_json: row.get(8)?,
+                    observed_changes_json: row.get(9)?,
+                    evidence_updates_json: row.get(10)?,
+                    write_ticket_effect_json: row.get(11)?,
+                    created_by_actor_source: row.get(12)?,
+                    started_at: row.get(13)?,
+                    completed_at: row.get(14)?,
+                    created_at: row.get(15)?,
+                    metadata_json: row.get(16)?,
+                })
+            },
+        )?;
+        let run_storage = PersistedLiveRunAuthority {
+            project_id: run_storage.project_id,
+            run_id: run_storage.run_id,
+            task_id: run_storage.task_id,
+            change_unit_id: run_storage.change_unit_id,
+            scope_revision: run_storage.scope_revision,
+            write_ticket_id: run_storage.write_ticket_id,
+            kind: run_storage.kind,
+            status: run_storage.status,
+            summary: serde_json::from_str(&run_storage.summary_json)
+                .map_err(producer_chain_record_invalid)?,
+            observed_changes: serde_json::from_str(&run_storage.observed_changes_json)
+                .map_err(producer_chain_record_invalid)?,
+            evidence_updates: serde_json::from_str(&run_storage.evidence_updates_json)
+                .map_err(producer_chain_record_invalid)?,
+            write_ticket_effect: serde_json::from_str(&run_storage.write_ticket_effect_json)
+                .map_err(producer_chain_record_invalid)?,
+            created_by_actor_source: run_storage.created_by_actor_source,
+            started_at: run_storage.started_at,
+            completed_at: run_storage.completed_at,
+            created_at: run_storage.created_at,
+            metadata: serde_json::from_str(&run_storage.metadata_json)
+                .map_err(producer_chain_record_invalid)?,
+        };
+        let producer_storage: (String, String, String, String, String) = conn.query_row(
+            "SELECT evidence_capture_receipt_id, task_id, change_unit_id,
+                    created_at, metadata_json
+               FROM evidence_producers
+              WHERE project_id = ?1 AND evidence_producer_id = ?2",
+            rusqlite::params![prepared.project_id, producer_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?;
+        let staging_storage = conn.query_row(
+            "SELECT project_id, handle_id, task_id, created_by_actor_source,
+                    artifact_json, safe_metadata_json, tmp_path, sha256, size_bytes,
+                    content_type, redaction_state, status, expires_at,
+                    consumed_by_run_id, promoted_artifact_id, consumed_at,
+                    created_at, metadata_json
+               FROM artifact_staging
+              WHERE project_id = ?1 AND handle_id = ?2",
+            rusqlite::params![prepared.project_id, receipt.staged_receipt_handle_id],
+            |row| {
+                Ok(PersistedLiveStagingRow {
+                    project_id: row.get(0)?,
+                    handle_id: row.get(1)?,
+                    task_id: row.get(2)?,
+                    created_by_actor_source: row.get(3)?,
+                    artifact_json: row.get(4)?,
+                    safe_metadata_json: row.get(5)?,
+                    tmp_path: row.get(6)?,
+                    sha256: row.get(7)?,
+                    size_bytes: row.get(8)?,
+                    content_type: row.get(9)?,
+                    redaction_state: row.get(10)?,
+                    status: row.get(11)?,
+                    expires_at: row.get(12)?,
+                    consumed_by_run_id: row.get(13)?,
+                    promoted_artifact_id: row.get(14)?,
+                    consumed_at: row.get(15)?,
+                    created_at: row.get(16)?,
+                    metadata_json: row.get(17)?,
+                })
+            },
+        )?;
+        let staging_storage = PersistedLiveStagingAuthority {
+            project_id: staging_storage.project_id,
+            handle_id: staging_storage.handle_id,
+            task_id: staging_storage.task_id,
+            created_by_actor_source: staging_storage.created_by_actor_source,
+            artifact_json: staging_storage.artifact_json,
+            safe_metadata_json: staging_storage.safe_metadata_json,
+            tmp_path: staging_storage.tmp_path,
+            sha256: staging_storage.sha256,
+            size_bytes: staging_storage.size_bytes,
+            content_type: staging_storage.content_type,
+            redaction_state: staging_storage.redaction_state,
+            status: staging_storage.status,
+            expires_at: staging_storage.expires_at,
+            consumed_by_run_id: staging_storage.consumed_by_run_id,
+            promoted_artifact_id: staging_storage.promoted_artifact_id,
+            consumed_at: staging_storage.consumed_at,
+            created_at: staging_storage.created_at,
+            metadata_json: staging_storage.metadata_json,
+        };
         let expected_actor = format!("agent_connection:{connection_id}");
         let expected_kind = match feature {
             HostFeature::VerifiedToolProducer => EvidenceProducerKind::VerifiedToolInvocation,
@@ -5640,28 +12440,300 @@ mod unix {
             HostFeature::RegisteredConnectionObservation => "registered_connection_observation_v1",
             _ => unreachable!("producer feature was validated above"),
         };
+        let (expected_tool_name, expected_tool_invocation_id) = match feature {
+            HostFeature::VerifiedToolProducer => (
+                Some(LIVE_VERIFIED_TOOL_NAME),
+                source.host_invocation_id.as_deref(),
+            ),
+            HostFeature::RegisteredConnectionObservation => (None, None),
+            _ => unreachable!("producer feature was validated above"),
+        };
+        let expected_tool_metadata = serde_json::json!({
+            "capture_intent_id": source.capture_intent_id,
+            "capture_receipt_id": receipt.capture_receipt_id,
+            "result_sha256": receipt.result_sha256,
+            "connection_id": receipt.body.source.connection_id,
+            "session_id": receipt.body.source.session_id,
+            "guard_installation_id": receipt.body.source.guard_installation_id,
+            "guard_event_ids": receipt.body.source.guard_event_ids,
+            "watch_observation_refs": receipt.body.source.watch_observation_refs,
+        });
+        let final_state_version = producer
+            .run_ref
+            .produced_at_state_version
+            .unwrap_or_default();
+        let producer_metadata: Value =
+            serde_json::from_str(&producer_storage.4).map_err(producer_chain_record_invalid)?;
         let [intent_ref] = input_refs.as_slice() else {
-            return Err(io::Error::other(
-                "producer observation does not contain one exact capture-intent ref",
-            )
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_intent_ref_count_mismatch",
+                io::Error::other(
+                    "producer observation does not contain one exact capture-intent ref",
+                ),
+            ));
         };
         let [receipt_artifact] = producer.receipt_artifact_refs.as_slice() else {
-            return Err(io::Error::other(
-                "producer does not contain one exact receipt artifact ref",
-            )
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_receipt_artifact_ref_count_mismatch",
+                io::Error::other("producer does not contain one exact receipt artifact ref"),
+            ));
         };
         let producer_ref = authority
             .producer_anchor
             .producer_ref
             .as_ref()
-            .ok_or_else(|| io::Error::other("producer observation has no producer ref"))?;
-        let strong = producer_id == producer.evidence_producer_id.as_str()
+            .ok_or_else(|| {
+                ClassifiedLiveProducerFailure::boxed(
+                    "producer_attempt",
+                    "producer_anchor_ref_missing",
+                    io::Error::other("producer observation has no producer ref"),
+                )
+            })?;
+        let intent_ref_exact = live_state_ref_matches(
+            intent_ref,
+            StateRecordKind::EvidenceCaptureIntent,
+            &source.capture_intent_id,
+            &prepared.project_id,
+            &prepared.task_id,
+            source.intent_state_version,
+        );
+        let run_ref_exact = live_state_ref_matches(
+            &producer.run_ref,
+            StateRecordKind::Run,
+            run_id,
+            &prepared.project_id,
+            &prepared.task_id,
+            final_state_version,
+        );
+        let observation_ref_exact = live_state_ref_matches(
+            &producer.observation_ref,
+            StateRecordKind::EvidenceObservation,
+            evidence_observation_id,
+            &prepared.project_id,
+            &prepared.task_id,
+            final_state_version,
+        );
+        let producer_ref_exact = live_state_ref_matches(
+            producer_ref,
+            StateRecordKind::EvidenceProducer,
+            producer_id,
+            &prepared.project_id,
+            &prepared.task_id,
+            final_state_version,
+        );
+        let artifact_created_by_run_ref_exact = receipt_artifact
+            .created_by_run_ref
+            .as_ref()
+            .is_some_and(|record_ref| {
+                live_state_ref_matches(
+                    record_ref,
+                    StateRecordKind::Run,
+                    run_id,
+                    &prepared.project_id,
+                    &prepared.task_id,
+                    final_state_version,
+                )
+            });
+        let expected_artifact_uri = format!(
+            "volicord-artifact://{}/{}",
+            prepared.project_id, artifact_id
+        );
+        let expected_artifact_input_id = format!("capture_receipt_{}", source.capture_intent_id);
+        let artifact_ref_exact = receipt_artifact.project_id.as_str() == prepared.project_id
+            && receipt_artifact.task_id.as_str() == prepared.task_id
+            && receipt_artifact.display_name == "evidence-capture-receipt.json"
+            && receipt_artifact.content_type.as_ref().map(String::as_str)
+                == artifact_storage.content_type.as_deref()
+            && receipt_artifact.integrity_status == ArtifactIntegrityStatus::Verified
+            && receipt_artifact.redaction_state == RedactionState::Redacted
+            && receipt_artifact.availability == ArtifactAvailability::Available
+            && artifact_created_by_run_ref_exact
+            && receipt_artifact
+                .created_by_actor_source
+                .as_ref()
+                .is_some_and(|actor| actor.to_canonical_string() == expected_actor)
+            && receipt_artifact
+                .storage_ref
+                .as_ref()
+                .map(|value| value.as_str())
+                == Some(artifact_storage.uri.as_str())
+            && artifact_storage.project_id == prepared.project_id
+            && artifact_storage.task_id == prepared.task_id
+            && artifact_storage.producer_run_id.as_deref() == Some(run_id)
+            && artifact_storage.uri == expected_artifact_uri
+            && artifact_storage.content_type.as_deref() == Some("application/json")
+            && artifact_storage.producer.display_name.as_deref()
+                == Some(receipt_artifact.display_name.as_str())
+            && artifact_storage.producer.content_type.as_deref()
+                == artifact_storage.content_type.as_deref()
+            && artifact_storage
+                .producer
+                .created_by_actor_source
+                .to_canonical_string()
+                == expected_actor
+            && artifact_storage.producer.artifact_input_id.as_str() == expected_artifact_input_id
+            && artifact_storage
+                .producer
+                .relation_hint
+                .as_ref()
+                .map(String::as_str)
+                == Some("evidence_capture_receipt")
+            && artifact_storage.producer.evidence_target.as_ref() == Some(&prepared.target);
+        let observation_exact = observation_storage.project_id == prepared.project_id
+            && observation_storage.task_id == prepared.task_id
+            && observation_storage.change_unit_id.as_deref()
+                == Some(prepared.change_unit_id.as_str())
+            && observation_storage.run_id.as_deref() == Some(run_id)
+            && live_evidence_target_columns_match(
+                &prepared.target,
+                observation_storage.acceptance_criterion_id.as_deref(),
+                observation_storage.evidence_claim_id.as_deref(),
+            )
+            && observation_storage.observed_by_actor_source.as_deref()
+                == Some(expected_actor.as_str())
+            && observation_storage.tool_name.as_deref() == expected_tool_name
+            && observation_storage.tool_invocation_id.as_deref() == expected_tool_invocation_id
+            && observation_storage.tool_metadata == expected_tool_metadata
+            && observation_storage.source_refs == serde_json::json!([])
+            && observation_storage.limitations == receipt.body.limitations
+            && observation_storage.observed_at == source.observed_at
+            && observation_storage.recorded_at == producer_storage.3
+            && authority.producer_anchor.output_artifact_refs.as_slice()
+                == [receipt_artifact.clone()]
+            && live_capture_assessment_ref_matches(
+                authority.relevance_assessment.assessment_ref.as_ref(),
+                intent_ref,
+            )
+            && authority
+                .relevance_assessment
+                .assessed_by_actor_source
+                .is_none();
+        let producer_semantics_exact = producer.capture_intent_ref == *intent_ref
+            && producer.expected_outcome == receipt.body.expected_outcome
+            && producer.observed_outcome == receipt.body.observed_outcome
+            && producer.source_refs.is_empty()
+            && producer.connection_id == receipt.body.source.connection_id
+            && producer.session_id == receipt.body.source.session_id
+            && producer.guard_installation_id == receipt.body.source.guard_installation_id
+            && producer.guard_event_ids == receipt.body.source.guard_event_ids
+            && producer.watch_observation_refs == receipt.body.source.watch_observation_refs
+            && producer.limitations == receipt.body.limitations
+            && producer.redaction_state == RedactionState::Redacted
+            && producer.observed_by_actor_source == receipt.body.observed_by_actor_source
+            && producer.observed_at == receipt.body.observed_at
+            && producer.finalized_at.to_canonical_string() == producer_storage.3
+            && producer_metadata
+                == serde_json::json!({"verification_basis": expected_verification_basis})
+            && producer_storage.0 == receipt.capture_receipt_id
+            && producer_storage.1 == prepared.task_id
+            && producer_storage.2 == prepared.change_unit_id;
+        let run_basis_exact = live_producer_run_authority_matches(
+            &run_storage,
+            LiveProducerRunAuthorityBasis {
+                project_id: &prepared.project_id,
+                run_id,
+                task_id: &prepared.task_id,
+                change_unit_id: &prepared.change_unit_id,
+                scope_revision: prepared.scope_revision,
+                marker,
+                baseline_ref: &prepared.baseline_ref,
+                target: &prepared.target,
+                actor_source: &expected_actor,
+                committed_at: &producer_storage.3,
+            },
+        ) && source.intent_state_version.checked_add(1)
+            == Some(final_state_version);
+        let promoted_body = inspect_live_promoted_receipt_body(
+            &project.project_home,
+            artifact_body_path.as_deref(),
+        )?;
+        let retained_body_exact = promoted_body.as_ref().is_some_and(|body| {
+            live_retained_receipt_body_matches(
+                body,
+                &receipt.safe_receipt_json,
+                &receipt.safe_receipt_sha256,
+                receipt.safe_receipt_size_bytes,
+            ) && serde_json::from_slice::<PersistedEvidenceCaptureReceiptBody>(&body.bytes)
+                .ok()
+                .as_ref()
+                == Some(&receipt.body)
+        });
+        let expected_staging_tmp_path = artifact_body_path
+            .as_deref()
+            .map(|body_path| format!("{ARTIFACTS_DIR}/{body_path}"));
+        let staging_authority_exact =
+            expected_staging_tmp_path
+                .as_deref()
+                .is_some_and(|tmp_path| {
+                    staging_storage
+                        == expected_live_receipt_staging_authority(
+                            LiveReceiptStagingAuthorityBasis {
+                                project_id: &prepared.project_id,
+                                handle_id: &receipt.staged_receipt_handle_id,
+                                task_id: &prepared.task_id,
+                                actor_source: &expected_actor,
+                                artifact_json: &receipt.staging_artifact_json,
+                                safe_metadata_json: &receipt.staging_safe_metadata_json,
+                                tmp_path,
+                                sha256: &receipt.safe_receipt_sha256,
+                                size_bytes: receipt.safe_receipt_size_bytes,
+                                expires_at: &receipt.intent_expires_at,
+                                run_id,
+                                artifact_id,
+                                created_at: &receipt.receipt_created_at,
+                                consumed_at: &producer_storage.3,
+                                metadata_json: &receipt.staging_metadata_json,
+                            },
+                        )
+                });
+        let artifact_chain = LiveProducerArtifactChainBinding {
+            relational_scope_revision: *scope_revision,
+            canonical_scope_revision: producer.scope_revision,
+            prepared_scope_revision: prepared.scope_revision,
+            artifact_source_staging_handle_id: artifact_source_staging_handle_id.clone(),
+            receipt_staging_handle_id: receipt.staged_receipt_handle_id.clone(),
+            artifact_sha256: artifact_sha256.clone(),
+            artifact_size_bytes: *artifact_size_bytes,
+            receipt_safe_receipt_sha256: receipt.safe_receipt_sha256.clone(),
+            receipt_safe_receipt_size_bytes: receipt.safe_receipt_size_bytes,
+            canonical_artifact_sha256: receipt_artifact.sha256.as_ref().cloned(),
+            canonical_artifact_size_bytes: receipt_artifact.size_bytes.as_ref().copied(),
+            promoted_body_sha256: promoted_body.as_ref().map(|body| body.sha256.clone()),
+            promoted_body_size_bytes: promoted_body.as_ref().map(|body| body.size_bytes),
+            staging_handle_id: staging_handle_id.clone(),
+            staging_status: staging_status.clone(),
+            staging_consumed_by_run_id: staging_consumed_by_run_id.clone(),
+            run_id: run_id.clone(),
+            staging_promoted_artifact_id: staging_promoted_artifact_id.clone(),
+            artifact_id: artifact_id.clone(),
+        };
+        if !artifact_chain.is_exact() {
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_artifact_chain_mismatch",
+                io::Error::other(
+                    "producer artifact is not the exact consumed capture-receipt staging object",
+                ),
+            ));
+        }
+        let strong_core = producer_id == producer.evidence_producer_id.as_str()
+            && intent_ref_exact
+            && run_ref_exact
+            && observation_ref_exact
+            && producer_ref_exact
+            && artifact_ref_exact
+            && observation_exact
+            && producer_semantics_exact
+            && run_basis_exact
+            && staging_authority_exact
+            && retained_body_exact
             && evidence_observation_id == producer.observation_ref.record_id.as_str()
             && artifact_id == receipt_artifact.artifact_id.as_str()
             && run_id == producer.run_ref.record_id.as_str()
             && *scope_revision == producer.scope_revision
+            && producer.scope_revision == prepared.scope_revision
             && baseline_ref == producer.baseline_ref.as_str()
             && producer_kind == expected_kind_text
             && producer.producer_kind == expected_kind
@@ -5706,55 +12778,118 @@ mod unix {
             && run.changed_paths.is_empty()
             && artifact_integrity == "verified"
             && artifact_availability == "available"
-            && artifact_redaction == "redacted";
+            && artifact_redaction == "redacted"
+            && artifact_chain.is_exact();
 
         let mut summaries = conn.prepare(
-            "SELECT status, coverage_json, metadata_json
+            "SELECT project_id, evidence_summary_id, task_id, change_unit_id,
+                    produced_at_state_version, status, coverage_json,
+                    supporting_refs_json, gap_refs_json, created_at, updated_at,
+                    metadata_json
                FROM evidence_summaries
               WHERE project_id = ?1 AND task_id = ?2",
         )?;
-        let coverage_rows = summaries
+        let summary_rows = summaries
             .query_map(
                 rusqlite::params![prepared.project_id, prepared.task_id],
                 |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
+                    Ok(PersistedLiveEvidenceSummaryRow {
+                        project_id: row.get(0)?,
+                        evidence_summary_id: row.get(1)?,
+                        task_id: row.get(2)?,
+                        change_unit_id: row.get(3)?,
+                        produced_at_state_version: row.get(4)?,
+                        status: row.get(5)?,
+                        coverage_json: row.get(6)?,
+                        supporting_refs_json: row.get(7)?,
+                        gap_refs_json: row.get(8)?,
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
+                        metadata_json: row.get(11)?,
+                    })
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
-        let matching_coverage = coverage_rows
+        let summary_authorities = summary_rows
             .into_iter()
-            .filter_map(|(status, coverage_json, metadata_json)| {
-                let metadata =
-                    serde_json::from_str::<PersistedEvidenceMetadata>(&metadata_json).ok()?;
-                (metadata.updated_by_run_id.as_str() == run_id).then_some((status, coverage_json))
+            .map(|row| {
+                Ok::<_, Box<dyn Error>>(PersistedLiveEvidenceSummaryAuthority {
+                    project_id: row.project_id,
+                    evidence_summary_id: row.evidence_summary_id,
+                    task_id: row.task_id,
+                    change_unit_id: row.change_unit_id,
+                    produced_at_state_version: row.produced_at_state_version,
+                    status: row.status,
+                    coverage_items: serde_json::from_str(&row.coverage_json)
+                        .map_err(producer_chain_record_invalid)?,
+                    supporting_refs: serde_json::from_str(&row.supporting_refs_json)
+                        .map_err(producer_chain_record_invalid)?,
+                    gap_refs: serde_json::from_str(&row.gap_refs_json)
+                        .map_err(producer_chain_record_invalid)?,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    metadata: serde_json::from_str(&row.metadata_json)
+                        .map_err(producer_chain_record_invalid)?,
+                })
             })
+            .collect::<Result<Vec<_>, _>>()?;
+        let matching_summaries = summary_authorities
+            .iter()
+            .filter(|summary| summary.metadata.updated_by_run_id.as_str() == run_id)
             .collect::<Vec<_>>();
-        let [(coverage_status, coverage_json)] = matching_coverage.as_slice() else {
-            return Err(io::Error::other(
-                "producer-linked Run has no unique current evidence summary",
-            )
-            .into());
+        let [evidence_summary] = matching_summaries.as_slice() else {
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_coverage_summary_count_mismatch",
+                io::Error::other("producer-linked Run has no unique current evidence summary"),
+            ));
         };
-        let coverage_items: Vec<EvidenceCoverageItem> = serde_json::from_str(coverage_json)?;
-        let [coverage] = coverage_items.as_slice() else {
-            return Err(io::Error::other(
-                "producer-linked evidence summary has no sole criterion coverage item",
-            )
-            .into());
+        let expected_coverage = EvidenceCoverageItem {
+            target: prepared.target.clone(),
+            coverage_state: EvidenceCoverageState::Supported,
+            supporting_run_refs: vec![producer.run_ref.clone()],
+            observation_refs: vec![producer.observation_ref.clone()],
+            supporting_artifact_refs: vec![receipt_artifact.clone()],
+            gap_refs: Vec::new(),
         };
-        let criterion_coverage = coverage_status == "sufficient"
-            && coverage.target == prepared.target
-            && coverage.coverage_state == EvidenceCoverageState::Supported
-            && coverage.supporting_run_refs.len() == 1
-            && coverage.supporting_run_refs[0].record_id.as_str() == run_id
-            && coverage.observation_refs.len() == 1
-            && coverage.observation_refs[0].record_id.as_str() == evidence_observation_id
-            && coverage.supporting_artifact_refs.as_slice() == [receipt_artifact.clone()]
-            && coverage.gap_refs.is_empty();
+        let criterion_coverage = live_evidence_summary_authority_matches(
+            evidence_summary,
+            &LiveEvidenceSummaryAuthorityBasis {
+                project_id: &prepared.project_id,
+                task_id: &prepared.task_id,
+                change_unit_id: &prepared.change_unit_id,
+                produced_at_state_version: final_state_version,
+                expected_coverage: &expected_coverage,
+                supporting_run_ref: &producer.run_ref,
+                run_id,
+                committed_at: &producer_storage.3,
+            },
+        );
+        let evidence_summary_id = &evidence_summary.evidence_summary_id;
+        let mut artifact_links = conn
+            .prepare(
+                "SELECT task_id, owner_record_kind, owner_record_id, created_by_run_id
+                   FROM artifact_links
+                  WHERE project_id = ?1 AND artifact_id = ?2",
+            )?
+            .query_map(rusqlite::params![prepared.project_id, artifact_id], |row| {
+                Ok(LiveArtifactOwnerLink {
+                    task_id: row.get(0)?,
+                    owner_record_kind: row.get(1)?,
+                    owner_record_id: row.get(2)?,
+                    created_by_run_id: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        artifact_links.sort();
+        let artifact_links_exact = artifact_links
+            == expected_live_receipt_artifact_links(
+                &prepared.task_id,
+                run_id,
+                evidence_observation_id,
+                producer_id,
+                evidence_summary_id,
+            );
         let (state_version, lifecycle_phase): (u64, String) = conn.query_row(
             "SELECT ps.state_version, t.lifecycle_phase
                FROM project_state ps
@@ -5763,11 +12898,18 @@ mod unix {
             rusqlite::params![prepared.project_id, prepared.task_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        let strong = strong_core
+            && artifact_links_exact
+            && state_version == final_state_version
+            && final_state_version > source.intent_state_version;
         if !strong || !criterion_coverage {
-            return Err(io::Error::other(
-                "producer finalization is not a complete Strong Evidence chain with criterion coverage",
-            )
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "producer_strong_chain_or_coverage_mismatch",
+                io::Error::other(
+                    "producer finalization is not a complete Strong Evidence chain with criterion coverage",
+                ),
+            ));
         }
         Ok(InspectedLiveProducerChain {
             producer_id: producer_id.clone(),
@@ -5815,6 +12957,263 @@ mod unix {
         authority_receipt: &'a VerifiedLiveReceipt,
         assertions: &'a LiveProducerAssertionFamilies,
         host_feature_diagnostics: &'a ReleaseHostFeatureDiagnostics,
+    }
+
+    fn live_producer_failed_summary(
+        recorder: &LiveResultRecorder,
+        error: Option<&(dyn Error + 'static)>,
+    ) -> Value {
+        let mut summary = recorder.failed_before_completion_summary();
+        summary["result"] = Value::String("failed".to_owned());
+        let (stage, finding_code, safe_aggregates) = match error {
+            Some(error) if error.is::<LiveProducerSourceBarrierFailure>() => {
+                let failure = error
+                    .downcast_ref::<LiveProducerSourceBarrierFailure>()
+                    .expect("error type was checked");
+                (
+                    "source_barrier",
+                    failure.finding_code,
+                    Some(failure.safe_aggregates()),
+                )
+            }
+            Some(error) if error.is::<ClassifiedLiveProducerFailure>() => {
+                let failure = error
+                    .downcast_ref::<ClassifiedLiveProducerFailure>()
+                    .expect("error type was checked");
+                (failure.stage, failure.finding_code, None)
+            }
+            Some(_) | None => ("producer_attempt", "live_producer_attempt_failed", None),
+        };
+        summary["failure"] = serde_json::json!({
+            "stage": stage,
+            "finding_code": finding_code,
+            "safe_aggregates": safe_aggregates
+        });
+        summary
+    }
+
+    fn validate_live_producer_failed_summary(summary: &Value) -> Result<(), Box<dyn Error>> {
+        require_exact_live_evidence_result_keys(
+            summary,
+            "",
+            &[
+                "kind",
+                "result",
+                "host",
+                "host_feature_support",
+                "final_output_authority_disclosure",
+                "failure",
+            ],
+        )?;
+        require_exact_live_evidence_result_keys(summary, "/host", &["kind"])?;
+        if summary.get("result").and_then(Value::as_str) != Some("failed") {
+            return Err(io::Error::other("live producer failure summary is not failed").into());
+        }
+        let failure = summary
+            .get("failure")
+            .and_then(Value::as_object)
+            .ok_or_else(|| io::Error::other("live producer failure summary has no failure"))?;
+        let keys = failure.keys().map(String::as_str).collect::<BTreeSet<_>>();
+        if keys != BTreeSet::from(["finding_code", "safe_aggregates", "stage"]) {
+            return Err(io::Error::other(
+                "live producer failure summary has unexpected failure fields",
+            )
+            .into());
+        }
+        let stage = failure["stage"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live producer failure stage is not a string"))?;
+        if !matches!(
+            stage,
+            "producer_preflight" | "producer_attempt" | "source_barrier"
+        ) {
+            return Err(io::Error::other("live producer failure stage is not stable").into());
+        }
+        let finding_code = failure["finding_code"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live producer finding code is not a string"))?;
+        if finding_code.is_empty()
+            || finding_code.len() > 128
+            || !finding_code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        {
+            return Err(io::Error::other("live producer finding code is not stable").into());
+        }
+        let aggregate_validation: Result<(), Box<dyn Error>> = match &failure["safe_aggregates"] {
+            Value::Null => Ok(()),
+            Value::Object(aggregates) => {
+                let keys = aggregates
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
+                if keys
+                    != BTreeSet::from([
+                        "candidate_count",
+                        "event_order",
+                        "invocation_identity_class",
+                        "pre_decision_class",
+                    ])
+                {
+                    return Err(io::Error::other(
+                        "live producer failure summary has unexpected aggregate fields",
+                    )
+                    .into());
+                }
+                let event_order_is_bounded =
+                    aggregates["event_order"].as_array().is_some_and(|values| {
+                        values.len() <= 4
+                            && values.iter().all(|value| {
+                                matches!(value.as_str(), Some("pre_tool" | "post_tool" | "other"))
+                            })
+                    });
+                let pre_decision_is_classified = matches!(
+                    aggregates["pre_decision_class"].as_str(),
+                    Some("not_observed" | "deny" | "not_deny" | "ambiguous" | "not_applicable")
+                );
+                let invocation_identity_is_classified = matches!(
+                    aggregates["invocation_identity_class"].as_str(),
+                    Some("equal" | "different" | "missing" | "not_comparable" | "not_applicable")
+                );
+                if !aggregates["candidate_count"].is_u64()
+                    || !event_order_is_bounded
+                    || !pre_decision_is_classified
+                    || !invocation_identity_is_classified
+                {
+                    return Err(io::Error::other(
+                        "live producer failure aggregate shape is invalid",
+                    )
+                    .into());
+                }
+                Ok(())
+            }
+            _ => Err(io::Error::other(
+                "live producer failure safe aggregates must be an object or null",
+            )
+            .into()),
+        };
+        aggregate_validation?;
+        reject_forbidden_live_producer_fields(summary)?;
+        if serialize_live_host_result(summary)?.len() >= MAX_LIVE_HOST_RESULT_BYTES {
+            return Err(io::Error::other(
+                "producer failure result exceeds its bounded summary budget",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn validate_enriched_live_producer_failed_summary(
+        summary: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut base = summary.clone();
+        let object = base.as_object_mut().ok_or_else(|| {
+            io::Error::other("enriched live producer failure summary is not an object")
+        })?;
+        let validation_run = object
+            .remove("validation_run")
+            .ok_or_else(|| io::Error::other("live producer failure has no validation_run"))?;
+        let volicord = object.remove("volicord");
+        let connection = object.remove("connection");
+        let host = object
+            .get_mut("host")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| io::Error::other("live producer failure has no host object"))?;
+        let host_version = host.remove("version");
+        let host_executable_sha256 = host.remove("executable_sha256");
+
+        validate_live_producer_failed_summary(&base)?;
+        match (host_version, host_executable_sha256) {
+            (None, None) => {}
+            (Some(Value::String(version)), Some(Value::String(digest))) => {
+                bounded_identity(
+                    "live producer failure host version",
+                    &version,
+                    MAX_HOST_VERSION_BYTES,
+                )?;
+                validate_lower_hex(
+                    "live producer failure host executable digest",
+                    &digest,
+                    &[64],
+                )?;
+            }
+            _ => {
+                return Err(io::Error::other(
+                    "live producer failure host identity must be wholly present or absent",
+                )
+                .into())
+            }
+        }
+        if let Some(volicord) = volicord {
+            require_exact_live_evidence_result_keys(&volicord, "", &["build_id"])?;
+            let build_id = volicord["build_id"].as_str().ok_or_else(|| {
+                io::Error::other("live producer failure build id is not a string")
+            })?;
+            bounded_identity(
+                "live producer failure build id",
+                build_id,
+                MAX_BUILD_ID_BYTES,
+            )?;
+        }
+        if let Some(connection) = connection {
+            require_exact_live_evidence_result_keys(&connection, "", &["connection_id"])?;
+            let connection_id = connection["connection_id"].as_str().ok_or_else(|| {
+                io::Error::other("live producer failure connection id is not a string")
+            })?;
+            bounded_identity(
+                "live producer failure connection id",
+                connection_id,
+                MAX_CONNECTION_ID_BYTES,
+            )?;
+        }
+        require_exact_live_evidence_result_keys(
+            &validation_run,
+            "",
+            &[
+                "run_id",
+                "started_at",
+                "recorded_at",
+                "client_name",
+                "client_version",
+            ],
+        )?;
+        let run_id = validation_run["run_id"]
+            .as_str()
+            .ok_or_else(|| io::Error::other("live producer failure run id is not a string"))?;
+        bounded_identity(
+            "live producer failure run id",
+            run_id,
+            MAX_VALIDATION_RUN_ID_BYTES,
+        )?;
+        for field in ["started_at", "recorded_at"] {
+            let timestamp = validation_run[field].as_str().ok_or_else(|| {
+                io::Error::other(format!("live producer failure {field} is not a string"))
+            })?;
+            bounded_identity(&format!("live producer failure {field}"), timestamp, 128)?;
+        }
+        match (
+            &validation_run["client_name"],
+            &validation_run["client_version"],
+        ) {
+            (Value::Null, Value::Null) => {}
+            (Value::String(name), Value::String(version)) => {
+                ObservedInitializedClientInfo::new(name.clone(), version.clone())?;
+            }
+            _ => {
+                return Err(io::Error::other(
+                    "live producer failure client identity must be wholly present or null",
+                )
+                .into())
+            }
+        }
+        reject_forbidden_live_producer_fields(summary)?;
+        if serialize_live_host_result(summary)?.len() >= MAX_LIVE_HOST_RESULT_BYTES {
+            return Err(io::Error::other(
+                "enriched producer failure exceeds its bounded summary budget",
+            )
+            .into());
+        }
+        Ok(())
     }
 
     fn live_producer_completed_summary(input: LiveProducerSummaryInput<'_>) -> Value {
@@ -6243,7 +13642,7 @@ mod unix {
     }
 
     fn reject_forbidden_live_producer_fields(value: &Value) -> Result<(), Box<dyn Error>> {
-        fn walk(value: &Value) -> Result<(), io::Error> {
+        fn walk(value: &Value, path: &str) -> Result<(), io::Error> {
             match value {
                 Value::Object(object) => {
                     for (key, value) in object {
@@ -6265,19 +13664,28 @@ mod unix {
                                 "producer result contains forbidden payload field {key:?}"
                             )));
                         }
-                        walk(value)?;
+                        walk(value, &format!("{path}/{key}"))?;
                     }
                 }
                 Value::Array(values) => {
                     for value in values {
-                        walk(value)?;
+                        walk(value, path)?;
                     }
                 }
                 Value::String(text) => {
+                    let exact_contract_identity = matches!(
+                        path,
+                        "/host/version"
+                            | "/volicord/build_id"
+                            | "/connection/connection_id"
+                            | "/validation_run/client_name"
+                            | "/validation_run/client_version"
+                    );
                     let normalized = text.to_ascii_lowercase();
-                    if normalized.contains("https://")
-                        || normalized.contains("http://")
-                        || normalized.contains("bearer ")
+                    if !exact_contract_identity
+                        && (normalized.contains("https://")
+                            || normalized.contains("http://")
+                            || normalized.contains("bearer "))
                     {
                         return Err(io::Error::other(
                             "producer result contains forbidden URL or bearer payload text",
@@ -6288,7 +13696,7 @@ mod unix {
             }
             Ok(())
         }
-        walk(value).map_err(Into::into)
+        walk(value, "").map_err(Into::into)
     }
 
     fn live_final_output_matrix_cell(
@@ -9857,6 +17265,20 @@ mod unix {
         require_ready: bool,
     ) -> Result<VerifiedLiveReceipt, Box<dyn Error>> {
         let status: StatusResult = serde_json::from_value(status_json)?;
+        verify_typed_authority_receipt_binding(
+            status,
+            observation,
+            expected_result_summary,
+            require_ready,
+        )
+    }
+
+    fn verify_typed_authority_receipt_binding(
+        status: StatusResult,
+        observation: &LiveUserActionObservation,
+        expected_result_summary: &str,
+        require_ready: bool,
+    ) -> Result<VerifiedLiveReceipt, Box<dyn Error>> {
         let state_version = status
             .base
             .state_version
@@ -12756,7 +20178,20 @@ mod unix {
         connection_id: &str,
         result_recorder: &mut LiveResultRecorder,
     ) -> Result<(), Box<dyn Error>> {
-        fixture.run_codex_hook_trust_preflight(host, executable, result_recorder)?;
+        if let Err(error) =
+            fixture.run_codex_hook_trust_preflight(host, executable, result_recorder)
+        {
+            if result_recorder.terminal_publication_is_forbidden()
+                || is_classified_live_producer_failure(error.as_ref())
+            {
+                return Err(error);
+            }
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_preflight",
+                "host_trust_preflight_failed",
+                error,
+            ));
+        }
         let project_selector = live_fixture_project_id(fixture)?;
         let authority_before = project_authority_snapshot(fixture, &project_selector)?;
         if authority_before.task_count != 0 {
@@ -12770,12 +20205,26 @@ mod unix {
         println!(
             "\n=== Volicord live {host} connection-observation probe ===\nThis authenticated host turn intentionally has no active Volicord Task. It must expose and call the installed Volicord MCP server before the administrative verification step can store a complete Agent Connection result. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(
+        let status = match fixture.run_authenticated_interactive_host(
             host,
             executable,
             &prompt,
             result_recorder,
-        )?;
+        ) {
+            Ok(status) => status,
+            Err(error) => {
+                if result_recorder.terminal_publication_is_forbidden()
+                    || is_classified_live_producer_failure(error.as_ref())
+                {
+                    return Err(error);
+                }
+                return Err(ClassifiedLiveProducerFailure::boxed(
+                    "producer_preflight",
+                    "connection_observation_host_preflight_failed",
+                    error,
+                ));
+            }
+        };
         smoke_note(
             host,
             format!(
@@ -12784,18 +20233,24 @@ mod unix {
             ),
         );
         if !status.success() {
-            return Err(io::Error::other(format!(
-                "the connection-observation {host} process exited unsuccessfully with {}",
-                status_text(status)
-            ))
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_observation_host_exit_unsuccessful",
+                io::Error::other(format!(
+                    "the connection-observation {host} process exited unsuccessfully with {}",
+                    status_text(status)
+                )),
+            ));
         }
         let authority_after = project_authority_snapshot(fixture, &project_selector)?;
         if authority_after != authority_before {
-            return Err(io::Error::other(format!(
-                "the connection-observation probe changed project authority state: before={authority_before:?}, after={authority_after:?}"
-            ))
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_observation_changed_authority_state",
+                io::Error::other(format!(
+                    "the connection-observation probe changed project authority state: before={authority_before:?}, after={authority_after:?}"
+                )),
+            ));
         }
         assert_connection_observation_diagnostic(
             fixture,
@@ -12823,8 +20278,21 @@ mod unix {
         require_success(
             "volicord connection verify after live host observation",
             &verification,
-        )?;
-        let value = json_stdout(&verification)?;
+        )
+        .map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_verification_command_failed",
+                source,
+            )
+        })?;
+        let value = json_stdout(&verification).map_err(|source| {
+            ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_verification_output_invalid",
+                source,
+            )
+        })?;
         let observed_status = value["status"].as_str().unwrap_or("missing");
         let observed_connection_id = value["connection"]["connection_id"]
             .as_str()
@@ -12836,11 +20304,14 @@ mod unix {
                 .flatten()
                 .filter_map(|action| action["id"].as_str())
                 .collect::<Vec<_>>();
-            return Err(io::Error::other(format!(
-                "the post-observation administrative verification did not complete the prepared Agent Connection: status={observed_status:?}, connection_id_matches={}, actions={action_ids:?}",
-                observed_connection_id == connection_id
-            ))
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_verification_not_complete",
+                io::Error::other(format!(
+                    "the post-observation administrative verification did not complete the prepared Agent Connection: status={observed_status:?}, connection_id_matches={}, actions={action_ids:?}",
+                    observed_connection_id == connection_id
+                )),
+            ));
         }
         assert_live_connection_verified(fixture, connection_id)
     }
@@ -12853,11 +20324,14 @@ mod unix {
             agent_connection_record_read_only(&fixture.runtime_home_path, connection_id)?
                 .ok_or_else(|| io::Error::other("live Agent Connection record is missing"))?;
         if connection.last_verification_status != VERIFIED_STATUS_COMPLETE {
-            return Err(io::Error::other(format!(
-                "the authenticated host MCP round trip did not complete Agent Connection verification: observed {:?}",
-                connection.last_verification_status
-            ))
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_record_not_verified",
+                io::Error::other(format!(
+                    "the authenticated host MCP round trip did not complete Agent Connection verification: observed {:?}",
+                    connection.last_verification_status
+                )),
+            ));
         }
         Ok(())
     }
@@ -14039,6 +21513,36 @@ mod unix {
     }
 
     #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ObservedHostExecutable {
+        canonical_path: PathBuf,
+        sha256: String,
+    }
+
+    impl ObservedHostExecutable {
+        fn measure(path: &Path) -> Result<Self, Box<dyn Error>> {
+            let canonical_path = fs::canonicalize(path)?;
+            let metadata = fs::symlink_metadata(&canonical_path)?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(io::Error::other(
+                    "observed host executable must resolve to a non-symlink regular file",
+                )
+                .into());
+            }
+            if metadata.permissions().mode() & 0o111 == 0 {
+                return Err(
+                    io::Error::other("observed host executable target is not executable").into(),
+                );
+            }
+            let sha256 = sha256_file(&canonical_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+            validate_lower_hex("observed host executable digest", &sha256, &[64])?;
+            Ok(Self {
+                canonical_path,
+                sha256,
+            })
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct ObservedReleaseHostIdentity {
         host_version: String,
         host_executable_sha256: String,
@@ -14169,30 +21673,67 @@ mod unix {
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct ManagedBaselineObservation {
         metadata_fingerprint: String,
-        initialize_event_fingerprints: BTreeSet<String>,
+        initialize_events: BTreeSet<ManagedInitializeEventObservation>,
+    }
+
+    #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    struct ManagedInitializeEventObservation {
+        fingerprint: String,
+        launch_origin: Option<String>,
+        host_kind: Option<String>,
+        connection_id: Option<String>,
+        project_id: Option<String>,
+    }
+
+    impl ManagedInitializeEventObservation {
+        fn is_exact(
+            &self,
+            expected_host_kind: &str,
+            expected_connection_id: &str,
+            expected_project_id: &str,
+        ) -> bool {
+            self.launch_origin.as_deref() == Some("managed_host")
+                && self.host_kind.as_deref() == Some(expected_host_kind)
+                && self.connection_id.as_deref() == Some(expected_connection_id)
+                && self.project_id.as_deref() == Some(expected_project_id)
+        }
     }
 
     impl ManagedBaselineObservation {
         fn from_metadata_json(metadata_json: &str) -> Result<Self, Box<dyn Error>> {
             let metadata: Value = serde_json::from_str(metadata_json)?;
-            let initialize_event_fingerprints = metadata["lifecycle_events"]
+            let initialize_events = metadata["lifecycle_events"]
                 .as_array()
                 .into_iter()
                 .flatten()
                 .filter(|event| event["lifecycle_event"] == "managed_host_initialize_response")
-                .map(canonical_json_bare_sha256)
+                .map(|event| {
+                    Ok::<_, serde_json::Error>(ManagedInitializeEventObservation {
+                        fingerprint: canonical_json_bare_sha256(event)?,
+                        launch_origin: event["launch_origin"].as_str().map(str::to_owned),
+                        host_kind: event["host_kind"].as_str().map(str::to_owned),
+                        connection_id: event["connection_id"].as_str().map(str::to_owned),
+                        project_id: event["project_id"].as_str().map(str::to_owned),
+                    })
+                })
                 .collect::<Result<BTreeSet<_>, _>>()?;
             Ok(Self {
                 metadata_fingerprint: managed_baseline_metadata_fingerprint(metadata_json),
-                initialize_event_fingerprints,
+                initialize_events,
             })
         }
 
-        fn records_new_initialize_since(&self, previous: &Self) -> bool {
-            self.initialize_event_fingerprints.len() > previous.initialize_event_fingerprints.len()
-                && self
-                    .initialize_event_fingerprints
-                    .is_superset(&previous.initialize_event_fingerprints)
+        fn new_initialize_events_since<'a>(
+            &'a self,
+            previous: Option<&'a Self>,
+        ) -> Vec<&'a ManagedInitializeEventObservation> {
+            self.initialize_events
+                .iter()
+                .filter(|event| {
+                    previous
+                        .is_none_or(|observation| !observation.initialize_events.contains(*event))
+                })
+                .collect()
         }
     }
 
@@ -14238,17 +21779,22 @@ mod unix {
         release_path_context: Option<ValidationContext>,
         publication_domain: Option<LivePublicationDomain>,
         release_path_validation_failed: bool,
+        terminal_publication_forbidden: bool,
         run_id: String,
         started_at: String,
         started: bool,
+        selected_attempt_started: bool,
         finalized: bool,
         release_candidate: Option<ReleaseCandidate>,
         release_feature: Option<HostFeature>,
         release_requested_verified: Option<bool>,
         installed_host_detected: bool,
         observed_host_coordinates: Option<ObservedReleaseHostCoordinates>,
+        observed_host_executable: Option<ObservedHostExecutable>,
         observed_volicord_build_id: Option<String>,
+        observed_connection_id: Option<String>,
         observed_initialized_client_info: Option<ObservedInitializedClientInfo>,
+        observed_host_feature_diagnostics: Option<ReleaseHostFeatureDiagnostics>,
         observed_runtime_home: Option<PathBuf>,
         observed_host_turn_baselines: ManagedBaselineFingerprints,
         runner_environment: LiveRunnerEnvironment,
@@ -14359,9 +21905,11 @@ mod unix {
                 release_path_context,
                 publication_domain: None,
                 release_path_validation_failed: false,
+                terminal_publication_forbidden: false,
                 run_id,
                 started_at,
                 started: false,
+                selected_attempt_started: false,
                 finalized: false,
                 release_candidate: None,
                 release_feature: None,
@@ -14370,8 +21918,11 @@ mod unix {
                 )?,
                 installed_host_detected: false,
                 observed_host_coordinates: None,
+                observed_host_executable: None,
                 observed_volicord_build_id: None,
+                observed_connection_id: None,
                 observed_initialized_client_info: None,
+                observed_host_feature_diagnostics: None,
                 observed_runtime_home: None,
                 observed_host_turn_baselines: BTreeMap::new(),
                 runner_environment: LiveRunnerEnvironment::measure()?,
@@ -14451,6 +22002,12 @@ mod unix {
         }
 
         fn require_publication_domain_ready(&mut self) -> Result<(), Box<dyn Error>> {
+            if self.terminal_publication_forbidden {
+                return Err(io::Error::other(
+                    "live result recorder forbids terminal publication after a terminal recorder-integrity failure",
+                )
+                .into());
+            }
             if self.release_path_validation_failed {
                 return Err(io::Error::other(
                     "live result recorder is poisoned by a rejected publication domain",
@@ -14481,6 +22038,14 @@ mod unix {
             Ok(())
         }
 
+        fn forbid_terminal_publication(&mut self) {
+            self.terminal_publication_forbidden = true;
+        }
+
+        fn terminal_publication_is_forbidden(&self) -> bool {
+            self.terminal_publication_forbidden
+        }
+
         fn release_candidate(&self) -> Result<&ReleaseCandidate, Box<dyn Error>> {
             self.release_candidate.as_ref().ok_or_else(|| {
                 io::Error::other(
@@ -14491,15 +22056,20 @@ mod unix {
         }
 
         fn failed_before_completion_summary(&self) -> Value {
-            let diagnostics = canonical_release_host_feature_diagnostics_for_profile(
-                &self.result_host,
-                self.observed_host_coordinates
-                    .as_ref()
-                    .map(|coordinates| coordinates.host_version.as_str()),
-                self.profile,
-                false,
-                false,
-            );
+            let diagnostics = self
+                .observed_host_feature_diagnostics
+                .clone()
+                .unwrap_or_else(|| {
+                    canonical_release_host_feature_diagnostics_for_profile(
+                        &self.result_host,
+                        self.observed_host_coordinates
+                            .as_ref()
+                            .map(|coordinates| coordinates.host_version.as_str()),
+                        self.profile,
+                        false,
+                        false,
+                    )
+                });
             let mut summary = serde_json::json!({
                 "kind": self.result_kind,
                 "result": "failed_before_completion",
@@ -14531,13 +22101,158 @@ mod unix {
             self.installed_host_detected = true;
         }
 
+        fn mark_selected_attempt_started(&mut self) {
+            self.selected_attempt_started = true;
+        }
+
+        fn bind_observed_host_feature_diagnostics(
+            &mut self,
+            diagnostics: ReleaseHostFeatureDiagnostics,
+        ) -> Result<(), Box<dyn Error>> {
+            if self
+                .observed_host_feature_diagnostics
+                .as_ref()
+                .is_some_and(|observed| observed != &diagnostics)
+            {
+                self.forbid_terminal_publication();
+                return Err(io::Error::other(
+                    "live result recorder cannot replace observed host-feature diagnostics",
+                )
+                .into());
+            }
+            self.observed_host_feature_diagnostics
+                .get_or_insert(diagnostics);
+            Ok(())
+        }
+
+        fn bind_observed_host_executable(
+            &mut self,
+            executable: &Path,
+        ) -> Result<PathBuf, Box<dyn Error>> {
+            let binding = (|| -> Result<ObservedHostExecutable, Box<dyn Error>> {
+                let measured = ObservedHostExecutable::measure(executable)?;
+                if let Some(existing) = &self.observed_host_executable {
+                    if existing != &measured {
+                        return Err(io::Error::other(
+                            "live result recorder cannot replace its observed host executable",
+                        )
+                        .into());
+                    }
+                }
+                if self
+                    .observed_host_coordinates
+                    .as_ref()
+                    .is_some_and(|coordinates| {
+                        coordinates.host_executable_sha256 != measured.sha256
+                    })
+                {
+                    return Err(io::Error::other(
+                        "observed host executable conflicts with retained host coordinates",
+                    )
+                    .into());
+                }
+                Ok(measured)
+            })();
+            match binding {
+                Ok(measured) => {
+                    self.mark_installed_host_detected();
+                    let canonical_path = measured.canonical_path.clone();
+                    self.observed_host_executable.get_or_insert(measured);
+                    Ok(canonical_path)
+                }
+                Err(error) => {
+                    self.forbid_terminal_publication();
+                    Err(error)
+                }
+            }
+        }
+
+        fn revalidate_observed_host_executable(
+            &mut self,
+            executable: Option<&Path>,
+        ) -> Result<Option<PathBuf>, Box<dyn Error>> {
+            let expected = self.observed_host_executable.clone();
+            let validation = (|| -> Result<Option<PathBuf>, Box<dyn Error>> {
+                let Some(expected) = expected else {
+                    if executable.is_some() {
+                        return Err(io::Error::other(
+                            "authenticated host execution has no retained executable identity",
+                        )
+                        .into());
+                    }
+                    return Ok(None);
+                };
+                if let Some(executable) = executable {
+                    let supplied_canonical = fs::canonicalize(executable)?;
+                    if supplied_canonical != expected.canonical_path {
+                        return Err(io::Error::other(
+                            "authenticated host path no longer resolves to the retained executable",
+                        )
+                        .into());
+                    }
+                }
+                let measured = ObservedHostExecutable::measure(&expected.canonical_path)?;
+                if measured != expected {
+                    return Err(io::Error::other(
+                        "observed host executable identity changed after measurement",
+                    )
+                    .into());
+                }
+                if self
+                    .observed_host_coordinates
+                    .as_ref()
+                    .is_some_and(|coordinates| {
+                        coordinates.host_executable_sha256 != measured.sha256
+                    })
+                {
+                    return Err(io::Error::other(
+                        "retained host executable no longer matches the recorded coordinates",
+                    )
+                    .into());
+                }
+                Ok(Some(measured.canonical_path))
+            })();
+            match validation {
+                Ok(path) => Ok(path),
+                Err(error) => {
+                    self.forbid_terminal_publication();
+                    Err(error)
+                }
+            }
+        }
+
+        fn required_revalidated_host_executable(
+            &mut self,
+            executable: &Path,
+        ) -> Result<PathBuf, Box<dyn Error>> {
+            self.revalidate_observed_host_executable(Some(executable))?
+                .ok_or_else(|| {
+                    io::Error::other(
+                        "authenticated host execution has no retained executable identity",
+                    )
+                    .into()
+                })
+        }
+
         fn bind_observed_host_coordinates(
             &mut self,
             coordinates: ObservedReleaseHostCoordinates,
         ) -> Result<(), Box<dyn Error>> {
             self.mark_installed_host_detected();
+            if self
+                .observed_host_executable
+                .as_ref()
+                .is_some_and(|executable| executable.sha256 != coordinates.host_executable_sha256)
+            {
+                self.forbid_terminal_publication();
+                return Err(io::Error::other(
+                    "observed host coordinates conflict with the retained executable",
+                )
+                .into());
+            }
             if let Some(existing) = &self.observed_host_coordinates {
                 if existing != &coordinates {
+                    self.forbid_terminal_publication();
                     return Err(io::Error::other(
                         "live result recorder cannot replace observed host coordinates",
                     )
@@ -14560,6 +22275,7 @@ mod unix {
             )?;
             if let Some(existing) = &self.observed_volicord_build_id {
                 if existing != &volicord_build_id {
+                    self.forbid_terminal_publication();
                     return Err(io::Error::other(
                         "live result recorder cannot replace an observed Volicord build id",
                     )
@@ -14567,6 +22283,29 @@ mod unix {
                 }
             } else {
                 self.observed_volicord_build_id = Some(volicord_build_id);
+            }
+            Ok(())
+        }
+
+        fn bind_observed_connection_id(
+            &mut self,
+            connection_id: String,
+        ) -> Result<(), Box<dyn Error>> {
+            let connection_id = bounded_identity(
+                "observed Agent Connection id",
+                &connection_id,
+                MAX_CONNECTION_ID_BYTES,
+            )?;
+            if let Some(existing) = &self.observed_connection_id {
+                if existing != &connection_id {
+                    self.forbid_terminal_publication();
+                    return Err(io::Error::other(
+                        "live result recorder cannot replace an observed Agent Connection id",
+                    )
+                    .into());
+                }
+            } else {
+                self.observed_connection_id = Some(connection_id);
             }
             Ok(())
         }
@@ -14616,38 +22355,55 @@ mod unix {
             after: &ManagedBaselineObservations,
         ) -> Result<(), Box<dyn Error>> {
             if self.observed_runtime_home.is_none() {
+                self.forbid_terminal_publication();
                 return Err(io::Error::other(
                     "host-turn baseline observation requires a bound disposable runtime home",
                 )
                 .into());
             }
-            for (baseline, expected_fingerprint) in &self.observed_host_turn_baselines {
+            let expected_host_kind = match self.result_host.as_str() {
+                "codex" => "codex",
+                "claude-code" | "claude_code" => "claude_code",
+                _ => {
+                    self.forbid_terminal_publication();
+                    return Err(io::Error::other(
+                        "managed baseline observation requires a maintained managed host",
+                    )
+                    .into());
+                }
+            };
+            let expected_connection_id = self.observed_connection_id.clone();
+            let retained_baselines = self.observed_host_turn_baselines.clone();
+            for (baseline, expected_fingerprint) in &retained_baselines {
                 match before
                     .get(baseline)
                     .map(|observation| &observation.metadata_fingerprint)
                 {
                     Some(before_fingerprint) if before_fingerprint == expected_fingerprint => {}
                     Some(_) => {
+                        self.forbid_terminal_publication();
                         return Err(io::Error::other(
                             "captured managed baseline changed before a later host turn",
                         )
-                        .into())
+                        .into());
                     }
                     None => {
+                        self.forbid_terminal_publication();
                         return Err(io::Error::other(
                             "captured managed baseline disappeared before a later host turn",
                         )
-                        .into())
+                        .into());
                     }
                 }
                 if !after.contains_key(baseline) {
+                    self.forbid_terminal_publication();
                     return Err(io::Error::other(
                         "captured managed baseline disappeared during a later host turn",
                     )
                     .into());
                 }
             }
-            let mut next = self.observed_host_turn_baselines.clone();
+            let mut next = retained_baselines;
             for (baseline, after_observation) in after {
                 let before_observation = before.get(baseline);
                 let metadata_changed = before_observation.is_none_or(|observation| {
@@ -14657,9 +22413,45 @@ mod unix {
                     continue;
                 }
                 let already_retained = next.contains_key(baseline);
-                let newly_initialized = before_observation.is_none_or(|observation| {
-                    after_observation.records_new_initialize_since(observation)
-                });
+                if already_retained
+                    && !before_observation.is_some_and(|observation| {
+                        after_observation
+                            .initialize_events
+                            .is_superset(&observation.initialize_events)
+                    })
+                {
+                    self.forbid_terminal_publication();
+                    return Err(io::Error::other(
+                        "captured managed baseline replaced retained initialize evidence during a later host turn",
+                    )
+                    .into());
+                }
+                let new_initialize_events =
+                    after_observation.new_initialize_events_since(before_observation);
+                let newly_initialized = if new_initialize_events.is_empty() {
+                    false
+                } else if let Some(expected_connection_id) = expected_connection_id.as_deref() {
+                    new_initialize_events.iter().all(|event| {
+                        event.is_exact(
+                            expected_host_kind,
+                            expected_connection_id,
+                            &baseline.project_id,
+                        )
+                    })
+                } else {
+                    self.forbid_terminal_publication();
+                    return Err(io::Error::other(
+                        "managed initialize observation requires a bound Agent Connection",
+                    )
+                    .into());
+                };
+                if already_retained && !newly_initialized {
+                    self.forbid_terminal_publication();
+                    return Err(io::Error::other(
+                        "captured managed baseline changed without a new exact initialize event for its host, connection, and project coordinates",
+                    )
+                    .into());
+                }
                 if already_retained || newly_initialized {
                     next.insert(
                         baseline.clone(),
@@ -14677,6 +22469,7 @@ mod unix {
         ) -> Result<(), Box<dyn Error>> {
             if let Some(existing) = &self.observed_initialized_client_info {
                 if existing != &client_info {
+                    self.forbid_terminal_publication();
                     return Err(io::Error::other(
                         "live result recorder observed more than one initialized MCP client identity",
                     )
@@ -14854,60 +22647,120 @@ mod unix {
             Ok(summary)
         }
 
+        fn with_observed_connection_id(&self, summary: &Value) -> Result<Value, Box<dyn Error>> {
+            let Some(observed_connection_id) = self.observed_connection_id.as_deref() else {
+                return Ok(summary.clone());
+            };
+            let mut summary = summary.clone();
+            let object = summary.as_object_mut().ok_or_else(|| {
+                io::Error::other("live-host result summary must be a JSON object")
+            })?;
+            let connection = object
+                .entry("connection".to_owned())
+                .or_insert_with(|| serde_json::json!({}))
+                .as_object_mut()
+                .ok_or_else(|| io::Error::other("live-host result connection must be an object"))?;
+            match connection.get("connection_id") {
+                Some(Value::String(value)) if value == observed_connection_id => {}
+                Some(_) => {
+                    return Err(io::Error::other(
+                        "live-host result connection conflicts with the observed Agent Connection",
+                    )
+                    .into())
+                }
+                None => {
+                    connection.insert(
+                        "connection_id".to_owned(),
+                        Value::String(observed_connection_id.to_owned()),
+                    );
+                }
+            }
+            Ok(summary)
+        }
+
         fn record_final(&mut self, summary: &Value) -> Result<(), Box<dyn Error>> {
+            if self.terminal_publication_forbidden {
+                return Err(io::Error::other(
+                    "live result recorder forbids terminal publication after a terminal recorder-integrity failure",
+                )
+                .into());
+            }
             if self.release_path_validation_failed {
                 return Err(io::Error::other(
                     "live result recorder is poisoned by a rejected release path",
                 )
                 .into());
             }
-            self.require_publication_domain_ready()?;
-            let path_context = match self.effective_release_path_context() {
-                Ok(context) => context,
-                Err(error) => {
+            let terminal_attempt = (|| -> Result<String, Box<dyn Error>> {
+                self.require_publication_domain_ready()?;
+                let path_context = match self.effective_release_path_context() {
+                    Ok(context) => context,
+                    Err(error) => {
+                        self.release_path_validation_failed = true;
+                        return Err(error);
+                    }
+                };
+                if let Err(error) = self.validate_retained_release_paths(&path_context) {
                     self.release_path_validation_failed = true;
                     return Err(error);
                 }
-            };
-            if let Err(error) = self.validate_retained_release_paths(&path_context) {
-                self.release_path_validation_failed = true;
-                return Err(error);
-            }
-            let summary = self.with_observed_host_identity(summary)?;
-            validate_terminal_release_host_feature_diagnostics(&summary)?;
-            self.refresh_observed_initialized_client_info(&summary)?;
-            let summary = self.with_validation_run(&summary)?;
-            let serialized = serialize_live_host_result(&summary)?;
-            let release_feature = self.release_feature;
-            let result_path = self.result_path.clone();
-            let rendered = match (release_feature, result_path.as_deref()) {
-                (Some(feature), Some(cell_path)) => self.write_release_cell(
-                    &path_context,
-                    feature,
-                    cell_path,
-                    &summary,
-                    &serialized,
-                )?,
-                (_, Some(path)) => {
-                    let publication_domain = self.publication_domain.as_ref().ok_or_else(|| {
-                        io::Error::other("live result recorder has no publication domain")
-                    })?;
-                    write_new_live_host_result(
+                self.revalidate_observed_host_executable(None)?;
+                let summary = self.with_observed_host_identity(summary)?;
+                let summary = self.with_observed_connection_id(&summary)?;
+                validate_terminal_release_host_feature_diagnostics(&summary)?;
+                self.refresh_observed_initialized_client_info(&summary)?;
+                let summary = self.with_validation_run(&summary)?;
+                if matches!(
+                    self.result_kind,
+                    LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND
+                        | LIVE_REGISTERED_CONNECTION_OBSERVATION_RESULT_KIND
+                ) && summary.get("result").and_then(Value::as_str) == Some("failed")
+                {
+                    validate_enriched_live_producer_failed_summary(&summary)?;
+                }
+                let serialized = serialize_live_host_result(&summary)?;
+                let release_feature = self.release_feature;
+                let result_path = self.result_path.clone();
+                let rendered = match (release_feature, result_path.as_deref()) {
+                    (Some(feature), Some(cell_path)) => self.write_release_cell(
                         &path_context,
-                        publication_domain,
-                        path,
+                        feature,
+                        cell_path,
+                        &summary,
                         &serialized,
-                    )?;
-                    serialized
+                    )?,
+                    (_, Some(path)) => {
+                        let publication_domain =
+                            self.publication_domain.as_ref().ok_or_else(|| {
+                                io::Error::other("live result recorder has no publication domain")
+                            })?;
+                        write_new_live_host_result(
+                            &path_context,
+                            publication_domain,
+                            path,
+                            &serialized,
+                        )?;
+                        serialized
+                    }
+                    (_, None) => serialized,
+                };
+                if let Some(publication_domain) = self.publication_domain.as_mut() {
+                    if let Err(error) =
+                        publication_domain.complete_publication_attempt(&path_context)
+                    {
+                        self.release_path_validation_failed = true;
+                        return Err(error);
+                    }
                 }
-                (_, None) => serialized,
-            };
-            if let Some(publication_domain) = self.publication_domain.as_mut() {
-                if let Err(error) = publication_domain.complete_publication_attempt(&path_context) {
-                    self.release_path_validation_failed = true;
+                Ok(rendered)
+            })();
+            let rendered = match terminal_attempt {
+                Ok(rendered) => rendered,
+                Err(error) => {
+                    self.forbid_terminal_publication();
                     return Err(error);
                 }
-            }
+            };
             println!("{rendered}");
             self.finalized = true;
             self.publication_domain.take();
@@ -15028,11 +22881,22 @@ mod unix {
             let client_version = initialized_client_info
                 .as_ref()
                 .map(|client_info| client_info.version().to_owned());
+            let retained_adapter_version =
+                self.observed_volicord_build_id.as_deref().ok_or_else(|| {
+                    io::Error::other(
+                        "release-cell publication has no retained private-candidate build id",
+                    )
+                })?;
             let adapter_version = match summary.pointer("/volicord/build_id") {
                 Some(Value::String(value)) => {
                     bounded_identity("release-cell adapter_version", value, MAX_BUILD_ID_BYTES)?
                 }
-                Some(Value::Null) | None => candidate.adapter_build_id(path_context)?,
+                Some(Value::Null) | None => {
+                    return Err(io::Error::other(
+                        "release-cell evidence has no retained adapter build id",
+                    )
+                    .into())
+                }
                 Some(_) => {
                     return Err(io::Error::other(
                         "release-cell adapter build id must be a string or null",
@@ -15040,6 +22904,12 @@ mod unix {
                     .into())
                 }
             };
+            if adapter_version != retained_adapter_version {
+                return Err(io::Error::other(
+                    "release-cell adapter build id conflicts with the retained private-candidate identity",
+                )
+                .into());
+            }
             let adapter_profile = match feature {
                 HostFeature::RecordFinalOutput | HostFeature::DetectiveFinalOutput => summary
                     .get("profile")
@@ -15068,8 +22938,18 @@ mod unix {
                 host_identity_available,
             )?;
             let completed_pass = summary.get("result").and_then(Value::as_str) == Some("passed");
+            if completed_pass && !self.selected_attempt_started {
+                self.forbid_terminal_publication();
+                return Err(io::Error::other(
+                    "a passing implemented release cell requires a selected host attempt",
+                )
+                .into());
+            }
             if completed_pass {
-                validate_release_cell_passed_summary(feature, summary)?;
+                if let Err(error) = validate_release_cell_passed_summary(feature, summary) {
+                    self.forbid_terminal_publication();
+                    return Err(error);
+                }
             }
             let assertions = release_cell_assertions(feature, static_unsupported, completed_pass);
             let evidence_path = if static_unsupported {
@@ -15116,7 +22996,7 @@ mod unix {
                 "claimed_status": claimed_status,
                 "run_state": if static_unsupported {
                     "not_applicable"
-                } else if host_identity_available {
+                } else if self.selected_attempt_started {
                     "completed"
                 } else {
                     "ignored"
@@ -15803,26 +23683,38 @@ mod unix {
     }
 
     fn host_version_summary(output: &TimedOutput) -> Result<String, Box<dyn Error>> {
-        let stdout = stdout(output);
-        let stderr = stderr(output);
-        let version = [stdout.as_str(), stderr.as_str()]
-            .into_iter()
-            .flat_map(str::lines)
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-            .ok_or_else(|| io::Error::other("host --version returned no version text"))?;
+        if !output.output.stderr.is_empty() {
+            return Err(io::Error::other(
+                "host --version must not write a second version envelope to stderr",
+            )
+            .into());
+        }
+        let stdout = std::str::from_utf8(&output.output.stdout)?;
+        let version = stdout
+            .strip_suffix('\n')
+            .ok_or_else(|| io::Error::other("host --version must end with exactly one LF"))?;
+        if version.is_empty()
+            || version.contains('\n')
+            || version.contains('\r')
+            || version.trim() != version
+            || version.chars().any(char::is_control)
+        {
+            return Err(io::Error::other(
+                "host --version must contain exactly one canonical non-empty line",
+            )
+            .into());
+        }
         bounded_identity("host version", version, MAX_HOST_VERSION_BYTES)
     }
 
     fn canonical_codex_version_summary(output: &TimedOutput) -> Result<String, Box<dyn Error>> {
-        let stdout = stdout(output);
-        let stderr = stderr(output);
-        if !stderr.is_empty() {
+        if !output.output.stderr.is_empty() {
             return Err(io::Error::other(
                 "Codex --version must not write a second version envelope to stderr",
             )
             .into());
         }
+        let stdout = std::str::from_utf8(&output.output.stdout)?;
         let envelope = stdout
             .strip_suffix('\n')
             .ok_or_else(|| io::Error::other("Codex --version must end with exactly one LF"))?;
@@ -15870,18 +23762,14 @@ mod unix {
         output: &TimedOutput,
     ) -> Result<String, Box<dyn Error>> {
         require_success(label, output)?;
-        let line = stdout(output);
-        let line = line.trim();
-        let (_, build_id) = line
-            .strip_prefix("volicord ")
-            .and_then(|value| value.strip_suffix(')'))
-            .and_then(|value| value.rsplit_once(" (build_id="))
-            .ok_or_else(|| {
-                io::Error::other(
-                    "release candidate --version did not expose the exact build_id envelope",
-                )
-            })?;
-        bounded_identity("Volicord build_id", build_id, MAX_BUILD_ID_BYTES)
+        if !output.output.stderr.is_empty() {
+            return Err(
+                io::Error::other("release candidate --version must not write stderr").into(),
+            );
+        }
+        let stdout = std::str::from_utf8(&output.output.stdout)?;
+        let identity = parse_candidate_version(stdout)?;
+        bounded_identity("Volicord build_id", &identity.build_id, MAX_BUILD_ID_BYTES)
     }
 
     fn bounded_identity(
@@ -15946,11 +23834,14 @@ mod unix {
             },
         )?;
         if observed != (1, 1, 0, 0) {
-            return Err(io::Error::other(format!(
-                "the connection-observation probe was not exactly one successful read-only status call: successful_status={}, mcp_tool_calls={}, committed_events={}, product_file_writes={}",
-                observed.0, observed.1, observed.2, observed.3
-            ))
-            .into());
+            return Err(ClassifiedLiveProducerFailure::boxed(
+                "producer_attempt",
+                "connection_observation_diagnostic_mismatch",
+                io::Error::other(format!(
+                    "the connection-observation probe was not exactly one successful read-only status call: successful_status={}, mcp_tool_calls={}, committed_events={}, product_file_writes={}",
+                    observed.0, observed.1, observed.2, observed.3
+                )),
+            ));
         }
         Ok(())
     }
@@ -16372,26 +24263,6 @@ mod unix {
         fn executable_path(&self) -> &Path {
             Path::new(&self.candidate_path)
         }
-
-        fn adapter_build_id(&self, context: &ValidationContext) -> Result<String, Box<dyn Error>> {
-            self.validate_with_context(context)?;
-            let mut command = Command::new(self.executable_path());
-            command
-                .arg("--version")
-                .env("NO_COLOR", "1")
-                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
-                .env_remove(RELEASE_CANDIDATE_PATH_ENV)
-                .env_remove(RELEASE_REQUEST_VERIFIED_ENV);
-            LiveSmokeFixture::remove_inherited_host_control_env(&mut command);
-            LiveSmokeFixture::remove_inherited_auth_secret_env(&mut command);
-            let outcome = run_with_timeout(command, COMMAND_TIMEOUT);
-            self.validate_with_context(context)?;
-            let output = outcome?;
-            release_build_id_from_version_output(
-                "exact release candidate volicord --version",
-                &output,
-            )
-        }
     }
 
     fn validate_lower_hex(
@@ -16495,6 +24366,712 @@ mod unix {
         Ok(format!("{:x}", hasher.finalize()))
     }
 
+    #[derive(Debug)]
+    struct InteractiveHostFinish {
+        status: ExitStatus,
+        termination_requested: bool,
+    }
+
+    fn wait_for_live_host_controller(child: &mut Child) -> Result<ExitStatus, Box<dyn Error>> {
+        let deadline = Instant::now() + LIVE_HOST_PROCESS_TREE_TIMEOUT;
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Ok(status);
+            }
+            if Instant::now() >= deadline {
+                return Err(io::Error::other(format!(
+                    "live host foreground controller did not exit before its {} ms deadline",
+                    LIVE_HOST_PROCESS_TREE_TIMEOUT.as_millis()
+                ))
+                .into());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn terminate_and_reap_child(
+        child: &mut Child,
+        label: &str,
+    ) -> Result<ExitStatus, Box<dyn Error>> {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        let kill_error = child.kill().err();
+        let deadline = Instant::now() + LIVE_HOST_PROCESS_TREE_TIMEOUT;
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Ok(status);
+            }
+            if Instant::now() >= deadline {
+                return Err(io::Error::other(format!(
+                    "{label} was not reaped before its {} ms deadline{}",
+                    LIVE_HOST_PROCESS_TREE_TIMEOUT.as_millis(),
+                    kill_error
+                        .map(|error| format!(" (kill failed: {error})"))
+                        .unwrap_or_default()
+                ))
+                .into());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn terminal_attributes_match(left: &Termios, right: &Termios) -> bool {
+        #[cfg(target_os = "linux")]
+        let line_discipline_matches = left.line_discipline == right.line_discipline;
+        #[cfg(not(target_os = "linux"))]
+        let line_discipline_matches = true;
+        left.input_modes == right.input_modes
+            && left.output_modes == right.output_modes
+            && left.control_modes == right.control_modes
+            && left.local_modes == right.local_modes
+            && line_discipline_matches
+            && left.input_speed() == right.input_speed()
+            && left.output_speed() == right.output_speed()
+            && format!("{:?}", left.special_codes) == format!("{:?}", right.special_codes)
+    }
+
+    fn reap_untransferred_live_host_controller(
+        child: &mut Child,
+        ready_path: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        drop(child.stdin.take());
+        let result = wait_for_live_host_controller(child).or_else(|wait_error| {
+            terminate_and_reap_child(child, "untransferred foreground controller").map_err(
+                |reap_error| {
+                    io::Error::other(format!(
+                        "foreground controller graceful reap failed: {wait_error}; forced reap failed: {reap_error}"
+                    ))
+                    .into()
+                },
+            )
+        });
+        let _ = fs::remove_file(ready_path);
+        result.map(|_| ())
+    }
+
+    struct LiveHostTerminalForeground {
+        controller: Option<Child>,
+        tty: fs::File,
+        original_process_group_id: Pid,
+        original_terminal_attributes: Termios,
+        process_group_id: Pid,
+        ready_path: PathBuf,
+        restored: bool,
+        terminal_attributes_restored: bool,
+    }
+
+    impl LiveHostTerminalForeground {
+        fn acquire() -> Result<Self, Box<dyn Error>> {
+            let tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+            let original_process_group_id = tcgetpgrp(&tty)?;
+            let original_terminal_attributes = tcgetattr(&tty)?;
+            let runner_process_group_id = getpgrp();
+            if original_process_group_id != runner_process_group_id {
+                return Err(io::Error::other(format!(
+                    "live host runner process group {} does not own the controlling terminal foreground (foreground={})",
+                    runner_process_group_id.as_raw_pid(),
+                    original_process_group_id.as_raw_pid()
+                ))
+                .into());
+            }
+
+            let ready_path = env::temp_dir().join(format!(
+                "volicord-live-host-foreground-{}-{}.ready",
+                std::process::id(),
+                epoch_duration()?.as_nanos()
+            ));
+            let current_exe = env::current_exe()?;
+            let mut command = Command::new("sh");
+            command
+                .args([
+                    "-c",
+                    "trap '' HUP INT QUIT TERM TSTP TTIN TTOU; exec \"$@\"",
+                    "volicord-live-host-foreground-controller",
+                ])
+                .arg(current_exe)
+                .args([
+                    "--exact",
+                    LIVE_HOST_FOREGROUND_CONTROLLER_TEST,
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(LIVE_HOST_FOREGROUND_CONTROLLER_ENV, "1")
+                .env(LIVE_HOST_FOREGROUND_CONTROLLER_READY_PATH_ENV, &ready_path)
+                .env(
+                    LIVE_HOST_FOREGROUND_CONTROLLER_ORIGINAL_PGID_ENV,
+                    original_process_group_id.as_raw_pid().to_string(),
+                )
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(0);
+            let mut controller = command.spawn()?;
+            let process_group_id = match live_host_process_group_id(&controller) {
+                Ok(process_group_id) => process_group_id,
+                Err(error) => {
+                    reap_untransferred_live_host_controller(&mut controller, &ready_path)?;
+                    return Err(error);
+                }
+            };
+            let expected_ready = format!("{}\n", process_group_id.as_raw_pid());
+            let deadline = Instant::now() + LIVE_HOST_PROCESS_TREE_TIMEOUT;
+            loop {
+                match fs::read_to_string(&ready_path) {
+                    Ok(ready) if ready == expected_ready => break,
+                    Ok(_) | Err(_) if Instant::now() < deadline => {}
+                    Ok(ready) => {
+                        reap_untransferred_live_host_controller(&mut controller, &ready_path)?;
+                        return Err(io::Error::other(format!(
+                            "live host foreground controller published malformed readiness {ready:?}"
+                        ))
+                        .into());
+                    }
+                    Err(error) => {
+                        reap_untransferred_live_host_controller(&mut controller, &ready_path)?;
+                        return Err(io::Error::other(format!(
+                            "live host foreground controller did not become ready before its {} ms deadline: {error}",
+                            LIVE_HOST_PROCESS_TREE_TIMEOUT.as_millis()
+                        ))
+                        .into());
+                    }
+                }
+                match controller.try_wait() {
+                    Ok(Some(status)) => {
+                        let _ = fs::remove_file(&ready_path);
+                        return Err(io::Error::other(format!(
+                            "live host foreground controller exited before terminal transfer with {}",
+                            status_text(status)
+                        ))
+                        .into());
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        reap_untransferred_live_host_controller(&mut controller, &ready_path)?;
+                        return Err(error.into());
+                    }
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            match controller.try_wait() {
+                Ok(None) => {}
+                Ok(Some(status)) => {
+                    let _ = fs::remove_file(&ready_path);
+                    return Err(io::Error::other(format!(
+                        "live host foreground controller exited after readiness with {}",
+                        status_text(status)
+                    ))
+                    .into());
+                }
+                Err(error) => {
+                    reap_untransferred_live_host_controller(&mut controller, &ready_path)?;
+                    return Err(error.into());
+                }
+            }
+
+            let mut foreground = Self {
+                controller: Some(controller),
+                tty,
+                original_process_group_id,
+                original_terminal_attributes,
+                process_group_id,
+                ready_path,
+                restored: false,
+                terminal_attributes_restored: false,
+            };
+            if let Err(error) = foreground.transfer() {
+                let _ = foreground.restore();
+                return Err(error);
+            }
+            Ok(foreground)
+        }
+
+        fn process_group_id(&self) -> Pid {
+            self.process_group_id
+        }
+
+        fn transfer(&mut self) -> Result<(), Box<dyn Error>> {
+            let foreground = tcgetpgrp(&self.tty)?;
+            if foreground != self.original_process_group_id {
+                return Err(io::Error::other(format!(
+                    "controlling terminal foreground changed before live host transfer (expected={}, foreground={})",
+                    self.original_process_group_id.as_raw_pid(),
+                    foreground.as_raw_pid()
+                ))
+                .into());
+            }
+            if self
+                .original_terminal_attributes
+                .local_modes
+                .contains(LocalModes::TOSTOP)
+            {
+                return Err(io::Error::other(
+                    "live host terminal foreground transfer requires TOSTOP to be disabled",
+                )
+                .into());
+            }
+            tcsetpgrp(&self.tty, self.process_group_id)?;
+            let foreground = tcgetpgrp(&self.tty)?;
+            if foreground != self.process_group_id {
+                return Err(io::Error::other(format!(
+                    "controlling terminal foreground was not transferred to live host process group {} (foreground={})",
+                    self.process_group_id.as_raw_pid(),
+                    foreground.as_raw_pid()
+                ))
+                .into());
+            }
+            Ok(())
+        }
+
+        fn original_foreground_is_restored(&mut self) -> Result<bool, Box<dyn Error>> {
+            let restored = tcgetpgrp(&self.tty)? == self.original_process_group_id;
+            self.restored = restored;
+            Ok(restored)
+        }
+
+        fn terminal_attributes_are_restored(&mut self) -> Result<bool, Box<dyn Error>> {
+            let restored = terminal_attributes_match(
+                &tcgetattr(&self.tty)?,
+                &self.original_terminal_attributes,
+            );
+            self.terminal_attributes_restored = restored;
+            Ok(restored)
+        }
+
+        fn restore_terminal_attributes(&mut self) -> Result<(), Box<dyn Error>> {
+            if !self.original_foreground_is_restored()? {
+                return Err(io::Error::other(
+                    "terminal attributes cannot be restored before the original foreground group",
+                )
+                .into());
+            }
+            tcsetattr(
+                &self.tty,
+                OptionalActions::Now,
+                &self.original_terminal_attributes,
+            )?;
+            if !self.terminal_attributes_are_restored()? {
+                return Err(io::Error::other(
+                    "controlling-terminal attributes did not match their pre-turn snapshot after restoration",
+                )
+                .into());
+            }
+            Ok(())
+        }
+
+        fn emergency_restore(&mut self) -> Result<(), Box<dyn Error>> {
+            let current_exe = env::current_exe()?;
+            let mut command = Command::new("sh");
+            command
+                .args([
+                    "-c",
+                    "trap '' HUP INT QUIT TERM TSTP TTIN TTOU; exec \"$@\"",
+                    "volicord-live-host-emergency-foreground-controller",
+                ])
+                .arg(current_exe)
+                .args([
+                    "--exact",
+                    LIVE_HOST_FOREGROUND_CONTROLLER_TEST,
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(LIVE_HOST_FOREGROUND_CONTROLLER_ENV, "1")
+                .env(LIVE_HOST_FOREGROUND_CONTROLLER_EMERGENCY_ENV, "1")
+                .env(
+                    LIVE_HOST_FOREGROUND_CONTROLLER_ORIGINAL_PGID_ENV,
+                    self.original_process_group_id.as_raw_pid().to_string(),
+                )
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            let mut emergency = command.spawn()?;
+            let status = match wait_for_live_host_controller(&mut emergency) {
+                Ok(status) => status,
+                Err(error) => {
+                    return match terminate_and_reap_child(
+                        &mut emergency,
+                        "emergency foreground controller",
+                    ) {
+                        Ok(_) => Err(error),
+                        Err(reap_error) => Err(io::Error::other(format!(
+                            "emergency foreground controller wait failed: {error}; forced reap failed: {reap_error}"
+                        ))
+                        .into()),
+                    };
+                }
+            };
+            if !status.success() {
+                return Err(io::Error::other(format!(
+                    "emergency foreground controller exited unsuccessfully with {}",
+                    status_text(status)
+                ))
+                .into());
+            }
+            if !self.original_foreground_is_restored()? {
+                return Err(io::Error::other(
+                    "emergency foreground controller did not restore the original runner group",
+                )
+                .into());
+            }
+            Ok(())
+        }
+
+        fn restore_foreground_and_reap_controller(&mut self) -> Result<(), Box<dyn Error>> {
+            if self.restored && self.controller.is_none() {
+                return Ok(());
+            }
+            let mut failures = Vec::new();
+            if let Some(controller) = self.controller.as_mut() {
+                if let Some(mut controller_stdin) = controller.stdin.take() {
+                    if let Err(error) = controller_stdin
+                        .write_all(b"restore\n")
+                        .and_then(|()| controller_stdin.flush())
+                    {
+                        failures.push(format!("restore request failed: {error}"));
+                    }
+                    drop(controller_stdin);
+                }
+                match wait_for_live_host_controller(controller) {
+                    Ok(status) => {
+                        if !status.success() {
+                            failures.push(format!(
+                                "primary foreground controller exited unsuccessfully with {}",
+                                status_text(status)
+                            ));
+                        }
+                        self.controller.take();
+                    }
+                    Err(error) => failures.push(format!(
+                        "primary foreground controller reap failed: {error}"
+                    )),
+                }
+            } else {
+                failures.push("primary foreground controller was already absent".to_owned());
+            }
+            match self.original_foreground_is_restored() {
+                Ok(true) => {}
+                Ok(false) => {
+                    if let Err(error) = self.emergency_restore() {
+                        failures.push(format!("emergency foreground restoration failed: {error}"));
+                    }
+                }
+                Err(error) => {
+                    failures.push(format!(
+                        "foreground restoration verification failed: {error}"
+                    ));
+                    if let Err(error) = self.emergency_restore() {
+                        failures.push(format!("emergency foreground restoration failed: {error}"));
+                    }
+                }
+            }
+            if self.restored {
+                if let Some(controller) = self.controller.as_mut() {
+                    let _ = controller.kill();
+                    match wait_for_live_host_controller(controller) {
+                        Ok(_) => {
+                            self.controller.take();
+                        }
+                        Err(error) => failures.push(format!(
+                            "primary foreground controller remained unreaped after emergency restoration: {error}"
+                        )),
+                    }
+                }
+            }
+            let _ = fs::remove_file(&self.ready_path);
+            if !self.original_foreground_is_restored()? {
+                failures.push(format!(
+                    "controlling terminal foreground was not restored to runner process group {}",
+                    self.original_process_group_id.as_raw_pid()
+                ));
+            }
+            if failures.is_empty() {
+                Ok(())
+            } else {
+                Err(io::Error::other(failures.join("; ")).into())
+            }
+        }
+
+        fn restore(&mut self) -> Result<(), Box<dyn Error>> {
+            if self.restored && self.terminal_attributes_restored && self.controller.is_none() {
+                return Ok(());
+            }
+            let foreground = self.restore_foreground_and_reap_controller();
+            let attributes = if self.original_foreground_is_restored()? && self.controller.is_none()
+            {
+                self.restore_terminal_attributes()
+            } else {
+                Err(io::Error::other(
+                    "terminal attribute restoration was withheld until foreground restoration and controller reap",
+                )
+                .into())
+            };
+            match (foreground, attributes) {
+                (Ok(()), Ok(())) => Ok(()),
+                (foreground, attributes) => {
+                    let mut failures = Vec::new();
+                    if let Err(error) = foreground {
+                        failures.push(format!("foreground/controller restoration failed: {error}"));
+                    }
+                    if let Err(error) = attributes {
+                        failures.push(format!("terminal attribute restoration failed: {error}"));
+                    }
+                    Err(io::Error::other(failures.join("; ")).into())
+                }
+            }
+        }
+    }
+
+    impl Drop for LiveHostTerminalForeground {
+        fn drop(&mut self) {
+            let _ = self.restore();
+            let _ = fs::remove_file(&self.ready_path);
+        }
+    }
+
+    fn restore_live_host_terminal_and_quiesce(
+        terminal_foreground: &mut LiveHostTerminalForeground,
+        ownership_marker: &str,
+        process_group_id: Pid,
+    ) -> Result<(), Box<dyn Error>> {
+        let restoration = terminal_foreground.restore_foreground_and_reap_controller();
+        let restored = terminal_foreground.original_foreground_is_restored();
+        let controller_reaped = terminal_foreground.controller.is_none();
+        let quiescence = match (restored.as_ref(), controller_reaped) {
+            (Ok(true), true) => {
+                terminate_live_host_process_tree(ownership_marker, process_group_id)
+            }
+            (Ok(false), _) => Err(io::Error::other(
+                "live host process-group termination was withheld because the original terminal foreground was not restored",
+            )
+            .into()),
+            (Err(error), _) => Err(io::Error::other(format!(
+                "live host process-group termination was withheld because foreground verification failed: {error}"
+            ))
+            .into()),
+            (Ok(true), false) => Err(io::Error::other(
+                "live host process-group termination was withheld because the foreground controller was not reaped",
+            )
+            .into()),
+        };
+        let attributes = match (restored.as_ref(), controller_reaped, quiescence.as_ref()) {
+            (Ok(true), true, Ok(())) => terminal_foreground.restore_terminal_attributes(),
+            _ => Err(io::Error::other(
+                "terminal attribute restoration was withheld until foreground restoration, controller reap, and process-tree quiescence",
+            )
+            .into()),
+        };
+        match (
+            restoration,
+            restored,
+            controller_reaped,
+            quiescence,
+            attributes,
+        ) {
+            (Ok(()), Ok(true), true, Ok(()), Ok(())) => Ok(()),
+            (restoration, restored, controller_reaped, quiescence, attributes) => {
+                let mut failures = Vec::new();
+                if let Err(error) = restoration {
+                    failures.push(format!("foreground/controller restoration failed: {error}"));
+                }
+                match restored {
+                    Ok(true) => {}
+                    Ok(false) => failures.push(
+                        "original terminal foreground restoration was not verified".to_owned(),
+                    ),
+                    Err(error) => failures.push(format!(
+                        "original terminal foreground verification failed: {error}"
+                    )),
+                }
+                if !controller_reaped {
+                    failures.push("foreground controller was not reaped".to_owned());
+                }
+                if let Err(error) = quiescence {
+                    failures.push(format!("live host process-tree quiescence failed: {error}"));
+                }
+                if let Err(error) = attributes {
+                    failures.push(format!("terminal attribute restoration failed: {error}"));
+                }
+                Err(io::Error::other(failures.join("; ")).into())
+            }
+        }
+    }
+
+    struct InteractiveHostTurn {
+        child: Option<Child>,
+        before: ManagedBaselineObservations,
+        ownership_marker: String,
+        process_group_id: Pid,
+        terminal_foreground: Option<LiveHostTerminalForeground>,
+    }
+
+    impl InteractiveHostTurn {
+        fn child_mut(&mut self) -> Result<&mut Child, Box<dyn Error>> {
+            self.child.as_mut().ok_or_else(|| {
+                io::Error::other("interactive host turn has already been finished").into()
+            })
+        }
+    }
+
+    impl Drop for InteractiveHostTurn {
+        fn drop(&mut self) {
+            if let Some(mut child) = self.child.take() {
+                if !matches!(child.try_wait(), Ok(Some(_))) {
+                    let _ = terminate_and_reap_child(&mut child, "interactive live-host child");
+                }
+            }
+            if let Some(terminal_foreground) = self.terminal_foreground.as_mut() {
+                let _ = restore_live_host_terminal_and_quiesce(
+                    terminal_foreground,
+                    &self.ownership_marker,
+                    self.process_group_id,
+                );
+            } else {
+                let _ =
+                    terminate_live_host_process_tree(&self.ownership_marker, self.process_group_id);
+            }
+        }
+    }
+
+    fn live_host_turn_ownership_marker() -> Result<String, Box<dyn Error>> {
+        bounded_identity(
+            "live host turn ownership marker",
+            &format!(
+                "live_host_turn_{}_{}",
+                std::process::id(),
+                epoch_duration()?.as_nanos()
+            ),
+            192,
+        )
+    }
+
+    fn live_host_process_group_id(child: &Child) -> Result<Pid, Box<dyn Error>> {
+        let raw_pid = i32::try_from(child.id())?;
+        Pid::from_raw(raw_pid).ok_or_else(|| {
+            io::Error::other("live host child has an invalid process-group id").into()
+        })
+    }
+
+    fn require_live_host_process_group(
+        child: &Child,
+        expected_process_group_id: Pid,
+    ) -> Result<(), Box<dyn Error>> {
+        let child_pid = Pid::from_raw(i32::try_from(child.id())?)
+            .ok_or_else(|| io::Error::other("live host child has an invalid process id"))?;
+        let actual_process_group_id = getpgid(Some(child_pid))?;
+        if actual_process_group_id != expected_process_group_id {
+            return Err(io::Error::other(format!(
+                "live host child process group {} does not match terminal foreground group {}",
+                actual_process_group_id.as_raw_pid(),
+                expected_process_group_id.as_raw_pid()
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn live_host_process_tree_pids(marker: &str) -> Result<Vec<Pid>, Box<dyn Error>> {
+        let expected = format!("{LIVE_HOST_TURN_OWNERSHIP_ENV}={marker}");
+        let mut pids = Vec::new();
+        for entry in fs::read_dir("/proc")? {
+            let entry = entry?;
+            let Some(raw_pid) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.parse::<i32>().ok())
+            else {
+                continue;
+            };
+            if raw_pid == i32::try_from(std::process::id())? {
+                continue;
+            }
+            let environ = match fs::read(entry.path().join("environ")) {
+                Ok(environ) => environ,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+                    ) =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
+            if environ
+                .split(|byte| *byte == 0)
+                .any(|item| item == expected.as_bytes())
+            {
+                if let Some(pid) = Pid::from_raw(raw_pid) {
+                    pids.push(pid);
+                }
+            }
+        }
+        pids.sort_unstable_by_key(|pid| pid.as_raw_pid());
+        Ok(pids)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn live_host_process_tree_pids(_marker: &str) -> Result<Vec<Pid>, Box<dyn Error>> {
+        Ok(Vec::new())
+    }
+
+    fn live_host_process_group_is_alive(process_group_id: Pid) -> Result<bool, Box<dyn Error>> {
+        match test_kill_process_group(process_group_id) {
+            Ok(()) => Ok(true),
+            Err(Errno::SRCH) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn terminate_live_host_process_tree(
+        marker: &str,
+        process_group_id: Pid,
+    ) -> Result<(), Box<dyn Error>> {
+        let started = Instant::now();
+        let deadline = started + LIVE_HOST_PROCESS_TREE_TIMEOUT;
+        loop {
+            let pids = live_host_process_tree_pids(marker)?;
+            let process_group_alive = live_host_process_group_is_alive(process_group_id)?;
+            if pids.is_empty() && !process_group_alive {
+                return Ok(());
+            }
+            let signal = if Instant::now().duration_since(started) < Duration::from_millis(500) {
+                Signal::TERM
+            } else {
+                Signal::KILL
+            };
+            if process_group_alive {
+                match kill_process_group(process_group_id, signal) {
+                    Ok(()) | Err(Errno::SRCH) => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            for pid in pids {
+                if live_host_process_tree_pids(marker)?.contains(&pid) {
+                    #[cfg(target_os = "linux")]
+                    match kill_process(pid, signal) {
+                        Ok(()) | Err(Errno::SRCH) => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            }
+            if Instant::now() >= deadline {
+                let remaining = live_host_process_tree_pids(marker)?;
+                let group_remaining = live_host_process_group_is_alive(process_group_id)?;
+                if remaining.is_empty() && !group_remaining {
+                    return Ok(());
+                }
+                return Err(io::Error::other(format!(
+                    "live host process tree did not quiesce before its {} ms deadline (marked_remaining={}, process_group_remaining={group_remaining})",
+                    LIVE_HOST_PROCESS_TREE_TIMEOUT.as_millis(),
+                    remaining.len()
+                ))
+                .into());
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     struct LiveSmokeFixture {
         _runtime_home: TempRuntimeHome,
         host_home_root: PathBuf,
@@ -16510,6 +25087,7 @@ mod unix {
         claude_config_dir: PathBuf,
         volicord_path: PathBuf,
         expected_volicord_sha256: String,
+        private_volicord_build_id: Option<String>,
     }
 
     impl Drop for LiveSmokeFixture {
@@ -16593,12 +25171,12 @@ mod unix {
             source_volicord: &Path,
             expected_sha256: Option<&str>,
             release_candidate: Option<&ReleaseCandidate>,
-            publication_recorder: Option<&mut LiveResultRecorder>,
+            mut publication_recorder: Option<&mut LiveResultRecorder>,
         ) -> Result<Self, Box<dyn Error>> {
             let mut path_context = release_validation_context()?;
             let runtime_home = TempRuntimeHome::new(&format!("live-host-smoke-{prefix}"))?;
             let runtime_home_path = runtime_home.path().to_path_buf();
-            if let Some(recorder) = publication_recorder {
+            if let Some(recorder) = publication_recorder.as_deref_mut() {
                 recorder.bind_observed_runtime_home(&runtime_home_path)?;
                 recorder.require_publication_domain_ready()?;
             }
@@ -16644,7 +25222,7 @@ mod unix {
             let env_path = path_with_prefix(&bin_dir)?;
             let repo_arg = path_text(&repo_root);
             let runtime_home_arg = path_text(&runtime_home_path);
-            Ok(Self {
+            let mut fixture = Self {
                 _runtime_home: runtime_home,
                 host_home_root,
                 runtime_home_path,
@@ -16659,7 +25237,14 @@ mod unix {
                 claude_config_dir,
                 volicord_path,
                 expected_volicord_sha256,
-            })
+                private_volicord_build_id: None,
+            };
+            if let Some(recorder) = publication_recorder {
+                let build_id = fixture.probe_release_build_id()?;
+                recorder.bind_observed_volicord_build_id(build_id.clone())?;
+                fixture.private_volicord_build_id = Some(build_id);
+            }
+            Ok(fixture)
         }
 
         fn repo_arg(&self) -> &str {
@@ -16687,6 +25272,13 @@ mod unix {
         }
 
         fn release_build_id(&self) -> Result<String, Box<dyn Error>> {
+            if let Some(build_id) = &self.private_volicord_build_id {
+                return Ok(build_id.clone());
+            }
+            self.probe_release_build_id()
+        }
+
+        fn probe_release_build_id(&self) -> Result<String, Box<dyn Error>> {
             let output = self.run_volicord(["--version"])?;
             release_build_id_from_version_output("release candidate volicord --version", &output)
         }
@@ -16749,9 +25341,20 @@ mod unix {
             recorder.bind_observed_runtime_home(&self.runtime_home_path)?;
             recorder.require_publication_domain_ready()?;
             recorder.mark_installed_host_detected();
-            let host_executable_sha256 =
-                sha256_file(executable, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
-            let host_version_output = self.run_installed_host_version_probe(executable)?;
+            let canonical_executable = recorder.bind_observed_host_executable(executable)?;
+            let host_executable_sha256 = recorder
+                .observed_host_executable
+                .as_ref()
+                .expect("host executable was just bound")
+                .sha256
+                .clone();
+            let host_version_output =
+                self.run_installed_host_version_probe(&canonical_executable)?;
+            recorder.required_revalidated_host_executable(&canonical_executable)?;
+            require_success(
+                &format!("{executable_name} --version for live release cell"),
+                &host_version_output,
+            )?;
             let host_version = if executable_name == "codex" {
                 canonical_codex_version_summary(&host_version_output)?
             } else {
@@ -16761,11 +25364,8 @@ mod unix {
                 host_version.clone(),
                 host_executable_sha256.clone(),
             )?)?;
-            require_success(
-                &format!("{executable_name} --version for live release cell"),
-                &host_version_output,
-            )?;
             let volicord_build_id = self.release_build_id()?;
+            recorder.revalidate_observed_host_executable(None)?;
             recorder.bind_observed_volicord_build_id(volicord_build_id.clone())?;
             ObservedReleaseHostIdentity::new(
                 host_version,
@@ -16811,9 +25411,22 @@ mod unix {
             recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
             recorder.require_publication_domain_ready()?;
-            let before = self.managed_baseline_observations()?;
-            self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
-            let mut command = Command::new(program);
+            let login_program = recorder.required_revalidated_host_executable(program)?;
+            let before = match self.managed_baseline_observations() {
+                Ok(before) => before,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let login_result =
+                self.require_codex_chatgpt_login_immediately_before_cell(host, &login_program);
+            let turn_program = recorder.required_revalidated_host_executable(program)?;
+            if let Err(error) = login_result {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+            let mut command = Command::new(turn_program);
             command
                 .arg(prompt)
                 .current_dir(&self.repo_root)
@@ -16826,10 +25439,190 @@ mod unix {
                 .stderr(Stdio::inherit());
             Self::remove_inherited_host_control_env(&mut command);
             Self::remove_inherited_auth_secret_env(&mut command);
-            let result = self.run_candidate_host_turn(command);
-            let after = self.managed_baseline_observations()?;
-            recorder.bind_observed_host_turn_baselines(&before, &after)?;
-            result
+            recorder.mark_selected_attempt_started();
+            let status = match self.run_candidate_host_turn(command) {
+                Ok(status) => status,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let finalization = (|| -> Result<(), Box<dyn Error>> {
+                recorder.revalidate_observed_host_executable(None)?;
+                let after = self.managed_baseline_observations()?;
+                recorder.bind_observed_host_turn_baselines(&before, &after)
+            })();
+            if let Err(error) = finalization {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+            Ok(status)
+        }
+
+        fn start_authenticated_interactive_host(
+            &self,
+            host: &str,
+            program: &Path,
+            prompt: &str,
+            recorder: &mut LiveResultRecorder,
+        ) -> Result<InteractiveHostTurn, Box<dyn Error>> {
+            recorder.require_publication_domain_ready()?;
+            let login_program = recorder.required_revalidated_host_executable(program)?;
+            let before = match self.managed_baseline_observations() {
+                Ok(before) => before,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let login_result =
+                self.require_codex_chatgpt_login_immediately_before_cell(host, &login_program);
+            let turn_program = recorder.required_revalidated_host_executable(program)?;
+            if let Err(error) = login_result {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+            if let Err(error) = self.verify_private_candidate_digest() {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+            let mut command = Command::new(turn_program);
+            command
+                .arg(prompt)
+                .current_dir(&self.repo_root)
+                .env("VOLICORD_HOME", &self.runtime_home_path)
+                .env("PATH", &self.env_path)
+                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+            Self::remove_inherited_host_control_env(&mut command);
+            Self::remove_inherited_auth_secret_env(&mut command);
+            let ownership_marker = live_host_turn_ownership_marker()?;
+            command.env(LIVE_HOST_TURN_OWNERSHIP_ENV, &ownership_marker);
+            let mut terminal_foreground = match LiveHostTerminalForeground::acquire() {
+                Ok(terminal_foreground) => terminal_foreground,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let process_group_id = terminal_foreground.process_group_id();
+            command.process_group(process_group_id.as_raw_pid());
+            recorder.mark_selected_attempt_started();
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error.into());
+                }
+            };
+            if let Err(error) = require_live_host_process_group(&child, process_group_id) {
+                let child_reap =
+                    terminate_and_reap_child(&mut child, "group-mismatched live-host child");
+                let cleanup = restore_live_host_terminal_and_quiesce(
+                    &mut terminal_foreground,
+                    &ownership_marker,
+                    process_group_id,
+                );
+                recorder.forbid_terminal_publication();
+                return match (child_reap, cleanup) {
+                    (Ok(_), Ok(())) => Err(error),
+                    (child_reap, cleanup) => Err(io::Error::other(format!(
+                        "group-mismatched live-host child cleanup failed: child_reap={}; terminal_and_tree={}",
+                        child_reap
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| "completed".to_owned()),
+                        cleanup
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| "completed".to_owned())
+                    ))
+                    .into()),
+                };
+            }
+            if let Err(error) = self.verify_private_candidate_digest() {
+                let child_reap =
+                    terminate_and_reap_child(&mut child, "digest-invalid live-host child");
+                let cleanup = restore_live_host_terminal_and_quiesce(
+                    &mut terminal_foreground,
+                    &ownership_marker,
+                    process_group_id,
+                );
+                recorder.forbid_terminal_publication();
+                return match (child_reap, cleanup) {
+                    (Ok(_), Ok(())) => Err(error),
+                    (child_reap, cleanup) => Err(io::Error::other(format!(
+                        "digest-invalid live-host child cleanup failed: child_reap={}; terminal_and_tree={}",
+                        child_reap
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| "completed".to_owned()),
+                        cleanup
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| "completed".to_owned())
+                    ))
+                    .into()),
+                };
+            }
+            Ok(InteractiveHostTurn {
+                child: Some(child),
+                before,
+                ownership_marker,
+                process_group_id,
+                terminal_foreground: Some(terminal_foreground),
+            })
+        }
+
+        fn finish_authenticated_interactive_host(
+            &self,
+            mut turn: InteractiveHostTurn,
+            recorder: &mut LiveResultRecorder,
+            terminate_if_running: bool,
+        ) -> Result<InteractiveHostFinish, Box<dyn Error>> {
+            let finalization = (|| -> Result<InteractiveHostFinish, Box<dyn Error>> {
+                let mut termination_requested = false;
+                let status = if terminate_if_running {
+                    match turn.child_mut()?.try_wait()? {
+                        Some(status) => status,
+                        None => {
+                            termination_requested = true;
+                            terminate_and_reap_child(
+                                turn.child_mut()?,
+                                "forced interactive live-host child",
+                            )?
+                        }
+                    }
+                } else {
+                    turn.child_mut()?.wait()?
+                };
+                let terminal_foreground = turn.terminal_foreground.as_mut().ok_or_else(|| {
+                    io::Error::other("interactive host turn has no terminal foreground controller")
+                })?;
+                restore_live_host_terminal_and_quiesce(
+                    terminal_foreground,
+                    &turn.ownership_marker,
+                    turn.process_group_id,
+                )?;
+                recorder.revalidate_observed_host_executable(None)?;
+                let after = self.managed_baseline_observations()?;
+                recorder.bind_observed_host_turn_baselines(&turn.before, &after)?;
+                self.verify_private_candidate_digest()?;
+                turn.child.take().ok_or_else(|| {
+                    io::Error::other("interactive host turn has already been finished")
+                })?;
+                Ok(InteractiveHostFinish {
+                    status,
+                    termination_requested,
+                })
+            })();
+            if finalization.is_err() {
+                recorder.forbid_terminal_publication();
+            }
+            finalization
         }
 
         fn run_codex_hook_trust_preflight(
@@ -16842,11 +25635,25 @@ mod unix {
                 return Ok(());
             }
             recorder.require_publication_domain_ready()?;
-            self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
+            let login_program = recorder.required_revalidated_host_executable(program)?;
+            let before = match self.managed_baseline_observations() {
+                Ok(before) => before,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let login_result =
+                self.require_codex_chatgpt_login_immediately_before_cell(host, &login_program);
+            let turn_program = recorder.required_revalidated_host_executable(program)?;
+            if let Err(error) = login_result {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
             println!(
                 "\n=== Volicord live Codex hook-trust preflight ===\nThis no-prompt Codex session is only for the host-owned trust step. Accept project trust for this disposable repository, open `/hooks`, inspect every active hook source, and review and trust the exact current Volicord project hooks. Do not enter a model prompt, credentials, or secrets. Do not use `--dangerously-bypass-hook-trust`. Exit Codex after the required hooks show trusted.\n=== end instruction ===\n"
             );
-            let mut command = Command::new(program);
+            let mut command = Command::new(turn_program);
             command
                 .current_dir(&self.repo_root)
                 .env("VOLICORD_HOME", &self.runtime_home_path)
@@ -16858,7 +25665,22 @@ mod unix {
                 .stderr(Stdio::inherit());
             Self::remove_inherited_host_control_env(&mut command);
             Self::remove_inherited_auth_secret_env(&mut command);
-            let status = self.run_candidate_host_turn(command)?;
+            let status = match self.run_candidate_host_turn(command) {
+                Ok(status) => status,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let finalization = (|| -> Result<(), Box<dyn Error>> {
+                recorder.revalidate_observed_host_executable(None)?;
+                let after = self.managed_baseline_observations()?;
+                recorder.bind_observed_host_turn_baselines(&before, &after)
+            })();
+            if let Err(error) = finalization {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
             smoke_note(
                 host,
                 format!("hook-trust preflight exited with {}", status_text(status)),
@@ -16881,9 +25703,22 @@ mod unix {
             recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
             recorder.require_publication_domain_ready()?;
-            let before = self.managed_baseline_observations()?;
-            self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
-            let mut command = Command::new(program);
+            let login_program = recorder.required_revalidated_host_executable(program)?;
+            let before = match self.managed_baseline_observations() {
+                Ok(before) => before,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let login_result =
+                self.require_codex_chatgpt_login_immediately_before_cell(host, &login_program);
+            let turn_program = recorder.required_revalidated_host_executable(program)?;
+            if let Err(error) = login_result {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+            let mut command = Command::new(turn_program);
             command
                 .arg(prompt)
                 .current_dir(&self.repo_root)
@@ -16897,10 +25732,24 @@ mod unix {
             Self::remove_inherited_host_control_env(&mut command);
             Self::remove_inherited_auth_secret_env(&mut command);
             command.env("VOLICORD_LOCAL_WEB_CONSENT", "1");
-            let result = self.run_candidate_host_turn(command);
-            let after = self.managed_baseline_observations()?;
-            recorder.bind_observed_host_turn_baselines(&before, &after)?;
-            result
+            recorder.mark_selected_attempt_started();
+            let status = match self.run_candidate_host_turn(command) {
+                Ok(status) => status,
+                Err(error) => {
+                    recorder.forbid_terminal_publication();
+                    return Err(error);
+                }
+            };
+            let finalization = (|| -> Result<(), Box<dyn Error>> {
+                recorder.revalidate_observed_host_executable(None)?;
+                let after = self.managed_baseline_observations()?;
+                recorder.bind_observed_host_turn_baselines(&before, &after)
+            })();
+            if let Err(error) = finalization {
+                recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+            Ok(status)
         }
 
         fn require_codex_chatgpt_login_immediately_before_cell(
@@ -16941,6 +25790,7 @@ mod unix {
                 "VOLICORD_MCP_CONNECTION_ID",
                 "VOLICORD_MCP_PROJECT_ID",
                 "VOLICORD_LOCAL_WEB_CONSENT",
+                LIVE_HOST_TURN_OWNERSHIP_ENV,
             ] {
                 command.env_remove(name);
             }
@@ -17006,7 +25856,94 @@ mod unix {
             &self,
             mut command: Command,
         ) -> Result<ExitStatus, Box<dyn Error>> {
-            self.with_private_candidate_digest_guard(|| command.status().map_err(Into::into))
+            let ownership_marker = live_host_turn_ownership_marker()?;
+            command.env(LIVE_HOST_TURN_OWNERSHIP_ENV, &ownership_marker);
+            self.with_private_candidate_digest_guard(|| {
+                let mut terminal_foreground = LiveHostTerminalForeground::acquire()?;
+                let process_group_id = terminal_foreground.process_group_id();
+                command.process_group(process_group_id.as_raw_pid());
+                let mut child = command.spawn()?;
+                if let Err(error) = require_live_host_process_group(&child, process_group_id) {
+                    let child_reap = terminate_and_reap_child(
+                        &mut child,
+                        "group-mismatched one-shot live-host child",
+                    );
+                    let cleanup = restore_live_host_terminal_and_quiesce(
+                        &mut terminal_foreground,
+                        &ownership_marker,
+                        process_group_id,
+                    );
+                    return match (child_reap, cleanup) {
+                        (Ok(_), Ok(())) => Err(error),
+                        (child_reap, cleanup) => Err(io::Error::other(format!(
+                            "group-mismatched one-shot live-host cleanup failed: child_reap={}; terminal_and_tree={}",
+                            child_reap
+                                .err()
+                                .map(|error| error.to_string())
+                                .unwrap_or_else(|| "completed".to_owned()),
+                            cleanup
+                                .err()
+                                .map(|error| error.to_string())
+                                .unwrap_or_else(|| "completed".to_owned())
+                        ))
+                        .into()),
+                    };
+                }
+                let (status, direct_child_failure) = match child.wait() {
+                    Ok(status) => (Some(status), None),
+                    Err(initial_error) => match terminate_and_reap_child(
+                        &mut child,
+                        "one-shot live-host child after wait failure",
+                    ) {
+                        Ok(status) => (
+                            Some(status),
+                            Some(format!(
+                                "initial direct live-host wait failed before bounded reap: {initial_error}"
+                            )),
+                        ),
+                        Err(reap_error) => (
+                            None,
+                            Some(format!(
+                                "direct live-host child could not be reaped: initial_wait={initial_error}; bounded_reap={reap_error}"
+                            )),
+                        ),
+                    },
+                };
+                if status.is_none() {
+                    let cleanup = restore_live_host_terminal_and_quiesce(
+                        &mut terminal_foreground,
+                        &ownership_marker,
+                        process_group_id,
+                    );
+                    let terminal_safety_restoration = terminal_foreground.restore();
+                    return Err(io::Error::other(format!(
+                        "{}; best-effort containment after unreaped child: {}; terminal safety restoration: {}",
+                        direct_child_failure
+                            .as_deref()
+                            .unwrap_or("direct live-host child remained unreaped"),
+                        cleanup
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| "completed".to_owned()),
+                        terminal_safety_restoration
+                            .err()
+                            .map(|error| error.to_string())
+                            .unwrap_or_else(|| "completed".to_owned()),
+                    ))
+                    .into());
+                }
+                let cleanup = restore_live_host_terminal_and_quiesce(
+                    &mut terminal_foreground,
+                    &ownership_marker,
+                    process_group_id,
+                );
+                match (status, direct_child_failure, cleanup) {
+                    (Some(status), None, Ok(())) => Ok(status),
+                    (_, Some(error), Ok(())) => Err(io::Error::other(error).into()),
+                    (_, _, Err(error)) => Err(error),
+                    (None, None, Ok(())) => unreachable!("unreaped child returned early"),
+                }
+            })
         }
 
         fn run_generated_final_output_handler(
@@ -17458,9 +26395,17 @@ mod unix {
 
     fn find_executable(program: &str) -> Option<PathBuf> {
         let path = env::var_os("PATH")?;
-        env::split_paths(&path)
+        find_executable_on_path(program, &path)
+    }
+
+    fn find_executable_on_path(program: &str, path: &OsStr) -> Option<PathBuf> {
+        env::split_paths(path)
             .map(|directory| directory.join(program))
-            .find(|candidate| candidate.is_file())
+            .find(|candidate| {
+                fs::metadata(candidate).is_ok_and(|metadata| {
+                    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+                })
+            })
     }
 
     fn write_volicord_shim(dir: &Path, target: &Path) -> Result<PathBuf, Box<dyn Error>> {

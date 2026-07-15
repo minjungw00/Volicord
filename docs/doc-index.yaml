@@ -1049,13 +1049,14 @@ documents:
   summary: Architecture decision for build-once exact-final-artifact host release validation,
     create-new candidate descriptor production, actual managed-initialize client identity, canonical
     twelve-cell evaluation, shared external-path enforcement, cooperatively leased append-only
-    cell/evidence publication, create-new manifests, and separate-process audit.
+    cell/evidence publication, bounded controlling-terminal foreground transfer and restoration,
+    create-new manifests, and separate-process audit.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-14'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1184,8 +1185,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1203,6 +1204,7 @@ documents:
   - reference.api.method-record-run
   - reference.core-model
   - reference.agent-connection
+  - reference.host-release-evidence
   - reference.security
   - reference.storage-records
   - reference.storage-ddl
@@ -1498,13 +1500,13 @@ documents:
   summary: Exact-final-artifact managed-host release candidate production and evidence schemas,
     actual bounded initialize client identity, fixed twelve-cell gate, canonical shared external-path
     evaluation, independent audit, append-only live-cell publication with fresh-root recovery, and
-    privacy-preserving session-binding contract.
+    privacy-preserving session-binding and controlling-terminal foreground contracts.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-07-14'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1529,6 +1531,8 @@ documents:
   - create-new bounded external manifest and separate-process audit that reopens and digests the original twelve cell files
   - one normalized external-path evaluator shared by the candidate descriptor producer, live-cell producers, the gate, and the separate audit, including cell-bound Runtime Home revalidation
   - cooperatively leased append-only live-cell publication, evidence-first and cell-last commit-marker ordering, non-destructive failure remnants, and fresh-result-root recovery
+  - live source-observation barriers independent of host lifecycle, followed by exact source fulfillment, plus the boundary between classifiable clean non-passing cells and child-finalization, retained-integrity, or publication failures that forbid final names
+  - controlling-terminal foreground transfer to the interactive host's dedicated operating-system process group, bounded controller restoration to the runner group, exact pre-transfer terminal-attribute restoration, and fail-closed publication poisoning
   - privacy-preserving managed-host native correlation identifier validation, reserved namespace, and domain-separated mapping
   - exact `tests/release-validation` validation command routes
   depends_on:
@@ -1536,6 +1540,7 @@ documents:
   - reference.agent-connection
   - reference.mcp-transport
   - reference.admin-cli
+  - reference.api.method-prepare-evidence-capture
   - reference.api.method-close-task
   - reference.api.schema-state
   - reference.security
@@ -2719,6 +2724,7 @@ documents:
   - immutable bounded host-capability verification history, current state, freshness, external
     exact-final-artifact release evidence binding, and exact-match eligibility
   - canonical host-feature support status meaning, precedence, current host matrix, replay, and freshness boundaries
+  - exact successful installed-host version-probe envelopes, stream separation, and identity-preservation boundaries
   - managed MCP and host-hook use of one opaque managed-host session identifier with pending Codex call binding
   depends_on:
   - reference.host-release-evidence
@@ -3070,13 +3076,14 @@ documents:
   summary: Maintenance policy for structural checks including root README pair validation, ambiguous
     whole-host support wording, durable test and audit boundaries, human semantic review, onboarding usability validation, live-host
     native Judgment, local-web evidence-observation, CLI-fallback, and final-output replay release
-    validation, twelve-cell append-only result-root recovery, Rust validation, and result reporting.
+    validation, controlling-terminal foreground restoration, twelve-cell append-only result-root
+    recovery, Rust validation, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-16'
+  last_verified_on: '2026-07-16'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -3101,6 +3108,12 @@ documents:
   - Exact `tests/release-validation` package, create-new candidate descriptor producer, fixed host
     release gate, separate-process audit, and unavailable-implementation reporting command routes.
   - Twelve-cell external result-root preparation, append-only publication runbook, failure reporting, and fresh-root recovery.
+  - Validation procedures for the live source-observation barrier and clean non-pass versus structural
+    publication-failure boundary owned by `reference.host-release-evidence`.
+  - Validation procedures for transferring a controlling terminal to each interactive dedicated process group, bounded restoration to the runner group, exact terminal-attribute restoration, and fresh-root recovery after controller or terminal failure.
+  - Validation procedures for exact fulfillment timing owned by
+    `reference.api.method-prepare-evidence-capture` and rejected-transaction effects owned by
+    `reference.storage-effects`.
   - Exact bounded managed initialize client identity plus Codex session/thread binding assertions for v3 live-host release cells.
   - Rust validation routing for documentation work that also changes implementation files.
   depends_on:
@@ -3112,7 +3125,9 @@ documents:
   - architecture-guide.testing-strategy
   - reference.mcp-transport
   - reference.host-release-evidence
+  - reference.api.method-prepare-evidence-capture
   - reference.api.method-record-run
+  - reference.storage-effects
   - reference.api.method-request-user-action
   - reference.api.method-resolve-user-action
   - reference.api.method-status

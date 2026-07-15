@@ -438,8 +438,14 @@ Volicord 아티팩트, 런타임 전제 조건을 다시 평가하며 이전 `ve
 |---|---|
 | Codex `0.144.4` | `native_user_action`, `verified_tool_producer`, `registered_connection_observation`는 구현되어 있으며 정확한 증거가 통과할 때까지 `implemented_unverified`입니다. 이 검토 버전에서 `local_web_user_channel`, `record_final_output`, `detective_final_output`는 `unsupported_by_host`입니다. 정확한 probe 외피는 `codex-cli 0.144.4`이고 정규 `host_version` 및 보존된 `clientInfo.version` 좌표는 접두사 없는 `0.144.4`입니다. |
 | Codex 버전 없음 또는 미검토 | 보수적인 호스트 종류 대체 표는 `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, `registered_connection_observation`를 구현됐지만 미검증인 상태로 두고 두 최종 출력 기능을 `unsupported_by_host`로 둡니다. 정확한 `0.144.4` 검토를 물려받을 수 없습니다. |
-| Claude Code | 여섯 기능 모두 최종 Volicord 아티팩트와 설치 호스트 버전에 결속된 정확한 실제 증거가 생길 때까지 `implemented_unverified`입니다. |
+| Claude Code | 여섯 기능 모두 최종 Volicord 아티팩트와 설치 호스트 버전에 결속된 정확한 실제 증거가 생길 때까지 `implemented_unverified`입니다. 정규 설치 호스트 probe 외피는 비어 있지 않은 UTF-8 stdout 행 정확히 하나와 그 뒤의 LF 하나이며 stderr는 비어 있어야 합니다. LF 앞의 행을 변경 없이 `host_version`으로 보존합니다. |
 | Generic | 여섯 기능 모두 `unsupported_by_host`입니다. |
+
+설치 호스트 버전 probe는 프로세스가 성공으로 종료된 뒤에만 null이 아닌 가용성 좌표를
+확정합니다. UTF-8이 잘못됐거나 timeout, 0이 아닌 종료, stderr 출력, 누락되거나 추가된
+LF 구분 행, CR, 앞뒤 공백, 제어 문자 또는 그 밖의 잘못된 크기 제한 identity가 있으면
+stream을 합치거나 행을 trim·대체하거나 좌표를 보존하지 않고 probe를 거부합니다. Codex
+행의 더 엄격한 명명 외피와 버전 추출 규칙은 Claude Code 행 규칙 대신 계속 적용합니다.
 
 `volicord connection status`, `volicord doctor`, 릴리스 기능 매트릭스는 이 평가기 하나를
 사용합니다. 설정 발견 사항, 픽스처, 직접 래퍼 결과, 무시된 테스트, 과거 실제 결과를 각각

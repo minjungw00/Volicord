@@ -514,8 +514,16 @@ The current baseline is:
 |---|---|
 | Codex `0.144.4` | `native_user_action`, `verified_tool_producer`, and `registered_connection_observation` are implemented and remain `implemented_unverified` until exact evidence passes. `local_web_user_channel`, `record_final_output`, and `detective_final_output` are `unsupported_by_host` for this reviewed version. The exact probe envelope is `codex-cli 0.144.4`; the canonical `host_version` and retained `clientInfo.version` coordinate is bare `0.144.4`. |
 | Codex absent or unreviewed version | The conservative host-kind fallback keeps `native_user_action`, `local_web_user_channel`, `verified_tool_producer`, and `registered_connection_observation` implemented but unverified, and keeps both final-output features `unsupported_by_host`. It cannot inherit the exact `0.144.4` review. |
-| Claude Code | All six features are `implemented_unverified` pending exact live evidence bound to the final Volicord artifact and installed host version. |
+| Claude Code | All six features are `implemented_unverified` pending exact live evidence bound to the final Volicord artifact and installed host version. The canonical installed-host probe envelope is exactly one non-empty UTF-8 stdout line terminated by one LF, with empty stderr; the line before that LF is preserved exactly as `host_version`. |
 | Generic | All six features are `unsupported_by_host`. |
+
+An installed-host version probe establishes a non-null availability coordinate
+only after the process exits successfully. Invalid UTF-8, timeout, non-zero
+exit, stderr output, a missing or extra LF-delimited line, CR, leading or
+trailing whitespace, a control character, or an otherwise invalid bounded
+identity rejects the probe without trimming, merging streams, substituting a
+line, or retaining a coordinate. The Codex row's stricter named envelope and
+version extraction continue to apply instead of the Claude Code line rule.
 
 `volicord connection status`, `volicord doctor`, and the release feature matrix
 consume this one evaluator. They must not independently reinterpret

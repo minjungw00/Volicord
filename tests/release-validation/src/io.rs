@@ -1792,7 +1792,7 @@ fn is_text_file_busy(_: &std::io::Error) -> bool {
     false
 }
 
-fn parse_candidate_version(output: &str) -> ValidationResult<CandidateBuildIdentity> {
+pub fn parse_candidate_version(output: &str) -> ValidationResult<CandidateBuildIdentity> {
     let line = output
         .strip_suffix('\n')
         .ok_or_else(|| ValidationError::new("candidate --version must end with one LF"))?;
