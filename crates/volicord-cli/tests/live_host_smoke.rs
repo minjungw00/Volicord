@@ -2912,6 +2912,14 @@ mod unix {
             project_id,
             probe_cursor,
         )?;
+        record("volicord.status", false, false, None)?;
+        assert!(assert_connection_observation_diagnostic(
+            &fixture,
+            connection_id,
+            project_id,
+            probe_cursor,
+        )
+        .is_err());
         let diagnostic_cursor = diagnostic_event_cursor(&fixture)?;
         record(
             "volicord.request_user_action",
@@ -15345,24 +15353,38 @@ mod unix {
             "SELECT
                  COALESCE(SUM(CASE
                        WHEN e.tool_name = 'volicord.status'
+                        AND e.event_kind = 'mcp_tool_call'
+                        AND e.validation_failure = 0
+                        AND e.core_reached = 1
                         AND e.core_committed = 0
                         AND e.outcome = 'success'
                        THEN 1 ELSE 0 END), 0),
                  COALESCE(SUM(CASE
+                       WHEN e.event_kind = 'mcp_tool_call'
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE
                        WHEN e.core_committed = 1
-                       THEN 1 ELSE 0 END), 0)
+                       THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(e.product_file_write_count), 0)
                FROM diagnostic_sessions s
                JOIN diagnostic_events e ON e.session_id = s.session_id
               WHERE s.connection_id = ?1
                 AND s.project_id = ?2
                 AND e.event_id > ?3",
             rusqlite::params![connection_id, project_id, cursor.0],
-            |row| Ok((row.get::<_, u64>(0)?, row.get::<_, u64>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, u64>(2)?,
+                    row.get::<_, u64>(3)?,
+                ))
+            },
         )?;
-        if observed.0 < 1 || observed.1 != 0 {
+        if observed != (1, 1, 0, 0) {
             return Err(io::Error::other(format!(
-                "the connection-observation probe did not remain a read-only status observation: successful_status={}, committed_events={}",
-                observed.0, observed.1
+                "the connection-observation probe was not exactly one successful read-only status call: successful_status={}, mcp_tool_calls={}, committed_events={}, product_file_writes={}",
+                observed.0, observed.1, observed.2, observed.3
             ))
             .into());
         }

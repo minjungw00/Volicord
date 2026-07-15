@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde_json::json;
 use volicord_store::{
+    agent_connections::HOST_KIND_CODEX,
     bootstrap::ProjectRecord,
     session_watch::{
         create_watch_baseline, latest_watch_baseline_for_session, snapshot_product_repository,
@@ -47,6 +48,7 @@ fn initialize_observe_session_watch(
 ) -> Result<(), GuardCommandError> {
     if phase != GuardPhase::SessionStart
         || envelope.guard_mode != IntegrationProfile::Detective.as_str()
+        || envelope.host_kind == HOST_KIND_CODEX
     {
         return Ok(());
     }

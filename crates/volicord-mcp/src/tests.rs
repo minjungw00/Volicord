@@ -2014,7 +2014,11 @@ fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Bo
         },
     )?;
 
-    assert_eq!(stdio_responses(&output)?.len(), 2);
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    let status = volicord_response_from_tool(&responses[1])?;
+    assert_eq!(status["base"]["response_kind"], "result");
+    assert_eq!(status["base"]["effect_kind"], "read_only");
     assert_eq!(fixture.counts()?, before_core);
     assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
     assert_eq!(
@@ -2025,12 +2029,28 @@ fn managed_stdio_reuses_only_an_exact_preseeded_agent_session() -> Result<(), Bo
         )?,
         Some(seeded)
     );
-    assert!(latest_watch_baseline_for_session(
+    let baseline = latest_watch_baseline_for_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         &session_id,
     )?
-    .is_some());
+    .expect("the first exact Codex call should materialize the watch baseline");
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
+    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
+    assert_eq!(
+        lifecycle_event_names(&metadata),
+        vec![
+            "managed_host_startup",
+            "managed_host_initialize_response",
+            "managed_host_tool_call",
+            "managed_host_tool_call_completed",
+        ]
+    );
+    let diagnostic = read_diagnostic_session(fixture.runtime_home_path(), Some(&session_id))?
+        .expect("the exact status call should create its bounded diagnostic session");
+    assert_eq!(diagnostic.totals.tool_call_count, 1);
+    assert_eq!(diagnostic.totals.core_committed_count, 0);
     Ok(())
 }
 

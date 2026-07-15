@@ -129,19 +129,10 @@ fn guard_session_start_injects_context_and_records_event() -> Result<(), Box<dyn
         value["result"]["context"]["project_id"],
         fixture.project_id()
     );
-    let scan_summary = &value["result"]["context"]["session_watch_scan_summary"];
-    assert_eq!(scan_summary["not_full_filesystem_monitoring"], true);
-    assert_eq!(scan_summary["follows_symlinks"], false);
-    assert!(scan_summary["default_excluded_paths"]
-        .as_array()
-        .expect("default exclusions should be listed")
-        .iter()
-        .any(|path| path == ".git"));
-    assert!(scan_summary["degraded_reasons"]
-        .as_array()
-        .expect("degraded reasons should be listed")
-        .iter()
-        .any(|reason| reason == "skipped_by_policy"));
+    assert_eq!(
+        value["result"]["context"]["session_watch_scan_summary"],
+        Value::Null
+    );
 
     let guard_event_id = value["guard_event_id"]
         .as_str()
@@ -518,6 +509,51 @@ fn guard_session_start_host_output_injects_context() -> Result<(), Box<dyn Error
         .expect("context should be a string")
         .contains("Volicord context"));
     assert!(!stdout(&output).contains("schema_version"));
+    Ok(())
+}
+
+#[test]
+fn guard_codex_session_start_defers_watch_baseline_until_mcp_binding() -> Result<(), Box<dyn Error>>
+{
+    let fixture = GuardCliFixture::new("guard-codex-session-defers-watch")?;
+    let native_session_id = "native.session:deferred-watch";
+    let event = json!({
+        "event_id": "guard_codex_session_defers_watch",
+        "session_id": native_session_id,
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex"
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "session-start", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(
+        value["result"]["context"]["session_watch_scan_summary"],
+        Value::Null
+    );
+    let expected_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        native_session_id,
+    )?;
+    assert!(agent_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        &expected_session_id,
+    )?
+    .is_some());
+    assert!(latest_watch_baseline_for_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        &expected_session_id,
+    )?
+    .is_none());
     Ok(())
 }
 
@@ -1192,13 +1228,12 @@ fn guard_managed_native_ids_never_reach_output_or_durable_storage_and_correlatio
     )?
     .expect("managed PromptCapture should remain queryable");
     assert_eq!(stored_capture.session_id, expected_session_id);
-    let baseline = latest_watch_baseline_for_session(
+    assert!(latest_watch_baseline_for_session(
         fixture.runtime_home(),
         fixture.project_id(),
         expected_session_id.as_str(),
     )?
-    .expect("managed session should retain a canonical watch baseline");
-    assert_eq!(baseline.session_id, expected_session_id);
+    .is_none());
     let diagnostics =
         read_diagnostic_session(fixture.runtime_home(), Some(expected_session_id.as_str()))?
             .expect("managed session should retain canonical diagnostics");
@@ -1219,7 +1254,6 @@ fn guard_managed_native_ids_never_reach_output_or_durable_storage_and_correlatio
     for durable_text in [
         format!("{stored_expected:?}"),
         format!("{stored_capture:?}"),
-        format!("{baseline:?}"),
         serde_json::to_string(&diagnostics)?,
     ] {
         for native_id in native_ids {
@@ -3958,11 +3992,12 @@ fn guarded_init_hook_write_prompt_lifecycle_fails_closed_without_producer_eviden
     );
     assert_eq!(
         check.response_value["guard_health"]["session_watch_coverage_basis"],
-        "mcp_start"
+        "method_boundary"
     );
-    assert_eq!(
-        check.response_value["guard_health"]["session_watch_partial_coverage_warning"],
-        Value::Null
+    assert!(
+        check.response_value["guard_health"]["session_watch_partial_coverage_warning"]
+            .as_str()
+            .is_some_and(|warning| !warning.is_empty())
     );
     Ok(())
 }
