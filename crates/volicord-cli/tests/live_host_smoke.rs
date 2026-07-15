@@ -1097,6 +1097,86 @@ mod unix {
         assert!(unavailable_cell["adapter_version"].is_string());
         assert!(unavailable_cell["evidence_artifact_path"].is_string());
 
+        let missing_evidence_host_path =
+            result_dir.join("claude-evidence-observation-missing-host.json");
+        let mut missing_evidence_host = LiveResultRecorder::new_for_kind(
+            "claude-code",
+            LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+            Some(missing_evidence_host_path.clone()),
+        )?;
+        missing_evidence_host.release_candidate = Some(candidate.clone());
+        missing_evidence_host.release_feature = Some(HostFeature::LocalWebUserChannel);
+        missing_evidence_host.release_requested_verified = Some(false);
+        let missing_executable_path =
+            release_root.join("missing-evidence-observation-host-executable");
+        assert!(!missing_executable_path.exists());
+        let missing_executable_name = path_text(&missing_executable_path);
+        let missing_evidence_host_error = execute_live_evidence_observation_round_trip(
+            "claude-code",
+            InstalledHostExecutable::discover(&missing_executable_name),
+            "fixture action is unreachable without the host executable",
+            missing_evidence_host,
+        )
+        .expect_err("a missing host executable cannot pass live evidence observation");
+        let missing_evidence_host_io_error = missing_evidence_host_error
+            .downcast_ref::<io::Error>()
+            .expect("the caller must retain the original missing-executable I/O failure");
+        assert_eq!(
+            missing_evidence_host_io_error.kind(),
+            io::ErrorKind::NotFound
+        );
+        assert_eq!(
+            missing_evidence_host_io_error.to_string(),
+            format!("`{missing_executable_name}` was not found on PATH")
+        );
+        let missing_evidence_host_cell: Value =
+            serde_json::from_slice(&fs::read(&missing_evidence_host_path)?)?;
+        assert_eq!(missing_evidence_host_cell["host_version"], Value::Null);
+        assert_eq!(missing_evidence_host_cell["requested_verified"], false);
+        assert_eq!(missing_evidence_host_cell["run_state"], "ignored");
+        assert_eq!(
+            missing_evidence_host_cell["claimed_status"],
+            "implemented_unverified"
+        );
+        let missing_evidence_host_sidecar = PathBuf::from(
+            missing_evidence_host_cell["evidence_artifact_path"]
+                .as_str()
+                .ok_or_else(|| {
+                    io::Error::other("missing-host evidence cell has no sidecar path")
+                })?,
+        );
+        let missing_evidence_host_result: Value =
+            serde_json::from_slice(&fs::read(&missing_evidence_host_sidecar)?)?;
+        assert_eq!(missing_evidence_host_result["result"], "unavailable");
+        assert_eq!(missing_evidence_host_result["stage"], "host_executable");
+        assert_eq!(
+            missing_evidence_host_result["host"],
+            serde_json::json!({ "kind": "claude-code" })
+        );
+        assert_eq!(
+            missing_evidence_host_result["volicord"]["build_id"],
+            missing_evidence_host_cell["adapter_version"]
+        );
+        assert_eq!(
+            missing_evidence_host_cell["evidence_artifact_sha256"],
+            sha256_file(
+                &missing_evidence_host_sidecar,
+                MAX_LIVE_HOST_RESULT_BYTES as u64 + 1,
+            )?
+        );
+        assert_eq!(
+            fs::read(result_root.join(".volicord-live-publication.lock"))?,
+            b"volicord-live-publication-v1 clean\n"
+        );
+        let mut canonical_missing_evidence_host_result = missing_evidence_host_result.clone();
+        canonical_missing_evidence_host_result
+            .as_object_mut()
+            .expect("missing-host evidence result object")
+            .remove("validation_run");
+        validate_live_evidence_observation_incomplete_result_shape(
+            &canonical_missing_evidence_host_result,
+        )?;
+
         let observed_failure_path = result_dir.join("claude-observed-host-failure.json");
         let mut observed_failure =
             LiveResultRecorder::new("claude-code", Some(observed_failure_path.clone()))?;
@@ -1241,7 +1321,7 @@ mod unix {
         {
             let mut rejected =
                 LiveResultRecorder::new("claude-code", Some(rejected_cell_path.clone()))?;
-            rejected.release_candidate = Some(candidate);
+            rejected.release_candidate = Some(candidate.clone());
             rejected.release_feature = Some(HostFeature::NativeUserAction);
             rejected.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
             let mut semantically_false =
@@ -1254,6 +1334,55 @@ mod unix {
         }
         assert!(!rejected_cell_path.exists());
         assert!(!rejected_evidence_path.exists());
+
+        let invalid_incomplete_root = release_root.join("invalid-incomplete-results");
+        let (invalid_incomplete_dir, _, _) = create_live_result_root(&invalid_incomplete_root)?;
+        let invalid_incomplete_path =
+            invalid_incomplete_dir.join("claude-evidence-observation-invalid.json");
+        let invalid_incomplete_evidence_path = release_evidence_path(&invalid_incomplete_path)?;
+        {
+            let mut invalid_incomplete = LiveResultRecorder::new_for_kind(
+                "claude-code",
+                LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+                Some(invalid_incomplete_path.clone()),
+            )?;
+            invalid_incomplete.release_candidate = Some(candidate.clone());
+            invalid_incomplete.release_feature = Some(HostFeature::LocalWebUserChannel);
+            invalid_incomplete.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
+            invalid_incomplete.require_publication_domain_ready()?;
+            let mut malformed_incomplete = live_evidence_observation_incomplete_summary(
+                "claude-code",
+                None,
+                "host_executable",
+                None,
+            );
+            malformed_incomplete["unexpected"] = Value::Bool(true);
+            assert!(record_validated_live_evidence_observation_incomplete(
+                &mut invalid_incomplete,
+                &malformed_incomplete,
+            )
+            .is_err());
+            assert!(invalid_incomplete.terminal_publication_is_forbidden());
+        }
+        assert!(!invalid_incomplete_path.exists());
+        assert!(!invalid_incomplete_evidence_path.exists());
+        assert_eq!(
+            fs::read(invalid_incomplete_root.join(".volicord-live-publication.lock"))?,
+            b"volicord-live-publication-v1 active\n"
+        );
+        let invalid_incomplete_retry_path =
+            invalid_incomplete_dir.join("claude-evidence-observation-retry.json");
+        let mut invalid_incomplete_retry = LiveResultRecorder::new_for_kind(
+            "claude-code",
+            LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+            Some(invalid_incomplete_retry_path.clone()),
+        )?;
+        invalid_incomplete_retry.release_candidate = Some(candidate);
+        invalid_incomplete_retry.release_feature = Some(HostFeature::LocalWebUserChannel);
+        assert!(invalid_incomplete_retry
+            .require_publication_domain_ready()
+            .is_err());
+        assert!(!invalid_incomplete_retry_path.exists());
         assert!(LiveResultRecorder::new("claude-code", Some(cell_path)).is_err());
         Ok(())
     }
@@ -5867,6 +5996,65 @@ mod unix {
             );
             validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
             assert!(serialize_live_host_result(&incomplete)?.len() < MAX_LIVE_HOST_RESULT_BYTES);
+        }
+        let mut candidate_only_failure =
+            LiveResultRecorder::new_for_kind("codex", LIVE_EVIDENCE_OBSERVATION_RESULT_KIND, None)?;
+        candidate_only_failure
+            .bind_observed_volicord_build_id("fixture-candidate-build".to_owned())?;
+        let candidate_only_failure = candidate_only_failure.with_observed_host_identity(
+            &live_evidence_observation_incomplete_summary("codex", None, "host_executable", None),
+        )?;
+        validate_live_evidence_observation_incomplete_result_shape(&candidate_only_failure)?;
+        assert_eq!(
+            candidate_only_failure["host"],
+            serde_json::json!({ "kind": "codex" })
+        );
+        assert_eq!(
+            candidate_only_failure["volicord"]["build_id"],
+            "fixture-candidate-build"
+        );
+        let mut cross_host_candidate_only = LiveResultRecorder::new_for_kind(
+            "claude-code",
+            LIVE_EVIDENCE_OBSERVATION_RESULT_KIND,
+            None,
+        )?;
+        cross_host_candidate_only
+            .bind_observed_volicord_build_id("fixture-candidate-build".to_owned())?;
+        assert!(cross_host_candidate_only
+            .with_observed_host_identity(&live_evidence_observation_incomplete_summary(
+                "codex",
+                None,
+                "host_executable",
+                None,
+            ))
+            .is_err());
+        for partial_identity in [
+            {
+                let mut value = candidate_only_failure.clone();
+                value["host"]["version"] = Value::String("codex fixture 1.0".to_owned());
+                value
+            },
+            {
+                let mut value = candidate_only_failure.clone();
+                value["host"]["executable_sha256"] = Value::String("d".repeat(64));
+                value
+            },
+            {
+                let mut value = candidate_only_failure.clone();
+                value["host"]["version"] = Value::String("codex fixture 1.0".to_owned());
+                value["host"]["executable_sha256"] = Value::String("d".repeat(64));
+                value
+                    .as_object_mut()
+                    .expect("candidate-only failure object")
+                    .remove("volicord");
+                value
+            },
+        ] {
+            assert!(
+                validate_live_evidence_observation_incomplete_result_shape(&partial_identity)
+                    .is_err(),
+                "partial host and candidate identity groups must be rejected"
+            );
         }
         let unknown_stage =
             live_evidence_observation_incomplete_summary("codex", None, "raw-error-text", None);
@@ -15111,6 +15299,24 @@ mod unix {
         }
     }
 
+    fn record_validated_live_evidence_observation_incomplete(
+        result_recorder: &mut LiveResultRecorder,
+        summary: &Value,
+    ) -> Result<(), Box<dyn Error>> {
+        let summary = match result_recorder.with_observed_host_identity(summary) {
+            Ok(summary) => summary,
+            Err(error) => {
+                result_recorder.forbid_terminal_publication();
+                return Err(error);
+            }
+        };
+        if let Err(error) = validate_live_evidence_observation_incomplete_result_shape(&summary) {
+            result_recorder.forbid_terminal_publication();
+            return Err(error);
+        }
+        result_recorder.record_final(&summary)
+    }
+
     fn execute_live_evidence_observation_round_trip(
         host: &str,
         installed_executable: InstalledHostExecutable<'_>,
@@ -15131,9 +15337,10 @@ mod unix {
         );
         match outcome {
             Ok(summary) if stage == "static_unsupported_by_host" => {
-                let summary = result_recorder.with_observed_host_identity(&summary)?;
-                validate_live_evidence_observation_incomplete_result_shape(&summary)?;
-                result_recorder.record_final(&summary)
+                record_validated_live_evidence_observation_incomplete(
+                    &mut result_recorder,
+                    &summary,
+                )
             }
             Ok(summary) => {
                 stage = "result_validation";
@@ -15148,9 +15355,10 @@ mod unix {
                         stage,
                         host_feature_diagnostics.as_ref(),
                     );
-                    let incomplete = result_recorder.with_observed_host_identity(&incomplete)?;
-                    validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
-                    result_recorder.record_final(&incomplete)?;
+                    record_validated_live_evidence_observation_incomplete(
+                        &mut result_recorder,
+                        &incomplete,
+                    )?;
                     return Err(error);
                 }
                 result_recorder.record_final(&summary)
@@ -15166,9 +15374,10 @@ mod unix {
                     stage,
                     host_feature_diagnostics.as_ref(),
                 );
-                let incomplete = result_recorder.with_observed_host_identity(&incomplete)?;
-                validate_live_evidence_observation_incomplete_result_shape(&incomplete)?;
-                result_recorder.record_final(&incomplete)?;
+                record_validated_live_evidence_observation_incomplete(
+                    &mut result_recorder,
+                    &incomplete,
+                )?;
                 Err(error)
             }
         }
@@ -18538,54 +18747,70 @@ mod unix {
     fn validate_live_evidence_observation_incomplete_result_keys(
         value: &Value,
     ) -> Result<(), Box<dyn Error>> {
-        let observed_identity = value.pointer("/host/version").is_some()
-            || value.pointer("/host/executable_sha256").is_some()
-            || value.pointer("/volicord/build_id").is_some();
-        if observed_identity {
-            require_exact_live_evidence_result_keys(
-                value,
-                "",
-                &[
-                    "kind",
-                    "result",
-                    "host",
-                    "volicord",
-                    "stage",
-                    "host_feature_support",
-                    "final_output_authority_disclosure",
-                    "evidence_scope",
-                    "sensitive_payloads",
-                ],
-            )?;
+        const BASE_KEYS: &[&str] = &[
+            "kind",
+            "result",
+            "host",
+            "stage",
+            "host_feature_support",
+            "final_output_authority_disclosure",
+            "evidence_scope",
+            "sensitive_payloads",
+        ];
+        const CANDIDATE_BOUND_KEYS: &[&str] = &[
+            "kind",
+            "result",
+            "host",
+            "volicord",
+            "stage",
+            "host_feature_support",
+            "final_output_authority_disclosure",
+            "evidence_scope",
+            "sensitive_payloads",
+        ];
+        let host_version_present = value.pointer("/host/version").is_some();
+        let host_executable_digest_present = value.pointer("/host/executable_sha256").is_some();
+        let candidate_build_present = value.pointer("/volicord/build_id").is_some();
+        if host_version_present != host_executable_digest_present {
+            return Err(io::Error::other(
+                "incomplete evidence-observation host identity coordinates are only partially present",
+            )
+            .into());
+        }
+        let host_identity_present = host_version_present;
+        if host_identity_present && !candidate_build_present {
+            return Err(io::Error::other(
+                "incomplete evidence-observation host identity has no candidate build identity",
+            )
+            .into());
+        }
+        require_exact_live_evidence_result_keys(
+            value,
+            "",
+            if candidate_build_present {
+                CANDIDATE_BOUND_KEYS
+            } else {
+                BASE_KEYS
+            },
+        )?;
+        if host_identity_present {
             require_exact_live_evidence_result_keys(
                 value,
                 "/host",
                 &["kind", "version", "executable_sha256"],
             )?;
-            require_exact_live_evidence_result_keys(value, "/volicord", &["build_id"])?;
             required_result_string(value, "/host/version")?;
             validate_lower_hex(
                 "incomplete evidence-observation host executable digest",
                 required_result_string(value, "/host/executable_sha256")?,
                 &[64],
             )?;
-            required_result_string(value, "/volicord/build_id")?;
         } else {
-            require_exact_live_evidence_result_keys(
-                value,
-                "",
-                &[
-                    "kind",
-                    "result",
-                    "host",
-                    "stage",
-                    "host_feature_support",
-                    "final_output_authority_disclosure",
-                    "evidence_scope",
-                    "sensitive_payloads",
-                ],
-            )?;
             require_exact_live_evidence_result_keys(value, "/host", &["kind"])?;
+        }
+        if candidate_build_present {
+            require_exact_live_evidence_result_keys(value, "/volicord", &["build_id"])?;
+            required_result_string(value, "/volicord/build_id")?;
         }
         validate_live_evidence_observation_common_result_keys(value)
     }
@@ -22698,32 +22923,27 @@ mod unix {
         }
 
         fn with_observed_host_identity(&self, summary: &Value) -> Result<Value, Box<dyn Error>> {
-            if self.observed_host_coordinates.is_none() && self.observed_volicord_build_id.is_none()
-            {
-                return Ok(summary.clone());
-            }
             let mut summary = summary.clone();
             let object = summary.as_object_mut().ok_or_else(|| {
                 io::Error::other("live-host result summary must be a JSON object")
             })?;
-            if let Some(coordinates) = &self.observed_host_coordinates {
-                let host = object
-                    .entry("host".to_owned())
-                    .or_insert_with(|| serde_json::json!({ "kind": self.result_host }))
-                    .as_object_mut()
-                    .ok_or_else(|| io::Error::other("live-host result host must be an object"))?;
-                match host.get("kind").and_then(Value::as_str) {
-                    Some(kind) if kind == self.result_host => {}
-                    Some(_) => {
-                        return Err(io::Error::other(
-                            "live-host result host kind conflicts with the recorder host",
-                        )
-                        .into())
-                    }
-                    None => {
-                        host.insert("kind".to_owned(), Value::String(self.result_host.clone()));
-                    }
+            let host = object
+                .get_mut("host")
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| io::Error::other("live-host result host must be an object"))?;
+            match host.get("kind").and_then(Value::as_str) {
+                Some(kind) if kind == self.result_host => {}
+                Some(_) => {
+                    return Err(io::Error::other(
+                        "live-host result host kind conflicts with the recorder host",
+                    )
+                    .into());
                 }
+                None => {
+                    return Err(io::Error::other("live-host result has no host kind").into());
+                }
+            }
+            if let Some(coordinates) = &self.observed_host_coordinates {
                 for (key, expected) in [
                     ("version", coordinates.host_version.as_str()),
                     (
