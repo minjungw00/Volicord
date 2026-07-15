@@ -77,6 +77,21 @@ control, guarantee, secure, protect, monitor, approve, decide 같은 넓은 주�
 Volicord 표현은 연결된 참조 담당 문서가 정의한 것보다 강한 범위, 보안, 런타임,
 Core 권한 보장을 암시하면 안 됩니다.
 
+관리 명령의 허용과 기능 지원을 구분합니다. 명령이 `HOST` 값을 받아들일 수 있고,
+구성이나 설정 경로가 전제 조건을 충족할 수 있으며, 환경은 문서화된 적용 가능성
+분류를 가질 수 있고, Agent Connection 검증은 `complete`로 끝날 수 있습니다. 각
+사실은 그 이름 붙은 범위 안에만 머뭅니다. 어느 사실도 호스트, 어댑터, 통합,
+프로필 전체에 대한 포괄적 주장으로 끌어올리지 않습니다.
+
+`configured`, `configuration_verified`, `complete`라는 사실, 구현의 존재, 픽스처나
+테스트 통과는 기능 지원 상태를 대신하지 않습니다. 이름 붙은 기능의 현재 지원
+주장은 `support_status=verified`일 때만 성립합니다. 환경과 설정의 적용 가능성은
+[시스템 요구사항](../reference/system-requirements.md), 연결·구성 상태와 기능 평가는
+[Agent Connection](../reference/agent-connection.md#host-feature-support-state), 정확한 상태
+값은 [API 값 집합](../reference/api/schema-value-sets.md#state-and-blocker-values), 최종
+아티팩트 증거와 릴리스 주장은
+[호스트 릴리스 증거](../reference/host-release-evidence.md)로 보냅니다.
+
 Volicord가 사용자 소유 판단을 대신한다고 설명하지 않습니다. Volicord는 사용자의
 판단이 필요한 경계를 기록하고, 경로를 잡고, 보존하고, 보여 주는 데 도움을 줄 수
 있지만 판단은 사용자에게 남습니다.
@@ -138,5 +153,9 @@ Volicord 권한 기록을 OS 수준 강제, 샌드박스, 에이전트가 지시
 | 보안 표현, 보장 수준, 호출 맥락 가정, 명시적 비보장 | [보안](../reference/security.md) |
 | 관리 CLI 명령, 인자, 출력, 호스트 설정, 명령/API 경계 | [관리 CLI](../reference/admin-cli.md) |
 | 로컬 MCP 어댑터 프로세스 시작, stdio 전송, 프로토콜 처리, 응답 래핑 | [MCP 전송](../reference/mcp-transport.md) |
+| 허용된 `HOST` 값, 구성, 설정 경로에 대한 환경 적용 가능성과 전제 조건 | [시스템 요구사항](../reference/system-requirements.md) |
+| Agent Connection 구성·검증 상태와 기능 지원 평가 | [Agent Connection](../reference/agent-connection.md#host-feature-support-state) |
+| 정확한 `HostFeatureSupportStatus`와 관리 호스트 기능 값 | [API 값 집합](../reference/api/schema-value-sets.md#state-and-blocker-values) |
+| 정확한 최종 아티팩트 호스트 증거와 릴리스 주장 평가 | [호스트 릴리스 증거](../reference/host-release-evidence.md) |
 | 문서 담당 경로와 메타데이터 | [문서 정책](documentation-policy.md), [doc-index.yaml](../../doc-index.yaml) |
 | 한영 용어와 식별자 보존 | [번역 정책](translation-policy.md), [용어 지도](../../terminology-map.yaml) |

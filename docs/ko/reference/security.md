@@ -26,7 +26,7 @@ Volicord 보안 표현은 문서화된 Volicord 경로 안의 기록과 정책 �
 | Agent Connection과 호스트 설정 | 현재 호출이 등록된 연결과 맞을 때 Agent Connection은 문서화된 연결 맥락, `actor_source` 출처, 연결 의도, 모드, Connection Projects 허용 목록을 제공합니다. | 연결 설정은 OS 권한, 호스트 신뢰, 사용자 신원, 외부 호스트가 `volicord mcp --stdio`를 로드하거나 노출했다는 증거가 아닙니다. |
 | `volicord mcp --stdio` | 어댑터는 Agent Connection 점검, Runtime Home 상태, Core, Store를 거쳐 MCP 호출을 처리합니다. | 이 프로세스 자체는 임의 제품 파일 편집 권한을 부여하거나, 권한 효력이 있는 사용자 행동 resolution을 기록하거나, 호스트 신뢰를 강제하거나, 명령을 차단하거나, 네트워크를 차단하거나, 도구를 격리하지 않습니다. |
 | Local HTTP transport | `volicord serve --transport local-http`는 베어러 토큰과 Origin 검사가 있는 문서화된 로컬 MCP-over-HTTP 부분 구현을 `localhost`와 Docker 호스트 루프백에 노출할 수 있습니다. 베어러 토큰은 `volicord serve` 프로세스의 로컬 비밀값입니다. 로컬 웹 동의 경로는 대기 중인 사용자 행동 하나를 위한 일회성 토큰이 있는 루프백 User Channel 입력 페이지를 노출할 수 있습니다. | Local HTTP transport와 로컬 웹 동의는 공개 네트워크 API, SaaS 엔드포인트, 다중 사용자 서버, 보안 경계, 공개 호스트 인터페이스 리스너, 원격 서비스, 인증·인가 서비스, 전체 MCP Streamable HTTP 구현이 아닙니다. |
-| `volicord` CLI | 관리 명령은 설정, 레지스트리 상태, 지원되는 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
+| `volicord` CLI | 관리 명령은 설정, 레지스트리 상태, 관리 호스트 통합 상태를 관리합니다. | CLI는 공개 API 보안 경계, 호스트 신뢰 제어기, OS 권한 메커니즘, 포괄적 쓰기 승인이 아닙니다. |
 
 ## 지원되는 보안 보장
 

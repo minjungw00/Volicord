@@ -193,7 +193,7 @@ replacement.
 ## Final-output authority disclosure
 
 Final-output disclosure is a profile-independent host-adapter workflow, not the
-Detective Stop enforcement decision. When a supported host reports a
+Detective Stop enforcement decision. When a configured built-in adapter reports a
 final-output event, the CLI requests a fresh read-only Core status for the
 selected project and Task.
 The shared Core-owned typed validator compares the status and candidate
@@ -252,15 +252,15 @@ final-output-only subset.
 The CLI treats host configuration as an external integration surface. A
 successful host configuration write is distinct from host trust, host approval,
 host reload, active tool exposure, and model behavior. Generic external MCP host
-configuration remains user-managed; the CLI can report guidance after a
-supported Agent Connection exists, but it does not write arbitrary external
-host configuration.
+configuration remains user-managed; the CLI can report guidance for an enabled
+Agent Connection, but the resulting process must still pass MCP startup
+validation and the CLI does not write arbitrary external host configuration.
 
 ## Guard integration boundary
 
 Guard integration plans generated files, policy JSON, host event commands,
-capability metadata, and factual audit inputs. Supported managed Record and
-Detective profile paths share the final-output handler subset; only Detective
+capability metadata, and factual audit inputs. The built-in Record and Detective
+setup paths share the final-output handler subset; only Detective
 adds the remaining lifecycle handlers and prompt-capture observations.
 Application writes only the planned managed files or managed blocks. Managed-file
 application pins the Product Repository parent path, compares the planned

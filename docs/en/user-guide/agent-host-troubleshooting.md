@@ -180,8 +180,10 @@ On native Windows, detective setup is not supported. If init reports
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
-Use WSL2, Linux, or macOS for detective only where the selected host hook and
-session watcher contracts are supported and tested.
+Use WSL2, Linux, or macOS for Detective only where the selected host-hook and
+session-watcher setup prerequisites are available and the owner-defined setup
+checks pass. That establishes setup applicability, not `verified` feature
+support.
 
 For lower-level connection recovery, pass the host and repository to connect
 explicitly:
@@ -255,14 +257,20 @@ Read the value before choosing recovery:
   not verify every other feature, product correctness, user identity, or OS
   enforcement.
 
-The current no-evidence baseline is intentionally conservative: Codex reports
-its first four managed features as `implemented_unverified`, while Codex Record
-and Detective final output are `unsupported_by_host` because authenticated
-exact replay and safe block-only finalization surfaces are absent. Claude Code
-reports all six as `implemented_unverified`; Generic reports all six as
-`unsupported_by_host`. A best-effort authority display can still run when its
-implementation and configuration are present, but it must not be presented as
-feature or release support.
+The no-current-version Codex fallback used by connection status and Doctor is
+intentionally conservative: `native_user_action`, `local_web_user_channel`,
+`verified_tool_producer`, and `registered_connection_observation` are
+`implemented_unverified`; `record_final_output` and `detective_final_output`
+are `unsupported_by_host`. A fresh verification of the exact reviewed Codex
+`0.144.4` coordinate is more specific: `native_user_action`,
+`verified_tool_producer`, and `registered_connection_observation` remain
+`implemented_unverified` until exact evidence passes, while
+`local_web_user_channel` and both final-output features are
+`unsupported_by_host`. Claude Code reports all six as
+`implemented_unverified`; Generic reports all six as `unsupported_by_host`. A
+best-effort authority display can still run when its implementation and
+configuration are present, but it must not be presented as feature or release
+support.
 
 Inspect `states.host_feature_support` for the complete six-feature map and
 `states.final_output_authority_disclosure` for selected-profile display,

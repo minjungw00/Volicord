@@ -527,7 +527,7 @@ fn append_compact_next_steps(
             push_numbered_text(
                 output,
                 &mut index,
-                "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective.",
+                "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite.",
             );
             push_optional_numbered_command(output, &mut index, "Run", command.as_deref());
         }

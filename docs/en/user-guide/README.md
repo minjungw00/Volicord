@@ -13,7 +13,7 @@ Reference owners.
 
 - Product orientation: [User Guide Overview](overview.md).
 - Install or select the executable: [Installation](installation.md).
-- Connect one supported host for the first time: [Quickstart](quickstart.md).
+- Run first-time setup for a built-in managed host: [Quickstart](quickstart.md).
 - Work with agents and visible decisions: [User Workflow](user-workflow.md).
 - Choose judgment wording and boundaries: [Judgment Examples](judgment-examples.md).
 - Operate as an agent: [Agent Workflow](agent-workflow.md).

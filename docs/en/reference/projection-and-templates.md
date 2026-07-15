@@ -70,11 +70,16 @@ Display output must:
 ## Managed final-output authority disclosure
 
 The managed final-output authority disclosure is a read-only `Projection` of a
-fresh `volicord.status` result. On every supported managed-host final-output
-delivery, including an exact host-event replay, the adapter must obtain and
-validate a new status result. It must not reuse a receipt cached in model prose,
-a mutation response, a prior Stop result, a persisted guard event, or an earlier
-display.
+fresh `volicord.status` result. On every built-in managed-adapter final-output
+delivery that proceeds after the read-only binding checks owned by
+[Agent Connection](agent-connection.md#managed-final-output-authority-disclosure),
+including an exact host-event replay and a best-effort delivery whose typed
+feature state is not `verified`, the adapter must obtain and validate a new
+status result. Best-effort operation does not establish a support claim or
+relax this freshness rule; such a claim still requires
+`support_status=verified`. The adapter must not reuse a receipt cached in model
+prose, a mutation response, a prior Stop result, a persisted guard event, or an
+earlier display.
 
 The projection must validate the result/read-only/non-dry-run branch and the
 receipt's project, Task, Task reference version, `state_version`, scope revision,
@@ -90,7 +95,7 @@ Detective may separately record and enforce its owner-defined Stop decision;
 that separate effect does not make the final-output projection authoritative.
 Model-authored final prose and host event text are never projection inputs.
 
-Supported host capability, setup, replay, and fallback routing belong to
+Host-feature support state, managed setup, replay, and fallback routing belong to
 [Administrative CLI](admin-cli.md#managed-final-output-authority-disclosure) and
 [Agent Connection](agent-connection.md#managed-final-output-authority-disclosure).
 

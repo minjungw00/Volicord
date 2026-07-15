@@ -511,7 +511,7 @@ close_readiness
 | Value | Meaning |
 |---|---|
 | `record` | Records authority state and exposes the MCP tool workflow without requiring host hooks or session-watcher observation. This includes Core-issued authority write tickets. |
-| `detective` | Adds supported host hooks and session-watcher observation that can be correlated to write-ticket scope. It may return cooperative host warnings or denials and detect unrecorded Product Repository changes after watcher coverage starts. It does not prove actor identity, provide OS enforcement, isolate the network, or sandbox tools. |
+| `detective` | Enables adapter-configured host hooks and session-watcher observation that can be correlated to write-ticket scope. Current support for each managed feature is reported independently through `HostFeatureSupportStatus`. The profile may return cooperative host warnings or denials and detect unrecorded Product Repository changes after watcher coverage starts. It does not prove actor identity, provide OS enforcement, isolate the network, or sandbox tools. |
 
 `GuardHealthSummary.hook_path_safety` uses:
 

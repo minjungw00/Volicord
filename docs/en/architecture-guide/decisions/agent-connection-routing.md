@@ -2,7 +2,11 @@
 
 ## Context
 
-Volicord needs managed coding-agent host support for Codex and Claude Code, plus user-managed generic MCP host configuration guidance, while still supporting more than one registered `Product Repository`. MCP roots and launch-directory context are host hints. They are not Volicord authority and cannot safely select a Project by themselves.
+Volicord needs managed connection configuration for accepted Codex and Claude
+Code host values, plus user-managed generic MCP host configuration guidance,
+while still allowing more than one registered `Product Repository`. MCP roots
+and launch-directory context are host hints. They are not Volicord authority
+and cannot safely select a Project by themselves.
 
 ## Decision
 
@@ -12,7 +16,7 @@ The design keeps these responsibilities separate:
 
 - The registry stores Agent Connection identity, host kind, host scope, target metadata, connection mode, enabled state, verification state, and explicit Connection Project membership.
 - `volicord mcp --stdio` validates the Agent Connection at startup, derives current connection context from that connection, exposes MCP-visible tools according to connection mode, provides `volicord.list_projects`, and rejects ambiguous project selection.
-- The administrative CLI creates, verifies, updates, and removes supported host connection setup.
+- The administrative CLI creates, verifies, updates, and removes managed connection setup for accepted host values.
 - Host trust, project approval, OAuth, reload, restart, and model behavior stay with the external host and user.
 
 For reviewed Codex `0.144.4`, the generated descriptor or local marker set is

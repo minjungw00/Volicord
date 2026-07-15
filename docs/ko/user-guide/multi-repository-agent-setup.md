@@ -10,7 +10,7 @@
 이 문서는 Product Repository 하나를 위한 기본 첫 실행 경로가 아닙니다. 일반 첫 실행
 설정에는 [에이전트 호스트 설정](agent-host-setup.md)과
 `volicord init --host HOST --repo PATH --profile record`를 사용합니다. 탐지 프로필
-설정에는 그 문서가 설명하는 호스트 훅과 세션 감시기 요구사항이 적용됩니다. 여기의
+설정에는 그 문서가 정의한 호스트 훅 및 세션 감시기 설정 전제 조건이 적용됩니다. 여기의
 하위 수준 `volicord connection add` 명령은 호스트 수준 또는 `global` 호스트 항목
 하나가 명시적으로 허용된 둘 이상의 저장소로 라우팅해야 할 때만 사용합니다.
 

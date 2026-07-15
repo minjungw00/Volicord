@@ -79,6 +79,14 @@ read-only and verifies the machine-checkable shape:
 - Public-output source avoids unqualified broad security words that would
   overstate Volicord guarantees; exact security guarantee meaning remains with
   the Security and brand-claim owners.
+- Maintained prose and public-output source avoid ambiguous whole-host and
+  whole-profile support wording, as well as adjectives and predicates that
+  claim an Agent Connection as a whole. This check uses word boundaries so
+  aggregate claims about agent hosts, named managed hosts, profiles, or
+  connections do not arise from substring matches.
+  Exact identifiers and status values such as
+  `unsupported_by_host`, and explicit `unsupported host` statements, remain
+  allowed.
 
 After automated structural validation, manually confirm repository hygiene:
 
@@ -108,6 +116,17 @@ for Volicord spelling, official bilingual brand copy, component presentation,
 test harness term boundaries, visual principles, and claim restrictions. Confirm
 exact product behavior, API behavior, storage effects, schemas, security
 guarantees, and Core authority semantics still route to their Reference owners.
+
+For managed-host claims, classify each statement separately as environment
+applicability, setup or configuration state, Agent Connection readiness,
+feature-specific support, or release evidence. Check those layers against
+[System Requirements](../reference/system-requirements.md),
+[Agent Connection](../reference/agent-connection.md#host-feature-support-state),
+[API Value Sets](../reference/api/schema-value-sets.md#state-and-blocker-values),
+and [Host Release Evidence](../reference/host-release-evidence.md),
+respectively. A setup, configuration, `complete`, implementation, fixture, or
+test fact does not establish feature-specific `verified`, and a feature status
+does not replace exact-final-artifact release evidence.
 
 For API and Reference examples, check method-local consistency, request and
 response shape, field names, required fields, nullability, enum-like values,
@@ -219,6 +238,10 @@ The tasks must cover whether participants can:
 7. Interpret a state with no allowed project or ambiguous project selection.
 8. Explain what remains after safe removal.
 9. Find the detailed schema owner for `StateRecordRef` or `EvidenceSummary`.
+10. Distinguish an Agent Connection `complete` result from the four
+    `HostFeatureSupportStatus` values (`verified`, `implemented_unverified`,
+    `unsupported_by_host`, and `temporarily_unavailable`) and explain why only
+    feature-specific `verified` can support a current feature claim.
 
 Record observations needed to improve the maintained documentation, including
 where participants stop, questions they ask without prompting, incorrect state
@@ -228,16 +251,17 @@ transitions, and search terms that failed.
 
 Passing usability validation requires first-time users to complete executable
 preparation and one host path without author explanation, identify documented
-success independently, avoid treating `action_required` as an unexplained fatal
-failure, recover without deleting unrelated user configuration or product data,
-and find the detailed schema owner without author assistance. Critical blockers
-include any issue that prevents task completion, causes an unsafe write or
-deletion attempt, produces a wrong success interpretation, or breaks an owner
-route. Correct critical blockers in the applicable maintained owner documents,
-keep paired English and Korean meaning aligned when a paired document changes,
-rerun matching automated and manual maintenance checks, and retest the affected
-task with the relevant participant profile before treating the blocker as
-resolved.
+success independently, keep connection `complete` distinct from
+feature-specific `verified`, avoid treating `action_required` as an unexplained
+fatal failure, recover without deleting unrelated user configuration or product
+data, and find the detailed schema owner without author assistance. Critical
+blockers include any issue that prevents task completion, causes an unsafe
+write or deletion attempt, produces a wrong success interpretation, or breaks
+an owner route. Correct critical blockers in the applicable maintained owner
+documents, keep paired English and Korean meaning aligned when a paired
+document changes, rerun matching automated and manual maintenance checks, and
+retest the affected task with the relevant participant profile before treating
+the blocker as resolved.
 
 Report usability validation results in the conversation or another
 repository-approved durable research location, not as individual test records in
@@ -260,7 +284,10 @@ selected Product Repository has no active `Task`, and observe a read-only
 `volicord connection verify ... --json` for the same connection and require the
 owner-defined `complete` result. Only then create or activate the workflow
 `Task` and start the task-bound host run. The first observation does not replace
-administrative verification.
+administrative verification. Here `complete` establishes only the
+owner-defined connection-readiness checkpoint for this sequence. It is not a
+`HostFeatureSupportStatus` value and does not establish
+`support_status=verified` for any feature.
 
 Exact connection-verification behavior and state meaning remain with
 [Agent Connection](../reference/agent-connection.md) and

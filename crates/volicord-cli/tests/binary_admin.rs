@@ -5062,7 +5062,7 @@ fn init_codex_detective_profile_fails_without_observe_prerequisites() -> Result<
     let diagnostic = stderr(&output);
     assert!(diagnostic.contains("DETECTIVE_WATCHER_UNSUPPORTED"));
     assert!(diagnostic.contains("--profile record"));
-    assert!(diagnostic.contains("supported host"));
+    assert!(diagnostic.contains("meet every Detective prerequisite"));
     assert!(diagnostic.contains("repository configuration"));
     assert!(!repo_root.join(".codex/hooks.json").exists());
     assert!(!repo_root.join(".volicord/policy.json").exists());

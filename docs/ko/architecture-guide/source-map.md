@@ -121,7 +121,7 @@
 | `crates/volicord-cli/src/user_command.rs` | 로컬 User Channel 상태와 `volicord inbox` 명령 파싱 및 조율. 로컬 사용자 호출 사실을 Core의 판단 기록 경로에 전달합니다. |
 | `crates/volicord-cli/src/host_integration/` | 호스트 종류, 범위, 역량, 생명주기 단계, 설정 편집, 통합 계약, 동적 호스트 기능 증거와 준비 상태 집계, 프로필과 무관한 최종 출력 고지 역량 계약과 검증, 범용 호스트 fallback 안내, 진단 상태 타입. |
 | `crates/volicord-cli/src/host_integration/capability_status.rs` | 공유 정적 결과와 단일 기능 지원 결과에 동적 증거, 최신성, 준비 상태, 설정 입력을 적용해 프로필별 최종 출력과 여섯 기능 진단 매트릭스를 집계합니다. 설정 점검은 별도 입력으로 남으며 지원 상태를 올릴 수 없습니다. |
-| `crates/volicord-cli/src/host_integration/contracts.rs` | 지원 호스트 통합 계약 메타데이터와 픽스처·설정 검증. Record profile과 Detective profile이 공유하는 최종 출력 전용 단계 부분 집합을 포함합니다. |
+| `crates/volicord-cli/src/host_integration/contracts.rs` | 관리 호스트 통합 계약 메타데이터와 픽스처·설정 검증. Record profile과 Detective profile이 공유하는 최종 출력 전용 단계 부분 집합을 포함합니다. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 어댑터 내부 구현. 설정 계획, 실행 파일 점검, 관리 대상 식별 정보, 신뢰 사실, 검증. |
 | `crates/volicord-cli/src/host_integration/claude_code/` | Claude Code 어댑터 내부 구현. CLI 명령과 설정 계획, 관리 대상 식별 정보 점검, 호스트 고유 출력 파싱, 검증. |
 | `crates/volicord-cli/src/registration.rs` | Runtime Home 기록을 초기화할 때 쓰는 공유 관리 작업 생성자 메타데이터. |

@@ -405,7 +405,7 @@ pub(crate) fn observe_hook_root_unsupported_message(
     repo_root: &Path,
 ) -> String {
     format!(
-        "DETECTIVE_HOOK_ROOT_UNSUPPORTED: {} detective init requires a Git work tree root for supported host hook configuration, but no Git repository root was found from {}. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for detective before rerunning init.",
+        "DETECTIVE_HOOK_ROOT_UNSUPPORTED: {} detective init requires the selected adapter's host-hook configuration to resolve a Git work tree root, but no Git repository root was found from {}. Use --profile record for record-only setup, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
         public_host_label(host_kind),
         repo_root.display()
     )

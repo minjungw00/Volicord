@@ -157,7 +157,7 @@ continuation; it does not return a form, command, URL, credential, or request
 ref and does not issue a token merely to project the result. Separately verified
 User Channel paths can resolve those user actions:
 
-- host prompt input when the initialized client supports it
+- host prompt input when that exact path is available to the initialized client
 - chat command capture when command capture is `configured`, `observed`, or
   `active`
 - a loopback local consent surface only when its listener is ready and the

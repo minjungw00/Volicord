@@ -953,13 +953,13 @@ fn guard_degraded_action(
     let Some(connection) = connection else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before rerunning init.",
+            "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
         );
     };
     let Some(project) = projects.first() else {
         return PrimaryNextAction::new(
             "guard_capability_degraded",
-            "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before rerunning init.",
+            "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
         );
     };
     let host = public_host_name_text(&connection.host_kind);
@@ -972,7 +972,7 @@ fn guard_degraded_action(
     );
     PrimaryNextAction::new(
         "guard_capability_degraded",
-        "Use --profile record if host hooks are not needed, or prepare a supported host, platform, and configuration for detective before rerunning init.",
+        "Use --profile record if host hooks are not needed, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
     )
     .with_command(command)
 }

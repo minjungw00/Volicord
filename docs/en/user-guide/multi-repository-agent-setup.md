@@ -10,9 +10,10 @@ and [MCP Transport](../reference/mcp-transport.md).
 This is not the default first-run path for one Product Repository. For ordinary
 first-run setup, use [Agent Host Setup](agent-host-setup.md) and
 `volicord init --host HOST --repo PATH --profile record`. Detective setup has the
-supported host-hook and session watcher requirements described there. Use the
-lower-level `volicord connection add` commands here only when one host-level or global
-host entry must route to more than one explicitly allowed repository.
+owner-defined host-hook and session-watcher setup prerequisites described there.
+Use the lower-level `volicord connection add` commands here only when one
+host-level or global host entry must route to more than one explicitly allowed
+repository.
 
 ## Topology
 

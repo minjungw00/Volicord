@@ -186,8 +186,8 @@ volicord init --help
 `volicord init --shared --host HOST --repo PATH --profile record`로 이어갑니다. `volicord init`은
 선택한 Product Repository를 연결하고, 프로젝트 범위 MCP 설정을 쓰며, 통합 상태를
 기록하는 동안 Runtime Home과 설치 프로필을 초기화할 수 있습니다. Detective 설정에는
-[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)에 설명된 검증된 호스트
-훅과 세션 감시기 요구사항이 적용됩니다.
+[관리 CLI 참조](../reference/admin-cli.md#agent-host-setup-and-init)의 담당 문서가 정의한
+호스트 훅 및 세션 감시기 설정 전제 조건이 적용됩니다.
 Windows 네이티브 환경에서는 `--profile record`를 사용합니다. Windows 호스트 훅과
 감시기 동작을 사용할 수 없으므로 `--profile detective`는 `unsupported-platform` 진단으로
 실패합니다.
@@ -278,8 +278,9 @@ docker run --rm -it \
   volicord:local connection verify codex --repo /workspace
 ```
 
-Docker에서 탐지 프로필을 설정할 때도 컨테이너 외부와 같은 검증된 호스트 훅과 세션
-감시기 요구사항이 적용됩니다. 런타임 홈에 제공할 프로젝트 등록과 에이전트 연결을
+Docker에서 탐지 프로필을 설정할 때도 컨테이너 외부와 마찬가지로 담당 문서가 정의한
+호스트 훅 및 세션 감시기 설정 전제 조건이 적용됩니다. 런타임 홈에 제공할 프로젝트 등록과
+에이전트 연결을
 만든 뒤, 예를 들어 일치하는 `init`이나 낮은 수준의 `connection add`를 실행한 뒤,
 운영자가 제공한 토큰 파일로 로컬 HTTP MCP 엔드포인트를 시작합니다.
 
@@ -325,9 +326,9 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 ```
 
 `/path/to/your-product-repo`는 에이전트에게 작업을 요청할 Product Repository의 경로
-예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 검증된 탐지 프로필 전제 조건을 만족할 때만
-`--profile detective`를 사용합니다. Windows 네이티브 환경에서는 `detective` 프로필이 지원되지
-않으므로 `--profile record`를 사용합니다.
+예시입니다. 선택한 호스트, 플랫폼, 저장소 설정이 담당 문서가 정의한 탐지 프로필 설정
+전제 조건을 만족할 때만 `--profile detective`를 사용합니다. Windows 네이티브 환경에서는
+탐지 프로필 설정을 사용할 수 없으므로 `--profile record`를 사용합니다.
 
 이 공유 설정에서는 init이 선택한 것과 같은 비어 있지 않은 절대 경로
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그

@@ -113,47 +113,62 @@ Document: [Installation](../user-guide/installation.md)
 
 Document: [Quickstart](../user-guide/quickstart.md)
 
-- Primary goal: Provide the shortest real path from verified executables to one
-  successful supported agent-host setup.
+- Primary goal: Provide the shortest real path from executables whose readiness
+  was checked to one managed agent-host setup path and its documented setup
+  checkpoint.
 - Intended reader: New users, operators, and agent integrators who want a first
   working connection.
 - Should own: A focused success path, minimal commands, setup prompt or
   action-required handoff at first-run depth, expected success checks, and a
-  clear route to the next guide if setup fails.
+  clear route to the next guide if setup fails. It must keep setup success
+  separate from feature-specific support.
 - Should not own: Full host matrices, all setup and removal variants, complete
   CLI flag behavior, complete troubleshooting catalogs, MCP transport
   contracts, or API method references.
 - Acceptable diagrams: Optional linear step diagrams. Avoid full component maps
   or troubleshooting decision trees.
 - Link deeper by: Sending executable preparation to
-  [Installation](../user-guide/installation.md), complete host operations
+  [Installation](../user-guide/installation.md), broader host operations
   to [Agent Host Setup](../user-guide/agent-host-setup.md), stalled setup to
   [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md), and
   exact command or process behavior to [Administrative CLI](../reference/admin-cli.md)
-  and [MCP Transport](../reference/mcp-transport.md).
+  and [MCP Transport](../reference/mcp-transport.md). Send environment and setup
+  applicability to [System Requirements](../reference/system-requirements.md),
+  and connection readiness and feature evaluation to
+  [Agent Connection](../reference/agent-connection.md#host-feature-support-state).
 
 ## Agent Host Setup Guide
 
 Document: [Agent Host Setup](../user-guide/agent-host-setup.md)
 
-- Primary goal: Explain how to install, verify, guide, operate, and remove
-  supported agent-host integrations.
+- Primary goal: Explain how to prepare, verify, operate, and remove the managed
+  Codex and Claude Code setup paths and user-managed generic MCP
+  configuration.
 - Intended reader: Operators, agent integrators, and agents working with Codex,
   Claude Code, or user-managed generic MCP host configuration.
-- Should own: Operator choices, supported setup paths, guide-level preflight
-  checks, verification and status flows, managed guidance boundaries, and safe
-  removal flow.
+- Should own: Operator choices, managed setup paths, guide-level preflight
+  checks, configuration and connection-readiness status flows, the guide-level
+  separation between setup success and feature-specific support, managed
+  guidance boundaries, and safe removal flow.
 - Should not own: Exact CLI output contracts, full troubleshooting catalogs,
   MCP protocol line lists, host-internal trust behavior, full environment
-  applicability rules, storage DDL, or API schema meaning.
+  applicability rules, exact feature-status values or release-evidence
+  contracts, storage DDL, or API schema meaning.
 - Acceptable diagrams: Host setup flow diagrams, configuration boundary maps,
   and verification path diagrams that stay at guide level.
 - Link deeper by: Sending command detail to [Administrative CLI](../reference/admin-cli.md),
   local MCP process detail to [MCP Transport](../reference/mcp-transport.md),
   location and repository boundaries to
   [Runtime Boundaries](../reference/runtime-boundaries.md), connection concepts
-  to [Agent Connection](../reference/agent-connection.md), API surfaces to
-  [API Methods](../reference/api/methods.md), and recovery detail to
+  and feature evaluation to
+  [Agent Connection](../reference/agent-connection.md#host-feature-support-state),
+  API surfaces to [API Methods](../reference/api/methods.md), exact feature
+  status values to
+  [API Value Sets](../reference/api/schema-value-sets.md#state-and-blocker-values),
+  release-claim evidence to
+  [Host Release Evidence](../reference/host-release-evidence.md), environment
+  applicability to [System Requirements](../reference/system-requirements.md),
+  and recovery detail to
   [Agent Host Troubleshooting](../user-guide/agent-host-troubleshooting.md).
 
 ## Agent Workflow Guide

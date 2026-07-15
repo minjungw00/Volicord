@@ -11,10 +11,10 @@ use crate::host_integration::verification::{
 #[derive(Debug, Clone, Default)]
 pub struct GenericAdapter;
 
-pub const USER_MANAGED_CONFIGURATION_GUIDANCE: &str = "generic MCP host configuration is user-managed; supported managed connection hosts are `codex` and `claude-code`; configure external hosts manually after a supported Agent Connection exists";
+pub const USER_MANAGED_CONFIGURATION_GUIDANCE: &str = "generic MCP host configuration is user-managed; accepted managed connection host values are `codex` and `claude-code`; configure external hosts manually for an enabled Agent Connection and require the launched process to pass MCP startup validation";
 const USER_MANAGED_CONFIGURATION_DETAILS: &str =
     "generic MCP host configuration is user-managed and unverified by Volicord";
-const USER_MANAGED_CONFIGURATION_ACTION: &str = "Configure the external MCP host manually after a supported Agent Connection exists; Volicord does not write generic host configuration";
+const USER_MANAGED_CONFIGURATION_ACTION: &str = "Configure the external MCP host manually for an enabled Agent Connection and require the launched process to pass MCP startup validation; Volicord does not write generic host configuration";
 
 pub fn capabilities() -> HostCapabilities {
     HostCapabilities {

@@ -39,7 +39,7 @@ from Detective Stop enforcement.
    Task-specific `volicord status` fallback. A missing Task, failed refresh, or
    malformed or mismatched result becomes an explicit owner-defined fallback or
    diagnostic outcome; it never fabricates a receipt or emits a partial one.
-4. Supported Codex and Claude Code adapters translate that plan to their
+4. Built-in Codex and Claude Code adapter paths translate that plan to their
    host-native fixed UI surfaces. Profile-independent capability and managed
    configuration planning make the disclosure path available to both Record
    and Detective profiles. Generic, user-managed, unsupported, inactive, or

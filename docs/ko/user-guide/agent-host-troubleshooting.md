@@ -164,8 +164,9 @@ Windows 네이티브 환경에서는 탐지 프로필 설정이 지원되지 않
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
-탐지 프로필은 선택한 호스트 훅과 세션 감시기 계약이 지원되고 테스트된 WSL2, Linux,
-macOS에서만 사용합니다.
+탐지 프로필은 선택한 호스트 훅 및 세션 감시기 설정 전제 조건을 사용할 수 있고 담당
+문서가 정의한 설정 점검을 통과하는 WSL2, Linux, macOS에서만 사용합니다. 이 결과는 설정
+적용 가능성만 성립시키며 `verified` 기능 지원을 뜻하지 않습니다.
 
 하위 수준 연결 복구에는 호스트와 저장소를 연결 명령에 명시적으로 전달합니다.
 
@@ -236,12 +237,18 @@ inbox`를 실행합니다. 선택자가 모호하거나 잘못된 저장소가
 - `verified`는 그 기능과 현재 증거 결속에만 적용됩니다. 다른 모든 기능, 제품 정확성, 사용자
   신원, OS 집행을 검증하지 않습니다.
 
-현재 증거가 없을 때의 기준 상태는 의도적으로 보수적입니다. Codex의 앞 네 관리 기능은
-`implemented_unverified`이고, 인증된 정확 재생과 안전한 block 전용 최종화 표면이 없으므로
-Codex Record 및 Detective 최종 출력은 `unsupported_by_host`입니다. Claude Code의 여섯
-기능은 모두 `implemented_unverified`, Generic의 여섯 기능은 모두
-`unsupported_by_host`입니다. 구현과 설정이 있으면 최선형 권한 표시가 동작할 수 있지만,
-이를 기능 또는 릴리스 지원으로 표현하면 안 됩니다.
+연결 상태와 Doctor가 현재 Codex 버전을 알 수 없을 때 사용하는 대체 표는 의도적으로
+보수적입니다. `native_user_action`, `local_web_user_channel`,
+`verified_tool_producer`, `registered_connection_observation`는
+`implemented_unverified`이고, `record_final_output`과 `detective_final_output`은
+`unsupported_by_host`입니다. 정확히 검토한 Codex `0.144.4` 좌표를 새로 검증한 결과는 더
+구체적입니다. `native_user_action`, `verified_tool_producer`,
+`registered_connection_observation`는 정확한 증거가 통과할 때까지
+`implemented_unverified`이며, `local_web_user_channel`과 두 최종 출력 기능은
+`unsupported_by_host`입니다. Claude Code의 여섯 기능은 모두
+`implemented_unverified`, Generic의 여섯 기능은 모두 `unsupported_by_host`입니다.
+구현과 설정이 있으면 최선형 권한 표시가 동작할 수 있지만 이를 기능 또는 릴리스 지원으로
+표현하면 안 됩니다.
 
 전체 여섯 기능 map은 `states.host_feature_support`, 선택 프로필의 표시, 재생, block
 세부정보는 `states.final_output_authority_disclosure`에서 확인합니다. 후자의

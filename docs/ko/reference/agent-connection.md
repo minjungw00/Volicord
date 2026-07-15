@@ -16,6 +16,8 @@
 - Agent Connection 계층의 저장소 루트 프로젝트 선택과 프로젝트 가용성 경계
 - 담당 결과와 Agent Connection 사이의 에이전트 맥락 전달 규칙
 - 관리되는 최종 출력 권한 고지 기능과 연결 경계
+- 정규 여섯 기능 `HostFeatureSupportStatus` 평가기, 우선순위, 현재 호스트·버전 매트릭스,
+  재생, 최신성 경계
 - 관리 MCP 관찰과 호스트 훅 관찰에 공통으로 쓰는 관리 호스트 세션 결속
 - 선택된 Agent Connection이나 현재 연결 맥락을 사용할 수 없거나, 맞지 않거나,
   오래되었거나, 충분하지 않을 때의 대체 표시
@@ -222,7 +224,7 @@ marker의 영속 상태를 만들면 안 되며, 다른 세션 식별자를 조�
 |---|---|---|
 | `personal` | 현재 사용자의 일반 로컬 흐름을 위한 사용자 소유 호스트 설정입니다. | 호스트 신뢰, 사용자 신원, 모든 로컬 프로젝트 접근을 증명하지 않습니다. |
 | `shared` | 선택된 `Product Repository` 안의 명시적 통합 파일로 저장되는 프로젝트 소유 또는 프로젝트 공유 주 호스트 설정입니다. | Volicord 런타임 상태가 아니며 임의 제품 파일 편집을 승인하지 않습니다. |
-| `global` | 지원 호스트의 사용자 전역 호스트 설정입니다. 프로젝트 접근은 계속 저장소 루트 등록과 Connection Projects로 제한됩니다. | 모든 저장소를 연결하지 않으며 프로젝트나 호스트 신뢰를 우회하지 않습니다. |
+| `global` | 허용되는 관리 호스트 대상의 사용자 전역 설정입니다. 프로젝트 접근은 계속 저장소 루트 등록과 Connection Projects로 제한됩니다. | 모든 저장소를 연결하지 않으며 프로젝트나 호스트 신뢰를 우회하지 않습니다. |
 
 `volicord init`에서는 `personal`이 기본값이고 `--shared`가 `shared`를 명시적으로
 선택합니다. Init은 `global` 연결을 만들지 않습니다. 연결 의도는 주 관리 호스트 대상을
@@ -231,8 +233,8 @@ marker의 영속 상태를 만들면 안 되며, 다른 세션 식별자를 조�
 `.volicord/policy.json`은 의도와 무관한 `local_overlay`이고, 생성된 훅 래퍼는
 `shared`에서도 로컬 파일입니다.
 
-Product Repository 하나에서 `volicord init`은 선택한 지원 호스트 하나와 활성 저장소
-로컬 `personal` 또는 `shared` 통합 하나만 유지합니다. 다른 지원 호스트나 반대 의도를
+Product Repository 하나에서 `volicord init`은 선택한 내장 호스트 어댑터 하나와 활성 저장소
+로컬 `personal` 또는 `shared` 통합 하나만 유지합니다. 허용되는 다른 호스트 값이나 반대 의도를
 선택하면 관리 호스트와 훅 상태 보기를 마이그레이션하고 이전 Connection Project를 활성
 사용에서 폐기합니다. 단일 로컬 정책에 여러 호스트 통합이나 서로 다른 로컬 통합 의도를
 암묵적으로 동시에 활성화하지 않습니다.
@@ -298,9 +300,10 @@ Connection과 프로젝트 식별 정보는 각 Runtime Home에 로컬로 남습
 공유 상태 보기는 이전 바인딩 형태를 만들지 않습니다.
 
 기준 범위에서 직접 관리하는 호스트 종류는 `codex`와 `claude_code`입니다. 호스트 중립
-MCP 설정은 사용자 관리입니다. 사용자 관리 설정은 지원되는 Agent Connection이 이미
-있을 때만 `volicord mcp --stdio`를 시작하는 데 필요한 내부 레지스트리 상태를 사용할 수
-있지만, 직접 호스트 설치를 위한 일반 연결 의도는 아닙니다.
+MCP 설정은 사용자 관리입니다. 사용자 관리 설정은 활성 Agent Connection을 대상으로만
+`volicord mcp --stdio`를 시작하는 데 필요한 내부 레지스트리 상태를 사용할 수 있습니다.
+시작한 프로세스는 [MCP 전송](mcp-transport.md)이 담당하는 시작 검증을 여전히 통과해야
+하며, 이 경로는 직접 호스트 설치를 위한 일반 연결 의도가 아닙니다.
 
 ## Connection Projects
 
@@ -378,7 +381,7 @@ Connection Projects는 Agent Connection과 등록 프로젝트 사이의 명시�
 - `last_verification_status=complete`는 [관리 CLI](admin-cli.md#agent-connection-result-states)가
   담당하는 운영 게이트를 만족한 관리 검증 결과에 대해서만 저장할 수 있습니다. Volicord가
   직접 시작한 MCP handshake만으로는 충분하지 않습니다.
-- `last_verification_status=action_required`는 Volicord가 지원 호스트 설정을 관리할 수 있지만
+- `last_verification_status=action_required`는 Volicord가 선택한 어댑터의 설정을 관리할 수 있지만
   호스트가 소유한 신뢰, 승인, OAuth, 설정 다시 불러오기, 재시작, 명령 링크 복구,
   설치 프로필 복구가 남아 있을 때의 예상 상태입니다.
 - 거절됨, 없음, 변경됨, 사용할 수 없음, 알 수 없음 호스트 상태는 `complete` Agent

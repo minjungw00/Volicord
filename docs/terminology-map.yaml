@@ -2057,6 +2057,7 @@ terms:
     notes:
       - "Preserve the exact type, value, feature, field, and subcapability identifiers in both languages."
       - "Configuration facts are orthogonal to support status and never promote a feature to `verified`."
+      - "Environment applicability, accepted host values, connection `complete`, implementation presence, and fixture or test results are not feature support states; only `verified` for the exact named feature supports a current feature claim."
       - "Do not use the live-harness value `not_applicable` as a product support status."
   host_release_evidence:
     category: "technical_concept"

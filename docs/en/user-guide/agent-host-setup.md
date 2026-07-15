@@ -160,7 +160,11 @@ when the current session still has no Volicord tools.
 | Profile | Use it when | What it adds |
 |---|---|---|
 | Record profile (`record`) | You want the ordinary MCP workflow without host lifecycle hooks or a session watcher. | Cooperative workflow recording and project guidance. |
-| Detective profile (`detective`) | The selected host, platform, and repository support every required hook and watcher prerequisite. | Supported host-hook and watcher observations, including Unrecorded Change signals. |
+| Detective profile (`detective`) | The selected host, platform, and repository meet every owner-defined hook and watcher setup prerequisite. | Configured host-hook and watcher observation paths, including Unrecorded Change signals. |
+
+Configuring or enabling these paths does not by itself establish current feature
+support. Use `states.host_feature_support`; only `verified` supports a current
+feature claim.
 
 Neither profile provides an OS sandbox, network isolation, actor proof,
 correctness proof, or full write prevention. Detective observations are signals;
@@ -255,15 +259,17 @@ and their focused owners.
 
 ## Generic MCP Hosts
 
-For a host Volicord does not manage, first create a supported Agent Connection.
-Then configure the external host through its own settings to start:
+For a host Volicord does not manage, first create and enable an Agent Connection
+for an accepted `HOST` value. Then configure the external host through its own
+settings to start:
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
 ```
 
-The external configuration remains user-managed. Volicord does not claim that
-an arbitrary host loaded or approved it. Exact process and project-selection
+The external configuration remains user-managed, and the resulting process must
+still pass MCP startup validation. Volicord does not claim that an arbitrary
+host loaded or approved it. Exact process and project-selection
 behavior belongs to [MCP Transport](../reference/mcp-transport.md).
 
 ## User Channel Boundary

@@ -78,6 +78,14 @@ command. A terminal-side MCP check does not by itself prove that the active host
 session exposes Volicord tools. In the active host, confirm that
 `volicord.list_projects` and `volicord.status` are available.
 
+A `complete` result establishes readiness for this setup path only; it is not a
+blanket host-feature support claim. JSON status reports each feature in
+`states.host_feature_support` as `verified`, `implemented_unverified`,
+`unsupported_by_host`, or `temporarily_unavailable`. Only `verified` supports a
+current feature claim. See the
+[host feature support state](docs/en/reference/agent-connection.md#host-feature-support-state)
+for the exact contract.
+
 ### 3. Work Through The Agent
 
 Ask for work in ordinary language:
@@ -177,9 +185,11 @@ supports cooperative workflow recording through MCP without requiring host
 lifecycle hooks or a session watcher.
 
 Use the Detective profile (`--profile detective`) only when the selected host,
-platform, and repository meet its prerequisites. It adds supported host-hook
-and watcher observations. Those observations can reveal Unrecorded Changes, but
-they do not provide OS-level enforcement or prove who changed a file.
+platform, and repository meet its prerequisites. It configures and enables the
+owner-defined host-hook and watcher observation paths. That setup does not by
+itself establish current feature support. The resulting observations can reveal
+Unrecorded Changes, but they do not provide OS-level enforcement or prove who
+changed a file.
 
 See [Agent Host Setup](docs/en/user-guide/agent-host-setup.md) for setup choices
 and [Security](docs/en/reference/security.md) for exact guarantee limits.

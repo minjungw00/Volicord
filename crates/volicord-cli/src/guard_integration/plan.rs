@@ -470,7 +470,7 @@ fn ensure_observe_profile_supported_on_platform(
     host_kind: HostKind,
 ) -> Result<(), GuardIntegrationError> {
     Err(GuardIntegrationError::runtime(format!(
-        "DETECTIVE_WINDOWS_UNSUPPORTED: native Windows supports the record profile for {}, but detective profile is not supported because Windows host-hook wrappers and session watcher behavior are not implemented and tested. Use --profile record on native Windows, or run Volicord in WSL2, Linux, or macOS where the selected host hook contract is supported.",
+        "DETECTIVE_WINDOWS_UNSUPPORTED: native Windows accepts only the record setup path for {}, while detective setup is unavailable because Windows host-hook wrappers and session watcher behavior are not implemented and tested. Use --profile record on native Windows, or run Volicord in WSL2, Linux, or macOS where every selected host-hook and watcher prerequisite is implemented and repository-tested.",
         public_host_label(host_kind)
     )))
 }
@@ -538,7 +538,7 @@ fn observe_hooks_unsupported_message(
     missing_required_hooks: &[HostLifecyclePhase],
 ) -> String {
     format!(
-        "DETECTIVE_HOOKS_UNSUPPORTED: {} detective init requires supported host lifecycle hook configuration, but this adapter does not know verified project-local hook support for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Use --profile record for record-only setup, or prepare a supported host, platform, and configuration for detective before rerunning init.",
+        "DETECTIVE_HOOKS_UNSUPPORTED: {} detective init requires configured host lifecycle hooks, but this adapter does not define project-local hook configuration for: {}. AGENTS.md and {VOLICORD_POLICY_FILE} are not host hook configuration. Use --profile record for record-only setup, or prepare a host, platform, and configuration that meet every Detective prerequisite before rerunning init.",
         public_host_label(host_kind),
         lifecycle_phase_names(missing_required_hooks).join(", ")
     )
@@ -552,7 +552,7 @@ fn ensure_observe_session_watcher_supported(
     snapshot_product_repository(runtime_home, repo_root, WatchSnapshotOptions::default()).map_err(
         |error| {
             GuardIntegrationError::runtime(format!(
-                "DETECTIVE_WATCHER_UNSUPPORTED: {} detective init requires session watcher support for the selected Product Repository, but the watcher snapshot check failed: {error}. Use --profile record for record-only setup, or prepare a supported host, platform, and repository configuration for detective before rerunning init.",
+                "DETECTIVE_WATCHER_UNSUPPORTED: {} detective init requires a session watcher for the selected Product Repository, but the watcher snapshot check failed: {error}. Use --profile record for record-only setup, or prepare a host, platform, and repository configuration that meet every Detective prerequisite before rerunning init.",
                 public_host_label(host_kind)
             ))
         },

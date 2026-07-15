@@ -233,8 +233,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -277,6 +277,8 @@ shared_documents:
   - write ticket, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
   - actor_source and operation_category terminology distinctions
+  - HostFeatureSupportStatus identifier preservation and separation from environment, setup, connection-readiness,
+    implementation, fixture, and test facts
   - Korean mixed-language expressions to avoid
 documents:
 - doc_id: readme.root
@@ -284,13 +286,14 @@ documents:
   path_ko: README.ko.md
   kind: landing
   summary: Bilingual first-user Volicord onboarding route for product orientation, environment fit,
-    executable setup, host setup, first use, and documentation navigation.
+    executable setup, host setup, connection-readiness and host-feature status distinctions, first use,
+    and documentation navigation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -350,8 +353,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-07-03'
-  last_updated_on: '2026-07-05'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -412,8 +415,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -431,13 +434,14 @@ documents:
   path_en: docs/en/user-guide/quickstart.md
   path_ko: docs/ko/user-guide/quickstart.md
   kind: tutorial
-  summary: Shortest real agent host setup tutorial for a first successful run.
+  summary: Shortest real managed agent-host setup tutorial, including connection-readiness and
+    feature-specific support-state distinctions.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -453,6 +457,7 @@ documents:
   - user-guide.agent-host-setup
   - reference.admin-cli
   - reference.mcp-transport
+  - reference.agent-connection
 - doc_id: user-guide.user-workflow
   path_en: docs/en/user-guide/user-workflow.md
   path_ko: docs/ko/user-guide/user-workflow.md
@@ -518,8 +523,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -548,8 +553,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -579,8 +584,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - mcp_protocol_2025_11_25
@@ -676,8 +681,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -707,8 +712,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -948,8 +953,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1443,7 +1448,8 @@ documents:
   path_en: docs/en/reference/system-requirements.md
   path_ko: docs/ko/reference/system-requirements.md
   kind: reference
-  summary: Reference contract for pre-installation environment applicability and system prerequisites.
+  summary: Reference contract for pre-installation environment applicability, system and setup prerequisites,
+    and their separation from feature-specific host support.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: onboarding
@@ -1475,7 +1481,9 @@ documents:
   - managed final-output fixed-UI authority-disclosure environment applicability and fallback boundary
   - external exact-final-artifact host-capability release evidence manifest applicability and current
     trusted-acquisition status
-  - host feature support applicability, current built-in baseline classification, and runtime-prerequisite boundary
+  - pre-installation projection and routing of the Agent Connection-owned host-feature matrix and
+    runtime-prerequisite boundary
+  - repository-tested release-gate mechanics and setup prerequisites as non-substitutes for feature support
   - stop criteria for unsupported or unverified installation environments
   depends_on:
   - reference.runtime-boundaries
@@ -1605,8 +1613,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1785,8 +1793,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-05-06'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - terminology_map_v1
@@ -2113,8 +2121,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-01'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2313,8 +2321,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2721,8 +2729,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2776,8 +2784,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: quality_conformance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2906,8 +2914,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -2923,6 +2931,7 @@ documents:
     and Maintain document families.
   - Inclusion and exclusion boundaries for major document families.
   - Diagram-role and deeper-document linking guidance for major maintained documents.
+  - Reader-guide separation of managed setup success, connection readiness, feature status, and release evidence.
   depends_on:
   - maintain.documentation-policy
   - maintain.translation-policy
@@ -2932,6 +2941,10 @@ documents:
   - docs.doc-index
   - terminology.map
   - reference.index
+  - reference.system-requirements
+  - reference.agent-connection
+  - reference.api.schema-value-sets
+  - reference.host-release-evidence
 - doc_id: maintain.diagram-policy
   path_en: docs/en/maintain/diagram-policy.md
   path_ko: docs/ko/maintain/diagram-policy.md
@@ -2976,13 +2989,14 @@ documents:
   path_ko: docs/ko/maintain/brand-guidelines.md
   kind: maintenance
   summary: Maintenance owner for Volicord brand spelling, bilingual brand copy, presentation rules,
-    claim boundaries, component naming presentation, and project-local visual identity principles.
+    broad-claim and managed-host support-claim boundaries, component naming presentation, and
+    project-local visual identity principles.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-24'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -2998,6 +3012,8 @@ documents:
   - Volicord brand spelling and Korean pronunciation guidance.
   - Official bilingual Volicord brand copy, tagline, descriptor, mnemonic, and core-message presentation.
   - Volicord voice guidance and claim-boundary discipline for documentation and generated repository guidance.
+  - Separation of accepted host values, managed setup, connection readiness, feature-specific support,
+    and exact-final-artifact release claims.
   - Volicord product/system, Core, CLI identifier, MCP adapter identifier, Runtime Home label, and domain-concept
     presentation boundaries.
   - Project-local visual identity principles and initial project tokens for Volicord presentation.
@@ -3010,6 +3026,10 @@ documents:
   - reference.security
   - reference.admin-cli
   - reference.mcp-transport
+  - reference.system-requirements
+  - reference.agent-connection
+  - reference.api.schema-value-sets
+  - reference.host-release-evidence
 - doc_id: maintain.translation-policy
   path_en: docs/en/maintain/translation-policy.md
   path_ko: docs/ko/maintain/translation-policy.md
@@ -3043,8 +3063,8 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structural checks including root README pair validation, durable
-    test and audit boundaries, human semantic review, onboarding usability validation, live-host
+  summary: Maintenance policy for structural checks including root README pair validation, ambiguous
+    whole-host support wording, durable test and audit boundaries, human semantic review, onboarding usability validation, live-host
     native Judgment, local-web evidence-observation, CLI-fallback, and final-output replay release
     validation, twelve-cell append-only result-root recovery, Rust validation, and result reporting.
   normative_level: maintenance
@@ -3066,6 +3086,8 @@ documents:
   canonical_for:
   - Documentation metadata, path, link, terminology, bilingual root README pair, contract-boundary, API example,
     surface-stability label, and reporting validation policy.
+  - Static and semantic validation that keeps whole-host wording, connection readiness, feature status,
+    and release evidence distinct.
   - Durable repository-test and one-time audit boundary guidance for documentation validation and
     implementation-check reporting.
   - Representative-user onboarding usability validation policy and reporting boundaries.
@@ -3092,3 +3114,6 @@ documents:
   - reference.api.method-status
   - reference.api.schema-state
   - reference.api.schema-user-action
+  - reference.system-requirements
+  - reference.agent-connection
+  - reference.api.schema-value-sets

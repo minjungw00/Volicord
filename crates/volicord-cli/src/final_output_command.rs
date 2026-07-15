@@ -42,7 +42,7 @@ pub const MAX_FINAL_AUTHORITY_HOST_RESPONSE_BYTES: usize = 8 * 1024;
 const AUTHORITY_RECEIPT_PREFIX: &str = "Volicord authority receipt: ";
 const GENERIC_FALLBACK_WIRE: &str = "{\"continue\":true,\"systemMessage\":\"Volicord authority disclosure unavailable (rendering_unavailable). Inspect current authority with `volicord status --json`.\"}\n";
 
-/// Supported managed host for a final-output authority disclosure.
+/// Built-in managed host selector for a final-output authority disclosure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedFinalOutputHost {
     Codex,
@@ -77,7 +77,7 @@ impl ManagedFinalOutputHost {
     }
 }
 
-/// Safe coordinates available to a bounded authority-disclosure fallback.
+/// Bounded non-private coordinates available to an authority-disclosure fallback.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinalAuthorityCoordinates {
     pub project_id: String,
@@ -171,7 +171,7 @@ pub struct FinalOutputCommandOutcome {
     pub exit_code: i32,
 }
 
-/// Hidden command error. Runtime failures are rendered as safe fallbacks, not returned here.
+/// Hidden command error. Runtime failures become closed bounded fallbacks, not returned errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinalOutputCommandError {
     Usage(String),
@@ -1499,7 +1499,7 @@ mod tests {
         .map(str::to_owned)
         .collect::<Vec<_>>();
         let options = parse_options(&args)
-            .expect("valid but mismatched host adapters must reach the safe binding fallback");
+            .expect("valid but mismatched host adapters must reach the closed binding fallback");
         assert_eq!(options.host, ManagedFinalOutputHost::Codex);
         assert_eq!(options.host_output, ManagedFinalOutputHost::ClaudeCode);
     }

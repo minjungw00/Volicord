@@ -76,6 +76,25 @@ approve, or decide unless the applicable contract owner supports the exact
 claim. Volicord presentation must not imply stronger scope, security, runtime,
 or Core authority guarantees than the linked Reference owner defines.
 
+Keep administrative acceptance and feature support separate. A command can
+accept a `HOST` value, a configuration or setup path can meet its
+prerequisites, an environment can have a documented applicability
+classification, and Agent Connection verification can finish with `complete`.
+Each fact remains within that named scope. Do not elevate any of them into an
+aggregate claim about an entire host, adapter, integration, or profile.
+
+The facts `configured`, `configuration_verified`, and `complete`, the presence
+of an implementation, and a passing fixture or test are not substitutes for a
+feature's support state. Only `support_status=verified` for the named feature
+supports a current feature claim. Route environment and setup applicability to
+[System Requirements](../reference/system-requirements.md), connection and
+configuration state and feature evaluation to
+[Agent Connection](../reference/agent-connection.md#host-feature-support-state),
+exact status values to
+[API Value Sets](../reference/api/schema-value-sets.md#state-and-blocker-values),
+and final-artifact evidence and release claims to
+[Host Release Evidence](../reference/host-release-evidence.md).
+
 Do not describe Volicord as making user-owned judgments. Volicord can help
 record, route, preserve, or show the boundary where the user's judgment is
 needed, but the judgment remains user-owned.
@@ -137,5 +156,9 @@ their contracts into brand material:
 | Security wording, guarantee levels, invocation-context assumptions, and explicit non-guarantees | [Security](../reference/security.md) |
 | Administrative CLI commands, arguments, output, host setup, and command/API boundary | [Administrative CLI](../reference/admin-cli.md) |
 | Local MCP adapter process startup, stdio transport, protocol handling, and response wrapping | [MCP Transport](../reference/mcp-transport.md) |
+| Environment applicability and prerequisites for an accepted `HOST` value, configuration, or setup path | [System Requirements](../reference/system-requirements.md) |
+| Agent Connection configuration and verification state, and feature-support evaluation | [Agent Connection](../reference/agent-connection.md#host-feature-support-state) |
+| Exact `HostFeatureSupportStatus` and managed-host feature values | [API Value Sets](../reference/api/schema-value-sets.md#state-and-blocker-values) |
+| Exact-final-artifact host evidence and release-claim evaluation | [Host Release Evidence](../reference/host-release-evidence.md) |
 | Documentation owner routing and metadata | [Documentation Policy](documentation-policy.md), [doc-index.yaml](../../doc-index.yaml) |
 | Bilingual terminology and identifier preservation | [Translation Policy](translation-policy.md), [Terminology Map](../../terminology-map.yaml) |

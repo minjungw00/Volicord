@@ -947,7 +947,7 @@ fn connection_target_hint(
             USER_MANAGED_CONFIGURATION_GUIDANCE,
         )),
         _ => Err(ConnectionCommandError::usage(
-            "host and scope must match the supported Agent Connection matrix",
+            "host and scope must match the accepted Agent Connection host-and-scope matrix",
         )),
     }
 }
@@ -1169,7 +1169,7 @@ fn stored_or_default_user_actions(
         )],
         (HostKind::Generic, HostScope::Export) => vec![UserAction::new(
             UserActionKind::HostTrustRequired,
-            "Configure the external MCP host manually after a supported Agent Connection exists; Volicord does not write generic host configuration",
+            "Configure the external MCP host manually for an enabled Agent Connection and require the launched process to pass MCP startup validation; Volicord does not write generic host configuration",
         )],
         _ => Vec::new(),
     }
@@ -2987,7 +2987,9 @@ mod tests {
 
         assert!(error.to_string().contains("DETECTIVE_HOOKS_UNSUPPORTED"));
         assert!(error.to_string().contains("--profile record"));
-        assert!(error.to_string().contains("supported host"));
+        assert!(error
+            .to_string()
+            .contains("meet every Detective prerequisite"));
         assert!(error.to_string().contains("AGENTS.md"));
         Ok(())
     }
@@ -3036,7 +3038,9 @@ mod tests {
             .contains("DETECTIVE_HOOK_ROOT_UNSUPPORTED"));
         assert!(error.to_string().contains("Git work tree root"));
         assert!(error.to_string().contains("--profile record"));
-        assert!(error.to_string().contains("supported host"));
+        assert!(error
+            .to_string()
+            .contains("meet every Detective prerequisite"));
         assert!(!repo.join(".codex/hooks.json").exists());
         assert!(!repo.join(VOLICORD_POLICY_FILE).exists());
 

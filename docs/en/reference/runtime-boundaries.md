@@ -156,7 +156,7 @@ managed lifecycle or final-output wrapper exports the init-selected absolute
 PATH-resolved bare command.
 
 For one Product Repository, these repository-local surfaces represent one
-selected supported host, active intent, and profile. An init that changes the
+selected built-in host adapter, active intent, and profile. An init that changes the
 selected host, intent, or profile must preserve unrelated mixed-owner content,
 retire matching Volicord-owned prior-host, opposite-intent, or
 no-longer-applicable projections, and keep the union of prior and requested
@@ -304,7 +304,7 @@ Must not infer:
 
 ### External MCP host configuration
 
-MCP host configuration belongs to the external MCP host. Volicord administrative commands may install supported host configuration directly when [Administrative CLI](admin-cli.md) defines that behavior; user-managed external host configuration remains a host-owned surface. This document only owns the location boundary.
+MCP host configuration belongs to the external MCP host. Volicord administrative commands may install configuration for an accepted managed-host target directly when [Administrative CLI](admin-cli.md) defines that behavior; user-managed external host configuration remains a host-owned surface. This document only owns the location boundary.
 
 May claim:
 - Host configuration can name a `volicord mcp --stdio` executable, an internal Agent Connection binding, and environment values needed by that host.

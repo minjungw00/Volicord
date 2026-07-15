@@ -15,7 +15,7 @@ This document owns:
   routing, and process exit codes
 - Runtime Home, installation profile, and MCP command selection during `init`
 - repository-root project detection and administrative project commands
-- Agent Connection command behavior for supported host integrations
+- Agent Connection command behavior for managed host integrations
 - local serve command names, command-line arguments, defaults, stdout/stderr
   routing, and startup exit codes
 - hidden internal hook lifecycle command names, options, decisions, output, and
@@ -54,7 +54,7 @@ Labels follow the canonical vocabulary in
 |---|---|---|
 | Supported administrative command names, options, stdout/stderr routing, process exit codes, dry-run behavior, and local User Channel command names | `stable` | These are local CLI contracts, not public Volicord API methods. |
 | Managed final-output authority projection and typed support diagnostics | `beta` | Managed adapters may install and run a best-effort read-only projection. A host/profile support or release claim exists only when the shared evaluator reports `verified`; the current baseline does not make that claim for Codex or Claude Code final output. |
-| `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are supported cooperative observation surfaces with capability gates and owner-defined non-guarantees. |
+| `detective` profile setup, host-hook observation, session watcher observation, local consent availability reporting, and host-specific integration capability reporting | `beta` | These are implemented or configurable cooperative observation surfaces with capability gates and owner-defined non-guarantees. A current feature claim still requires the shared evaluator to report `verified`. |
 | Hidden hook lifecycle namespace, generated wrapper details, conditional guard-integration staging and recovery sibling names, stored internal identities, host config keys, and process-binding values | `internal` | These details support generated host integrations and must not become normal user-facing command inputs or stable recovery-file names. |
 | Human-readable init onboarding summaries, status summaries, doctor reports, connection verification reports, compact summary cards, action text, and diagnostic disclosures | `diagnostic` | JSON field presence and stable IDs are contracts only where this page explicitly requires them; text formatting is not a public API schema. |
 
@@ -99,10 +99,10 @@ volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] 
 volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
 ```
 
-Supported `HOST` values are `codex` and `claude-code`. When `HOST` is omitted,
+Accepted `HOST` values are `codex` and `claude-code`. When `HOST` is omitted,
 the command may use an unambiguous current host context. If the host cannot be
 identified unambiguously, the command fails with a diagnostic action that names
-the supported host values.
+the accepted host values.
 
 Exit and stream behavior:
 
@@ -293,7 +293,7 @@ It checks:
   ignore rule; this check reads path/index metadata only, never file contents
 - stored command readiness and availability through `PATH`
 - command-link or shim readiness when link metadata exists
-- supported-host detection as a connection-verification concern
+- built-in host-adapter detection as a connection-verification concern
 - for Detective profile records, hook-file installation, configuration health,
   runtime hook observations, effective detective health, and host reload needs
 
@@ -519,14 +519,14 @@ records `storage_scope=local_overlay` and the selected `connection_intent`; it
 is never a shared repository projection. Shared Claude Code init also maintains
 the repository `.mcp.json` projection; personal Claude Code init uses only the
 host's local CLI target for MCP registration. The Detective profile adds the
-supported repository hook configuration and rules plus local wrapper scripts.
+adapter-owned repository hook configuration and rules plus local wrapper scripts.
 Personal Claude Code detective settings use `.claude/settings.local.json`;
 shared detective settings use `.claude/settings.json`. Those integration files
 do not change the stored connection intent or its primary host scope.
 
-For one Product Repository, init owns one selected supported host and one active
+For one Product Repository, init owns one selected built-in host adapter and one active
 repository-local integration intent and profile. Re-running init with a
-different supported host, the opposite `personal` or `shared` intent, or a
+different accepted host value, the opposite `personal` or `shared` intent, or a
 change between `record` and `detective`, is a managed migration rather than an
 additional coexisting local integration. The migration must identify the prior
 host, intent, and profile from the validated local policy, preserve unrelated
@@ -614,7 +614,7 @@ Doctor also reports `checks[].id=integration_intent_drift`. It compares the
 validated local policy with enabled Connection Project inventory and inspects
 the bounded, known prior-host and opposite-intent projection paths for
 Volicord-owned content. It warns about a prior-host or opposite-intent
-projection, simultaneous enabled integrations for multiple supported hosts or
+projection, simultaneous enabled integrations for multiple host adapters or
 intents, a policy intent or host that disagrees with enabled inventory, or
 detective hooks left active under a record policy. A disabled opposite
 host/intent connection that retains this project membership and the exact
@@ -749,8 +749,8 @@ adapter does not know a reliable project-local hook schema or path for every
 required phase, init fails with `DETECTIVE_HOOKS_UNSUPPORTED`. If the session
 watcher cannot snapshot the selected repository, init fails with
 `DETECTIVE_WATCHER_UNSUPPORTED`. The recovery is to use `--profile record` for
-record-only setup or prepare a supported host, platform, and repository
-configuration for detective before rerunning init. `record` does not require
+record-only setup or prepare a host, platform, and repository configuration
+that meets every Detective prerequisite before rerunning init. `record` does not require
 Detective lifecycle-hook installation or session watcher setup. Its implemented
 best-effort final-output handler is a separate profile-independent display path;
 its existence does not establish typed host support.
@@ -767,10 +767,12 @@ is cooperative host prompting, not OS enforcement or proof that the host ran
 the hook; those non-guarantees remain owned by [Security](security.md).
 
 On native Windows, init rejects `--profile detective` with
-`DETECTIVE_WINDOWS_UNSUPPORTED` before planning or writing detective host hook files.
-Native Windows supports `--profile record`; use WSL2, Linux, or macOS for
-detective only where the selected host hook and watcher contracts are supported
-and tested.
+`DETECTIVE_WINDOWS_UNSUPPORTED` before planning or writing detective host hook
+files. Native Windows accepts the `--profile record` setup path; that setup fact
+establishes no Record feature support. For Detective setup, use WSL2, Linux, or
+macOS only when every selected host-hook and watcher prerequisite is implemented
+and repository-tested. Those prerequisite facts likewise establish no named
+feature's `support_status`.
 
 Codex detective initialization additionally requires the selected Product
 Repository to be a Git work tree root that supports cwd-independent wrapper
@@ -821,9 +823,9 @@ Non-dry-run `volicord init`:
   `personal` init also adds personal-only hook configuration and rule paths
 - writes Volicord-managed hook wrapper scripts under `.codex/hooks/` or
   `.claude/hooks/` for required detective lifecycle phases
-- writes supported host hook files such as `.codex/hooks.json` or
+- writes the selected adapter's host hook files such as `.codex/hooks.json` or
   `.claude/settings.json` that invoke those wrapper scripts
-- writes supported host rule files such as `.codex/rules/*.rules` or
+- writes the selected adapter's host rule files such as `.codex/rules/*.rules` or
   `.claude/rules/volicord.md`
 - records detective-profile hook observation status in the Runtime Home registry
 - rejects `detective` initialization when required host hook configuration or
@@ -1233,19 +1235,22 @@ Rules:
 
 The public `volicord export` surface is `volicord export authority-bundle`.
 Volicord does not provide a public command that renders generic external MCP
-host configuration. Supported host setup is performed through `volicord init`
-and `volicord connection add`. Those commands write supported host
-configuration directly when the selected host adapter owns a managed target.
+host configuration. Managed setup for accepted `HOST` values is performed through
+`volicord init` and `volicord connection add`. Those commands write the selected
+adapter's configuration directly when it owns a managed target.
 Host-neutral or otherwise unsupported external hosts remain user-managed
 configuration surfaces.
 
 Rules:
 
-- Supported managed host configuration is tied to an Agent Connection and starts
-  a bound `volicord mcp --stdio` process.
+- Managed configuration for an accepted `HOST` value is tied to an Agent
+  Connection and starts a bound `volicord mcp --stdio` process. This setup fact
+  does not establish any named feature's `support_status`.
 - User-managed external host configuration may name the installed `volicord`
   executable and the `mcp --stdio --connection <connection_id>
-  [--project <project_id>]` arguments after a supported Agent Connection exists.
+  [--project <project_id>]` arguments for an enabled Agent Connection. The
+  resulting process must still pass the MCP startup validation owned by
+  [MCP Transport](mcp-transport.md).
 - Volicord must not claim that an arbitrary external host loaded, trusted,
   approved, initialized, or exposed a user-managed configuration.
 

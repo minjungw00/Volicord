@@ -1,8 +1,8 @@
 # Quickstart
 
-This tutorial connects one supported agent host to one Product Repository. It
-starts after [Installation](installation.md) has made `volicord` available on
-`PATH`.
+This tutorial uses the built-in managed setup to connect one Codex or Claude
+Code host to one Product Repository. It starts after
+[Installation](installation.md) has made `volicord` available on `PATH`.
 
 Use [Administrative CLI](../reference/admin-cli.md) for exact command behavior
 and [Agent Connection](../reference/agent-connection.md) for exact connection
@@ -67,6 +67,15 @@ Read `Status`, `Checks`, `Next`, and `Diagnostics` in the text output:
 - `action_required` means a named local or host action remains. Complete it and
   rerun verification.
 - `failed` means a required check did not succeed.
+
+A `complete` result establishes readiness for this setup path only; it does not
+establish support for every host feature. In JSON,
+`states.host_feature_support` reports each of the six features independently as
+`verified`, `implemented_unverified`, `unsupported_by_host`, or
+`temporarily_unavailable`. Only `verified` supports a current feature claim.
+See the
+[host feature support state](../reference/agent-connection.md#host-feature-support-state)
+for the exact contract.
 
 Use `--json` for automation or full diagnostics. Do not parse the compact human
 text. Exact result-state meanings belong to

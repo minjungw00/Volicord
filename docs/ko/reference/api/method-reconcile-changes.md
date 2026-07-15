@@ -156,7 +156,7 @@ Core가 결정하는 해결 근거(`basis`):
 Form, 명령, URL, credential, request ref를 반환하지 않고 결과 projection만을 위해 token을
 발급하지 않습니다. 사용자는 별도로 검증된 다음 User Channel 입력 방법으로 해결할 수 있습니다.
 
-- 초기화된 클라이언트가 지원하는 호스트 프롬프트 입력
+- 초기화된 클라이언트에서 해당 경로를 실제로 사용할 수 있을 때의 호스트 프롬프트 입력
 - 명령 캡처 상태가 `configured`, `observed`, `active`일 때의 채팅 명령 캡처
 - listener가 준비됐고 초기화한 client가
   `params.capabilities.experimental["io.volicord/user-channel"].model_invisible_user_surface`에

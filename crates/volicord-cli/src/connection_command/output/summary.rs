@@ -80,7 +80,7 @@ fn connection_summary_next_text(
                 .to_owned()
         }
         "guard_capability_degraded" => {
-            "Prepare a supported detective host configuration or use the record profile, then rerun verification.".to_owned()
+            "Prepare a host, platform, and configuration that meet every Detective prerequisite, or use the record profile, then rerun verification.".to_owned()
         }
         _ => action.instruction.clone(),
     }

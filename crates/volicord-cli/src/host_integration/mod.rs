@@ -618,7 +618,7 @@ pub fn managed_fingerprint(
     let payload = if entry.env_vars.is_empty() {
         // Preserve the exact v1 payload for every legacy entry that predates
         // host-native forwarded environment names. Stored fingerprints must
-        // continue to authorize a safe managed migration of those entries.
+        // continue to authorize an exact managed migration of those entries.
         json!({
             "format": "volicord-host-entry-v1",
             "host_kind": host_kind.as_str(),

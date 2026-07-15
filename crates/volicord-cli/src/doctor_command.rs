@@ -256,13 +256,7 @@ where
         ));
     }
 
-    checks.push(
-        DiagnosticCheck::skipped(
-            "host_detection",
-            "supported host detection is reported by init or connection verification",
-        )
-        .with_details(json!({ "supported_hosts": ["codex", "claude-code"] })),
-    );
+    checks.push(host_detection_check());
     if let (Some(projects), Some(connections), Some(guard_installations)) =
         (project_count, connection_count, guard_installation_count)
     {
@@ -2792,6 +2786,16 @@ fn doctor_status(checks: &[DiagnosticCheck]) -> CommandStatus {
     }
 }
 
+fn host_detection_check() -> DiagnosticCheck {
+    DiagnosticCheck::skipped(
+        "host_detection",
+        "built-in host adapter detection is reported by init or connection verification",
+    )
+    .with_details(json!({
+        "accepted_host_values": ["codex", "claude-code"]
+    }))
+}
+
 fn render_doctor_output(
     output: OutputFormat,
     status: CommandStatus,
@@ -3588,6 +3592,24 @@ mod tests {
             action.id == "repair_volicord_command"
                 && action.command.as_deref() == Some("volicord init --host <host> --repo <path>")
         }));
+    }
+
+    #[test]
+    fn host_detection_details_name_accepted_values_without_claiming_host_support() {
+        let check = serde_json::to_value(host_detection_check()).expect("serialize check");
+
+        assert_eq!(
+            check,
+            json!({
+                "id": "host_detection",
+                "status": "skipped",
+                "summary": "built-in host adapter detection is reported by init or connection verification",
+                "details": {
+                    "accepted_host_values": ["codex", "claude-code"]
+                }
+            })
+        );
+        assert!(check["details"].get("supported_hosts").is_none());
     }
 
     #[test]

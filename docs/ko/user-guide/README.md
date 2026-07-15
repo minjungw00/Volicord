@@ -11,7 +11,7 @@ Volicord로 무언가를 해야 할 때 사용자 가이드에서 시작합니�
 
 - 제품 방향 잡기: [사용자 가이드 개요](overview.md).
 - 실행 파일 설치 또는 선택: [설치](installation.md).
-- 지원되는 호스트 하나를 처음 연결하기: [빠른 시작](quickstart.md).
+- 내장 관리 호스트의 첫 설정 실행하기: [빠른 시작](quickstart.md).
 - 에이전트와 보이는 판단을 다루기: [사용자 작업 흐름](user-workflow.md).
 - 판단 문구와 경계 고르기: [판단 예시](judgment-examples.md).
 - 에이전트로 작업하기: [에이전트 작업 흐름](agent-workflow.md).

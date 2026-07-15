@@ -193,8 +193,8 @@ For the ordinary first repository connection, continue with
 [Quickstart](quickstart.md). `volicord init` can initialize the Runtime Home and
 installation profile while it connects the selected Product Repository, writes
 project-scoped MCP configuration, and records integration status.
-Detective setup has the verified host-hook and session watcher requirements
-described in the
+Detective setup follows the owner-defined host-hook and session-watcher setup
+prerequisites described in the
 [Administrative CLI Reference](../reference/admin-cli.md#agent-host-setup-and-init).
 On native Windows, use `--profile record`; `--profile detective` fails with an
 unsupported-platform diagnostic because Windows host hooks and watcher
@@ -292,8 +292,8 @@ docker run --rm -it \
   volicord:local connection verify codex --repo /workspace
 ```
 
-Detective Docker setup has the same verified host-hook and session watcher
-requirements as non-container setup. After the Runtime Home contains the
+Detective Docker setup has the same owner-defined host-hook and session-watcher
+setup prerequisites as non-container setup. After the Runtime Home contains the
 project registration and Agent Connection you want to serve, for example from
 that matching `init` run or a lower-level `connection add` run, start the local
 HTTP MCP endpoint with an operator-provided token file:
@@ -343,9 +343,9 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
 you want the agent to work. Use `--profile detective` only when the selected host,
-platform, and repository configuration satisfy the verified detective
-prerequisites; native Windows uses `--profile record` because detective is not
-supported there.
+platform, and repository configuration satisfy the owner-defined Detective
+setup prerequisites; native Windows uses `--profile record` because Detective
+setup is not available there.
 
 This shared setup requires the host launch environment to provide the same
 nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible

@@ -19,6 +19,8 @@ This document owns:
   Agent Connection layer
 - agent context transfer rules between owner results and an Agent Connection
 - managed final-output authority-disclosure capability and connection boundary
+- canonical six-feature `HostFeatureSupportStatus` evaluator, precedence,
+  current host/version matrix, replay, and freshness boundaries
 - managed-host session binding use across managed MCP and host-hook observations
 - fallback display when the selected Agent Connection or current connection
   context is unavailable, mismatched, stale, or insufficient
@@ -264,7 +266,7 @@ is not a security level and not an authority grant.
 |---|---|---|
 | `personal` | User-owned host configuration for the current user's ordinary local flow. | It does not prove host trust, user identity, or access to every local project. |
 | `shared` | Project-owned or project-shared primary host configuration stored as an explicit integration file in a selected `Product Repository`. | It is not Volicord runtime state, and it does not authorize arbitrary product-file edits. |
-| `global` | User-wide host configuration for a supported host, with project access still constrained by repository-root registration and Connection Projects. | It does not connect every repository and does not bypass project or host trust. |
+| `global` | User-wide configuration for an accepted managed-host target, with project access still constrained by repository-root registration and Connection Projects. | It does not connect every repository and does not bypass project or host trust. |
 
 For `volicord init`, `personal` is the default and `--shared` explicitly
 selects `shared`; init does not create a `global` connection. Connection
@@ -275,9 +277,9 @@ stored connection intent or host scope. In particular,
 `.volicord/policy.json` is an intent-independent `local_overlay`, and generated
 hook wrappers remain local even for `shared`.
 
-For one Product Repository, `volicord init` keeps only one selected supported
-host and one active repository-local `personal` or `shared` integration.
-Selecting a different supported host or the opposite intent migrates the
+For one Product Repository, `volicord init` keeps only one selected built-in
+host adapter and one active repository-local `personal` or `shared` integration.
+Selecting a different accepted host value or the opposite intent migrates the
 managed host and hook projections and retires the prior Connection Project from
 active use; it does not silently activate multiple host integrations or intents
 against the singleton local policy.
@@ -356,9 +358,10 @@ shape.
 
 The baseline directly managed host kinds are `codex` and `claude_code`.
 Host-neutral MCP configuration is user-managed. User-managed configuration can
-use internal registry state needed to start `volicord mcp --stdio` only after a
-supported Agent Connection exists, but it is not a normal connection intent for
-direct host installation.
+use internal registry state needed to start `volicord mcp --stdio` only for an
+enabled Agent Connection. The launched process must still pass the startup
+validation owned by [MCP Transport](mcp-transport.md), and this is not a normal
+connection intent for direct host installation.
 
 ## Connection Projects
 
@@ -451,7 +454,7 @@ Rules:
   [Administrative CLI](admin-cli.md#agent-connection-result-states). A direct
   Volicord-spawned MCP handshake is not enough by itself.
 - `last_verification_status=action_required` is the expected state when Volicord can
-  manage supported host configuration but a host-owned trust, approval, OAuth,
+  manage the selected adapter's configuration but a host-owned trust, approval, OAuth,
   reload, restart, command-link repair, or installation-profile repair remains.
 - Rejected, missing, changed, unavailable, and unknown host states are not
   `complete` Agent Connection states.

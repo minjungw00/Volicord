@@ -1,8 +1,8 @@
 # 빠른 시작
 
-이 튜토리얼은 지원되는 에이전트 호스트 하나를 Product Repository 하나에 연결합니다.
-[설치](installation.md)를 따라 `volicord`를 `PATH`에서 사용할 수 있게 만든 뒤
-시작합니다.
+이 튜토리얼은 내장 관리 설정을 사용해 Codex 또는 Claude Code 호스트 하나를 Product
+Repository 하나에 연결합니다. [설치](installation.md)를 따라 `volicord`를 `PATH`에서
+사용할 수 있게 만든 뒤 시작합니다.
 
 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md), 정확한 연결 의미는
 [Agent Connection 참조](../reference/agent-connection.md)를 보세요.
@@ -64,6 +64,13 @@ Claude Code는 `codex` 대신 `claude-code`를 사용합니다.
 - `action_required`: 이름 붙은 로컬 또는 호스트 동작이 남았습니다. 해당 동작을
   완료하고 검증을 다시 실행합니다.
 - `failed`: 필수 점검이 성공하지 않았습니다.
+
+`complete` 결과는 이 설정 경로의 준비 상태만 성립시키며 모든 호스트 기능의 지원을
+뜻하지 않습니다. JSON의 `states.host_feature_support`는 여섯 기능을 각각 `verified`,
+`implemented_unverified`, `unsupported_by_host`, `temporarily_unavailable` 중 하나로
+보고합니다. 현재 기능 지원을 주장할 수 있는 상태는 `verified`뿐입니다. 정확한 계약은
+[호스트 기능 지원 상태](../reference/agent-connection.md#host-feature-support-state)를
+보세요.
 
 자동화나 전체 진단에는 `--json`을 사용합니다. 간결한 사람용 출력을 파싱하지
 않습니다. 정확한 결과 상태 의미는

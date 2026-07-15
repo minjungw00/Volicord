@@ -13,7 +13,7 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 - `volicord` 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 프로세스 종료 코드
 - `init` 중 Runtime Home, 설치 프로필, MCP 명령 선택
 - 저장소 루트 프로젝트 감지와 관리 프로젝트 명령
-- 지원 호스트 통합을 위한 Agent Connection 명령 동작
+- 관리 호스트 통합을 위한 Agent Connection 명령 동작
 - 로컬 `serve` 명령 이름, 명령줄 인자, 기본값, stdout/stderr 처리, 시작 종료 코드
 - 생성된 호스트 래퍼를 위한 숨겨진 내부 훅 생명주기 명령 이름, 옵션, 결정, 출력,
   이벤트 기록 동작
@@ -48,7 +48,7 @@ Connection을 관리합니다. 또한 로컬 `User Channel` 명령 경로와 설
 |---|---|---|
 | 지원되는 관리 명령 이름, 옵션, stdout/stderr 처리, 프로세스 종료 코드, `--dry-run` 미리보기 동작, 로컬 User Channel 명령 이름 | `stable` | 로컬 CLI 계약이며 공개 Volicord API 메서드가 아닙니다. |
 | 관리 최종 출력 권한 projection과 typed 지원 진단 | `beta` | 관리 어댑터는 최선형 읽기 전용 projection을 설치하고 실행할 수 있습니다. 호스트·프로필 지원 또는 릴리스 주장은 공유 평가기가 `verified`를 보고할 때만 성립하며 현재 기준은 Codex나 Claude Code 최종 출력에 그 주장을 하지 않습니다. |
-| `detective` 프로필 설정, 호스트 훅 관찰, 세션 감시기 관찰, 로컬 consent URL 사용 가능 상태, 호스트별 통합 기능 보고 | `beta` | 기능 조건과 담당 문서가 정한 비보장 안에서 지원됩니다. |
+| `detective` 프로필 설정, 호스트 훅 관찰, 세션 감시기 관찰, 로컬 consent URL 사용 가능 상태, 호스트별 통합 기능 보고 | `beta` | 기능 조건과 담당 문서가 정한 비보장 아래 구현되었거나 구성할 수 있는 협력형 관찰 표면입니다. 현재 기능 지원 주장은 공유 평가기가 `verified`를 보고할 때만 성립합니다. |
 | 숨겨진 훅 생명주기 명령군, 생성 래퍼 세부사항, 관찰 훅 통합의 조건부 커밋과 복구용 보조 항목 이름, 내부 식별 정보, 호스트 설정 키, 프로세스 바인딩 값 | `internal` | 생성된 호스트 통합을 위한 세부사항입니다. 일반 사용자 입력이나 안정적인 복구 파일 이름이 아닙니다. |
 | 사람이 읽는 초기 설정 요약, 상태 요약, 진단 보고서, 연결 검증 보고서, 간결한 요약 카드, 다음 행동 문구, 진단 고지 | `diagnostic` | 이 문서가 명시한 JSON 필드와 안정적인 ID만 계약입니다. 텍스트 서식은 공개 API 스키마가 아닙니다. |
 
@@ -93,9 +93,9 @@ volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] 
 volicord inbox resolve <user-action-request-id> (--criterion ID | --claim ID) --artifact ID [--artifact ID ...] --summary TEXT [--contradicted] [--repo PATH] [--json]
 ```
 
-지원되는 `HOST` 값은 `codex`와 `claude-code`입니다. `HOST`를 생략하면 명령은
+허용되는 `HOST` 값은 `codex`와 `claude-code`입니다. `HOST`를 생략하면 명령은
 모호하지 않은 현재 호스트 맥락을 사용할 수 있습니다. 호스트를 모호하지 않게
-식별할 수 없으면 명령은 지원되는 호스트 값을 이름 붙인 진단 동작과 함께
+식별할 수 없으면 명령은 허용되는 호스트 값을 이름 붙인 진단 동작과 함께
 실패합니다.
 
 종료 코드와 스트림 동작:
@@ -263,7 +263,7 @@ Runtime Home과 설치 프로필 선택에 관련된 init 효과:
   메타데이터만 읽고 파일 내용은 읽지 않습니다.
 - 저장된 명령의 준비 상태와 `PATH`를 통한 사용 가능 여부
 - 링크 메타데이터가 있을 때의 명령 링크 또는 호환 실행 파일 준비 상태
-- 연결 검증에서 다뤄야 할 지원 호스트 감지 상태
+- 연결 검증에서 다뤄야 할 내장 호스트 어댑터 감지 상태
 - 탐지 프로필 기록이 있을 때 훅 파일 설치, 설정 상태, 런타임 훅 관찰, 종합 탐지 상태,
   호스트 설정 다시 불러오기 필요 여부
 
@@ -473,13 +473,13 @@ Code는 `"env": {"VOLICORD_HOME": "${VOLICORD_HOME}"}`를 사용합니다.
 `connection_intent`를 기록하며 공유 저장소 상태 보기가 될 수 없습니다. 공유
 Claude Code init은 저장소의 `.mcp.json` 상태 보기도 함께 관리합니다. 개인 Claude
 Code init은 MCP 등록에 호스트의 로컬 CLI 대상만 사용합니다. Detective profile은
-지원되는 저장소 훅 설정과 규칙에 더해 로컬 래퍼 스크립트를 추가합니다. 개인 Claude
+어댑터 소유 저장소 훅 설정과 규칙에 더해 로컬 래퍼 스크립트를 추가합니다. 개인 Claude
 Code 탐지 설정은 `.claude/settings.local.json`을 사용하고, 공유 탐지 설정은
 `.claude/settings.json`을 사용합니다. 이런 통합 파일은 저장된 연결 의도나 주 호스트
 범위를 바꾸지 않습니다.
 
-Product Repository 하나에서 init은 선택한 지원 호스트 하나와 활성 저장소 로컬 통합
-의도 및 프로필을 하나씩만 소유합니다. 다른 지원 호스트나 반대 `personal` 또는
+Product Repository 하나에서 init은 선택한 내장 호스트 어댑터 하나와 활성 저장소 로컬 통합
+의도 및 프로필을 하나씩만 소유합니다. 허용되는 다른 호스트 값이나 반대 `personal` 또는
 `shared` 의도로 init을 다시 실행하거나 `record`와 `detective` 사이를 바꾸는 작업은 로컬
 통합을 하나 더 공존시키는 것이 아니라 관리 마이그레이션입니다. 마이그레이션은 검증된
 로컬 정책에서 이전 호스트·의도·프로필을 식별하고, 여러 주체가 소유한 파일의 관련 없는
@@ -554,7 +554,7 @@ init은 경로 전체를 제외합니다. init은 추적되는 `.gitignore`를 �
 Doctor는 `checks[].id=integration_intent_drift`도 보고합니다. 검증된 로컬 정책을 활성
 Connection Project 구성과 비교하고, 범위가 제한된 알려진 이전 호스트 및 반대 의도 상태
 보기 경로에서 Volicord 소유 내용을 검사합니다. 이전 호스트나 반대 의도 상태 보기, 한
-저장소에서 여러 지원 호스트 또는 의도의 통합이 동시에 활성화된 상태, 정책의 의도나
+저장소에서 여러 호스트 어댑터 또는 의도의 통합이 동시에 활성화된 상태, 정책의 의도나
 호스트와 맞지 않는 활성 구성, `record` 정책 아래 남은 탐지 훅을 경고합니다. 비활성 상태인
 반대 호스트·의도 connection이 이 project membership과 정확한 Store 소유 pending-cleanup
 marker를 보존하고 있으면
@@ -674,8 +674,8 @@ Doctor는 읽을 수 있는 저장 Agent Connection마다 한 행을 출력하�
 스키마나 경로를 알지 못하면 init은 `DETECTIVE_HOOKS_UNSUPPORTED`로 실패합니다. 세션
 감시기가 선택한 저장소의 스냅샷을 만들 수 없으면 init은
 `DETECTIVE_WATCHER_UNSUPPORTED`로 실패합니다. 복구 방법은 기록 전용 설정에는
-`--profile record`를 사용하거나, `detective`를 다시 실행하기 전에 지원되는 호스트, 플랫폼,
-저장소 설정을 준비하는 것입니다. `record`는 Detective 생명주기 훅 설치나 세션 감시기
+`--profile record`를 사용하거나, `detective`를 다시 실행하기 전에 모든 탐지 프로필
+전제 조건을 충족하는 호스트, 플랫폼, 저장소 설정을 준비하는 것입니다. `record`는 Detective 생명주기 훅 설치나 세션 감시기
 설정을 요구하지 않습니다. 구현된 최선형 관리 최종 출력 처리기는 프로필과 독립된 별도
 표시 경로이며, 그 존재만으로 typed 호스트 지원이 성립하지 않습니다.
 
@@ -690,9 +690,11 @@ Codex Detective 설정에서 생성된 `.codex/rules/volicord.rules`는 호스�
 훅을 실행했다는 증명이 아닙니다. 이런 비보장은 계속 [보안](security.md)이 담당합니다.
 
 네이티브 Windows에서는 init이 탐지용 호스트 훅 파일을 계획하거나 쓰기 전에
-`--profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. 네이티브 Windows는
-`--profile record`를 지원합니다. `detective`는 선택한 호스트 훅과 감시기 계약이 지원되고
-테스트된 WSL2, Linux, macOS에서만 사용합니다.
+`--profile detective`를 `DETECTIVE_WINDOWS_UNSUPPORTED`로 거부합니다. 네이티브
+Windows에서 허용되는 설정 경로는 `--profile record`이며, 이 설정 사실은 Record 기능
+지원을 성립시키지 않습니다. Detective 설정은 선택한 호스트 훅과 감시기의 모든 전제
+조건이 구현되고 저장소에서 테스트된 WSL2, Linux, macOS에서만 사용합니다. 이런 전제 조건
+사실도 명명된 어떤 기능의 `support_status`도 성립시키지 않습니다.
 
 Codex `detective` 초기화에서는 선택된 Product Repository가 Git 작업 트리 루트여야
 합니다. 그래야 하위 디렉터리 호스트 세션에서도 현재 작업 디렉터리와 무관하게 래퍼
@@ -736,9 +738,9 @@ init이 설치 프로필을 만들거나 갱신해야 할 때 정확한 MCP 시�
   추가합니다.
 - 필수 탐지 생명주기 단계를 위한 Volicord 관리 훅 래퍼 스크립트를
   `.codex/hooks/` 또는 `.claude/hooks/` 아래에 씁니다.
-- `.codex/hooks.json` 또는 `.claude/settings.json` 같은 지원 호스트 훅 파일을
+- `.codex/hooks.json` 또는 `.claude/settings.json` 같은 선택한 어댑터의 호스트 훅 파일을
   쓰며, 이 파일은 해당 래퍼 스크립트를 호출합니다.
-- `.codex/rules/*.rules` 또는 `.claude/rules/volicord.md` 같은 지원 호스트 규칙 파일을
+- `.codex/rules/*.rules` 또는 `.claude/rules/volicord.md` 같은 선택한 어댑터의 호스트 규칙 파일을
   씁니다.
 - Runtime Home 레지스트리에 탐지 프로필 훅 관찰 상태를 기록합니다.
 - 필수 호스트 훅 설정이나 세션 감시기 지원이 없으면 `detective` 초기화를
@@ -1096,18 +1098,20 @@ Codex에서는 활성 세션이 도구 스냅샷을 캐시했거나 `volicord.*`
 ## 호스트 MCP 설정
 
 공개 `volicord export` 표면은 `volicord export authority-bundle`입니다. Volicord는
-일반 외부 MCP 호스트 설정을 렌더링하는 공개 명령을 제공하지 않습니다. 지원 호스트
-설정은 `volicord init`과 `volicord connection add`를 통해 수행됩니다. 이 명령들은
-선택된 호스트 어댑터가 관리 대상을 소유할 때 지원 호스트 설정을 직접 씁니다.
+일반 외부 MCP 호스트 설정을 렌더링하는 공개 명령을 제공하지 않습니다. 허용되는 `HOST`
+값의 관리 설정은 `volicord init`과 `volicord connection add`를 통해 수행됩니다. 이 명령들은
+선택된 호스트 어댑터가 관리 대상을 소유할 때 그 어댑터의 설정을 직접 씁니다.
 호스트 중립 또는 그 밖의 미지원 외부 호스트는 사용자 관리 설정 표면으로 남습니다.
 
 규칙:
 
-- 지원되는 관리 호스트 설정은 Agent Connection에 묶이며, 묶인
-  `volicord mcp --stdio` 프로세스를 시작합니다.
-- 사용자 관리 외부 호스트 설정은 지원되는 Agent Connection이 존재한 뒤 설치된
-  `volicord` 실행 파일과 `mcp --stdio --connection <connection_id>
-  [--project <project_id>]` 인자를 이름 붙일 수 있습니다.
+- 허용되는 `HOST` 값의 관리 설정은 Agent Connection에 묶이며, 묶인
+  `volicord mcp --stdio` 프로세스를 시작합니다. 이 설정 사실은 어떤 명명된 기능의
+  `support_status`도 확립하지 않습니다.
+- 사용자 관리 외부 호스트 설정은 활성 Agent Connection을 대상으로 설치된 `volicord`
+  실행 파일과 `mcp --stdio --connection <connection_id>
+  [--project <project_id>]` 인자를 이름 붙일 수 있습니다. 그 결과로 시작한 프로세스는
+  [MCP 전송](mcp-transport.md)이 담당하는 MCP 시작 검증을 여전히 통과해야 합니다.
 - Volicord는 임의 외부 호스트가 사용자 관리 설정을 로드, 신뢰, 승인, 초기화, 노출했다고
   주장하면 안 됩니다.
 
