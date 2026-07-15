@@ -297,11 +297,13 @@ stdio 경로, 준비된 listener, 정확한 선언, 최신의 정확히 일치�
 없으므로 운영 선택은 닫힌 상태로 실패합니다.
 
 현재 집중 테스트는 누락·비통과 상태, 만료, 교체, 선택된 결속 불일치, 현재 pass가 없는
-generic 자기 선언, 관리 positive fixture를 증명합니다. 시작 원천 테스트는 수동 stdio와
-CLI 검증을 별도로 분류하고 Local HTTP에는 전송 중심 테스트가 있습니다. 그러나 그 밖의
-모든 값이 정확한 현재 pass를 게시한 뒤 수동 stdio, CLI 검증, Local HTTP 각 경로에서
-비발급을 증명하는 테스트는 아직 없습니다. 이 세 경로가 다뤄졌다고 주장하려면 그런
-exact-pass negative 회귀 테스트가 필요합니다.
+generic 자기 선언, 관리 positive fixture를 증명합니다. 별도의 부정 회귀 테스트는 준비된
+listener와 정확한 `true` 선언을 두고 그 밖의 값이 모두 정확히 일치하는 현재 pass를
+게시한 상태에서도 수동 stdio, CLI 검증, 로컬 HTTP 전송이 각각 자격을 얻지 못함을
+증명합니다. 세 경로 모두 token을 만들지 않고 host 전용 `_meta` handoff를 반환하지 않으며
+일반 CLI 복구 안내를 유지합니다. 시작 원천 테스트는 두 stdio 경로를 별도로 분류하고,
+로컬 HTTP 회귀 테스트는 전송 경로를 실행합니다. 이 회귀 테스트는 관리되지 않는 세
+경로의 exact-pass 비발급 경계를 모두 다룹니다.
 
 MCP suite는 별도로 준비됐던 listener를 저하하거나 deferred 선택과 최종 materialization
 사이에 검증을 교체하여 일반 CLI fallback, `_meta` 부재, token 행 0개, project clock 효과

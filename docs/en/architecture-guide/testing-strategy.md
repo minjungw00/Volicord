@@ -333,12 +333,14 @@ manifest, so production selection remains fail-closed.
 
 Current focused tests prove missing and non-passing state, expiry,
 supersession, selected binding mismatches, generic self-declaration without a
-current pass, and the managed positive fixture. Launch-origin tests separately
-classify manual stdio and CLI verification, while Local HTTP has
-transport-focused tests. The suite does not yet publish an otherwise exact
-current pass and prove non-issuance through each manual-stdio,
-CLI-verification, and Local HTTP path. Those exact-pass negative regressions
-are required before claiming those three paths as covered.
+current pass, and the managed positive fixture. Exact-pass negative regressions
+also publish an otherwise exact current pass with a ready listener and exact
+`true` declaration, then prove that manual stdio, CLI verification, and Local
+HTTP transport each remain ineligible: no token is created, no host-only
+`_meta` handoff is returned, and generic CLI recovery remains available.
+Launch-origin tests separately classify the two stdio paths, while the Local
+HTTP regression exercises the transport path. These regressions cover all
+three non-managed exact-pass non-issuance boundaries.
 
 The MCP suite separately degrades a previously ready listener or supersedes
 verification between deferred selection and final materialization and proves
