@@ -248,8 +248,26 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 ## 실제 호스트 연결 준비 순서
 
 아래에서 `Task`에 결속되는 모든 실제 호스트 체크리스트를 실행하기 전에 이 순서를
-적용합니다. 먼저 선택한 Product Repository에 활성 `Task`가 없는 상태에서 정확히
-준비한 Agent Connection으로 설치된 호스트를 시작하고 읽기 전용
+적용합니다. Codex Detective fixture에서는 먼저 fixture 작성을 끝내고 게시 domain을
+활성화한 뒤, 읽기 전용 연결 관찰보다 앞서 유지되는 무-prompt 대화형 hook-trust
+preflight를 실행합니다. 그 정확한 폐기 가능한 저장소에서 프로젝트를 신뢰하고 `/hooks`를
+열어 모든 활성 훅 출처를 조사한 뒤 현재 Volicord 프로젝트 훅 정의 각각을 정확히 검토하고
+신뢰합니다. 필수 훅이 누락, skipped, 변경, 미신뢰 상태이거나 운영자가 검토할 수 없는
+예상 밖의 활성 출처가 있으면 제품 `Stop` 실패 증거가 아니라 `SKIP` 또는 `FAIL`입니다.
+검토를 끝낸 뒤에만 preflight를 종료하고 하네스에 정확한 `hooks:reviewed` 확인을
+입력합니다. 이 확인 자체는 이벤트 증거가 아니며, 이후 Task 결속 실행에서 필요한 지속
+`Stop` 이벤트가 여전히 생겨야 합니다.
+
+유지되는 preflight는 자격 증명을 복사하지 않고 저장된 ChatGPT 인증을 사용하기 위해
+실행자의 일반 `CODEX_HOME`을 재사용합니다. 이 home은 다른 활성 훅 출처도 제공할 수
+있습니다. 따라서 유지되는 하네스는 `--dangerously-bypass-hook-trust`를 사용하지
+않습니다. 이 1회 실행 옵션은 Volicord fixture뿐 아니라 활성화된 모든 훅 출처의 영속
+신뢰 검사를 우회합니다. 향후 격리된 하네스가 모든 활성 출처를 열거하고 검토할 수 있다면
+그 1회 우회로 이벤트 전달만 증명할 수 있습니다. 그래도 영속 훅 신뢰나 운영 준비 상태는
+증명하지 못합니다.
+
+적용되는 Codex preflight 뒤에 선택한 Product Repository에 활성 `Task`가 없는 상태에서
+정확히 준비한 Agent Connection으로 설치된 호스트를 시작하고 읽기 전용
 `volicord.status` 호출을 관찰합니다. 그 호스트가 종료된 뒤 같은 연결에 대해 관리
 `volicord connection verify ... --json`을 실행하고 담당 문서가 정의한 `complete`
 결과를 요구합니다. 그 후에만 워크플로 `Task`를 만들거나 활성화하고 Task 결속 호스트
@@ -464,7 +482,9 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
 5. 실행 전 호스트 cursor 뒤에 정확히 하나의 새 Task 결속 Detective Stop 이벤트가
    나타나고, 이유와 close blocker가 없는 `allow`를 기록하며, 새 status와 같은 완전한
    `AuthorityReceipt`를 저장합니다. 운영자는 호스트 소유의 별도 관리 UI에서 완전한
-   canonical receipt JSON을 복사하고, 하네스는 `state_version` 하나만 확인하지 않고
+   canonical receipt JSON을 복사합니다. 운영자는 turn이 idle 상태가 되고 해당 관리
+   `Stop` system message가 나타날 때까지 기다린 뒤 호스트를 종료합니다. 프로세스 종료가
+   나중의 `Stop`을 합성하지는 않습니다. 하네스는 `state_version` 하나만 확인하지 않고
    전체가 정확히 같은지 검사합니다.
 6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
    Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,

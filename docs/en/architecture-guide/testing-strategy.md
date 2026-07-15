@@ -138,6 +138,16 @@ Release tests bind current evidence to the exact final executable and all
 owner-defined host, build, adapter, connection, evidence, and freshness
 coordinates before expecting `verified`.
 
+Task-bound Codex Detective live variants also follow the maintained
+[connection-readiness sequence](../maintain/validation.md#live-host-connection-readiness-sequence).
+Project or MCP approval does not imply non-managed command-hook trust. Before
+the no-Task connection observation, the harness opens a separate no-prompt
+Codex preflight so the operator can inspect all active sources in `/hooks` and
+review and trust the exact Volicord definitions. It does not use the global
+one-invocation hook-trust bypass while reusing the runner's normal authentication
+home. A later exact `Stop` observation, not the operator confirmation alone,
+proves delivery for the cell.
+
 ### Final-output host/profile matrix
 
 The final-output checks form an explicit four-cell matrix. Each cell has its
@@ -235,9 +245,11 @@ The Judgment variants are human-in-the-loop checks. They create a disposable
 Runtime Home and Product Repository, configure the selected host, then launch
 the installed host interactively with an initial no-write instruction. They
 reuse the runner's normal host authentication environment; the fixture does
-not copy credentials into its isolated Runtime Home. The operator must approve
-the project/MCP entry when the host requires it, choose the answer in the
-host-native MCP elicitation UI, and exit the host after status is reported.
+not copy credentials into its isolated Runtime Home. The operator must complete
+the applicable hook-trust preflight, approve the project/MCP entry when the host
+requires it, choose the answer in the host-native MCP elicitation UI, wait for
+the task-bound turn to become idle and display its managed `Stop` system
+message, and only then exit the host.
 
 A passing Judgment variant verifies marker Task and Judgment creation,
 host-native prompt/response recording with

@@ -277,6 +277,15 @@ Baseline host and connection-intent requirements:
 
 Writing host configuration does not prove that the host trusted, approved, loaded, initialized, or exposed `volicord mcp --stdio`. `managed host configuration state` meaning and host trust boundaries are owned by [Agent Connection](agent-connection.md).
 
+Codex project trust and non-managed command-hook trust are separate
+host-controlled prerequisites. Project trust only makes the project `.codex/`
+layer eligible to load. Before relying on Detective hooks, the operator must
+review and trust each exact current Volicord hook definition in Codex; a changed
+definition requires another review. Project trust, an administrative
+connection result of `complete`, `hook_path_safety=ok`, exact-owned generated
+files, or a successful configuration audit does not prove command-hook trust,
+event delivery, or execution.
+
 Host feature applicability is separate from installation applicability. The
 following pre-installation summary projects the current evaluation owned by
 [Agent Connection](agent-connection.md#host-feature-support-state); it is not an

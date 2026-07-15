@@ -137,6 +137,7 @@ mod unix {
     const MODEL_INVISIBLE_SURFACE_CONFIRMATION: &str = "surface:host-owned-model-invisible";
     const MODEL_VISIBLE_ABSENCE_CONFIRMATION: &str =
         "model-visible:none-url-token-form-question-request-ref";
+    const CODEX_HOOK_TRUST_CONFIRMATION: &str = "hooks:reviewed";
     const LIVE_CLI_FALLBACK_BASELINE_REF: &str = "baseline_live_host_cli_fallback";
     const LIVE_VERIFIED_TOOL_PRODUCER_BASELINE_REF: &str =
         "baseline_live_host_verified_tool_producer";
@@ -2055,6 +2056,14 @@ mod unix {
         assert!(parse_native_user_action_choice("route_alpha").is_err());
         assert!(parse_native_user_action_choice("choice:unrecognized").is_err());
         Ok(())
+    }
+
+    #[test]
+    fn codex_hook_trust_confirmation_is_explicit() {
+        assert!(parse_codex_hook_trust_confirmation(CODEX_HOOK_TRUST_CONFIRMATION).is_ok());
+        assert!(parse_codex_hook_trust_confirmation("missing").is_err());
+        assert!(parse_codex_hook_trust_confirmation("hooks:trusted").is_err());
+        assert!(parse_codex_hook_trust_confirmation(" hooks:reviewed").is_err());
     }
 
     #[test]
@@ -7179,7 +7188,7 @@ mod unix {
         let prompt = live_user_action_prompt(&marker, &project_id);
         let judgment_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
         println!(
-            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
+            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. After it reports the final Volicord status, wait until the turn is idle and the managed Stop systemMessage receipt is visible before exiting the host.\n\n{prompt}\n=== end instruction ===\n"
         );
         let status = fixture.run_authenticated_interactive_host(
             host,
@@ -9861,6 +9870,31 @@ mod unix {
         parse_native_user_action_choice(confirmation.trim())
     }
 
+    fn confirm_codex_hook_trust_review() -> Result<(), Box<dyn Error>> {
+        print!(
+            "\nConfirm that you opened `/hooks` in the disposable Codex repository, inspected every active source, and reviewed and trusted the exact current Volicord project hooks. Type `{CODEX_HOOK_TRUST_CONFIRMATION}` only if all required hooks were trusted and no unreviewed unexpected source remained; type `missing` otherwise: "
+        );
+        io::stdout().flush()?;
+        let mut confirmation = String::new();
+        if io::stdin().read_line(&mut confirmation)? == 0 {
+            return Err(io::Error::other(
+                "no operator confirmation was received for the Codex hook-trust preflight",
+            )
+            .into());
+        }
+        parse_codex_hook_trust_confirmation(confirmation.trim())
+    }
+
+    fn parse_codex_hook_trust_confirmation(confirmation: &str) -> Result<(), Box<dyn Error>> {
+        if confirmation != CODEX_HOOK_TRUST_CONFIRMATION {
+            return Err(io::Error::other(format!(
+                "Codex hook-trust confirmation must be exactly `{CODEX_HOOK_TRUST_CONFIRMATION}`"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
     fn confirm_cli_fallback_choice(
         host: &str,
         user_action_request_id: &str,
@@ -12451,6 +12485,7 @@ mod unix {
         connection_id: &str,
         result_recorder: &mut LiveResultRecorder,
     ) -> Result<(), Box<dyn Error>> {
+        fixture.run_codex_hook_trust_preflight(host, executable, result_recorder)?;
         let project_selector = live_fixture_project_id(fixture)?;
         let authority_before = project_authority_snapshot(fixture, &project_selector)?;
         if authority_before.task_count != 0 {
@@ -16209,6 +16244,47 @@ mod unix {
             let after = self.managed_baseline_observations()?;
             recorder.bind_observed_host_turn_baselines(&before, &after)?;
             result
+        }
+
+        fn run_codex_hook_trust_preflight(
+            &self,
+            host: &str,
+            program: &Path,
+            recorder: &mut LiveResultRecorder,
+        ) -> Result<(), Box<dyn Error>> {
+            if host != "codex" {
+                return Ok(());
+            }
+            recorder.require_publication_domain_ready()?;
+            self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
+            println!(
+                "\n=== Volicord live Codex hook-trust preflight ===\nThis no-prompt Codex session is only for the host-owned trust step. Accept project trust for this disposable repository, open `/hooks`, inspect every active hook source, and review and trust the exact current Volicord project hooks. Do not enter a model prompt, credentials, or secrets. Do not use `--dangerously-bypass-hook-trust`. Exit Codex after the required hooks show trusted.\n=== end instruction ===\n"
+            );
+            let mut command = Command::new(program);
+            command
+                .current_dir(&self.repo_root)
+                .env("VOLICORD_HOME", &self.runtime_home_path)
+                .env("PATH", &self.env_path)
+                .env_remove(LIVE_HOST_RESULT_PATH_ENV)
+                .env_remove(RELEASE_REQUEST_VERIFIED_ENV)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+            Self::remove_inherited_host_control_env(&mut command);
+            Self::remove_inherited_auth_secret_env(&mut command);
+            let status = self.run_candidate_host_turn(command)?;
+            smoke_note(
+                host,
+                format!("hook-trust preflight exited with {}", status_text(status)),
+            );
+            if !status.success() {
+                return Err(io::Error::other(format!(
+                    "the Codex hook-trust preflight exited unsuccessfully with {}",
+                    status_text(status)
+                ))
+                .into());
+            }
+            confirm_codex_hook_trust_review()
         }
 
         fn run_authenticated_interactive_host_with_local_web(

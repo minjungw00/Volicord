@@ -262,6 +262,13 @@ Detective profile은 거부됩니다.
 
 호스트 설정을 썼다는 사실은 호스트가 `volicord mcp --stdio`를 신뢰, 승인, 로드, 초기화, 노출했다는 증거가 아닙니다. `managed host configuration state`의 의미와 호스트 신뢰 경계는 [Agent Connection](agent-connection.md)이 담당합니다.
 
+Codex 프로젝트 신뢰와 관리되지 않는 command hook 신뢰는 서로 다른 호스트 소유 전제
+조건입니다. 프로젝트 신뢰는 프로젝트 `.codex/` 계층을 로드 대상이 되게 할 뿐입니다.
+Detective 훅에 의존하기 전에 운영자는 Codex에서 현재 Volicord 훅 정의 각각을 정확히
+검토하고 신뢰해야 하며, 정의가 바뀌면 다시 검토해야 합니다. 프로젝트 신뢰, 관리 연결의
+`complete` 결과, `hook_path_safety=ok`, exact-owned 생성 파일, 성공한 설정 audit만으로는
+command hook 신뢰, 이벤트 전달, 실행을 증명하지 못합니다.
+
 호스트 기능 적용 가능성은 설치 적용 가능성과 구분합니다. 다음 설치 전 요약은
 [Agent Connection](agent-connection.md#host-feature-support-state)이 담당하는 현재 평가를
 투영하며 이 문서가 별도로 소유하는 기능 매트릭스가 아닙니다. 정확한 Codex

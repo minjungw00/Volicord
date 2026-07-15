@@ -124,6 +124,15 @@ Codex는 앞의 네 기능을 `implemented_unverified`, 두 최종 출력 기능
 테스트는 `verified`를 기대하기 전에 현재 증거를 정확한 최종 실행 파일과 담당 문서가
 정의한 모든 호스트, 빌드, 어댑터, 연결, 증거, 최신성 좌표에 결속합니다.
 
+Task에 결속되는 Codex Detective 실제 변형은 유지되는
+[연결 준비 순서](../maintain/validation.md#live-host-connection-readiness-sequence)도
+따릅니다. 프로젝트 또는 MCP 승인으로 관리되지 않는 command hook 신뢰가 성립하지는
+않습니다. Task 없는 연결 관찰 전에 하네스가 별도 무-prompt Codex preflight를 열고,
+운영자는 `/hooks`에서 모든 활성 출처를 조사한 뒤 정확한 Volicord 정의를 검토하고
+신뢰합니다. 실행자의 일반 인증 home을 재사용하는 동안에는 모든 훅 신뢰를 1회 우회하는
+옵션을 사용하지 않습니다. 운영자 확인만으로는 부족하고 이후의 정확한 `Stop` 관찰이
+셀의 전달을 증명합니다.
+
 ### 최종 출력 호스트·프로필 매트릭스
 
 최종 출력 점검은 명시적인 네 개 셀로 구성됩니다. 각 셀은 고유한 선택 변수와 테스트를
@@ -214,9 +223,10 @@ VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_h
 판단 변형은 사람 참여형 점검입니다. 폐기 가능한 Runtime Home과 Product Repository를
 만들고 선택한 호스트를 설정한 뒤, 쓰기를 하지 말라는 초기 지시와 함께 설치된 호스트를
 대화형으로 실행합니다. 실행자의 일반 호스트 인증 환경을 재사용하며 픽스처의 격리된
-Runtime Home으로 자격 증명을 복사하지 않습니다. 호스트가 요구하면 운영자가 프로젝트나
-MCP 항목을 승인하고, 호스트 고유 MCP elicitation UI에서 직접 답을 선택하고, 상태 보고가
-끝난 뒤 호스트를 종료해야 합니다.
+Runtime Home으로 자격 증명을 복사하지 않습니다. 운영자는 적용되는 hook-trust
+preflight를 완료하고, 호스트가 요구하면 프로젝트나 MCP 항목을 승인하며, 호스트 고유 MCP
+elicitation UI에서 직접 답을 선택해야 합니다. 이어서 Task 결속 turn이 idle 상태가 되고
+관리 `Stop` system message를 표시할 때까지 기다린 뒤에만 호스트를 종료합니다.
 
 판단 변형이 통과하면 표식 `Task`와 판단 생성, `mcp_elicitation_user_channel` 근거의
 호스트 고유 프롬프트/응답 기록, 그에 따른 Task 상태 전환, 권한 이벤트, 내용 없는 해당

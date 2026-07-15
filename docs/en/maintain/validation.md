@@ -277,10 +277,32 @@ reviewed the documents for objective blockers.
 <a id="live-host-connection-readiness-sequence"></a>
 ## Live-Host Connection-Readiness Sequence
 
-Apply this sequence before every task-bound live-host checklist below. First,
-start the installed host on the exact prepared Agent Connection while the
-selected Product Repository has no active `Task`, and observe a read-only
-`volicord.status` call. After that host exits, run administrative
+Apply this sequence before every task-bound live-host checklist below. For a
+Codex Detective fixture, finish writing the fixture and activate its publication
+domain first, then run the maintained no-prompt interactive hook-trust preflight
+before the read-only connection observation. In that exact disposable
+repository, accept project trust, open `/hooks`, inspect every active hook
+source, and review and trust the exact current Volicord project-hook
+definitions. A missing, skipped, changed, or untrusted required hook, or an
+unexpected active source that the operator cannot review, is `SKIP` or `FAIL`,
+never evidence of a product `Stop` failure. Exit the preflight only after that
+review, then give the harness its exact `hooks:reviewed` confirmation. The
+confirmation is not event evidence; the later task-bound run must still produce
+the required persisted `Stop` event.
+
+The maintained preflight reuses the runner's normal `CODEX_HOME` so it can use
+stored ChatGPT authentication without copying credentials. That home can also
+contribute other active hook sources. Therefore the maintained harness does not
+use `--dangerously-bypass-hook-trust`: the one-invocation option would bypass
+persisted trust for every enabled hook source, not only the Volicord fixture.
+If a future isolated harness can enumerate and vet every active source, such a
+one-invocation bypass may prove event delivery only; it still cannot prove
+persisted hook trust or production readiness.
+
+After the applicable Codex preflight, start the installed host on the exact
+prepared Agent Connection while the selected Product Repository has no active
+`Task`, and observe a read-only `volicord.status` call. After that host exits,
+run administrative
 `volicord connection verify ... --json` for the same connection and require the
 owner-defined `complete` result. Only then create or activate the workflow
 `Task` and start the task-bound host run. The first observation does not replace
@@ -528,8 +550,11 @@ For each host, confirm all of these observations against the release candidate:
 5. Exactly one new Task-bound Detective Stop event appears after the run's
    pre-host cursor, records `allow` with no reasons or close blockers, and stores
    the same complete `AuthorityReceipt` as fresh status. The operator copies the
-   complete canonical receipt JSON from the separate host-owned managed UI; the
-   harness requires exact equality, not a state-version-only confirmation.
+   complete canonical receipt JSON from the separate host-owned managed UI. The
+   operator waits for the turn to become idle and that managed `Stop` system
+   message to appear before exiting the host; process exit does not synthesize a
+   later `Stop`. The harness requires exact equality, not a state-version-only
+   confirmation.
 6. The bounded JSON result reports a unique validation `run_id`, start and
    record times, host version, Volicord `build_id`, exact Agent Connection ID,
    operator-confirmed and stored choice, authority-event order, consumed Run,
