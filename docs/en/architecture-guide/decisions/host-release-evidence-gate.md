@@ -56,6 +56,21 @@ candidate execution. These embedded build coordinates and archive checks provide
 non-adversarial provenance and integrity; they are not a reproducible rebuild
 or an attestation that arbitrary candidate bytes came from the named source.
 
+The test-only package supplies a create-new descriptor producer for that
+already staged final executable. It applies the same canonical external-path,
+artifact-identity, build-coordinate, and source-coordinate checks used by the
+gate, repeats candidate and source stability checks before writing, and refuses
+an existing descriptor path. It does not build, stage, replace, or mutate the
+external final executable; it makes only an ephemeral private copy for
+verification. This closes the maintained workflow gap without weakening the
+separate audit: the audit still reopens the source, candidate, cells, evidence,
+and manifest and independently recalculates their release verdict.
+
+The descriptor producer runs in the same unchanged runner and Git, Rust, and
+Cargo toolchain environment that built the candidate. Its measured environment
+strings are non-adversarial coordinates, not independent proof of that
+precondition.
+
 Every gate evaluates a fixed twelve-cell matrix: six feature identifiers for
 each of `codex` and `claude_code`, with one exact host availability coordinate
 per host kind. The host availability triple is independently all-string or
@@ -158,9 +173,10 @@ The validation implementation is isolated in the test-only
 `tests/release-validation` workspace package. It may reuse implementation-owned
 evaluators, but production targets do not depend on it. Its maintained command
 routes are owned by Host Release Evidence and the Maintain Validation page.
-The live-cell producer, gate, and audit directly reuse that package's canonical
-external-path context. After adding the bound disposable Runtime Home and
-revalidating retained paths, the producer pins the precreated result root and
+The candidate-descriptor producer, live-cell producer, gate, and audit directly
+reuse that package's canonical external-path context. After adding the bound
+disposable Runtime Home and revalidating retained paths, the live-cell producer
+pins the precreated result root and
 its `cells/` and `evidence/` directories and holds a cooperative exclusive
 result-root lease before any host launch. Under that lease it prevalidates
 absent final names and prior committed-pair consistency, synchronizes a bounded
@@ -250,6 +266,11 @@ recreated through the managed adapter. The batch remains within the current
 workspace SemVer because it does not add or break a supported public API or
 deployment surface; its externally stored v3 artifacts are opt-in release
 validation output.
+
+The maintained candidate command serializes the existing candidate-v1 contract
+from an already staged final executable. It changes no field, digest preimage,
+schema identifier, accepted candidate, public API, or deployment behavior, so
+it does not advance the candidate schema or workspace SemVer.
 
 Using the shared external-path evaluator is a conformance correction to the
 existing v3 path contract. It does not change any artifact field, digest

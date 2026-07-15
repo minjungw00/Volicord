@@ -13,7 +13,7 @@ use crate::{
     error::{ValidationError, ValidationResult},
     io::{
         git_archive_sha256, git_head, git_is_clean, inspect_candidate_artifact,
-        sha256_external_file, ValidationContext, MAX_EVIDENCE_BYTES,
+        sha256_external_file, CandidateArtifactInspection, ValidationContext, MAX_EVIDENCE_BYTES,
     },
     schema::{
         expected_assertion_ids, Candidate, Cell, GateVerdict, HostKind, ImplementationDisposition,
@@ -81,48 +81,8 @@ pub fn evaluate_release_matrix(
     let actual_archive_sha256 =
         git_archive_sha256(context.source_checkout(), &candidate.source_revision)?;
 
-    let invariant_results = vec![
-        (
-            "candidate_binary_digest_exact".to_owned(),
-            artifact.sha256_before == candidate.binary_sha256,
-        ),
-        (
-            "candidate_binary_private_copy_exact".to_owned(),
-            artifact.private_copy_sha256 == candidate.binary_sha256,
-        ),
-        (
-            "candidate_binary_final_stable".to_owned(),
-            artifact.sha256_after_held == artifact.sha256_before
-                && artifact.sha256_after_path.as_deref() == Some(artifact.sha256_before.as_str())
-                && artifact.path_identity_stable,
-        ),
-        (
-            "candidate_build_git_exact".to_owned(),
-            artifact.build.git_commit == candidate.source_revision,
-        ),
-        (
-            "candidate_build_metadata_source_environment".to_owned(),
-            artifact.build.metadata_source == "environment",
-        ),
-        (
-            "candidate_build_package_version_exact".to_owned(),
-            artifact.build.package_version == env!("CARGO_PKG_VERSION"),
-        ),
-        (
-            "candidate_build_profile_exact".to_owned(),
-            artifact.build.profile == candidate.release_profile
-                && artifact.build.profile == "release"
-                && artifact.build.profile_class == "release"
-                && artifact.build.profile_exact == "true",
-        ),
-        (
-            "candidate_build_target_exact".to_owned(),
-            artifact.build.target == candidate.target_triple,
-        ),
-        (
-            "candidate_build_tree_clean".to_owned(),
-            artifact.build.tree == "clean",
-        ),
+    let mut invariant_results = candidate_artifact_invariant_results(&candidate, &artifact);
+    invariant_results.extend([
         (
             "candidate_recorded_before_evaluation".to_owned(),
             candidate_recorded_at <= evaluated_at_value,
@@ -141,16 +101,13 @@ pub fn evaluate_release_matrix(
             "single_host_client_identity_per_host".to_owned(),
             single_host_client_identity_per_host,
         ),
-        (
-            "source_archive_digest_exact".to_owned(),
-            actual_archive_sha256 == candidate.source_archive_sha256,
-        ),
-        ("source_checkout_clean".to_owned(), source_clean),
-        (
-            "source_revision_exact".to_owned(),
-            current_head == candidate.source_revision,
-        ),
-    ];
+    ]);
+    invariant_results.extend(candidate_source_invariant_results(
+        &candidate,
+        &current_head,
+        source_clean,
+        &actual_archive_sha256,
+    ));
     let mut invariant_findings = invariant_results
         .iter()
         .filter_map(|(id, passed)| (!passed).then_some(id.clone()))
@@ -216,6 +173,74 @@ pub fn evaluate_release_matrix(
     })
 }
 
+pub(crate) fn candidate_artifact_invariant_results(
+    candidate: &Candidate,
+    artifact: &CandidateArtifactInspection,
+) -> Vec<(String, bool)> {
+    vec![
+        (
+            "candidate_binary_digest_exact".to_owned(),
+            artifact.sha256_before == candidate.binary_sha256,
+        ),
+        (
+            "candidate_binary_private_copy_exact".to_owned(),
+            artifact.private_copy_sha256 == candidate.binary_sha256,
+        ),
+        (
+            "candidate_binary_final_stable".to_owned(),
+            artifact.sha256_after_held == artifact.sha256_before
+                && artifact.sha256_after_path.as_deref() == Some(artifact.sha256_before.as_str())
+                && artifact.path_identity_stable,
+        ),
+        (
+            "candidate_build_git_exact".to_owned(),
+            artifact.build.git_commit == candidate.source_revision,
+        ),
+        (
+            "candidate_build_metadata_source_environment".to_owned(),
+            artifact.build.metadata_source == "environment",
+        ),
+        (
+            "candidate_build_package_version_exact".to_owned(),
+            artifact.build.package_version == env!("CARGO_PKG_VERSION"),
+        ),
+        (
+            "candidate_build_profile_exact".to_owned(),
+            artifact.build.profile == candidate.release_profile
+                && artifact.build.profile == "release"
+                && artifact.build.profile_class == "release"
+                && artifact.build.profile_exact == "true",
+        ),
+        (
+            "candidate_build_target_exact".to_owned(),
+            artifact.build.target == candidate.target_triple,
+        ),
+        (
+            "candidate_build_tree_clean".to_owned(),
+            artifact.build.tree == "clean",
+        ),
+    ]
+}
+
+pub(crate) fn candidate_source_invariant_results(
+    candidate: &Candidate,
+    current_head: &str,
+    source_clean: bool,
+    actual_archive_sha256: &str,
+) -> Vec<(String, bool)> {
+    vec![
+        (
+            "source_archive_digest_exact".to_owned(),
+            actual_archive_sha256 == candidate.source_archive_sha256,
+        ),
+        ("source_checkout_clean".to_owned(), source_clean),
+        (
+            "source_revision_exact".to_owned(),
+            current_head == candidate.source_revision,
+        ),
+    ]
+}
+
 pub fn validate_manifest_container(manifest: &ReleaseManifest) -> ValidationResult<()> {
     if manifest.schema != MANIFEST_SCHEMA {
         return Err(ValidationError::new("manifest schema identifier mismatch"));
@@ -270,11 +295,7 @@ pub(crate) fn validate_candidate_shape(candidate: &Candidate) -> ValidationResul
             "candidate release_profile must be the exact maintained release profile",
         ));
     }
-    validate_bounded_text(
-        "candidate.candidate_id",
-        &candidate.candidate_id,
-        MAX_OPAQUE_ID_BYTES,
-    )?;
+    validate_candidate_id(&candidate.candidate_id)?;
     validate_revision(&candidate.source_revision)?;
     validate_sha256(
         "candidate.source_archive_sha256",
@@ -284,6 +305,10 @@ pub(crate) fn validate_candidate_shape(candidate: &Candidate) -> ValidationResul
     for (field, value) in [
         ("candidate.target_triple", &candidate.target_triple),
         ("candidate.release_profile", &candidate.release_profile),
+    ] {
+        validate_bounded_text(field, value, MAX_TEXT_BYTES)?;
+    }
+    for (field, value) in [
         (
             "candidate.build_environment.runner_os",
             &candidate.build_environment.runner_os,
@@ -319,6 +344,10 @@ pub(crate) fn validate_candidate_shape(candidate: &Candidate) -> ValidationResul
         return Err(ValidationError::new("candidate_path must not be empty"));
     }
     parse_canonical_timestamp("candidate.recorded_at", &candidate.recorded_at)
+}
+
+pub(crate) fn validate_candidate_id(candidate_id: &str) -> ValidationResult<()> {
+    validate_bounded_text("candidate.candidate_id", candidate_id, MAX_OPAQUE_ID_BYTES)
 }
 
 pub(crate) fn validate_matrix_shape(cells: &[Cell]) -> ValidationResult<()> {

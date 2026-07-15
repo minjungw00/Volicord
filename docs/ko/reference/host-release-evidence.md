@@ -46,9 +46,10 @@ JSON 파일은 최대 4 MiB, 셀이 참조하는 증거 아티팩트 하나는 �
 <a id="external-release-path-policy"></a>
 ### 정규 외부 릴리스 경로 정책
 
-실제 셀 생산자, 게이트, 독립 audit은 자신이 소비하는 모든 릴리스 아티팩트 입력과
-create-new 목적지에 하나의 정규 외부 경로 평가기를 적용합니다. 공통 제외 집합에는 정규
-소스 checkout, 해석된 Cargo target 디렉터리, 유지되는 `docs/` 디렉터리, 프로세스에
+후보 설명자 생산자, 실제 셀 생산자, 게이트, 독립 audit은 자신이 소비하는 모든 릴리스
+아티팩트 입력과 create-new 목적지에 하나의 정규 외부 경로 평가기를 적용합니다. 공통
+제외 집합에는 정규 소스 checkout, 해석된 Cargo target 디렉터리, 유지되는 `docs/`
+디렉터리, 프로세스에
 명시된 Runtime Home, 사용자 홈에서 도출한 기본 Runtime Home, 호출자가 추가로 제공한
 모든 Runtime Home, 현재 셀에 결속한 각 폐기 가능한 Runtime Home, 아티팩트 경로에서 발견한
 registry 보유 상위 디렉터리가 들어갑니다. 후보 설명자, `candidate_path`, 셀 디렉터리와
@@ -167,7 +168,7 @@ v3 게이트와 audit은 과거 v1 및 v2의 셀, manifest, audit, 셀 입력 �
 | `target_triple` | 후보를 빌드할 때 사용한 정확한 Cargo target triple. |
 | `release_profile` | 정확한 유지 Cargo profile 이름 `release`. 근사 profile class나 다른 profile은 유효하지 않습니다. |
 | `binary_sha256` | `candidate_path` 바이트의 SHA-256. |
-| `build_environment` | 정확한 `runner_os`, `runner_os_version`, `runner_arch`, `git_version`, `rustc_version`, `cargo_version` 문자열. |
+| `build_environment` | 정확한 `runner_os`, `runner_os_version`, `runner_arch`, `git_version`, `rustc_version`, `cargo_version` 문자열. 후보 v1은 각 문자열이 제어 문자가 없는 UTF-8 1바이트 이상 512바이트 이하이면 허용합니다. |
 | `recorded_at` | 설명자와 모든 후보 다이제스트 계산을 완료한 시각. |
 
 소스 checkout은 빌드 전에 깨끗해야 하며 후보 생성이 끝날 때까지
@@ -176,6 +177,31 @@ v3 게이트와 audit은 과거 v1 및 v2의 셀, manifest, audit, 셀 입력 �
 SHA-256을 계산합니다. 그 바이트 다이제스트가 `source_archive_sha256`입니다. 압축
 아카이브, work tree, 디렉터리 목록, Git bundle을 해시하는 것은 같은 알고리즘이
 아닙니다.
+
+유지되는 설명자 생산자는 이미 외부에 배치한 최종 실행 파일과 아직 존재하지 않는 외부
+설명자 경로를 입력으로 받습니다.
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
+```
+
+후보가 제어하는 바이트를 실행하기 전에 정규 외부 경로 평가기로 두 경로를 검증합니다.
+그런 다음 깨끗한 HEAD와 원본 소스 아카이브 다이제스트를 도출하고, 정확한 실행 파일을
+해시하여 비공개 복사본으로 검사하며, 실행 환경과 도구 체인의 좌표를 크기 제한에 맞춰
+기록합니다. 생산자는 명령 출력의 앞뒤 공백을 제거하고 각 좌표를 제어 문자가 없고
+공백만으로 구성되지 않은 UTF-8 1바이트 이상 512바이트 이하로 기록합니다. 마지막으로
+실행 파일과 소스 안정성을 다시 검사하고 모든 검사가 통과한 뒤에만
+`CANDIDATE.json`을 새로 만듭니다. 출력 경로는 미리 존재하면 안 되며 절대
+덮어쓰지 않습니다. 이 명령은 후보를 빌드하거나 외부 최종 실행 파일을 배치, 교체,
+변경하지 않습니다. 필요한 게시자 측 배치나 후처리가 있다면 명령을 실행하기 전에 끝내야
+합니다. 이 명령이 만드는 유일한 복사본은 아래에서 설명하는 일시적인 비공개 검증
+복사본이며 `candidate_path`나 릴리스 아티팩트가 아닙니다.
+
+설명자 생산자는 후보를 빌드한 때와 동일하고 변경되지 않은 실행 환경 및 Git, Rust,
+Cargo 도구 체인 환경에서 실행합니다. `build_environment` 문자열은 이 전제 아래에서
+설명자 생산자 프로세스가 측정한 값이며, 아래에서 설명하는 비적대적이고 독립적으로
+attestation되지 않은 좌표로 남습니다. 다른 빌드 환경에서 옮겨 온 후보나 빌드와 설명자
+생성 사이에 도구 체인이 바뀐 후보는 부적격입니다.
 
 게이트는 후보가 제어하는 바이트를 실행하기 전에 `candidate_path`의 일반 파일을 열어 그
 파일 핸들을 유지한 채 해시하고 설명자 다이제스트와 정확히 일치하는지 확인합니다. 유지한
@@ -524,13 +550,15 @@ identifier는 검증·해시하거나 domain 분리 불투명 값으로 바꾸�
 
 ```sh
 cargo test -p volicord-release-validation-tests
+cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
 ```
 
-모든 아티팩트 및 디렉터리 인자는 이 계약을 따르는 외부 절대 경로입니다. Audit 명령은
-게이트 프로세스가 끝난 뒤 별도 프로세스로 실행합니다. 관리 CLI fallback과 진단은 이
-아티팩트를 요약할 수 있지만 보조 수단일 뿐 두 명령을 대신할 수 없습니다.
+모든 아티팩트 및 디렉터리 인자는 이 계약을 따르는 외부 절대 경로입니다. 후보 명령은
+최종 실행 파일을 외부에 배치한 뒤 첫 셀을 시작하기 전에 실행합니다. Audit 명령은 게이트
+프로세스가 끝난 뒤 별도 프로세스로 실행합니다. 관리 CLI fallback과 진단은 이 아티팩트를
+요약할 수 있지만 보조 수단일 뿐 후보, 게이트, audit 명령을 대신할 수 없습니다.
 
 ## 관련 담당 문서
 

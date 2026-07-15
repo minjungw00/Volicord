@@ -52,10 +52,10 @@ existing symlink prefixes and dot components do not weaken an exclusion.
 <a id="external-release-path-policy"></a>
 ### Canonical external release-path policy
 
-The live-cell producer, gate, and independent audit apply one canonical
-external-path evaluator to every release-artifact input and create-new
-destination they consume. The common exclusion set contains the canonical
-source checkout, resolved Cargo target directory, maintained `docs/`
+The candidate-descriptor producer, live-cell producer, gate, and independent
+audit apply one canonical external-path evaluator to every release-artifact
+input and create-new destination they consume. The common exclusion set contains
+the canonical source checkout, resolved Cargo target directory, maintained `docs/`
 directory, the explicit process Runtime Home, the default home-derived Runtime
 Home, every additional caller-supplied Runtime Home, each disposable Runtime
 Home bound to the current cell, and any registry-bearing ancestor discovered
@@ -197,7 +197,7 @@ semantics changed.
 | `target_triple` | Exact Cargo target triple used for the candidate. |
 | `release_profile` | Exact maintained Cargo profile name `release`; an approximate profile class or any other profile is invalid. |
 | `binary_sha256` | SHA-256 of the bytes at `candidate_path`. |
-| `build_environment` | Exact `runner_os`, `runner_os_version`, `runner_arch`, `git_version`, `rustc_version`, and `cargo_version` strings. |
+| `build_environment` | Exact `runner_os`, `runner_os_version`, `runner_arch`, `git_version`, `rustc_version`, and `cargo_version` strings. Candidate v1 accepts each as 1 through 512 control-free UTF-8 bytes. |
 | `recorded_at` | Time at which the descriptor and all candidate digests were completed. |
 
 The source checkout must be clean before building and remain at
@@ -206,6 +206,34 @@ runs `git archive --format=tar <source_revision>` with no path prefix or extra
 attributes and computes SHA-256 over the command's raw tar stdout. That byte
 digest is `source_archive_sha256`; hashing a compressed archive, work tree,
 directory listing, or Git bundle is not equivalent.
+
+The maintained descriptor producer consumes an already staged final executable
+and an absent external descriptor path:
+
+```sh
+cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
+```
+
+It validates both paths with the canonical external-path evaluator before
+executing candidate-controlled bytes, derives the clean HEAD and raw source
+archive digest, hashes and privately inspects the exact executable, records the
+bounded runner and toolchain coordinates, and then repeats the executable and
+source stability checks. The producer trims command-output boundaries and emits
+each coordinate as 1 through 512 control-free UTF-8 bytes with at least one
+non-whitespace character. It creates `CANDIDATE.json` only after those checks
+pass. The output path must not exist and is never overwritten. This command
+does not build the candidate or stage, replace, or mutate the external final
+executable. Any required publisher-side staging or post-processing must finish
+before invocation. The command's only copy is the ephemeral private
+verification copy described below, which is not `candidate_path` or a release
+artifact.
+
+The descriptor producer runs in the same unchanged runner and Git, Rust, and
+Cargo toolchain environment that built the candidate. The `build_environment`
+strings are measurements of that producer process under this precondition;
+they remain the non-adversarial, independently unattested coordinates described
+below. A candidate moved from a different build environment, or a toolchain
+changed between build and descriptor creation, is ineligible.
 
 Before executing candidate-controlled bytes, the gate opens a regular file at
 `candidate_path`, hashes that held handle, and requires an exact descriptor
@@ -597,14 +625,17 @@ name `volicord-release-validation-tests`. Its exact validation routes are:
 
 ```sh
 cargo test -p volicord-release-validation-tests
+cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
 ```
 
 Every artifact and directory argument is an external absolute path subject to
-this contract. The audit command is invoked as a separate process after the
-gate process exits. Administrative CLI fallback and diagnostics may summarize
-these artifacts, but they are auxiliary and cannot replace either command.
+this contract. The candidate command runs after the final executable is staged
+and before any cell starts. The audit command is invoked as a separate process
+after the gate process exits. Administrative CLI fallback and diagnostics may
+summarize these artifacts, but they are auxiliary and cannot replace the
+candidate, gate, or audit command.
 
 ## Related Owners
 

@@ -245,7 +245,6 @@ mod unix {
         assert!(multibyte_over_limit.chars().count() < 64);
         assert!(multibyte_over_limit.len() > 64);
         assert!(bounded_identity("bounded", &multibyte_over_limit, 64).is_err());
-
         let initialized_metadata = serde_json::json!({
             "source": "volicord_session_watch",
             "launch_origin": "managed_host",
@@ -570,6 +569,17 @@ mod unix {
             &external_descriptor,
             serde_json::to_vec(&external_candidate_record)?,
         )?;
+        let mut exact_environment_bound = external_candidate_record.clone();
+        exact_environment_bound.build_environment.runner_os = "x".repeat(512);
+        exact_environment_bound.validate_with_context(&context)?;
+        let mut oversized_environment = external_candidate_record.clone();
+        oversized_environment.build_environment.runner_os = "x".repeat(513);
+        assert!(oversized_environment
+            .validate_with_context(&context)
+            .is_err());
+        let mut whitespace_environment = external_candidate_record.clone();
+        whitespace_environment.build_environment.runner_os = "   ".to_owned();
+        whitespace_environment.validate_with_context(&context)?;
         let valid_descriptor_result = cell_directory.join("valid-descriptor-result.json");
         {
             let mut recorder =
@@ -15787,7 +15797,7 @@ mod unix {
                     self.build_environment.cargo_version.as_str(),
                 ),
             ] {
-                bounded_identity(name, value, 256)?;
+                bounded_identity(name, value, 512)?;
             }
             let candidate_path = Path::new(&self.candidate_path);
             self.validate_external_paths(context)?;

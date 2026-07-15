@@ -1047,9 +1047,9 @@ documents:
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
   kind: explanation
   summary: Architecture decision for build-once exact-final-artifact host release validation,
-    actual managed-initialize client identity, canonical twelve-cell evaluation, shared external-path
-    enforcement, cooperatively leased append-only cell/evidence publication, create-new manifests,
-    and separate-process audit.
+    create-new candidate descriptor production, actual managed-initialize client identity, canonical
+    twelve-cell evaluation, shared external-path enforcement, cooperatively leased append-only
+    cell/evidence publication, create-new manifests, and separate-process audit.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1342,8 +1342,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-12'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1384,8 +1384,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1495,10 +1495,10 @@ documents:
   path_en: docs/en/reference/host-release-evidence.md
   path_ko: docs/ko/reference/host-release-evidence.md
   kind: reference
-  summary: Exact-final-artifact managed-host release evidence schemas, actual bounded initialize
-    client identity, fixed twelve-cell gate, canonical shared external-path evaluation, independent
-    audit, append-only live-cell publication with fresh-root recovery, and privacy-preserving
-    session-binding contract.
+  summary: Exact-final-artifact managed-host release candidate production and evidence schemas,
+    actual bounded initialize client identity, fixed twelve-cell gate, canonical shared external-path
+    evaluation, independent audit, append-only live-cell publication with fresh-root recovery, and
+    privacy-preserving session-binding contract.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1519,13 +1519,15 @@ documents:
   canonical_for:
   - '`volicord-release-candidate-v1`, `volicord-host-release-cell-v3`, `volicord-host-release-manifest-v3`, and `volicord-host-release-audit-v3`'
   - exact external candidate, clean source revision, `git_archive_tar_sha256_v1`, target, profile, environment, held-handle digest, and private-copy execution binding
+  - create-new candidate descriptor production from an already staged exact final executable without building, staging, replacing, mutating, or overwriting the external final path, while allowing only an ephemeral private verification copy
+  - same unchanged build-runner and Git/Rust/Cargo toolchain precondition plus bounded producer-emitted candidate build-environment coordinates that preserve candidate-v1 acceptance
   - non-adversarial build-provenance and source-archive integrity boundary without reproducible-build or hostile-producer attestation
   - fixed twelve-cell Codex and Claude Code host release validation matrix with separate required-nullable host availability and actual initialize client identity coordinates
   - '`volicord-host-release-cell-inputs-v3` digest domain and historical v1/v2 artifact rejection'
   - half-open 24-hour release-cell freshness and no cross-host-version aggregation
   - canonical claimed-status-independent support derivation and release-gate verdicts
   - create-new bounded external manifest and separate-process audit that reopens and digests the original twelve cell files
-  - one normalized external-path evaluator shared by live-cell producers, the gate, and the separate audit, including cell-bound Runtime Home revalidation
+  - one normalized external-path evaluator shared by the candidate descriptor producer, live-cell producers, the gate, and the separate audit, including cell-bound Runtime Home revalidation
   - cooperatively leased append-only live-cell publication, evidence-first and cell-last commit-marker ordering, non-destructive failure remnants, and fresh-result-root recovery
   - privacy-preserving managed-host native correlation identifier validation, reserved namespace, and domain-separated mapping
   - exact `tests/release-validation` validation command routes
@@ -3094,8 +3096,8 @@ documents:
   - Release-candidate live Codex and Claude Code native Judgment, local-web evidence-observation,
     executable CLI-fallback, historical Stop decision, fresh final-output replay UI validation,
     external result retention, and unavailable-host reporting boundaries.
-  - Exact `tests/release-validation` package, fixed host release gate, separate-process audit,
-    and unavailable-implementation reporting command routes.
+  - Exact `tests/release-validation` package, create-new candidate descriptor producer, fixed host
+    release gate, separate-process audit, and unavailable-implementation reporting command routes.
   - Twelve-cell external result-root preparation, append-only publication runbook, failure reporting, and fresh-root recovery.
   - Exact bounded managed initialize client identity plus Codex session/thread binding assertions for v3 live-host release cells.
   - Rust validation routing for documentation work that also changes implementation files.

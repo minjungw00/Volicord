@@ -913,18 +913,29 @@ When the test-only `tests/release-validation` package is present, run:
 
 ```sh
 cargo test -p volicord-release-validation-tests
+cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
 ```
 
-Build the exact-profile candidate once from a clean source revision, stage it
-at the external path named by `CANDIDATE.json`, and use that same binary for all
-twelve cells. Every matrix command must name that descriptor through
+Build the exact-profile candidate once from a clean source revision and stage
+it at the external absolute `CANDIDATE_BINARY` path. Without changing the
+runner or Git, Rust, or Cargo toolchain environment that performed the build,
+run `host-release-candidate` once to create the absent external
+`CANDIDATE.json`. The command validates and records the staged binary but does
+not build the candidate or stage, replace, or mutate the executable at the
+external final path; it does make an ephemeral private verification copy. It
+refuses an existing output. If the command reports an error, preserve any
+created output, revalidate the source and binary, and use a different absent
+descriptor path instead of deleting, adopting, or retrying the same path.
+
+Use the binary named by that descriptor for all twelve cells. Every matrix
+command must name the descriptor through
 `VOLICORD_RELEASE_CANDIDATE_PATH`, choose the claim explicitly through
 `VOLICORD_RELEASE_REQUEST_VERIFIED=0|1`, and use a unique new cell path under
-`CELL_DIR=RESULT_ROOT/cells`. The producer derives evidence sidecars under the
-sibling `RESULT_ROOT/evidence` directory. The cell directory contains exactly
-twelve final `.json` cell files and no other entries. Any publication failure
+`CELL_DIR=RESULT_ROOT/cells`. Each live-cell producer derives evidence sidecars
+under the sibling `RESULT_ROOT/evidence` directory. The cell directory contains
+exactly twelve final `.json` cell files and no other entries. Any publication failure
 abandons that result root under the [fresh-root recovery rule](#live-cell-result-root).
 
 An installed host version and executable digest must agree across all six

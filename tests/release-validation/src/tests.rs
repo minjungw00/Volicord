@@ -17,11 +17,13 @@ use volicord_types::{
 
 use crate::{
     audit::{run_audit, AuditRequest},
+    candidate::{create_candidate, create_candidate_with_environment, CandidateRequest},
     evaluation::evaluate_release_matrix,
     gate::{run_gate, GateRequest},
     io::{
-        git_archive_sha256, parse_strict_json, sha256_bytes, ResultRootLease, ValidationContext,
-        RELEASE_RESULT_ROOT_ACTIVE_STATE, RELEASE_RESULT_ROOT_LOCK_NAME,
+        git_archive_sha256, parse_strict_json, read_strict_json, sha256_bytes, ResultRootLease,
+        ValidationContext, MAX_CANDIDATE_JSON_BYTES, RELEASE_RESULT_ROOT_ACTIVE_STATE,
+        RELEASE_RESULT_ROOT_LOCK_NAME,
     },
     schema::{
         expected_assertion_ids, AuditVerdict, Candidate, CandidateBuildEnvironment, Cell,
@@ -78,6 +80,378 @@ fn strict_json_rejects_duplicate_and_unknown_members() {
     }"#;
     let error = parse_strict_json::<Candidate>(unknown).expect_err("unknown field must fail");
     assert!(error.detail().contains("unknown field"));
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_derives_an_exact_descriptor_accepted_by_gate_and_audit() {
+    let mut fixture = Fixture::new();
+    let candidate_output = fixture.external.path().join("generated-candidate.json");
+    let generated = create_candidate(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: fixture.candidate.candidate_id.clone(),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: candidate_output.clone(),
+        },
+    )
+    .expect("create exact candidate descriptor");
+
+    let strict: Candidate = read_strict_json(
+        &fixture.context,
+        &candidate_output,
+        MAX_CANDIDATE_JSON_BYTES,
+    )
+    .expect("strict-read generated candidate");
+    assert_eq!(strict, generated);
+    assert_eq!(generated.schema, CANDIDATE_SCHEMA);
+    assert_eq!(
+        generated.candidate_path,
+        fixture.candidate_path.to_str().unwrap()
+    );
+    assert_eq!(generated.source_revision, fixture.candidate.source_revision);
+    assert!(generated.source_clean);
+    assert_eq!(
+        generated.source_archive_sha256,
+        git_archive_sha256(
+            fixture.context.source_checkout(),
+            &generated.source_revision
+        )
+        .expect("source archive digest")
+    );
+    assert_eq!(
+        generated.binary_sha256,
+        sha256_bytes(&fs::read(&fixture.candidate_path).expect("candidate bytes"))
+    );
+    assert_eq!(generated.target_triple, TARGET);
+    assert_eq!(generated.release_profile, "release");
+    for value in [
+        &generated.build_environment.runner_os,
+        &generated.build_environment.runner_os_version,
+        &generated.build_environment.runner_arch,
+        &generated.build_environment.git_version,
+        &generated.build_environment.rustc_version,
+        &generated.build_environment.cargo_version,
+    ] {
+        assert!(!value.is_empty());
+        assert!(!value.chars().any(char::is_control));
+    }
+
+    for index in 0..fixture.cells.len() {
+        fixture.cells[index].started_at = generated.recorded_at.clone();
+        fixture.cells[index].recorded_at = generated.recorded_at.clone();
+        fixture.write_cell(index);
+    }
+    let manifest_output = fixture
+        .external
+        .path()
+        .join("generated-candidate-manifest.json");
+    let manifest = run_gate(
+        &fixture.context,
+        &GateRequest {
+            candidate_descriptor: candidate_output.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest_output: manifest_output.clone(),
+            evaluated_at: generated.recorded_at.clone(),
+        },
+    )
+    .expect("gate generated candidate");
+    assert_eq!(manifest.verdict, GateVerdict::Pass);
+    let audit = run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: candidate_output,
+            cell_directory: fixture.cell_directory.clone(),
+            manifest: manifest_output,
+            audit_output: fixture
+                .external
+                .path()
+                .join("generated-candidate-audit.json"),
+            started_at: generated.recorded_at.clone(),
+            evaluated_at: generated.recorded_at,
+        },
+    )
+    .expect("independently audit generated candidate");
+    assert_eq!(audit.audit_verdict, AuditVerdict::Pass);
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_rejects_tracked_and_untracked_source_changes() {
+    for untracked in [false, true] {
+        let fixture = Fixture::new();
+        if untracked {
+            fs::write(fixture._source.path().join("untracked.txt"), b"untracked\n")
+                .expect("write untracked source");
+        } else {
+            fs::write(fixture._source.path().join("source.txt"), b"dirty source\n")
+                .expect("write tracked source change");
+        }
+        let output = fixture
+            .external
+            .path()
+            .join(format!("dirty-source-{untracked}.json"));
+        let error = create_candidate(
+            &fixture.context,
+            &CandidateRequest {
+                candidate_id: "candidate-dirty-source".to_owned(),
+                candidate_path: fixture.candidate_path.clone(),
+                candidate_output: output.clone(),
+            },
+        )
+        .expect_err("dirty source must be ineligible");
+        assert!(error
+            .detail()
+            .contains("source checkout must be clean before candidate creation"));
+        assert!(!output.exists());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_rejects_source_changes_during_identity_inspection() {
+    let fixture = Fixture::new();
+    let source_file = fixture._source.path().join("source.txt");
+    let script = BuildFields::new(&fixture.candidate.source_revision).script_with_prefix(&format!(
+        "printf '%s\\n' 'changed during inspection' > '{}'\n",
+        source_file.display()
+    ));
+    write_executable(&fixture.candidate_path, script.as_bytes());
+    let candidate_output = fixture
+        .external
+        .path()
+        .join("source-changed-during-inspection.json");
+
+    let error = create_candidate(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: "candidate-source-race".to_owned(),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: candidate_output.clone(),
+        },
+    )
+    .expect_err("source changed during inspection must be ineligible");
+
+    assert!(error.detail().contains("source_checkout_clean"));
+    assert!(!candidate_output.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_rejects_same_byte_path_replacement_after_inspection() {
+    let fixture = Fixture::new();
+    let original_bytes = fs::read(&fixture.candidate_path).expect("candidate bytes");
+    let replacement_path = fixture.external.path().join("replacement-candidate");
+    write_executable(&replacement_path, &original_bytes);
+    let candidate_output = fixture
+        .external
+        .path()
+        .join("same-byte-path-replacement.json");
+    let build_environment = fixture.candidate.build_environment.clone();
+
+    let error = create_candidate_with_environment(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: "candidate-same-byte-replacement".to_owned(),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: candidate_output.clone(),
+        },
+        || {
+            fs::rename(&replacement_path, &fixture.candidate_path)?;
+            Ok(build_environment)
+        },
+    )
+    .expect_err("same-byte path replacement must be ineligible");
+
+    assert!(error.detail().contains("path was replaced"));
+    assert_eq!(
+        fs::read(&fixture.candidate_path).expect("replacement bytes"),
+        original_bytes
+    );
+    assert!(!candidate_output.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_prevalidates_output_and_never_overwrites() {
+    let fixture = Fixture::new();
+    let marker = fixture.external.path().join("candidate-executed");
+    let script = BuildFields::new(&fixture.candidate.source_revision)
+        .script_with_prefix(&format!(": > '{}'\n", marker.display()));
+    write_executable(&fixture.candidate_path, script.as_bytes());
+
+    let existing_output = fixture.external.path().join("existing-candidate.json");
+    fs::write(&existing_output, b"sentinel\n").expect("write existing output");
+    let error = create_candidate(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: "candidate-existing-output".to_owned(),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: existing_output.clone(),
+        },
+    )
+    .expect_err("existing output must fail");
+    assert!(error.detail().contains("output already exists"));
+    assert_eq!(fs::read(&existing_output).unwrap(), b"sentinel\n");
+    assert!(
+        !marker.exists(),
+        "candidate executed before output prevalidation"
+    );
+
+    let forbidden_output = fixture._source.path().join("candidate.json");
+    let error = create_candidate(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: "candidate-forbidden-output".to_owned(),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: forbidden_output.clone(),
+        },
+    )
+    .expect_err("source-local output must fail");
+    assert!(error.detail().contains("overlaps source checkout"));
+    assert!(!forbidden_output.exists());
+    assert!(
+        !marker.exists(),
+        "candidate executed before path-policy rejection"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_rejects_non_release_build_identity() {
+    let cases = [
+        (
+            BuildOverride::PackageVersion("9.9.9"),
+            "candidate_build_package_version_exact",
+        ),
+        (
+            BuildOverride::Git("1111111111111111111111111111111111111111"),
+            "candidate_build_git_exact",
+        ),
+        (BuildOverride::Tree("dirty"), "candidate_build_tree_clean"),
+        (
+            BuildOverride::MetadataSource("repository"),
+            "candidate_build_metadata_source_environment",
+        ),
+        (
+            BuildOverride::Profile("dev"),
+            "candidate_build_profile_exact",
+        ),
+        (
+            BuildOverride::ProfileClass("dev"),
+            "candidate_build_profile_exact",
+        ),
+        (
+            BuildOverride::ProfileExact("false"),
+            "candidate_build_profile_exact",
+        ),
+    ];
+    for (build_override, expected_invariant) in cases {
+        let fixture = Fixture::new();
+        let mut build = BuildFields::new(&fixture.candidate.source_revision);
+        build.apply(build_override);
+        write_executable(&fixture.candidate_path, build.script().as_bytes());
+        let candidate_output = fixture
+            .external
+            .path()
+            .join(format!("creator-{expected_invariant}.json"));
+        let error = create_candidate(
+            &fixture.context,
+            &CandidateRequest {
+                candidate_id: "candidate-invalid-build".to_owned(),
+                candidate_path: fixture.candidate_path.clone(),
+                candidate_output: candidate_output.clone(),
+            },
+        )
+        .expect_err("invalid release identity must fail creation");
+        assert!(
+            error.detail().contains(expected_invariant),
+            "missing {expected_invariant}: {error}"
+        );
+        assert!(!candidate_output.exists());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_creator_enforces_the_candidate_id_byte_bound_before_execution() {
+    let fixture = Fixture::new();
+    let exact_output = fixture.external.path().join("exact-id-bound.json");
+    let exact = create_candidate(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: "x".repeat(256),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: exact_output.clone(),
+        },
+    )
+    .expect("256-byte candidate ID");
+    assert_eq!(exact.candidate_id.len(), 256);
+    assert!(exact_output.is_file());
+
+    let marker = fixture.external.path().join("oversized-id-executed");
+    let script = BuildFields::new(&fixture.candidate.source_revision)
+        .script_with_prefix(&format!(": > '{}'\n", marker.display()));
+    write_executable(&fixture.candidate_path, script.as_bytes());
+    let output = fixture.external.path().join("oversized-id.json");
+    let error = create_candidate(
+        &fixture.context,
+        &CandidateRequest {
+            candidate_id: "x".repeat(257),
+            candidate_path: fixture.candidate_path.clone(),
+            candidate_output: output.clone(),
+        },
+    )
+    .expect_err("oversized candidate ID");
+    assert!(error.detail().contains("candidate.candidate_id"));
+    assert!(!marker.exists());
+    assert!(!output.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn candidate_v1_build_environment_coordinate_acceptance_remains_512_bytes() {
+    let mut exact = Fixture::new();
+    exact.candidate.build_environment.runner_os = "x".repeat(512);
+    exact.write_candidate();
+    assert_eq!(
+        exact
+            .run_gate("environment-coordinate-exact.json", EVALUATED_AT)
+            .verdict,
+        GateVerdict::Pass
+    );
+
+    let mut oversized = Fixture::new();
+    oversized.candidate.build_environment.runner_os = "x".repeat(513);
+    oversized.write_candidate();
+    let manifest_output = oversized
+        .external
+        .path()
+        .join("environment-coordinate-oversized.json");
+    let error = run_gate(
+        &oversized.context,
+        &GateRequest {
+            candidate_descriptor: oversized.candidate_descriptor.clone(),
+            cell_directory: oversized.cell_directory.clone(),
+            manifest_output: manifest_output.clone(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("513-byte build environment coordinate");
+    assert!(error
+        .detail()
+        .contains("candidate.build_environment.runner_os"));
+    assert!(!manifest_output.exists());
+
+    let mut whitespace = Fixture::new();
+    whitespace.candidate.build_environment.runner_os = "   ".to_owned();
+    whitespace.write_candidate();
+    assert_eq!(
+        whitespace
+            .run_gate("environment-coordinate-whitespace.json", EVALUATED_AT)
+            .verdict,
+        GateVerdict::Pass
+    );
 }
 
 #[cfg(unix)]
@@ -2576,9 +2950,11 @@ impl Fixture {
 #[cfg(unix)]
 #[derive(Clone, Copy)]
 enum BuildOverride {
+    PackageVersion(&'static str),
     Git(&'static str),
     Target(&'static str),
     Profile(&'static str),
+    ProfileClass(&'static str),
     Tree(&'static str),
     MetadataSource(&'static str),
     ProfileExact(&'static str),
@@ -2586,9 +2962,11 @@ enum BuildOverride {
 
 #[cfg(unix)]
 struct BuildFields<'a> {
+    package_version: &'a str,
     git: &'a str,
     target: &'a str,
     profile: &'a str,
+    profile_class: &'a str,
     tree: &'a str,
     metadata_source: &'a str,
     profile_exact: &'a str,
@@ -2598,9 +2976,11 @@ struct BuildFields<'a> {
 impl<'a> BuildFields<'a> {
     fn new(git: &'a str) -> Self {
         Self {
+            package_version: env!("CARGO_PKG_VERSION"),
             git,
             target: TARGET,
             profile: "release",
+            profile_class: "release",
             tree: "clean",
             metadata_source: "environment",
             profile_exact: "true",
@@ -2609,9 +2989,11 @@ impl<'a> BuildFields<'a> {
 
     fn apply(&mut self, build_override: BuildOverride) {
         match build_override {
+            BuildOverride::PackageVersion(value) => self.package_version = value,
             BuildOverride::Git(value) => self.git = value,
             BuildOverride::Target(value) => self.target = value,
             BuildOverride::Profile(value) => self.profile = value,
+            BuildOverride::ProfileClass(value) => self.profile_class = value,
             BuildOverride::Tree(value) => self.tree = value,
             BuildOverride::MetadataSource(value) => self.metadata_source = value,
             BuildOverride::ProfileExact(value) => self.profile_exact = value,
@@ -2619,22 +3001,27 @@ impl<'a> BuildFields<'a> {
     }
 
     fn script(&self) -> String {
+        self.script_with_prefix("")
+    }
+
+    fn script_with_prefix(&self, prefix: &str) -> String {
         format!(
-            "#!/bin/sh\n[ \"$#\" -eq 1 ] && [ \"$1\" = \"--version\" ] || exit 64\nprintf '%s\\n' 'volicord {} (build_id={})'\n",
-            env!("CARGO_PKG_VERSION"),
+            "#!/bin/sh\n{prefix}[ \"$#\" -eq 1 ] && [ \"$1\" = \"--version\" ] || exit 64\nprintf '%s\\n' 'volicord {} (build_id={})'\n",
+            self.package_version,
             self.build_id(),
         )
     }
 
     fn build_id(&self) -> String {
         format!(
-            "{};git={};tree={};metadata_source={};target={};profile={};profile_class=release;profile_exact={};opt=3;debug=false",
-            env!("CARGO_PKG_VERSION"),
+            "{};git={};tree={};metadata_source={};target={};profile={};profile_class={};profile_exact={};opt=3;debug=false",
+            self.package_version,
             self.git,
             self.tree,
             self.metadata_source,
             self.target,
             self.profile,
+            self.profile_class,
             self.profile_exact,
         )
     }

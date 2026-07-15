@@ -786,15 +786,24 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
 
 ```sh
 cargo test -p volicord-release-validation-tests
+cargo run --locked -p volicord-release-validation-tests --bin host-release-candidate -- --candidate-id CANDIDATE_ID --candidate-path CANDIDATE_BINARY --candidate-out CANDIDATE.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-gate -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest-out MANIFEST.json
 cargo run --locked -p volicord-release-validation-tests --bin host-release-audit -- --candidate CANDIDATE.json --cell-dir CELL_DIR --manifest MANIFEST.json --audit-out AUDIT.json
 ```
 
-깨끗한 소스 revision에서 정확한 profile의 후보를 한 번만 빌드하고
-`CANDIDATE.json`이 이름 붙인 외부 경로에 둔 다음 12개 셀 모두에 같은 바이너리를
-사용합니다. 모든 행렬 명령은 `VOLICORD_RELEASE_CANDIDATE_PATH`로 그 설명자를 지정하고,
+깨끗한 소스 revision에서 정확한 profile의 후보를 한 번만 빌드하여 외부 절대
+`CANDIDATE_BINARY` 경로에 배치합니다. 빌드에 사용한 실행 환경과 Git, Rust, Cargo 도구
+체인을 바꾸지 않은 채 `host-release-candidate`를 한 번 실행해 아직 존재하지 않는 외부
+`CANDIDATE.json`을 만듭니다. 이 명령은 배치된 바이너리를 검증하고 기록할 뿐 후보를
+빌드하지 않으며 외부 최종 실행 파일을 새로 배치하거나 교체·변경하지 않습니다. 검증을
+위해 일시적인 비공개 복사본은 만들며 기존 출력 경로를 거부합니다. 명령에서 오류를
+보고하면 생성됐을 수 있는 출력을 보존하고 소스와 바이너리를 다시 검증한 뒤, 같은 경로를
+삭제, 채택, 재시도하지 말고 아직 존재하지 않는 다른 설명자 경로를 사용합니다.
+
+그 설명자가 이름 붙인 같은 바이너리를 12개 셀 모두에 사용합니다. 모든 행렬 명령은
+`VOLICORD_RELEASE_CANDIDATE_PATH`로 그 설명자를 지정하고,
 `VOLICORD_RELEASE_REQUEST_VERIFIED=0|1`로 주장을 명시적으로 선택하며, 서로 다른 새 셀
-경로를 `CELL_DIR=RESULT_ROOT/cells` 아래에 사용해야 합니다. 생산자는 sibling
+경로를 `CELL_DIR=RESULT_ROOT/cells` 아래에 사용해야 합니다. 각 실제 셀 생산자는 sibling
 `RESULT_ROOT/evidence` 디렉터리 아래에서 증거 sidecar를 도출합니다. 셀 디렉터리에는 최종
 `.json` 셀 파일 정확히 12개만 두고 다른 항목을 두면 안 됩니다. 게시가 실패하면
 [새 root 복구 규칙](#live-cell-result-root)에 따라 그 result root를 포기합니다.

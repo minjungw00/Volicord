@@ -30,3 +30,7 @@ path = "src/bin/host-release-gate.rs"
 [[bin]]
 name = "host-release-audit"
 path = "src/bin/host-release-audit.rs"
+
+[[bin]]
+name = "host-release-candidate"
+path = "src/bin/host-release-candidate.rs"

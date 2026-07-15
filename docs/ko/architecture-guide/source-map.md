@@ -29,7 +29,7 @@
 | `crates/volicord-test-support` | `volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
 | `tests/conformance` | `volicord-conformance-tests` | 담당 문서가 정의한 동작을 Core 쪽 API와 공유 픽스처로 실행하는 기준 범위 교차 메서드 시나리오. |
 | `tests/integration` | `volicord-integration-tests` | MCP, Core, Store, Agent Connection 바인딩, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
-| `tests/release-validation` | `volicord-release-validation-tests` | 테스트 전용 정확한 외부 후보·셀·manifest·audit 게이트와 별도 프로세스 재계산. |
+| `tests/release-validation` | `volicord-release-validation-tests` | 테스트 전용 create-new 정확한 후보 설명자 생산, 외부 셀·manifest 게이트, 별도 프로세스 audit 재계산. |
 | `xtask` | `xtask` | 문서 검증을 위한 저장소 유지보수 도구. Volicord 런타임 아키텍처의 일부가 아닙니다. |
 
 ## 공유 타입
@@ -164,7 +164,8 @@
 | `tests/conformance/baseline.rs` | Core 쪽 API를 통한 교차 메서드 기준 시나리오. |
 | `tests/integration/mcp_connection.rs` | MCP, Core, Store, Agent Connection을 가로지르는 동작 검증. |
 | `tests/integration/public_contract_snapshots.rs`와 `tests/integration/snapshots/` | 공개 스키마와 MCP 도구 계약 스냅샷 검증. |
-| `tests/release-validation` | [호스트 릴리스 증거](../reference/host-release-evidence.md)가 담당하는 정확한 외부 후보·셀·manifest·audit 검증, 고정 12개 셀 게이트, 별도 프로세스 재계산. 운영 crate가 의존하면 안 됩니다. |
+| `tests/release-validation/src/candidate.rs`와 `tests/release-validation/src/bin/host-release-candidate.rs` | 이미 외부에 배치한 정확한 최종 후보의 create-new 설명자 생산. 패키지가 공유하는 경로 및 후보 불변조건 평가를 사용합니다. |
+| `tests/release-validation` | [호스트 릴리스 증거](../reference/host-release-evidence.md)가 담당하는 정확한 외부 후보 설명자 생산과 셀·manifest·audit 검증, 고정 12개 셀 게이트, 별도 프로세스 재계산. 운영 crate가 의존하면 안 됩니다. |
 | `xtask/src/main.rs`와 `xtask/src/lib.rs` | 문서 검증을 포함한 읽기 전용 저장소 유지보수 명령. |
 
 이 소스 설명은 구현 배치 지침입니다. 이 지도와 집중 참조 담당 문서가 제품

@@ -58,6 +58,7 @@ pub struct CandidateArtifactInspection {
     pub sha256_after_path: Option<String>,
     pub path_identity_stable: bool,
     pub build: CandidateBuildIdentity,
+    initial_path_identity: FilesystemIdentity,
 }
 
 #[derive(Debug, Clone)]
@@ -1201,7 +1202,7 @@ pub fn read_bounded_external_file(
     max_bytes: u64,
 ) -> ValidationResult<Vec<u8>> {
     context.validate_existing_file(path)?;
-    let (mut file, metadata) = open_regular_file(path)?;
+    let (mut file, metadata, _) = open_regular_file(path)?;
     if metadata.len() > max_bytes {
         return Err(ValidationError::new(format!(
             "file exceeds {max_bytes} byte bound: {}",
@@ -1227,7 +1228,7 @@ pub fn sha256_external_file(
     max_bytes: Option<u64>,
 ) -> ValidationResult<String> {
     context.validate_existing_file(path)?;
-    let (mut file, metadata) = open_regular_file(path)?;
+    let (mut file, metadata, _) = open_regular_file(path)?;
     if max_bytes.is_some_and(|bound| metadata.len() > bound) {
         return Err(ValidationError::new(format!(
             "file exceeds {} byte bound: {}",
@@ -1264,7 +1265,7 @@ pub fn inspect_candidate_artifact(
     expected_sha256: &str,
 ) -> ValidationResult<CandidateArtifactInspection> {
     context.validate_existing_file(candidate_path)?;
-    let (mut held_candidate, initial_metadata) = open_regular_file(candidate_path)?;
+    let (mut held_candidate, _, initial_path_identity) = open_regular_file(candidate_path)?;
     let sha256_before = sha256_file_handle(&mut held_candidate)?;
     if sha256_before != expected_sha256 {
         return Err(ValidationError::new(format!(
@@ -1353,7 +1354,7 @@ pub fn inspect_candidate_artifact(
     let build = parse_candidate_version(stdout)?;
     let sha256_after_held = sha256_file_handle(&mut held_candidate)?;
     let (sha256_after_path, path_identity_stable) =
-        inspect_final_candidate_path(context, candidate_path, &initial_metadata);
+        inspect_final_candidate_path(context, candidate_path, initial_path_identity);
     Ok(CandidateArtifactInspection {
         sha256_before,
         private_copy_sha256,
@@ -1361,7 +1362,20 @@ pub fn inspect_candidate_artifact(
         sha256_after_path,
         path_identity_stable,
         build,
+        initial_path_identity,
     })
+}
+
+pub fn candidate_artifact_still_stable(
+    context: &ValidationContext,
+    candidate_path: &Path,
+    expected_sha256: &str,
+    inspection: &CandidateArtifactInspection,
+) -> ValidationResult<bool> {
+    context.validate_existing_file(candidate_path)?;
+    let (mut candidate, _, path_identity) = open_regular_file(candidate_path)?;
+    let digest = sha256_file_handle(&mut candidate)?;
+    Ok(digest == expected_sha256 && path_identity == inspection.initial_path_identity)
 }
 
 pub fn sha256_bytes(bytes: &[u8]) -> String {
@@ -1641,7 +1655,7 @@ fn ensure_no_symlink_components(path: &Path) -> ValidationResult<()> {
     Ok(())
 }
 
-fn open_regular_file(path: &Path) -> ValidationResult<(File, fs::Metadata)> {
+fn open_regular_file(path: &Path) -> ValidationResult<(File, fs::Metadata, FilesystemIdentity)> {
     let before = fs::symlink_metadata(path)?;
     if before.file_type().is_symlink() || !before.is_file() {
         return Err(ValidationError::new(format!(
@@ -1651,13 +1665,28 @@ fn open_regular_file(path: &Path) -> ValidationResult<(File, fs::Metadata)> {
     }
     let file = File::open(path)?;
     let after = file.metadata()?;
-    if !after.is_file() || !same_file(&before, &after) {
+    if !after.is_file() {
         return Err(ValidationError::new(format!(
             "input changed while opening: {}",
             path.display()
         )));
     }
-    Ok((file, after))
+    let identity = filesystem_identity(&file)?;
+    let final_path_metadata = fs::symlink_metadata(path)?;
+    if final_path_metadata.file_type().is_symlink() || !final_path_metadata.is_file() {
+        return Err(ValidationError::new(format!(
+            "input changed while opening: {}",
+            path.display()
+        )));
+    }
+    let current = File::open(path)?;
+    if !current.metadata()?.is_file() || filesystem_identity(&current)? != identity {
+        return Err(ValidationError::new(format!(
+            "input changed while opening: {}",
+            path.display()
+        )));
+    }
+    Ok((file, after, identity))
 }
 
 fn sha256_file_handle(file: &mut File) -> ValidationResult<String> {
@@ -1707,13 +1736,13 @@ fn make_private_copy_executable(_: &File) -> ValidationResult<()> {
 fn inspect_final_candidate_path(
     context: &ValidationContext,
     candidate_path: &Path,
-    initial_metadata: &fs::Metadata,
+    initial_path_identity: FilesystemIdentity,
 ) -> (Option<String>, bool) {
     let inspection = (|| -> ValidationResult<(String, bool)> {
         context.validate_existing_file(candidate_path)?;
-        let (mut final_file, final_metadata) = open_regular_file(candidate_path)?;
+        let (mut final_file, _, final_path_identity) = open_regular_file(candidate_path)?;
         let digest = sha256_file_handle(&mut final_file)?;
-        Ok((digest, same_file(initial_metadata, &final_metadata)))
+        Ok((digest, initial_path_identity == final_path_identity))
     })();
     match inspection {
         Ok((digest, identity_stable)) => (Some(digest), identity_stable),
@@ -1852,19 +1881,6 @@ fn validate_version_component(field: &str, value: &str) -> ValidationResult<()> 
         )));
     }
     Ok(())
-}
-
-#[cfg(unix)]
-fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    left.dev() == right.dev() && left.ino() == right.ino()
-}
-
-#[cfg(not(unix))]
-fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
-    left.len() == right.len()
-        && left.file_type().is_file() == right.file_type().is_file()
-        && left.modified().ok() == right.modified().ok()
 }
 
 fn hex_digest(bytes: &[u8]) -> String {

@@ -32,7 +32,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-test-support` | `volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
 | `tests/conformance` | `volicord-conformance-tests` | Baseline cross-method scenarios that exercise owner-defined behavior through Core-facing APIs and shared fixtures. |
 | `tests/integration` | `volicord-integration-tests` | Cross-layer MCP, Core, Store, Agent Connection binding, operation-category, and public schema snapshot tests. |
-| `tests/release-validation` | `volicord-release-validation-tests` | Test-only exact external candidate/cell/manifest/audit gate and separate-process recalculation. |
+| `tests/release-validation` | `volicord-release-validation-tests` | Test-only create-new exact-candidate descriptor production, external cell/manifest gate, and separate-process audit recalculation. |
 | `xtask` | `xtask` | Repository maintenance tooling for documentation validation. It is not part of Volicord runtime architecture. |
 
 ## Shared types
@@ -167,7 +167,8 @@ All source and test paths are relative to the repository root.
 | `tests/conformance/baseline.rs` | Cross-method baseline scenarios through Core-facing APIs. |
 | `tests/integration/mcp_connection.rs` | Cross-layer MCP/Core/Store and Agent Connection behavior coverage. |
 | `tests/integration/public_contract_snapshots.rs` and `tests/integration/snapshots/` | Public schema and MCP tool snapshot contract coverage. |
-| `tests/release-validation` | Exact external candidate/cell/manifest/audit validation owned by [Host Release Evidence](../reference/host-release-evidence.md), including the fixed twelve-cell gate and separate-process recalculation. No production crate may depend on it. |
+| `tests/release-validation/src/candidate.rs` and `tests/release-validation/src/bin/host-release-candidate.rs` | Create-new descriptor production for an already staged exact final candidate, using the package's shared path and candidate-invariant evaluation. |
+| `tests/release-validation` | Exact external candidate descriptor production and cell/manifest/audit validation owned by [Host Release Evidence](../reference/host-release-evidence.md), including the fixed twelve-cell gate and separate-process recalculation. No production crate may depend on it. |
 | `xtask/src/main.rs` and `xtask/src/lib.rs` | Read-only repository maintenance commands, including documentation validation. |
 
 These source descriptions are implementation placement guidance. If this map
