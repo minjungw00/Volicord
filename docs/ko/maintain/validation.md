@@ -441,6 +441,10 @@ Task가 없을 때의 대체 안내 UI, 안전한 Detective `block` 진입점, �
 정확한 상태와 영수증 동작은 [상태 메서드](../reference/api/method-status.md)와
 [API 상태 스키마](../reference/api/schema-state.md)가 계속 담당합니다. 이 체크리스트는
 릴리스 검증 실행과 증거 처리만 담당합니다.
+정확한 호스트 고유 검증 단언과 허용하는 Stop 결과 집합은
+[호스트 릴리스 증거](../reference/host-release-evidence.md)가, 숨겨진 Stop 이벤트 동작은
+[관리 CLI](../reference/admin-cli.md#guard-hook-commands)가, 차단 사유 의미는
+[`close_task`](../reference/api/method-close-task.md)가 계속 담당합니다.
 
 [위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 정확한 릴리스 후보와 두
 호스트의 식별 정보를 기록합니다. 아래의 각 최종 셀 경로는 `RESULT_ROOT/cells` 바로 아래에
@@ -473,30 +477,41 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
 2. 에이전트가 `advisor` Task를 만들고 `volicord.update_scope`로 현재 Change Unit과
    baseline을 만든 뒤, 기본 간결한 결과의 선택지를 소비해 그 선택지에 매핑된 비쓰기
    `shaping_update` Run을 `null`이 아닌 최소 close assessment와 함께 기록합니다.
-3. 새로 조회한 status가 `close_state=ready`, 빈 close blocker, 그리고
-   `AuthorityReceipt.latest_run_ref`를 보고합니다. 하네스는 시간이나 ID 정렬로 행을
-   고르지 않고 그 ref가 가리키는 정확한 Run을 읽습니다.
+3. 새로 조회한 LocalUser CLI 상태가 `close_state=ready`, 빈 닫기 차단 사유, 그리고
+   `AuthorityReceipt.latest_run_ref`를 보고합니다. 이는 LocalUser 상태 보기이며,
+   하네스는 시간이나 ID 정렬로 행을 고르지 않고 그 참조가 가리키는 정확한 Run을
+   읽습니다. 이 영수증을 연결 범위 Stop 영수증 대신 사용하지 않습니다.
 4. 일치하는 `user_action_requested`, `user_action_resolved`, `run_recorded` 권한
    이벤트 payload가 요청, 해결, 선택지, Run, kind, 비쓰기 사실을 보존하고, event
    sequence가 선택 해결 기록 뒤에 해당 Run이 기록됐음을 증명합니다.
-5. 실행 전 호스트 cursor 뒤에 정확히 하나의 새 Task 결속 Detective Stop 이벤트가
-   나타나고, 이유와 close blocker가 없는 `allow`를 기록하며, 새 status와 같은 완전한
-   `AuthorityReceipt`를 저장합니다. 운영자는 호스트 소유의 별도 관리 UI에서 완전한
-   canonical receipt JSON을 복사합니다. 운영자는 turn이 idle 상태가 되고 해당 관리
-   `Stop` system message가 나타날 때까지 기다린 뒤 호스트를 종료합니다. 프로세스 종료가
-   나중의 `Stop`을 합성하지는 않습니다. 하네스는 `state_version` 하나만 확인하지 않고
-   전체가 정확히 같은지 검사합니다.
+5. 실행 전 호스트 커서 뒤에 Task와 정확한 세션에 결속된 새 Detective Stop 이벤트가
+   정확히 하나 나타납니다. 저장된 결정, `allowed` 값, 이유, `close_state`, 완전한
+   `close_blockers`, 영수증은 내부적으로 일관되어야 합니다. 일부 관찰 경고나 다른 차단
+   사유가 없고 정확한 세션이 완전한 `mcp_start` 관찰 범위를 가지면 `ready` `allow`를
+   기록합니다. 정확한 활성 세션의 관찰 범위가 일부 관찰 경고가 있는
+   `first_project_selection` 또는 `method_boundary`이면
+   `deny`, `close_readiness_blocked`, 차단된 닫기 상태, 정확한
+   `session_watch_unavailable` 차단 사유를 기록합니다. Stop 영수증과 LocalUser 영수증은
+   Project, Task, `state_version`, 최신 Run에서 같아야 하지만 호출 맥락에서 파생되는 닫기
+   필드는 같을 필요가 없습니다. LocalUser의 `ready` 및 차단 사유 없음 상태는 깨끗한
+   픽스처의 전제일 뿐 호스트 고유 검증 단언 출처가 아닙니다. 하네스는 영속 GuardEvent에서
+   완전한 정규 Stop 영수증을 읽으며 최종 출력 UI 복사본을 요청하거나 증거로 인정하지
+   않습니다. 첫 차단된 Stop 메시지가 보인 뒤 호스트가 자동으로 재시도하면 두 번째 별도
+   Stop이 생기기 전에 운영자는 한 번 중단할 수 있습니다. 프로세스 종료가 나중의 Stop을
+   합성하지는 않습니다.
 6. 크기가 제한된 JSON 결과가 고유 `validation_run.run_id`, 시작·기록 시각, 호스트 버전,
    Volicord `build_id`, 정확한 Agent Connection ID, 운영자가 확인한 선택과 저장된 선택,
    권한 이벤트 순서, 소비한 Run, 최종 `result=passed`를 보고하며 대화 기록이나 프롬프트
    본문은 포함하지 않습니다. 외부 셀은 크기가 제한된 종단 파일로만 새로 만들며 기존
    목적지를 교체하지 않습니다.
 
-5번의 Task 결속 Stop 이벤트와 완전한 최신 receipt UI는 이 테스트의 Judgment 완료에
-필수인 증거입니다. 그러나 이 증거는 네 셀 최종 출력 매트릭스의 어떤 항목도 채우지
-못합니다. 그 매트릭스의 호스트·profile, Task 없음 fallback, Record 동작, block 동작,
-재생 검증은 별도로 남습니다. Judgment 실행 중 관찰한 그 밖의 최종 출력은 해당 실행의
-진단 자료일 뿐입니다.
+5번의 영속 Task 결속 Stop 이벤트는 이 테스트에 필요한 Judgment 이후 권한 관찰
+증거이며 Detective 닫기 상태가 `ready`라고 주장하지 않습니다. 유지하는 정확한 일부
+관찰 범위 차단만 호스트 고유 UserAction의 차단 증거로 사용할 수 있습니다. 그러나 이 관찰은 네 셀 최종
+출력
+매트릭스의 어떤 항목도 채우지 못합니다. 그 매트릭스의 호스트·프로필, Task 없음 대체
+경로, Record 동작, `block` 동작, 재생 검증은 별도로 남습니다. Judgment 실행 중
+관찰한 그 밖의 최종 출력은 해당 실행의 진단 자료일 뿐입니다.
 
 고유 elicitation을 사용할 수 없으면 테스트는 대기 항목이 `volicord inbox`에
 표시되고 현재 `volicord inbox resolve` 명령 형태를 사용할 수 있는지 확인합니다.

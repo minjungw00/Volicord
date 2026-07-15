@@ -1536,6 +1536,8 @@ documents:
   - reference.agent-connection
   - reference.mcp-transport
   - reference.admin-cli
+  - reference.api.method-close-task
+  - reference.api.schema-state
   - reference.security
   - reference.storage-records
   - architecture-guide.decision.managed-host-session-turn-binding

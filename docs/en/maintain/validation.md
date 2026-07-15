@@ -506,6 +506,10 @@ from either checklist cannot satisfy the other.
 Exact status and receipt behavior remains with the [status method](../reference/api/method-status.md)
 and [API State Schemas](../reference/api/schema-state.md); this checklist owns
 release-validation execution and evidence handling only.
+The exact native assertion and accepted Stop-outcome set remains with
+[Host Release Evidence](../reference/host-release-evidence.md), hidden Stop
+event behavior with [Administrative CLI](../reference/admin-cli.md#guard-hook-commands),
+and blocker meaning with [`close_task`](../reference/api/method-close-task.md).
 
 Use the [precreated result root above](#live-cell-result-root), then record the
 exact release-candidate identity and both host identities. Each final cell path
@@ -540,21 +544,32 @@ For each host, confirm all of these observations against the release candidate:
    baseline with `volicord.update_scope`, consumes the default compact result's
    selected option, and records the option-mapped no-write `shaping_update` Run
    with a non-null minimal close assessment.
-3. Fresh status reports `close_state=ready`, no close blockers, and an
-   `AuthorityReceipt.latest_run_ref`. The harness reads exactly that Run rather
-   than choosing a row by timestamp or ID ordering.
+3. Fresh LocalUser CLI status reports `close_state=ready`, no close blockers,
+   and an `AuthorityReceipt.latest_run_ref`. This is the LocalUser projection,
+   and the harness follows that ref to the exact Run rather than choosing a row
+   by timestamp or ID ordering. It does not substitute this receipt for the
+   connection-scoped Stop receipt.
 4. The matching `user_action_requested`, `user_action_resolved`, and
    `run_recorded` authority-event payloads preserve the request, resolution,
    selected option, Run, kind, and no-write fact, and their event sequences prove
    that the selected resolution was recorded before that Run.
-5. Exactly one new Task-bound Detective Stop event appears after the run's
-   pre-host cursor, records `allow` with no reasons or close blockers, and stores
-   the same complete `AuthorityReceipt` as fresh status. The operator copies the
-   complete canonical receipt JSON from the separate host-owned managed UI. The
-   operator waits for the turn to become idle and that managed `Stop` system
-   message to appear before exiting the host; process exit does not synthesize a
-   later `Stop`. The harness requires exact equality, not a state-version-only
-   confirmation.
+5. Exactly one new Task- and exact-session-bound Detective Stop event appears
+   after the run's pre-host cursor. Its stored decision, `allowed` value,
+   reasons, close state, complete blocker set, and receipt must be internally
+   consistent. An exact session with full `mcp_start` coverage, no
+   partial-coverage warning, and no other blocker records ready `allow`; an
+   active exact session with partial coverage
+   records `deny`, `close_readiness_blocked`, blocked close state, and the exact
+   `session_watch_unavailable` blocker only when its warning-bearing basis is
+   `first_project_selection` or `method_boundary`. The Stop receipt and the
+   LocalUser receipt must match on Project, Task, `state_version`, and latest Run, but
+   their context-derived close fields are not required to match. LocalUser
+   ready/blocker-free status is a clean-fixture precondition, not the native
+   assertion source. The harness reads the complete canonical Stop receipt from
+   the persisted GuardEvent; it neither requests nor credits a final-output UI
+   copy. After the first blocked Stop message is visible, an automatically
+   retrying host may be interrupted once before a second distinct Stop is
+   created; process exit does not synthesize a later Stop.
 6. The bounded JSON result reports a unique validation `run_id`, start and
    record times, host version, Volicord `build_id`, exact Agent Connection ID,
    operator-confirmed and stored choice, authority-event order, consumed Run,
@@ -562,12 +577,15 @@ For each host, confirm all of these observations against the release candidate:
    external cell is created only as a bounded terminal file and an existing
    destination is never replaced.
 
-The Task-bound Stop event and complete fresh receipt UI in item 5 are required
-Judgment-completion evidence for this test. They still do not fill any evidence
-item in the four-cell final-output matrix, whose host/profile, no-active-Task
-fallback, Record behavior, block behavior, and replay checks remain separate.
-Other final-output observations made during the Judgment test are diagnostic
-only for that run.
+The persisted Task-bound Stop event in item 5 is the required post-Judgment
+authority-observation evidence for this test; it does not assert that Detective
+close is ready. Only the exact maintained partial-coverage block remains
+eligible blocked native UserAction evidence. This observation still does not
+fill any evidence item in
+the four-cell final-output matrix, whose host/profile, no-active-Task fallback,
+Record behavior, block behavior, and replay checks remain separate. Other
+final-output observations made during the Judgment test are diagnostic only
+for that run.
 
 If native elicitation is unavailable, the test must verify that the pending item
 is visible in `volicord inbox` and that the current `volicord inbox resolve`

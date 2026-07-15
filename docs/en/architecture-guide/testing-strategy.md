@@ -234,7 +234,14 @@ and [Administrative CLI](../reference/admin-cli.md#managed-final-output-authorit
 
 ### Judgment round trips
 
-The Judgment checks remain separate from the final-output matrix:
+The Judgment checks remain separate from the final-output matrix.
+
+The exact release assertion and outcome set is owned by
+[Host Release Evidence](../reference/host-release-evidence.md), hidden Stop
+event behavior by [Administrative CLI](../reference/admin-cli.md#guard-hook-commands),
+and `session_watch_unavailable` blocker meaning by
+[`close_task`](../reference/api/method-close-task.md). This section owns test
+composition, not those product contracts.
 
 ```sh
 VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
@@ -248,8 +255,9 @@ reuse the runner's normal host authentication environment; the fixture does
 not copy credentials into its isolated Runtime Home. The operator must complete
 the applicable hook-trust preflight, approve the project/MCP entry when the host
 requires it, choose the answer in the host-native MCP elicitation UI, wait for
-the task-bound turn to become idle and display its managed `Stop` system
-message, and only then exit the host.
+the first task-bound managed `Stop` hook to complete, and only then exit the
+host. If a blocked host retries, the operator may interrupt before a second
+distinct Stop; no final-output receipt is copied or credited.
 
 A passing Judgment variant verifies marker Task and Judgment creation,
 host-native prompt/response recording with
@@ -271,14 +279,24 @@ the templates are not runnable recovery commands and do not turn the failed
 live-native check into a pass.
 
 The Judgment variants also capture the host's `--version` output and Volicord
-`build_id`, read a fresh CLI status, and require its `authority_receipt` to bind
-the same Project, Task, exact Run, ready close state, empty blocker set, and
-`state_version`. They also require exactly one new Task-bound Detective Stop
-event after the pre-host cursor, an `allow` decision with no reasons or close
-blockers, and a stored receipt equal to fresh status. The operator must copy the
-complete canonical receipt JSON from the separate host-owned managed UI, and
-the harness checks exact equality rather than accepting a state-version-only
-token. A bounded JSON summary is printed. Every authenticated twelve-cell
+`build_id`. A fresh LocalUser CLI status receipt must bind the same Project,
+Task, exact Run, ready close state, empty blocker set, and `state_version`, and
+the harness follows its latest-Run ref. Separately, exactly one new Task- and
+exact-session-bound Detective Stop event must appear after the pre-host cursor.
+The stored Stop decision, reasons, close state, complete blocker set, and its
+own receipt must be internally consistent. Full `mcp_start` coverage with no
+partial-coverage warning or other blocker yields ready `allow`; active partial
+coverage yields `deny` with
+`close_readiness_blocked` and the exact `session_watch_unavailable` blocker only
+when its warning-bearing basis is `first_project_selection` or
+`method_boundary`.
+The LocalUser and Stop receipts must share Project, Task, state-version, and
+latest-Run coordinates, but their context-derived close fields need not match.
+The LocalUser ready/blocker-free receipt is a clean-fixture sanity precondition,
+not the native assertion source. The harness reads and validates the complete
+canonical Stop receipt directly from the persisted GuardEvent; no final-output
+UI receipt is required or credited. A bounded JSON summary is printed. Every
+authenticated twelve-cell
 producer requires `VOLICORD_LIVE_HOST_RESULT_PATH` to name an absent direct
 child of the precreated external `RESULT_ROOT/cells` directory described by
 the [append-only live-cell publication contract](../reference/host-release-evidence.md#append-only-live-cell-publication).
@@ -295,12 +313,14 @@ bounded stages or installed final-name prefix allowed by the owner, which the
 harness never deletes or reuses. The record contains validation facts, not a
 transcript, credential, secret, or full prompt.
 
-The Task-bound Stop event and complete receipt UI are required evidence that the
-Judgment run reached its authoritative completion state. They cannot fill a
-cell or evidence field in the four-cell final-output matrix, and final-output
-matrix evidence cannot establish native Judgment elicitation. Other
-final-output, fallback, or replay observations made during the Judgment run are
-diagnostic only for that run.
+The persisted Task-bound Stop event is the required evidence of the
+post-Judgment authority observation, not evidence that Detective close is
+ready. Only the exact maintained partial-coverage block remains an eligible
+blocked outcome for the native UserAction cell. This observation cannot fill a
+cell or evidence field in the four-cell
+final-output matrix, and final-output matrix evidence cannot establish native
+Judgment elicitation. Other final-output, fallback, or replay observations made
+during the Judgment run are diagnostic only for that run.
 The Judgment inbox fallback is User Channel recovery evidence, not final-output
 `status_fallback` evidence.
 

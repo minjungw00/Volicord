@@ -411,6 +411,30 @@ the set selected by disposition and feature:
 | `record_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed` |
 | `detective_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed`, `block_finalization_observed` |
 
+For `native_user_action`, `authority_receipt_observed` means that the live cell
+observed the complete fresh receipt stored by the exact authenticated,
+same-connection, Task-bound Stop event. The receipt must bind the selected
+Project, Task, current `state_version`, and exact consuming Run, and the stored
+Stop decision, reasons, close state, and complete blocker set must be internally
+consistent with it. This assertion does not require `close_state=ready`, an
+empty blocker set, or a Stop `allow`. The maintained clean fixture admits
+exactly two Stop outcomes: ready `allow` under full `mcp_start` coverage with no
+warning or blocker, and `deny` with only `close_readiness_blocked` plus the
+exact `session_watch_unavailable` blocker under active partial
+`first_project_selection` or `method_boundary` coverage. Any other outcome
+fails this cell even when its receipt is truthful. The fresh LocalUser status
+must separately be ready and blocker-free as a clean-fixture sanity
+precondition; it is not the receipt that satisfies this assertion. A LocalUser
+CLI status receipt and an Agent Connection Stop receipt share authority
+coordinates but are invocation-context projections; their close state and
+blocker set need not be equal, so whole-receipt equality across those contexts
+is not an assertion.
+
+That native-cell observation does not satisfy `authority_display_observed`,
+`authenticated_exact_replay_observed`, or `block_finalization_observed` and
+does not promote either final-output feature. Those assertions remain owned
+only by their corresponding final-output cells.
+
 An honestly unrun implemented cell is represented by a present cell with
 `run_state=ignored`, required failing assertions, and a bounded evidence
 artifact. An unavailable host uses a null host-availability group and therefore
@@ -642,10 +666,15 @@ candidate, gate, or audit command.
 - [System Requirements](system-requirements.md) owns environment applicability.
 - [Agent Connection](agent-connection.md) owns runtime support and fallback.
 - [MCP Transport](mcp-transport.md) owns managed stdio transport behavior.
+- [API State Schemas](api/schema-state.md) owns the `AuthorityReceipt` and
+  close-readiness projection shapes.
+- [`close_task`](api/method-close-task.md) owns close-readiness blocker codes,
+  categories, and resolution meaning.
 - [Storage Records](storage-records.md) owns the bounded managed initialize
   identity placement in `session_watch_baselines.metadata_json`.
 - [Security](security.md) owns trust and non-authority boundaries.
-- [Administrative CLI](admin-cli.md) owns auxiliary operator projections.
+- [Administrative CLI](admin-cli.md#guard-hook-commands) owns hidden Stop-event
+  behavior and auxiliary operator projections.
 - [Validation](../maintain/validation.md) owns maintainer execution and reports.
 - [Host release evidence gate decision](../architecture-guide/decisions/host-release-evidence-gate.md)
   records why this contract is external and independently recalculated.

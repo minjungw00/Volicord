@@ -56,16 +56,16 @@ mod unix {
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
     use volicord_types::{
         canonical_json_bare_sha256, canonical_json_string, managed_host_session_id,
-        validate_managed_host_session_id, ArtifactRef, AuthorityReceipt, EvidenceCoverageItem,
-        EvidenceCoverageState, EvidenceProducer, EvidenceProducerKind, EvidenceRelevanceStatus,
-        EvidenceTarget, IntegrationProfile, ManagedMcpClientInfo,
-        PersistedEvidenceCaptureReceiptBody, PersistedEvidenceMetadata,
-        PersistedEvidenceObservationAuthority, PersistedUserActionRequest, StateRecordKind,
-        StateRecordRef, StatusCloseState, StatusResult, UserActionBasis, UserActionInboxForm,
-        UserActionPresentationPlan, UserActionPresentationSafety, UserActionRequestBody,
-        UserActionResolutionBody, USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS,
-        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
-        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+        validate_managed_host_session_id, ArtifactRef, AuthorityReceipt, CloseReadinessBlocker,
+        CloseReadinessBlockerCategory, EvidenceCoverageItem, EvidenceCoverageState,
+        EvidenceProducer, EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceTarget,
+        IntegrationProfile, ManagedMcpClientInfo, PersistedEvidenceCaptureReceiptBody,
+        PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
+        PersistedUserActionRequest, StateRecordKind, StateRecordRef, StatusCloseState,
+        StatusResult, UserActionBasis, UserActionInboxForm, UserActionPresentationPlan,
+        UserActionPresentationSafety, UserActionRequestBody, UserActionResolutionBody,
+        USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
         VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
 
@@ -106,6 +106,9 @@ mod unix {
     const RELEASE_CELL_SCHEMA: &str = "volicord-host-release-cell-v3";
     const RELEASE_SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
     const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
+    const NATIVE_STOP_OUTCOME_READY_ALLOW: &str = "ready_allow";
+    const NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_BLOCK: &str =
+        "detective_partial_coverage_block";
     const LIVE_EVIDENCE_OBSERVATION_RESULT_KIND: &str =
         "live_host_evidence_observation_release_validation";
     const LIVE_CLI_FALLBACK_RESULT_KIND: &str = "live_host_cli_fallback_release_validation";
@@ -1343,6 +1346,10 @@ mod unix {
         stale_only_summary["volicord"]["build_id"] = Value::String(volicord_build_id.clone());
         stale_only_summary["connection"]["connection_id"] = Value::String(connection_id.clone());
         stale_only_summary["stop_hook"]["connection_id"] = Value::String(connection_id.clone());
+        stale_only_summary["choice_consumption"]["created_by_actor_source"] =
+            Value::String(format!("agent_connection:{connection_id}"));
+        stale_only_summary["user_action"]["requested_by_actor_source"] =
+            Value::String(format!("agent_connection:{connection_id}"));
         stale_only_recorder.record_final(&stale_only_summary)?;
 
         let stale_only_cell: Value = serde_json::from_slice(&fs::read(&stale_only_cell_path)?)?;
@@ -1532,7 +1539,11 @@ mod unix {
         summary["host"]["version"] = Value::String(current_version.to_owned());
         summary["volicord"]["build_id"] = Value::String(volicord_build_id);
         summary["connection"]["connection_id"] = Value::String(connection_id.clone());
-        summary["stop_hook"]["connection_id"] = Value::String(connection_id);
+        summary["stop_hook"]["connection_id"] = Value::String(connection_id.clone());
+        summary["choice_consumption"]["created_by_actor_source"] =
+            Value::String(format!("agent_connection:{connection_id}"));
+        summary["user_action"]["requested_by_actor_source"] =
+            Value::String(format!("agent_connection:{connection_id}"));
         recorder.record_final(&summary)?;
 
         let cell_text = fs::read_to_string(&cell_path)?;
@@ -2221,14 +2232,50 @@ mod unix {
         let result = native_user_action_result_shape_fixture("codex", &"a".repeat(64));
         validate_live_user_action_result_shape(&result)?;
         validate_release_cell_passed_summary(HostFeature::NativeUserAction, &result)?;
+        let ready_allow =
+            native_user_action_ready_allow_result_shape_fixture("codex", &"a".repeat(64));
+        validate_live_user_action_result_shape(&ready_allow)?;
+        validate_release_cell_passed_summary(HostFeature::NativeUserAction, &ready_allow)?;
+        for (path, replacement) in [
+            (
+                &["session_watch", "status"][..],
+                Value::String("degraded".to_owned()),
+            ),
+            (
+                &["session_watch", "partial_coverage_warning_present"][..],
+                Value::Bool(true),
+            ),
+            (
+                &["stop_hook", "reason_codes"][..],
+                serde_json::json!(["close_readiness_blocked"]),
+            ),
+            (
+                &["stop_hook", "decision"][..],
+                Value::String("deny".to_owned()),
+            ),
+            (
+                &["authority_receipt", "close_blockers"][..],
+                serde_json::json!([{
+                    "category": "connection_capability",
+                    "code": "session_watch_unavailable",
+                    "can_resolve_in_chat": false,
+                    "outside_chat_action_required": true
+                }]),
+            ),
+        ] {
+            let mut mutated = ready_allow.clone();
+            set_nested_value(&mut mutated, path, replacement)?;
+            assert!(validate_live_user_action_result_shape(&mutated).is_err());
+            assert!(
+                validate_release_cell_passed_summary(HostFeature::NativeUserAction, &mutated)
+                    .is_err()
+            );
+        }
         for path in [
             &["user_action", "stored_choice_matches_operator"][..],
+            &["host_resume", "same_agent_connection"][..],
             &["native_ui", "user_action_selector_confirmed"][..],
             &["native_ui", "operator_choice_confirmed"][..],
-            &[
-                "native_ui",
-                "stop_system_message_authority_receipt_confirmed",
-            ][..],
             &["stop_hook", "decision_observed_from_guard_event"][..],
             &["authority_events", "ordered"][..],
         ] {
@@ -2249,11 +2296,49 @@ mod unix {
                 &["stop_hook", "guard_event_id"][..],
                 Value::String("GE-native-fixture".to_owned()),
             ),
+            (
+                &["choice_consumption", "created_by_actor_source"][..],
+                Value::String("agent_connection:CONN-other".to_owned()),
+            ),
+            (
+                &["user_action", "requested_by_actor_source"][..],
+                Value::String("agent_connection:CONN-other".to_owned()),
+            ),
+            (
+                &["user_action", "channel_kind"][..],
+                Value::String("cli".to_owned()),
+            ),
+            (&["stop_hook", "allowed"][..], Value::Bool(true)),
+            (
+                &["stop_hook", "outcome"][..],
+                Value::String(NATIVE_STOP_OUTCOME_READY_ALLOW.to_owned()),
+            ),
+            (
+                &["stop_hook", "reason_codes"][..],
+                serde_json::json!(["close_readiness_blocked", "other"]),
+            ),
+            (
+                &["authority_receipt", "observation_source"][..],
+                Value::String("local_user_status".to_owned()),
+            ),
+            (
+                &["session_watch", "coverage_basis"][..],
+                Value::String("mcp_start".to_owned()),
+            ),
+            (
+                &["session_watch", "partial_coverage_warning_present"][..],
+                Value::Bool(false),
+            ),
+            (&["local_user_status", "state_version"][..], Value::from(4)),
         ] {
             let mut mutated = result.clone();
             set_nested_value(&mut mutated, path, replacement)?;
             assert!(validate_live_user_action_result_shape(&mutated).is_err());
         }
+        let mut wrong_blocker = result;
+        wrong_blocker["authority_receipt"]["close_blockers"][0]["code"] =
+            Value::String("other_blocker".to_owned());
+        assert!(validate_live_user_action_result_shape(&wrong_blocker).is_err());
         Ok(())
     }
 
@@ -7206,7 +7291,7 @@ mod unix {
         let prompt = live_user_action_prompt(&marker, &project_id);
         let judgment_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
         println!(
-            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. After it reports the final Volicord status, wait until the turn is idle and the managed Stop systemMessage receipt is visible before exiting the host.\n\n{prompt}\n=== end instruction ===\n"
+            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. After it reports the final Volicord status, let the first managed Stop hook complete. If Stop is blocked and the host retries, interrupt before a second distinct Stop and exit without claiming close. The harness reads the persisted Stop receipt directly; do not copy a final-output receipt.\n\n{prompt}\n=== end instruction ===\n"
         );
         let status = fixture.run_authenticated_interactive_host(
             host,
@@ -7267,6 +7352,17 @@ mod unix {
             Some("local_user"),
             "resolved user action must be owned by the local user"
         );
+        let expected_request_actor = format!("agent_connection:{}", identity.connection_id);
+        assert_eq!(
+            observation.requested_by_actor_source.as_deref(),
+            Some(expected_request_actor.as_str()),
+            "the user-action request must originate from the authenticated Agent Connection"
+        );
+        assert_eq!(
+            observation.resolved_channel_kind.as_deref(),
+            Some("mcp_elicitation"),
+            "the live round trip must resolve through the MCP elicitation channel"
+        );
         assert_eq!(
             observation.resolved_verification_basis.as_deref(),
             Some(VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL),
@@ -7291,6 +7387,7 @@ mod unix {
                 .any(|option_id| option_id == USER_ACTION_ROUTE_BETA_OPTION_ID),
             "the live user action is missing the beta route option"
         );
+        assert_single_live_product_decision_request(&fixture, &observation)?;
         let operator_choice_id = confirm_native_user_action_choice(host)?;
         let selected_option_id = observation
             .selected_option_id
@@ -7349,6 +7446,11 @@ mod unix {
             latest_run.changed_paths.is_empty(),
             "the choice-consumption Run must not report changed Product Repository paths"
         );
+        assert_eq!(
+            latest_run.created_by_actor_source,
+            format!("agent_connection:{}", identity.connection_id),
+            "the choice-consumption Run must be recorded through the same Agent Connection"
+        );
         assert!(
             observation.state_version >= 5,
             "intake, Change Unit creation, user-action creation, User Channel resolution, and the choice-consumption Run must advance Task state"
@@ -7357,7 +7459,7 @@ mod unix {
             observation.lifecycle_phase, "waiting_user",
             "a resolved sole user action must leave the Task out of waiting_user"
         );
-        let stop_observation = verify_live_stop_guard_event(
+        let stop_observation = verify_live_native_user_action_stop_guard_event(
             &fixture.runtime_home_path,
             &identity.connection_id,
             &observation,
@@ -7369,35 +7471,6 @@ mod unix {
             &identity.connection_id,
             &observation.project_id,
         )?;
-        if let Err(error) = confirm_final_output_ui(
-            host,
-            IntegrationProfile::Detective,
-            FinalOutputUiExpectation::CompleteAuthorityReceipt {
-                canonical_json: canonical_json_string(&receipt.canonical_receipt)?,
-            },
-        ) {
-            let summary = live_host_completed_summary(LiveCompletedSummaryInput {
-                result: "failed_receipt_ui_confirmation",
-                identity: &identity,
-                observation: &observation,
-                operator_choice_id: &operator_choice_id,
-                selected_option_id,
-                latest_run: &latest_run,
-                authority_event_order: &authority_event_order,
-                stop_observation: &stop_observation,
-                receipt: &receipt,
-                stop_receipt_ui_confirmed: false,
-                host_feature_diagnostics: &host_feature_diagnostics,
-            });
-            validate_release_host_feature_diagnostics(
-                &summary,
-                Some(IntegrationProfile::Detective),
-                true,
-                true,
-            )?;
-            result_recorder.record_final(&summary)?;
-            return Err(error);
-        }
         let summary = live_host_completed_summary(LiveCompletedSummaryInput {
             result: "passed",
             identity: &identity,
@@ -7408,7 +7481,6 @@ mod unix {
             authority_event_order: &authority_event_order,
             stop_observation: &stop_observation,
             receipt: &receipt,
-            stop_receipt_ui_confirmed: true,
             host_feature_diagnostics: &host_feature_diagnostics,
         });
         validate_release_host_feature_diagnostics(
@@ -7421,7 +7493,7 @@ mod unix {
         smoke_note(
             host,
             format!(
-                "verified user action {}, selected option {}, consumed marker {}, User Channel basis {}, Task phase {}, state_version {}, Stop systemMessage receipt UI confirmed",
+                "verified user action {}, selected option {}, consumed marker {}, User Channel basis {}, Task phase {}, state_version {}, persisted exact-session Stop receipt observed",
                 observation.user_action_request_id.as_deref().unwrap_or("unknown"),
                 selected_option_id,
                 expected_run_marker,
@@ -7447,7 +7519,7 @@ mod unix {
                 "   - `option_id={beta_option_id}`, label `Route beta`, description `Select the beta live-smoke route.`, consequence `The agent records the beta choice-consumption Run marker.`, `is_default=false`.\n",
                 "4. Wait for the host's native MCP elicitation/User Channel UI. The human running this smoke will choose the answer. Never infer, fabricate, or submit that answer yourself.\n",
                 "5. After Volicord reports the user action resolved, consume `structuredContent.method_result.resolution_summary.selected_option_id` from that default compact result. If it is `{alpha_option_id}`, call `volicord.record_run` with summary exactly `{alpha_run_marker}`. If it is `{beta_option_id}`, call `volicord.record_run` with summary exactly `{beta_run_marker}`. Use the retained Task ID, Change Unit ID, and baseline ref; set `kind=shaping_update`, `run_id=null`, `write_ticket_id=null`, `artifact_inputs=[]`, `evidence_updates=[]`, and `evidence_observations=[]`; report `changed_paths=[]`, `product_file_write_observed=false`, `sensitive_categories=[]`, and the same baseline ref in `observed_changes`. Supply a non-null `close_assessment` whose `result_summary` is exactly the selected Run marker and whose `result_refs`, `residual_risks`, `sensitive_categories`, and `recovery_constraints` are all empty arrays. Do not record a Run if the selected option is absent or unrecognized.\n",
-                "6. After that Run is recorded, call `volicord.status` for the Task and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop.\n\n",
+                "6. After that Run is recorded, call `volicord.status` for the Task and report the selected option ID, exact Run marker, lifecycle phase, close state, close-blocker count, and state version. Then stop. If the managed Stop hook reports `session_watch_unavailable`, do not claim close readiness or attempt to repair coverage.\n\n",
                 "If a native prompt does not appear and Volicord returns only a pending `user_action_request_summary`, do not simulate a resolution or execute a fallback command. Report that the CLI User Channel is required and stop so the disposable harness can verify the trusted CLI inbox and resolve-command shape."
             ),
             routing_instruction = routing_instruction,
@@ -10353,6 +10425,7 @@ mod unix {
             },
             "volicord": { "build_id": "fixture-build-id" },
             "connection": { "connection_id": "CONN-native-fixture" },
+            "host_resume": { "same_agent_connection": true },
             "host_feature_support": diagnostics.host_feature_support,
             "final_output_authority_disclosure": diagnostics.final_output_authority_disclosure,
             "task": {
@@ -10363,15 +10436,18 @@ mod unix {
             },
             "user_action": {
                 "user_action_request_id": "UAR-native-fixture",
+                "requested_by_actor_source": "agent_connection:CONN-native-fixture",
                 "selected_option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
                 "operator_confirmed_option_id": USER_ACTION_ROUTE_ALPHA_OPTION_ID,
                 "stored_choice_matches_operator": true,
+                "channel_kind": "mcp_elicitation",
                 "user_channel_basis": VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
             },
             "choice_consumption": {
                 "run_id": "RUN-native-fixture",
                 "run_kind": "shaping_update",
                 "run_marker": USER_ACTION_ROUTE_ALPHA_RUN_MARKER,
+                "created_by_actor_source": "agent_connection:CONN-native-fixture",
                 "product_file_write_observed": false,
                 "changed_path_count": 0
             },
@@ -10383,19 +10459,21 @@ mod unix {
             },
             "native_ui": {
                 "user_action_selector_confirmed": true,
-                "operator_choice_confirmed": true,
-                "stop_system_message_authority_receipt_confirmed": true
+                "operator_choice_confirmed": true
             },
             "stop_hook": {
                 "guard_event_id": format!("guard_event_{}", "1".repeat(16)),
                 "session_id": format!("mhs_{}", "2".repeat(64)),
                 "connection_id": "CONN-native-fixture",
-                "decision": "allow",
+                "decision": "deny",
+                "allowed": false,
+                "reason_codes": ["close_readiness_blocked"],
+                "outcome": NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_BLOCK,
                 "decision_observed_from_guard_event": true,
                 "receipt_state_version": 5,
                 "latest_run_id": "RUN-native-fixture"
             },
-            "authority_receipt": {
+            "local_user_status": {
                 "project_id": "PRJ-native-fixture",
                 "task_id": "TASK-native-fixture",
                 "state_version": 5,
@@ -10403,8 +10481,43 @@ mod unix {
                 "close_state": "ready",
                 "close_blocker_count": 0
             },
+            "authority_receipt": {
+                "observation_source": "persisted_stop_guard_event",
+                "project_id": "PRJ-native-fixture",
+                "task_id": "TASK-native-fixture",
+                "state_version": 5,
+                "latest_run_id": "RUN-native-fixture",
+                "close_state": "blocked",
+                "close_blockers": [{
+                    "category": "connection_capability",
+                    "code": "session_watch_unavailable",
+                    "can_resolve_in_chat": false,
+                    "outside_chat_action_required": true
+                }]
+            },
+            "session_watch": {
+                "status": "active",
+                "coverage_basis": "method_boundary",
+                "partial_coverage_warning_present": true
+            },
             "cli_fallback": { "verified": false }
         })
+    }
+
+    fn native_user_action_ready_allow_result_shape_fixture(
+        host: &str,
+        executable_sha256: &str,
+    ) -> Value {
+        let mut value = native_user_action_result_shape_fixture(host, executable_sha256);
+        value["stop_hook"]["decision"] = Value::String("allow".to_owned());
+        value["stop_hook"]["allowed"] = Value::Bool(true);
+        value["stop_hook"]["reason_codes"] = serde_json::json!([]);
+        value["stop_hook"]["outcome"] = Value::String(NATIVE_STOP_OUTCOME_READY_ALLOW.to_owned());
+        value["authority_receipt"]["close_state"] = Value::String("ready".to_owned());
+        value["authority_receipt"]["close_blockers"] = serde_json::json!([]);
+        value["session_watch"]["coverage_basis"] = Value::String("mcp_start".to_owned());
+        value["session_watch"]["partial_coverage_warning_present"] = Value::Bool(false);
+        value
     }
 
     fn producer_result_shape_fixture(feature: HostFeature) -> Value {
@@ -12116,13 +12229,153 @@ mod unix {
         Ok(())
     }
 
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct NativeStopBlockerFacts {
+        category: String,
+        code: String,
+        can_resolve_in_chat: bool,
+        outside_chat_action_required: bool,
+    }
+
+    impl NativeStopBlockerFacts {
+        fn from_blocker(blocker: &CloseReadinessBlocker) -> Result<Self, Box<dyn Error>> {
+            Ok(Self {
+                category: serde_json::to_value(blocker.category)?
+                    .as_str()
+                    .ok_or_else(|| io::Error::other("close blocker category is not a string"))?
+                    .to_owned(),
+                code: blocker.code.clone(),
+                can_resolve_in_chat: blocker.can_resolve_in_chat,
+                outside_chat_action_required: blocker.outside_chat_action_required,
+            })
+        }
+
+        fn from_result_value(value: &Value) -> Result<Self, Box<dyn Error>> {
+            require_exact_live_evidence_result_keys(
+                value,
+                "",
+                &[
+                    "category",
+                    "code",
+                    "can_resolve_in_chat",
+                    "outside_chat_action_required",
+                ],
+            )?;
+            Ok(Self {
+                category: required_result_string(value, "/category")?.to_owned(),
+                code: required_result_string(value, "/code")?.to_owned(),
+                can_resolve_in_chat: value["can_resolve_in_chat"].as_bool().ok_or_else(|| {
+                    io::Error::other("native Stop blocker has no can_resolve_in_chat Boolean")
+                })?,
+                outside_chat_action_required: value["outside_chat_action_required"]
+                    .as_bool()
+                    .ok_or_else(|| {
+                        io::Error::other(
+                            "native Stop blocker has no outside_chat_action_required Boolean",
+                        )
+                    })?,
+            })
+        }
+
+        fn to_value(&self) -> Value {
+            serde_json::json!({
+                "category": self.category,
+                "code": self.code,
+                "can_resolve_in_chat": self.can_resolve_in_chat,
+                "outside_chat_action_required": self.outside_chat_action_required
+            })
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum VerifiedNativeStopOutcome {
+        ReadyAllow,
+        DetectivePartialCoverageBlock,
+    }
+
+    impl VerifiedNativeStopOutcome {
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::ReadyAllow => NATIVE_STOP_OUTCOME_READY_ALLOW,
+                Self::DetectivePartialCoverageBlock => {
+                    NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_BLOCK
+                }
+            }
+        }
+    }
+
+    struct NativeStopOutcomeFacts<'a> {
+        decision: &'a str,
+        allowed: bool,
+        reason_codes: &'a [String],
+        close_state: StatusCloseState,
+        blockers: &'a [NativeStopBlockerFacts],
+        session_watch_status: &'a str,
+        session_watch_coverage_basis: &'a str,
+        partial_coverage_warning_present: bool,
+    }
+
+    fn verify_native_stop_outcome(
+        facts: NativeStopOutcomeFacts<'_>,
+    ) -> Result<VerifiedNativeStopOutcome, Box<dyn Error>> {
+        if facts.decision == "allow"
+            && facts.allowed
+            && facts.reason_codes.is_empty()
+            && facts.close_state == StatusCloseState::Ready
+            && facts.blockers.is_empty()
+            && facts.session_watch_status == SessionWatchStatus::Active.as_str()
+            && facts.session_watch_coverage_basis == "mcp_start"
+            && !facts.partial_coverage_warning_present
+        {
+            return Ok(VerifiedNativeStopOutcome::ReadyAllow);
+        }
+        if facts.decision == "deny"
+            && !facts.allowed
+            && facts.reason_codes == ["close_readiness_blocked"]
+            && facts.close_state == StatusCloseState::Blocked
+            && facts.blockers
+                == [NativeStopBlockerFacts {
+                    category: serde_json::to_value(
+                        CloseReadinessBlockerCategory::ConnectionCapability,
+                    )?
+                    .as_str()
+                    .expect("close blocker category serializes as a string")
+                    .to_owned(),
+                    code: "session_watch_unavailable".to_owned(),
+                    can_resolve_in_chat: false,
+                    outside_chat_action_required: true,
+                }]
+            && facts.session_watch_status == SessionWatchStatus::Active.as_str()
+            && matches!(
+                facts.session_watch_coverage_basis,
+                "first_project_selection" | "method_boundary"
+            )
+            && facts.partial_coverage_warning_present
+        {
+            return Ok(VerifiedNativeStopOutcome::DetectivePartialCoverageBlock);
+        }
+        Err(io::Error::other(
+            "native UserAction Stop outcome is neither ready allow nor the exact Detective partial-coverage block",
+        )
+        .into())
+    }
+
     struct VerifiedStopObservation {
         guard_event_id: String,
         session_id: String,
         connection_id: String,
         decision: String,
+        allowed: bool,
+        reason_codes: Vec<String>,
         state_version: u64,
         latest_run_id: String,
+        close_state: StatusCloseState,
+        blockers: Vec<NativeStopBlockerFacts>,
+        canonical_receipt: AuthorityReceipt,
+        native_outcome: Option<VerifiedNativeStopOutcome>,
+        session_watch_status: Option<String>,
+        session_watch_coverage_basis: Option<String>,
+        partial_coverage_warning_present: Option<bool>,
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -12657,12 +12910,53 @@ mod unix {
         })
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum StopVerificationPolicy {
+        RequireReadyAllow,
+        NativeUserActionAuthority,
+    }
+
     fn verify_live_stop_guard_event(
         runtime_home: &Path,
         connection_id: &str,
         observation: &LiveUserActionObservation,
         receipt: &VerifiedLiveReceipt,
         cursor: StopEventCursor,
+    ) -> Result<VerifiedStopObservation, Box<dyn Error>> {
+        verify_live_stop_guard_event_with_policy(
+            runtime_home,
+            connection_id,
+            observation,
+            receipt,
+            cursor,
+            StopVerificationPolicy::RequireReadyAllow,
+        )
+    }
+
+    fn verify_live_native_user_action_stop_guard_event(
+        runtime_home: &Path,
+        connection_id: &str,
+        observation: &LiveUserActionObservation,
+        local_user_receipt: &VerifiedLiveReceipt,
+        cursor: StopEventCursor,
+    ) -> Result<VerifiedStopObservation, Box<dyn Error>> {
+        verify_live_stop_guard_event_with_policy(
+            runtime_home,
+            connection_id,
+            observation,
+            local_user_receipt,
+            cursor,
+            StopVerificationPolicy::NativeUserActionAuthority,
+        )
+    }
+
+    fn verify_live_stop_guard_event_with_policy(
+        runtime_home: &Path,
+        connection_id: &str,
+        observation: &LiveUserActionObservation,
+        local_user_receipt: &VerifiedLiveReceipt,
+        cursor: StopEventCursor,
+        policy: StopVerificationPolicy,
     ) -> Result<VerifiedStopObservation, Box<dyn Error>> {
         let projects = list_projects(runtime_home)?;
         let project = projects
@@ -12702,23 +12996,39 @@ mod unix {
             {
                 continue;
             }
-            if decision != "allow"
-                || result.get("decision").and_then(Value::as_str) != Some("allow")
-                || result.get("allowed").and_then(Value::as_bool) != Some(true)
-                || result
-                    .get("reasons")
-                    .and_then(Value::as_array)
-                    .is_none_or(|reasons| !reasons.is_empty())
-                || result
-                    .pointer("/close_status/close_blockers")
-                    .and_then(Value::as_array)
-                    .is_none_or(|blockers| !blockers.is_empty())
+            let result_decision = result
+                .get("decision")
+                .and_then(Value::as_str)
+                .ok_or_else(|| io::Error::other("the live Stop result has no decision"))?;
+            let allowed = result
+                .get("allowed")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| io::Error::other("the live Stop result has no allowed Boolean"))?;
+            if decision != result_decision
+                || !matches!(decision.as_str(), "allow" | "deny")
+                || allowed != (decision == "allow")
             {
                 return Err(io::Error::other(
-                    "the latest matching live Stop hook did not record an allow decision with no reasons or close blockers",
+                    "the stored live Stop decision and result decision are inconsistent",
                 )
                 .into());
             }
+            let reason_codes = result
+                .get("reasons")
+                .and_then(Value::as_array)
+                .ok_or_else(|| io::Error::other("the live Stop result has no reasons array"))?
+                .iter()
+                .map(|reason| {
+                    reason
+                        .get("code")
+                        .and_then(Value::as_str)
+                        .filter(|code| !code.is_empty())
+                        .map(str::to_owned)
+                        .ok_or_else(|| {
+                            io::Error::other("the live Stop result has an invalid reason")
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             let stop_receipt: AuthorityReceipt = serde_json::from_value(
                 result
                     .pointer("/close_status/authority_receipt")
@@ -12729,9 +13039,25 @@ mod unix {
                         )
                     })?,
             )?;
-            if stop_receipt != receipt.canonical_receipt {
+            let stop_close_state: StatusCloseState = serde_json::from_value(
+                result
+                    .pointer("/close_status/close_state")
+                    .cloned()
+                    .ok_or_else(|| io::Error::other("the live Stop result has no close state"))?,
+            )?;
+            let stop_close_blockers: Vec<CloseReadinessBlocker> = serde_json::from_value(
+                result
+                    .pointer("/close_status/close_blockers")
+                    .cloned()
+                    .ok_or_else(|| {
+                        io::Error::other("the live Stop result has no close blockers")
+                    })?,
+            )?;
+            if stop_receipt.close_state != stop_close_state
+                || stop_receipt.close_blockers != stop_close_blockers
+            {
                 return Err(io::Error::other(
-                    "the live Stop allow event AuthorityReceipt does not exactly equal the fresh CLI status AuthorityReceipt",
+                    "the live Stop close projection and AuthorityReceipt are inconsistent",
                 )
                 .into());
             }
@@ -12739,8 +13065,113 @@ mod unix {
                 io::Error::other("the live Stop AuthorityReceipt has no latest_run_ref")
             })?;
             let session_id = session_id.ok_or_else(|| {
-                io::Error::other("the live Stop allow event is not bound to a host session")
+                io::Error::other("the live Stop event is not bound to a host session")
             })?;
+            validate_managed_host_session_id(&session_id)?;
+            if stop_receipt.project_id.as_str() != observation.project_id
+                || stop_receipt.project_id.as_str() != local_user_receipt.project_id
+                || stop_receipt.state_version != observation.state_version
+                || stop_receipt.state_version != local_user_receipt.state_version
+                || stop_receipt.task_ref.record_kind != StateRecordKind::Task
+                || stop_receipt.task_ref.project_id.as_str() != observation.project_id
+                || stop_receipt.task_ref.record_id.as_str() != observation.task_id
+                || stop_receipt
+                    .task_ref
+                    .task_id
+                    .as_ref()
+                    .map(|task_id| task_id.as_str())
+                    != Some(observation.task_id.as_str())
+                || stop_receipt.task_ref.produced_at_state_version.as_ref()
+                    != Some(&observation.state_version)
+                || stop_latest_run.record_kind != StateRecordKind::Run
+                || stop_latest_run.project_id.as_str() != observation.project_id
+                || stop_latest_run
+                    .task_id
+                    .as_ref()
+                    .map(|task_id| task_id.as_str())
+                    != Some(observation.task_id.as_str())
+                || stop_latest_run.produced_at_state_version.as_ref()
+                    != Some(&observation.state_version)
+                || stop_latest_run.record_id.as_str() != local_user_receipt.latest_run_id
+            {
+                return Err(io::Error::other(
+                    "the live Stop AuthorityReceipt does not share the fresh Project, Task, state_version, and latest Run authority coordinates",
+                )
+                .into());
+            }
+            let blockers = stop_close_blockers
+                .iter()
+                .map(NativeStopBlockerFacts::from_blocker)
+                .collect::<Result<Vec<_>, _>>()?;
+            let (
+                native_outcome,
+                session_watch_status,
+                session_watch_coverage_basis,
+                partial_coverage_warning_present,
+            ) = match policy {
+                StopVerificationPolicy::RequireReadyAllow => {
+                    if decision != "allow"
+                        || !allowed
+                        || !reason_codes.is_empty()
+                        || stop_close_state != StatusCloseState::Ready
+                        || !blockers.is_empty()
+                        || stop_receipt != local_user_receipt.canonical_receipt
+                    {
+                        return Err(io::Error::other(
+                            "the latest matching live Stop hook did not record an allow decision with no reasons or close blockers and the exact fresh CLI receipt",
+                        )
+                        .into());
+                    }
+                    (None, None, None, None)
+                }
+                StopVerificationPolicy::NativeUserActionAuthority => {
+                    let baseline = latest_watch_baseline_for_session(
+                        runtime_home,
+                        &observation.project_id,
+                        &session_id,
+                    )?
+                    .ok_or_else(|| {
+                        io::Error::other("the native UserAction Stop session has no watch baseline")
+                    })?;
+                    if baseline.connection_internal_id != connection_id {
+                        return Err(io::Error::other(
+                            "the native UserAction Stop baseline belongs to another connection",
+                        )
+                        .into());
+                    }
+                    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+                    let coverage_basis = metadata
+                        .get("coverage_basis")
+                        .and_then(Value::as_str)
+                        .filter(|basis| !basis.is_empty())
+                        .ok_or_else(|| {
+                            io::Error::other(
+                                "the native UserAction Stop baseline has no coverage basis",
+                            )
+                        })?
+                        .to_owned();
+                    let warning_present = metadata
+                        .get("partial_coverage_warning")
+                        .and_then(Value::as_str)
+                        .is_some_and(|warning| !warning.trim().is_empty());
+                    let outcome = verify_native_stop_outcome(NativeStopOutcomeFacts {
+                        decision: &decision,
+                        allowed,
+                        reason_codes: &reason_codes,
+                        close_state: stop_close_state,
+                        blockers: &blockers,
+                        session_watch_status: &baseline.status,
+                        session_watch_coverage_basis: &coverage_basis,
+                        partial_coverage_warning_present: warning_present,
+                    })?;
+                    (
+                        Some(outcome),
+                        Some(baseline.status),
+                        Some(coverage_basis),
+                        Some(warning_present),
+                    )
+                }
+            };
             if matched.is_some() {
                 return Err(io::Error::other(
                     "the authenticated host produced more than one matching Stop event after the validation cursor",
@@ -12752,8 +13183,17 @@ mod unix {
                 session_id,
                 connection_id: stored_connection_id,
                 decision,
+                allowed,
+                reason_codes,
                 state_version: stop_receipt.state_version,
                 latest_run_id: stop_latest_run.record_id.as_str().to_owned(),
+                close_state: stop_close_state,
+                blockers,
+                canonical_receipt: stop_receipt,
+                native_outcome,
+                session_watch_status,
+                session_watch_coverage_basis,
+                partial_coverage_warning_present,
             });
         }
         matched.ok_or_else(|| {
@@ -13073,6 +13513,7 @@ mod unix {
                     "host",
                     "volicord",
                     "connection",
+                    "host_resume",
                     "host_feature_support",
                     "final_output_authority_disclosure",
                     "task",
@@ -13081,13 +13522,16 @@ mod unix {
                     "authority_events",
                     "native_ui",
                     "stop_hook",
+                    "local_user_status",
                     "authority_receipt",
+                    "session_watch",
                     "cli_fallback",
                 ][..],
             ),
             ("/host", &["kind", "version", "executable_sha256"][..]),
             ("/volicord", &["build_id"][..]),
             ("/connection", &["connection_id"][..]),
+            ("/host_resume", &["same_agent_connection"][..]),
             (
                 "/task",
                 &["project_id", "task_id", "lifecycle_phase", "state_version"][..],
@@ -13096,9 +13540,11 @@ mod unix {
                 "/user_action",
                 &[
                     "user_action_request_id",
+                    "requested_by_actor_source",
                     "selected_option_id",
                     "operator_confirmed_option_id",
                     "stored_choice_matches_operator",
+                    "channel_kind",
                     "user_channel_basis",
                 ][..],
             ),
@@ -13108,6 +13554,7 @@ mod unix {
                     "run_id",
                     "run_kind",
                     "run_marker",
+                    "created_by_actor_source",
                     "product_file_write_observed",
                     "changed_path_count",
                 ][..],
@@ -13126,7 +13573,6 @@ mod unix {
                 &[
                     "user_action_selector_confirmed",
                     "operator_choice_confirmed",
-                    "stop_system_message_authority_receipt_confirmed",
                 ][..],
             ),
             (
@@ -13136,13 +13582,16 @@ mod unix {
                     "session_id",
                     "connection_id",
                     "decision",
+                    "allowed",
+                    "reason_codes",
+                    "outcome",
                     "decision_observed_from_guard_event",
                     "receipt_state_version",
                     "latest_run_id",
                 ][..],
             ),
             (
-                "/authority_receipt",
+                "/local_user_status",
                 &[
                     "project_id",
                     "task_id",
@@ -13150,6 +13599,26 @@ mod unix {
                     "latest_run_id",
                     "close_state",
                     "close_blocker_count",
+                ][..],
+            ),
+            (
+                "/authority_receipt",
+                &[
+                    "observation_source",
+                    "project_id",
+                    "task_id",
+                    "state_version",
+                    "latest_run_id",
+                    "close_state",
+                    "close_blockers",
+                ][..],
+            ),
+            (
+                "/session_watch",
+                &[
+                    "status",
+                    "coverage_basis",
+                    "partial_coverage_warning_present",
                 ][..],
             ),
             ("/cli_fallback", &["verified"][..]),
@@ -13184,6 +13653,7 @@ mod unix {
                 io::Error::other("native-user-action result stores an unknown choice")
             })?;
         let run_id = required_result_string(value, "/choice_consumption/run_id")?;
+        let expected_actor_source = format!("agent_connection:{connection_id}");
         let requested_event_seq =
             required_result_u64(value, "/authority_events/user_action_requested_event_seq")?;
         let resolved_event_seq =
@@ -13198,12 +13668,65 @@ mod unix {
             "native-user-action session id",
             required_result_string(value, "/stop_hook/session_id")?,
         )?;
+        let stop_decision = required_result_string(value, "/stop_hook/decision")?;
+        let stop_allowed = value["stop_hook"]["allowed"]
+            .as_bool()
+            .ok_or_else(|| io::Error::other("native-user-action Stop has no allowed Boolean"))?;
+        let stop_reason_codes = value["stop_hook"]["reason_codes"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("native-user-action Stop has no reason-code array"))?
+            .iter()
+            .map(|code| {
+                code.as_str()
+                    .filter(|code| !code.is_empty())
+                    .map(str::to_owned)
+                    .ok_or_else(|| {
+                        io::Error::other("native-user-action Stop has an invalid reason code")
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let stop_close_state: StatusCloseState =
+            serde_json::from_value(value["authority_receipt"]["close_state"].clone())?;
+        let stop_blockers = value["authority_receipt"]["close_blockers"]
+            .as_array()
+            .ok_or_else(|| io::Error::other("native-user-action receipt has no blocker array"))?
+            .iter()
+            .map(NativeStopBlockerFacts::from_result_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        let session_watch_status = required_result_string(value, "/session_watch/status")?;
+        let session_watch_coverage_basis =
+            required_result_string(value, "/session_watch/coverage_basis")?;
+        let partial_coverage_warning_present = value["session_watch"]
+            ["partial_coverage_warning_present"]
+            .as_bool()
+            .ok_or_else(|| {
+                io::Error::other("native-user-action session watch has no partial-warning Boolean")
+            })?;
+        let derived_stop_outcome = verify_native_stop_outcome(NativeStopOutcomeFacts {
+            decision: stop_decision,
+            allowed: stop_allowed,
+            reason_codes: &stop_reason_codes,
+            close_state: stop_close_state,
+            blockers: &stop_blockers,
+            session_watch_status,
+            session_watch_coverage_basis,
+            partial_coverage_warning_present,
+        })?;
+        let local_user_project_id = required_result_string(value, "/local_user_status/project_id")?;
+        let local_user_task_id = required_result_string(value, "/local_user_status/task_id")?;
+        let local_user_state_version =
+            required_result_u64(value, "/local_user_status/state_version")?;
+        let local_user_latest_run_id =
+            required_result_string(value, "/local_user_status/latest_run_id")?;
         if selected_option != operator_option
             || value["user_action"]["stored_choice_matches_operator"] != true
+            || value["user_action"]["requested_by_actor_source"] != expected_actor_source
+            || value["user_action"]["channel_kind"] != "mcp_elicitation"
             || value["user_action"]["user_channel_basis"]
                 != VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
             || value["choice_consumption"]["run_kind"] != "shaping_update"
             || value["choice_consumption"]["run_marker"] != expected_run_marker
+            || value["choice_consumption"]["created_by_actor_source"] != expected_actor_source
             || value["choice_consumption"]["product_file_write_observed"] != false
             || value["choice_consumption"]["changed_path_count"] != 0
             || requested_event_seq == 0
@@ -13211,18 +13734,23 @@ mod unix {
             || value["authority_events"]["ordered"] != true
             || value["native_ui"]["user_action_selector_confirmed"] != true
             || value["native_ui"]["operator_choice_confirmed"] != true
-            || value["native_ui"]["stop_system_message_authority_receipt_confirmed"] != true
+            || value["host_resume"]["same_agent_connection"] != true
             || value["stop_hook"]["connection_id"] != connection_id
-            || value["stop_hook"]["decision"] != "allow"
+            || value["stop_hook"]["outcome"] != derived_stop_outcome.as_str()
             || value["stop_hook"]["decision_observed_from_guard_event"] != true
             || value["stop_hook"]["receipt_state_version"] != task_state_version
             || value["stop_hook"]["latest_run_id"] != run_id
+            || local_user_project_id != project_id
+            || local_user_task_id != task_id
+            || local_user_state_version != task_state_version
+            || local_user_latest_run_id != run_id
+            || value["local_user_status"]["close_state"] != "ready"
+            || value["local_user_status"]["close_blocker_count"] != 0
+            || value["authority_receipt"]["observation_source"] != "persisted_stop_guard_event"
             || value["authority_receipt"]["project_id"] != project_id
             || value["authority_receipt"]["task_id"] != task_id
             || value["authority_receipt"]["state_version"] != task_state_version
             || value["authority_receipt"]["latest_run_id"] != run_id
-            || value["authority_receipt"]["close_state"] != "ready"
-            || value["authority_receipt"]["close_blocker_count"] != 0
             || value["cli_fallback"]["verified"] != false
         {
             return Err(io::Error::other(
@@ -13243,7 +13771,6 @@ mod unix {
         authority_event_order: &'a AuthorityEventOrder,
         stop_observation: &'a VerifiedStopObservation,
         receipt: &'a VerifiedLiveReceipt,
-        stop_receipt_ui_confirmed: bool,
         host_feature_diagnostics: &'a ReleaseHostFeatureDiagnostics,
     }
 
@@ -13258,9 +13785,16 @@ mod unix {
             authority_event_order,
             stop_observation,
             receipt,
-            stop_receipt_ui_confirmed,
             host_feature_diagnostics,
         } = input;
+        let native_outcome = stop_observation
+            .native_outcome
+            .expect("native UserAction summaries require a classified Stop outcome");
+        let stop_blockers = stop_observation
+            .blockers
+            .iter()
+            .map(NativeStopBlockerFacts::to_value)
+            .collect::<Vec<_>>();
         serde_json::json!({
             "kind": "live_host_user_action_release_validation",
             "result": result,
@@ -13275,6 +13809,9 @@ mod unix {
             "connection": {
                 "connection_id": identity.connection_id
             },
+            "host_resume": {
+                "same_agent_connection": true
+            },
             "host_feature_support": host_feature_diagnostics.host_feature_support,
             "final_output_authority_disclosure": host_feature_diagnostics.final_output_authority_disclosure,
             "task": {
@@ -13285,15 +13822,18 @@ mod unix {
             },
             "user_action": {
                 "user_action_request_id": observation.user_action_request_id,
+                "requested_by_actor_source": observation.requested_by_actor_source,
                 "selected_option_id": selected_option_id,
                 "operator_confirmed_option_id": operator_choice_id,
                 "stored_choice_matches_operator": operator_choice_id == selected_option_id,
+                "channel_kind": observation.resolved_channel_kind,
                 "user_channel_basis": VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL
             },
             "choice_consumption": {
                 "run_id": latest_run.run_id,
                 "run_kind": latest_run.kind,
                 "run_marker": latest_run.summary,
+                "created_by_actor_source": latest_run.created_by_actor_source,
                 "product_file_write_observed": latest_run.product_file_write_observed,
                 "changed_path_count": latest_run.changed_paths.len()
             },
@@ -13308,25 +13848,41 @@ mod unix {
             },
             "native_ui": {
                 "user_action_selector_confirmed": true,
-                "operator_choice_confirmed": true,
-                "stop_system_message_authority_receipt_confirmed": stop_receipt_ui_confirmed
+                "operator_choice_confirmed": true
             },
             "stop_hook": {
                 "guard_event_id": stop_observation.guard_event_id,
                 "session_id": stop_observation.session_id,
                 "connection_id": stop_observation.connection_id,
                 "decision": stop_observation.decision,
+                "allowed": stop_observation.allowed,
+                "reason_codes": stop_observation.reason_codes,
+                "outcome": native_outcome.as_str(),
                 "decision_observed_from_guard_event": true,
                 "receipt_state_version": stop_observation.state_version,
                 "latest_run_id": stop_observation.latest_run_id
             },
-            "authority_receipt": {
+            "local_user_status": {
                 "project_id": receipt.project_id,
                 "task_id": receipt.task_id,
                 "state_version": receipt.state_version,
                 "latest_run_id": receipt.latest_run_id,
                 "close_state": receipt.close_state,
                 "close_blocker_count": receipt.close_blocker_count
+            },
+            "authority_receipt": {
+                "observation_source": "persisted_stop_guard_event",
+                "project_id": stop_observation.canonical_receipt.project_id,
+                "task_id": stop_observation.canonical_receipt.task_ref.record_id,
+                "state_version": stop_observation.canonical_receipt.state_version,
+                "latest_run_id": stop_observation.latest_run_id,
+                "close_state": stop_observation.close_state,
+                "close_blockers": stop_blockers
+            },
+            "session_watch": {
+                "status": stop_observation.session_watch_status,
+                "coverage_basis": stop_observation.session_watch_coverage_basis,
+                "partial_coverage_warning_present": stop_observation.partial_coverage_warning_present
             },
             "cli_fallback": {
                 "verified": false
@@ -13372,8 +13928,7 @@ mod unix {
             },
             "native_ui": {
                 "user_action_selector_confirmed": true,
-                "operator_choice_confirmed": true,
-                "stop_system_message_authority_receipt_confirmed": false
+                "operator_choice_confirmed": true
             },
             "stop_hook": null,
             "authority_receipt": null,
@@ -13417,8 +13972,7 @@ mod unix {
             },
             "native_ui": {
                 "user_action_selector_confirmed": false,
-                "operator_choice_confirmed": false,
-                "stop_system_message_authority_receipt_confirmed": false
+                "operator_choice_confirmed": false
             },
             "stop_hook": null,
             "authority_receipt": null,

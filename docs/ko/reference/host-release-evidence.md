@@ -356,6 +356,27 @@ canonical `adapter_profile`은 `record_final_output`에서만 `record`이고,
 | `record_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed` |
 | `detective_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed`, `block_finalization_observed` |
 
+`native_user_action`의 `authority_receipt_observed`는 실제 셀이 정확히 인증된 세션, 같은
+연결, Task에 결속된 Stop 이벤트가 저장한 완전하고 최신인 영수증을 관찰했다는 뜻입니다.
+영수증은 선택한 Project, Task, 현재 `state_version`, 선택지를 소비한 정확한 Run에
+결속되어야 합니다. 저장된 Stop 결정, 이유, `close_state`, 완전한 `close_blockers` 집합도
+영수증과 내부적으로 일관되어야 합니다. 이 검증 단언은 `close_state=ready`, 빈
+`close_blockers`, Stop `allow`를 요구하지 않습니다. 유지하는 깨끗한 픽스처는 정확히 두
+Stop 결과만 허용합니다. 경고나 차단 사유 없이 완전한 `mcp_start` 관찰 범위를 가진
+`ready` `allow`, 또는 일부 관찰 경고가 있는 활성 `first_project_selection`이나
+`method_boundary` 관찰 범위에서 `close_readiness_blocked` 이유 하나와 정확한
+`session_watch_unavailable` 차단 사유를 가진 `deny`입니다. 영수증이 정직하더라도 다른
+결과이면 이 셀은 실패합니다. 새 LocalUser 상태가 `ready`이고 차단 사유가 없는 것은
+깨끗한 픽스처의 별도 정상성 전제이며, 이 검증 단언을 충족하는 영수증은 아닙니다.
+LocalUser CLI 상태 영수증과 Agent Connection Stop 영수증은 권한 좌표를 공유하지만 호출
+맥락별 상태 보기입니다. 따라서 `close_state`와 `close_blockers`가 같을 필요가 없으며 두
+호출 맥락의 영수증 전체가 같다는 것은 검증 단언이 아닙니다.
+
+이 호스트 고유 셀 관찰은 `authority_display_observed`,
+`authenticated_exact_replay_observed`, `block_finalization_observed`를 충족하지 않으며
+어느 최종 출력 기능도 승격하지 않습니다. 해당 검증 단언은 계속 각 최종 출력
+셀만 담당합니다.
+
 정직하게 실행하지 못한 구현 셀은 `run_state=ignored`이고 필수 assertion이 실패하며 크기가
 제한된 증거 아티팩트를 가진 실제 셀로 표현합니다. 호스트를 사용할 수 없으면 호스트 가용성
 집합과 클라이언트 집합을 모두 null로 사용합니다. 호스트를 사용할 수 있지만 성공한 관리
@@ -565,11 +586,16 @@ cargo run --locked -p volicord-release-validation-tests --bin host-release-audit
 - [시스템 요구사항](system-requirements.md)은 환경 적용 가능성을 담당합니다.
 - [Agent Connection](agent-connection.md)은 런타임 지원 상태와 fallback을 담당합니다.
 - [MCP Transport](mcp-transport.md)는 관리 stdio transport 동작을 담당합니다.
+- [API 상태 스키마](api/schema-state.md)는 `AuthorityReceipt`와 닫기 준비 상태 보기의
+  형태를 담당합니다.
+- [`close_task`](api/method-close-task.md)는 닫기 준비 차단 사유의 코드, 범주, 해결 의미를
+  담당합니다.
 - [저장소 레코드](storage-records.md)는
   `session_watch_baselines.metadata_json`의 크기가 제한된 관리 initialize 정체성 배치를
   담당합니다.
 - [보안](security.md)은 신뢰 및 비권한 경계를 담당합니다.
-- [관리 CLI](admin-cli.md)는 운영자용 보조 상태 보기를 담당합니다.
+- [관리 CLI](admin-cli.md#guard-hook-commands)는 숨겨진 Stop 이벤트 동작과 운영자용 보조
+  상태 보기를 담당합니다.
 - [검증](../maintain/validation.md)은 유지관리자 실행과 보고를 담당합니다.
 - [호스트 릴리스 증거 게이트 결정](../architecture-guide/decisions/host-release-evidence-gate.md)은
   이 계약을 외부에 두고 독립적으로 재계산하는 이유를 기록합니다.

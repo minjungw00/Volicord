@@ -215,6 +215,13 @@ Detective profile의 결정 증거는 `allow`와 `block`을 모두 다룹니다.
 
 Judgment 점검은 최종 출력 매트릭스와 별도로 유지합니다.
 
+정확한 릴리스 검증 단언과 결과 집합은
+[호스트 릴리스 증거](../reference/host-release-evidence.md)가, 숨겨진 Stop 이벤트 동작은
+[관리 CLI](../reference/admin-cli.md#guard-hook-commands)가,
+`session_watch_unavailable` 차단 사유 의미는
+[`close_task`](../reference/api/method-close-task.md)가 담당합니다. 이 절은 해당 제품 계약이
+아니라 테스트 조합을 담당합니다.
+
 ```sh
 VOLICORD_RUN_CODEX_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
 VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke claude_code_live_user_action_round_trip_is_opt_in -- --ignored --nocapture
@@ -223,10 +230,12 @@ VOLICORD_RUN_CLAUDE_USER_ACTION_SMOKE=1 cargo test -p volicord-cli --test live_h
 판단 변형은 사람 참여형 점검입니다. 폐기 가능한 Runtime Home과 Product Repository를
 만들고 선택한 호스트를 설정한 뒤, 쓰기를 하지 말라는 초기 지시와 함께 설치된 호스트를
 대화형으로 실행합니다. 실행자의 일반 호스트 인증 환경을 재사용하며 픽스처의 격리된
-Runtime Home으로 자격 증명을 복사하지 않습니다. 운영자는 적용되는 hook-trust
-preflight를 완료하고, 호스트가 요구하면 프로젝트나 MCP 항목을 승인하며, 호스트 고유 MCP
-elicitation UI에서 직접 답을 선택해야 합니다. 이어서 Task 결속 turn이 idle 상태가 되고
-관리 `Stop` system message를 표시할 때까지 기다린 뒤에만 호스트를 종료합니다.
+Runtime Home으로 자격 증명을 복사하지 않습니다. 운영자는 적용되는 훅 신뢰 사전 점검을
+완료하고, 호스트가 요구하면 프로젝트나 MCP 항목을 승인하며, 호스트 고유 MCP 질의 UI에서
+직접 답을 선택해야 합니다. 이어서 첫 Task 결속 관리 `Stop` 훅이
+완료될 때까지 기다린 뒤에만 호스트를 종료합니다. 차단된 호스트가 재시도하면 두 번째 별도
+Stop 전에 운영자가 중단할 수 있으며 최종 출력 영수증을 복사하거나 증거로 인정하지
+않습니다.
 
 판단 변형이 통과하면 표식 `Task`와 판단 생성, `mcp_elicitation_user_channel` 근거의
 호스트 고유 프롬프트/응답 기록, 그에 따른 Task 상태 전환, 권한 이벤트, 내용 없는 해당
@@ -243,14 +252,23 @@ Change Unit과 baseline을 만듭니다. Judgment에는 고정된 route option �
 그 뒤 폐기 가능한 픽스처가 삭제되므로 이 템플릿은 실행 가능한 복구 명령이 아니며,
 실패한 실제 고유 프롬프트 점검을 통과 결과로 바꾸지 않습니다.
 
-판단 변형은 호스트의 `--version` 출력과 Volicord `build_id`도 수집하고, 최신 CLI
-상태를 읽어 `authority_receipt`가 같은 Project, Task, 정확한 Run, `close_state=ready`,
-빈 close blocker 집합, `state_version`에 결속됐는지 확인합니다. 또한 호스트 실행 전
-cursor 뒤에 정확히 하나의 새 Task 결속 Detective Stop 이벤트가 생겼는지, 이유와 close
-blocker가 없는 `allow`인지, 저장된 receipt가 최신 status와 같은지 확인합니다. 운영자는
-호스트 소유의 별도 관리 UI에서 완전한 canonical receipt JSON을 복사해야 하며, 하네스는
-`state_version` 하나만 받지 않고 전체가 정확히 같은지 검사합니다. 크기가 제한된 JSON
-요약을 출력합니다. 인증된 12개 셀 생산자는 모두
+판단 변형은 호스트의 `--version` 출력과 Volicord `build_id`도 수집합니다. 최신 LocalUser
+CLI 상태 영수증은 같은 Project, Task, 정확한 Run, `close_state=ready`, 빈
+`close_blockers`, `state_version`에 결속되어야 하며 하네스는 `latest_run_ref`를
+따라갑니다. 별도로 호스트 실행 전 커서 뒤에 Task와 정확한 세션에 결속된 새 Detective
+Stop 이벤트가 정확히 하나 생겨야 합니다. 저장된 Stop 결정, 이유, `close_state`, 완전한
+`close_blockers`, 자체 영수증은
+내부적으로 일관되어야 합니다. 일부 관찰 경고나 다른 차단 사유가 없는 완전한
+`mcp_start` 관찰 범위에서는 `ready` `allow`가 되고, 일부 관찰 경고가 있는 활성
+`first_project_selection` 또는 `method_boundary` 관찰 범위에서는
+`close_readiness_blocked`와 정확한 `session_watch_unavailable` 차단 사유를 가진 `deny`가
+됩니다. LocalUser와 Stop 영수증은 Project, Task, 상태 버전, 최신 Run 좌표가 같아야
+하지만 호출 맥락에서 파생되는 닫기 필드는 같을 필요가 없습니다. LocalUser의 `ready` 및
+차단 사유 없음 영수증은 깨끗한 픽스처의 정상성 전제일 뿐 호스트 고유 검증 단언의 출처가
+아닙니다. 하네스는 영속 GuardEvent에서 완전한 정규 Stop 영수증을 직접 읽고 검증하며
+최종 출력 UI 영수증을 요구하거나 증거로 인정하지 않습니다. 크기가 제한된
+JSON 요약을 출력합니다. 인증된
+12개 셀 생산자는 모두
 [append-only 실제 셀 게시 계약](../reference/host-release-evidence.md#append-only-live-cell-publication)에
 설명된 외부 `RESULT_ROOT/cells` 디렉터리 바로 아래의 존재하지 않는 경로를
 `VOLICORD_LIVE_HOST_RESULT_PATH`로 지정해야 합니다. 하네스는 폐기 가능한 Runtime Home을
@@ -264,11 +282,13 @@ blocker가 없는 `allow`인지, 저장된 receipt가 최신 status와 같은지
 이를 삭제하거나 재사용하지 않습니다. 결과에는 검증 사실만 들어가며 대화 기록, 자격 증명,
 비밀값, 전체 프롬프트는 들어가지 않습니다.
 
-Task 결속 Stop 이벤트와 완전한 receipt UI는 Judgment 실행이 권위 있는 완료 상태에
-도달했음을 확인하는 필수 증거입니다. 이 증거는 네 개 셀 최종 출력 매트릭스의 셀이나
-증거 필드를 채울 수 없고, 최종 출력 매트릭스 증거도 고유 Judgment elicitation을
-증명할 수 없습니다. Judgment 실행 중 관찰한 그 밖의 최종 출력, 대체 안내, 재생은
-해당 실행의 진단 자료일 뿐입니다.
+영속 Task 결속 Stop 이벤트는 Judgment 이후 권한 관찰에 필요한 증거이지 Detective 닫기
+상태가 `ready`라는 증거가 아닙니다. 유지하는 정확한 일부 관찰 범위 차단만 호스트 고유
+UserAction 셀의 차단 결과로 사용할 수 있습니다. 이 관찰은 네 개 셀 최종 출력
+매트릭스의 셀이나 증거 필드를
+채울 수 없고, 최종 출력 매트릭스 증거도 호스트 고유 Judgment 질의를 증명할 수 없습니다.
+Judgment 실행 중 관찰한 그 밖의 최종 출력, 대체 안내, 재생은 해당 실행의 진단 자료일
+뿐입니다.
 Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `status_fallback`
 증거가 아닙니다.
 

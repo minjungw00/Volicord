@@ -169,6 +169,20 @@ not binding authority. Existing feature assertion sets already require the
 resulting exact session and connection scope, so this transport binding adds
 no release assertion identifier.
 
+The native UserAction cell treats the exact Task-bound Stop receipt as an
+authority observation, not as a close-readiness or final-output claim. It
+preserves and validates the Stop decision, reasons, close state, and complete
+blocker set. Both an internally consistent ready `allow` and an internally
+consistent blocked Detective projection are eligible only in the two clean
+fixture forms owned by Host Release Evidence: full-coverage ready `allow`, or
+the exact active partial-coverage `session_watch_unavailable` block. Any other
+outcome fails the cell. The LocalUser ready/blocker-free check remains a
+separate clean-fixture precondition. A blocked Stop projection does not become
+an `allow` and is not compared byte-for-byte with that LocalUser receipt. The
+two receipts must agree only on their shared Project, Task, state-version, and
+latest-Run authority coordinates. Final-output display, authenticated replay,
+and block-finalization remain separate matrix features.
+
 The validation implementation is isolated in the test-only
 `tests/release-validation` workspace package. It may reuse implementation-owned
 evaluators, but production targets do not depend on it. Its maintained command
@@ -215,6 +229,9 @@ maintains a source-only approximation or repairs a failed publication root.
   fail-closed; CLI inbox remains the supported fallback.
 - Native session identifiers do not enter Volicord storage, diagnostics, or
   release evidence.
+- The exact maintained partial-coverage Detective blocker remains visible in
+  native UserAction evidence instead of being rewritten as close-ready; other
+  Stop outcomes fail the clean fixture.
 - Forbidden or non-canonical release paths fail at the producer before an
   authenticated host run or release-artifact write, and the gate and audit
   independently enforce the same decision when reopening inputs.
@@ -291,6 +308,14 @@ artifact remains schema-valid as an individual artifact but is not an accepted
 input set for those commands. There is no migration, lease synthesis, or
 adoption path; rerun the complete twelve-cell matrix in a fresh result root.
 
+Separating native UserAction receipt observation from close readiness is also
+a conformance correction within v3. The exact assertion set, serialized cell
+members, digest preimages, and final-output feature contracts do not change, so
+the release artifact v3 identifiers and workspace SemVer remain current.
+Previously generated evidence that claimed whole-receipt equality across
+LocalUser and Agent Connection contexts must be regenerated; it is not
+reinterpreted or migrated.
+
 ## Rejected alternatives
 
 - Embedding live evidence in the candidate was rejected because rebuilding
@@ -328,6 +353,10 @@ adoption path; rerun the complete twelve-cell matrix in a fresh result root.
   would falsely act as a commit marker for incomplete evidence.
 - Cleaning remnants and retrying in the same result root was rejected because
   no automatic cleanup can safely recover every concurrent or crash state.
+- Requiring native UserAction evidence to manufacture a Stop `allow`, ready
+  close state, or byte-identical LocalUser receipt was rejected because close
+  blockers are invocation-context projections and those requirements conflate
+  native elicitation with the separately owned final-output features.
 
 ## Related owners and planned validation location
 
