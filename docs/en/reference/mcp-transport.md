@@ -490,6 +490,20 @@ reviewed path retains exact `clientInfo.name=codex-mcp-client` and
 alone does not bind a managed session. The canonical installed-host coordinate
 is `0.144.4`, parsed from the exact probe envelope `codex-cli 0.144.4`.
 
+When a managed binding materializes its `session_watch_baselines` row, the
+baseline's `metadata_json` retains only the exact bounded initialize identity as
+top-level `client_name` and `client_version` alongside the existing bounded
+watch metadata. These strings are the actual successful initialize values; the
+adapter does not infer them from host kind, executable or probe text,
+configuration, protocol version, constants, request metadata, or another
+session. The live-host release recorder may read those two fields. The raw
+initialize request, its other parameters, and raw protocol, session, thread,
+turn, or tool-call payload are not retained for that purpose.
+One managed baseline retains exactly one client pair. Re-observing the same
+initialize pair is idempotent; an existing managed baseline with a missing,
+partial, or different client pair is a binding conflict and must not be used as
+successful managed-client provenance or repaired by replacement.
+
 The first structurally valid call to a known tool after the ready transition
 must carry `_meta.threadId` and object
 `_meta["x-codex-turn-metadata"]` with string `session_id`, `thread_id`, and
@@ -727,7 +741,9 @@ The first valid MCP request in a connection is `initialize`. A valid
 
 - `protocolVersion` as a string
 - `capabilities` as an object
-- `clientInfo` as an object containing string `name` and `version` fields
+- `clientInfo` as an object containing string `name` and `version` fields; each
+  field is 1 through 256 UTF-8 bytes, contains at least one non-whitespace
+  character, contains no control character, and is otherwise preserved exactly
 
 If `params.capabilities.elicitation` is an object, the adapter treats the MCP
 client as eligible for server-initiated elicitation. The separate Volicord
@@ -1501,7 +1517,7 @@ match the enabled non-generic connection host kind, managed fingerprint,
 adapter profile/version, Volicord build, source revision, target and executable
 digest, client name/version, and bounded live-host evidence digest.
 The expected evidence digest would require trusted production acquisition of
-the exact external `volicord-host-release-manifest-v2` owned by
+the exact external `volicord-host-release-manifest-v3` owned by
 [Host Release Evidence](host-release-evidence.md), binding the same capability,
 host/client, adapter, build, source, target, and executable digest.
 The row's `evidence_artifact_sha256` must exactly match that expected value;

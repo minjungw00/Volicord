@@ -219,7 +219,7 @@ May claim:
   result is `outcome=passed`, unexpired, and bounded by
   `observed_at <= created_at < expires_at <= observed_at + 86,400 seconds`.
   Its `evidence_artifact_sha256` would require trusted production acquisition
-  of the external `volicord-host-release-manifest-v2` defined by
+  of the external `volicord-host-release-manifest-v3` defined by
   [Host Release Evidence](host-release-evidence.md). That manifest must bind the same capability,
   host/client, adapter, build, source, target, and executable digest. A missing,
   unknown, malformed, unverified, or mismatched manifest fails closed; neither
@@ -275,8 +275,14 @@ Exact `clientInfo` plus strict per-call `_meta.threadId` and
 process-local thread digest. Pending state has no managed durable, Core,
 token, or local-web effects. `CODEX_THREAD_ID`, PID, cwd, process ancestry,
 timing, and hook-event proximity cannot establish or repair this binding.
+When binding materializes a managed session-watch baseline, only the validated
+1-through-256-byte exact initialize `client_name` and `client_version` strings
+may be retained as top-level metadata for release recording. They remain
+cooperative matching coordinates, not identity proof, and cannot be inferred
+from host, probe, configuration, protocol, constants, or another session.
 Raw native session, event, tool-call, capture, turn, and invocation identifiers
-must not be persisted, logged, diagnosed, or attached to evidence. The `mhs_`
+and raw initialize or protocol/session/thread/turn payload must not be
+persisted, logged, diagnosed, or attached to evidence. The `mhs_`
 namespace is reserved and bound immutably to one host and registered
 connection; invalid or conflicting markers fail without durable state. The
 mapped value is correlation metadata, not user identity, host attestation, or

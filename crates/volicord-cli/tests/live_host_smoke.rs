@@ -5,7 +5,7 @@ mod support;
 #[cfg(unix)]
 mod unix {
     use std::{
-        collections::BTreeSet,
+        collections::{BTreeMap, BTreeSet},
         env,
         error::Error,
         ffi::{OsStr, OsString},
@@ -28,7 +28,7 @@ mod unix {
         capability_status::{
             canonical_codex_host_version_from_probe, default_host_feature_support_json_for_version,
             host_feature_implementation_for_version, HostFeature, HostFeatureDiagnosticProjection,
-            HostFeatureImplementation,
+            HostFeatureImplementation, REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
         },
         HostKind,
     };
@@ -43,7 +43,10 @@ mod unix {
             DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
             DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         },
-        session_watch::latest_watch_baseline_for_session,
+        session_watch::{
+            latest_watch_baseline_for_session, update_watch_status, watch_baseline,
+            SessionWatchStatus, WatchBaselineRecord, WatchStatusUpdate,
+        },
         sqlite::open_project_state_database_read_only,
     };
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
@@ -51,13 +54,14 @@ mod unix {
         canonical_json_bare_sha256, canonical_json_string, managed_host_session_id,
         validate_managed_host_session_id, ArtifactRef, AuthorityReceipt, EvidenceCoverageItem,
         EvidenceCoverageState, EvidenceProducer, EvidenceProducerKind, EvidenceRelevanceStatus,
-        EvidenceTarget, IntegrationProfile, PersistedEvidenceCaptureReceiptBody,
-        PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority,
-        PersistedUserActionRequest, StateRecordKind, StateRecordRef, StatusCloseState,
-        StatusResult, UserActionBasis, UserActionInboxForm, UserActionPresentationPlan,
-        UserActionPresentationSafety, UserActionRequestBody, UserActionResolutionBody,
-        USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB, VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
+        EvidenceTarget, IntegrationProfile, ManagedMcpClientInfo,
+        PersistedEvidenceCaptureReceiptBody, PersistedEvidenceMetadata,
+        PersistedEvidenceObservationAuthority, PersistedUserActionRequest, StateRecordKind,
+        StateRecordRef, StatusCloseState, StatusResult, UserActionBasis, UserActionInboxForm,
+        UserActionPresentationPlan, UserActionPresentationSafety, UserActionRequestBody,
+        UserActionResolutionBody, USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS,
+        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_LOCAL_USER_LOCAL_WEB,
+        VERIFICATION_BASIS_MCP_ELICITATION_USER_CHANNEL,
         VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
 
@@ -93,7 +97,7 @@ mod unix {
     const RELEASE_CANDIDATE_PATH_ENV: &str = "VOLICORD_RELEASE_CANDIDATE_PATH";
     const RELEASE_REQUEST_VERIFIED_ENV: &str = "VOLICORD_RELEASE_REQUEST_VERIFIED";
     const RELEASE_CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
-    const RELEASE_CELL_SCHEMA: &str = "volicord-host-release-cell-v2";
+    const RELEASE_CELL_SCHEMA: &str = "volicord-host-release-cell-v3";
     const RELEASE_SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
     const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
     const LIVE_EVIDENCE_OBSERVATION_RESULT_KIND: &str =
@@ -210,6 +214,71 @@ mod unix {
         .is_err());
         assert!(bounded_identity("bounded", "line\nbreak", 64).is_err());
         assert!(bounded_identity("bounded", &"x".repeat(65), 64).is_err());
+
+        let initialized_metadata = serde_json::json!({
+            "source": "volicord_session_watch",
+            "launch_origin": "managed_host",
+            "host_kind": "codex",
+            "connection_id": "CONN-client-observation",
+            "project_id": "PRJ-client-observation",
+            "client_name": "codex-mcp-client",
+            "client_version": "0.144.4",
+            "lifecycle_events": [{
+                "lifecycle_event": "managed_host_initialize_response",
+                "launch_origin": "managed_host",
+                "host_kind": "codex",
+                "connection_id": "CONN-client-observation",
+                "project_id": "PRJ-client-observation"
+            }]
+        });
+        let initialized_client = initialized_client_info_from_watch_metadata(
+            &initialized_metadata,
+            "codex",
+            "CONN-client-observation",
+            "PRJ-client-observation",
+        )?
+        .ok_or_else(|| io::Error::other("exact managed initialize identity was not observed"))?;
+        assert_eq!(initialized_client.name(), "codex-mcp-client");
+        assert_eq!(initialized_client.version(), "0.144.4");
+        assert!(initialized_client_info_from_watch_metadata(
+            &initialized_metadata,
+            "codex",
+            "CONN-other",
+            "PRJ-client-observation",
+        )?
+        .is_none());
+        let mut partial_identity = initialized_metadata.clone();
+        partial_identity
+            .as_object_mut()
+            .expect("fixture metadata object")
+            .remove("client_version");
+        assert!(initialized_client_info_from_watch_metadata(
+            &partial_identity,
+            "codex",
+            "CONN-client-observation",
+            "PRJ-client-observation",
+        )
+        .is_err());
+        let mut missing_identity = initialized_metadata.clone();
+        missing_identity["client_name"] = Value::Null;
+        missing_identity["client_version"] = Value::Null;
+        assert!(required_initialized_client_info_from_watch_metadata(
+            &missing_identity,
+            "codex",
+            "CONN-client-observation",
+            "PRJ-client-observation",
+        )
+        .is_err());
+        let mut wrong_binding = initialized_metadata.clone();
+        wrong_binding["source"] = Value::String("forged_session_watch".to_owned());
+        wrong_binding["host_kind"] = Value::String("claude_code".to_owned());
+        assert!(required_initialized_client_info_from_watch_metadata(
+            &wrong_binding,
+            "codex",
+            "CONN-client-observation",
+            "PRJ-client-observation",
+        )
+        .is_err());
 
         let early_failure_path = result_dir.join("claude-code.json");
         {
@@ -339,6 +408,10 @@ mod unix {
         let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
         recorder.release_candidate = Some(candidate.clone());
         recorder.release_feature = Some(HostFeature::NativeUserAction);
+        recorder.bind_observed_initialized_client_info(ObservedInitializedClientInfo::new(
+            "claude-code".to_owned(),
+            "fixture-host 1.0".to_owned(),
+        )?)?;
         recorder.record_final(&native_user_action_result_shape_fixture(
             "claude-code",
             &binary_sha256,
@@ -349,6 +422,13 @@ mod unix {
         assert_eq!(cell["candidate_id"], "candidate_release_cell_fixture");
         assert_eq!(cell["binary_sha256"], binary_sha256);
         assert_eq!(cell["host_kind"], "claude_code");
+        assert_eq!(cell["client_name"], "claude-code");
+        assert_eq!(cell["client_version"], "fixture-host 1.0");
+        assert_eq!(cell["environment"]["client_name"], cell["client_name"]);
+        assert_eq!(
+            cell["environment"]["client_version"],
+            cell["client_version"]
+        );
         assert_eq!(cell["feature"], "native_user_action");
         assert_eq!(cell["requested_verified"], true);
         assert_eq!(cell["claimed_status"], "verified");
@@ -384,6 +464,12 @@ mod unix {
             cell["evidence_artifact_sha256"],
             sha256_file(&evidence_path, MAX_LIVE_HOST_RESULT_BYTES as u64 + 1)?
         );
+        let evidence: Value = serde_json::from_slice(&fs::read(&evidence_path)?)?;
+        assert_eq!(evidence["validation_run"]["client_name"], "claude-code");
+        assert_eq!(
+            evidence["validation_run"]["client_version"],
+            "fixture-host 1.0"
+        );
         assert_eq!(
             fs::read_dir(&result_dir)?
                 .filter_map(Result::ok)
@@ -402,6 +488,10 @@ mod unix {
         forced_false.release_candidate = Some(candidate.clone());
         forced_false.release_feature = Some(HostFeature::NativeUserAction);
         forced_false.release_requested_verified = Some(false);
+        forced_false.bind_observed_initialized_client_info(ObservedInitializedClientInfo::new(
+            "claude-code".to_owned(),
+            "fixture-host 1.0".to_owned(),
+        )?)?;
         forced_false.record_final(&native_user_action_result_shape_fixture(
             "claude-code",
             &binary_sha256,
@@ -409,6 +499,61 @@ mod unix {
         let forced_false_cell: Value = serde_json::from_slice(&fs::read(&forced_false_path)?)?;
         assert_eq!(forced_false_cell["requested_verified"], false);
         assert_eq!(forced_false_cell["claimed_status"], "verified");
+
+        let missing_client_path = result_dir.join("claude-native-user-action-no-client.json");
+        let mut missing_client =
+            LiveResultRecorder::new("claude-code", Some(missing_client_path.clone()))?;
+        missing_client.release_candidate = Some(candidate.clone());
+        missing_client.release_feature = Some(HostFeature::NativeUserAction);
+        missing_client.release_requested_verified = Some(false);
+        missing_client.record_final(&native_user_action_result_shape_fixture(
+            "claude-code",
+            &binary_sha256,
+        ))?;
+        let missing_client_cell: Value = serde_json::from_slice(&fs::read(&missing_client_path)?)?;
+        assert_eq!(missing_client_cell["client_name"], Value::Null);
+        assert_eq!(missing_client_cell["client_version"], Value::Null);
+        assert_eq!(
+            missing_client_cell["environment"]["client_name"],
+            Value::Null
+        );
+        assert_eq!(
+            missing_client_cell["environment"]["client_version"],
+            Value::Null
+        );
+        assert_eq!(
+            missing_client_cell["claimed_status"],
+            "implemented_unverified"
+        );
+        assert!(missing_client_cell["assertions"]
+            .as_array()
+            .is_some_and(|assertions| assertions
+                .iter()
+                .all(|assertion| assertion["passed"] == true)));
+
+        let mismatched_client_path =
+            result_dir.join("claude-native-user-action-client-mismatch.json");
+        let mut mismatched_client =
+            LiveResultRecorder::new("claude-code", Some(mismatched_client_path.clone()))?;
+        mismatched_client.release_candidate = Some(candidate.clone());
+        mismatched_client.release_feature = Some(HostFeature::NativeUserAction);
+        mismatched_client.release_requested_verified = Some(false);
+        mismatched_client.bind_observed_initialized_client_info(
+            ObservedInitializedClientInfo::new(
+                "claude-code".to_owned(),
+                "fixture-host 2.0".to_owned(),
+            )?,
+        )?;
+        mismatched_client.record_final(&native_user_action_result_shape_fixture(
+            "claude-code",
+            &binary_sha256,
+        ))?;
+        let mismatched_client_cell: Value =
+            serde_json::from_slice(&fs::read(&mismatched_client_path)?)?;
+        assert_eq!(
+            mismatched_client_cell["claimed_status"],
+            "implemented_unverified"
+        );
 
         let unavailable_path = result_dir.join("claude-null-host-default-requested.json");
         let mut unavailable =
@@ -504,6 +649,8 @@ mod unix {
         static_final.record_final(&static_summary)?;
         let static_final_cell: Value = serde_json::from_slice(&fs::read(&static_final_path)?)?;
         assert_eq!(static_final_cell["host_version"], "0.144.4");
+        assert_eq!(static_final_cell["client_name"], Value::Null);
+        assert_eq!(static_final_cell["client_version"], Value::Null);
         assert_eq!(static_final_cell["requested_verified"], false);
         assert_eq!(
             static_final_cell["implementation_disposition"],
@@ -533,6 +680,8 @@ mod unix {
             serde_json::from_slice(&fs::read(&reviewed_local_web_path)?)?;
         assert_eq!(reviewed_local_web_cell["schema"], RELEASE_CELL_SCHEMA);
         assert_eq!(reviewed_local_web_cell["host_version"], "0.144.4");
+        assert_eq!(reviewed_local_web_cell["client_name"], Value::Null);
+        assert_eq!(reviewed_local_web_cell["client_version"], Value::Null);
         assert_eq!(
             reviewed_local_web_cell["implementation_disposition"],
             "unsupported_by_host"
@@ -578,6 +727,537 @@ mod unix {
                 .iter()
                 .all(|assertion| assertion["passed"] == false)));
         assert!(LiveResultRecorder::new("claude-code", Some(cell_path)).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn release_cell_recorder_uses_only_initialized_identity_from_the_captured_host_turn(
+    ) -> Result<(), Box<dyn Error>> {
+        fn run_managed_claude_initialize_turn(
+            fixture: &LiveSmokeFixture,
+            connection_id: &str,
+            project_id: &str,
+            native_session_id: &str,
+            client_name: &str,
+            client_version: &str,
+        ) -> Result<Output, Box<dyn Error>> {
+            let input = [
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-11-25",
+                        "capabilities": {},
+                        "clientInfo": {
+                            "name": client_name,
+                            "version": client_version
+                        }
+                    }
+                }),
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized"
+                }),
+            ]
+            .into_iter()
+            .map(|message| serde_json::to_string(&message))
+            .collect::<Result<Vec<_>, _>>()?
+            .join("\n")
+                + "\n";
+            let mut command = Command::new(&fixture.volicord_path);
+            command
+                .args([
+                    "mcp",
+                    "--stdio",
+                    "--connection",
+                    connection_id,
+                    "--project",
+                    project_id,
+                ])
+                .current_dir(&fixture.repo_root)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            fixture.apply_isolated_env(&mut command);
+            command
+                .env("VOLICORD_MCP_LAUNCH", "managed_host")
+                .env("VOLICORD_MCP_HOST", "claude_code")
+                .env("VOLICORD_MCP_CONNECTION_ID", connection_id)
+                .env("VOLICORD_MCP_PROJECT_ID", project_id)
+                .env("CLAUDECODE", "1")
+                .env("CLAUDE_CODE_SESSION_ID", native_session_id);
+            fixture.with_private_candidate_digest_guard(|| {
+                let mut child = command.spawn()?;
+                child
+                    .stdin
+                    .take()
+                    .ok_or_else(|| io::Error::other("managed MCP child has no stdin"))?
+                    .write_all(input.as_bytes())?;
+                Ok(child.wait_with_output()?)
+            })
+        }
+
+        let fixture = LiveSmokeFixture::new("release-client-turn-refresh")?;
+        let live_bin = fixture.runtime_home_path.join("live-bin");
+        let fake_claude = write_fake_claude_code(&live_bin)?;
+        let result_root = fixture.runtime_home_path.join("release-results");
+        let cell_directory = result_root.join("cells");
+        fs::create_dir_all(&cell_directory)?;
+        let cell_path = cell_directory.join("claude-native-user-action.json");
+        let stale_only_cell_path = cell_directory.join("claude-native-user-action-stale-only.json");
+        let tampered_cell_path = cell_directory.join("claude-native-user-action-tampered.json");
+        let tampered_evidence_path = release_evidence_path(&tampered_cell_path)?;
+
+        let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
+        recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
+        let mut stale_only_recorder =
+            LiveResultRecorder::new("claude-code", Some(stale_only_cell_path.clone()))?;
+        stale_only_recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
+        let mut tampered_recorder =
+            LiveResultRecorder::new("claude-code", Some(tampered_cell_path.clone()))?;
+        tampered_recorder.bind_observed_runtime_home(&fixture.runtime_home_path)?;
+        let binary_sha256 =
+            sha256_file(&fixture.volicord_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+        let candidate = ReleaseCandidate {
+            schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+            candidate_id: "candidate_host_turn_refresh".to_owned(),
+            candidate_path: path_text(&fixture.volicord_path),
+            source_revision: "a".repeat(40),
+            source_clean: true,
+            source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+            source_archive_sha256: "b".repeat(64),
+            target_triple: "fixture-target".to_owned(),
+            release_profile: "release".to_owned(),
+            binary_sha256,
+            build_environment: ReleaseCandidateBuildEnvironment {
+                runner_os: "fixture-os".to_owned(),
+                runner_os_version: "fixture-version".to_owned(),
+                runner_arch: "fixture-arch".to_owned(),
+                git_version: "git fixture".to_owned(),
+                rustc_version: "rustc fixture".to_owned(),
+                cargo_version: "cargo fixture".to_owned(),
+            },
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        candidate.validate()?;
+        recorder.release_candidate = Some(candidate.clone());
+        recorder.release_feature = Some(HostFeature::NativeUserAction);
+        recorder.release_requested_verified = Some(true);
+        stale_only_recorder.release_candidate = Some(candidate.clone());
+        stale_only_recorder.release_feature = Some(HostFeature::NativeUserAction);
+        stale_only_recorder.release_requested_verified = Some(true);
+        tampered_recorder.release_candidate = Some(candidate);
+        tampered_recorder.release_feature = Some(HostFeature::NativeUserAction);
+        tampered_recorder.release_requested_verified = Some(true);
+
+        let init = fixture.run_volicord([
+            "init",
+            "--shared",
+            "--host",
+            "claude-code",
+            "--repo",
+            fixture.repo_arg(),
+            "--profile",
+            "detective",
+            "--home",
+            fixture.runtime_home_arg(),
+            "--json",
+        ])?;
+        assert_success("volicord init for release client-turn refresh", &init);
+        let init_json = json_stdout(&init)?;
+        let connection_id = bounded_identity(
+            "fixture Agent Connection id",
+            init_json["connection"]["connection_id"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("fixture init returned no connection id"))?,
+            MAX_CONNECTION_ID_CHARS,
+        )?;
+        let project_id = live_fixture_project_id(&fixture)?;
+
+        let historical_name = "historical-client";
+        let historical_version = "historical-host 0.9";
+        let historical_session = "claude.session.historical";
+        let historical_output = run_managed_claude_initialize_turn(
+            &fixture,
+            &connection_id,
+            &project_id,
+            historical_session,
+            historical_name,
+            historical_version,
+        )?;
+        assert!(
+            historical_output.status.success(),
+            "historical managed MCP turn failed: {}",
+            String::from_utf8_lossy(&historical_output.stderr)
+        );
+        let historical_session_id =
+            managed_host_session_id("claude_code", &connection_id, historical_session)?;
+        let historical_baseline = latest_watch_baseline_for_session(
+            &fixture.runtime_home_path,
+            &project_id,
+            &historical_session_id,
+        )?
+        .ok_or_else(|| io::Error::other("historical managed baseline was not created"))?;
+        let historical_metadata_before = historical_baseline.metadata_json.clone();
+        let historical_metadata: Value = serde_json::from_str(&historical_metadata_before)?;
+        assert_eq!(historical_metadata["client_name"], historical_name);
+        assert_eq!(historical_metadata["client_version"], historical_version);
+
+        let before = fixture.managed_baseline_observations()?;
+        let historical_key = ObservedHostTurnBaseline {
+            project_id: project_id.clone(),
+            watch_baseline_id: historical_baseline.watch_baseline_id.clone(),
+        };
+        assert!(before.contains_key(&historical_key));
+
+        let current_name = "claude-code";
+        let current_version = "fixture-host 1.0";
+        let host_executable_sha256 = sha256_file(&fake_claude, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
+        let volicord_build_id = fixture.release_build_id()?;
+
+        stale_only_recorder.bind_observed_host_turn_baselines(&before, &before)?;
+        assert!(stale_only_recorder.observed_host_turn_baselines.is_empty());
+        stale_only_recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            current_version.to_owned(),
+            host_executable_sha256.clone(),
+            volicord_build_id.clone(),
+        )?)?;
+        let mut stale_only_summary =
+            native_user_action_result_shape_fixture("claude-code", &host_executable_sha256);
+        stale_only_summary["host"]["version"] = Value::String(current_version.to_owned());
+        stale_only_summary["volicord"]["build_id"] = Value::String(volicord_build_id.clone());
+        stale_only_summary["connection"]["connection_id"] = Value::String(connection_id.clone());
+        stale_only_summary["stop_hook"]["connection_id"] = Value::String(connection_id.clone());
+        stale_only_recorder.record_final(&stale_only_summary)?;
+
+        let stale_only_cell: Value = serde_json::from_slice(&fs::read(&stale_only_cell_path)?)?;
+        assert_eq!(stale_only_cell["client_name"], Value::Null);
+        assert_eq!(stale_only_cell["client_version"], Value::Null);
+        assert_eq!(stale_only_cell["environment"]["client_name"], Value::Null);
+        assert_eq!(
+            stale_only_cell["environment"]["client_version"],
+            Value::Null
+        );
+        assert_eq!(stale_only_cell["claimed_status"], "implemented_unverified");
+
+        let current_session = "claude.session.current";
+        let current_output = run_managed_claude_initialize_turn(
+            &fixture,
+            &connection_id,
+            &project_id,
+            current_session,
+            current_name,
+            current_version,
+        )?;
+        assert!(
+            current_output.status.success(),
+            "current managed MCP turn failed: {}",
+            String::from_utf8_lossy(&current_output.stderr)
+        );
+        let historical_unrelated_observed_at = recorded_at_now()?;
+        let mut historical_metadata_after_unrelated = historical_metadata.clone();
+        historical_metadata_after_unrelated["latest_lifecycle_event"] =
+            Value::String("managed_host_tools_list".to_owned());
+        historical_metadata_after_unrelated["latest_lifecycle_observed_at"] =
+            Value::String(historical_unrelated_observed_at.clone());
+        historical_metadata_after_unrelated["lifecycle_events"]
+            .as_array_mut()
+            .ok_or_else(|| io::Error::other("historical lifecycle events are not an array"))?
+            .push(serde_json::json!({
+                "connection_id": connection_id,
+                "project_id": project_id,
+                "host_kind": "claude_code",
+                "launch_origin": "managed_host",
+                "lifecycle_event": "managed_host_tools_list",
+                "timestamp": historical_unrelated_observed_at,
+                "storage_capability": "read_write",
+                "effective_tool_mode": "workflow"
+            }));
+        let historical_metadata_after_unrelated_text =
+            serde_json::to_string(&historical_metadata_after_unrelated)?;
+        update_watch_status(
+            &fixture.runtime_home_path,
+            &project_id,
+            &historical_baseline.watch_baseline_id,
+            WatchStatusUpdate {
+                status: SessionWatchStatus::Active,
+                updated_at: recorded_at_now()?,
+                metadata_json: historical_metadata_after_unrelated_text.clone(),
+            },
+        )?;
+        let after = fixture.managed_baseline_observations()?;
+        let historical_before_observation = before
+            .get(&historical_key)
+            .ok_or_else(|| io::Error::other("historical baseline was absent before the turn"))?;
+        let historical_after_observation = after
+            .get(&historical_key)
+            .ok_or_else(|| io::Error::other("historical baseline disappeared after the turn"))?;
+        assert_ne!(
+            historical_before_observation.metadata_fingerprint,
+            historical_after_observation.metadata_fingerprint
+        );
+        assert_eq!(
+            historical_before_observation.initialize_event_fingerprints,
+            historical_after_observation.initialize_event_fingerprints
+        );
+        recorder.bind_observed_host_turn_baselines(&before, &after)?;
+        tampered_recorder.bind_observed_host_turn_baselines(&before, &after)?;
+        recorder.bind_observed_host_turn_baselines(&after, &after)?;
+        tampered_recorder.bind_observed_host_turn_baselines(&after, &after)?;
+
+        let current_session_id =
+            managed_host_session_id("claude_code", &connection_id, current_session)?;
+        let current_baseline = latest_watch_baseline_for_session(
+            &fixture.runtime_home_path,
+            &project_id,
+            &current_session_id,
+        )?
+        .ok_or_else(|| io::Error::other("current managed baseline was not created"))?;
+        assert!(is_exact_managed_host_turn_baseline(
+            &current_baseline,
+            &project_id,
+            &connection_id,
+        ));
+        let mut forged_generic_baseline = current_baseline.clone();
+        forged_generic_baseline.session_id = "session_generic".to_owned();
+        forged_generic_baseline.watch_baseline_id =
+            format!("watch_base_managed_{}", forged_generic_baseline.session_id);
+        assert!(!is_exact_managed_host_turn_baseline(
+            &forged_generic_baseline,
+            &project_id,
+            &connection_id,
+        ));
+        let mut forged_baseline_id = current_baseline.clone();
+        forged_baseline_id.watch_baseline_id = "watch_base_generic".to_owned();
+        assert!(!is_exact_managed_host_turn_baseline(
+            &forged_baseline_id,
+            &project_id,
+            &connection_id,
+        ));
+        let mut wrong_coordinates = current_baseline.clone();
+        wrong_coordinates.project_id = "project_other".to_owned();
+        assert!(!is_exact_managed_host_turn_baseline(
+            &wrong_coordinates,
+            &project_id,
+            &connection_id,
+        ));
+        wrong_coordinates.project_id = project_id.clone();
+        wrong_coordinates.connection_internal_id = "connection_other".to_owned();
+        assert!(!is_exact_managed_host_turn_baseline(
+            &wrong_coordinates,
+            &project_id,
+            &connection_id,
+        ));
+        let current_key = ObservedHostTurnBaseline {
+            project_id: project_id.clone(),
+            watch_baseline_id: current_baseline.watch_baseline_id.clone(),
+        };
+        let current_fingerprint = after
+            .get(&current_key)
+            .ok_or_else(|| io::Error::other("current managed baseline has no fingerprint"))?
+            .metadata_fingerprint
+            .clone();
+        let expected_current_baseline =
+            BTreeMap::from([(current_key.clone(), current_fingerprint)]);
+        assert_eq!(
+            recorder.observed_host_turn_baselines,
+            expected_current_baseline
+        );
+        assert_eq!(
+            tampered_recorder.observed_host_turn_baselines,
+            recorder.observed_host_turn_baselines
+        );
+        let current_metadata: Value = serde_json::from_str(&current_baseline.metadata_json)?;
+        assert_eq!(current_metadata["client_name"], current_name);
+        assert_eq!(current_metadata["client_version"], current_version);
+
+        let repeated_before = fixture.managed_baseline_observations()?;
+        assert_eq!(repeated_before, after);
+        let mut repeated_metadata = current_metadata.clone();
+        repeated_metadata["captured_repeated_turn"] = Value::Bool(true);
+        let repeated_baseline = update_watch_status(
+            &fixture.runtime_home_path,
+            &project_id,
+            &current_baseline.watch_baseline_id,
+            WatchStatusUpdate {
+                status: SessionWatchStatus::Active,
+                updated_at: recorded_at_now()?,
+                metadata_json: serde_json::to_string(&repeated_metadata)?,
+            },
+        )?;
+        let repeated_after = fixture.managed_baseline_observations()?;
+        assert_ne!(
+            repeated_before.get(&current_key),
+            repeated_after.get(&current_key)
+        );
+        recorder.bind_observed_host_turn_baselines(&repeated_before, &repeated_after)?;
+        tampered_recorder.bind_observed_host_turn_baselines(&repeated_before, &repeated_after)?;
+        let repeated_fingerprint = repeated_after
+            .get(&current_key)
+            .ok_or_else(|| io::Error::other("repeated managed baseline has no fingerprint"))?
+            .metadata_fingerprint
+            .clone();
+        assert_eq!(
+            recorder.observed_host_turn_baselines,
+            BTreeMap::from([(current_key.clone(), repeated_fingerprint)])
+        );
+
+        recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            current_version.to_owned(),
+            host_executable_sha256.clone(),
+            volicord_build_id.clone(),
+        )?)?;
+        tampered_recorder.bind_observed_host_identity(ObservedReleaseHostIdentity::new(
+            current_version.to_owned(),
+            host_executable_sha256.clone(),
+            volicord_build_id.clone(),
+        )?)?;
+        let mut summary =
+            native_user_action_result_shape_fixture("claude-code", &host_executable_sha256);
+        summary["host"]["version"] = Value::String(current_version.to_owned());
+        summary["volicord"]["build_id"] = Value::String(volicord_build_id);
+        summary["connection"]["connection_id"] = Value::String(connection_id.clone());
+        summary["stop_hook"]["connection_id"] = Value::String(connection_id);
+        recorder.record_final(&summary)?;
+
+        let cell_text = fs::read_to_string(&cell_path)?;
+        let cell: Value = serde_json::from_str(&cell_text)?;
+        assert_eq!(cell["client_name"], current_name);
+        assert_eq!(cell["client_version"], current_version);
+        assert_eq!(cell["environment"]["client_name"], current_name);
+        assert_eq!(cell["environment"]["client_version"], current_version);
+        assert_eq!(cell["claimed_status"], "verified");
+        assert!(!cell_text.contains(historical_name));
+        assert!(!cell_text.contains(historical_version));
+
+        let evidence_path = PathBuf::from(
+            cell["evidence_artifact_path"]
+                .as_str()
+                .ok_or_else(|| io::Error::other("verified cell has no evidence path"))?,
+        );
+        let evidence_text = fs::read_to_string(evidence_path)?;
+        let evidence: Value = serde_json::from_str(&evidence_text)?;
+        assert_eq!(evidence["validation_run"]["client_name"], current_name);
+        assert_eq!(
+            evidence["validation_run"]["client_version"],
+            current_version
+        );
+        assert!(!evidence_text.contains(historical_name));
+        assert!(!evidence_text.contains(historical_version));
+
+        let historical_after = latest_watch_baseline_for_session(
+            &fixture.runtime_home_path,
+            &project_id,
+            &historical_session_id,
+        )?
+        .ok_or_else(|| io::Error::other("historical managed baseline disappeared"))?;
+        assert_eq!(
+            historical_after.metadata_json,
+            historical_metadata_after_unrelated_text
+        );
+
+        let mut tampered_metadata: Value = serde_json::from_str(&repeated_baseline.metadata_json)?;
+        tampered_metadata["post_capture_mutation"] = Value::Bool(true);
+        update_watch_status(
+            &fixture.runtime_home_path,
+            &project_id,
+            &current_baseline.watch_baseline_id,
+            WatchStatusUpdate {
+                status: SessionWatchStatus::Active,
+                updated_at: recorded_at_now()?,
+                metadata_json: serde_json::to_string(&tampered_metadata)?,
+            },
+        )?;
+        assert!(tampered_recorder.record_final(&summary).is_err());
+        drop(tampered_recorder);
+        assert!(!tampered_cell_path.exists());
+        assert!(!tampered_evidence_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn release_cell_recorder_advances_baseline_fingerprint_only_from_exact_repeated_turn_before(
+    ) -> Result<(), Box<dyn Error>> {
+        fn observation(
+            metadata_fingerprint: &str,
+            initialize_event_fingerprints: &[&str],
+        ) -> ManagedBaselineObservation {
+            ManagedBaselineObservation {
+                metadata_fingerprint: metadata_fingerprint.to_owned(),
+                initialize_event_fingerprints: initialize_event_fingerprints
+                    .iter()
+                    .map(|fingerprint| (*fingerprint).to_owned())
+                    .collect(),
+            }
+        }
+
+        let runtime_home = TempRuntimeHome::new("release-baseline-repeated-turn")?;
+        let mut recorder = LiveResultRecorder::new("claude-code", None)?;
+        recorder.bind_observed_runtime_home(runtime_home.path())?;
+        let baseline = ObservedHostTurnBaseline {
+            project_id: "project_fixture".to_owned(),
+            watch_baseline_id: "watch_base_fixture".to_owned(),
+        };
+        let empty = ManagedBaselineObservations::new();
+        let first = BTreeMap::from([(
+            baseline.clone(),
+            observation(&"a".repeat(64), &["initialize-a"]),
+        )]);
+        let first_fingerprints = BTreeMap::from([(baseline.clone(), "a".repeat(64))]);
+        recorder.bind_observed_host_turn_baselines(&empty, &first)?;
+        assert_eq!(recorder.observed_host_turn_baselines, first_fingerprints);
+
+        recorder.bind_observed_host_turn_baselines(&first, &first)?;
+        assert_eq!(recorder.observed_host_turn_baselines, first_fingerprints);
+
+        let second = BTreeMap::from([(
+            baseline.clone(),
+            observation(&"b".repeat(64), &["initialize-a"]),
+        )]);
+        let second_fingerprints = BTreeMap::from([(baseline.clone(), "b".repeat(64))]);
+        recorder.bind_observed_host_turn_baselines(&first, &second)?;
+        assert_eq!(recorder.observed_host_turn_baselines, second_fingerprints);
+
+        assert!(recorder
+            .bind_observed_host_turn_baselines(&first, &second)
+            .is_err());
+        assert_eq!(recorder.observed_host_turn_baselines, second_fingerprints);
+        assert!(recorder
+            .bind_observed_host_turn_baselines(&second, &empty)
+            .is_err());
+        assert_eq!(recorder.observed_host_turn_baselines, second_fingerprints);
+
+        let historical_baseline = ObservedHostTurnBaseline {
+            project_id: "project_fixture".to_owned(),
+            watch_baseline_id: "watch_base_managed_historical".to_owned(),
+        };
+        let historical_before = BTreeMap::from([(
+            historical_baseline.clone(),
+            observation(&"c".repeat(64), &["initialize-historical"]),
+        )]);
+        let historical_unrelated_after = BTreeMap::from([(
+            historical_baseline.clone(),
+            observation(&"d".repeat(64), &["initialize-historical"]),
+        )]);
+        let mut historical_recorder = LiveResultRecorder::new("claude-code", None)?;
+        historical_recorder.bind_observed_runtime_home(runtime_home.path())?;
+        historical_recorder
+            .bind_observed_host_turn_baselines(&historical_before, &historical_unrelated_after)?;
+        assert!(historical_recorder.observed_host_turn_baselines.is_empty());
+        let historical_initialized_after = BTreeMap::from([(
+            historical_baseline.clone(),
+            observation(
+                &"e".repeat(64),
+                &["initialize-historical", "initialize-current"],
+            ),
+        )]);
+        historical_recorder
+            .bind_observed_host_turn_baselines(&historical_before, &historical_initialized_after)?;
+        assert_eq!(
+            historical_recorder.observed_host_turn_baselines,
+            BTreeMap::from([(historical_baseline, "e".repeat(64))])
+        );
         Ok(())
     }
 
@@ -3092,6 +3772,7 @@ mod unix {
             host,
             &executable,
             &identity.connection_id,
+            &mut result_recorder,
         )?;
 
         let marker = format!(
@@ -3110,8 +3791,12 @@ mod unix {
             "\n=== Volicord live {host}/{} source turn ===\nThe authenticated host must prepare an exact short-lived capture intent before producing the registered source event in the same opaque managed session. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{source_prompt}\n=== end instruction ===\n",
             feature.as_str()
         );
-        let source_status =
-            fixture.run_authenticated_interactive_host(host, &executable, &source_prompt)?;
+        let source_status = fixture.run_authenticated_interactive_host(
+            host,
+            &executable,
+            &source_prompt,
+            &mut result_recorder,
+        )?;
         if !source_status.success() {
             return Err(io::Error::other(format!(
                 "the live {host}/{} source turn exited unsuccessfully with {}",
@@ -3152,8 +3837,12 @@ mod unix {
             "\n=== Volicord live {host}/{} producer finalization turn ===\nThe authenticated host must use the same registered Agent Connection to finalize the captured receipt into one Run, one Strong Evidence observation, criterion coverage, status, and check-close.\n\n{resume_prompt}\n=== end instruction ===\n",
             feature.as_str()
         );
-        let resume_status =
-            fixture.run_authenticated_interactive_host(host, &executable, &resume_prompt)?;
+        let resume_status = fixture.run_authenticated_interactive_host(
+            host,
+            &executable,
+            &resume_prompt,
+            &mut result_recorder,
+        )?;
         if !resume_status.success() {
             return Err(io::Error::other(format!(
                 "the live {host}/{} producer finalization turn exited unsuccessfully with {}",
@@ -5181,7 +5870,12 @@ mod unix {
             "\n=== Volicord live {host}/{} final-output smoke ===\nThis first authenticated host turn intentionally has no active Volicord Task. After the host answer, inspect the host-native final-output surface. Do not enter credentials into this test process.\n=== end instruction ===\n",
             profile.as_str()
         );
-        let host_status = fixture.run_authenticated_interactive_host(host, &executable, &prompt)?;
+        let host_status = fixture.run_authenticated_interactive_host(
+            host,
+            &executable,
+            &prompt,
+            &mut result_recorder,
+        )?;
         if !host_status.success() {
             return Err(io::Error::other(format!(
                 "the interactive {host} process exited unsuccessfully with {}",
@@ -5271,6 +5965,7 @@ mod unix {
                 "Reply with exactly VOLICORD_LIVE_FINAL_OUTPUT_RECEIPT and then stop. ",
                 "Do not call tools, MCP servers, shell commands, or edit files."
             ),
+            &mut result_recorder,
         )?;
         if !receipt_host_status.success() {
             return Err(io::Error::other(format!(
@@ -5687,6 +6382,7 @@ mod unix {
             host,
             &executable,
             &identity.connection_id,
+            &mut result_recorder,
         )?;
         let marker = format!(
             "VOLICORD_LIVE_HOST_CLI_FALLBACK_ROUND_TRIP_{}",
@@ -5716,7 +6412,12 @@ mod unix {
         println!(
             "\n=== Volicord live {host} CLI-fallback smoke ===\nThe pending choice was resolved by the human operator through the actual `volicord inbox resolve --json` User Channel. The installed host must now resume that exact request through the same Agent Connection, consume the selected option, record its mapped no-write Run, read fresh status, and stop. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(host, &executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host(
+            host,
+            &executable,
+            &prompt,
+            &mut result_recorder,
+        )?;
         smoke_note(
             host,
             format!("interactive host exited with {}", status_text(status)),
@@ -5959,6 +6660,7 @@ mod unix {
             host,
             &executable,
             &identity.connection_id,
+            &mut result_recorder,
         )?;
 
         let marker = format!(
@@ -5971,7 +6673,12 @@ mod unix {
         println!(
             "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. Exit the host after it reports the final Volicord status.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(host, &executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host(
+            host,
+            &executable,
+            &prompt,
+            &mut result_recorder,
+        )?;
         smoke_note(
             host,
             format!("interactive host exited with {}", status_text(status)),
@@ -6401,6 +7108,7 @@ mod unix {
             host,
             &executable,
             &identity.connection_id,
+            result_recorder,
         )?;
         let marker = format!(
             "VOLICORD_LIVE_HOST_EVIDENCE_OBSERVATION_{}",
@@ -6423,6 +7131,7 @@ mod unix {
             host,
             &executable,
             &prompt,
+            result_recorder,
         )?;
         smoke_note(
             host,
@@ -11187,6 +11896,7 @@ mod unix {
         host: &str,
         executable: &Path,
         connection_id: &str,
+        result_recorder: &mut LiveResultRecorder,
     ) -> Result<(), Box<dyn Error>> {
         let project_selector = live_fixture_project_id(fixture)?;
         let authority_before = project_authority_snapshot(fixture, &project_selector)?;
@@ -11201,7 +11911,12 @@ mod unix {
         println!(
             "\n=== Volicord live {host} connection-observation probe ===\nThis authenticated host turn intentionally has no active Volicord Task. It must expose and call the installed Volicord MCP server before the administrative verification step can store a complete Agent Connection result. Approve the repository or MCP entry if the host asks. Do not type credentials or secrets.\n\n{prompt}\n=== end instruction ===\n"
         );
-        let status = fixture.run_authenticated_interactive_host(host, executable, &prompt)?;
+        let status = fixture.run_authenticated_interactive_host(
+            host,
+            executable,
+            &prompt,
+            result_recorder,
+        )?;
         smoke_note(
             host,
             format!(
@@ -12194,6 +12909,138 @@ mod unix {
     }
 
     #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ObservedInitializedClientInfo(ManagedMcpClientInfo);
+
+    impl ObservedInitializedClientInfo {
+        fn new(name: String, version: String) -> Result<Self, Box<dyn Error>> {
+            Ok(Self(ManagedMcpClientInfo::new(name, version)?))
+        }
+
+        fn name(&self) -> &str {
+            self.0.name()
+        }
+
+        fn version(&self) -> &str {
+            self.0.version()
+        }
+    }
+
+    fn initialized_client_info_from_watch_metadata(
+        metadata: &Value,
+        expected_host_kind: &str,
+        connection_id: &str,
+        project_id: &str,
+    ) -> Result<Option<ObservedInitializedClientInfo>, Box<dyn Error>> {
+        let exact_managed_binding = metadata["source"] == "volicord_session_watch"
+            && metadata["launch_origin"] == "managed_host"
+            && metadata["host_kind"] == expected_host_kind
+            && metadata["connection_id"] == connection_id
+            && metadata["project_id"] == project_id;
+        if !exact_managed_binding {
+            return Ok(None);
+        }
+        let initialize_observed = metadata["lifecycle_events"]
+            .as_array()
+            .is_some_and(|events| {
+                events.iter().any(|event| {
+                    event["lifecycle_event"] == "managed_host_initialize_response"
+                        && event["launch_origin"] == "managed_host"
+                        && event["host_kind"] == expected_host_kind
+                        && event["connection_id"] == connection_id
+                        && event["project_id"] == project_id
+                })
+            });
+        if !initialize_observed {
+            return Ok(None);
+        }
+        match (metadata.get("client_name"), metadata.get("client_version")) {
+            (Some(Value::String(name)), Some(Value::String(version))) => Ok(Some(
+                ObservedInitializedClientInfo::new(name.clone(), version.clone())?,
+            )),
+            (None | Some(Value::Null), None | Some(Value::Null)) => Ok(None),
+            _ => Err(io::Error::other(
+                "managed initialize metadata contains a partial or malformed client identity",
+            )
+            .into()),
+        }
+    }
+
+    fn required_initialized_client_info_from_watch_metadata(
+        metadata: &Value,
+        expected_host_kind: &str,
+        connection_id: &str,
+        project_id: &str,
+    ) -> Result<ObservedInitializedClientInfo, Box<dyn Error>> {
+        initialized_client_info_from_watch_metadata(
+            metadata,
+            expected_host_kind,
+            connection_id,
+            project_id,
+        )?
+        .ok_or_else(|| {
+            io::Error::other(
+                "captured managed baseline does not contain one exact initialized client identity",
+            )
+            .into()
+        })
+    }
+
+    fn is_exact_managed_host_turn_baseline(
+        baseline: &WatchBaselineRecord,
+        expected_project_id: &str,
+        expected_connection_id: &str,
+    ) -> bool {
+        baseline.project_id == expected_project_id
+            && baseline.connection_internal_id == expected_connection_id
+            && validate_managed_host_session_id(&baseline.session_id).is_ok()
+            && baseline.watch_baseline_id == format!("watch_base_managed_{}", baseline.session_id)
+    }
+
+    fn managed_baseline_metadata_fingerprint(metadata_json: &str) -> String {
+        format!("{:x}", Sha256::digest(metadata_json.as_bytes()))
+    }
+
+    #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    struct ObservedHostTurnBaseline {
+        project_id: String,
+        watch_baseline_id: String,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ManagedBaselineObservation {
+        metadata_fingerprint: String,
+        initialize_event_fingerprints: BTreeSet<String>,
+    }
+
+    impl ManagedBaselineObservation {
+        fn from_metadata_json(metadata_json: &str) -> Result<Self, Box<dyn Error>> {
+            let metadata: Value = serde_json::from_str(metadata_json)?;
+            let initialize_event_fingerprints = metadata["lifecycle_events"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|event| event["lifecycle_event"] == "managed_host_initialize_response")
+                .map(canonical_json_bare_sha256)
+                .collect::<Result<BTreeSet<_>, _>>()?;
+            Ok(Self {
+                metadata_fingerprint: managed_baseline_metadata_fingerprint(metadata_json),
+                initialize_event_fingerprints,
+            })
+        }
+
+        fn records_new_initialize_since(&self, previous: &Self) -> bool {
+            self.initialize_event_fingerprints.len() > previous.initialize_event_fingerprints.len()
+                && self
+                    .initialize_event_fingerprints
+                    .is_superset(&previous.initialize_event_fingerprints)
+        }
+    }
+
+    type ManagedBaselineObservations =
+        BTreeMap<ObservedHostTurnBaseline, ManagedBaselineObservation>;
+    type ManagedBaselineFingerprints = BTreeMap<ObservedHostTurnBaseline, String>;
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct LiveRunnerEnvironment {
         runner_os: String,
         runner_os_version: String,
@@ -12238,6 +13085,9 @@ mod unix {
         installed_host_detected: bool,
         observed_host_coordinates: Option<ObservedReleaseHostCoordinates>,
         observed_volicord_build_id: Option<String>,
+        observed_initialized_client_info: Option<ObservedInitializedClientInfo>,
+        observed_runtime_home: Option<PathBuf>,
+        observed_host_turn_baselines: ManagedBaselineFingerprints,
         runner_environment: LiveRunnerEnvironment,
     }
 
@@ -12347,6 +13197,9 @@ mod unix {
                 installed_host_detected: false,
                 observed_host_coordinates: None,
                 observed_volicord_build_id: None,
+                observed_initialized_client_info: None,
+                observed_runtime_home: None,
+                observed_host_turn_baselines: BTreeMap::new(),
                 runner_environment: LiveRunnerEnvironment::measure()?,
             };
             recorder.started = true;
@@ -12443,6 +13296,199 @@ mod unix {
             Ok(())
         }
 
+        fn bind_observed_runtime_home(
+            &mut self,
+            runtime_home: &Path,
+        ) -> Result<(), Box<dyn Error>> {
+            let runtime_home = fs::canonicalize(runtime_home)?;
+            if let Some(existing) = &self.observed_runtime_home {
+                if existing != &runtime_home {
+                    return Err(io::Error::other(
+                        "live result recorder cannot replace its observed runtime home",
+                    )
+                    .into());
+                }
+            } else {
+                if !list_projects(&runtime_home)?.is_empty() {
+                    return Err(io::Error::other(
+                        "live result recorder must bind a disposable runtime home before project registration",
+                    )
+                    .into());
+                }
+                self.observed_runtime_home = Some(runtime_home);
+            }
+            Ok(())
+        }
+
+        fn bind_observed_host_turn_baselines(
+            &mut self,
+            before: &ManagedBaselineObservations,
+            after: &ManagedBaselineObservations,
+        ) -> Result<(), Box<dyn Error>> {
+            if self.observed_runtime_home.is_none() {
+                return Err(io::Error::other(
+                    "host-turn baseline observation requires a bound disposable runtime home",
+                )
+                .into());
+            }
+            for (baseline, expected_fingerprint) in &self.observed_host_turn_baselines {
+                match before
+                    .get(baseline)
+                    .map(|observation| &observation.metadata_fingerprint)
+                {
+                    Some(before_fingerprint) if before_fingerprint == expected_fingerprint => {}
+                    Some(_) => {
+                        return Err(io::Error::other(
+                            "captured managed baseline changed before a later host turn",
+                        )
+                        .into())
+                    }
+                    None => {
+                        return Err(io::Error::other(
+                            "captured managed baseline disappeared before a later host turn",
+                        )
+                        .into())
+                    }
+                }
+                if !after.contains_key(baseline) {
+                    return Err(io::Error::other(
+                        "captured managed baseline disappeared during a later host turn",
+                    )
+                    .into());
+                }
+            }
+            let mut next = self.observed_host_turn_baselines.clone();
+            for (baseline, after_observation) in after {
+                let before_observation = before.get(baseline);
+                let metadata_changed = before_observation.is_none_or(|observation| {
+                    observation.metadata_fingerprint != after_observation.metadata_fingerprint
+                });
+                if !metadata_changed {
+                    continue;
+                }
+                let already_retained = next.contains_key(baseline);
+                let newly_initialized = before_observation.is_none_or(|observation| {
+                    after_observation.records_new_initialize_since(observation)
+                });
+                if already_retained || newly_initialized {
+                    next.insert(
+                        baseline.clone(),
+                        after_observation.metadata_fingerprint.clone(),
+                    );
+                }
+            }
+            self.observed_host_turn_baselines = next;
+            Ok(())
+        }
+
+        fn bind_observed_initialized_client_info(
+            &mut self,
+            client_info: ObservedInitializedClientInfo,
+        ) -> Result<(), Box<dyn Error>> {
+            if let Some(existing) = &self.observed_initialized_client_info {
+                if existing != &client_info {
+                    return Err(io::Error::other(
+                        "live result recorder observed more than one initialized MCP client identity",
+                    )
+                    .into());
+                }
+            } else {
+                self.observed_initialized_client_info = Some(client_info);
+            }
+            Ok(())
+        }
+
+        fn refresh_observed_initialized_client_info(
+            &mut self,
+            summary: &Value,
+        ) -> Result<(), Box<dyn Error>> {
+            let Some(runtime_home) = self.observed_runtime_home.as_deref() else {
+                return Ok(());
+            };
+            let Some(connection_id) = summary
+                .pointer("/connection/connection_id")
+                .and_then(Value::as_str)
+            else {
+                return if self.observed_host_turn_baselines.is_empty() {
+                    Ok(())
+                } else {
+                    Err(io::Error::other(
+                        "captured managed baselines require an exact release-cell connection",
+                    )
+                    .into())
+                };
+            };
+            let connection_id = bounded_identity(
+                "release-cell observed Agent Connection id",
+                connection_id,
+                MAX_CONNECTION_ID_CHARS,
+            )?;
+            let expected_host_kind = match self.result_host.as_str() {
+                "codex" => "codex",
+                "claude-code" | "claude_code" => "claude_code",
+                _ => {
+                    return Err(io::Error::other(
+                        "initialized-client observation requires a maintained managed host",
+                    )
+                    .into())
+                }
+            };
+            let mut observed = BTreeSet::new();
+            for (observed_baseline, expected_fingerprint) in &self.observed_host_turn_baselines {
+                let baseline = watch_baseline(
+                    runtime_home,
+                    &observed_baseline.project_id,
+                    &observed_baseline.watch_baseline_id,
+                )?
+                .ok_or_else(|| {
+                    io::Error::other(
+                        "captured managed baseline disappeared before final cell recording",
+                    )
+                })?;
+                let actual_fingerprint =
+                    managed_baseline_metadata_fingerprint(&baseline.metadata_json);
+                if &actual_fingerprint != expected_fingerprint {
+                    return Err(io::Error::other(
+                        "captured managed baseline metadata changed before final cell recording",
+                    )
+                    .into());
+                }
+                if !is_exact_managed_host_turn_baseline(
+                    &baseline,
+                    &observed_baseline.project_id,
+                    &connection_id,
+                ) {
+                    return Err(io::Error::other(
+                        "captured managed baseline was replaced outside its exact cell coordinates",
+                    )
+                    .into());
+                }
+                let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+                let client_info = required_initialized_client_info_from_watch_metadata(
+                    &metadata,
+                    expected_host_kind,
+                    &connection_id,
+                    &observed_baseline.project_id,
+                )?;
+                observed.insert((
+                    client_info.name().to_owned(),
+                    client_info.version().to_owned(),
+                ));
+            }
+            if observed.len() > 1 {
+                return Err(io::Error::other(
+                    "one live release cell observed multiple initialized MCP client identities",
+                )
+                .into());
+            }
+            if let Some((name, version)) = observed.into_iter().next() {
+                self.bind_observed_initialized_client_info(ObservedInitializedClientInfo::new(
+                    name, version,
+                )?)?;
+            }
+            Ok(())
+        }
+
         fn with_observed_host_identity(&self, summary: &Value) -> Result<Value, Box<dyn Error>> {
             if self.observed_host_coordinates.is_none() && self.observed_volicord_build_id.is_none()
             {
@@ -12521,6 +13567,7 @@ mod unix {
         fn record_final(&mut self, summary: &Value) -> Result<(), Box<dyn Error>> {
             let summary = self.with_observed_host_identity(summary)?;
             validate_terminal_release_host_feature_diagnostics(&summary)?;
+            self.refresh_observed_initialized_client_info(&summary)?;
             let summary = self.with_validation_run(&summary)?;
             let serialized = serialize_live_host_result(&summary)?;
             let rendered = match (self.release_feature, self.result_path.as_deref()) {
@@ -12548,7 +13595,15 @@ mod unix {
                 serde_json::json!({
                     "run_id": self.run_id,
                     "started_at": self.started_at,
-                    "recorded_at": recorded_at_now()?
+                    "recorded_at": recorded_at_now()?,
+                    "client_name": self
+                        .observed_initialized_client_info
+                        .as_ref()
+                        .map(ObservedInitializedClientInfo::name),
+                    "client_version": self
+                        .observed_initialized_client_info
+                        .as_ref()
+                        .map(ObservedInitializedClientInfo::version)
                 }),
             );
             Ok(summary)
@@ -12616,6 +13671,33 @@ mod unix {
                 )
                 .into());
             }
+            let initialized_client_info = match (
+                summary.pointer("/validation_run/client_name"),
+                summary.pointer("/validation_run/client_version"),
+            ) {
+                (Some(Value::String(name)), Some(Value::String(version))) => Some(
+                    ObservedInitializedClientInfo::new(name.clone(), version.clone())?,
+                ),
+                (Some(Value::Null), Some(Value::Null)) => None,
+                _ => {
+                    return Err(io::Error::other(
+                        "release-cell client_name and client_version must both be strings or both be null",
+                    )
+                    .into())
+                }
+            };
+            if host_version.is_none() && initialized_client_info.is_some() {
+                return Err(io::Error::other(
+                    "release-cell initialized client identity requires an available host coordinate",
+                )
+                .into());
+            }
+            let client_name = initialized_client_info
+                .as_ref()
+                .map(|client_info| client_info.name().to_owned());
+            let client_version = initialized_client_info
+                .as_ref()
+                .map(|client_info| client_info.version().to_owned());
             let adapter_version = match summary.pointer("/volicord/build_id") {
                 Some(Value::String(value)) => {
                     bounded_identity("release-cell adapter_version", value, MAX_BUILD_ID_CHARS)?
@@ -12644,6 +13726,12 @@ mod unix {
             );
             let static_unsupported = implementation == HostFeatureImplementation::UnsupportedByHost;
             let host_identity_available = host_version.is_some();
+            let client_identity_exact = initialized_client_info.as_ref().is_some_and(|client| {
+                host_version.as_deref() == Some(client.version())
+                    && (maintained_host_kind != HostKind::Codex
+                        || host_version.as_deref() != Some(REVIEWED_CODEX_HOST_VERSION)
+                        || client.name() == REVIEWED_CODEX_MCP_CLIENT_NAME)
+            });
             let requested_verified = resolve_release_requested_verified(
                 self.release_requested_verified,
                 static_unsupported,
@@ -12668,7 +13756,7 @@ mod unix {
             };
             let claimed_status = if static_unsupported {
                 "unsupported_by_host"
-            } else if completed_pass {
+            } else if completed_pass && client_identity_exact {
                 "verified"
             } else {
                 "implemented_unverified"
@@ -12683,6 +13771,8 @@ mod unix {
                 "release_profile": candidate.release_profile,
                 "host_kind": canonical_host_kind,
                 "host_version": host_version,
+                "client_name": client_name,
+                "client_version": client_version,
                 "adapter_profile": adapter_profile,
                 "adapter_version": adapter_version,
                 "feature": feature.as_str(),
@@ -12705,6 +13795,8 @@ mod unix {
                     "host_executable_sha256": host_executable_sha256,
                     "host_kind": canonical_host_kind,
                     "host_version": host_version,
+                    "client_name": client_name,
+                    "client_version": client_version,
                     "adapter_profile": adapter_profile,
                     "adapter_version": adapter_version
                 },
@@ -13918,6 +15010,7 @@ mod unix {
             executable_name: &str,
             executable: &Path,
         ) -> Result<ObservedReleaseHostIdentity, Box<dyn Error>> {
+            recorder.bind_observed_runtime_home(&self.runtime_home_path)?;
             recorder.mark_installed_host_detected();
             let host_executable_sha256 =
                 sha256_file(executable, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
@@ -13944,12 +15037,43 @@ mod unix {
             )
         }
 
+        fn managed_baseline_observations(
+            &self,
+        ) -> Result<ManagedBaselineObservations, Box<dyn Error>> {
+            let mut observations = BTreeMap::new();
+            for project in list_projects(&self.runtime_home_path)? {
+                let connection = open_project_state_database_read_only(&project.state_db_path)?;
+                let mut statement = connection.prepare(
+                    "SELECT watch_baseline_id, metadata_json
+                       FROM session_watch_baselines
+                      WHERE project_id = ?1
+                      ORDER BY watch_baseline_id",
+                )?;
+                let rows = statement.query_map([&project.project_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+                for row in rows {
+                    let (watch_baseline_id, metadata_json) = row?;
+                    observations.insert(
+                        ObservedHostTurnBaseline {
+                            project_id: project.project_id.clone(),
+                            watch_baseline_id,
+                        },
+                        ManagedBaselineObservation::from_metadata_json(&metadata_json)?,
+                    );
+                }
+            }
+            Ok(observations)
+        }
+
         fn run_authenticated_interactive_host(
             &self,
             host: &str,
             program: &Path,
             prompt: &str,
+            recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            let before = self.managed_baseline_observations()?;
             self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
             let mut command = Command::new(program);
             command
@@ -13964,7 +15088,10 @@ mod unix {
                 .stderr(Stdio::inherit());
             Self::remove_inherited_host_control_env(&mut command);
             Self::remove_inherited_auth_secret_env(&mut command);
-            self.run_candidate_host_turn(command)
+            let result = self.run_candidate_host_turn(command);
+            let after = self.managed_baseline_observations()?;
+            recorder.bind_observed_host_turn_baselines(&before, &after)?;
+            result
         }
 
         fn run_authenticated_interactive_host_with_local_web(
@@ -13972,7 +15099,9 @@ mod unix {
             host: &str,
             program: &Path,
             prompt: &str,
+            recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            let before = self.managed_baseline_observations()?;
             self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
             let mut command = Command::new(program);
             command
@@ -13988,7 +15117,10 @@ mod unix {
             Self::remove_inherited_host_control_env(&mut command);
             Self::remove_inherited_auth_secret_env(&mut command);
             command.env("VOLICORD_LOCAL_WEB_CONSENT", "1");
-            self.run_candidate_host_turn(command)
+            let result = self.run_candidate_host_turn(command);
+            let after = self.managed_baseline_observations()?;
+            recorder.bind_observed_host_turn_baselines(&before, &after)?;
+            result
         }
 
         fn require_codex_chatgpt_login_immediately_before_cell(

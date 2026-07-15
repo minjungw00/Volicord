@@ -424,6 +424,17 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 설치 호스트의 정규 좌표는 정확한 probe 외피 `codex-cli 0.144.4`에서 해석한
 `0.144.4`입니다.
 
+관리 결속이 `session_watch_baselines` 행을 구체화할 때 기준선 `metadata_json`은 기존의
+크기가 제한된 감시 메타데이터와 함께 성공한 initialize의 정확한 정체성만 최상위
+`client_name`과 `client_version`으로 보존합니다. 이 문자열은 실제 성공한 initialize
+값이며, 어댑터는 호스트 종류, 실행 파일이나 probe 텍스트, 설정, 프로토콜 버전, 상수,
+요청 메타데이터, 다른 세션에서 이를 추론하지 않습니다. 실제 호스트 릴리스 기록기는 이 두
+필드를 읽을 수 있습니다. 이를 위해 원본 initialize 요청, 그 밖의 파라미터, 원본
+프로토콜·세션·thread·turn·tool-call payload를 보존하지 않습니다.
+관리 기준선 하나는 클라이언트 쌍 하나만 보존합니다. 같은 initialize 쌍을 다시 관찰하는
+것만 멱등입니다. 기존 관리 기준선의 클라이언트 쌍이 없거나 일부만 있거나 다르면 결속
+충돌이며 성공한 관리 클라이언트 provenance로 사용하거나 교체하여 복구하면 안 됩니다.
+
 Ready 전환 뒤 처음으로 알려진 도구를 구조적으로 올바르게 호출할 때는
 `_meta.threadId`와 객체 `_meta["x-codex-turn-metadata"]` 안의 문자열
 `session_id`, `thread_id`, `turn_id`가 있어야 합니다. 바깥 `threadId`는 안쪽
@@ -638,7 +649,9 @@ JSON-RPC 응답을 만들지 않습니다. 그러나 그런 `params`는 수명�
 
 - 문자열 `protocolVersion`
 - 객체 `capabilities`
-- 문자열 `name`과 `version` 필드를 포함하는 객체 `clientInfo`
+- 문자열 `name`과 `version` 필드를 포함하는 객체 `clientInfo`. 각 필드는 1바이트 이상 256
+  UTF-8 바이트 이하이고 공백이 아닌 문자를 하나 이상 포함하며 제어 문자가 없어야 하고,
+  그 밖에는 정확한 문자열을 그대로 보존합니다.
 
 `params.capabilities.elicitation`이 객체이면 어댑터는 MCP 클라이언트가 서버 시작
 사용자 입력 요청을 사용할 수 있다고 봅니다. 별도 Volicord 확장 capability는 다음과
@@ -1307,7 +1320,7 @@ Listener 시작만으로는 이 경로를 선택하지 않습니다. Listener co
 관리 지문, 어댑터 프로필·버전, Volicord 빌드, source revision, target, 실행 파일
 다이제스트, 클라이언트 이름·버전, 크기가 제한된 실제 호스트 증거 다이제스트와 정확히
 일치해야 합니다. 예상 증거 다이제스트에는 [호스트 릴리스 증거](host-release-evidence.md)가
-담당하는 정확한 외부 `volicord-host-release-manifest-v2`를 신뢰해 획득하는 운영 경로가
+담당하는 정확한 외부 `volicord-host-release-manifest-v3`를 신뢰해 획득하는 운영 경로가
 필요합니다. 그 manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target,
 실행 파일 다이제스트에 결속됩니다. 행의
 `evidence_artifact_sha256`은 그 예상값과 정확히 일치해야 하며 행, 빌드 설명자, 복사한 값이

@@ -12,7 +12,10 @@ use std::sync::{
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_types::{
     host_feature_implementation_for_version, HostFeature, HostFeatureImplementation,
+    ManagedMcpClientInfo,
 };
+
+const MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE: &str = "MANAGED_MCP_CLIENT_IDENTITY_CONFLICT";
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -307,6 +310,7 @@ impl Eq for McpAdapter {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StartupObservationResult {
     Recorded,
+    IdentityConflict,
     SkippedVerificationProbe,
     SkippedReadonlyStorage,
     FailedButNonfatal { reason: String },
@@ -540,6 +544,20 @@ impl McpAdapter {
         )
     }
 
+    pub(crate) fn managed_initialize_observation_best_effort(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        client_info: &ManagedMcpClientInfo,
+    ) -> StartupObservationResult {
+        self.managed_initialize_observation_with_basis(
+            session_id,
+            launch_origin,
+            client_info,
+            SessionWatchCoverageBasis::McpStart,
+        )
+    }
+
     pub(crate) fn managed_lifecycle_observation_at_binding_best_effort(
         &self,
         session_id: &str,
@@ -554,6 +572,75 @@ impl McpAdapter {
             tool_name,
             SessionWatchCoverageBasis::MethodBoundary,
         )
+    }
+
+    pub(crate) fn managed_initialize_observation_at_binding_best_effort(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        client_info: &ManagedMcpClientInfo,
+    ) -> StartupObservationResult {
+        self.managed_initialize_observation_with_basis(
+            session_id,
+            launch_origin,
+            client_info,
+            SessionWatchCoverageBasis::MethodBoundary,
+        )
+    }
+
+    fn managed_initialize_observation_with_basis(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        client_info: &ManagedMcpClientInfo,
+        coverage_basis: SessionWatchCoverageBasis,
+    ) -> StartupObservationResult {
+        match self.managed_initialize_observation(
+            session_id,
+            launch_origin,
+            client_info,
+            coverage_basis,
+        ) {
+            Ok(result) => result,
+            Err(error) if managed_initialize_identity_conflict(&error) => {
+                StartupObservationResult::IdentityConflict
+            }
+            Err(error) if startup_observation_storage_is_readonly(&error) => {
+                StartupObservationResult::SkippedReadonlyStorage
+            }
+            Err(error) => StartupObservationResult::FailedButNonfatal {
+                reason: error.to_string(),
+            },
+        }
+    }
+
+    fn managed_initialize_observation(
+        &self,
+        session_id: &str,
+        launch_origin: &str,
+        client_info: &ManagedMcpClientInfo,
+        coverage_basis: SessionWatchCoverageBasis,
+    ) -> Result<StartupObservationResult, McpAdapterError> {
+        let Some(project_id) = self.project_bound_startup_project()? else {
+            return Ok(StartupObservationResult::NotAttempted);
+        };
+        let host_kind = self
+            .validate_managed_session_binding_for_project(&project_id, session_id)?
+            .ok_or_else(|| {
+                McpAdapterError::Environment(
+                    "MANAGED_HOST_SESSION_BINDING_CONFLICT: managed initialize requires an opaque mhs_ session"
+                        .to_owned(),
+                )
+            })?;
+        self.ensure_managed_initialize_baseline(
+            &project_id,
+            session_id,
+            &host_kind,
+            launch_origin,
+            client_info,
+            coverage_basis,
+        )?;
+        Ok(StartupObservationResult::Recorded)
     }
 
     fn managed_lifecycle_observation_with_basis_best_effort(
@@ -647,6 +734,125 @@ impl McpAdapter {
         }
     }
 
+    fn ensure_managed_initialize_baseline(
+        &self,
+        project_id: &ProjectId,
+        session_id: &str,
+        host_kind: &str,
+        launch_origin: &str,
+        client_info: &ManagedMcpClientInfo,
+        coverage_basis: SessionWatchCoverageBasis,
+    ) -> Result<(), McpAdapterError> {
+        if let Some(baseline) =
+            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+                .map_err(McpAdapterError::Store)?
+        {
+            return validate_managed_initialize_baseline(&baseline, client_info);
+        }
+
+        let now = CoreProjectStore::open(&self.runtime_home, project_id)
+            .and_then(|store| store.current_timestamp())
+            .map_err(McpAdapterError::Store)?;
+        self.ensure_agent_session_for_watch(project_id, session_id, &now, Some(host_kind))?;
+
+        if let Some(baseline) =
+            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+                .map_err(McpAdapterError::Store)?
+        {
+            return validate_managed_initialize_baseline(&baseline, client_info);
+        }
+
+        let store = CoreProjectStore::open(&self.runtime_home, project_id)
+            .map_err(McpAdapterError::Store)?;
+        let snapshot = snapshot_product_repository(
+            &self.runtime_home,
+            &store.project_record().repo_root,
+            WatchSnapshotOptions::default(),
+        )
+        .map_err(McpAdapterError::Store)?;
+        let partial_coverage_warning = match coverage_basis {
+            SessionWatchCoverageBasis::McpStart => None,
+            SessionWatchCoverageBasis::FirstProjectSelection => {
+                Some(FIRST_PROJECT_SELECTION_PARTIAL_COVERAGE_WARNING)
+            }
+            SessionWatchCoverageBasis::MethodBoundary => {
+                Some(METHOD_BOUNDARY_PARTIAL_COVERAGE_WARNING)
+            }
+        };
+        let startup = self.managed_lifecycle_event_metadata(
+            project_id,
+            host_kind,
+            launch_origin,
+            ManagedLifecycleEvent::Startup,
+            &now,
+        );
+        let initialize = self.managed_lifecycle_event_metadata(
+            project_id,
+            host_kind,
+            launch_origin,
+            ManagedLifecycleEvent::InitializeResponse,
+            &now,
+        );
+        let mut metadata = json!({
+            "source": WATCH_METADATA_SOURCE,
+            "status_detail": "active",
+            "detector_role": "detective",
+            "does_not_prevent_writes": true,
+            "does_not_identify_actor": true,
+            "coverage_start_at": now,
+            "coverage_basis": coverage_basis.as_str(),
+            "scan_summary": Self::session_watch_scan_summary_from_snapshot(&snapshot),
+            "launch_origin": launch_origin,
+            "host_kind": host_kind,
+            "connection_id": self.context.connection_internal_id.as_str(),
+            "project_id": project_id.as_str(),
+            "client_name": client_info.name(),
+            "client_version": client_info.version(),
+            "latest_lifecycle_event": ManagedLifecycleEvent::InitializeResponse.as_str(),
+            "latest_lifecycle_observed_at": now,
+            "lifecycle_events": [startup, initialize],
+        });
+        if let Some(warning) = partial_coverage_warning {
+            metadata["partial_coverage_warning"] = json!(warning);
+        }
+        let create_result = create_watch_baseline(
+            &self.runtime_home,
+            project_id.as_str(),
+            WatchBaselineCreate {
+                watch_baseline_id: format!("watch_base_managed_{session_id}"),
+                session_id: session_id.to_owned(),
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                guard_installation_id: self.selected_guard_installation_id(project_id)?,
+                status: StoreSessionWatchStatus::Active,
+                snapshot,
+                created_at: now,
+                metadata_json: serde_json::to_string(&metadata).map_err(McpAdapterError::Json)?,
+            },
+        );
+        if let Err(error) = create_result {
+            let Some(baseline) = latest_watch_baseline_for_session(
+                &self.runtime_home,
+                project_id.as_str(),
+                session_id,
+            )
+            .map_err(McpAdapterError::Store)?
+            else {
+                return Err(McpAdapterError::Store(error));
+            };
+            return validate_managed_initialize_baseline(&baseline, client_info);
+        }
+
+        let baseline =
+            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+                .map_err(McpAdapterError::Store)?
+                .ok_or_else(|| {
+                    McpAdapterError::Environment(
+                        "managed initialize baseline is unavailable after creation".to_owned(),
+                    )
+                })?;
+        validate_managed_initialize_baseline(&baseline, client_info)
+    }
+
     fn ensure_session_watch_baseline(
         &self,
         project_id: &ProjectId,
@@ -656,11 +862,18 @@ impl McpAdapter {
     ) -> Result<(), McpAdapterError> {
         let managed_host_kind =
             self.validate_managed_session_binding_for_project(project_id, session_id)?;
-        if latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
-            .map_err(McpAdapterError::Store)?
-            .is_some()
+        if let Some(baseline) =
+            latest_watch_baseline_for_session(&self.runtime_home, project_id.as_str(), session_id)
+                .map_err(McpAdapterError::Store)?
         {
+            if managed_host_kind.is_some() {
+                let client_info = persisted_managed_client_info(&baseline)?;
+                validate_managed_initialize_baseline(&baseline, &client_info)?;
+            }
             return Ok(());
+        }
+        if managed_host_kind.is_some() {
+            return Err(managed_initialize_conflict_error());
         }
 
         let now = CoreProjectStore::open(&self.runtime_home, project_id)
@@ -746,6 +959,9 @@ impl McpAdapter {
         lifecycle_event: ManagedLifecycleEvent,
         tool_name: Option<&str>,
     ) -> Result<(), McpAdapterError> {
+        if lifecycle_event == ManagedLifecycleEvent::InitializeResponse {
+            return Err(managed_initialize_conflict_error());
+        }
         let host_kind = self
             .validate_managed_session_binding_for_project(project_id, session_id)?
             .ok_or_else(|| {
@@ -774,7 +990,7 @@ impl McpAdapter {
         let object = metadata
             .as_object_mut()
             .expect("metadata was normalized to an object");
-        if lifecycle_event.is_connection_once()
+        let existing_connection_event = lifecycle_event.is_connection_once()
             && object
                 .get("lifecycle_events")
                 .and_then(Value::as_array)
@@ -783,8 +999,8 @@ impl McpAdapter {
                         event.get("lifecycle_event").and_then(Value::as_str)
                             == Some(lifecycle_event.as_str())
                     })
-                })
-        {
+                });
+        if existing_connection_event {
             return Ok(());
         }
         object.insert("host_kind".to_owned(), json!(&host_kind));
@@ -959,7 +1175,7 @@ impl McpAdapter {
                 .unwrap_or_else(|| "unknown".to_owned())
         });
 
-        insert_agent_session(
+        let insert_result = insert_agent_session(
             &self.runtime_home,
             project_id.as_str(),
             AgentSessionInsert {
@@ -975,9 +1191,28 @@ impl McpAdapter {
                 }))
                 .map_err(McpAdapterError::Json)?,
             },
-        )
-        .map_err(McpAdapterError::Store)?;
-        Ok(())
+        );
+        match insert_result {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let Some(existing) =
+                    agent_session(&self.runtime_home, project_id.as_str(), session_id)
+                        .map_err(McpAdapterError::Store)?
+                else {
+                    return Err(McpAdapterError::Store(error));
+                };
+                if managed_host_kind.is_some_and(|host_kind| {
+                    existing.connection_internal_id != self.context.connection_internal_id.as_str()
+                        || existing.host_kind != host_kind
+                }) {
+                    return Err(McpAdapterError::Environment(
+                        "MANAGED_HOST_SESSION_BINDING_CONFLICT: concurrently created session ownership does not match this managed MCP connection"
+                            .to_owned(),
+                    ));
+                }
+                Ok(())
+            }
+        }
     }
 
     fn validate_managed_session_binding_for_project(
@@ -2695,6 +2930,65 @@ fn state_record_ref_fields() -> &'static [&'static str] {
 
 fn state_record_ref_skeleton() -> &'static str {
     r#"{"record_kind":"task","record_id":"task_001","project_id":"proj_001","task_id":"task_001","produced_at_state_version":1}"#
+}
+
+fn managed_initialize_conflict_error() -> McpAdapterError {
+    McpAdapterError::Environment(format!(
+        "{MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE}: managed-session initialize identity or lifecycle metadata is absent, malformed, or different"
+    ))
+}
+
+fn persisted_managed_client_info(
+    baseline: &WatchBaselineRecord,
+) -> Result<ManagedMcpClientInfo, McpAdapterError> {
+    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json)
+        .map_err(|_| managed_initialize_conflict_error())?;
+    let object = metadata
+        .as_object()
+        .ok_or_else(managed_initialize_conflict_error)?;
+    let name = object
+        .get("client_name")
+        .and_then(Value::as_str)
+        .ok_or_else(managed_initialize_conflict_error)?;
+    let version = object
+        .get("client_version")
+        .and_then(Value::as_str)
+        .ok_or_else(managed_initialize_conflict_error)?;
+    ManagedMcpClientInfo::new(name, version).map_err(|_| managed_initialize_conflict_error())
+}
+
+fn validate_managed_initialize_baseline(
+    baseline: &WatchBaselineRecord,
+    expected: &ManagedMcpClientInfo,
+) -> Result<(), McpAdapterError> {
+    if persisted_managed_client_info(baseline)? != *expected {
+        return Err(managed_initialize_conflict_error());
+    }
+    let metadata = serde_json::from_str::<Value>(&baseline.metadata_json)
+        .map_err(|_| managed_initialize_conflict_error())?;
+    let events = metadata
+        .get("lifecycle_events")
+        .and_then(Value::as_array)
+        .ok_or_else(managed_initialize_conflict_error)?;
+    for required in [
+        ManagedLifecycleEvent::Startup,
+        ManagedLifecycleEvent::InitializeResponse,
+    ] {
+        if !events.iter().any(|event| {
+            event.get("lifecycle_event").and_then(Value::as_str) == Some(required.as_str())
+        }) {
+            return Err(managed_initialize_conflict_error());
+        }
+    }
+    Ok(())
+}
+
+fn managed_initialize_identity_conflict(error: &McpAdapterError) -> bool {
+    matches!(
+        error,
+        McpAdapterError::Environment(message)
+            if message.starts_with(MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE)
+    )
 }
 
 fn startup_observation_storage_is_readonly(error: &McpAdapterError) -> bool {

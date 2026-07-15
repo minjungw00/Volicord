@@ -7,7 +7,9 @@ use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
 use sha2::{Digest, Sha256};
-use volicord_types::{REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME};
+use volicord_types::{
+    ManagedMcpClientInfo, REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
+};
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -65,27 +67,18 @@ where
     let mut state =
         ConnectionState::for_launch_origin(options.launch_origin, options.managed_host_session_id);
     validate_managed_stdio_session_ownership(&adapter, &state)?;
-    if !state.codex_binding.is_pending() {
+    if !state.codex_binding.is_pending() && !state.managed_host_lifecycle_observations {
         let _ = start_transport_diagnostic_session(&adapter, &state);
     }
-    let _startup_observation = if options.startup_session_watch
-        && state.managed_host_lifecycle_observations
-    {
-        adapter.managed_lifecycle_observation_best_effort(
-            &state.session_id,
-            options.launch_origin.as_str(),
-            ManagedLifecycleEvent::Startup,
-            None,
-        )
-    } else if options.startup_session_watch && options.launch_origin != McpLaunchOrigin::ManagedHost
-    {
-        adapter.startup_session_watch_observation_best_effort_with_origin(
-            &state.session_id,
-            options.launch_origin.as_str(),
-        )
-    } else {
-        StartupObservationResult::SkippedVerificationProbe
-    };
+    let _startup_observation =
+        if options.startup_session_watch && options.launch_origin != McpLaunchOrigin::ManagedHost {
+            adapter.startup_session_watch_observation_best_effort_with_origin(
+                &state.session_id,
+                options.launch_origin.as_str(),
+            )
+        } else {
+            StartupObservationResult::SkippedVerificationProbe
+        };
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next() {
@@ -734,8 +727,7 @@ pub(crate) struct ConnectionState {
     pub(crate) phase: ConnectionPhase,
     pub(crate) client_supports_elicitation: bool,
     pub(crate) client_supports_model_invisible_user_surface: bool,
-    pub(crate) client_name: Option<String>,
-    pub(crate) client_version: Option<String>,
+    pub(crate) client_info: Option<ManagedMcpClientInfo>,
     pub(crate) next_server_request_id: u64,
     pub(crate) session_id: String,
     pub(crate) managed_host_lifecycle_observations: bool,
@@ -750,8 +742,7 @@ impl Default for ConnectionState {
             phase: ConnectionPhase::AwaitingInitialize,
             client_supports_elicitation: false,
             client_supports_model_invisible_user_surface: false,
-            client_name: None,
-            client_version: None,
+            client_info: None,
             next_server_request_id: 1,
             session_id: generated_metadata_id("session", "mcp", "stdio"),
             managed_host_lifecycle_observations: false,
@@ -799,8 +790,8 @@ impl ConnectionState {
             } else {
                 self.launch_origin
             },
-            self.client_name.as_deref(),
-            self.client_version.as_deref(),
+            self.client_info.as_ref().map(ManagedMcpClientInfo::name),
+            self.client_info.as_ref().map(ManagedMcpClientInfo::version),
         )
     }
 }
@@ -953,21 +944,24 @@ where
                 Ok(capabilities) => capabilities,
                 Err(error) => return Ok(error),
             };
+            if !state.codex_binding.is_pending()
+                && record_managed_initialize_event(adapter, state, &capabilities.client_info)
+                    == StartupObservationResult::IdentityConflict
+            {
+                return Ok(invalid_request_response(
+                    &response_id,
+                    "initialize client identity conflicts with the existing managed-session identity",
+                ));
+            }
             state.client_supports_elicitation = capabilities.elicitation;
             state.client_supports_model_invisible_user_surface =
                 capabilities.model_invisible_user_surface;
-            state.client_name = Some(capabilities.client_name);
-            state.client_version = Some(capabilities.client_version);
+            state.client_info = Some(capabilities.client_info);
             state.phase = ConnectionPhase::AwaitingInitialized;
             if state.codex_binding.is_pending() {
                 state.deferred_codex_lifecycle.initialize_observed = true;
-            } else {
-                record_managed_lifecycle_event(
-                    adapter,
-                    state,
-                    ManagedLifecycleEvent::InitializeResponse,
-                    None,
-                );
+            } else if state.managed_host_lifecycle_observations {
+                let _ = start_transport_diagnostic_session(adapter, state);
             }
             initialize_result()
         }
@@ -1075,6 +1069,21 @@ fn record_managed_lifecycle_event(
     );
 }
 
+fn record_managed_initialize_event(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    client_info: &ManagedMcpClientInfo,
+) -> StartupObservationResult {
+    if !state.managed_host_lifecycle_observations {
+        return StartupObservationResult::NotAttempted;
+    }
+    adapter.managed_initialize_observation_best_effort(
+        &state.session_id,
+        state.launch_origin,
+        client_info,
+    )
+}
+
 fn bind_codex_managed_tool_call(
     adapter: &McpAdapter,
     state: &mut ConnectionState,
@@ -1083,8 +1092,13 @@ fn bind_codex_managed_tool_call(
     if matches!(state.codex_binding, CodexManagedBinding::NotApplicable) {
         return Ok(());
     }
-    if state.client_name.as_deref() != Some(REVIEWED_CODEX_MCP_CLIENT_NAME)
-        || state.client_version.as_deref() != Some(REVIEWED_CODEX_HOST_VERSION)
+    if state.client_info.as_ref().map(ManagedMcpClientInfo::name)
+        != Some(REVIEWED_CODEX_MCP_CLIENT_NAME)
+        || state
+            .client_info
+            .as_ref()
+            .map(ManagedMcpClientInfo::version)
+            != Some(REVIEWED_CODEX_HOST_VERSION)
     {
         return Err(
             "managed Codex tools/call requires the reviewed client identity codex-mcp-client/0.144.4",
@@ -1105,7 +1119,6 @@ fn bind_codex_managed_tool_call(
                 "managed Codex call metadata conflicts with the registered connection session"
             })?;
             *state = candidate;
-            let _ = start_transport_diagnostic_session(adapter, state);
             Ok(())
         }
         CodexManagedBinding::Bound { thread_digest }
@@ -1315,35 +1328,39 @@ mod codex_call_binding_tests {
     }
 }
 
-fn materialize_deferred_codex_lifecycle(adapter: &McpAdapter, state: &mut ConnectionState) -> bool {
+fn materialize_deferred_codex_lifecycle(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+) -> Result<bool, &'static str> {
     if !matches!(state.codex_binding, CodexManagedBinding::Bound { .. }) {
-        return true;
+        return Ok(true);
     }
-    if !state.deferred_codex_lifecycle.startup_materialized {
-        let result = adapter.managed_lifecycle_observation_at_binding_best_effort(
-            &state.session_id,
-            state.launch_origin,
-            ManagedLifecycleEvent::Startup,
-            None,
-        );
-        if result != StartupObservationResult::Recorded {
-            return false;
-        }
-        state.deferred_codex_lifecycle.startup_materialized = true;
-    }
+    let mut lifecycle_ready = true;
     if state.deferred_codex_lifecycle.initialize_observed
         && !state.deferred_codex_lifecycle.initialize_materialized
     {
-        let result = adapter.managed_lifecycle_observation_at_binding_best_effort(
+        let client_info = state
+            .client_info
+            .as_ref()
+            .ok_or("managed Codex binding is missing its initialized client identity")?;
+        let result = adapter.managed_initialize_observation_at_binding_best_effort(
             &state.session_id,
             state.launch_origin,
-            ManagedLifecycleEvent::InitializeResponse,
-            None,
+            client_info,
         );
-        if result != StartupObservationResult::Recorded {
-            return false;
+        if result == StartupObservationResult::IdentityConflict {
+            return Err(
+                "managed Codex initialize identity conflicts with the existing managed-session identity",
+            );
         }
-        state.deferred_codex_lifecycle.initialize_materialized = true;
+        if result == StartupObservationResult::Recorded {
+            state.deferred_codex_lifecycle.startup_materialized = true;
+            state.deferred_codex_lifecycle.initialize_materialized = true;
+        } else {
+            lifecycle_ready = false;
+        }
+    } else if !state.deferred_codex_lifecycle.initialize_materialized {
+        lifecycle_ready = false;
     }
     if state.deferred_codex_lifecycle.tools_list_observed
         && !state.deferred_codex_lifecycle.tools_list_materialized
@@ -1354,12 +1371,13 @@ fn materialize_deferred_codex_lifecycle(adapter: &McpAdapter, state: &mut Connec
             ManagedLifecycleEvent::ToolsList,
             None,
         );
-        if result != StartupObservationResult::Recorded {
-            return false;
+        if result == StartupObservationResult::Recorded {
+            state.deferred_codex_lifecycle.tools_list_materialized = true;
+        } else {
+            lifecycle_ready = false;
         }
-        state.deferred_codex_lifecycle.tools_list_materialized = true;
     }
-    true
+    Ok(lifecycle_ready)
 }
 
 pub(crate) fn initialize_result() -> Value {
@@ -1385,8 +1403,7 @@ pub(crate) fn initialize_result() -> Value {
 struct ClientCapabilities {
     elicitation: bool,
     model_invisible_user_surface: bool,
-    client_name: String,
-    client_version: String,
+    client_info: ManagedMcpClientInfo,
 }
 
 fn validate_initialize_params(
@@ -1424,6 +1441,8 @@ fn validate_initialize_params(
             "initialize params.clientInfo.version must be a string",
         ));
     };
+    let client_info = ManagedMcpClientInfo::new(client_name.clone(), client_version.clone())
+        .map_err(|error| invalid_params_response(id, error.to_string()))?;
 
     let elicitation = object
         .get("capabilities")
@@ -1444,8 +1463,7 @@ fn validate_initialize_params(
     Ok(ClientCapabilities {
         elicitation,
         model_invisible_user_surface,
-        client_name: client_name.clone(),
-        client_version: client_version.clone(),
+        client_info,
     })
 }
 
@@ -1596,10 +1614,23 @@ where
             return Ok(Err(error));
         }
     };
+    let codex_was_pending = state.codex_binding.is_pending();
+    let pre_binding_state = codex_was_pending.then(|| state.clone());
     if let Err(error) = bind_codex_managed_tool_call(adapter, state, &object) {
         return Ok(Err(invalid_params_response(id, error)));
     }
-    let managed_lifecycle_ready = materialize_deferred_codex_lifecycle(adapter, state);
+    let managed_lifecycle_ready = match materialize_deferred_codex_lifecycle(adapter, state) {
+        Ok(ready) => ready,
+        Err(error) => {
+            if let Some(pre_binding_state) = pre_binding_state {
+                *state = pre_binding_state;
+            }
+            return Ok(Err(invalid_request_response(id, error)));
+        }
+    };
+    if codex_was_pending {
+        let _ = start_transport_diagnostic_session(adapter, state);
+    }
     if managed_lifecycle_ready {
         record_managed_lifecycle_event(
             adapter,

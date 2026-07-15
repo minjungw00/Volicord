@@ -9,8 +9,11 @@ fixture, 주장 상태, 서로 다른 호스트 버전에서 모은 결과는 �
 확립할 수 없습니다.
 
 과거 v1 셀, manifest, audit 평가기는 구현 disposition을 호스트 종류만으로 담당했습니다.
-검토한 정확한 버전 표를 추가하면 셀 해석이 달라지므로 v1 아티팩트와 그 셀 입력 다이제스트
-도메인에 새 의미를 부여할 수 없습니다.
+V2는 검토한 정확한 버전 표를 추가했지만 관리 initialize에서 실제로 관찰한 MCP 클라이언트
+정체성에 셀을 결속하지 않았습니다. 따라서 복사하거나 추론한 버전이 실제 셀을 실행한
+클라이언트를 증명하지 않고도 호스트 좌표를 차지할 수 있었습니다. 필수 클라이언트 좌표를
+추가하면 셀, manifest, audit, 다이제스트 의미가 바뀌므로 v1과 v2 아티팩트 또는 셀 입력
+다이제스트 도메인에 새 계약 의미를 부여할 수 없습니다.
 
 Credential을 포함하는 local-web 경로는 더 민감합니다. 현재 운영 어댑터에는 신뢰할 수
 있는 manifest 획득 경로가 없습니다. 따라서 릴리스 아티팩트는 런타임 신뢰 입력이 아니라
@@ -34,19 +37,38 @@ provenance 및 무결성을 제공하며, 재현 가능한 재빌드나 임의�
 
 게이트는 매번 고정 12개 셀 행렬을 평가합니다. `codex`와 `claude_code` 각각에 기능
 식별자 여섯 개를 두며 호스트 종류마다 정확한 호스트 가용성 좌표 하나만 사용합니다.
-호스트를 사용할 수 없는 실제 행렬은 명시적 null 정체성을 사용합니다. 구현된 셀은
-`ignored`이며 하향 조정으로 남고, 정적 미지원 셀은 `not_applicable`입니다. 구현된 셀의
-검증됨 요청은 정체성이 null이어도 게이트를 실패시킬 수 있으며, 명시적으로 제외할 때만
-`requested_verified=false`를 사용합니다. v2 평가기는 각 정적 disposition을 호스트
+호스트 가용성 세 필드는 독립적으로 모두 문자열이거나 모두 null입니다. 최상위 및
+environment의 클라이언트 이름·버전 필드 네 개도 별도로 모두 문자열이거나 모두 null이고,
+null이 아닌 클라이언트에는 null이 아닌 호스트가 필요합니다. 호스트를 사용할 수 없는 실제
+행렬은 null 호스트·클라이언트 좌표를 사용합니다. 구현된 셀은 `ignored`이며 하향 조정으로
+남습니다. 정적 미지원 셀은 `not_applicable`이고 disposition이 MCP initialize 전에 단락될
+수 있으므로 호스트 가용성이 null이 아니어도 null 클라이언트 정체성을 사용할 수 있습니다.
+구현된 셀의 검증됨 요청은 정체성이 없어도 게이트를 실패시킬 수 있으며, 명시적으로 제외할
+때만 `requested_verified=false`를 사용합니다. v3 평가기는 각 정적 disposition을 호스트
 버전을 인식하는 담당 표와 대조합니다. Codex의 정규 `host_version=0.144.4`에서는
 `native_user_action`, `verified_tool_producer`, `registered_connection_observation`가
 구현되었고, `local_web_user_channel`, `record_final_output`,
 `detective_final_output`은 해당 호스트 버전에서 지원되지 않습니다. 정확한 원문 버전 probe
-envelope는 `codex-cli 0.144.4`이고 셀에는 여기서 얻은 `0.144.4`를 저장합니다. null 또는
-아직 검토하지 않은 Codex 버전에는 호스트 종류 fallback을 유지하여 앞의 네 기능은
+envelope는 `codex-cli 0.144.4`이고 셀에는 여기서 얻은 bare 정규 `0.144.4`를 저장합니다.
+null이 아닌 모든 Codex 버전은 공유 bare parser를 통과해야 하며 `host_version`에 원문 probe
+외피를 넣으면 구조적으로 유효하지 않습니다. null 또는 아직 검토하지 않은 Codex 버전에는
+호스트 종류 fallback을 유지하여 앞의 네 기능은
 구현됨, 두 final-output 기능은 미지원으로 둡니다. Claude Code는 여섯 기능 모두 구현된
 호스트 종류 fallback을 유지합니다. 이는 최소 버전 주장이 아니라 검토한 정확한 버전
-표입니다. 정규
+표입니다. null이 아닌 각 클라이언트 쌍은 그 셀에 사용한 성공한 관리 MCP `initialize`에서만
+얻습니다. 호스트 종류, 실행 파일, probe 출력, 환경, 설정, 프로토콜 버전, 상수, 이후 도구
+메타데이터, 다른 셀에서 추론하지 않습니다. 한 호스트의 null이 아닌 모든 셀은 정확한
+클라이언트 쌍 하나를 사용합니다. 구현된 exact-live 셀은
+`client_version == host_version`이어야 합니다. 정체성이 없으면
+`client_identity_missing`, 버전 또는 예상 정체성이 불일치하면
+`client_identity_mismatch`로 도출하며 어느 경우든 `implemented_unverified`입니다. 검토한
+Codex `0.144.4`는 추가로 `codex-mcp-client`/`0.144.4`를 요구합니다. 기록기에는 크기가
+제한된 이름·버전 쌍만 보존하고 원본 initialize 또는 프로토콜·세션·thread·turn payload를
+릴리스 증거로 사용하지 않습니다. 기록기는 셀에 결속된 깨끗하고 폐기 가능한 Runtime
+Home에서 크기가 제한된 전후 관찰을 대조하고, 인증된 셀 호스트 turn 동안 새로 생기거나
+메타데이터가 바뀐 그 turn의 정확한 관리 기준선 행만 받아들입니다. 같은 연결의 변경되지
+않은 과거 행은 클라이언트 provenance가 아니며 연결 전체에서 가장 최신이거나 유일한 값을
+고르는 방식도 거부합니다. 정규
 평가기는 좌표, 타임스탬프, 다이제스트를 검사하고 다시 계산하며 생산자가 주장한 상태를
 신뢰하지 않고 지원 상태를 도출합니다. 어댑터 프로필은 기능에서 도출하며
 `record_final_output`에서만 `record`, 그 밖에는 `detective`이고, 정적 미지원 셀을
@@ -63,13 +85,13 @@ envelope는 `codex-cli 0.144.4`이고 셀에는 여기서 얻은 `0.144.4`를 �
 `pass_with_downgrades`입니다. 명시적 `requested_verified=false` 제외는 셀 증거가
 `verified`로 도출되어도 하향 조정으로 남습니다.
 
-게이트는 크기가 제한된 외부 `volicord-host-release-manifest-v2` 파일을 덮어쓰지 않고
+게이트는 크기가 제한된 외부 `volicord-host-release-manifest-v3` 파일을 덮어쓰지 않고
 새로 만듭니다. 게이트 프로세스가 끝나면 별도 프로세스가 소스 후보, 원본 셀 파일 12개,
 셀 증거, manifest를 독립적으로 다시 열고 SHA-256 값, 불변조건, 상태, finding,
 exclusion, 판정을 다시 계산하며 원본 셀이 manifest에 내장된 원본 셀과 같은지 확인합니다.
-그런 다음 크기가 제한된 외부 `volicord-host-release-audit-v2` 파일을
+그런 다음 크기가 제한된 외부 `volicord-host-release-audit-v3` 파일을
 덮어쓰지 않고 새로 만듭니다. 셀 입력 집합 다이제스트는
-`volicord-host-release-cell-inputs-v2` 도메인을 사용합니다. Audit은 manifest를 신뢰하는
+`volicord-host-release-cell-inputs-v3` 도메인을 사용합니다. Audit은 manifest를 신뢰하는
 표시 경로에 계산을 위임하면 안 됩니다. 관리 CLI 출력은 보조 수단일 뿐입니다.
 
 관리 Codex 및 Claude Code 세션 상관관계에는 호스트 릴리스 증거 문서가 담당하는 domain
@@ -104,6 +126,8 @@ namespace와 그 호스트·연결 좌표는 예약되고 변경할 수 없습�
   무결성 결속됩니다.
 - 생산자는 상태를 주장하거나 불리한 셀을 생략하여 지원 상태를 승격할 수 없습니다.
 - 오래되거나 부분적인 결과는 다른 실행과 조용히 섞이지 않고 하향 조정으로 드러납니다.
+- 없거나 추론했거나 일치하지 않는 관리 클라이언트 정체성으로 실제 셀을 검증됨으로 만들 수
+  없습니다.
 - Manifest와 별도 audit은 지속적인 릴리스 검토 입력이지만 Core 증거, 사용자 권한,
   host attestation, 런타임 신뢰를 만들지 않습니다.
 - 운영 local-web manifest 획득은 계속 사용할 수 없어 닫힌 상태로 실패하며 CLI inbox가
@@ -122,10 +146,10 @@ namespace와 그 호스트·연결 좌표는 예약되고 변경할 수 없습�
 
 ## 호환성과 마이그레이션
 
-이 결정은 테스트 전용 셀, manifest, audit, 셀 입력 다이제스트 계약을 v2로 올리고 내부
-관리 호스트 상관관계를 더 엄격하게 합니다. 공개 Core API 스키마, 공개 MCP 메서드,
+이 결정은 테스트 전용 셀, manifest, audit, 셀 입력 다이제스트 계약을 v3로 올리고 실제
+관리 initialize 정체성에 실제 셀을 결속합니다. 공개 Core API 스키마, 공개 MCP 메서드,
 SQLite DDL, 저장 profile 버전은 바꾸지 않습니다. V1 셀, manifest, audit, 셀 입력 도메인
-입력은 과거 자료로 남으며 import, migration, 재해석하지 않고 거부합니다. Preimage가
+및 v2 입력은 과거 자료로 남으며 import, migration, 재해석하지 않고 거부합니다. Preimage가
 바뀌지 않았으므로 후보는 `volicord-release-candidate-v1`, 소스 아카이브 알고리즘은
 `git_archive_tar_sha256_v1`을 유지합니다.
 
@@ -133,7 +157,7 @@ SQLite DDL, 저장 profile 버전은 바꾸지 않습니다. V1 셀, manifest, a
 관리 marker를 의도적으로 거부합니다. 이전 alias, fallback 매핑, 호환 decoder를 추가하지
 않으며 호환되는 현재 관찰은 관리 어댑터를 통해 다시 만듭니다. 지원되는 공개 API 또는
 배포 표면을 추가하거나 깨뜨리지 않으므로 이 변경 묶음은 현재 workspace SemVer 안에
-남습니다. 외부에 저장하는 v2 아티팩트는 opt-in 릴리스 검증 출력입니다.
+남습니다. 외부에 저장하는 v3 아티팩트는 opt-in 릴리스 검증 출력입니다.
 
 ## 거부한 대안
 
@@ -151,8 +175,10 @@ SQLite DDL, 저장 profile 버전은 바꾸지 않습니다. V1 셀, manifest, a
   제공하지 못하므로 거부했습니다.
 - 원본 호스트 세션 식별자를 저장하는 방안은 상관관계에 domain 분리 불투명 매핑만
   필요하므로 거부했습니다.
-- V1 셀, manifest, audit, v1 셀 입력 다이제스트를 v2 의미로 다시 해석하는 방안은 과거
+- V1 또는 v2 셀, manifest, audit, 셀 입력 다이제스트를 v3 의미로 다시 해석하는 방안은 과거
   다이제스트 하나가 의미 하나를 유지해야 하므로 거부했습니다.
+- 호스트 종류, 버전 probe, 설정, 프로토콜 버전, 상수, 다른 셀에서 클라이언트 정체성을
+  추론하는 방안은 어느 것도 해당 실제 실행에서 관찰한 클라이언트가 아니므로 거부했습니다.
 - `CODEX_THREAD_ID`, 시각, 도착 순서, 가장 최근에 열린 세션, 근접성을 이용한 Codex 결속은
   동시 또는 재개된 세션이 구별할 수 없지만 뒤바뀐 짝을 만들 수 있으므로 거부했습니다.
 

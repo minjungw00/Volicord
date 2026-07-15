@@ -23,15 +23,17 @@ lease, 정확한 클라이언트 선언, 만료되지 않은 변경 불가능한
 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트와 일치해야 합니다.
 
 예상 `evidence_artifact_sha256`에는 [호스트 릴리스 증거](../../reference/host-release-evidence.md)가
-정의한 외부 `volicord-host-release-manifest-v2`를 신뢰해 획득하는 운영 경로가 필요합니다.
+정의한 외부 `volicord-host-release-manifest-v3`를 신뢰해 획득하는 운영 경로가 필요합니다.
 그 manifest는 현재 행과 같은
 역량, 호스트·클라이언트, 어댑터, Volicord 빌드, source revision, target, 실행 파일
 다이제스트뿐 아니라 예상 증거 아티팩트 다이제스트에도 결속되어야 합니다. 평가기는
 manifest를 검증하고 행의 `evidence_artifact_sha256`을 그 예상값과 정확히 일치시켜야
 합니다. Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지 않았거나, 일치하지 않으면
 닫힌 상태로 실패합니다. 행 자체의 다이제스트, 빌드 설명자, 복사한 manifest 값은 이
-대조를 대신하지 못합니다.
-과거 `volicord-host-release-manifest-v1` 입력은 거부하며 v2 규칙으로 재해석하지 않습니다.
+대조를 대신하지 못합니다. V3 클라이언트 좌표는 실제 셀에 사용한 관리 MCP initialize에서
+관찰한 정확한 크기 제한 이름·버전이어야 하며 호스트 종류, probe, 설정, 프로토콜 버전,
+상수, 다른 셀이 이를 제공할 수 없습니다. 과거 `volicord-host-release-manifest-v1`과
+`volicord-host-release-manifest-v2` 입력은 거부하며 v3 규칙으로 재해석하지 않습니다.
 
 내장 stdio 어댑터에서 통과 행은 독립된 두 런타임 버전이 아니라 관찰한 호스트 버전 하나를
 나타냅니다. `host_version == client_version == clientInfo.version`이어야 하고 그 값은 실제

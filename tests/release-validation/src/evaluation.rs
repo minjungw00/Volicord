@@ -2,9 +2,11 @@ use std::{collections::BTreeSet, path::Path, time::SystemTime};
 
 use chrono::{DateTime, Duration, SecondsFormat, Timelike, Utc};
 use volicord_types::{
-    evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
+    canonical_codex_host_version, evaluate_host_feature_support_for_version,
+    host_feature_implementation_for_version, validate_managed_mcp_client_info_field,
     CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
     HostFeatureImplementation, HostFeatureSupportStatus, IntegrationProfile,
+    ManagedMcpClientInfoField, REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
 };
 
 use crate::{
@@ -16,13 +18,12 @@ use crate::{
     schema::{
         expected_assertion_ids, Candidate, Cell, GateVerdict, HostKind, ImplementationDisposition,
         ManifestCell, ReleaseManifest, RunState, CANDIDATE_SCHEMA, CELL_SCHEMA, MANIFEST_SCHEMA,
-        SOURCE_ARCHIVE_ALGORITHM,
+        MAX_FINDING_CODES, SOURCE_ARCHIVE_ALGORITHM,
     },
 };
 
 const MAX_TEXT_BYTES: usize = 512;
 const MAX_OPAQUE_ID_BYTES: usize = 256;
-const MAX_FINDING_CODES: usize = 64;
 
 #[derive(Debug, Clone)]
 pub struct EvaluationResult {
@@ -74,6 +75,7 @@ pub fn evaluate_release_matrix(
     let all_cell_environment_coordinates_exact = cells
         .iter()
         .all(|cell| environment_coordinates_exact(cell, &artifact.build.build_id));
+    let single_host_client_identity_per_host = single_host_client_identity_per_host(&cells);
     let current_head = git_head(context.source_checkout())?;
     let source_clean = git_is_clean(context.source_checkout())?;
     let actual_archive_sha256 =
@@ -135,6 +137,10 @@ pub fn evaluate_release_matrix(
         ),
         ("fixed_twelve_cell_matrix".to_owned(), true),
         ("single_host_version_per_host".to_owned(), true),
+        (
+            "single_host_client_identity_per_host".to_owned(),
+            single_host_client_identity_per_host,
+        ),
         (
             "source_archive_digest_exact".to_owned(),
             actual_archive_sha256 == candidate.source_archive_sha256,
@@ -235,7 +241,7 @@ pub fn validate_manifest_container(manifest: &ReleaseManifest) -> ValidationResu
     require_sorted_unique(
         "manifest.invariant_findings",
         &manifest.invariant_findings,
-        64,
+        MAX_FINDING_CODES,
     )?;
     for cell in &manifest.cells {
         require_sorted_unique(
@@ -363,6 +369,23 @@ pub(crate) fn validate_matrix_shape(cells: &[Cell]) -> ValidationResult<()> {
     Ok(())
 }
 
+fn single_host_client_identity_per_host(cells: &[Cell]) -> bool {
+    HostKind::ALL.into_iter().all(|host| {
+        cells
+            .iter()
+            .filter(|cell| cell.host_kind == host)
+            .filter_map(|cell| {
+                cell.client_name
+                    .as_ref()
+                    .zip(cell.client_version.as_ref())
+                    .map(|(name, version)| (name.as_str(), version.as_str()))
+            })
+            .collect::<BTreeSet<_>>()
+            .len()
+            <= 1
+    })
+}
+
 fn evaluate_cell(
     context: &ValidationContext,
     candidate: &Candidate,
@@ -389,6 +412,29 @@ fn evaluate_cell(
     if !environment_coordinates_exact {
         finding_codes.push("environment_coordinate_mismatch".to_owned());
     }
+
+    let client_identity_exact = match (cell.client_name.as_ref(), cell.client_version.as_ref()) {
+        (None, None) => {
+            if cell.implementation_disposition == ImplementationDisposition::Implemented {
+                finding_codes.push("client_identity_missing".to_owned());
+            }
+            false
+        }
+        (Some(client_name), Some(client_version)) => {
+            let exact = client_identity_coordinates_exact(&cell)
+                && cell.host_version.as_ref() == Some(client_version)
+                && (cell.host_kind != HostKind::Codex
+                    || cell.host_version.as_ref().map(String::as_str)
+                        != Some(REVIEWED_CODEX_HOST_VERSION)
+                    || (client_name == REVIEWED_CODEX_MCP_CLIENT_NAME
+                        && client_version == REVIEWED_CODEX_HOST_VERSION));
+            if !exact {
+                finding_codes.push("client_identity_mismatch".to_owned());
+            }
+            exact
+        }
+        _ => unreachable!("validated client identity group is all strings or all null"),
+    };
 
     let timestamp_current = started_at <= recorded_at
         && recorded_at <= evaluated_at
@@ -481,6 +527,7 @@ fn evaluate_cell(
         && candidate_precedes_cell
         && candidate_coordinates_exact
         && environment_coordinates_exact
+        && client_identity_exact
         && evidence_exact
         && assertions_pass;
     let derived_status = evaluate_host_feature_support_for_version(
@@ -515,10 +562,17 @@ fn environment_coordinates_exact(cell: &Cell, candidate_build_id: &str) -> bool 
     let adapter_profile = expected_adapter_profile(cell.feature).as_str();
     cell.environment.host_kind == cell.host_kind
         && cell.environment.host_version == cell.host_version
+        && cell.environment.client_name == cell.client_name
+        && cell.environment.client_version == cell.client_version
         && cell.adapter_profile == adapter_profile
         && cell.environment.adapter_profile == adapter_profile
         && cell.adapter_version == candidate_build_id
         && cell.environment.adapter_version == candidate_build_id
+}
+
+fn client_identity_coordinates_exact(cell: &Cell) -> bool {
+    cell.environment.client_name == cell.client_name
+        && cell.environment.client_version == cell.client_version
 }
 
 const fn expected_adapter_profile(feature: HostFeature) -> IntegrationProfile {
@@ -564,7 +618,7 @@ pub(crate) fn validate_cell_shape(cell: &Cell) -> ValidationResult<()> {
     ] {
         validate_bounded_text(field, value, MAX_TEXT_BYTES)?;
     }
-    match (
+    let host_available = match (
         cell.host_version.as_ref(),
         cell.environment.host_version.as_ref(),
         cell.environment.host_executable_sha256.as_ref(),
@@ -577,6 +631,7 @@ pub(crate) fn validate_cell_shape(cell: &Cell) -> ValidationResult<()> {
                 MAX_TEXT_BYTES,
             )?;
             validate_sha256("cell.environment.host_executable_sha256", host_sha256)?;
+            true
         }
         (None, None, None) => {
             let required_run_state = match cell.implementation_disposition {
@@ -596,10 +651,77 @@ pub(crate) fn validate_cell_shape(cell: &Cell) -> ValidationResult<()> {
                     "an unavailable implemented cell requires every assertion to fail",
                 ));
             }
+            false
         }
         _ => {
             return Err(ValidationError::new(
                 "host_version, environment.host_version, and environment.host_executable_sha256 must be all strings or all null",
+            ))
+        }
+    };
+    for (field, version) in [
+        ("cell.host_version", cell.host_version.as_ref()),
+        (
+            "cell.environment.host_version",
+            cell.environment.host_version.as_ref(),
+        ),
+    ] {
+        if cell.host_kind == HostKind::Codex
+            && version.is_some_and(|value| canonical_codex_host_version(value).is_none())
+        {
+            return Err(ValidationError::new(format!(
+                "{field} must be a canonical bare Codex version"
+            )));
+        }
+    }
+    match (
+        cell.client_name.as_ref(),
+        cell.client_version.as_ref(),
+        cell.environment.client_name.as_ref(),
+        cell.environment.client_version.as_ref(),
+    ) {
+        (
+            Some(client_name),
+            Some(client_version),
+            Some(environment_client_name),
+            Some(environment_client_version),
+        ) => {
+            if !host_available {
+                return Err(ValidationError::new(
+                    "non-null client identity requires non-null host availability",
+                ));
+            }
+            for (field, kind, value) in [
+                (
+                    "cell.client_name",
+                    ManagedMcpClientInfoField::Name,
+                    client_name,
+                ),
+                (
+                    "cell.client_version",
+                    ManagedMcpClientInfoField::Version,
+                    client_version,
+                ),
+                (
+                    "cell.environment.client_name",
+                    ManagedMcpClientInfoField::Name,
+                    environment_client_name,
+                ),
+                (
+                    "cell.environment.client_version",
+                    ManagedMcpClientInfoField::Version,
+                    environment_client_version,
+                ),
+            ] {
+                validate_managed_mcp_client_info_field(kind, value).map_err(|error| {
+                    ValidationError::new(format!("{field} is invalid: {error}"))
+                })?;
+            }
+        }
+        (None, None, None, None) => {}
+        _ => {
+            return Err(ValidationError::new(
+                "client_name, client_version, environment.client_name, and environment.client_version must be all strings or all null",
             ))
         }
     }
@@ -633,7 +755,7 @@ pub(crate) fn validate_cell_shape(cell: &Cell) -> ValidationResult<()> {
                     "present assertion finding_codes must not be empty",
                 ));
             }
-            require_sorted_unique("cell.assertions[].finding_codes", codes, 64)?;
+            require_sorted_unique("cell.assertions[].finding_codes", codes, MAX_FINDING_CODES)?;
             for code in codes {
                 validate_stable_code("cell.assertions[].finding_codes[]", code)?;
             }

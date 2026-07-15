@@ -211,7 +211,7 @@ Volicord 기록은 그 기록을 만들고, 검증하고, 갱신하는 담당 �
   합니다. 24시간은 기본 수명, 신원 증명, attestation 기간이 아니라 최대 최신성 구간일
   뿐입니다.
   `evidence_artifact_sha256` 예상값에는 [호스트 릴리스 증거](host-release-evidence.md)가
-  정의한 외부 `volicord-host-release-manifest-v2`를 신뢰해 획득하는 운영 경로가
+  정의한 외부 `volicord-host-release-manifest-v3`를 신뢰해 획득하는 운영 경로가
   필요합니다. 그
   manifest는 같은 역량, 호스트·클라이언트, 어댑터, 빌드, source, target, 실행 파일
   다이제스트에 결속되어야 합니다. Manifest가 없거나, 알 수 없거나, 잘못됐거나, 검증되지
@@ -259,9 +259,14 @@ domain 분리 불투명 `managed_host_session_id`만 사용합니다. 검토된 
 `_meta.threadId`, `_meta["x-codex-turn-metadata"]`가 root 세션과 변경 불가능한
 프로세스 로컬 thread 다이제스트를 결속합니다. 대기 상태는 관리 영속 효과, Core 효과,
 token, local-web 효과를 만들지 않습니다. `CODEX_THREAD_ID`, PID, cwd, 프로세스 조상
-관계, 시각, 훅 이벤트와의 근접성은 이 결속을 확립하거나 복구할 수 없습니다. 원본 native session
-identifier와 event, tool-call, capture, turn, invocation identifier는 영속 저장, 로그,
-진단, 증거 첨부를 하지 않습니다. `mhs_` namespace는 예약되며 호스트 하나와 등록 연결
+관계, 시각, 훅 이벤트와의 근접성은 이 결속을 확립하거나 복구할 수 없습니다. 결속이 관리
+세션 감시 기준선을 구체화할 때는 검증된 1바이트 이상 256바이트 이하의 정확한 initialize
+`client_name`과 `client_version` 문자열만 릴리스 기록용 최상위 메타데이터로 보존할 수
+있습니다. 이는 협력적 일치 대조 좌표이지 신원 증명이 아니며 호스트, probe, 설정,
+프로토콜, 상수, 다른 세션에서 추론할 수 없습니다. 원본 native session identifier와 event,
+tool-call, capture, turn, invocation identifier 및 원본 initialize 또는
+프로토콜·세션·thread·turn payload는 영속 저장, 로그, 진단, 증거 첨부를 하지 않습니다.
+`mhs_` namespace는 예약되며 호스트 하나와 등록 연결
 하나에 변경 불가능하게 결속됩니다. 잘못되거나 충돌하는 marker는 영속 상태 없이
 실패합니다. 매핑 값은 상관관계 메타데이터일 뿐 사용자 신원, host attestation, 권한이
 아니며 결속이 없거나 일치하지 않으면 Strong Evidence를 만들 수 없습니다.

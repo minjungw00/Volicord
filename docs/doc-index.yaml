@@ -982,8 +982,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-14'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1042,13 +1042,14 @@ documents:
   path_ko: docs/ko/architecture-guide/decisions/host-release-evidence-gate.md
   kind: explanation
   summary: Architecture decision for build-once exact-final-artifact host release validation,
-    canonical twelve-cell evaluation, create-new external manifests, and separate-process audit.
+    actual managed-initialize client identity, canonical twelve-cell evaluation, create-new external
+    manifests, and separate-process audit.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-14'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1065,7 +1066,9 @@ documents:
   - reference.host-release-evidence
   - reference.system-requirements
   - reference.agent-connection
+  - reference.mcp-transport
   - reference.security
+  - reference.storage-records
   - maintain.validation
 - doc_id: architecture-guide.decision.host-feature-support-state-evaluation
   path_en: docs/en/architecture-guide/decisions/host-feature-support-state-evaluation.md
@@ -1483,8 +1486,9 @@ documents:
   path_en: docs/en/reference/host-release-evidence.md
   path_ko: docs/ko/reference/host-release-evidence.md
   kind: reference
-  summary: Exact-final-artifact managed-host release evidence schemas, fixed twelve-cell gate,
-    canonical evaluation, independent audit, and privacy-preserving session-binding contract.
+  summary: Exact-final-artifact managed-host release evidence schemas, actual bounded initialize
+    client identity, fixed twelve-cell gate, canonical evaluation, independent audit, and
+    privacy-preserving session-binding contract.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1503,10 +1507,11 @@ documents:
   - implement
   - maintain
   canonical_for:
-  - '`volicord-release-candidate-v1`, `volicord-host-release-cell-v2`, `volicord-host-release-manifest-v2`, and `volicord-host-release-audit-v2`'
+  - '`volicord-release-candidate-v1`, `volicord-host-release-cell-v3`, `volicord-host-release-manifest-v3`, and `volicord-host-release-audit-v3`'
   - exact external candidate, clean source revision, `git_archive_tar_sha256_v1`, target, profile, environment, held-handle digest, and private-copy execution binding
   - non-adversarial build-provenance and source-archive integrity boundary without reproducible-build or hostile-producer attestation
-  - fixed twelve-cell Codex and Claude Code host release validation matrix with explicit nullable host availability coordinates
+  - fixed twelve-cell Codex and Claude Code host release validation matrix with separate required-nullable host availability and actual initialize client identity coordinates
+  - '`volicord-host-release-cell-inputs-v3` digest domain and historical v1/v2 artifact rejection'
   - half-open 24-hour release-cell freshness and no cross-host-version aggregation
   - canonical claimed-status-independent support derivation and release-gate verdicts
   - create-new bounded external manifest and separate-process audit that reopens and digests the original twelve cell files
@@ -1518,6 +1523,7 @@ documents:
   - reference.mcp-transport
   - reference.admin-cli
   - reference.security
+  - reference.storage-records
   - architecture-guide.decision.managed-host-session-turn-binding
   - reference.api.schema-value-sets
   - maintain.validation
@@ -1719,6 +1725,7 @@ documents:
   - centralized exact host-capability evaluation, external exact-final-artifact release evidence
     manifest requirement, and credential-bearing local-web handoff eligibility
   - pending managed Codex launch provenance, exact per-call session and thread binding, and turn validation before persistence or diagnostics
+  - bounded actual initialize client identity validation, single-pair managed session-watch baseline retention and conflict handling, without raw initialize or protocol payload
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -1726,6 +1733,7 @@ documents:
   - reference.api.schema-core
   - reference.api.schema-value-sets
   - reference.storage
+  - reference.storage-records
   - reference.host-release-evidence
   - architecture-guide.decision.managed-host-session-turn-binding
 - doc_id: reference.security
@@ -1760,9 +1768,10 @@ documents:
   - generated final-output display and model-authored text non-authority boundary
   - host-capability evidence, external release-manifest trust boundary, credential-delivery trust
     boundary, and non-attestation wording
-  - managed native host session privacy, pending zero-effect state, strict per-call opaque correlation, and non-authority boundary
+  - managed native host session privacy, pending zero-effect state, strict per-call opaque correlation, bounded actual initialize client coordinate retention, and non-authority boundary
   depends_on:
   - reference.host-release-evidence
+  - reference.storage-records
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
   path_ko: docs/ko/reference/glossary.md
@@ -2512,8 +2521,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
@@ -2536,8 +2545,10 @@ documents:
   - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
   - local web consent token record family
   - opaque managed-host session identifier persistence and raw native session identifier exclusion
+  - session_watch_baselines metadata_json bounded single-pair actual initialize client_name and client_version placement, idempotent exact replay, binding-conflict handling, and raw initialize payload exclusion
   depends_on:
   - reference.host-release-evidence
+  - reference.mcp-transport
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
   path_ko: docs/ko/reference/storage-ddl.md
@@ -3059,7 +3070,7 @@ documents:
     external result retention, and unavailable-host reporting boundaries.
   - Exact `tests/release-validation` package, fixed host release gate, separate-process audit,
     and unavailable-implementation reporting command routes.
-  - Exact Codex client/session/thread binding assertions for live-host release cells.
+  - Exact bounded managed initialize client identity plus Codex session/thread binding assertions for v3 live-host release cells.
   - Rust validation routing for documentation work that also changes implementation files.
   depends_on:
   - maintain.documentation-policy

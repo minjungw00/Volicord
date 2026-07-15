@@ -98,7 +98,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `prompt_captures` | Prompt capture | Project-scoped prompt capture for a session, including connection, capture kind, prompt hash, optional prompt text, timestamp, and metadata. |
 | `state.sqlite` | `expected_writes` | Expected Product Repository write | Project-scoped expected-write correlation record created by an allowed detective pre-tool write, with connection/session identity, optional host invocation identity, exact path policy, active task/Change Unit/write-ticket basis, timestamps, and matched post-tool metadata. |
 | `state.sqlite` | `unrecorded_changes` | Unrecorded Product Repository change | Project-scoped unresolved or resolved record for detected Product Repository changes that are not yet matched to a Core run or other owner-defined record. |
-| `state.sqlite` | `session_watch_baselines` | Session watch baseline | Project-scoped session watch status and baseline snapshot for a registered Product Repository or watched path set, including effective exclusions, snapshot digest metadata, and compact snapshot entries. |
+| `state.sqlite` | `session_watch_baselines` | Session watch baseline | Project-scoped session watch status and baseline snapshot for a registered Product Repository or watched path set, including effective exclusions, snapshot digest metadata, compact snapshot entries, and the bounded actual initialize client identity for a managed MCP baseline. |
 | `state.sqlite` | `session_watch_observations` | Session watch observation | Project-scoped detective observation derived from comparing a later safe snapshot to a baseline, with observed changed paths, optional expected-write or write-ticket correlation, and optional link to an existing unrecorded-change row. |
 | `state.sqlite` | `tasks` | Work-unit state | User-value unit with mode and work phase, Task-owned acceptance policy and reason, optional predecessor relation and carry-forward audit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal summary, current Change Unit pointer, and creator actor source. |
 | `state.sqlite` | `acceptance_criteria` | Acceptance criterion | Core-generated criterion identity, owning `Task`, statement, evidence requirement, replacement order, active/retired state, and timestamps. |
@@ -499,6 +499,24 @@ An unresolved `unrecorded_changes` row means that an observed Product Repository
 `session_watch_baselines` and `session_watch_observations` support detective session-level Product Repository watching. They are not a sandbox, filesystem permission boundary, pre-write block, or proof of who changed a file or why it changed.
 
 - A baseline stores watch availability, the registered repository root or watched path set, effective exclusions, and deterministic snapshot-digest metadata.
+- When a managed MCP binding materializes the baseline, `metadata_json` stores
+  both top-level `client_name` and `client_version`. They are the exact
+  successful `clientInfo.name` and `clientInfo.version` values, each validated
+  as 1 through 256 UTF-8 bytes with at least one non-whitespace character and no
+  control character, and otherwise preserved exactly. They are release-recorder
+  coordinates, not client identity proof or user authority. Neither field may
+  be inferred from host kind, executable or probe text, configuration, protocol
+  version, constants, request metadata, or another session. The raw initialize
+  request, other initialize parameters, and raw protocol, session, thread,
+  turn, or tool-call payload are not stored in this row.
+- One managed baseline retains exactly one client pair. Re-observing the exact
+  same pair is idempotent. A missing, partial, or different pair on an existing
+  managed baseline is a binding conflict and is not successful managed-client
+  provenance; storage consumers must fail closed rather than fill, replace, or
+  infer it.
+- This uses the existing `metadata_json` column. It adds no table, column,
+  index, trigger, or storage-profile version and therefore does not change the
+  Storage DDL contract.
 - An observation stores changed product paths found by comparing a later safe snapshot with the baseline. It may include expected-write, write-ticket, and unrecorded-change correlation refs.
 - Linking an observation to an expected write or one active matching write ticket is deterministic correlation only.
 - Linking an observation to an `unrecorded_changes` row records local reconciliation context. It does not create a close blocker by itself.
@@ -676,7 +694,7 @@ Rules:
 | `prompt_captures` | Non-authority metadata for a captured prompt record; prompt text is a direct nullable text column. |
 | `expected_writes` | Expected path arrays, write-ticket id arrays, matched path arrays, and metadata for detective expected-write correlation. |
 | `unrecorded_changes` | Observed path arrays, detection JSON, resolution JSON, and metadata for unrecorded Product Repository changes. Resolution JSON stores compact resolution basis, capture basis, resolved method, and optional linked user-action resolution reference; it must not store full sensitive command or prompt content. |
-| `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
+| `session_watch_baselines` | Watched path arrays, effective exclusion arrays, snapshot entry arrays, and metadata for a session watch baseline. Managed MCP metadata includes only the bounded top-level `client_name` and `client_version` initialize identity, never the raw initialize or protocol/session/thread/turn payload. Snapshot entries store path, kind, size, hash, or skip reason metadata only; they do not store file contents. |
 | `session_watch_observations` | Observed changed path arrays, compact change-summary JSON, snapshot entry arrays, and metadata for a session watch observation. Snapshot and change summaries do not prove actor identity, intent, product correctness, or close readiness. |
 | `tasks` | Shaping summary, bounded lists, autonomy boundary, carry-forward dispositions, current close basis, terminal close summary, and lifecycle summary. Acceptance policy, work phase, and lineage edge identity use dedicated columns; acceptance criteria and supplemental evidence claims use their canonical relational tables. |
 | `change_units` | Scope summaries, bounded lists, write basis summaries, optional effect contract data, and lifecycle support data. |

@@ -28,16 +28,20 @@ fingerprint, Volicord build, source revision, target and executable digest, and
 bounded evidence-artifact digest.
 
 The expected `evidence_artifact_sha256` would require trusted production
-acquisition of the external `volicord-host-release-manifest-v2` defined by
+acquisition of the external `volicord-host-release-manifest-v3` defined by
 [Host Release Evidence](../../reference/host-release-evidence.md). That manifest must bind the same capability, host/client,
 adapter, Volicord build, source revision, target, and executable digest as the
 current row, as well as the expected evidence-artifact digest. The evaluator
 must verify the manifest and exact-match the row's `evidence_artifact_sha256`
 against that expected value. A missing, unknown, malformed, unverified, or
 mismatched manifest fails closed. The row's own digest, the build descriptor,
-and a copied manifest value are not substitutes for this comparison.
-Historical `volicord-host-release-manifest-v1` input is rejected and is not
-reinterpreted under v2 rules.
+and a copied manifest value are not substitutes for this comparison. The v3
+client coordinate must be the exact bounded name/version observed from the
+managed MCP initialize used by the live cell; host kind, probes,
+configuration, protocol version, constants, or another cell cannot supply it.
+Historical `volicord-host-release-manifest-v1` and
+`volicord-host-release-manifest-v2` input is rejected and is not reinterpreted
+under v3 rules.
 
 For the built-in stdio adapter, a passing row represents one observed host
 version rather than two independent runtime versions:

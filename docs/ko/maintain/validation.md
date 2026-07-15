@@ -591,6 +591,24 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
 receipt에 결속된 생산자, 아티팩트, Strong Evidence 관찰, criterion coverage, Run, 현재
 status receipt, close 결과를 정확히 하나씩 완결해야 합니다.
 
+하네스는 인증된 셀 호스트 turn 전에 결속된 깨끗하고 폐기 가능한 Runtime Home에서 정확한
+관리 기준선 정체성과 메타데이터 digest를 크기가 제한된 형태로 snapshot하고, 셀을 기록하기
+전에 같은 snapshot을 다시 만듭니다. 해당 turn의 정확한 불투명 관리 세션 행 가운데 두
+snapshot 사이에 새로 생겼거나 메타데이터 digest가 바뀐 행에서만 클라이언트 정체성을
+가져올 수 있습니다. 같은 연결의 변경되지 않은 과거 기준선을 미리 넣은 negative case도
+검증해야 합니다. 현재 turn에 성공한 관리 initialize가 없으면 그 기준선이 클라이언트
+정체성을 제공해서는 안 됩니다. 조건을 만족하는 행이 없으면 null 클라이언트 집합을
+기록하므로 구현 셀을 검증됨으로 만들 수 없고, 일부만 있거나 형식이 잘못되었거나 모호하거나
+서로 다른 행이 있으면 기록을 중단합니다.
+
+조건을 만족하는 각 키와 정확한 after snapshot 메타데이터 다이제스트는 종단 기록까지
+보존합니다. 변경이 없는 반복 turn과 같은 키를 전진시키는 이후 캡처 turn을 모두
+검증합니다. 후자는 before snapshot이 직전 예상 다이제스트와 정확히 일치할 때만 예상
+다이제스트를 교체할 수 있습니다. 마지막 snapshot 뒤에 조건을 만족한 같은 기준선을
+변경하는 negative case도 실행하고, 셀과 증거 목적지가 모두 없는 상태로 종단 기록이
+실패하는지 확인합니다. 삭제, 같은 키의 행 교체, 반복 turn의 before snapshot 불일치도
+같은 닫힌 실패이며 정직한 null 정체성 하향 조정으로 처리하면 안 됩니다.
+
 Codex `0.144.4` 셀에서 하네스는 정확한 `clientInfo.name=codex-mcp-client`, 정규
 클라이언트·호스트 버전 `0.144.4`, 바깥·안쪽 thread 같음, root 세션 매핑 하나,
 변경 불가능한 프로세스 로컬 thread 다이제스트 하나도 증명합니다. 세션·thread
@@ -697,16 +715,35 @@ cargo run --locked -p volicord-release-validation-tests --bin host-release-audit
 경로를 사용해야 합니다. 증거 sidecar는 `CELL_DIR` 밖에 둡니다. 그 디렉터리에는 `.json`
 셀 파일 정확히 12개만 두고 다른 항목을 두면 안 됩니다.
 
-설치된 호스트 버전과 실행 파일 digest는 그 호스트의 여섯 셀에서 같아야 합니다. 호스트를
-사용할 수 없어도 유지되는 각 셀 생산자를 호출하여 실제 null 정체성 셀을 만듭니다.
-구현된 셀은 증거를 가진 `ignored`이고 정적 미지원 셀은 null 증거를 가진
-`not_applicable`입니다. 주장이 계속 필요하면 `requested_verified=1`을 사용하여 정직한
-부재가 실패하게 하고, 의도적으로 보고할 제외에만 `0`을 사용하여 하향 조정되게 합니다.
-호스트 버전이나 digest를 꾸며내거나 누락 파일을 합성하면 안 됩니다.
+설치된 호스트 버전과 실행 파일 digest는 그 호스트의 여섯 셀에서 같아야 합니다. 최상위와
+environment의 클라이언트 이름·버전 필드 네 개는 별도의 모두 문자열 또는 모두 null
+집합입니다. null이 아닌 각 쌍은 그 셀의 성공한 관리 MCP initialize에서 얻어 검증한 정확한
+`clientInfo.name`과 `clientInfo.version`이어야 하며 한 호스트의 null이 아닌 모든 셀은 쌍
+하나를 사용합니다. 정적 미지원 셀은 호스트 좌표가 null이 아니어도 클라이언트 집합을 null로
+유지할 수 있습니다. 호스트를 사용할 수 없어도 유지되는 각 셀 생산자를 호출하여 실제 null
+호스트·null 클라이언트 셀을 만듭니다. 구현된 셀은 증거를 가진 `ignored`이고 정적 미지원
+셀은 null 증거를 가진 `not_applicable`입니다. 주장이 계속 필요하면
+`requested_verified=1`을 사용하여 정직한 부재가 실패하게 하고, 의도적으로 보고할 제외에만
+`0`을 사용하여 하향 조정되게 합니다. 호스트나 클라이언트 좌표를 꾸며내거나 누락 파일을
+합성하면 안 됩니다.
 
-설치된 Codex `0.144.4`에서는 정확한 probe 외피가 `codex-cli 0.144.4`이고 모든 셀이
-정규 `host_version=0.144.4`를 저장합니다. v2 평가기는 정확한 버전별 disposition 표를
-사용하며 버전이 없거나 검토되지 않았으면 이 표를 물려받을 수 없습니다.
+설치된 Codex `0.144.4`에서는 정확한 probe 외피가 `codex-cli 0.144.4`이고 모든 셀이 bare
+정규 `host_version=0.144.4`를 저장합니다. Probe 외피 자체는 이 필드에 유효하지 않습니다.
+null이 아닌 모든 Codex 호스트 버전은 공유 bare 버전 parser를 통과해야 합니다. v3 평가기는
+정확한 버전별 disposition 표를 사용하며 버전이 없거나 검토되지 않았으면 이 표를 물려받을
+수 없습니다. 구현된 exact-live 셀에는 `client_version == host_version`이 필요하고 검토한
+Codex `0.144.4`에는 추가로 `client_name=codex-mcp-client`와
+`client_version=0.144.4`가 필요합니다.
+
+클라이언트 정체성은 성공한 initialize 값을 보존하는 관리 세션 기준선의 최상위
+`metadata_json.client_name`과 `metadata_json.client_version`에서만 읽습니다. 호스트 종류,
+실행 파일이나 probe 텍스트, 환경, 설정, 프로토콜 버전, 상수, 이후 도구 메타데이터, 다른
+셀에서 추론하지 않으며 원본 initialize 또는 프로토콜·세션·thread·turn payload를
+보존하지 않습니다. 구현된 셀의 클라이언트 집합이 null이면
+`client_identity_missing`, 버전·중복 복사본·호스트 전체 정체성·검토한 Codex 좌표가
+불일치하면 `client_identity_mismatch`를 보고합니다. 어느 조건이든
+`implemented_unverified`입니다. 정적 미지원 셀은 이 하향 조정 없이 null 클라이언트
+정체성을 사용할 수 있습니다.
 
 게이트 출력과 audit 출력은 외부에 새로 만드는 크기 제한 파일입니다. Audit이 원본 셀
 파일 12개를 독립적으로 엄격하게 읽고 manifest, 후보, 셀 아티팩트, 불변조건, finding,
@@ -714,7 +751,8 @@ exclusion, 상태, 판정을 별도 프로세스에서 다시 열고 계산하�
 audit을 시작합니다. 셀 또는 증거 파일이 없거나 잘못된 형식이면 하향 조정이 아니라
 manifest를 만들지 않는 구조적 명령 실패입니다.
 
-후보·소스·바이너리 좌표, 두 호스트의 가용성 좌표, 각 도출 셀 상태, 요청한 검증됨 주장,
+후보·소스·바이너리 좌표, 두 호스트의 가용성 좌표, 존재할 때 호스트별 null이 아닌 단일
+클라이언트 정체성, 각 도출 셀 상태, 요청한 검증됨 주장,
 하향 조정, 게이트 판정, manifest SHA-256, audit 셀 입력 SHA-256, audit 판정, 모든
 finding과 exclusion을 보고합니다. 호스트 버전을 합치거나 ignored, running, 오래됨,
 불일치 셀을 생략하지 않습니다. 구조적으로 누락된 셀은 실패한 게이트 호출로 보고합니다.

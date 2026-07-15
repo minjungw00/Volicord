@@ -681,6 +681,27 @@ actual-host turn on the same registered connection must finalize exactly one
 receipt-linked producer, artifact, Strong Evidence observation, criterion
 coverage, Run, current status receipt, and close result.
 
+The harness takes a bounded snapshot of exact managed-baseline identities and
+metadata digests in the bound clean disposable Runtime Home before the
+authenticated cell host turn, then takes the same snapshot before recording the
+cell. Client identity may come only from the exact opaque managed session rows
+for that turn that are new or whose metadata digest changed between the two
+snapshots. Preseed an unchanged historical baseline for the same connection as
+a negative case: it must not supply client identity when the current turn has
+no successful managed initialize. Zero qualifying rows records a null client
+group and therefore cannot verify an implemented cell; partial, malformed,
+ambiguous, or divergent qualifying rows stop recording.
+
+Retain each qualifying key and its exact after-snapshot metadata digest until
+terminal recording. Exercise an unchanged repeated turn and a later captured
+turn that advances the same key: the latter may replace the expected digest
+only when its before snapshot exactly matches the prior expected digest.
+Mutate the same qualifying baseline after the final snapshot as a negative
+case and require terminal recording to fail with both the cell and evidence
+destinations absent. Deletion, same-key replacement, or a mismatched repeated-
+turn before snapshot has the same fail-closed result; none is an honest null-
+identity downgrade.
+
 For a Codex `0.144.4` cell, the harness also proves exact
 `clientInfo.name=codex-mcp-client`, canonical client/host version `0.144.4`,
 flat/nested thread equality, one root-session mapping, and one immutable
@@ -803,18 +824,38 @@ evidence sidecars outside `CELL_DIR`; that directory contains exactly twelve
 `.json` cell files and no other entries.
 
 An installed host version and executable digest must agree across all six
-cells for that host. If a host is unavailable, still run or otherwise invoke
-each maintained cell producer so it creates a present null-identity cell: an
+cells for that host. The top-level/environment client name/version quartet is a
+separate all-string or all-null group. Every non-null pair must be the exact
+validated `clientInfo.name` and `clientInfo.version` from that cell's successful
+managed MCP initialize, and all non-null cells for a host use one pair. Static
+unsupported cells may keep that client group null even when the host coordinate
+is non-null. If a host is unavailable, still run or otherwise invoke each
+maintained cell producer so it creates a present null-host, null-client cell: an
 implemented cell is `ignored` with evidence and a static unsupported cell is
 `not_applicable` with null evidence. Use `requested_verified=1` when the claim
 remains required, causing honest absence to fail; use `0` only for an explicit
-reported exclusion, yielding a downgrade. Do not fabricate a host version or
-digest, and do not synthesize a missing file.
+reported exclusion, yielding a downgrade. Do not fabricate a host or client
+coordinate, and do not synthesize a missing file.
 
 For installed Codex `0.144.4`, the exact probe envelope is
-`codex-cli 0.144.4` and every cell stores canonical `host_version=0.144.4`.
-The v2 evaluator uses the exact-version disposition table; a missing or
-unreviewed version cannot inherit that table.
+`codex-cli 0.144.4` and every cell stores bare canonical
+`host_version=0.144.4`; the probe envelope itself is invalid in that field.
+Every non-null Codex host version must pass the shared bare-version parser. The
+v3 evaluator uses the exact-version disposition table; a missing or unreviewed
+version cannot inherit that table. An implemented exact-live cell requires
+`client_version == host_version`, and reviewed Codex `0.144.4` additionally
+requires `client_name=codex-mcp-client` and `client_version=0.144.4`.
+
+Read client identity only from the managed session baseline's top-level
+`metadata_json.client_name` and `metadata_json.client_version`, which preserve
+the successful initialize values. Do not infer it from host kind, executable or
+probe text, environment, configuration, protocol version, constants, later
+tool metadata, or another cell, and do not retain raw initialize or
+protocol/session/thread/turn payload. An implemented null client group reports
+`client_identity_missing`; a version, duplicate-copy, host-wide identity, or
+reviewed Codex mismatch reports `client_identity_mismatch`. Either condition is
+`implemented_unverified`. Static unsupported cells may use null client identity
+without that downgrade.
 
 The gate output and audit output are create-new bounded external files. End the
 gate process before starting the audit so the audit independently strict-reads
@@ -824,7 +865,7 @@ verdict in a separate process. A missing or malformed cell or evidence file is
 a structural command failure with no manifest, not a downgrade.
 
 Report the candidate/source/binary coordinates, both host availability
-coordinates, each
+coordinates, each host's single non-null client identity when present, each
 derived cell status, requested verified claims, downgrades, gate verdict,
 manifest SHA-256, audit cell-input SHA-256, audit verdict, and every finding or
 exclusion. Do not combine host versions or omit ignored, running, stale, or

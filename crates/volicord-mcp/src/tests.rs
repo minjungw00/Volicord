@@ -7,6 +7,7 @@ use std::{
     fs,
     io::{self, BufReader, Cursor, Write},
     path::Path,
+    sync::{Arc, Barrier},
 };
 
 #[cfg(unix)]
@@ -70,8 +71,9 @@ use volicord_test_support::core_fixtures::{
 };
 use volicord_types::{
     AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, EvidenceTarget,
-    OperationCategory, ResidualRiskInput, StagedArtifactHandle, REVIEWED_CODEX_HOST_VERSION,
-    REVIEWED_CODEX_MCP_CLIENT_NAME, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    ManagedMcpClientInfo, OperationCategory, ResidualRiskInput, StagedArtifactHandle,
+    REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use super::*;
@@ -1764,6 +1766,123 @@ fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(
 }
 
 #[test]
+fn managed_claude_startup_waits_for_valid_initialize_before_baseline_creation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = local_web_fixture("mcp-managed-claude-startup-buffer")?;
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(Cursor::new(Vec::<u8>::new())),
+        &mut output,
+        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
+    )?;
+
+    assert!(output.is_empty());
+    let session_id = managed_host_session_id(
+        HOST_KIND_CLAUDE_CODE,
+        fixture.connection_id(),
+        CLAUDE_LOCAL_WEB_TEST_SESSION_ID,
+    )?;
+    assert!(latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .is_none());
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        0
+    );
+    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn managed_claude_preseeded_pairless_baseline_rejects_without_any_new_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = local_web_fixture("mcp-managed-claude-preseed-pairless")?;
+    let session_id = managed_host_session_id(
+        HOST_KIND_CLAUDE_CODE,
+        fixture.connection_id(),
+        CLAUDE_LOCAL_WEB_TEST_SESSION_ID,
+    )?;
+    let now = fixture.store()?.current_timestamp()?;
+    let seeded_session = insert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_CLAUDE_CODE.to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: now.clone(),
+            metadata_json: json!({"source":"preseeded_pairless_identity_test"}).to_string(),
+        },
+    )?;
+    let snapshot = snapshot_product_repository(
+        fixture.runtime_home_path(),
+        fixture.product_repo_path(),
+        WatchSnapshotOptions::default(),
+    )?;
+    let seeded_baseline = create_watch_baseline(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        WatchBaselineCreate {
+            watch_baseline_id: "watch_base_preseeded_pairless_identity".to_owned(),
+            session_id: session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            status: StoreSessionWatchStatus::Active,
+            snapshot,
+            created_at: now,
+            metadata_json: json!({
+                "source":"preseeded_pairless_identity_test",
+                "lifecycle_events":[{"lifecycle_event":"managed_host_startup"}]
+            })
+            .to_string(),
+        },
+    )?;
+    let before_counts = fixture.counts()?;
+    let before_state_version = read_only_state_version(&fixture)?;
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
+
+    let input = Cursor::new(json_lines(&[local_web_initialize_request(1, json!({}))])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0]["error"]["code"], -32600);
+    assert_eq!(fixture.counts()?, before_counts);
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &session_id,
+        )?,
+        Some(seeded_session)
+    );
+    assert_eq!(
+        latest_watch_baseline_for_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &session_id,
+        )?,
+        Some(seeded_baseline)
+    );
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
+    Ok(())
+}
+
+#[test]
 fn managed_claude_stdio_uses_the_same_native_session_binding() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-stdio-managed-claude-binding")?;
     let connection_id = "connection_fixture_claude";
@@ -1838,6 +1957,8 @@ fn managed_claude_stdio_uses_the_same_native_session_binding() -> Result<(), Box
     assert_eq!(metadata["host_kind"], "claude_code");
     assert_eq!(metadata["connection_id"], connection_id);
     assert_eq!(metadata["project_id"], fixture.project_id());
+    assert_eq!(metadata["client_name"], "claude-code");
+    assert_eq!(metadata["client_version"], client_version);
     let startup = lifecycle_event(&metadata, "managed_host_startup");
     assert_eq!(startup["host_kind"], "claude_code");
     assert_eq!(startup["connection_id"], connection_id);
@@ -2239,6 +2360,11 @@ fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
     assert_eq!(metadata["coverage_basis"], "method_boundary");
     assert!(metadata["partial_coverage_warning"].is_string());
+    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
+    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
+    let initialize = lifecycle_event(&metadata, "managed_host_initialize_response");
+    assert!(initialize.get("client_name").is_none());
+    assert!(initialize.get("client_version").is_none());
     assert_eq!(
         &lifecycle_event_names(&metadata)[..3],
         [
@@ -2255,6 +2381,293 @@ fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn
     assert_eq!(tool_call["tool_name"], "volicord.status");
     assert_eq!(tool_call["storage_capability"], "read_write");
     assert_eq!(tool_call["effective_tool_mode"], "workflow");
+    Ok(())
+}
+
+#[test]
+fn managed_initialize_identity_replay_is_exactly_idempotent_and_drift_conflicts(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-managed-initialize-identity-replay")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call_with_codex_metadata(
+            2,
+            "volicord.status",
+            json!({"detail":"workflow"}),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            CODEX_TEST_TURN_ID,
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
+    assert_eq!(stdio_responses(&output)?.len(), 2);
+
+    let session_id = managed_host_session_id(
+        HOST_KIND_CODEX,
+        fixture.connection_id(),
+        CODEX_TEST_SESSION_ID,
+    )?;
+    let before = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the exact Codex call should materialize the baseline");
+    let adapter = project_bound_adapter(&fixture)?;
+    let exact =
+        ManagedMcpClientInfo::new(REVIEWED_CODEX_MCP_CLIENT_NAME, REVIEWED_CODEX_HOST_VERSION)?;
+    assert_eq!(
+        adapter.managed_initialize_observation_best_effort(&session_id, "managed_host", &exact,),
+        StartupObservationResult::Recorded
+    );
+
+    let drift = ManagedMcpClientInfo::new(REVIEWED_CODEX_MCP_CLIENT_NAME, "0.144.4-drift")?;
+    assert_eq!(
+        adapter.managed_initialize_observation_best_effort(&session_id, "managed_host", &drift,),
+        StartupObservationResult::IdentityConflict
+    );
+
+    let after = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the original baseline should remain present");
+    assert_eq!(after.metadata_json, before.metadata_json);
+    let metadata: Value = serde_json::from_str(&after.metadata_json)?;
+    assert_eq!(
+        lifecycle_event_names(&metadata)
+            .iter()
+            .filter(|event| event.as_str() == "managed_host_initialize_response")
+            .count(),
+        1
+    );
+    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
+    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
+    Ok(())
+}
+
+#[test]
+fn concurrent_first_managed_initialize_allows_only_one_different_identity(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = local_web_fixture("mcp-managed-initialize-race-different")?;
+    let session_id = managed_host_session_id(
+        HOST_KIND_CLAUDE_CODE,
+        fixture.connection_id(),
+        "claude.initialize.race.different",
+    )?;
+    let first = ManagedMcpClientInfo::new("claude-race-alpha", "1.0.0")?;
+    let second = ManagedMcpClientInfo::new("claude-race-beta", "2.0.0")?;
+    let barrier = Arc::new(Barrier::new(3));
+    let first_handle = {
+        let adapter = project_bound_adapter(&fixture)?;
+        let session_id = session_id.clone();
+        let client_info = first.clone();
+        let barrier = Arc::clone(&barrier);
+        std::thread::spawn(move || {
+            barrier.wait();
+            adapter.managed_initialize_observation_best_effort(
+                &session_id,
+                "managed_host",
+                &client_info,
+            )
+        })
+    };
+    let second_handle = {
+        let adapter = project_bound_adapter(&fixture)?;
+        let session_id = session_id.clone();
+        let client_info = second.clone();
+        let barrier = Arc::clone(&barrier);
+        std::thread::spawn(move || {
+            barrier.wait();
+            adapter.managed_initialize_observation_best_effort(
+                &session_id,
+                "managed_host",
+                &client_info,
+            )
+        })
+    };
+    barrier.wait();
+    let first_result = first_handle.join().expect("first initialize thread");
+    let second_result = second_handle.join().expect("second initialize thread");
+    assert_eq!(
+        [first_result.clone(), second_result.clone()]
+            .into_iter()
+            .filter(|result| *result == StartupObservationResult::Recorded)
+            .count(),
+        1
+    );
+    assert_eq!(
+        [first_result.clone(), second_result.clone()]
+            .into_iter()
+            .filter(|result| *result == StartupObservationResult::IdentityConflict)
+            .count(),
+        1
+    );
+
+    let winner = if first_result == StartupObservationResult::Recorded {
+        &first
+    } else {
+        &second
+    };
+    let baseline = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("one racing initialize must create the managed baseline");
+    assert_eq!(
+        baseline.watch_baseline_id,
+        format!("watch_base_managed_{session_id}")
+    );
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["client_name"], winner.name());
+    assert_eq!(metadata["client_version"], winner.version());
+    assert_eq!(
+        lifecycle_event_names(&metadata),
+        vec!["managed_host_startup", "managed_host_initialize_response"]
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        1
+    );
+    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
+    Ok(())
+}
+
+#[test]
+fn concurrent_first_managed_initialize_with_same_identity_is_idempotent(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = local_web_fixture("mcp-managed-initialize-race-same")?;
+    let session_id = managed_host_session_id(
+        HOST_KIND_CLAUDE_CODE,
+        fixture.connection_id(),
+        "claude.initialize.race.same",
+    )?;
+    let client_info = ManagedMcpClientInfo::new("claude-race-same", "3.0.0")?;
+    let barrier = Arc::new(Barrier::new(3));
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let adapter = project_bound_adapter(&fixture)?;
+        let session_id = session_id.clone();
+        let client_info = client_info.clone();
+        let barrier = Arc::clone(&barrier);
+        handles.push(std::thread::spawn(move || {
+            barrier.wait();
+            adapter.managed_initialize_observation_best_effort(
+                &session_id,
+                "managed_host",
+                &client_info,
+            )
+        }));
+    }
+    barrier.wait();
+    for handle in handles {
+        assert_eq!(
+            handle.join().expect("initialize race thread"),
+            StartupObservationResult::Recorded
+        );
+    }
+
+    let baseline = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("same-identity race must create one baseline");
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["client_name"], client_info.name());
+    assert_eq!(metadata["client_version"], client_info.version());
+    assert_eq!(
+        lifecycle_event_names(&metadata),
+        vec!["managed_host_startup", "managed_host_initialize_response"]
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        1
+    );
+    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 1);
+    Ok(())
+}
+
+#[test]
+fn managed_claude_same_session_rejects_client_identity_drift_before_state_change(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = local_web_fixture("mcp-managed-claude-identity-drift")?;
+    let first_input = Cursor::new(json_lines(&[local_web_initialize_request(1, json!({}))])?);
+    let mut first_output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(first_input),
+        &mut first_output,
+        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
+    )?;
+    assert!(stdio_responses(&first_output)?[0]["result"].is_object());
+
+    let session_id = managed_host_session_id(
+        HOST_KIND_CLAUDE_CODE,
+        fixture.connection_id(),
+        CLAUDE_LOCAL_WEB_TEST_SESSION_ID,
+    )?;
+    let before = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the first Claude initialize should persist its exact identity");
+    let before_counts = fixture.counts()?;
+    let before_state_version = read_only_state_version(&fixture)?;
+    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+
+    let rejected_version = "2.3.4-different-client";
+    let second_input = Cursor::new(json_lines(&[
+        initialize_request_with_client_info(
+            1,
+            json!({}),
+            CLAUDE_LOCAL_WEB_TEST_CLIENT_NAME,
+            rejected_version,
+        ),
+        local_web_initialize_request(2, json!({})),
+    ])?);
+    let mut second_output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(second_input),
+        &mut second_output,
+        |name| managed_local_web_stdio_env(&fixture, true, HOST_KIND_CLAUDE_CODE, name),
+    )?;
+
+    let responses = stdio_responses(&second_output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[0]["error"]["code"], -32600);
+    assert!(responses[1]["result"].is_object());
+    assert!(!serde_json::to_string(&responses)?.contains(rejected_version));
+    let after = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the original Claude baseline should remain present");
+    assert_eq!(after.metadata_json, before.metadata_json);
+    assert!(!after.metadata_json.contains(rejected_version));
+    assert_eq!(fixture.counts()?, before_counts);
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_agent_sessions
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_watch_baselines
+    );
     Ok(())
 }
 
@@ -2333,11 +2746,182 @@ fn managed_codex_lifecycle_failure_does_not_claim_coverage_and_recovers(
 }
 
 #[test]
-fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
+fn deferred_codex_missing_stored_identity_rejects_before_tool_or_diagnostic_dispatch(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-stdio-codex-binding-immutable")?;
-    let native_session_id = "native.session.root";
-    let native_thread_id = "native.thread.root";
+    let fixture = CoreFixture::new("mcp-stdio-codex-deferred-identity-conflict")?;
+    let first_input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call_with_codex_metadata(
+            2,
+            "volicord.status",
+            json!({"detail":"workflow"}),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            "turn.before.identity.conflict",
+        ),
+    ])?);
+    let mut first_output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(first_input),
+        &mut first_output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
+    assert!(stdio_responses(&first_output)?[1]["result"].is_object());
+
+    let session_id = managed_host_session_id(
+        HOST_KIND_CODEX,
+        fixture.connection_id(),
+        CODEX_TEST_SESSION_ID,
+    )?;
+    let baseline = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the first Codex call should materialize its baseline");
+    let mut stale_metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    stale_metadata
+        .as_object_mut()
+        .expect("baseline metadata should be an object")
+        .remove("client_name");
+    stale_metadata
+        .as_object_mut()
+        .expect("baseline metadata should be an object")
+        .remove("client_version");
+    update_watch_status(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &baseline.watch_baseline_id,
+        WatchStatusUpdate {
+            status: StoreSessionWatchStatus::Active,
+            updated_at: fixture.store()?.current_timestamp()?,
+            metadata_json: serde_json::to_string(&stale_metadata)?,
+        },
+    )?;
+    let before = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the conflict fixture baseline should remain present");
+    let before_counts = fixture.counts()?;
+    let before_state_version = read_only_state_version(&fixture)?;
+    let before_diagnostic = serde_json::to_string(&read_diagnostic_session(
+        fixture.runtime_home_path(),
+        Some(&session_id),
+    )?)?;
+
+    let second_input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call_with_codex_metadata(
+            2,
+            "volicord.status",
+            json!({"detail":"workflow"}),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            "turn.rejected.identity.conflict",
+        ),
+    ])?);
+    let mut second_output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(second_input),
+        &mut second_output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
+
+    let responses = stdio_responses(&second_output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[1]["error"]["code"], -32600);
+    let after = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .expect("the conflicting baseline should remain byte-identical");
+    assert_eq!(after.metadata_json, before.metadata_json);
+    assert_eq!(fixture.counts()?, before_counts);
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        serde_json::to_string(&read_diagnostic_session(
+            fixture.runtime_home_path(),
+            Some(&session_id),
+        )?)?,
+        before_diagnostic
+    );
+    Ok(())
+}
+
+#[test]
+fn deferred_codex_identity_conflict_restores_pending_and_recovers_only_on_exact_binding(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-codex-conflict-pending-recovery")?;
+    let conflicting_native_session = "native.session.conflicting.identity";
+    let conflicting_native_thread = "native.thread.conflicting.identity";
+    let recovery_native_session = "native.session.exact.recovery";
+    let recovery_native_thread = "native.thread.exact.recovery";
+    let conflicting_session_id = managed_host_session_id(
+        HOST_KIND_CODEX,
+        fixture.connection_id(),
+        conflicting_native_session,
+    )?;
+    let recovery_session_id = managed_host_session_id(
+        HOST_KIND_CODEX,
+        fixture.connection_id(),
+        recovery_native_session,
+    )?;
+    let now = fixture.store()?.current_timestamp()?;
+    let seeded_session = insert_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        AgentSessionInsert {
+            session_id: conflicting_session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            host_kind: HOST_KIND_CODEX.to_owned(),
+            guard_mode: "record".to_owned(),
+            started_at: now.clone(),
+            metadata_json: json!({"source":"codex_pending_recovery_preseed"}).to_string(),
+        },
+    )?;
+    let snapshot = snapshot_product_repository(
+        fixture.runtime_home_path(),
+        fixture.product_repo_path(),
+        WatchSnapshotOptions::default(),
+    )?;
+    let seeded_baseline = create_watch_baseline(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        WatchBaselineCreate {
+            watch_baseline_id: "watch_base_codex_pending_recovery_preseed".to_owned(),
+            session_id: conflicting_session_id.clone(),
+            connection_internal_id: fixture.connection_id().to_owned(),
+            guard_installation_id: None,
+            status: StoreSessionWatchStatus::Active,
+            snapshot,
+            created_at: now,
+            metadata_json: json!({
+                "source":"codex_pending_recovery_preseed",
+                "lifecycle_events":[{"lifecycle_event":"managed_host_startup"}]
+            })
+            .to_string(),
+        },
+    )?;
+    let before_counts = fixture.counts()?;
+    let before_state_version = read_only_state_version(&fixture)?;
+    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    assert!(
+        read_diagnostic_session(fixture.runtime_home_path(), Some(&conflicting_session_id),)?
+            .is_none()
+    );
+
+    let unknown_tool_sentinel = "volicord.unknown.pending.sentinel";
+    let malformed_metadata_sentinel = "malformed.metadata.pending.sentinel";
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
@@ -2345,10 +2929,162 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
             2,
             "volicord.status",
             json!({"detail":"workflow"}),
-            native_session_id,
-            native_thread_id,
-            "turn.one",
+            conflicting_native_session,
+            conflicting_native_thread,
+            "turn.identity.conflict",
         ),
+        tools_call_with_codex_metadata(
+            3,
+            unknown_tool_sentinel,
+            json!({}),
+            recovery_native_session,
+            recovery_native_thread,
+            "turn.unknown.must.not.bind",
+        ),
+        request(
+            4,
+            "tools/call",
+            json!({
+                "name":"volicord.status",
+                "arguments":{"detail":"workflow"},
+                "_meta":{"future":malformed_metadata_sentinel}
+            }),
+        ),
+        tools_call_with_codex_metadata(
+            5,
+            "volicord.status",
+            json!({"detail":"workflow"}),
+            recovery_native_session,
+            recovery_native_thread,
+            "turn.exact.recovery",
+        ),
+    ])?);
+    let mut output = Vec::new();
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 5);
+    assert_eq!(responses[1]["error"]["code"], -32600);
+    assert_eq!(responses[2]["error"]["code"], -32602);
+    assert_eq!(responses[3]["error"]["code"], -32602);
+    assert!(responses[4]["result"].is_object());
+    assert_eq!(fixture.counts()?, before_counts);
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_tool_invocations
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_agent_sessions + 1
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_watch_baselines + 1
+    );
+    assert_eq!(
+        agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &conflicting_session_id,
+        )?,
+        Some(seeded_session)
+    );
+    assert_eq!(
+        latest_watch_baseline_for_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            &conflicting_session_id,
+        )?,
+        Some(seeded_baseline)
+    );
+    assert!(
+        read_diagnostic_session(fixture.runtime_home_path(), Some(&conflicting_session_id),)?
+            .is_none()
+    );
+
+    let recovery_baseline = latest_watch_baseline_for_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &recovery_session_id,
+    )?
+    .expect("the later exact binding should recover on its own managed session");
+    let recovery_metadata: Value = serde_json::from_str(&recovery_baseline.metadata_json)?;
+    assert_eq!(
+        lifecycle_event_names(&recovery_metadata),
+        vec![
+            "managed_host_startup",
+            "managed_host_initialize_response",
+            "managed_host_tool_call",
+            "managed_host_tool_call_completed",
+        ]
+    );
+    assert_eq!(
+        recovery_metadata["client_name"],
+        REVIEWED_CODEX_MCP_CLIENT_NAME
+    );
+    assert_eq!(
+        recovery_metadata["client_version"],
+        REVIEWED_CODEX_HOST_VERSION
+    );
+    let recovery_diagnostic =
+        read_diagnostic_session(fixture.runtime_home_path(), Some(&recovery_session_id))?
+            .expect("only the exact recovery binding should start diagnostics");
+    assert_eq!(recovery_diagnostic.totals.tool_call_count, 1);
+    assert_eq!(recovery_diagnostic.totals.validation_failures, 0);
+    let persisted = format!(
+        "{}\n{}",
+        recovery_baseline.metadata_json,
+        serde_json::to_string(&recovery_diagnostic)?
+    );
+    for rejected in [
+        conflicting_native_session,
+        conflicting_native_thread,
+        unknown_tool_sentinel,
+        malformed_metadata_sentinel,
+    ] {
+        assert!(
+            !persisted.contains(rejected),
+            "rejected payload leaked: {rejected}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-codex-binding-immutable")?;
+    let native_session_id = "native.session.root";
+    let native_thread_id = "native.thread.root";
+    let protocol_sentinel = "protocol.must.not.persist";
+    let capability_sentinel = "capability.must.not.persist";
+    let initialize_sentinel = "initialize.payload.must.not.persist";
+    let client_extension_sentinel = "client.extension.must.not.persist";
+    let tool_payload_sentinel = "tool.payload.must.not.persist";
+    let mut initialize = initialize_request(1, json!({}));
+    initialize["params"]["protocolVersion"] = json!(protocol_sentinel);
+    initialize["params"]["capabilities"]["future_capability"] = json!(capability_sentinel);
+    initialize["params"]["future_initialize_field"] = json!(initialize_sentinel);
+    initialize["params"]["clientInfo"]["future_client_field"] = json!(client_extension_sentinel);
+    let mut first_call = tools_call_with_codex_metadata(
+        2,
+        "volicord.status",
+        json!({"detail":"workflow"}),
+        native_session_id,
+        native_thread_id,
+        "turn.one",
+    );
+    first_call["params"]["_meta"]["future_tool_payload"] = json!(tool_payload_sentinel);
+    let input = Cursor::new(json_lines(&[
+        initialize,
+        initialized_notification(),
+        first_call,
         tools_call_with_codex_metadata(
             3,
             "volicord.status",
@@ -2398,6 +3134,8 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     )?
     .expect("first exact call must materialize the managed baseline");
     let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
+    assert_eq!(metadata["client_version"], REVIEWED_CODEX_HOST_VERSION);
     assert_eq!(
         lifecycle_event_names(&metadata),
         vec![
@@ -2424,6 +3162,11 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
         "turn.two",
         "native.thread.other",
         "native.session.other",
+        protocol_sentinel,
+        capability_sentinel,
+        initialize_sentinel,
+        client_extension_sentinel,
+        tool_payload_sentinel,
     ] {
         assert!(
             !persisted.contains(raw),
@@ -2506,6 +3249,67 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
         fixture.connection_id(),
     )?
     .is_none());
+    assert_eq!(read_only_state_version(&fixture)?, before_state_version);
+    assert_eq!(
+        read_only_table_count(&fixture, "agent_sessions")?,
+        before_agent_sessions
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "session_watch_baselines")?,
+        before_watch_baselines
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "tool_invocations")?,
+        before_tool_invocations
+    );
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn rejected_codex_client_identity_has_zero_durable_identity_or_core_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-rejected-codex-client-identity")?;
+    let rejected_name = "rejected.client.identity.sentinel";
+    let rejected_version = "rejected.version.identity.sentinel";
+    let before = fixture.counts()?;
+    let before_state_version = read_only_state_version(&fixture)?;
+    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_watch_baselines = read_only_table_count(&fixture, "session_watch_baselines")?;
+    let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request_with_client_info(1, json!({}), rejected_name, rejected_version),
+        initialized_notification(),
+        tools_call_with_codex_metadata(
+            2,
+            "volicord.status",
+            json!({"detail":"workflow"}),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            CODEX_TEST_TURN_ID,
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[1]["error"]["code"], -32602);
+    assert!(!serde_json::to_string(&responses)?.contains(rejected_name));
+    assert!(!serde_json::to_string(&responses)?.contains(rejected_version));
+    assert!(latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .is_none());
+    assert_eq!(fixture.counts()?, before);
     assert_eq!(read_only_state_version(&fixture)?, before_state_version);
     assert_eq!(
         read_only_table_count(&fixture, "agent_sessions")?,
@@ -3354,6 +4158,69 @@ fn read_only_mode_rejects_agent_workflow_calls_before_core() -> Result<(), Box<d
             .expect_err("read_only should reject agent workflow calls");
         assert!(error.to_string().contains("mode read_only"));
         assert!(error.to_string().contains("agent_workflow"));
+    }
+    assert_eq!(fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn initialize_client_info_enforces_utf8_byte_bounds_before_connection_state_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-initialize-client-info-bound")?;
+    let before = fixture.counts()?;
+    let at_limit_name = format!(" {} ", "n".repeat(254));
+    let at_limit_version = "가".repeat(85) + "a";
+    assert_eq!(at_limit_name.len(), 256);
+    assert_eq!(at_limit_version.len(), 256);
+
+    let mut output = Vec::new();
+    run_stdio(
+        adapter(&fixture)?,
+        BufReader::new(Cursor::new(json_lines(&[
+            initialize_request_with_client_info(1, json!({}), &at_limit_name, &at_limit_version),
+        ])?)),
+        &mut output,
+    )?;
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["result"].is_object());
+
+    let invalid_values = [
+        String::new(),
+        " \t\u{2003}".to_owned(),
+        "line\nbreak".to_owned(),
+        "x".repeat(257),
+        "가".repeat(86),
+    ];
+    for (index, invalid) in invalid_values.iter().enumerate() {
+        for invalid_name in [true, false] {
+            let (name, version) = if invalid_name {
+                (invalid.as_str(), "valid-version")
+            } else {
+                ("valid-name", invalid.as_str())
+            };
+            let fallback_id = 100 + (index as u64 * 2) + u64::from(invalid_name);
+            let input = json_lines(&[
+                initialize_request_with_client_info(1, json!({}), name, version),
+                initialize_request_with_client_info(
+                    fallback_id,
+                    json!({}),
+                    "valid-name",
+                    "valid-version",
+                ),
+            ])?;
+            let mut output = Vec::new();
+            run_stdio(
+                adapter(&fixture)?,
+                BufReader::new(Cursor::new(input)),
+                &mut output,
+            )?;
+            let responses = stdio_responses(&output)?;
+            assert_eq!(responses.len(), 2);
+            assert_eq!(responses[0]["error"]["code"], -32602);
+            assert!(responses[1]["result"].is_object());
+            assert_eq!(responses[1]["id"], fallback_id);
+        }
     }
     assert_eq!(fixture.counts()?, before);
     Ok(())

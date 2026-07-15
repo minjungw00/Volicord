@@ -3,11 +3,12 @@ use serde_json::Value;
 use volicord_types::{HostFeature, HostFeatureSupportStatus};
 
 pub const CANDIDATE_SCHEMA: &str = "volicord-release-candidate-v1";
-pub const CELL_SCHEMA: &str = "volicord-host-release-cell-v2";
-pub const MANIFEST_SCHEMA: &str = "volicord-host-release-manifest-v2";
-pub const AUDIT_SCHEMA: &str = "volicord-host-release-audit-v2";
+pub const CELL_SCHEMA: &str = "volicord-host-release-cell-v3";
+pub const MANIFEST_SCHEMA: &str = "volicord-host-release-manifest-v3";
+pub const AUDIT_SCHEMA: &str = "volicord-host-release-audit-v3";
 pub const SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
-pub const CELL_INPUTS_DIGEST_DOMAIN: &[u8] = b"volicord-host-release-cell-inputs-v2\0";
+pub const CELL_INPUTS_DIGEST_DOMAIN: &[u8] = b"volicord-host-release-cell-inputs-v3\0";
+pub(crate) const MAX_FINDING_CODES: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -118,6 +119,8 @@ pub struct CellEnvironment {
     pub host_executable_sha256: RequiredNullable<String>,
     pub host_kind: HostKind,
     pub host_version: RequiredNullable<String>,
+    pub client_name: RequiredNullable<String>,
+    pub client_version: RequiredNullable<String>,
     pub adapter_profile: String,
     pub adapter_version: String,
 }
@@ -142,6 +145,8 @@ pub struct Cell {
     pub release_profile: String,
     pub host_kind: HostKind,
     pub host_version: RequiredNullable<String>,
+    pub client_name: RequiredNullable<String>,
+    pub client_version: RequiredNullable<String>,
     pub adapter_profile: String,
     pub adapter_version: String,
     pub feature: HostFeature,
@@ -272,6 +277,8 @@ pub struct AuditInvariantResult {
 pub struct RecalculatedCell {
     pub host_kind: HostKind,
     pub host_version: RequiredNullable<String>,
+    pub client_name: RequiredNullable<String>,
+    pub client_version: RequiredNullable<String>,
     pub feature: HostFeature,
     pub derived_status: HostFeatureSupportStatus,
     pub finding_codes: Vec<String>,
@@ -282,6 +289,8 @@ impl From<&ManifestCell> for RecalculatedCell {
         Self {
             host_kind: cell.raw.host_kind,
             host_version: cell.raw.host_version.clone(),
+            client_name: cell.raw.client_name.clone(),
+            client_version: cell.raw.client_version.clone(),
             feature: cell.raw.feature,
             derived_status: cell.derived_status,
             finding_codes: cell.finding_codes.clone(),

@@ -8,7 +8,8 @@ use sha2::{Digest, Sha256};
 use volicord_types::{
     evaluate_host_feature_support_for_version, host_feature_implementation_for_version,
     CurrentRuntimeReadiness, ExactLiveEvidenceState, HostFeature, HostFeatureEvaluationInput,
-    HostFeatureSupportStatus, IntegrationProfile,
+    HostFeatureSupportStatus, IntegrationProfile, REVIEWED_CODEX_HOST_VERSION,
+    REVIEWED_CODEX_MCP_CLIENT_NAME,
 };
 
 use crate::{
@@ -24,9 +25,9 @@ use crate::{
         MAX_CELL_JSON_BYTES, MAX_EVIDENCE_BYTES, MAX_MANIFEST_JSON_BYTES,
     },
     schema::{
-        AuditExclusion, AuditInvariantResult, AuditVerdict, Candidate, Cell, GateVerdict,
+        AuditExclusion, AuditInvariantResult, AuditVerdict, Candidate, Cell, GateVerdict, HostKind,
         ImplementationDisposition, ManifestCell, RecalculatedCell, ReleaseAudit, ReleaseManifest,
-        RunState, AUDIT_SCHEMA, CELL_INPUTS_DIGEST_DOMAIN, MANIFEST_SCHEMA,
+        RunState, AUDIT_SCHEMA, CELL_INPUTS_DIGEST_DOMAIN, MANIFEST_SCHEMA, MAX_FINDING_CODES,
     },
 };
 
@@ -288,6 +289,8 @@ fn independently_recalculate(
     let all_cell_environment_coordinates_exact = cells
         .iter()
         .all(|cell| independent_environment_coordinates_exact(cell, &artifact.build.build_id));
+    let single_host_client_identity_per_host =
+        independent_single_host_client_identity_per_host(&cells);
     let current_head = git_head(context.source_checkout())?;
     let source_clean = git_is_clean(context.source_checkout())?;
     let actual_archive_sha256 =
@@ -348,6 +351,10 @@ fn independently_recalculate(
         ),
         ("fixed_twelve_cell_matrix".to_owned(), true),
         ("single_host_version_per_host".to_owned(), true),
+        (
+            "single_host_client_identity_per_host".to_owned(),
+            single_host_client_identity_per_host,
+        ),
         (
             "source_archive_digest_exact".to_owned(),
             actual_archive_sha256 == candidate.source_archive_sha256,
@@ -444,6 +451,28 @@ fn independently_recalculate_cell(
     if !environment_coordinates_exact {
         finding_codes.push("environment_coordinate_mismatch".to_owned());
     }
+    let client_identity_exact = match (cell.client_name.as_ref(), cell.client_version.as_ref()) {
+        (None, None) => {
+            if cell.implementation_disposition == ImplementationDisposition::Implemented {
+                finding_codes.push("client_identity_missing".to_owned());
+            }
+            false
+        }
+        (Some(client_name), Some(client_version)) => {
+            let exact = independent_client_identity_coordinates_exact(&cell)
+                && cell.host_version.as_ref() == Some(client_version)
+                && (cell.host_kind != HostKind::Codex
+                    || cell.host_version.as_ref().map(String::as_str)
+                        != Some(REVIEWED_CODEX_HOST_VERSION)
+                    || (client_name == REVIEWED_CODEX_MCP_CLIENT_NAME
+                        && client_version == REVIEWED_CODEX_HOST_VERSION));
+            if !exact {
+                finding_codes.push("client_identity_mismatch".to_owned());
+            }
+            exact
+        }
+        _ => unreachable!("validated client identity group is all strings or all null"),
+    };
     let timestamp_current = started_at <= recorded_at
         && recorded_at <= evaluated_at
         && evaluated_at
@@ -523,6 +552,7 @@ fn independently_recalculate_cell(
         && candidate_precedes_cell
         && candidate_coordinates_exact
         && environment_coordinates_exact
+        && client_identity_exact
         && evidence_exact
         && assertions_pass;
     let derived_status = evaluate_host_feature_support_for_version(
@@ -543,6 +573,9 @@ fn independently_recalculate_cell(
     }
     finding_codes.sort();
     finding_codes.dedup();
+    if finding_codes.len() > MAX_FINDING_CODES {
+        return Err(ValidationError::new("derived cell findings exceed bound"));
+    }
     Ok(ManifestCell {
         raw: cell,
         derived_status,
@@ -554,10 +587,34 @@ fn independent_environment_coordinates_exact(cell: &Cell, candidate_build_id: &s
     let adapter_profile = independent_expected_adapter_profile(cell.feature).as_str();
     cell.environment.host_kind == cell.host_kind
         && cell.environment.host_version == cell.host_version
+        && cell.environment.client_name == cell.client_name
+        && cell.environment.client_version == cell.client_version
         && cell.adapter_profile == adapter_profile
         && cell.environment.adapter_profile == adapter_profile
         && cell.adapter_version == candidate_build_id
         && cell.environment.adapter_version == candidate_build_id
+}
+
+fn independent_client_identity_coordinates_exact(cell: &Cell) -> bool {
+    cell.environment.client_name == cell.client_name
+        && cell.environment.client_version == cell.client_version
+}
+
+fn independent_single_host_client_identity_per_host(cells: &[Cell]) -> bool {
+    HostKind::ALL.into_iter().all(|host| {
+        cells
+            .iter()
+            .filter(|cell| cell.host_kind == host)
+            .filter_map(|cell| {
+                cell.client_name
+                    .as_ref()
+                    .zip(cell.client_version.as_ref())
+                    .map(|(name, version)| (name.as_str(), version.as_str()))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            <= 1
+    })
 }
 
 const fn independent_expected_adapter_profile(feature: HostFeature) -> IntegrationProfile {

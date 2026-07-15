@@ -97,7 +97,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `prompt_captures` | 프롬프트 캡처 | 세션에 대한 프로젝트 범위 프롬프트 캡처입니다. 연결, 캡처 종류, 프롬프트 해시, 선택적 프롬프트 본문, 타임스탬프, 메타데이터를 포함합니다. |
 | `state.sqlite` | `expected_writes` | 예상 Product Repository 쓰기 | 허용된 `detective` 도구 실행 전 쓰기가 만드는 프로젝트 범위 예상 쓰기 상관 기록입니다. 연결/세션 식별 정보, 선택적 호스트 호출 식별 정보, 정확한 경로 정책, 현재 적용 `Task`/Change Unit/쓰기 티켓 근거, 타임스탬프, 일치한 도구 실행 후 메타데이터를 포함합니다. |
 | `state.sqlite` | `unrecorded_changes` | 미기록 Product Repository 변경 | Core 실행 또는 담당 문서가 정의한 다른 기록과 아직 연결되지 않은 관찰된 Product Repository 변경에 대한 프로젝트 범위 미해결 또는 해결 기록. |
-| `state.sqlite` | `session_watch_baselines` | 세션 감시 기준선 | 등록된 Product Repository 또는 감시 경로 집합에 대한 프로젝트 범위 세션 감시 상태와 기준선 스냅샷입니다. 유효한 제외 항목, 스냅샷 다이제스트 메타데이터, 간결한 스냅샷 항목을 포함합니다. |
+| `state.sqlite` | `session_watch_baselines` | 세션 감시 기준선 | 등록된 Product Repository 또는 감시 경로 집합에 대한 프로젝트 범위 세션 감시 상태와 기준선 스냅샷입니다. 유효한 제외 항목, 스냅샷 다이제스트 메타데이터, 간결한 스냅샷 항목, 관리 MCP 기준선의 크기가 제한된 실제 initialize 클라이언트 정체성을 포함합니다. |
 | `state.sqlite` | `session_watch_observations` | 세션 감시 관찰 | 이후의 안전한 스냅샷을 기준선과 비교해 얻은 프로젝트 범위 `detective` 관찰입니다. 관찰된 변경 경로, 선택적 예상 쓰기 또는 쓰기 티켓 상관 관계, 기존 미기록 변경 행에 대한 선택적 연결을 포함합니다. |
 | `state.sqlite` | `tasks` | 작업 단위 상태 | 모드와 work phase, Task 소유 acceptance policy와 이유, 선택적 predecessor 관계와 carry-forward 감사, 구체화 요약, 범위와 닫기 근거 리비전, `null` 허용 현재 닫기 근거, 생명주기/결과/종료 요약, 현재 Change Unit 포인터, 생성자 actor source를 가진 사용자 가치 단위. |
 | `state.sqlite` | `acceptance_criteria` | 수락 기준 | Core가 생성한 기준 identity, 소유 `Task`, 문장, 증거 요구 수준, 교체 순서, 활성/폐기 상태, 타임스탬프. |
@@ -468,6 +468,20 @@ Core, 최종 출력, 연결, Doctor의 사실 소비자는 guard-event 증거 �
 `session_watch_baselines`와 `session_watch_observations`는 탐지형 세션 단위 Product Repository 감시를 지원합니다. 샌드박스, 파일시스템 권한 경계, 쓰기 전 차단, 파일을 바꾼 주체나 이유에 대한 증명이 아닙니다.
 
 - 기준선은 감시 가용성, 등록된 저장소 루트 또는 감시 경로 집합, 적용된 제외 항목, 결정적 스냅샷 다이제스트 메타데이터를 저장합니다.
+- 관리 MCP 결속이 기준선을 구체화하면 `metadata_json`은 최상위 `client_name`과
+  `client_version`을 모두 저장합니다. 성공한 `clientInfo.name`과 `clientInfo.version`의
+  정확한 값이며, 각각 1바이트 이상 256 UTF-8 바이트 이하이고 공백이 아닌 문자를 하나
+  이상 포함하며 제어 문자가 없는지 검증한 뒤 그 밖에는 정확한 문자열을 그대로
+  보존합니다. 릴리스 기록기 좌표이며 클라이언트 신원 증명이나 사용자 권한이 아닙니다.
+  호스트 종류, 실행 파일이나 probe 텍스트, 설정, 프로토콜 버전, 상수, 요청 메타데이터,
+  다른 세션에서 어느 필드도 추론할 수 없습니다. 원본 initialize 요청, 그 밖의 initialize
+  파라미터, 원본 프로토콜·세션·thread·turn·tool-call payload는 이 행에 저장하지 않습니다.
+- 관리 기준선 하나는 클라이언트 쌍 하나만 보존합니다. 정확히 같은 쌍을 다시 관찰하는
+  것만 멱등입니다. 기존 관리 기준선의 쌍이 없거나 일부만 있거나 다르면 결속 충돌이며
+  성공한 관리 클라이언트 provenance가 아닙니다. 저장소 소비자는 값을 채우거나 교체하거나
+  추론하지 않고 닫힌 상태로 실패해야 합니다.
+- 기존 `metadata_json` 열을 사용합니다. 테이블, 열, 인덱스, trigger, 저장 profile 버전을
+  추가하지 않으므로 저장소 DDL 계약은 바뀌지 않습니다.
 - 관찰은 이후의 안전한 스냅샷을 기준선과 비교해 찾은 변경 제품 경로를 저장합니다. 예상 쓰기, 쓰기 티켓, 미기록 변경의 선택적 상관 참조도 포함할 수 있습니다.
 - 관찰을 예상 쓰기나 일치하는 `active` 쓰기 티켓 하나에 연결하는 것은 결정적 상관관계일 뿐입니다.
 - 관찰을 `unrecorded_changes` 행에 연결하면 로컬 조정 맥락을 기록합니다. 그 자체로 닫기 차단 사유를 만들지는 않습니다.
@@ -631,7 +645,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `prompt_captures` | 캡처된 프롬프트 기록의 비권한 메타데이터. 프롬프트 본문은 `null`을 허용하는 별도 텍스트 열입니다. |
 | `expected_writes` | `detective` 예상 쓰기 상관관계를 위한 예상 경로 배열, 쓰기 티켓 ID 배열, 일치 경로 배열, 메타데이터. |
 | `unrecorded_changes` | 미기록 Product Repository 변경의 관찰 경로 배열, 탐지 JSON, 해결 JSON, 메타데이터. 해결 JSON은 간결한 해결 근거, 캡처 근거, 해결 메서드, 선택적 연결 사용자 행동 resolution 참조를 저장합니다. 전체 민감 명령이나 프롬프트 내용을 저장하면 안 됩니다. |
-| `session_watch_baselines` | 세션 감시 기준선을 위한 감시 경로 배열, 유효한 제외 배열, 스냅샷 항목 배열, 메타데이터. 스냅샷 항목은 경로, 종류, 크기, 해시 또는 건너뛴 이유 메타데이터만 저장하며 파일 내용을 저장하지 않습니다. |
+| `session_watch_baselines` | 세션 감시 기준선을 위한 감시 경로 배열, 유효한 제외 배열, 스냅샷 항목 배열, 메타데이터. 관리 MCP 메타데이터에는 크기가 제한된 최상위 `client_name`과 `client_version` initialize 정체성만 포함하며 원본 initialize 또는 프로토콜·세션·thread·turn payload는 포함하지 않습니다. 스냅샷 항목은 경로, 종류, 크기, 해시 또는 건너뛴 이유 메타데이터만 저장하며 파일 내용을 저장하지 않습니다. |
 | `session_watch_observations` | 세션 감시 관찰을 위한 관찰된 변경 경로 배열, 간결한 변경 요약 JSON, 스냅샷 항목 배열, 메타데이터. 스냅샷과 변경 요약은 행위자 식별, 의도, 제품 정확성, 닫기 준비 상태를 증명하지 않습니다. |
 | `tasks` | 구체화 요약, 제한된 목록, 자율성 경계, carry-forward disposition, 현재 닫기 근거, 종료 닫기 요약, 생명주기 요약. Acceptance policy, work phase, lineage edge identity는 전용 열을 사용하고 수락 기준과 보충 증거 주장은 각 정규 관계형 테이블을 사용합니다. |
 | `change_units` | 범위 요약, 제한된 목록, 쓰기 근거 요약, 선택적 효과 계약 데이터, 생명주기 지원 데이터. |

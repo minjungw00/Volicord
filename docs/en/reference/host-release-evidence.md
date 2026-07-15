@@ -29,11 +29,11 @@ them explicitly.
 | Role | Exact identifier |
 |---|---|
 | Exact candidate descriptor | `volicord-release-candidate-v1` |
-| One live-host matrix result | `volicord-host-release-cell-v2` |
-| Canonical release-gate result | `volicord-host-release-manifest-v2` |
-| Separate-process recalculation | `volicord-host-release-audit-v2` |
+| One live-host matrix result | `volicord-host-release-cell-v3` |
+| Canonical release-gate result | `volicord-host-release-manifest-v3` |
+| Separate-process recalculation | `volicord-host-release-audit-v3` |
 | Source archive digest algorithm | `git_archive_tar_sha256_v1` |
-| Cell-input-set digest domain | `volicord-host-release-cell-inputs-v2` |
+| Cell-input-set digest domain | `volicord-host-release-cell-inputs-v3` |
 
 All four artifacts are canonical UTF-8 JSON objects with duplicate keys
 rejected. Unknown fields are rejected. SHA-256 values are lowercase 64-hex,
@@ -49,10 +49,9 @@ Configured exclusion roots are normalized before overlap checks. A relative
 `VOLICORD_HOME` is resolved from the invoking process's current directory;
 existing symlink prefixes and dot components do not weaken an exclusion.
 
-The v2 gate and audit reject `volicord-host-release-cell-v1`,
-`volicord-host-release-manifest-v1`, `volicord-host-release-audit-v1`, and the
-`volicord-host-release-cell-inputs-v1` digest domain. They do not reinterpret
-historical v1 artifacts. The candidate remains
+The v3 gate and audit reject the historical v1 and v2 cell, manifest, audit,
+and cell-input digest-domain identifiers. They do not import, migrate, or
+reinterpret those artifacts under v3 rules. The candidate remains
 `volicord-release-candidate-v1`, and the source archive algorithm remains
 `git_archive_tar_sha256_v1`, because neither candidate nor archive preimage
 semantics changed.
@@ -125,21 +124,27 @@ One manifest contains exactly one cell for every Cartesian pair below:
   `record_final_output`, `detective_final_output`
 
 The result is twelve present JSON cell files. A duplicate, omitted, additional,
-differently named, malformed, or cross-host-availability cell is a structural
-command error and produces no manifest. All six cells for one host kind share
-one availability coordinate: either all name the same exact `host_version` and
-non-null executable digest, or all use explicit `null` for the host version and
-executable digest. Results from different versions or availability coordinates
-must never be aggregated into one host result. A new host version requires a
-new complete twelve-cell manifest.
+differently named, malformed, or partially null required field group is a
+structural command error and produces no manifest. All six cells for one host
+kind share one host-availability coordinate: either all name the same exact
+`host_version` and non-null executable digest, or all use explicit `null` for
+the host version and executable digest. Among cells that carry a non-null client
+identity, all six use at most one exact `client_name` and `client_version` pair.
+A statically `unsupported_by_host` cell may use null client identity even when
+the host-availability coordinate is non-null because its static disposition may
+short-circuit before MCP initialize. Results from different non-null host
+versions, executables, or client identities must never be aggregated into one
+host result. A new host version or client identity requires a new complete
+twelve-cell manifest.
 
-`volicord-host-release-cell-v2` contains exactly these required members:
+`volicord-host-release-cell-v3` contains exactly these required members:
 
 | Member | Contract |
 |---|---|
-| `schema` | Exact value `volicord-host-release-cell-v2`. |
+| `schema` | Exact value `volicord-host-release-cell-v3`. |
 | `candidate_id`, `binary_sha256`, `source_revision`, `target_triple`, `release_profile` | Exact copies of the candidate coordinates. |
 | `host_kind`, `host_version` | One fixed host kind and either the exact installed host version observed by the cell or explicit `null` when that host is unavailable. The member is always required. |
+| `client_name`, `client_version` | Required-nullable exact `clientInfo.name` and `clientInfo.version` observed from this cell's successful managed MCP `initialize`. Each non-null value is 1 through 256 UTF-8 bytes, contains at least one non-whitespace character, contains no control character, and is otherwise preserved exactly. Static unsupported cells may use explicit `null` without initializing MCP. |
 | `adapter_profile`, `adapter_version` | Exact managed adapter coordinates. |
 | `feature` | One of the six fixed feature identifiers. |
 | `implementation_disposition` | `implemented` or `unsupported_by_host`; this is owner-reviewed static input, not a live result. |
@@ -147,24 +152,89 @@ new complete twelve-cell manifest.
 | `claimed_status` | Producer claim using `HostFeatureSupportStatus`; retained only for mismatch reporting and never trusted. |
 | `run_state` | `completed`, `running`, `ignored`, or `not_applicable`; only static `unsupported_by_host` may use `not_applicable`. |
 | `started_at`, `recorded_at` | Cell start and immutable result-recording times. |
-| `environment` | Exact `runner_os`, `runner_os_version`, `runner_arch`, required-nullable `host_executable_sha256` and `host_version`, and all host/adapter coordinates used by the run. The three top-level/environment host identity fields are either all non-null or all null. |
+| `environment` | Exact `runner_os`, `runner_os_version`, `runner_arch`, required-nullable `host_executable_sha256`, `host_version`, `client_name`, and `client_version`, and all host/adapter coordinates used by the run. Its duplicate identity values exactly match the top-level values. |
 | `assertions` | Non-empty bounded array of stable assertion IDs with `passed` booleans and optional bounded finding codes. |
 | `evidence_artifact_path`, `evidence_artifact_sha256` | External create-new bounded evidence file and SHA-256; both remain required for an implemented cell, including an unavailable ignored cell, and both are `null` only for static `unsupported_by_host`. |
 
-The v2 evaluator validates `implementation_disposition` against the exact
+The existing host-availability group—top-level `host_version`,
+`environment.host_version`, and `environment.host_executable_sha256`—is either
+all strings or all explicit `null`. Separately, the four client members—
+top-level and `environment` copies of `client_name` and `client_version`—are
+either all strings or all explicit `null`. Non-null client members require a
+non-null host-availability group. When present, each `environment` client value
+must exactly equal its top-level copy. Omission of a required-nullable member, a
+partial-null group, a wrong type, or non-null client identity with null host
+availability is a structural error rather than a downgrade. A duplicated-value
+mismatch is a coordinate mismatch, and a copied or inferred identity is not an
+observed coordinate.
+
+The v3 evaluator validates `implementation_disposition` against the exact
 host-version-aware owner table rather than accepting the producer's value as
 an independent fact. For Codex, exact canonical `host_version=0.144.4` is
 reviewed as `implemented` for `native_user_action`,
 `verified_tool_producer`, and `registered_connection_observation`, and as
 `unsupported_by_host` for `local_web_user_channel`, `record_final_output`, and
 `detective_final_output`. The exact installed probe output is
-`codex-cli 0.144.4`; cells store the parsed canonical coordinate `0.144.4`.
+`codex-cli 0.144.4`; cells store only the parsed canonical bare coordinate
+`0.144.4`, not the probe envelope. Every non-null Codex `host_version` must pass
+the shared canonical bare-version parser. A raw probe envelope such as
+`codex-cli 0.144.4` in `host_version` is a structural error.
 For absent or unreviewed Codex versions, the host-kind fallback keeps the
 first four features `implemented` and both final-output features
 `unsupported_by_host`; lack of exact evidence leaves those implemented cells
 `implemented_unverified`. Claude Code keeps its host-kind fallback of all six
 features `implemented`. A new reviewed version table requires an owner change
 and a complete new twelve-cell manifest.
+
+The only admissible non-null client identity is the exact pair observed from
+the successful managed MCP `initialize` used by that cell. It must not be
+inferred from `host_kind`, the host executable name, version-probe output,
+environment or configuration, protocol version, known constants, later tool
+metadata, or another cell. A recorder may read the bounded top-level
+`client_name` and `client_version` retained in that managed session's
+`session_watch_baselines.metadata_json`; it must not retain or consume the raw
+initialize message or raw protocol, session, thread, turn, or tool-call payload
+as release evidence.
+
+Before the authenticated cell host turn, the recorder establishes a bounded
+before-observation of the exact managed baselines in the cell's bound, clean,
+disposable Runtime Home. It establishes the corresponding after-observation
+before final cell recording. It may accept client identity only from baseline
+rows whose opaque managed session, connection, project, and host coordinates
+match that authenticated turn and that were either created during the turn or
+had `metadata_json` change between those observations by recording that turn's
+successful managed `initialize`. A row that existed with unchanged metadata at
+both observations is historical and is never evidence for the cell, even when
+it belongs to the same connection and contains the expected pair. The recorder
+must not search connection-wide history and substitute its sole or newest
+identity. All qualifying rows must expose one identical exact pair. No
+qualifying row leaves the client group null; a partial, malformed, or divergent
+qualifying result stops cell recording rather than being filled, replaced, or
+inferred.
+
+For every qualifying row, the after-observation retains the exact
+`{project_id, watch_baseline_id}` key and the SHA-256 of the exact
+`metadata_json` bytes as that row's expected after-turn digest. Session and
+connection fields are not duplicated into that key: the canonical
+baseline ID binds the validated opaque session, while the reopened row and
+metadata digest bind the exact connection, project, and host coordinates. An
+additional authenticated turn in the same cell may advance an already retained
+key only
+when that turn's before-observation contains the same expected digest; its
+after-observation then replaces the expected digest. An unchanged replay keeps
+the existing expected digest. Before creating either the cell or its evidence
+artifact, the recorder reopens every retained key and requires the row to
+exist with the exact managed session, connection, project, host, canonical
+baseline ID, and expected metadata digest. Deletion, replacement at the same
+key, or any metadata change not covered by such a later captured turn stops
+recording and leaves both destinations absent. It is not converted into a null
+client group or an `implemented_unverified` cell.
+
+Every cell with non-null client identity for one host kind uses one exact client
+pair. Every implemented exact-live cell can derive `verified` only when
+`client_version == host_version`. The reviewed Codex
+`host_version=0.144.4` coordinate additionally requires
+`client_name=codex-mcp-client` and `client_version=0.144.4`.
 
 The canonical `adapter_profile` is `record` only for
 `record_final_output`; it is `detective` for the other five features,
@@ -187,18 +257,36 @@ the set selected by disposition and feature:
 | `record_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed` |
 | `detective_final_output` | `actual_host_session`, `authenticated_exact_replay_observed`, `authority_display_observed`, `block_finalization_observed` |
 
-An honestly unrun implemented cell is represented by a present cell with null
-host identity, `run_state=ignored`, required failing assertions, and a bounded
-evidence artifact. It derives `implemented_unverified`; `requested_verified=true`
+An honestly unrun implemented cell is represented by a present cell with
+`run_state=ignored`, required failing assertions, and a bounded evidence
+artifact. An unavailable host uses a null host-availability group and therefore
+a null client group. An available host for which no successful managed
+initialize identity was observed keeps the non-null host-availability group and
+uses a null client group. Either cell derives `implemented_unverified`;
+`requested_verified=true`
 therefore fails the gate, while explicit `requested_verified=false` permits only
-`pass_with_downgrades`. A null static unsupported cell uses
-`run_state=not_applicable`, null evidence, and `requested_verified=false`.
+`pass_with_downgrades`. A static unsupported cell uses
+`run_state=not_applicable`, null evidence, and `requested_verified=false`; its
+client group may remain null whether its host-availability group is null or
+non-null.
 Claim and downgrade keys use the literal `unavailable` for a null version
 segment. An absent or malformed cell or evidence file is not this honest
 downgrade representation: it is a structural command error and produces no
 manifest. A completed implemented cell passes only when every required
 assertion passes and its evidence artifact exists, is within the size bound,
 and matches its recorded digest.
+
+An implemented cell with a null client group includes
+`client_identity_missing` in its derived finding codes. A non-null client group
+includes `client_identity_mismatch` when its duplicate copies differ, its
+`client_version` differs from `host_version`, or its reviewed Codex pair differs
+from `codex-mcp-client`/`0.144.4`. Either finding forces
+`implemented_unverified`; it is never repaired from another cell or an inferred
+value. A duplicate-copy mismatch also fails the
+`all_cell_environment_coordinates_exact` invariant. A static unsupported cell
+may keep a null client group without either
+finding and still derives `unsupported_by_host`. Divergent non-null identities
+for one host fail the `single_host_client_identity_per_host` invariant.
 
 ## Canonical Evaluation And Freshness
 
@@ -228,7 +316,8 @@ Derivation is deterministic:
 1. A statically reviewed `unsupported_by_host` disposition derives
    `unsupported_by_host`; live absence or failure cannot promote or relabel it.
 2. An `implemented` cell derives `verified` only when it is present,
-   `completed`, fresh, coordinate-exact, digest-exact, and all assertions pass.
+   `completed`, fresh, coordinate-exact, client-identity-exact, digest-exact,
+   and all assertions pass.
 3. A present `ignored` or `running`, stale, failed, or mismatched implemented
    cell derives `implemented_unverified`. Missing or malformed structural input
    prevents manifest creation instead of being synthesized into a status.
@@ -248,9 +337,9 @@ with every implemented cell verified and none explicitly excluded is `pass`.
 
 ## Release Manifest
 
-`volicord-host-release-manifest-v2` contains exactly:
+`volicord-host-release-manifest-v3` contains exactly:
 
-- `schema`, with exact value `volicord-host-release-manifest-v2`;
+- `schema`, with exact value `volicord-host-release-manifest-v3`;
 - `candidate`, the complete validated candidate object;
 - `evaluated_at`;
 - `cells`, exactly twelve objects containing each raw cell, `derived_status`,
@@ -278,15 +367,15 @@ cell-input and cell-evidence SHA-256 values, all structural invariants, every
 derived status, and the gate verdict. It must not call a mode that merely reads
 the manifest's claimed status or verdict.
 
-`volicord-host-release-audit-v2` contains exactly:
+`volicord-host-release-audit-v3` contains exactly:
 
-- `schema`, with exact value `volicord-host-release-audit-v2`;
+- `schema`, with exact value `volicord-host-release-audit-v3`;
 - `manifest_path`, `manifest_sha256`, `cell_directory`,
   `cell_inputs_sha256`, `candidate_path`, and `candidate_sha256`;
 - `started_at` and `evaluated_at` for the separate audit process;
 - `invariant_results`, with stable invariant IDs and pass/fail values;
-- `recalculated_cells`, with required-nullable `host_version` and all twelve
-  derived statuses and finding codes;
+- `recalculated_cells`, with required-nullable `host_version`, `client_name`,
+  and `client_version`, and all twelve derived statuses and finding codes;
 - `findings`, a sorted bounded list of mismatches or invalid inputs;
 - `exclusions`, a sorted bounded list of checks intentionally not performed,
   each with a non-empty reason;
@@ -294,7 +383,7 @@ the manifest's claimed status or verdict.
 
 `cell_directory` is the exact external absolute input-directory string.
 `cell_inputs_sha256` is SHA-256 of this preimage: the ASCII domain
-`volicord-host-release-cell-inputs-v2` followed by NUL, then, for each of the
+`volicord-host-release-cell-inputs-v3` followed by NUL, then, for each of the
 twelve cells ordered by bytewise ascending exact UTF-8 absolute path, the path
 byte length as unsigned 64-bit big-endian, the exact path bytes, and the raw
 32-byte SHA-256 of the cell file's exact bytes. The audit requires the reopened
@@ -396,6 +485,8 @@ these artifacts, but they are auxiliary and cannot replace either command.
 - [System Requirements](system-requirements.md) owns environment applicability.
 - [Agent Connection](agent-connection.md) owns runtime support and fallback.
 - [MCP Transport](mcp-transport.md) owns managed stdio transport behavior.
+- [Storage Records](storage-records.md) owns the bounded managed initialize
+  identity placement in `session_watch_baselines.metadata_json`.
 - [Security](security.md) owns trust and non-authority boundaries.
 - [Administrative CLI](admin-cli.md) owns auxiliary operator projections.
 - [Validation](../maintain/validation.md) owns maintainer execution and reports.
