@@ -69,7 +69,9 @@ mod unix {
         VERIFICATION_BASIS_MCP_STDIO_CONNECTION_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
 
-    use crate::support::fake_hosts::{write_fake_claude_code, write_fake_codex};
+    use crate::support::fake_hosts::{
+        write_counting_fake_codex_with_version, write_fake_claude_code, write_fake_codex,
+    };
 
     const CODEX_SMOKE_ENV: &str = "VOLICORD_RUN_CODEX_SMOKE";
     const CLAUDE_SMOKE_ENV: &str = "VOLICORD_RUN_CLAUDE_SMOKE";
@@ -1854,6 +1856,95 @@ mod unix {
             !unresolved_path.exists(),
             "an installed host with unresolved coordinates must not become a null-identity cell"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn reviewed_codex_static_unsupported_live_runner_never_launches_host_and_publishes_cell(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = LiveSmokeFixture::new("reviewed-codex-static-unsupported-runner")?;
+        let candidate = ReleaseCandidate {
+            descriptor_path: None,
+            schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+            candidate_id: "candidate_reviewed_codex_static_unsupported".to_owned(),
+            candidate_path: path_text(&fixture.volicord_path),
+            source_revision: "a".repeat(40),
+            source_clean: true,
+            source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+            source_archive_sha256: "b".repeat(64),
+            target_triple: "fixture-target".to_owned(),
+            release_profile: "release".to_owned(),
+            binary_sha256: fixture.expected_volicord_sha256.clone(),
+            build_environment: ReleaseCandidateBuildEnvironment {
+                runner_os: "fixture-os".to_owned(),
+                runner_os_version: "fixture-version".to_owned(),
+                runner_arch: "fixture-arch".to_owned(),
+                git_version: "git fixture".to_owned(),
+                rustc_version: "rustc fixture".to_owned(),
+                cargo_version: "cargo fixture".to_owned(),
+            },
+            recorded_at: "2026-07-15T00:00:00Z".to_owned(),
+        };
+        candidate.validate()?;
+
+        let host_bin = fixture.release_artifact_root.join("counting-host-bin");
+        let authenticated_launch_log = fixture
+            .release_artifact_root
+            .join("authenticated-host-launches.log");
+        let fake_codex = write_counting_fake_codex_with_version(
+            &host_bin,
+            REVIEWED_CODEX_HOST_VERSION,
+            &authenticated_launch_log,
+        )?;
+        let result_root = fixture
+            .release_artifact_root
+            .join("static-unsupported-results");
+        let (cell_directory, _, _) = create_live_result_root(&result_root)?;
+        let cell_path = cell_directory.join("codex-local-web.json");
+        let mut recorder = LiveResultRecorder::new("codex", Some(cell_path.clone()))?;
+        recorder.release_candidate = Some(candidate.clone());
+        recorder.release_feature = Some(HostFeature::LocalWebUserChannel);
+
+        execute_live_evidence_observation_round_trip(
+            "codex",
+            InstalledHostExecutable::at_path("codex", &fake_codex),
+            "host_trust_required",
+            recorder,
+        )?;
+        assert_eq!(
+            fs::read_to_string(&authenticated_launch_log)?
+                .lines()
+                .count(),
+            0,
+            "reviewed static unsupported Codex must not reach login status or an authenticated host turn"
+        );
+
+        let cell: Value = serde_json::from_slice(&fs::read(&cell_path)?)?;
+        assert_eq!(cell["schema"], RELEASE_CELL_SCHEMA);
+        assert_eq!(cell["host_kind"], "codex");
+        assert_eq!(cell["host_version"], REVIEWED_CODEX_HOST_VERSION);
+        assert_eq!(cell["feature"], "local_web_user_channel");
+        assert_eq!(cell["implementation_disposition"], "unsupported_by_host");
+        assert_eq!(cell["requested_verified"], false);
+        assert_eq!(cell["claimed_status"], "unsupported_by_host");
+        assert_eq!(cell["run_state"], "not_applicable");
+        assert_eq!(cell["client_name"], Value::Null);
+        assert_eq!(cell["client_version"], Value::Null);
+        assert_eq!(cell["evidence_artifact_path"], Value::Null);
+        assert_eq!(cell["evidence_artifact_sha256"], Value::Null);
+        assert!(!release_evidence_path(&cell_path)?.exists());
+        assert_eq!(
+            fs::read_to_string(&authenticated_launch_log)?
+                .lines()
+                .count(),
+            0,
+            "host-free publication must not launch the reviewed Codex host"
+        );
+
+        drop(ResultRootLease::acquire_exclusive_for_cell_path(
+            &release_validation_context()?,
+            &cell_directory.join("next-cell.json"),
+        )?);
         Ok(())
     }
 
@@ -7357,14 +7448,63 @@ mod unix {
 
         // The external result path is deliberately acquired before executable and
         // terminal checks so every selected live cell has one bounded run record.
-        let mut result_recorder =
+        let result_recorder =
             LiveResultRecorder::from_env_for_kind(host, LIVE_EVIDENCE_OBSERVATION_RESULT_KIND)?;
+        execute_live_evidence_observation_round_trip(
+            host,
+            InstalledHostExecutable::discover(executable_name),
+            expected_host_action,
+            result_recorder,
+        )
+    }
+
+    #[derive(Clone, Copy)]
+    struct InstalledHostExecutable<'a> {
+        name: &'a str,
+        exact_path: Option<&'a Path>,
+    }
+
+    impl<'a> InstalledHostExecutable<'a> {
+        fn discover(name: &'a str) -> Self {
+            Self {
+                name,
+                exact_path: None,
+            }
+        }
+
+        fn at_path(name: &'a str, exact_path: &'a Path) -> Self {
+            Self {
+                name,
+                exact_path: Some(exact_path),
+            }
+        }
+
+        fn resolve(self) -> Result<PathBuf, Box<dyn Error>> {
+            match self.exact_path {
+                Some(executable) => Ok(executable.to_path_buf()),
+                None => find_executable(self.name).ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("`{}` was not found on PATH", self.name),
+                    )
+                    .into()
+                }),
+            }
+        }
+    }
+
+    fn execute_live_evidence_observation_round_trip(
+        host: &str,
+        installed_executable: InstalledHostExecutable<'_>,
+        expected_host_action: &str,
+        mut result_recorder: LiveResultRecorder,
+    ) -> Result<(), Box<dyn Error>> {
         let release_candidate = result_recorder.release_candidate()?.clone();
         let mut stage = "preflight";
         let mut host_feature_diagnostics = None;
         let outcome = live_evidence_observation_round_trip_inner(
             host,
-            executable_name,
+            installed_executable,
             expected_host_action,
             &release_candidate,
             &mut stage,
@@ -7418,7 +7558,7 @@ mod unix {
 
     fn live_evidence_observation_round_trip_inner(
         host: &str,
-        executable_name: &str,
+        installed_executable: InstalledHostExecutable<'_>,
         expected_host_action: &str,
         release_candidate: &ReleaseCandidate,
         stage: &mut &'static str,
@@ -7432,12 +7572,7 @@ mod unix {
             result_recorder,
         )?;
         *stage = "host_executable";
-        let executable = find_executable(executable_name).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("`{executable_name}` was not found on PATH"),
-            )
-        })?;
+        let executable = installed_executable.resolve()?;
         result_recorder.mark_installed_host_detected();
         let ObservedReleaseHostIdentity {
             host_version,
@@ -7445,7 +7580,7 @@ mod unix {
             volicord_build_id,
         } = fixture.observe_and_bind_installed_host_identity(
             result_recorder,
-            executable_name,
+            installed_executable.name,
             &executable,
         )?;
         let maintained_host_kind = match host {

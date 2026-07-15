@@ -56,6 +56,26 @@ pub(crate) fn write_fake_codex_with_version(
 }
 
 #[cfg(unix)]
+pub(crate) fn write_counting_fake_codex_with_version(
+    dir: &Path,
+    version: &str,
+    authenticated_launch_log: &Path,
+) -> Result<PathBuf, Box<dyn Error>> {
+    fs::create_dir_all(dir)?;
+    fs::write(authenticated_launch_log, [])?;
+    let path = dir.join("codex");
+    fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'codex-cli {version}\\n'; exit 0; fi\nprintf 'authenticated-host-launch\\n' >> {}\nprintf 'unexpected authenticated codex invocation\\n' >&2\nexit 2\n",
+            shell_single_quoted(&authenticated_launch_log.display().to_string())
+        ),
+    )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
 pub(crate) fn write_fake_claude_code(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     fs::create_dir_all(dir)?;
     let path = dir.join("claude");
