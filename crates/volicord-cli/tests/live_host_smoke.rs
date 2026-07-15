@@ -4062,6 +4062,64 @@ mod unix {
     }
 
     #[test]
+    fn capture_intent_authority_payload_requires_exact_canonical_key_set() {
+        let exact = serde_json::json!({
+            "capture_intent_ref": {
+                "record_kind": "evidence_capture_intent",
+                "record_id": "ECI-fixture",
+                "project_id": "PRJ-fixture",
+                "task_id": "TASK-fixture",
+                "produced_at_state_version": 7
+            },
+            "capture_kind": "verified_tool_invocation",
+            "task_id": "TASK-fixture",
+            "change_unit_id": "CU-fixture",
+            "scope_revision": 1,
+            "baseline_ref": "baseline_fixture",
+            "target": {
+                "target_kind": "acceptance_criterion",
+                "acceptance_criterion_id": "AC-fixture"
+            },
+            "input_sha256": "a".repeat(64),
+            "expires_at": "2026-07-15T00:15:00Z"
+        });
+        assert!(live_capture_intent_authority_payload_has_exact_keys(&exact));
+
+        let mut missing = exact.clone();
+        missing
+            .as_object_mut()
+            .expect("fixture payload is an object")
+            .remove("expires_at");
+        assert!(!live_capture_intent_authority_payload_has_exact_keys(
+            &missing
+        ));
+
+        let mut extra = exact.clone();
+        extra
+            .as_object_mut()
+            .expect("fixture payload is an object")
+            .insert("unexpected".to_owned(), Value::Null);
+        assert!(!live_capture_intent_authority_payload_has_exact_keys(
+            &extra
+        ));
+
+        let mut misspelled = exact;
+        let object = misspelled
+            .as_object_mut()
+            .expect("fixture payload is an object");
+        let expires_at = object
+            .remove("expires_at")
+            .expect("fixture expiry is present");
+        object.insert("expire_at".to_owned(), expires_at);
+        assert!(!live_capture_intent_authority_payload_has_exact_keys(
+            &misspelled
+        ));
+        assert!(!live_capture_intent_authority_payload_has_exact_keys(
+            &Value::Null
+        ));
+    }
+
+    #[test]
     fn fixture_only_live_producer_source_binding_rejects_each_negative_dimension_independently() {
         fn mismatch_change_unit(input: &mut LiveProducerSourceBindingInput) {
             input.change_unit_id = "CU-other".to_owned();
@@ -8621,6 +8679,28 @@ mod unix {
             && reference.produced_at_state_version.as_ref() == Some(&event_state_version)
     }
 
+    const LIVE_CAPTURE_INTENT_AUTHORITY_PAYLOAD_KEYS: [&str; 9] = [
+        "capture_intent_ref",
+        "capture_kind",
+        "task_id",
+        "change_unit_id",
+        "scope_revision",
+        "baseline_ref",
+        "target",
+        "input_sha256",
+        "expires_at",
+    ];
+
+    fn live_capture_intent_authority_payload_has_exact_keys(payload: &Value) -> bool {
+        let Some(object) = payload.as_object() else {
+            return false;
+        };
+        object.len() == LIVE_CAPTURE_INTENT_AUTHORITY_PAYLOAD_KEYS.len()
+            && LIVE_CAPTURE_INTENT_AUTHORITY_PAYLOAD_KEYS
+                .iter()
+                .all(|key| object.contains_key(*key))
+    }
+
     impl ActualLiveProducerSource {
         fn same_positive_source_coordinates(&self, other: &Self) -> bool {
             self.capture_intent_id == other.capture_intent_id
@@ -9226,7 +9306,7 @@ mod unix {
                     payload.get("capture_intent_ref")?.clone(),
                 )
                 .ok()?;
-                let exact_payload = payload.as_object().is_some_and(|object| object.len() == 8)
+                let exact_payload = live_capture_intent_authority_payload_has_exact_keys(&payload)
                     && live_capture_intent_authority_ref_is_exact(
                         &capture_intent_ref,
                         state_version,
