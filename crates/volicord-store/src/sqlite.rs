@@ -453,6 +453,18 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
             column,
         )?;
     }
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "host_capability_verifications",
+        ColumnSpec {
+            name: "verification_internal_id",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: None,
+            primary_key_position: 1,
+        },
+    )?;
     for column in [
         "connection_internal_id",
         "capability",
@@ -1496,6 +1508,30 @@ fn validate_host_capability_constraints(conn: &Connection) -> StoreResult<()> {
             ));
         }
     }
+    for (column, maximum_bytes) in [
+        ("verification_internal_id", 1024),
+        ("connection_internal_id", 1024),
+        ("host_version", 1024),
+        ("client_name", 256),
+        ("client_version", 256),
+        ("adapter_version", 1024),
+        ("managed_fingerprint", 1024),
+        ("volicord_build_id", 1024),
+        ("source_revision", 1024),
+        ("target_triple", 1024),
+    ] {
+        for fragment in [
+            format!("length(trim({column})) > 0"),
+            format!("length(cast({column} as blob)) between 1 and {maximum_bytes}"),
+        ] {
+            if !verification_sql.contains(&fragment) {
+                return Err(StoreError::schema_invariant(
+                    REGISTRY_DATABASE_KIND,
+                    "host_capability_verifications constraints are missing or malformed",
+                ));
+            }
+        }
+    }
 
     let state_sql = normalized_table_sql(conn, "host_capability_state")?;
     for fragment in [
@@ -1508,6 +1544,19 @@ fn validate_host_capability_constraints(conn: &Connection) -> StoreResult<()> {
                 REGISTRY_DATABASE_KIND,
                 "host_capability_state constraints are missing or malformed",
             ));
+        }
+    }
+    for column in ["connection_internal_id", "current_verification_internal_id"] {
+        for fragment in [
+            format!("length(trim({column})) > 0"),
+            format!("length(cast({column} as blob)) between 1 and 1024"),
+        ] {
+            if !state_sql.contains(&fragment) {
+                return Err(StoreError::schema_invariant(
+                    REGISTRY_DATABASE_KIND,
+                    "host_capability_state constraints are missing or malformed",
+                ));
+            }
         }
     }
     Ok(())

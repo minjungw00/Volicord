@@ -80,6 +80,13 @@ different content conflicts.
 V1 verification `metadata_json` is strict canonical `{}` only. Every allowed
 evidence coordinate has a dedicated column, so an arbitrary member cannot
 become an undeclared trust input or a place to retain sensitive host material.
+All exact-preserving free-text history and current-pointer coordinates are
+bounded by UTF-8 bytes before lookup or mutation: general identifiers and
+coordinates are 1 through 1,024 bytes, while `client_name` and
+`client_version` reuse the shared 1-through-256-byte managed MCP client identity
+rule. The Store neither trims nor repairs an over-bound value. Invalid input is
+rejected before replay classification, and over-bound persisted state is
+corrupt and fails closed.
 
 Generic connections, user-managed clients, manual stdio, CLI verification
 probes, Local HTTP transport, and invalid or unknown managed-launch markers are
@@ -105,7 +112,10 @@ remains fail-closed and CLI inbox is used.
 
 The new Registry shape is `baseline_sqlite_v6`. There is no v5 conversion,
 relabeling, inferred pass, or synthetic history; an incompatible Runtime Home
-must be recreated.
+must be recreated. The UTF-8 byte constraints complete the v6/0.9.0
+host-capability shape and do not create a v7 transition. A database labeled v6
+without those constraints is an incompatible shape; it is not trimmed,
+rewritten, or accepted through a legacy fallback.
 
 ## Consequences
 

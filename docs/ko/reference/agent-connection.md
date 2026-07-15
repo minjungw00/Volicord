@@ -100,6 +100,14 @@ Agent Connection 생명주기는 여러 상태 영역에 걸쳐 있습니다. �
   이후 `outcome=revoked`인 변경 불가능한 행이 현재 행이 되면 이력을 바꾸지 않고 이전
   통과를 무효화할 수 있습니다. 설정 검증은 이 이력을 만들지 않으며 이를 대신할 수
   없습니다.
+  `verification_internal_id`, `connection_internal_id`, `host_version`,
+  `adapter_version`, `managed_fingerprint`, `volicord_build_id`,
+  `source_revision`, `target_triple`은 각각 1~1,024 UTF-8 바이트이고 공백이 아닌 문자를
+  하나 이상 포함하며 제어 문자를 포함하지 않습니다. 이 값은 trim, truncate, 대체 없이
+  정확히 보존합니다. `client_name`과 `client_version`에는 공유 관리 MCP 클라이언트 식별
+  정보 규칙을 적용합니다. 즉, 같은 내용·정확 보존 조건과 함께 1~256 UTF-8 바이트입니다.
+  고정값, 소문자 16진수 다이제스트, 통과 행의 source revision 규칙, 정규 timestamp,
+  정확한 `{}` metadata에는 기존의 더 엄격한 형태를 그대로 적용합니다.
   모든 구간은 `observed_at <= created_at`과
   `observed_at < expires_at <= observed_at + 86,400 seconds`를 만족해야 하며 통과 행은
   `created_at < expires_at`도 만족해야 합니다. 24시간은 기본 수명이나 attestation 기간이
@@ -694,6 +702,9 @@ Agent Connection은 에이전트 대상 연결입니다. 모델이 사용자의 
   아티팩트의 설치 호스트 버전과도 같아야 합니다.
   입력이 없거나 false이거나 타입·namespace·형태가 잘못되었거나, 만료·취소되었거나,
   모호·손상·불일치 상태이면 사용할 수 없으며 token을 발급하면 안 됩니다.
+  상한을 넘은 게시 입력이나 expectation은 replay 또는 저장 효과 전에 유효하지 않은
+  입력입니다. 상한을 넘은 영속 이력 값이나 현재 포인터 값은 손상된 상태이며, 평가는
+  token, `_meta`, 프로젝트 시간 효과 없이 CLI inbox로 닫힌 상태에서 fallback합니다.
 - 현재 어댑터에는 그 외부 manifest 또는 receipt를 신뢰해 획득하는 경로가 없습니다.
   따라서 운영 local-web 자격은 닫힌 상태로 실패하고 CLI inbox를 사용합니다. 테스트에서만
   예상값을 주입한 결과는 운영 가용성을 확립하지 않습니다.

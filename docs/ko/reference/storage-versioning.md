@@ -26,6 +26,11 @@ JSON이 아니라 변경 불가능하고 만료되며 정확한 프로필에 결
 추가합니다. `baseline_sqlite_v5`에서 제자리 변환하는 경로는 제공하지 않습니다. v5 Runtime
 Home은 호환되지 않는 형태이므로 다시 만들어야 합니다. Store는 기존 연결 상태를 다른
 profile로 표시하거나, 통과 검증으로 추론하거나, 이력을 합성하면 안 됩니다.
+V6/0.9.0 호스트 역량 형태에는 정확한 UTF-8 바이트 제약이 포함됩니다. 일반 자유 형식
+이력·현재 포인터 좌표는 1~1,024바이트이고 관리 MCP `client_name`과 `client_version`은
+1~256바이트입니다. V6 batch 안에서 이 제약을 완성해도 v7 전이를 만들지 않습니다. 정규
+제약 없이 v6로 표시된 데이터베이스는 호환되지 않으며 다시 만들어야 합니다. Store는 그
+값을 trim, truncate, 복구하거나 legacy 형태로 해석하면 안 됩니다.
 
 이전 `baseline_sqlite_v5` 프로필은 v4의 판단 및 직접 사용자 관찰 family를
 `user_action_requests`, 닫힌 tagged 관찰 해결 detail을 담는 변경 불가능한 일대일

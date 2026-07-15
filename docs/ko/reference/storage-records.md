@@ -88,8 +88,8 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `registry.sqlite` | 프로젝트 등록과 별칭 | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, 별칭에서 내부 식별 정보로 가는 매핑. |
 | `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 영속 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
-| `registry.sqlite` | `host_capability_verifications` | 변경 불가능한 호스트 역량 검증 이력 | 정확한 연결·역량, 결과, 호스트·클라이언트 버전, 어댑터 프로필, 관리 지문, Volicord 빌드·source·target·실행 파일 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트, 관찰·만료 기간, 엄격한 정규 `{}` 메타데이터, 생성 시각. |
-| `registry.sqlite` | `host_capability_state` | 현재 호스트 역량 포인터 | 연결과 역량마다 현재의 변경 불가능한 검증 행 하나를 가리키며 이후 통과·실패·사용 불가·취소 관찰로 원자적으로 교체됩니다. |
+| `registry.sqlite` | `host_capability_verifications` | 변경 불가능한 호스트 역량 검증 이력 | 정확하고 크기가 제한된 연결·역량, 결과, 호스트·클라이언트 버전, 어댑터 프로필, 관리 지문, Volicord 빌드·source·target·실행 파일 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트, 관찰·만료 기간, 엄격한 정규 `{}` 메타데이터, 생성 시각. |
+| `registry.sqlite` | `host_capability_state` | 현재 호스트 역량 포인터 | 연결과 역량마다 크기가 제한된 현재 변경 불가능한 검증 행 식별 정보 하나를 가리키며 이후 통과·실패·사용 불가·취소 관찰로 원자적으로 교체됩니다. |
 | `registry.sqlite` | 호스트 훅 설치 | 호스트 훅 설정과 호스트 역량 기록 | Runtime Home, Agent Connection, 선택적 프로젝트 범위, 호스트 종류, 통합 모드, 호스트 역량 JSON, 설치 생명주기 상태, 관찰된 훅 메타데이터, 타임스탬프, 메타데이터. |
 | `state.sqlite` | `project_state` | 프로젝트 상태 헤더 | 저장 프로필, `state_version`, 현재 적용 `Task` 포인터, 프로젝트 강제 프로필, 정규 Core UTC 시계의 영속 하한인 `updated_at`. |
 | `state.sqlite` | `agent_sessions` | 관찰된 에이전트 세션 | Agent Connection 하나에 대한 프로젝트 범위 세션, 선택적 호스트 훅 설치, 호스트 종류, 통합 프로필, 시작/종료 타임스탬프, 메타데이터. |
@@ -155,6 +155,15 @@ capture, turn, invocation identifier는 저장 기록, JSON 메타데이터, 로
   `clientInfo.version`, 실제 아티팩트의 설치 호스트 버전과 모두 같아야 합니다.
   `source_revision`은 정확한 소문자 40자리 또는 64자리 16진수이며 `unknown`은 통과할 수
   없습니다.
+- 호스트 역량 이력과 현재 포인터 행의 `verification_internal_id`,
+  `connection_internal_id`, `host_version`, `adapter_version`,
+  `managed_fingerprint`, `volicord_build_id`, `source_revision`,
+  `target_triple`, `current_verification_internal_id`는 정확히 보존되는 1~1,024 UTF-8 바이트
+  값입니다. 각 값은 공백이 아닌 문자를 하나 이상 포함하고 제어 문자를 포함하지 않습니다.
+  `client_name`과 `client_version`은 공유 클라이언트 식별 정보 규칙에 따라 정확히 보존되는
+  1~256 UTF-8 바이트 관리 MCP 클라이언트 식별 값입니다. 이 상한은 Unicode 문자 수가
+  아니라 UTF-8 바이트 수를 셉니다. Store는 값을 trim, truncate, 대체, 복구하면 안 됩니다.
+  상한 밖의 입력은 조회나 변경 전에 유효하지 않고, 상한 밖의 저장값은 손상된 값입니다.
 - 정확히 같은 검증 ID와 내용을 게시하는 것은 멱등입니다. 그 이력 행이 더 이상 현재 행이
   아니면 중복 게시는 더 새로운 포인터를 뒤로 옮기지 않습니다. 같은 ID에 다른 내용을
   사용하면 충돌합니다.

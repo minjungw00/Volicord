@@ -143,11 +143,11 @@ mod unix {
         "VOLICORD_HOME=<runtime-home> volicord inbox --repo <repo> --task <task-id> --json";
     const LIVE_INBOX_RESOLVE_COMMAND_TEMPLATE: &str = "VOLICORD_HOME=<runtime-home> volicord inbox resolve <user-action-request-id> --choice <option-id> --repo <repo> --json";
     const LIVE_INBOX_RESOLVE_USAGE: &str = "volicord inbox resolve <user-action-request-id> --choice <choice> [--repo PATH] [--note TEXT] [--json]";
-    const MAX_HOST_VERSION_CHARS: usize = 256;
-    const MAX_CONNECTION_ID_CHARS: usize = 256;
-    const MAX_BUILD_ID_CHARS: usize = 1_024;
-    const MAX_VALIDATION_RUN_ID_CHARS: usize = 192;
-    const MAX_RECORDED_AT_CHARS: usize = 64;
+    const MAX_HOST_VERSION_BYTES: usize = 256;
+    const MAX_CONNECTION_ID_BYTES: usize = 256;
+    const MAX_BUILD_ID_BYTES: usize = 1_024;
+    const MAX_VALIDATION_RUN_ID_BYTES: usize = 192;
+    const MAX_RECORDED_AT_BYTES: usize = 64;
     const MAX_LIVE_HOST_RESULT_BYTES: usize = 16 * 1_024;
     const MAX_RELEASE_CANDIDATE_DESCRIPTOR_BYTES: usize = 64 * 1_024;
     const MAX_RELEASE_CANDIDATE_BINARY_BYTES: u64 = 256 * 1024 * 1024;
@@ -214,6 +214,16 @@ mod unix {
         .is_err());
         assert!(bounded_identity("bounded", "line\nbreak", 64).is_err());
         assert!(bounded_identity("bounded", &"x".repeat(65), 64).is_err());
+        let multibyte_exact_limit = format!("{}a", "가".repeat(21));
+        assert_eq!(multibyte_exact_limit.len(), 64);
+        assert_eq!(
+            bounded_identity("bounded", &multibyte_exact_limit, 64)?,
+            multibyte_exact_limit
+        );
+        let multibyte_over_limit = "가".repeat(22);
+        assert!(multibyte_over_limit.chars().count() < 64);
+        assert!(multibyte_over_limit.len() > 64);
+        assert!(bounded_identity("bounded", &multibyte_over_limit, 64).is_err());
 
         let initialized_metadata = serde_json::json!({
             "source": "volicord_session_watch",
@@ -871,7 +881,7 @@ mod unix {
             init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("fixture init returned no connection id"))?,
-            MAX_CONNECTION_ID_CHARS,
+            MAX_CONNECTION_ID_BYTES,
         )?;
         let project_id = live_fixture_project_id(&fixture)?;
 
@@ -3758,7 +3768,7 @@ mod unix {
             init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("producer init result has no connection id"))?,
-            MAX_CONNECTION_ID_CHARS,
+            MAX_CONNECTION_ID_BYTES,
         )?;
         let identity = LiveHostIdentity {
             host: host.to_owned(),
@@ -5798,7 +5808,7 @@ mod unix {
             init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
-            MAX_CONNECTION_ID_CHARS,
+            MAX_CONNECTION_ID_BYTES,
         )?;
         let identity = LiveHostIdentity {
             host: host.to_owned(),
@@ -6368,7 +6378,7 @@ mod unix {
             init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
-            MAX_CONNECTION_ID_CHARS,
+            MAX_CONNECTION_ID_BYTES,
         )?;
         let identity = LiveHostIdentity {
             host: host.to_owned(),
@@ -6639,7 +6649,7 @@ mod unix {
             init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
-            MAX_CONNECTION_ID_CHARS,
+            MAX_CONNECTION_ID_BYTES,
         )?;
         let identity = LiveHostIdentity {
             host: host.to_owned(),
@@ -7093,7 +7103,7 @@ mod unix {
             init_json["connection"]["connection_id"]
                 .as_str()
                 .ok_or_else(|| io::Error::other("init result has no Agent Connection id"))?,
-            MAX_CONNECTION_ID_CHARS,
+            MAX_CONNECTION_ID_BYTES,
         )?;
         let identity = LiveHostIdentity {
             host: host.to_owned(),
@@ -8143,7 +8153,7 @@ mod unix {
         bounded_identity(
             "evidence resolution timestamp",
             &resolved_at,
-            MAX_RECORDED_AT_CHARS,
+            MAX_RECORDED_AT_BYTES,
         )?;
         Ok(LiveEvidenceObservation {
             project_id: prepared.project_id.clone(),
@@ -12864,7 +12874,7 @@ mod unix {
             bounded_identity(
                 "observed host version",
                 &host_version,
-                MAX_HOST_VERSION_CHARS,
+                MAX_HOST_VERSION_BYTES,
             )?;
             validate_lower_hex(
                 "observed host executable digest",
@@ -12898,7 +12908,7 @@ mod unix {
             bounded_identity(
                 "observed Volicord build id",
                 &volicord_build_id,
-                MAX_BUILD_ID_CHARS,
+                MAX_BUILD_ID_BYTES,
             )?;
             Ok(Self {
                 host_version,
@@ -13178,7 +13188,7 @@ mod unix {
                     std::process::id(),
                     epoch_duration()?.as_nanos()
                 ),
-                MAX_VALIDATION_RUN_ID_CHARS,
+                MAX_VALIDATION_RUN_ID_BYTES,
             )?;
             let mut recorder = Self {
                 result_host: result_host.to_owned(),
@@ -13281,7 +13291,7 @@ mod unix {
             let volicord_build_id = bounded_identity(
                 "observed Volicord build id",
                 &volicord_build_id,
-                MAX_BUILD_ID_CHARS,
+                MAX_BUILD_ID_BYTES,
             )?;
             if let Some(existing) = &self.observed_volicord_build_id {
                 if existing != &volicord_build_id {
@@ -13421,7 +13431,7 @@ mod unix {
             let connection_id = bounded_identity(
                 "release-cell observed Agent Connection id",
                 connection_id,
-                MAX_CONNECTION_ID_CHARS,
+                MAX_CONNECTION_ID_BYTES,
             )?;
             let expected_host_kind = match self.result_host.as_str() {
                 "codex" => "codex",
@@ -13636,7 +13646,7 @@ mod unix {
                 Some(Value::String(value)) => Some(bounded_identity(
                     "release-cell host_version",
                     value,
-                    MAX_HOST_VERSION_CHARS,
+                    MAX_HOST_VERSION_BYTES,
                 )?),
                 Some(Value::Null) | None => None,
                 Some(_) => {
@@ -13700,7 +13710,7 @@ mod unix {
                 .map(|client_info| client_info.version().to_owned());
             let adapter_version = match summary.pointer("/volicord/build_id") {
                 Some(Value::String(value)) => {
-                    bounded_identity("release-cell adapter_version", value, MAX_BUILD_ID_CHARS)?
+                    bounded_identity("release-cell adapter_version", value, MAX_BUILD_ID_BYTES)?
                 }
                 Some(Value::Null) | None => candidate.adapter_build_id()?,
                 Some(_) => {
@@ -14116,7 +14126,7 @@ mod unix {
         bounded_identity(
             "live validation recorded_at",
             &timestamp,
-            MAX_RECORDED_AT_CHARS,
+            MAX_RECORDED_AT_BYTES,
         )
     }
 
@@ -14129,7 +14139,7 @@ mod unix {
             .map(str::trim)
             .find(|line| !line.is_empty())
             .ok_or_else(|| io::Error::other("host --version returned no version text"))?;
-        bounded_identity("host version", version, MAX_HOST_VERSION_CHARS)
+        bounded_identity("host version", version, MAX_HOST_VERSION_BYTES)
     }
 
     fn canonical_codex_version_summary(output: &TimedOutput) -> Result<String, Box<dyn Error>> {
@@ -14158,7 +14168,7 @@ mod unix {
         bounded_identity(
             "canonical Codex host version",
             version,
-            MAX_HOST_VERSION_CHARS,
+            MAX_HOST_VERSION_BYTES,
         )
     }
 
@@ -14199,22 +14209,22 @@ mod unix {
                     "release candidate --version did not expose the exact build_id envelope",
                 )
             })?;
-        bounded_identity("Volicord build_id", build_id, MAX_BUILD_ID_CHARS)
+        bounded_identity("Volicord build_id", build_id, MAX_BUILD_ID_BYTES)
     }
 
     fn bounded_identity(
         label: &str,
         value: &str,
-        max_chars: usize,
+        max_bytes: usize,
     ) -> Result<String, Box<dyn Error>> {
         if value.is_empty() || value.chars().any(char::is_control) {
             return Err(
                 io::Error::other(format!("{label} must be one non-empty printable line")).into(),
             );
         }
-        if value.chars().count() > max_chars {
+        if value.len() > max_bytes {
             return Err(io::Error::other(format!(
-                "{label} exceeds the {max_chars}-character result limit"
+                "{label} exceeds the {max_bytes}-byte result limit"
             ))
             .into());
         }

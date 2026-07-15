@@ -2,7 +2,9 @@ use std::path::Path;
 
 use chrono::Duration;
 use rusqlite::{params, Connection, OptionalExtension};
-use volicord_types::UtcTimestamp;
+use volicord_types::{
+    validate_managed_mcp_client_info_field, ManagedMcpClientInfoField, UtcTimestamp,
+};
 
 use crate::{
     agent_connections::{HOST_KIND_CLAUDE_CODE, HOST_KIND_CODEX, HOST_KIND_GENERIC},
@@ -31,6 +33,9 @@ pub const HOST_CAPABILITY_OUTCOME_REVOKED: &str = "revoked";
 
 /// Maximum freshness window for one host-capability verification.
 pub const HOST_CAPABILITY_VERIFICATION_MAX_TTL_SECONDS: i64 = 86_400;
+
+/// Maximum UTF-8 byte length for one general host-capability text coordinate.
+pub const MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES: usize = 1_024;
 
 /// One immutable host-capability verification to publish and make current.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,13 +111,8 @@ pub fn publish_host_capability_verification(
     runtime_home: impl AsRef<Path>,
     input: HostCapabilityVerificationInput,
 ) -> StoreResult<HostCapabilityVerificationRecord> {
-    validate_nonempty("verification_internal_id", &input.verification_internal_id)?;
+    let validated = validate_verification_input(&input)?;
     let registry_path = registry_db_path(runtime_home);
-    let validated_before_open = if registry_path.exists() {
-        None
-    } else {
-        Some(validate_verification_input(&input)?)
-    };
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
 
@@ -134,11 +134,6 @@ pub fn publish_host_capability_verification(
                 .to_owned(),
         });
     }
-
-    let validated = match validated_before_open {
-        Some(validated) => validated,
-        None => validate_verification_input(&input)?,
-    };
 
     let connection = connection_identity(&tx, &input.connection_internal_id)?.ok_or_else(|| {
         StoreError::NotFound {
@@ -264,7 +259,7 @@ pub fn current_host_capability_verification_read_only(
     connection_internal_id: &str,
     capability: &str,
 ) -> StoreResult<Option<HostCapabilityVerificationRecord>> {
-    validate_nonempty("connection_internal_id", connection_internal_id)?;
+    validate_bounded_text_input("connection_internal_id", connection_internal_id)?;
     validate_capability(capability)?;
     let registry_path = registry_db_path(runtime_home);
     if !registry_path.exists() {
@@ -351,23 +346,23 @@ struct ConnectionIdentity {
 fn validate_verification_input(
     input: &HostCapabilityVerificationInput,
 ) -> StoreResult<ValidatedVerificationWindow> {
-    validate_nonempty("verification_internal_id", &input.verification_internal_id)?;
-    validate_nonempty("connection_internal_id", &input.connection_internal_id)?;
+    validate_bounded_text_input("verification_internal_id", &input.verification_internal_id)?;
+    validate_bounded_text_input("connection_internal_id", &input.connection_internal_id)?;
     validate_capability(&input.capability)?;
     validate_outcome(&input.outcome)?;
     validate_host_kind(&input.host_kind)?;
     for (field, value) in [
         ("host_version", input.host_version.as_str()),
-        ("client_name", input.client_name.as_str()),
-        ("client_version", input.client_version.as_str()),
         ("adapter_version", input.adapter_version.as_str()),
         ("managed_fingerprint", input.managed_fingerprint.as_str()),
         ("volicord_build_id", input.volicord_build_id.as_str()),
         ("source_revision", input.source_revision.as_str()),
         ("target_triple", input.target_triple.as_str()),
     ] {
-        validate_nonempty(field, value)?;
+        validate_bounded_text_input(field, value)?;
     }
+    validate_client_info_input(ManagedMcpClientInfoField::Name, &input.client_name)?;
+    validate_client_info_input(ManagedMcpClientInfoField::Version, &input.client_version)?;
     validate_adapter_profile(&input.adapter_profile)?;
     validate_sha256("executable_sha256", &input.executable_sha256)?;
     validate_sha256("evidence_artifact_sha256", &input.evidence_artifact_sha256)?;
@@ -414,7 +409,7 @@ fn validate_verification_input(
 }
 
 fn validate_expectation(expectation: &HostCapabilityVerificationExpectation) -> StoreResult<()> {
-    validate_nonempty(
+    validate_bounded_text_input(
         "connection_internal_id",
         &expectation.connection_internal_id,
     )?;
@@ -423,8 +418,6 @@ fn validate_expectation(expectation: &HostCapabilityVerificationExpectation) -> 
     validate_adapter_profile(&expectation.adapter_profile)?;
     for (field, value) in [
         ("host_version", expectation.host_version.as_str()),
-        ("client_name", expectation.client_name.as_str()),
-        ("client_version", expectation.client_version.as_str()),
         ("adapter_version", expectation.adapter_version.as_str()),
         (
             "managed_fingerprint",
@@ -434,8 +427,13 @@ fn validate_expectation(expectation: &HostCapabilityVerificationExpectation) -> 
         ("source_revision", expectation.source_revision.as_str()),
         ("target_triple", expectation.target_triple.as_str()),
     ] {
-        validate_nonempty(field, value)?;
+        validate_bounded_text_input(field, value)?;
     }
+    validate_client_info_input(ManagedMcpClientInfoField::Name, &expectation.client_name)?;
+    validate_client_info_input(
+        ManagedMcpClientInfoField::Version,
+        &expectation.client_version,
+    )?;
     if expectation.host_version != expectation.client_version {
         return Err(StoreError::InvalidInput {
             detail: "the v1 host capability expects host_version to equal client_version"
@@ -481,6 +479,10 @@ fn current_verification_from_conn(
         }
         return Ok(None);
     };
+    validate_stored_bounded_text(
+        "host_capability_state.current_verification_internal_id",
+        &verification_internal_id,
+    )?;
     parse_stored_timestamp("host_capability_state.updated_at", &updated_at)?;
     let record = verification_by_id(
         conn,
@@ -536,10 +538,14 @@ pub(crate) fn validate_unique_newest_host_capability_pointer<'a>(
     observations: impl IntoIterator<Item = (&'a str, &'a str)>,
     current_verification_internal_id: &str,
 ) -> StoreResult<()> {
+    validate_stored_bounded_text(
+        "host_capability_state.current_verification_internal_id",
+        current_verification_internal_id,
+    )?;
     let mut newest: Option<(UtcTimestamp, &'a str)> = None;
     let mut newest_count = 0usize;
     for (verification_internal_id, observed_at) in observations {
-        validate_stored_nonempty(
+        validate_stored_bounded_text(
             "host_capability_verifications.verification_internal_id",
             verification_internal_id,
         )?;
@@ -693,11 +699,11 @@ fn connection_identity(
 }
 
 pub(crate) fn validate_stored_record(record: &HostCapabilityVerificationRecord) -> StoreResult<()> {
-    validate_stored_nonempty(
+    validate_stored_bounded_text(
         "host_capability_verifications.verification_internal_id",
         &record.verification_internal_id,
     )?;
-    validate_stored_nonempty(
+    validate_stored_bounded_text(
         "host_capability_verifications.connection_internal_id",
         &record.connection_internal_id,
     )?;
@@ -722,14 +728,6 @@ pub(crate) fn validate_stored_record(record: &HostCapabilityVerificationRecord) 
             record.host_version.as_str(),
         ),
         (
-            "host_capability_verifications.client_name",
-            record.client_name.as_str(),
-        ),
-        (
-            "host_capability_verifications.client_version",
-            record.client_version.as_str(),
-        ),
-        (
             "host_capability_verifications.adapter_version",
             record.adapter_version.as_str(),
         ),
@@ -750,8 +748,18 @@ pub(crate) fn validate_stored_record(record: &HostCapabilityVerificationRecord) 
             record.target_triple.as_str(),
         ),
     ] {
-        validate_stored_nonempty(field, value)?;
+        validate_stored_bounded_text(field, value)?;
     }
+    validate_stored_client_info(
+        "host_capability_verifications.client_name",
+        ManagedMcpClientInfoField::Name,
+        &record.client_name,
+    )?;
+    validate_stored_client_info(
+        "host_capability_verifications.client_version",
+        ManagedMcpClientInfoField::Version,
+        &record.client_version,
+    )?;
     if !is_sha256(&record.executable_sha256) {
         return corrupt("host_capability_verifications.executable_sha256");
     }
@@ -913,22 +921,50 @@ fn is_host_kind(value: &str) -> bool {
     )
 }
 
-fn validate_nonempty(field: &'static str, value: &str) -> StoreResult<()> {
-    if value.trim().is_empty() || value.chars().any(char::is_control) {
+fn validate_bounded_text_input(field: &'static str, value: &str) -> StoreResult<()> {
+    if !is_bounded_host_capability_text(value) {
         Err(StoreError::InvalidInput {
-            detail: format!("{field} must be nonempty text without control characters"),
+            detail: format!(
+                "{field} must be 1 through {MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES} UTF-8 bytes, contain a non-whitespace character, and contain no control character"
+            ),
         })
     } else {
         Ok(())
     }
 }
 
-fn validate_stored_nonempty(field: &'static str, value: &str) -> StoreResult<()> {
-    if value.trim().is_empty() || value.chars().any(char::is_control) {
+pub(crate) fn validate_stored_bounded_text(field: &'static str, value: &str) -> StoreResult<()> {
+    if !is_bounded_host_capability_text(value) {
         corrupt(field)
     } else {
         Ok(())
     }
+}
+
+fn is_bounded_host_capability_text(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES
+        && value.chars().any(|character| !character.is_whitespace())
+        && !value.chars().any(char::is_control)
+}
+
+fn validate_client_info_input(field: ManagedMcpClientInfoField, value: &str) -> StoreResult<()> {
+    validate_managed_mcp_client_info_field(field, value).map_err(|error| StoreError::InvalidInput {
+        detail: error.to_string(),
+    })
+}
+
+fn validate_stored_client_info(
+    stored_field: &'static str,
+    client_field: ManagedMcpClientInfoField,
+    value: &str,
+) -> StoreResult<()> {
+    validate_managed_mcp_client_info_field(client_field, value).map_err(|_| {
+        StoreError::CorruptStoredValue {
+            database_kind: REGISTRY_DATABASE_KIND,
+            field: stored_field,
+        }
+    })
 }
 
 fn validate_sha256(field: &'static str, value: &str) -> StoreResult<()> {
@@ -1058,6 +1094,374 @@ mod tests {
     }
 
     #[test]
+    fn utf8_byte_bounds_are_exact_preserving_through_publish_read_and_replay(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = fixture("host-capability-exact-byte-bounds", HOST_KIND_CODEX)?;
+        let general_at_limit = format!(" {} ", "가".repeat(340) + "aa");
+        let client_at_limit = format!(" {} ", "가".repeat(84) + "aa");
+        assert_eq!(
+            general_at_limit.len(),
+            MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES
+        );
+        assert_eq!(
+            client_at_limit.len(),
+            volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES
+        );
+        validate_bounded_text_input("connection_internal_id", &general_at_limit)?;
+
+        let mut input = verification(&general_at_limit, HOST_CAPABILITY_OUTCOME_FAILED);
+        input.host_version = general_at_limit.clone();
+        input.client_name = client_at_limit.clone();
+        input.client_version = client_at_limit.clone();
+        input.adapter_version = general_at_limit.clone();
+        input.managed_fingerprint = general_at_limit.clone();
+        input.volicord_build_id = general_at_limit.clone();
+        input.source_revision = general_at_limit.clone();
+        input.target_triple = general_at_limit.clone();
+
+        let record = publish_host_capability_verification(fixture.path(), input.clone())?;
+        assert_eq!(record.verification_internal_id, general_at_limit);
+        assert_eq!(record.host_version, input.host_version);
+        assert_eq!(record.client_name, input.client_name);
+        assert_eq!(record.client_version, input.client_version);
+        assert_eq!(record.adapter_version, input.adapter_version);
+        assert_eq!(record.managed_fingerprint, input.managed_fingerprint);
+        assert_eq!(record.volicord_build_id, input.volicord_build_id);
+        assert_eq!(record.source_revision, input.source_revision);
+        assert_eq!(record.target_triple, input.target_triple);
+        assert_eq!(
+            current_host_capability_verification_read_only(
+                fixture.path(),
+                "conn_a",
+                HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+            )?,
+            Some(record.clone())
+        );
+        assert_eq!(
+            publish_host_capability_verification(fixture.path(), input)?,
+            record
+        );
+
+        let conn = open_registry_database(fixture.registry_db_path())?;
+        let counts: (i64, i64) = conn.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM host_capability_verifications),
+                (SELECT COUNT(*) FROM host_capability_state)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(counts, (1, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn every_free_text_input_rejects_an_over_bound_utf8_value_before_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        type Setter = fn(&mut HostCapabilityVerificationInput, String);
+        let fixture = fixture("host-capability-over-bound-inputs", HOST_KIND_CODEX)?;
+        let general_over = "가".repeat(341) + "ab";
+        let client_over = "가".repeat(85) + "ab";
+        assert_eq!(
+            general_over.len(),
+            MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES + 1
+        );
+        assert_eq!(
+            client_over.len(),
+            volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES + 1
+        );
+
+        let uninitialized = TempRuntimeHome::new("host-capability-invalid-before-open")?;
+        let mut invalid_before_open =
+            verification("verification_invalid", HOST_CAPABILITY_OUTCOME_PASSED);
+        invalid_before_open.adapter_version = general_over.clone();
+        assert!(matches!(
+            publish_host_capability_verification(uninitialized.path(), invalid_before_open),
+            Err(StoreError::InvalidInput { .. })
+        ));
+        assert!(!uninitialized.registry_db_path().exists());
+
+        let cases: [(&str, &str, usize, Setter); 10] = [
+            (
+                "verification_internal_id",
+                "verification_internal_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.verification_internal_id = value,
+            ),
+            (
+                "connection_internal_id",
+                "connection_internal_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.connection_internal_id = value,
+            ),
+            (
+                "host_version",
+                "host_version",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.host_version = value,
+            ),
+            (
+                "client_name",
+                "clientInfo.name",
+                volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES,
+                |input, value| input.client_name = value,
+            ),
+            (
+                "client_version",
+                "clientInfo.version",
+                volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES,
+                |input, value| input.client_version = value,
+            ),
+            (
+                "adapter_version",
+                "adapter_version",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.adapter_version = value,
+            ),
+            (
+                "managed_fingerprint",
+                "managed_fingerprint",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.managed_fingerprint = value,
+            ),
+            (
+                "volicord_build_id",
+                "volicord_build_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.volicord_build_id = value,
+            ),
+            (
+                "source_revision",
+                "source_revision",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.source_revision = value,
+            ),
+            (
+                "target_triple",
+                "target_triple",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |input, value| input.target_triple = value,
+            ),
+        ];
+
+        for (case, expected_field, limit, set) in cases {
+            let mut input = verification(
+                &format!("verification_{case}"),
+                HOST_CAPABILITY_OUTCOME_PASSED,
+            );
+            set(
+                &mut input,
+                if limit == MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES {
+                    general_over.clone()
+                } else {
+                    client_over.clone()
+                },
+            );
+            let error = publish_host_capability_verification(fixture.path(), input)
+                .expect_err("an over-bound UTF-8 value must be invalid input");
+            match error {
+                StoreError::InvalidInput { detail } => {
+                    assert!(detail.contains(expected_field), "{case}: {detail}");
+                }
+                other => panic!("{case}: expected InvalidInput, got {other:?}"),
+            }
+        }
+
+        let conn = open_registry_database(fixture.registry_db_path())?;
+        let counts: (i64, i64) = conn.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM host_capability_verifications),
+                (SELECT COUNT(*) FROM host_capability_state)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(counts, (0, 0));
+        drop(conn);
+
+        publish_host_capability_verification(
+            fixture.path(),
+            verification("verification_valid", HOST_CAPABILITY_OUTCOME_PASSED),
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn over_bound_expectations_are_read_only_and_do_not_create_registry_state(
+    ) -> Result<(), Box<dyn Error>> {
+        type Setter = fn(&mut HostCapabilityVerificationExpectation, String);
+        let runtime_home = TempRuntimeHome::new("host-capability-over-bound-expectations")?;
+        let registry_path = runtime_home.registry_db_path();
+        assert!(!registry_path.exists());
+        let general_over = "가".repeat(341) + "ab";
+        let client_over = "가".repeat(85) + "ab";
+        let cases: [(&str, usize, Setter); 9] = [
+            (
+                "connection_internal_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.connection_internal_id = replacement,
+            ),
+            (
+                "host_version",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.host_version = replacement,
+            ),
+            (
+                "client_name",
+                volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES,
+                |value, replacement| value.client_name = replacement,
+            ),
+            (
+                "client_version",
+                volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES,
+                |value, replacement| value.client_version = replacement,
+            ),
+            (
+                "adapter_version",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.adapter_version = replacement,
+            ),
+            (
+                "managed_fingerprint",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.managed_fingerprint = replacement,
+            ),
+            (
+                "volicord_build_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.volicord_build_id = replacement,
+            ),
+            (
+                "source_revision",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.source_revision = replacement,
+            ),
+            (
+                "target_triple",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.target_triple = replacement,
+            ),
+        ];
+
+        for (case, limit, set) in cases {
+            let mut invalid = expectation();
+            set(
+                &mut invalid,
+                if limit == MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES {
+                    general_over.clone()
+                } else {
+                    client_over.clone()
+                },
+            );
+            assert!(
+                matches!(
+                    evaluate_current_host_capability_verification_read_only(
+                        runtime_home.path(),
+                        &invalid,
+                        "2026-07-14T12:00:00Z",
+                    ),
+                    Err(StoreError::InvalidInput { .. })
+                ),
+                "{case}"
+            );
+            assert!(!registry_path.exists(), "{case}");
+        }
+        assert!(matches!(
+            current_host_capability_verification_read_only(
+                runtime_home.path(),
+                &general_over,
+                HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+            ),
+            Err(StoreError::InvalidInput { .. })
+        ));
+        assert!(!registry_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn every_stored_free_text_field_rejects_an_over_bound_utf8_value() -> Result<(), Box<dyn Error>>
+    {
+        type Setter = fn(&mut HostCapabilityVerificationRecord, String);
+        let fixture = fixture("host-capability-stored-field-bounds", HOST_KIND_CODEX)?;
+        let record = publish_host_capability_verification(
+            fixture.path(),
+            verification("verification_a", HOST_CAPABILITY_OUTCOME_PASSED),
+        )?;
+        let general_over = "가".repeat(341) + "ab";
+        let client_over = "가".repeat(85) + "ab";
+        let cases: [(&str, usize, Setter); 10] = [
+            (
+                "host_capability_verifications.verification_internal_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.verification_internal_id = replacement,
+            ),
+            (
+                "host_capability_verifications.connection_internal_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.connection_internal_id = replacement,
+            ),
+            (
+                "host_capability_verifications.host_version",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.host_version = replacement,
+            ),
+            (
+                "host_capability_verifications.client_name",
+                volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES,
+                |value, replacement| value.client_name = replacement,
+            ),
+            (
+                "host_capability_verifications.client_version",
+                volicord_types::MAX_MANAGED_MCP_CLIENT_INFO_FIELD_BYTES,
+                |value, replacement| value.client_version = replacement,
+            ),
+            (
+                "host_capability_verifications.adapter_version",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.adapter_version = replacement,
+            ),
+            (
+                "host_capability_verifications.managed_fingerprint",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.managed_fingerprint = replacement,
+            ),
+            (
+                "host_capability_verifications.volicord_build_id",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.volicord_build_id = replacement,
+            ),
+            (
+                "host_capability_verifications.source_revision",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.source_revision = replacement,
+            ),
+            (
+                "host_capability_verifications.target_triple",
+                MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
+                |value, replacement| value.target_triple = replacement,
+            ),
+        ];
+
+        for (expected_field, limit, set) in cases {
+            let mut corrupt_record = record.clone();
+            set(
+                &mut corrupt_record,
+                if limit == MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES {
+                    general_over.clone()
+                } else {
+                    client_over.clone()
+                },
+            );
+            assert!(
+                matches!(
+                    validate_stored_record(&corrupt_record),
+                    Err(StoreError::CorruptStoredValue { field, .. }) if field == expected_field
+                ),
+                "{expected_field}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn unavailable_or_revoked_current_never_falls_back_to_older_pass() -> Result<(), Box<dyn Error>>
     {
         let fixture = fixture("host-capability-superseded", HOST_KIND_CODEX)?;
@@ -1130,7 +1534,7 @@ mod tests {
                 "conn_a",
                 HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
             )?,
-            Some(newer_record)
+            Some(newer_record.clone())
         );
 
         let conn = open_registry_database(fixture.registry_db_path())?;
@@ -1142,8 +1546,23 @@ mod tests {
         assert_eq!(history_count, 2);
         drop(conn);
 
+        let mut invalid_retry = first.clone();
+        invalid_retry.adapter_version = "가".repeat(342);
+        assert!(matches!(
+            publish_host_capability_verification(fixture.path(), invalid_retry),
+            Err(StoreError::InvalidInput { .. })
+        ));
+        assert_eq!(
+            current_host_capability_verification_read_only(
+                fixture.path(),
+                "conn_a",
+                HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+            )?,
+            Some(newer_record)
+        );
+
         let mut conflicting = first;
-        conflicting.metadata_json = r#"{"different":true}"#.to_owned();
+        conflicting.adapter_version = "adapter-other".to_owned();
         assert!(matches!(
             publish_host_capability_verification(fixture.path(), conflicting),
             Err(StoreError::Conflict { .. })
@@ -1325,6 +1744,103 @@ mod tests {
         )
         .expect_err("corrupt current state must not become ordinary eligibility");
         assert!(matches!(error, StoreError::CorruptStoredValue { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn over_bound_current_history_values_fail_closed_with_the_exact_field(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = fixture("host-capability-over-bound-current", HOST_KIND_CODEX)?;
+        publish_host_capability_verification(
+            fixture.path(),
+            verification("verification_a", HOST_CAPABILITY_OUTCOME_PASSED),
+        )?;
+        let general_over = "가".repeat(341) + "ab";
+        let client_over = "가".repeat(85) + "ab";
+
+        let conn = open_registry_database(fixture.registry_db_path())?;
+        conn.pragma_update(None, "ignore_check_constraints", "ON")?;
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET host_version = ?1
+              WHERE verification_internal_id = 'verification_a'",
+            [&general_over],
+        )?;
+        drop(conn);
+        assert!(matches!(
+            evaluate_current_host_capability_verification_read_only(
+                fixture.path(),
+                &expectation(),
+                "2026-07-14T12:00:00Z",
+            ),
+            Err(StoreError::CorruptStoredValue {
+                field: "host_capability_verifications.host_version",
+                ..
+            })
+        ));
+
+        let conn = open_registry_database(fixture.registry_db_path())?;
+        conn.pragma_update(None, "ignore_check_constraints", "ON")?;
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET host_version = '1.2.3', client_name = ?1
+              WHERE verification_internal_id = 'verification_a'",
+            [&client_over],
+        )?;
+        drop(conn);
+        assert!(matches!(
+            evaluate_current_host_capability_verification_read_only(
+                fixture.path(),
+                &expectation(),
+                "2026-07-14T12:00:00Z",
+            ),
+            Err(StoreError::CorruptStoredValue {
+                field: "host_capability_verifications.client_name",
+                ..
+            })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn over_bound_current_pointer_id_fails_closed_before_lookup() -> Result<(), Box<dyn Error>> {
+        let fixture = fixture("host-capability-over-bound-pointer", HOST_KIND_CODEX)?;
+        publish_host_capability_verification(
+            fixture.path(),
+            verification("verification_a", HOST_CAPABILITY_OUTCOME_PASSED),
+        )?;
+        let over_bound = "가".repeat(341) + "ab";
+        let conn = open_registry_database(fixture.registry_db_path())?;
+        set_foreign_keys(&conn, false)?;
+        conn.pragma_update(None, "ignore_check_constraints", "ON")?;
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET verification_internal_id = ?1",
+            [&over_bound],
+        )?;
+        conn.execute(
+            "UPDATE host_capability_state
+                SET current_verification_internal_id = ?1",
+            [&over_bound],
+        )?;
+        drop(conn);
+
+        let error = current_host_capability_verification_read_only(
+            fixture.path(),
+            "conn_a",
+            HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+        )
+        .expect_err("an over-bound current pointer must fail closed");
+        assert!(
+            matches!(
+                error,
+                StoreError::CorruptStoredValue {
+                    field: "host_capability_state.current_verification_internal_id",
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
         Ok(())
     }
 

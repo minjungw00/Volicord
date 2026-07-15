@@ -27,6 +27,13 @@ client declaration or mutable configuration-verification JSON. The baseline
 provides no in-place conversion from `baseline_sqlite_v5`. A v5 Runtime Home is
 an incompatible shape and must be recreated; Store must not relabel it, infer a
 passing verification from existing connection state, or synthesize history.
+The v6/0.9.0 host-capability shape includes its exact UTF-8 byte constraints:
+general free-text history and current-pointer coordinates are 1 through 1,024
+bytes, and managed MCP `client_name` and `client_version` are 1 through 256
+bytes. Completing those constraints within the v6 batch does not create a v7
+transition. A database labeled v6 but lacking the canonical constraints is
+incompatible and must be recreated; Store must not trim, truncate, repair, or
+legacy-decode its values.
 
 The earlier `baseline_sqlite_v5` profile replaced the v4 judgment and direct user-observation
 families with `user_action_requests`, immutable one-to-one

@@ -89,8 +89,8 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
 | `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |
-| `registry.sqlite` | `host_capability_verifications` | Immutable host-capability validation history | Exact connection/capability, outcome, host/client version, adapter profile, managed fingerprint, Volicord build/source/target/executable digest, bounded evidence-artifact digest, observation/expiry interval, strict canonical `{}` metadata, and creation time. |
-| `registry.sqlite` | `host_capability_state` | Current host-capability pointer | One current immutable verification row per connection and capability, replaced atomically by later passing, failed, unavailable, or revoked observations. |
+| `registry.sqlite` | `host_capability_verifications` | Immutable host-capability validation history | Exact bounded connection/capability, outcome, host/client version, adapter profile, managed fingerprint, Volicord build/source/target/executable digest, bounded evidence-artifact digest, observation/expiry interval, strict canonical `{}` metadata, and creation time. |
+| `registry.sqlite` | `host_capability_state` | Current host-capability pointer | One bounded current immutable verification-row identifier per connection and capability, replaced atomically by later passing, failed, unavailable, or revoked observations. |
 | `registry.sqlite` | Host-hook installation | Host-hook setup and host capability record | Runtime Home, Agent Connection, optional project scope, host kind, integration mode, host capability JSON, installation lifecycle status, observed hook metadata, timestamps, and metadata. |
 | `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, project enforcement profile, and `updated_at` as the persisted floor of the canonical Core UTC clock. |
 | `state.sqlite` | `agent_sessions` | Observed Agent Session | Project-scoped session for one Agent Connection, optional host-hook installation, host kind, integration profile, start/end timestamps, and metadata. |
@@ -161,6 +161,18 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
   version must equal both the exact runtime `clientInfo.version` and the live
   artifact's installed-host version. Its `source_revision` is exact lowercase
   40- or 64-hex; `unknown` cannot pass.
+- In host-capability history and current-pointer rows,
+  `verification_internal_id`, `connection_internal_id`, `host_version`,
+  `adapter_version`, `managed_fingerprint`, `volicord_build_id`,
+  `source_revision`, `target_triple`, and
+  `current_verification_internal_id` are exact-preserving values of 1 through
+  1,024 UTF-8 bytes. Each contains at least one non-whitespace character and no
+  control character. `client_name` and `client_version` are exact-preserving
+  managed MCP client identity values of 1 through 256 UTF-8 bytes under the
+  shared client-identity rule. These limits count UTF-8 bytes, not Unicode
+  scalar values; Store must not trim, truncate, substitute, or repair a value.
+  Input outside the limits is invalid before lookup or mutation, while a stored
+  value outside the limits is corrupt.
 - Publishing the exact same verification ID and content is idempotent. If that
   history row is no longer current, the duplicate does not move the newer
   pointer backward. The same ID with different content is a conflict.

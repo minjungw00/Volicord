@@ -976,8 +976,8 @@ documents:
   path_en: docs/en/architecture-guide/decisions/host-capability-verification.md
   path_ko: docs/ko/architecture-guide/decisions/host-capability-verification.md
   kind: explanation
-  summary: Architecture decision explaining exact expiring host-capability verification and external
-    exact-final-artifact release evidence binding before credential delivery.
+  summary: Architecture decision explaining bounded exact expiring host-capability verification and
+    external exact-final-artifact release evidence binding before credential delivery.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -2541,7 +2541,7 @@ documents:
   - persisted canonical-time-floor record placement and commit timestamp relationships
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation record families
   - guard_installations host_capability_json v2 shape, v1 rejection, and init-only repair boundary
-  - immutable host-capability verification history and current-pointer record families
+  - immutable host-capability verification history, current-pointer record families, and exact UTF-8 byte bounds
   - evidence-capture intent, receipt, exclusive source-claim, and producer record relationships
   - local web consent token record family
   - opaque managed-host session identifier persistence and raw native session identifier exclusion
@@ -2558,8 +2558,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
@@ -2575,7 +2575,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, managed host configuration state, and host-observation tables
-  - host-capability verification history, current-pointer tables, indexes, and constraints
+  - host-capability verification history, current-pointer tables, indexes, and exact UTF-8 byte constraints
   - evidence-capture receipt pairing and project-scoped exclusive source-claim constraints
   - baseline SQLite indexes, foreign keys, and constraints
   - physical canonical-time-floor and cross-row commit timestamp constraints
@@ -2642,8 +2642,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-15'
+  last_verified_on: '2026-07-15'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
@@ -2663,7 +2663,7 @@ documents:
   - canonical storage schema initialization boundary
   - unsupported storage-profile failure semantics
   - incompatible Runtime Home recreation boundary
-  - '`baseline_sqlite_v6` host-capability history addition and v5 no-conversion boundary'
+  - '`baseline_sqlite_v6` host-capability history addition, exact UTF-8 byte constraints, and v5 no-conversion boundary'
 - doc_id: reference.agent-connection
   path_en: docs/en/reference/agent-connection.md
   path_ko: docs/ko/reference/agent-connection.md
@@ -2700,7 +2700,7 @@ documents:
     and fallback boundaries
   - per-call MCP project selection authority
   - agent guidance and MCP server instruction boundaries
-  - immutable host-capability verification history, current state, freshness, external
+  - immutable bounded host-capability verification history, current state, freshness, external
     exact-final-artifact release evidence binding, and exact-match eligibility
   - canonical host-feature support status meaning, precedence, current host matrix, replay, and freshness boundaries
   - managed MCP and host-hook use of one opaque managed-host session identifier with pending Codex call binding

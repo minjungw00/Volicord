@@ -17,8 +17,9 @@ use crate::{
     },
     bootstrap::{validate_project_record_for_execution, ProjectRecord},
     host_capabilities::{
-        validate_stored_record, validate_unique_newest_host_capability_pointer,
-        HostCapabilityVerificationRecord, HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
+        validate_stored_bounded_text, validate_stored_record,
+        validate_unique_newest_host_capability_pointer, HostCapabilityVerificationRecord,
+        HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
     },
     schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND, STORAGE_PROFILE},
     sqlite::{open_read_only_database, registry_db_path, validate_project_state_schema},
@@ -1077,14 +1078,14 @@ fn read_host_capability_verification_rows(
     let mut records = Vec::new();
     for row in rows {
         let record = row.map_err(registration_decode_error)?;
+        validate_stored_record(&record)
+            .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
         if !connection_ids.contains(record.connection_internal_id.as_str()) {
             return Err(InspectionIssue::Malformed(format!(
                 "host_capability_verifications references missing connection_internal_id {}",
                 record.connection_internal_id
             )));
         }
-        validate_stored_record(&record)
-            .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
         records.push(record);
     }
     Ok(records)
@@ -1151,19 +1152,21 @@ fn read_host_capability_state_rows(
     let mut state_scopes = BTreeSet::new();
     for row in rows {
         let record = row.map_err(registration_decode_error)?;
-        require_nonempty(
+        validate_stored_bounded_text(
             "host_capability_state.connection_internal_id",
             &record.connection_internal_id,
-        )?;
+        )
+        .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
         if record.capability != HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE {
             return Err(InspectionIssue::Malformed(
                 "host_capability_state.capability is outside the supported value set".to_owned(),
             ));
         }
-        require_nonempty(
+        validate_stored_bounded_text(
             "host_capability_state.current_verification_internal_id",
             &record.current_verification_internal_id,
-        )?;
+        )
+        .map_err(|error| InspectionIssue::Malformed(error.to_string()))?;
         if !connection_ids.contains(record.connection_internal_id.as_str()) {
             return Err(InspectionIssue::Malformed(format!(
                 "host_capability_state references missing connection_internal_id {}",
@@ -1684,6 +1687,7 @@ mod tests {
             initialize_runtime_home, register_project, ProjectRecord, ProjectRegistration,
             ACTIVE_PROJECT_STATUS,
         },
+        host_capabilities::MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES,
         sqlite::{open_read_only_database, project_state_db_path, registry_db_path},
     };
 
@@ -1918,6 +1922,119 @@ mod tests {
                 assert!(detail.contains("unique newest observation"));
             }
             other => panic!("expected malformed rolled-back pointer, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn registry_inspection_reports_overbound_host_capability_without_value_leakage(
+    ) -> Result<(), Box<dyn Error>> {
+        for (column, expected_field) in [
+            ("host_version", "host_capability_verifications.host_version"),
+            (
+                "connection_internal_id",
+                "host_capability_verifications.connection_internal_id",
+            ),
+        ] {
+            let fixture = current_fixture(&format!("inspect-host-capability-{column}-overbound"))?;
+            let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
+            registry.execute(
+                "INSERT INTO agent_connections (
+                    connection_internal_id, host_kind, intent, host_scope,
+                    server_name, config_target, mode, managed_fingerprint,
+                    created_at, updated_at
+                ) VALUES (
+                    'agent_inspected', 'codex', 'personal', 'user',
+                    'volicord-inspected', 'codex-target', 'workflow',
+                    'fingerprint-inspected', 't0', 't0'
+                )",
+                [],
+            )?;
+            insert_inspected_host_capability(&registry)?;
+            let private_marker = format!("private-overbound-{column}");
+            let corrupt_value = format!(
+                "{private_marker}{}",
+                "가".repeat(MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES)
+            );
+            assert!(corrupt_value.len() > MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES);
+            registry.pragma_update(None, "foreign_keys", "OFF")?;
+            registry.pragma_update(None, "ignore_check_constraints", "ON")?;
+            registry.execute(
+                &format!(
+                    "UPDATE host_capability_verifications
+                        SET {column} = ?1
+                      WHERE verification_internal_id = 'verification_inspected'"
+                ),
+                [corrupt_value.as_str()],
+            )?;
+            drop(registry);
+
+            match inspect_registry_database(fixture.runtime_home.path()) {
+                DatabaseInspection::Malformed { detail, .. } => {
+                    assert!(detail.contains(expected_field), "{column}: {detail}");
+                    assert!(!detail.contains(&private_marker), "{column}: {detail}");
+                    assert!(!detail.contains(&corrupt_value), "{column}: {detail}");
+                }
+                other => {
+                    panic!("expected malformed over-bound host capability {column}, got {other:?}")
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn registry_inspection_reports_overbound_host_capability_pointers_without_value_leakage(
+    ) -> Result<(), Box<dyn Error>> {
+        for (column, expected_field) in [
+            (
+                "connection_internal_id",
+                "host_capability_state.connection_internal_id",
+            ),
+            (
+                "current_verification_internal_id",
+                "host_capability_state.current_verification_internal_id",
+            ),
+        ] {
+            let fixture = current_fixture(&format!("inspect-host-capability-{column}-overbound"))?;
+            let registry = Connection::open(fixture.runtime_home.registry_db_path())?;
+            registry.execute(
+                "INSERT INTO agent_connections (
+                    connection_internal_id, host_kind, intent, host_scope,
+                    server_name, config_target, mode, managed_fingerprint,
+                    created_at, updated_at
+                ) VALUES (
+                    'agent_inspected', 'codex', 'personal', 'user',
+                    'volicord-inspected', 'codex-target', 'workflow',
+                    'fingerprint-inspected', 't0', 't0'
+                )",
+                [],
+            )?;
+            insert_inspected_host_capability(&registry)?;
+            let private_marker = format!("private-overbound-{column}");
+            let corrupt_pointer = format!(
+                "{private_marker}{}",
+                "가".repeat(MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES)
+            );
+            assert!(corrupt_pointer.len() > MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES);
+            registry.pragma_update(None, "foreign_keys", "OFF")?;
+            registry.pragma_update(None, "ignore_check_constraints", "ON")?;
+            registry.execute(
+                &format!("UPDATE host_capability_state SET {column} = ?1"),
+                [corrupt_pointer.as_str()],
+            )?;
+            drop(registry);
+
+            match inspect_registry_database(fixture.runtime_home.path()) {
+                DatabaseInspection::Malformed { detail, .. } => {
+                    assert!(detail.contains(expected_field), "{column}: {detail}");
+                    assert!(!detail.contains(&private_marker), "{column}: {detail}");
+                    assert!(!detail.contains(&corrupt_pointer), "{column}: {detail}");
+                }
+                other => panic!(
+                    "expected malformed over-bound host capability pointer {column}, got {other:?}"
+                ),
+            }
         }
         Ok(())
     }

@@ -116,6 +116,16 @@ one surface without changing the others.
   `outcome=revoked` can become current and invalidate an
   earlier pass without changing history. Configuration verification does not
   create this history and cannot substitute for it.
+  `verification_internal_id`, `connection_internal_id`, `host_version`,
+  `adapter_version`, `managed_fingerprint`, `volicord_build_id`,
+  `source_revision`, and `target_triple` are each 1 through 1,024 UTF-8 bytes,
+  contain at least one non-whitespace character and no control character, and
+  are preserved exactly without trimming, truncation, or substitution.
+  `client_name` and `client_version` use the shared managed MCP client identity
+  rule: 1 through 256 UTF-8 bytes with the same content and exact-preservation
+  requirements. Fixed values, lowercase hexadecimal digests, the passing-row
+  source-revision rule, canonical timestamps, and exact `{}` metadata retain
+  their stricter shapes.
   Every interval must satisfy
   `observed_at <= created_at` and
   `observed_at < expires_at <= observed_at + 86,400 seconds`; a pass also
@@ -803,6 +813,10 @@ Conditions:
   version bound as the artifact's installed-host version. Missing, false,
   wrong-typed, wrong-namespace, malformed, expired, revoked, ambiguous, corrupt, or
   mismatched input is unavailable and must not issue a token.
+  An over-bound publication or expectation is invalid input before replay or
+  storage effects. An over-bound persisted history or current-pointer value is
+  corrupt state; evaluation fails closed to CLI inbox without a token, `_meta`,
+  or project-time effect.
 - The current adapter has no trusted acquisition path for that external
   manifest or receipt. Production local-web eligibility therefore remains
   fail-closed and uses CLI inbox; test-only injection of an expected value does

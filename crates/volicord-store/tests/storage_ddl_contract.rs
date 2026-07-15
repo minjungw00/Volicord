@@ -6,8 +6,12 @@ use std::{
 use rusqlite::{params, Connection, Error as RusqliteError, ErrorCode};
 use serde_json::Value;
 use volicord_store::{
-    schema::{initialize_project_state_schema, initialize_registry_schema, STORAGE_PROFILE},
+    schema::{
+        initialize_project_state_schema, initialize_registry_schema, REGISTRY_DATABASE_KIND,
+        REGISTRY_SCHEMA_SQL, STORAGE_PROFILE,
+    },
     sqlite::{enable_foreign_keys, validate_project_state_schema, validate_registry_schema},
+    StoreError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -678,6 +682,78 @@ fn schema_comparison_detects_contract_critical_drift() -> Result<(), Box<dyn Err
         "removing write ticket consumed-run uniqueness",
         &expected,
         &read_database_schema(&weakened_write_ticket)?,
+    );
+
+    Ok(())
+}
+
+#[test]
+fn registry_schema_validation_rejects_weakened_host_capability_byte_bounds(
+) -> Result<(), Box<dyn Error>> {
+    for (label, original, weakened, expected_detail) in [
+        (
+            "missing history-coordinate byte bound",
+            "length(CAST(host_version AS BLOB)) BETWEEN 1 AND 1024",
+            "1",
+            "host_capability_verifications constraints are missing or malformed",
+        ),
+        (
+            "weakened client-identity byte bound",
+            "length(CAST(client_name AS BLOB)) BETWEEN 1 AND 256",
+            "length(CAST(client_name AS BLOB)) BETWEEN 1 AND 257",
+            "host_capability_verifications constraints are missing or malformed",
+        ),
+        (
+            "weakened current-pointer byte bound",
+            "length(CAST(current_verification_internal_id AS BLOB)) BETWEEN 1 AND 1024",
+            "length(CAST(current_verification_internal_id AS BLOB)) BETWEEN 1 AND 2048",
+            "host_capability_state constraints are missing or malformed",
+        ),
+    ] {
+        let weakened_sql = REGISTRY_SCHEMA_SQL.replacen(original, weakened, 1);
+        assert_ne!(
+            weakened_sql, REGISTRY_SCHEMA_SQL,
+            "{label}: canonical constraint fixture was not found"
+        );
+        let conn = build_schema_from_sql(&weakened_sql)?;
+        let error = match validate_registry_schema(&conn) {
+            Err(error) => error,
+            Ok(()) => panic!("{label}: weakened v6 schema must be rejected"),
+        };
+        assert!(
+            matches!(
+                error,
+                StoreError::SchemaInvariant {
+                    database_kind: REGISTRY_DATABASE_KIND,
+                    detail,
+                } if detail == expected_detail
+            ),
+            "{label}: expected the focused host-capability schema invariant"
+        );
+    }
+
+    let missing_not_null_sql = REGISTRY_SCHEMA_SQL.replacen(
+        "verification_internal_id TEXT NOT NULL PRIMARY KEY",
+        "verification_internal_id TEXT PRIMARY KEY",
+        1,
+    );
+    assert_ne!(missing_not_null_sql, REGISTRY_SCHEMA_SQL);
+    let conn = build_schema_from_sql(&missing_not_null_sql)?;
+    let error = match validate_registry_schema(&conn) {
+        Err(error) => error,
+        Ok(()) => panic!("a nullable bounded verification ID must be rejected"),
+    };
+    assert!(
+        matches!(
+            error,
+            StoreError::SchemaInvariant {
+                database_kind: REGISTRY_DATABASE_KIND,
+                detail,
+            } if detail.contains("host_capability_verifications.verification_internal_id")
+                && detail.contains("not_null=false")
+                && detail.contains("not_null=true")
+        ),
+        "expected the verification-ID column-shape invariant"
     );
 
     Ok(())
@@ -1429,6 +1505,7 @@ fn assert_registry_host_capability_contract_behavior(
         history_count, 2,
         "one evidence artifact digest may bind multiple exact verification rows"
     );
+    assert_host_capability_utf8_byte_bounds(conn)?;
 
     conn.execute(
         "DELETE FROM agent_connections WHERE connection_internal_id = 'conn_a'",
@@ -1454,6 +1531,20 @@ fn insert_host_capability_ddl_row(
     outcome: &str,
     host_kind: &str,
 ) -> rusqlite::Result<usize> {
+    insert_host_capability_ddl_row_with_optional_id(
+        conn,
+        Some(verification_internal_id),
+        outcome,
+        host_kind,
+    )
+}
+
+fn insert_host_capability_ddl_row_with_optional_id(
+    conn: &Connection,
+    verification_internal_id: Option<&str>,
+    outcome: &str,
+    host_kind: &str,
+) -> rusqlite::Result<usize> {
     conn.execute(
         "INSERT INTO host_capability_verifications (
             verification_internal_id, connection_internal_id, capability,
@@ -1474,6 +1565,222 @@ fn insert_host_capability_ddl_row(
         )",
         params![verification_internal_id, outcome, host_kind],
     )
+}
+
+fn assert_host_capability_utf8_byte_bounds(conn: &Connection) -> Result<(), Box<dyn Error>> {
+    let exact_general = multibyte_text_with_utf8_len(1024);
+    let over_general = format!("{exact_general}a");
+    let exact_client = multibyte_text_with_utf8_len(256);
+    let over_client = format!("{exact_client}a");
+    assert_eq!(over_general.len(), 1025);
+    assert_eq!(over_client.len(), 257);
+
+    for (connection_internal_id, config_target) in [
+        (exact_general.as_str(), "hcv-byte-bound-exact"),
+        (over_general.as_str(), "hcv-byte-bound-over"),
+    ] {
+        conn.execute(
+            "INSERT INTO agent_connections (
+                connection_internal_id, host_kind, intent, host_scope, server_name,
+                config_target, mode, managed_fingerprint, created_at, updated_at
+            ) VALUES (
+                ?1, 'codex', 'personal', 'user', 'volicord',
+                ?2, 'workflow', 'fingerprint-bounds', 't0', 't0'
+            )",
+            params![connection_internal_id, config_target],
+        )?;
+    }
+
+    insert_host_capability_ddl_row(conn, "verification_bounds", "failed", "codex")?;
+    let null_verification_id =
+        insert_host_capability_ddl_row_with_optional_id(conn, None, "failed", "codex")
+            .expect_err("the bounded verification ID must be explicitly NOT NULL");
+    assert_constraint_error(
+        "host-capability verification ID null bound",
+        null_verification_id,
+    );
+
+    assert_eq!(
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET verification_internal_id = ?1
+              WHERE verification_internal_id = 'verification_bounds'",
+            [exact_general.as_str()],
+        )?,
+        1,
+        "a multibyte verification ID at exactly 1,024 UTF-8 bytes must be accepted"
+    );
+    assert_eq!(
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET verification_internal_id = 'verification_bounds'
+              WHERE verification_internal_id = ?1",
+            [exact_general.as_str()],
+        )?,
+        1
+    );
+    let over_verification_id = conn
+        .execute(
+            "UPDATE host_capability_verifications
+                SET verification_internal_id = ?1
+              WHERE verification_internal_id = 'verification_bounds'",
+            [over_general.as_str()],
+        )
+        .expect_err("a verification ID over 1,024 UTF-8 bytes must be rejected");
+    assert_constraint_error(
+        "host-capability verification ID byte bound",
+        over_verification_id,
+    );
+
+    assert_eq!(
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET connection_internal_id = ?1
+              WHERE verification_internal_id = 'verification_bounds'",
+            [exact_general.as_str()],
+        )?,
+        1,
+        "a multibyte connection ID at exactly 1,024 UTF-8 bytes must be accepted"
+    );
+    assert_eq!(
+        conn.execute(
+            "UPDATE host_capability_verifications
+                SET connection_internal_id = 'conn_a'
+              WHERE verification_internal_id = 'verification_bounds'",
+            [],
+        )?,
+        1
+    );
+    let over_connection_id = conn
+        .execute(
+            "UPDATE host_capability_verifications
+                SET connection_internal_id = ?1
+              WHERE verification_internal_id = 'verification_bounds'",
+            [over_general.as_str()],
+        )
+        .expect_err("a verification connection ID over 1,024 UTF-8 bytes must be rejected");
+    assert_constraint_error(
+        "host-capability verification connection ID byte bound",
+        over_connection_id,
+    );
+
+    for (column, original) in [
+        ("host_version", "1.0.0"),
+        ("adapter_version", "0.9.0"),
+        ("managed_fingerprint", "fingerprint-a"),
+        ("volicord_build_id", "build-a"),
+        (
+            "source_revision",
+            "1111111111111111111111111111111111111111",
+        ),
+        ("target_triple", "x86_64-unknown-linux-gnu"),
+    ] {
+        let sql = format!(
+            "UPDATE host_capability_verifications
+                SET {column} = ?1
+              WHERE verification_internal_id = 'verification_bounds'"
+        );
+        assert_eq!(
+            conn.execute(&sql, [exact_general.as_str()])?,
+            1,
+            "{column}: a multibyte value at exactly 1,024 UTF-8 bytes must be accepted"
+        );
+        assert_eq!(conn.execute(&sql, [original])?, 1);
+        let error = conn
+            .execute(&sql, [over_general.as_str()])
+            .expect_err(&format!(
+                "{column}: a value over 1,024 bytes must be rejected"
+            ));
+        assert_constraint_error(&format!("{column} UTF-8 byte bound"), error);
+    }
+
+    for (column, original) in [
+        ("client_name", "codex-mcp-client"),
+        ("client_version", "1.0.0"),
+    ] {
+        let sql = format!(
+            "UPDATE host_capability_verifications
+                SET {column} = ?1
+              WHERE verification_internal_id = 'verification_bounds'"
+        );
+        assert_eq!(
+            conn.execute(&sql, [exact_client.as_str()])?,
+            1,
+            "{column}: a multibyte value at exactly 256 UTF-8 bytes must be accepted"
+        );
+        assert_eq!(conn.execute(&sql, [original])?, 1);
+        let error = conn
+            .execute(&sql, [over_client.as_str()])
+            .expect_err(&format!(
+                "{column}: a value over 256 bytes must be rejected"
+            ));
+        assert_constraint_error(&format!("{column} UTF-8 byte bound"), error);
+    }
+
+    conn.execute(
+        "DELETE FROM host_capability_verifications
+          WHERE verification_internal_id = 'verification_bounds'",
+        [],
+    )?;
+    conn.execute(
+        "DELETE FROM agent_connections WHERE config_target LIKE 'hcv-byte-bound-%'",
+        [],
+    )?;
+
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    assert_eq!(
+        conn.execute(
+            "INSERT INTO host_capability_state (
+                connection_internal_id, capability,
+                current_verification_internal_id, updated_at
+            ) VALUES (?1, 'model_invisible_user_surface', ?2, 't0')",
+            params![exact_general.as_str(), exact_general.as_str()],
+        )?,
+        1,
+        "multibyte current-pointer coordinates at exactly 1,024 bytes must be accepted"
+    );
+    conn.execute(
+        "DELETE FROM host_capability_state WHERE updated_at = 't0'",
+        [],
+    )?;
+
+    for (label, connection_internal_id, verification_internal_id) in [
+        (
+            "host-capability state connection ID byte bound",
+            over_general.as_str(),
+            "verification-state-bounds",
+        ),
+        (
+            "host-capability state verification ID byte bound",
+            "connection-state-bounds",
+            over_general.as_str(),
+        ),
+    ] {
+        let error = conn
+            .execute(
+                "INSERT INTO host_capability_state (
+                    connection_internal_id, capability,
+                    current_verification_internal_id, updated_at
+                ) VALUES (?1, 'model_invisible_user_surface', ?2, 't0')",
+                params![connection_internal_id, verification_internal_id],
+            )
+            .expect_err("an over-bound current-pointer coordinate must be rejected");
+        assert_constraint_error(label, error);
+    }
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+
+    Ok(())
+}
+
+fn multibyte_text_with_utf8_len(byte_len: usize) -> String {
+    let value = format!(
+        "{}{}",
+        "가".repeat(byte_len / "가".len()),
+        "a".repeat(byte_len % "가".len())
+    );
+    assert_eq!(value.len(), byte_len);
+    assert!(value.contains('가'));
+    value
 }
 
 fn assert_evidence_capture_intent_constraints(label: &str, conn: &Connection) {

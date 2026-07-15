@@ -4181,6 +4181,8 @@ mod mutation_output_tests {
     use std::io::{BufReader, Cursor};
     use volicord_store::agent_connections::HOST_KIND_CLAUDE_CODE;
     use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
+    use volicord_store::host_capabilities::MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES;
+    use volicord_store::sqlite::{open_registry_database, registry_db_path};
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
@@ -5218,6 +5220,119 @@ mod mutation_output_tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(after, before);
+        Ok(())
+    }
+
+    #[test]
+    fn overbound_current_host_capability_fails_closed_without_local_web_effects(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new_with_host_kind(
+            "mcp-local-web-overbound-current-verification",
+            HOST_KIND_CLAUDE_CODE,
+        )?;
+        let context =
+            McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
+        let verification_label = "overbound_current_verification";
+        let adapter = McpAdapter::new(fixture.runtime_home_path(), context)
+            .with_local_web_consent_readiness(
+                LocalWebConsentContext {
+                    base_url: "http://127.0.0.1:39000".to_owned(),
+                },
+                LocalWebConsentReadiness::ready_for_test(),
+            )
+            .with_expected_evidence_artifact_sha256_for_test(
+                exact_host_capability_evidence_artifact_sha256(verification_label),
+            );
+        publish_exact_host_capability_verification(&fixture, verification_label)?;
+        let capabilities = exact_local_web_test_capabilities(&fixture)?;
+        assert!(adapter.effective_local_web_consent_available(&capabilities));
+
+        let output = ToolCallOutput::success("{}".to_owned())?.with_user_action_fallback(
+            UserActionFallback {
+                texts: vec![generic_user_channel_fallback_text()],
+                kind: DiagnosticFallbackKind::CliInbox,
+                deferred_local_web_handoff: Some(DeferredLocalWebHandoff {
+                    project_id: ProjectId::new(fixture.project_id()),
+                    user_action_request_id: UserActionRequestId::new("uar_overbound_current"),
+                    form_digest: format!("sha256:{}", "0".repeat(64)),
+                }),
+            },
+        );
+        let before: (i64, String) = fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(before.0, 0);
+        let private_marker = "private-overbound-verification-id";
+        let corrupt_verification_internal_id = format!(
+            "{private_marker}{}",
+            "가".repeat(MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES)
+        );
+        assert!(
+            corrupt_verification_internal_id.len() > MAX_HOST_CAPABILITY_VERIFICATION_TEXT_BYTES
+        );
+        let verification_internal_id = format!("hcv_{verification_label}");
+        let registry = open_registry_database(registry_db_path(fixture.runtime_home_path()))?;
+        registry.pragma_update(None, "foreign_keys", "OFF")?;
+        registry.pragma_update(None, "ignore_check_constraints", "ON")?;
+        let corrupted = registry.execute(
+            "UPDATE host_capability_verifications
+                SET verification_internal_id = ?1
+              WHERE verification_internal_id = ?2",
+            [
+                corrupt_verification_internal_id.as_str(),
+                verification_internal_id.as_str(),
+            ],
+        )?;
+        assert_eq!(corrupted, 1);
+        let pointer_corrupted = registry.execute(
+            "UPDATE host_capability_state
+                SET current_verification_internal_id = ?1
+              WHERE current_verification_internal_id = ?2",
+            [
+                corrupt_verification_internal_id.as_str(),
+                verification_internal_id.as_str(),
+            ],
+        )?;
+        assert_eq!(pointer_corrupted, 1);
+        drop(registry);
+
+        assert!(!adapter.effective_local_web_consent_available(&capabilities));
+        let output = materialize_local_web_handoff(
+            &adapter,
+            Some(MutationDetailLevel::Summary),
+            &capabilities,
+            output,
+        )?;
+
+        assert!(output.host_meta.is_none());
+        assert!(output.deferred_local_web_handoff.is_none());
+        assert_eq!(
+            output.diagnostic_facts.fallback_kind,
+            Some(DiagnosticFallbackKind::CliInbox)
+        );
+        let result = tool_call_result_from_output(output);
+        assert!(result.get("_meta").is_none());
+        assert!(result["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry["text"].as_str())
+            .any(|text| text.contains("`volicord inbox`")));
+        let result_text = serde_json::to_string(&result)?;
+        assert!(!result_text.contains(private_marker));
+        assert!(!result_text.contains("http://127.0.0.1:39000"));
+        assert!(!result_text.contains("token="));
+        let after: (i64, String) = fixture.conn()?.query_row(
+            "SELECT (SELECT COUNT(*) FROM user_action_channel_tokens), updated_at FROM project_state",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(
+            after, before,
+            "corrupt host-capability fallback must have no token or clock effect"
+        );
         Ok(())
     }
 
