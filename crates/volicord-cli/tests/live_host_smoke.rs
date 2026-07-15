@@ -2018,6 +2018,19 @@ mod unix {
             observation(&"a".repeat(64), &["initialize-a"]),
         )]);
         let first_fingerprints = BTreeMap::from([(baseline.clone(), "a".repeat(64))]);
+
+        let mut unbound_recorder = LiveResultRecorder::new("claude-code", None)?;
+        unbound_recorder.bind_observed_runtime_home(runtime_home.path())?;
+        let unbound_error = unbound_recorder
+            .bind_observed_host_turn_baselines(&empty, &first)
+            .expect_err("a managed initialize must not be retained without its Agent Connection");
+        assert_eq!(
+            unbound_error.to_string(),
+            "managed initialize observation requires a bound Agent Connection"
+        );
+        assert!(unbound_recorder.terminal_publication_is_forbidden());
+        assert!(unbound_recorder.observed_host_turn_baselines.is_empty());
+
         recorder.bind_observed_host_turn_baselines(&empty, &first)?;
         assert_eq!(recorder.observed_host_turn_baselines, first_fingerprints);
 
@@ -2205,6 +2218,7 @@ mod unix {
                 "fake-host",
                 &fake_host,
             )?;
+            recorder.bind_observed_connection_id("CONN-candidate-integrity".to_owned())?;
             let mut writable = fs::metadata(&launch_fixture.volicord_path)?.permissions();
             writable.set_mode(0o755);
             fs::set_permissions(&launch_fixture.volicord_path, writable)?;
@@ -2817,6 +2831,7 @@ mod unix {
             "fake-host",
             &one_shot_host,
         )?;
+        one_shot.bind_observed_connection_id("CONN-retained-one-shot".to_owned())?;
         let one_shot_error = fixture
             .run_authenticated_interactive_host(
                 "claude-code",
@@ -2836,6 +2851,7 @@ mod unix {
         write_self_mutating_host(&split_host, &split_log)?;
         let mut split = LiveResultRecorder::new("claude-code", None)?;
         fixture.observe_and_bind_installed_host_identity(&mut split, "fake-host", &split_host)?;
+        split.bind_observed_connection_id("CONN-retained-split".to_owned())?;
         let turn = fixture.start_authenticated_interactive_host(
             "claude-code",
             &split_host,
@@ -4920,6 +4936,20 @@ mod unix {
     #[test]
     fn live_result_recorder_connection_binding_is_monotonic_and_conflict_checked(
     ) -> Result<(), Box<dyn Error>> {
+        let mut unbound = LiveResultRecorder::new_for_kind(
+            "codex",
+            LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
+            None,
+        )?;
+        let unbound_error = unbound
+            .require_bound_connection_before_authenticated_turn()
+            .expect_err("an authenticated host turn must fail before an unbound launch");
+        assert_eq!(
+            unbound_error.to_string(),
+            "authenticated host turn requires a bound Agent Connection before launch"
+        );
+        assert!(unbound.terminal_publication_is_forbidden());
+
         let mut recorder = LiveResultRecorder::new_for_kind(
             "codex",
             LIVE_VERIFIED_TOOL_PRODUCER_RESULT_KIND,
@@ -13831,6 +13861,7 @@ mod unix {
             volicord_build_id,
             connection_id,
         };
+        result_recorder.bind_observed_connection_id(identity.connection_id.clone())?;
         let project_id = live_fixture_project_id(&fixture)?;
         let config_fixture = verify_final_output_config_fixture(
             &fixture,
@@ -20178,6 +20209,7 @@ mod unix {
         connection_id: &str,
         result_recorder: &mut LiveResultRecorder,
     ) -> Result<(), Box<dyn Error>> {
+        result_recorder.bind_observed_connection_id(connection_id.to_owned())?;
         if let Err(error) =
             fixture.run_codex_hook_trust_preflight(host, executable, result_recorder)
         {
@@ -22306,6 +22338,19 @@ mod unix {
                 }
             } else {
                 self.observed_connection_id = Some(connection_id);
+            }
+            Ok(())
+        }
+
+        fn require_bound_connection_before_authenticated_turn(
+            &mut self,
+        ) -> Result<(), Box<dyn Error>> {
+            if self.observed_connection_id.is_none() {
+                self.forbid_terminal_publication();
+                return Err(io::Error::other(
+                    "authenticated host turn requires a bound Agent Connection before launch",
+                )
+                .into());
             }
             Ok(())
         }
@@ -25410,6 +25455,7 @@ mod unix {
             prompt: &str,
             recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            recorder.require_bound_connection_before_authenticated_turn()?;
             recorder.require_publication_domain_ready()?;
             let login_program = recorder.required_revalidated_host_executable(program)?;
             let before = match self.managed_baseline_observations() {
@@ -25466,6 +25512,7 @@ mod unix {
             prompt: &str,
             recorder: &mut LiveResultRecorder,
         ) -> Result<InteractiveHostTurn, Box<dyn Error>> {
+            recorder.require_bound_connection_before_authenticated_turn()?;
             recorder.require_publication_domain_ready()?;
             let login_program = recorder.required_revalidated_host_executable(program)?;
             let before = match self.managed_baseline_observations() {
@@ -25634,6 +25681,7 @@ mod unix {
             if host != "codex" {
                 return Ok(());
             }
+            recorder.require_bound_connection_before_authenticated_turn()?;
             recorder.require_publication_domain_ready()?;
             let login_program = recorder.required_revalidated_host_executable(program)?;
             let before = match self.managed_baseline_observations() {
@@ -25702,6 +25750,7 @@ mod unix {
             prompt: &str,
             recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            recorder.require_bound_connection_before_authenticated_turn()?;
             recorder.require_publication_domain_ready()?;
             let login_program = recorder.required_revalidated_host_executable(program)?;
             let before = match self.managed_baseline_observations() {

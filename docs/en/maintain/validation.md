@@ -290,6 +290,15 @@ review, then give the harness its exact `hooks:reviewed` confirmation. The
 confirmation is not event evidence; the later task-bound run must still produce
 the required persisted `Stop` event.
 
+Before any authenticated host entry point, bind the exact Agent Connection ID
+from the fixture's initialization result to the release-cell recorder. The
+harness must reject a missing, malformed, or conflicting binding before login
+or host launch, poison terminal publication for that cell, and preserve the
+result root for fresh-root recovery. Rebinding the same exact ID is harmless.
+Static unsupported and unavailable-host paths that launch no host do not need
+this binding. The exact contract remains with
+[Host Release Evidence](../reference/host-release-evidence.md).
+
 The maintained preflight reuses the runner's normal `CODEX_HOME` so it can use
 stored ChatGPT authentication without copying credentials. That home can also
 contribute other active hook sources. Therefore the maintained harness does not

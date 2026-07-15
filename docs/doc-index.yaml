@@ -1500,7 +1500,8 @@ documents:
   summary: Exact-final-artifact managed-host release candidate production and evidence schemas,
     actual bounded initialize client identity, fixed twelve-cell gate, canonical shared external-path
     evaluation, independent audit, append-only live-cell publication with fresh-root recovery, and
-    privacy-preserving session-binding and controlling-terminal foreground contracts.
+    pre-launch exact Agent Connection binding, privacy-preserving session-binding, and
+    controlling-terminal foreground contracts.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: agent_connection
@@ -1525,6 +1526,7 @@ documents:
   - same unchanged build-runner and Git/Rust/Cargo toolchain precondition plus bounded producer-emitted candidate build-environment coordinates that preserve candidate-v1 acceptance
   - non-adversarial build-provenance and source-archive integrity boundary without reproducible-build or hostile-producer attestation
   - fixed twelve-cell Codex and Claude Code host release validation matrix with separate required-nullable host availability and actual initialize client identity coordinates
+  - monotonic exact Agent Connection binding before every authenticated cell host launch, with missing or conflicting binding forbidding launch and terminal publication
   - '`volicord-host-release-cell-inputs-v3` digest domain and historical v1/v2 artifact rejection'
   - half-open 24-hour release-cell freshness and no cross-host-version aggregation
   - canonical claimed-status-independent support derivation and release-gate verdicts
@@ -3076,8 +3078,8 @@ documents:
   summary: Maintenance policy for structural checks including root README pair validation, ambiguous
     whole-host support wording, durable test and audit boundaries, human semantic review, onboarding usability validation, live-host
     native Judgment, local-web evidence-observation, CLI-fallback, and final-output replay release
-    validation, controlling-terminal foreground restoration, twelve-cell append-only result-root
-    recovery, Rust validation, and result reporting.
+    validation, pre-launch Agent Connection binding, controlling-terminal foreground restoration,
+    twelve-cell append-only result-root recovery, Rust validation, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -3108,6 +3110,7 @@ documents:
   - Exact `tests/release-validation` package, create-new candidate descriptor producer, fixed host
     release gate, separate-process audit, and unavailable-implementation reporting command routes.
   - Twelve-cell external result-root preparation, append-only publication runbook, failure reporting, and fresh-root recovery.
+  - Validation order for exact Agent Connection binding before authenticated host login or launch.
   - Validation procedures for the live source-observation barrier and clean non-pass versus structural
     publication-failure boundary owned by `reference.host-release-evidence`.
   - Validation procedures for transferring a controlling terminal to each interactive dedicated process group, bounded restoration to the runner group, exact terminal-attribute restoration, and fresh-root recovery after controller or terminal failure.

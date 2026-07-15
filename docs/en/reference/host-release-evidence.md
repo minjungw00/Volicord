@@ -405,6 +405,14 @@ metadata, or another cell. A recorder may read the bounded top-level
 initialize message or raw protocol, session, thread, turn, or tool-call payload
 as release evidence.
 
+Before any authenticated cell host process starts, the recorder must
+monotonically bind the exact prepared Agent Connection ID obtained from that
+cell's initialization result. Rebinding the same exact ID is idempotent. A
+missing, malformed, or conflicting binding is a terminal structural recorder
+failure: the producer must not launch the host process or publish either final
+name. A static unsupported or unavailable-host path that launches no host may
+remain unbound.
+
 Before the authenticated cell host turn, the recorder establishes a bounded
 before-observation of the exact managed baselines in the cell's bound, clean,
 disposable Runtime Home. It establishes the corresponding after-observation
