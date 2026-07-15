@@ -61,6 +61,15 @@ fn stop_decision(
             json!({"active_task": null, "close_blockers": []}),
         ));
     };
+    let mut invocation = InvocationContext::new(
+        ProjectId::new(&project.project_id),
+        ActorSource::agent_connection(envelope.connection_id.clone()),
+        OperationCategory::Read,
+        invocation_binding_basis,
+    );
+    if let Some(session_id) = envelope.session_id.as_deref() {
+        invocation = invocation.with_session_id(session_id);
+    }
     let response = CoreService::new(runtime_home).status(
         StatusRequest {
             envelope: ToolEnvelope {
@@ -85,12 +94,7 @@ fn stop_decision(
                 continuity: false,
             },
         },
-        InvocationContext::new(
-            ProjectId::new(&project.project_id),
-            ActorSource::agent_connection(envelope.connection_id.clone()),
-            OperationCategory::Read,
-            invocation_binding_basis,
-        ),
+        invocation,
     )?;
     let mut reasons = Vec::new();
     if summary.pending_user_action_count > 0 {

@@ -18,7 +18,10 @@ use volicord_store::guards::{
     insert_agent_session, list_pending_expected_writes, list_unresolved_unrecorded_changes,
     prompt_capture, prompt_capture_availability, unrecorded_change, AgentSessionInsert,
 };
-use volicord_store::session_watch::latest_watch_baseline_for_session;
+use volicord_store::session_watch::{
+    create_watch_baseline, latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
+    snapshot_product_repository, SessionWatchStatus, WatchBaselineCreate, WatchSnapshotOptions,
+};
 
 #[cfg(unix)]
 #[cfg(unix)]
@@ -3580,6 +3583,163 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
         value["result"]["close_status"]["authority_receipt"]["task_ref"]["record_id"],
         value["result"]["close_status"]["active_task"]
     );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn guard_stop_refresh_uses_the_exact_hook_session_watch_baseline() -> Result<(), Box<dyn Error>> {
+    struct Case {
+        label: &'static str,
+        exact_basis: &'static str,
+        later_basis: &'static str,
+        expects_session_watch_blocker: bool,
+    }
+
+    for case in [
+        Case {
+            label: "exact_full_later_partial",
+            exact_basis: "mcp_start",
+            later_basis: "method_boundary",
+            expects_session_watch_blocker: false,
+        },
+        Case {
+            label: "exact_partial_later_full",
+            exact_basis: "method_boundary",
+            later_basis: "mcp_start",
+            expects_session_watch_blocker: true,
+        },
+    ] {
+        let fixture = GuardCliFixture::new(&format!("guard-stop-exact-session-{}", case.label))?;
+        let (guard_installation_id, policy_hash) =
+            fixture.install_guard_policy_for_host("codex")?;
+        fixture.create_active_task()?;
+        let exact_native_session = format!("native.stop.exact.{}", case.label);
+        let later_native_session = format!("native.stop.later.{}", case.label);
+
+        for (event_id, native_session) in [
+            (
+                "guard_stop_exact_session_start",
+                exact_native_session.as_str(),
+            ),
+            (
+                "guard_stop_later_session_start",
+                later_native_session.as_str(),
+            ),
+        ] {
+            let event = json!({
+                "event_id": format!("{event_id}_{}", case.label),
+                "session_id": native_session,
+                "connection_id": fixture.connection_id(),
+                "host_kind": "codex"
+            });
+            assert_success(&run_guard(
+                fixture.runtime_home(),
+                fixture.repo_root(),
+                ["_hook", "session-start", "--repo", fixture.repo_arg()],
+                &event,
+            )?);
+        }
+
+        let snapshot = snapshot_product_repository(
+            fixture.runtime_home(),
+            fixture.repo_root(),
+            WatchSnapshotOptions::default(),
+        )?;
+        for (index, (native_session, basis)) in [
+            (exact_native_session.as_str(), case.exact_basis),
+            (later_native_session.as_str(), case.later_basis),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let session_id = volicord_types::managed_host_session_id(
+                "codex",
+                fixture.connection_id(),
+                native_session,
+            )?;
+            let created_at = format!("2026-07-15T00:00:0{}Z", index + 1);
+            create_watch_baseline(
+                fixture.runtime_home(),
+                fixture.project_id(),
+                WatchBaselineCreate {
+                    watch_baseline_id: format!("watch_base_stop_{}_{}", case.label, index),
+                    session_id,
+                    connection_internal_id: fixture.connection_id().to_owned(),
+                    guard_installation_id: Some(guard_installation_id.clone()),
+                    status: SessionWatchStatus::Active,
+                    snapshot: snapshot.clone(),
+                    created_at: created_at.clone(),
+                    metadata_json: json!({
+                        "coverage_start_at": created_at,
+                        "coverage_basis": basis
+                    })
+                    .to_string(),
+                },
+            )?;
+        }
+
+        let exact_session_id = volicord_types::managed_host_session_id(
+            "codex",
+            fixture.connection_id(),
+            &exact_native_session,
+        )?;
+        let later_session_id = volicord_types::managed_host_session_id(
+            "codex",
+            fixture.connection_id(),
+            &later_native_session,
+        )?;
+        assert_eq!(
+            latest_watch_baseline_for_connection(
+                fixture.runtime_home(),
+                fixture.project_id(),
+                fixture.connection_id(),
+            )?
+            .expect("the connection-wide distractor baseline should exist")
+            .session_id,
+            later_session_id
+        );
+
+        let stop_event = json!({
+            "event_id": format!("guard_stop_exact_session_{}", case.label),
+            "session_id": exact_native_session,
+            "connection_id": fixture.connection_id(),
+            "host_kind": "codex",
+            "message": "All done."
+        });
+        let output = run_guard(
+            fixture.runtime_home(),
+            fixture.repo_root(),
+            [
+                "_hook",
+                "stop",
+                "--repo",
+                fixture.repo_arg(),
+                "--guard-installation",
+                &guard_installation_id,
+                "--host",
+                "codex",
+                "--integration-profile",
+                "detective",
+                "--policy-hash",
+                &policy_hash,
+            ],
+            &stop_event,
+        )?;
+        let value = json_stdout(&output)?;
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(value["decision"], "deny");
+        assert_eq!(value["session_id"], exact_session_id);
+        assert_reason(&value, "close_readiness_blocked");
+        let blocker_codes = close_blocker_codes(&value["result"]["close_status"]);
+        assert!(blocker_codes.contains(&"missing_current_close_basis".to_owned()));
+        assert_eq!(
+            blocker_codes.contains(&"session_watch_unavailable".to_owned()),
+            case.expects_session_watch_blocker,
+            "Stop selected the wrong same-connection session baseline for {}: {blocker_codes:?}",
+            case.label
+        );
+    }
     Ok(())
 }
 
