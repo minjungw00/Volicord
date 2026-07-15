@@ -10,8 +10,8 @@ mod unix {
         error::Error,
         ffi::{OsStr, OsString},
         fs::{self, OpenOptions},
-        io::{self, IsTerminal, Read, Write},
-        os::unix::fs::PermissionsExt,
+        io::{self, IsTerminal, Read, Seek, SeekFrom, Write},
+        os::unix::fs::{MetadataExt, PermissionsExt},
         panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
         path::{Path, PathBuf},
         process::{Command, ExitStatus, Output, Stdio},
@@ -21,7 +21,7 @@ mod unix {
 
     use chrono::{DateTime, SecondsFormat, Utc};
     use rusqlite::OptionalExtension;
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use sha2::{Digest, Sha256};
     use volicord_cli::host_integration::{
@@ -33,6 +33,9 @@ mod unix {
         HostKind,
     };
     use volicord_mcp::{McpAdapter, McpConnectionContext};
+    use volicord_release_validation_tests::io::{
+        read_bounded_external_file, sha256_external_file, ResultRootLease, ValidationContext,
+    };
     use volicord_store::{
         agent_connections::{
             agent_connection_record_read_only, CONNECTION_MODE_WORKFLOW, VERIFIED_STATUS_COMPLETE,
@@ -43,6 +46,7 @@ mod unix {
             DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
             DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
         },
+        inspection::{inspect_runtime_home, DatabaseInspection},
         session_watch::{
             latest_watch_baseline_for_session, update_watch_status, watch_baseline,
             SessionWatchStatus, WatchBaselineRecord, WatchStatusUpdate,
@@ -149,6 +153,16 @@ mod unix {
     const MAX_VALIDATION_RUN_ID_BYTES: usize = 192;
     const MAX_RECORDED_AT_BYTES: usize = 64;
     const MAX_LIVE_HOST_RESULT_BYTES: usize = 16 * 1_024;
+
+    fn create_live_result_root(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf), Box<dyn Error>> {
+        let cells = root.join("cells");
+        let evidence = root.join("evidence");
+        let auxiliary = root.join("auxiliary");
+        fs::create_dir_all(&cells)?;
+        fs::create_dir_all(&evidence)?;
+        fs::create_dir_all(&auxiliary)?;
+        Ok((cells, evidence, auxiliary))
+    }
     const MAX_RELEASE_CANDIDATE_DESCRIPTOR_BYTES: usize = 64 * 1_024;
     const MAX_RELEASE_CANDIDATE_BINARY_BYTES: u64 = 256 * 1024 * 1024;
     const MAX_MANAGED_MCP_SESSIONS_PER_HOST_TURN: u64 = 8;
@@ -157,8 +171,8 @@ mod unix {
     #[test]
     fn live_result_helpers_create_one_bounded_immutable_result() -> Result<(), Box<dyn Error>> {
         let temp = TempRuntimeHome::new("live-result-recorder")?;
-        let result_dir = temp.path().join("release-results");
-        fs::create_dir_all(&result_dir)?;
+        let result_root = temp.product_repo_path("release-results");
+        let (result_dir, _, auxiliary_dir) = create_live_result_root(&result_root)?;
         let result_path = result_dir.join("codex.json");
 
         let mut recorder = LiveResultRecorder::new("codex", Some(result_path.clone()))?;
@@ -198,16 +212,20 @@ mod unix {
             .is_err());
         assert!(LiveResultRecorder::new("codex", Some(result_path.clone())).is_err());
         assert!(required_live_result_path(None).is_err());
+        assert!(required_live_result_path(Some(OsString::new())).is_err());
+        assert!(required_release_candidate_path(None).is_err());
+        assert!(required_release_candidate_path(Some(OsString::new())).is_err());
         assert_eq!(
             required_live_result_path(Some(result_dir.join("required.json").into_os_string()))?,
             result_dir.join("required.json")
         );
-        assert!(validate_external_result_path(Path::new("relative-result.json"), true).is_err());
-        assert!(validate_external_result_path(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("live-result.json"),
-            true,
-        )
-        .is_err());
+        let path_context = release_validation_context()?;
+        assert!(path_context
+            .validate_new_output(Path::new("relative-result.json"))
+            .is_err());
+        assert!(path_context
+            .validate_new_output(&Path::new(env!("CARGO_MANIFEST_DIR")).join("live-result.json"))
+            .is_err());
         assert!(serialize_live_host_result(&serde_json::json!({
             "payload": "x".repeat(MAX_LIVE_HOST_RESULT_BYTES)
         }))
@@ -290,7 +308,9 @@ mod unix {
         )
         .is_err());
 
-        let early_failure_path = result_dir.join("claude-code.json");
+        let (early_failure_dir, _, _) =
+            create_live_result_root(&temp.product_repo_path("early-failure-results"))?;
+        let early_failure_path = early_failure_dir.join("claude-code.json");
         {
             let _recorder =
                 LiveResultRecorder::new("claude-code", Some(early_failure_path.clone()))?;
@@ -310,7 +330,10 @@ mod unix {
             false
         );
 
-        let observed_early_failure_path = result_dir.join("codex-observed-early-failure.json");
+        let (observed_failure_dir, _, _) =
+            create_live_result_root(&temp.product_repo_path("observed-failure-results"))?;
+        let observed_early_failure_path =
+            observed_failure_dir.join("codex-observed-early-failure.json");
         {
             let mut recorder =
                 LiveResultRecorder::new("codex", Some(observed_early_failure_path.clone()))?;
@@ -336,7 +359,10 @@ mod unix {
             "fixture-build-observed-before-failure"
         );
 
-        let final_record_failure_path = result_dir.join("codex-record-final-output.json");
+        let (final_record_failure_dir, _, _) =
+            create_live_result_root(&temp.product_repo_path("final-record-failure-results"))?;
+        let final_record_failure_path =
+            final_record_failure_dir.join("codex-record-final-output.json");
         {
             let _recorder = LiveResultRecorder::new_for_kind_and_profile(
                 "codex-record-final-output",
@@ -356,7 +382,8 @@ mod unix {
             serde_json::json!(["authority_display", "authenticated_exact_replay"])
         );
 
-        let unselected_final_failure_path = result_dir.join("codex-unselected-final-output.json");
+        let unselected_final_failure_path =
+            auxiliary_dir.join("codex-unselected-final-output.json");
         {
             let _recorder = LiveResultRecorder::new_for_kind_and_profile(
                 "codex-unselected-final-output",
@@ -380,16 +407,364 @@ mod unix {
     }
 
     #[test]
+    fn live_producer_reuses_canonical_external_release_path_policy() -> Result<(), Box<dyn Error>> {
+        fn candidate_fixture(
+            candidate_path: &Path,
+            descriptor_path: &Path,
+        ) -> Result<ReleaseCandidate, Box<dyn Error>> {
+            Ok(ReleaseCandidate {
+                descriptor_path: Some(descriptor_path.to_path_buf()),
+                schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
+                candidate_id: "candidate_external_path_policy".to_owned(),
+                candidate_path: path_text(candidate_path),
+                source_revision: "a".repeat(40),
+                source_clean: true,
+                source_archive_algorithm: RELEASE_SOURCE_ARCHIVE_ALGORITHM.to_owned(),
+                source_archive_sha256: "b".repeat(64),
+                target_triple: "fixture-target".to_owned(),
+                release_profile: "release".to_owned(),
+                binary_sha256: sha256_file(candidate_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?,
+                build_environment: ReleaseCandidateBuildEnvironment {
+                    runner_os: "fixture-os".to_owned(),
+                    runner_os_version: "fixture-version".to_owned(),
+                    runner_arch: "fixture-arch".to_owned(),
+                    git_version: "git fixture".to_owned(),
+                    rustc_version: "rustc fixture".to_owned(),
+                    cargo_version: "cargo fixture".to_owned(),
+                },
+                recorded_at: "2026-07-14T00:00:00Z".to_owned(),
+            })
+        }
+
+        let context = release_validation_context()?;
+        for forbidden_parent in [
+            context.source_checkout().to_path_buf(),
+            context.target_directory().to_path_buf(),
+            context.source_checkout().join("docs"),
+        ] {
+            let result_path = forbidden_parent.join(format!(
+                "volicord-forbidden-live-result-{}-{}.json",
+                std::process::id(),
+                epoch_duration()?.as_nanos()
+            ));
+            assert!(LiveResultRecorder::new("codex", Some(result_path.clone())).is_err());
+            assert!(!result_path.exists());
+        }
+        assert!(validate_external_regular_input(
+            &context,
+            Path::new(volicord_bin()),
+            MAX_RELEASE_CANDIDATE_BINARY_BYTES,
+            "candidate_path",
+        )
+        .is_err());
+
+        let runtime_home = TempRuntimeHome::new("live-path-observed-runtime")?;
+        let release_root = runtime_home.product_repo_path("external-release");
+        fs::create_dir_all(&release_root)?;
+        let publication_root = release_root.join("publication");
+        let (cell_directory, _evidence_directory, _auxiliary_directory) =
+            create_live_result_root(&publication_root)?;
+
+        let forbidden_result = cell_directory.join("forbidden-result.json");
+        {
+            let mut recorder = LiveResultRecorder::new("codex", Some(forbidden_result.clone()))?;
+            assert!(recorder
+                .bind_observed_runtime_home(&publication_root)
+                .is_err());
+            assert!(recorder.release_path_validation_failed);
+        }
+        assert!(!forbidden_result.exists());
+
+        let pre_extension_runtime = TempRuntimeHome::new("live-path-pre-extension-failure")?;
+        let registry_directory = pre_extension_runtime.path().join("registry.sqlite");
+        fs::create_dir(&registry_directory)?;
+        let pre_extension_result = cell_directory.join("pre-extension-result.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("codex", Some(pre_extension_result.clone()))?;
+            assert!(recorder
+                .bind_observed_runtime_home(pre_extension_runtime.path())
+                .is_err());
+            assert!(recorder.release_path_validation_failed);
+            assert!(recorder.observed_runtime_home.is_none());
+        }
+        assert!(!pre_extension_result.exists());
+        assert!(registry_directory.is_dir());
+
+        let clean_runtime = TempRuntimeHome::new("live-path-read-only-bind")?;
+        let clean_bind_result = cell_directory.join("clean-bind-result.json");
+        {
+            let mut recorder = LiveResultRecorder::new("codex", Some(clean_bind_result.clone()))?;
+            recorder.bind_observed_runtime_home(clean_runtime.path())?;
+            assert!(recorder.observed_runtime_home.is_some());
+            assert!(!recorder.release_path_validation_failed);
+            recorder.finalized = true;
+        }
+        for registry_name in [
+            "registry.sqlite",
+            "registry.sqlite-wal",
+            "registry.sqlite-shm",
+            "registry.sqlite-journal",
+        ] {
+            assert!(!clean_runtime.path().join(registry_name).exists());
+        }
+        assert!(!clean_bind_result.exists());
+
+        let missing_runtime = release_root.join("missing-runtime-home");
+        let missing_runtime_result = cell_directory.join("missing-runtime-result.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("codex", Some(missing_runtime_result.clone()))?;
+            assert!(recorder
+                .bind_observed_runtime_home(&missing_runtime)
+                .is_err());
+            assert!(recorder.release_path_validation_failed);
+            assert!(recorder.observed_runtime_home.is_none());
+        }
+        assert!(!missing_runtime_result.exists());
+
+        let malformed_runtime = TempRuntimeHome::new("live-path-malformed-registry")?;
+        let malformed_registry = malformed_runtime.path().join("registry.sqlite");
+        let malformed_bytes = b"not-a-sqlite-registry";
+        fs::write(&malformed_registry, malformed_bytes)?;
+        let malformed_result = cell_directory.join("malformed-runtime-result.json");
+        {
+            let mut recorder = LiveResultRecorder::new("codex", Some(malformed_result.clone()))?;
+            assert!(recorder
+                .bind_observed_runtime_home(malformed_runtime.path())
+                .is_err());
+            assert!(recorder.release_path_validation_failed);
+            assert!(recorder.observed_runtime_home.is_none());
+        }
+        assert_eq!(fs::read(&malformed_registry)?, malformed_bytes);
+        for sidecar in [
+            "registry.sqlite-wal",
+            "registry.sqlite-shm",
+            "registry.sqlite-journal",
+        ] {
+            assert!(!malformed_runtime.path().join(sidecar).exists());
+        }
+        assert!(!malformed_result.exists());
+
+        let rejected_descriptor_result = cell_directory.join("rejected-descriptor-result.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("codex", Some(rejected_descriptor_result.clone()))?;
+            assert!(recorder
+                .load_release_candidate(Path::new(volicord_bin()))
+                .is_err());
+            assert!(recorder.release_path_validation_failed);
+        }
+        assert!(!rejected_descriptor_result.exists());
+
+        let external_candidate = release_root.join("candidate");
+        fs::copy(volicord_bin(), &external_candidate)?;
+        make_executable(&external_candidate)?;
+        let external_descriptor = release_root.join("candidate.json");
+        let external_candidate_record =
+            candidate_fixture(&external_candidate, &external_descriptor)?;
+        fs::write(
+            &external_descriptor,
+            serde_json::to_vec(&external_candidate_record)?,
+        )?;
+        let valid_descriptor_result = cell_directory.join("valid-descriptor-result.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("claude-code", Some(valid_descriptor_result.clone()))?;
+            recorder.load_release_candidate(&external_descriptor)?;
+            assert_eq!(
+                recorder
+                    .release_candidate
+                    .as_ref()
+                    .map(ReleaseCandidate::executable_path),
+                Some(external_candidate.as_path())
+            );
+            recorder.finalized = true;
+        }
+        assert!(!valid_descriptor_result.exists());
+        assert!(
+            !publication_root
+                .join(".volicord-live-publication.lock")
+                .exists(),
+            "pre-publication path and Runtime Home validation must not create lease state"
+        );
+
+        let stale_result_root = release_root.join("stale-publication");
+        let (stale_cell_directory, _, _) = create_live_result_root(&stale_result_root)?;
+        let stale_cell_path = stale_cell_directory.join("stale-cell.json");
+        let stale_evidence_path = release_evidence_path(&stale_cell_path)?;
+        let stale_cell_bytes = b"concurrent-cell-owner";
+        {
+            let mut recorder =
+                LiveResultRecorder::new("claude-code", Some(stale_cell_path.clone()))?;
+            recorder.load_release_candidate(&external_descriptor)?;
+            recorder.bind_observed_runtime_home(runtime_home.path())?;
+            fs::write(&stale_cell_path, stale_cell_bytes)?;
+            let summary = recorder.failed_before_completion_summary();
+            assert!(recorder.record_final(&summary).is_err());
+            assert!(recorder.release_path_validation_failed);
+        }
+        assert_eq!(fs::read(&stale_cell_path)?, stale_cell_bytes);
+        assert!(!stale_evidence_path.exists());
+
+        let stale_evidence_cell = stale_cell_directory.join("stale-evidence-cell.json");
+        let stale_evidence = release_evidence_path(&stale_evidence_cell)?;
+        let stale_evidence_bytes = b"concurrent-evidence-owner";
+        {
+            let mut recorder =
+                LiveResultRecorder::new("claude-code", Some(stale_evidence_cell.clone()))?;
+            recorder.load_release_candidate(&external_descriptor)?;
+            recorder.bind_observed_runtime_home(runtime_home.path())?;
+            fs::write(&stale_evidence, stale_evidence_bytes)?;
+            let summary = recorder.failed_before_completion_summary();
+            assert!(recorder.record_final(&summary).is_err());
+            assert!(recorder.release_path_validation_failed);
+        }
+        assert!(!stale_evidence_cell.exists());
+        assert_eq!(fs::read(&stale_evidence)?, stale_evidence_bytes);
+
+        let forbidden_descriptor = runtime_home.path().join("candidate.json");
+        fs::write(&forbidden_descriptor, b"{}")?;
+        let descriptor_result = cell_directory.join("descriptor-result.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("claude-code", Some(descriptor_result.clone()))?;
+            recorder.release_candidate = Some(candidate_fixture(
+                &external_candidate,
+                &forbidden_descriptor,
+            )?);
+            assert!(recorder
+                .bind_observed_runtime_home(runtime_home.path())
+                .is_err());
+        }
+        assert!(!descriptor_result.exists());
+
+        let forbidden_candidate = runtime_home.path().join("candidate");
+        fs::copy(volicord_bin(), &forbidden_candidate)?;
+        make_executable(&forbidden_candidate)?;
+        let candidate_result = cell_directory.join("candidate-result.json");
+        {
+            let mut recorder =
+                LiveResultRecorder::new("claude-code", Some(candidate_result.clone()))?;
+            recorder.release_candidate = Some(candidate_fixture(
+                &forbidden_candidate,
+                &external_descriptor,
+            )?);
+            assert!(recorder
+                .bind_observed_runtime_home(runtime_home.path())
+                .is_err());
+        }
+        assert!(!candidate_result.exists());
+
+        let sidecar_root = release_root.join("sidecar-policy");
+        let (sidecar_cells, sidecar_evidence, _) = create_live_result_root(&sidecar_root)?;
+        let mut evidence_context = release_validation_context()?;
+        evidence_context.add_runtime_home(&sidecar_evidence)?;
+        let sidecar_cell = sidecar_cells.join("cell.json");
+        assert!(LivePublicationDomain::acquire_for_cell(&evidence_context, &sidecar_cell).is_err());
+        assert!(sidecar_evidence.is_dir());
+
+        let competing_root = release_root.join("competing-final");
+        let (competing_cells, _, _) = create_live_result_root(&competing_root)?;
+        let competing_path = competing_cells.join("cell.json");
+        let competing_domain = LivePublicationDomain::acquire_for_cell(&context, &competing_path)?;
+        let competing_stage = competing_domain.stage(
+            &context,
+            &competing_path,
+            r#"{"kind":"staged"}"#,
+            MAX_LIVE_HOST_RESULT_BYTES,
+        )?;
+        let competing_stage_path = competing_stage.stage_path();
+        let competing_bytes = b"concurrent-final-owner";
+        fs::write(&competing_path, competing_bytes)?;
+        assert!(competing_stage
+            .publish(&context, &competing_domain)
+            .is_err());
+        assert_eq!(fs::read(&competing_path)?, competing_bytes);
+        assert_eq!(fs::read(&competing_stage_path)?, b"{\"kind\":\"staged\"}\n");
+
+        let rejected_stage_root = release_root.join("evidence-stage-rejection");
+        let (rejected_stage_cells, rejected_stage_evidence, _) =
+            create_live_result_root(&rejected_stage_root)?;
+        let rejected_stage_cell = rejected_stage_cells.join("cell.json");
+        let rejected_stage_sidecar = release_evidence_path(&rejected_stage_cell)?;
+        let rejected_stage_domain =
+            LivePublicationDomain::acquire_for_cell(&context, &rejected_stage_cell)?;
+        assert!(rejected_stage_domain
+            .stage(&context, &rejected_stage_sidecar, &"x".repeat(65), 64,)
+            .is_err());
+        assert!(!rejected_stage_cell.exists());
+        assert!(!rejected_stage_sidecar.exists());
+        assert_eq!(fs::read_dir(&rejected_stage_cells)?.count(), 0);
+        assert_eq!(fs::read_dir(&rejected_stage_evidence)?.count(), 0);
+        drop(rejected_stage_domain);
+        assert!(LivePublicationDomain::acquire_for_cell(
+            &context,
+            &rejected_stage_cells.join("retry.json")
+        )
+        .is_err());
+
+        let orphan_root = release_root.join("evidence-first-failure");
+        let (orphan_cells, _, _) = create_live_result_root(&orphan_root)?;
+        let orphan_cell = orphan_cells.join("cell.json");
+        let orphan_evidence = release_evidence_path(&orphan_cell)?;
+        let orphan_domain = LivePublicationDomain::acquire_for_cell(&context, &orphan_cell)?;
+        let evidence_stage = orphan_domain.stage(
+            &context,
+            &orphan_evidence,
+            r#"{"kind":"evidence"}"#,
+            MAX_LIVE_HOST_RESULT_BYTES,
+        )?;
+        let cell_stage = orphan_domain.stage(
+            &context,
+            &orphan_cell,
+            r#"{"kind":"cell"}"#,
+            MAX_LIVE_HOST_RESULT_BYTES,
+        )?;
+        let cell_stage_path = cell_stage.stage_path();
+        evidence_stage.publish(&context, &orphan_domain)?;
+        let competing_cell_bytes = b"concurrent-cell-commit-marker";
+        fs::write(&orphan_cell, competing_cell_bytes)?;
+        assert!(cell_stage.publish(&context, &orphan_domain).is_err());
+        assert_eq!(fs::read(&orphan_evidence)?, b"{\"kind\":\"evidence\"}\n");
+        assert_eq!(fs::read(&orphan_cell)?, competing_cell_bytes);
+        assert_eq!(fs::read(&cell_stage_path)?, b"{\"kind\":\"cell\"}\n");
+        drop(orphan_domain);
+        assert!(LivePublicationDomain::acquire_for_cell(
+            &context,
+            &orphan_cells.join("retry.json")
+        )
+        .is_err());
+
+        let replaced_root = release_root.join("replaced-directory");
+        let (replaced_cells, _, _) = create_live_result_root(&replaced_root)?;
+        let replaced_cell = replaced_cells.join("cell.json");
+        let replaced_domain = LivePublicationDomain::acquire_for_cell(&context, &replaced_cell)?;
+        let detached_cells = replaced_root.join("detached-cells");
+        fs::rename(&replaced_cells, &detached_cells)?;
+        fs::create_dir(&replaced_cells)?;
+        let replacement_marker = b"concurrent-directory-owner";
+        fs::write(replaced_cells.join("owner"), replacement_marker)?;
+        assert!(replaced_domain.validate_attached(&context).is_err());
+        assert_eq!(fs::read(replaced_cells.join("owner"))?, replacement_marker);
+
+        Ok(())
+    }
+
+    #[test]
     fn release_cell_recorder_binds_exact_candidate_and_closed_assertions(
     ) -> Result<(), Box<dyn Error>> {
         let temp = TempRuntimeHome::new("release-cell-recorder")?;
-        let candidate_path = temp.path().join("candidate-volicord");
+        let release_root = temp.product_repo_path("release-artifacts");
+        fs::create_dir_all(&release_root)?;
+        let candidate_path = release_root.join("candidate-volicord");
         fs::copy(volicord_bin(), &candidate_path)?;
         let mut permissions = fs::metadata(&candidate_path)?.permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&candidate_path, permissions)?;
         let binary_sha256 = sha256_file(&candidate_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
         let candidate = ReleaseCandidate {
+            descriptor_path: None,
             schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
             candidate_id: "candidate_release_cell_fixture".to_owned(),
             candidate_path: path_text(&candidate_path),
@@ -412,8 +787,8 @@ mod unix {
         };
         candidate.validate()?;
 
-        let result_dir = temp.path().join("release-results");
-        fs::create_dir_all(&result_dir)?;
+        let result_root = release_root.join("release-results");
+        let (result_dir, _, _) = create_live_result_root(&result_root)?;
         let cell_path = result_dir.join("claude-native-user-action.json");
         let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
         recorder.release_candidate = Some(candidate.clone());
@@ -669,6 +1044,7 @@ mod unix {
         assert_eq!(static_final_cell["claimed_status"], "unsupported_by_host");
         assert_eq!(static_final_cell["run_state"], "not_applicable");
         assert_eq!(static_final_cell["evidence_artifact_path"], Value::Null);
+        assert!(!release_evidence_path(&static_final_path)?.exists());
 
         let reviewed_local_web_path = result_dir.join("codex-reviewed-local-web.json");
         let mut reviewed_local_web =
@@ -703,7 +1079,10 @@ mod unix {
             Value::Null
         );
 
-        let forbidden_static_path = result_dir.join("codex-record-final-output-requested.json");
+        let forbidden_static_root = release_root.join("forbidden-static-results");
+        let (forbidden_static_dir, _, _) = create_live_result_root(&forbidden_static_root)?;
+        let forbidden_static_path =
+            forbidden_static_dir.join("codex-record-final-output-requested.json");
         let mut forbidden_static = LiveResultRecorder::new_for_kind_and_profile(
             "codex-record-final-output-requested",
             "codex",
@@ -716,8 +1095,11 @@ mod unix {
         forbidden_static.release_requested_verified = Some(true);
         assert!(forbidden_static.record_final(&static_summary).is_err());
         assert!(!forbidden_static_path.exists());
+        drop(forbidden_static);
 
-        let rejected_cell_path = result_dir.join("claude-native-user-action-mutated.json");
+        let rejected_result_root = release_root.join("rejected-cell-results");
+        let (rejected_result_dir, _, _) = create_live_result_root(&rejected_result_root)?;
+        let rejected_cell_path = rejected_result_dir.join("claude-native-user-action-mutated.json");
         {
             let mut rejected =
                 LiveResultRecorder::new("claude-code", Some(rejected_cell_path.clone()))?;
@@ -809,14 +1191,22 @@ mod unix {
         }
 
         let fixture = LiveSmokeFixture::new("release-client-turn-refresh")?;
-        let live_bin = fixture.runtime_home_path.join("live-bin");
-        let fake_claude = write_fake_claude_code(&live_bin)?;
-        let result_root = fixture.runtime_home_path.join("release-results");
-        let cell_directory = result_root.join("cells");
-        fs::create_dir_all(&cell_directory)?;
+        let fake_claude = write_fake_claude_code(fixture.live_bin())?;
+        let result_root = fixture.release_artifact_root.join("release-results");
+        let (cell_directory, _, _) = create_live_result_root(&result_root)?;
         let cell_path = cell_directory.join("claude-native-user-action.json");
-        let stale_only_cell_path = cell_directory.join("claude-native-user-action-stale-only.json");
-        let tampered_cell_path = cell_directory.join("claude-native-user-action-tampered.json");
+        let stale_only_result_root = fixture
+            .release_artifact_root
+            .join("release-results-stale-only");
+        let (stale_only_cell_directory, _, _) = create_live_result_root(&stale_only_result_root)?;
+        let stale_only_cell_path =
+            stale_only_cell_directory.join("claude-native-user-action-stale-only.json");
+        let tampered_result_root = fixture
+            .release_artifact_root
+            .join("release-results-tampered");
+        let (tampered_cell_directory, _, _) = create_live_result_root(&tampered_result_root)?;
+        let tampered_cell_path =
+            tampered_cell_directory.join("claude-native-user-action-tampered.json");
         let tampered_evidence_path = release_evidence_path(&tampered_cell_path)?;
 
         let mut recorder = LiveResultRecorder::new("claude-code", Some(cell_path.clone()))?;
@@ -830,6 +1220,7 @@ mod unix {
         let binary_sha256 =
             sha256_file(&fixture.volicord_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
         let candidate = ReleaseCandidate {
+            descriptor_path: None,
             schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
             candidate_id: "candidate_host_turn_refresh".to_owned(),
             candidate_path: path_text(&fixture.volicord_path),
@@ -1277,6 +1668,7 @@ mod unix {
         fn candidate_fixture(path: &Path) -> Result<ReleaseCandidate, Box<dyn Error>> {
             let binary_sha256 = sha256_file(path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
             Ok(ReleaseCandidate {
+                descriptor_path: None,
                 schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
                 candidate_id: "candidate_integrity_fixture".to_owned(),
                 candidate_path: path_text(path),
@@ -1300,7 +1692,9 @@ mod unix {
         }
 
         let temp = TempRuntimeHome::new("candidate-integrity-guards")?;
-        let candidate_path = temp.path().join("candidate-volicord");
+        let release_root = temp.product_repo_path("release-artifacts");
+        fs::create_dir_all(&release_root)?;
+        let candidate_path = release_root.join("candidate-volicord");
         fs::copy(volicord_bin(), &candidate_path)?;
         let mut permissions = fs::metadata(&candidate_path)?.permissions();
         permissions.set_mode(0o755);
@@ -1329,19 +1723,21 @@ mod unix {
         fs::set_permissions(&fixture.volicord_path, read_only)?;
         assert!(fixture.run_volicord(["--version"]).is_err());
 
-        let replacement_path = temp.path().join("replacement-candidate-volicord");
+        let replacement_path = release_root.join("replacement-candidate-volicord");
         fs::copy(volicord_bin(), &replacement_path)?;
         let mut replacement_permissions = fs::metadata(&replacement_path)?.permissions();
         replacement_permissions.set_mode(0o755);
         fs::set_permissions(&replacement_path, replacement_permissions)?;
         let replacement_candidate = candidate_fixture(&replacement_path)?;
         replacement_candidate.validate()?;
-        let result_path = temp.path().join("replacement-release-cell.json");
+        let result_root = release_root.join("release-results");
+        let (cell_directory, _, _) = create_live_result_root(&result_root)?;
+        let result_path = cell_directory.join("replacement-release-cell.json");
         {
             let mut recorder = LiveResultRecorder::new("claude-code", Some(result_path.clone()))?;
             recorder.release_candidate = Some(replacement_candidate.clone());
             recorder.release_feature = Some(HostFeature::NativeUserAction);
-            let original_path = temp.path().join("original-candidate-volicord");
+            let original_path = release_root.join("original-candidate-volicord");
             fs::rename(&replacement_path, original_path)?;
             fs::write(&replacement_path, b"#!/bin/sh\nexit 1\n")?;
             let mut replacement_permissions = fs::metadata(&replacement_path)?.permissions();
@@ -1385,6 +1781,7 @@ mod unix {
         );
 
         let candidate = ReleaseCandidate {
+            descriptor_path: None,
             schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
             candidate_id: "candidate_unresolved_installed_host".to_owned(),
             candidate_path: path_text(&fixture.volicord_path),
@@ -1413,8 +1810,8 @@ mod unix {
             "#!/bin/sh\nprintf 'fixture-host 1.0\\n'\n",
         )?;
         make_executable(&successful_host)?;
-        let cell_dir = fixture.runtime_home_path.join("cells");
-        fs::create_dir(&cell_dir)?;
+        let result_root = fixture.release_artifact_root.join("release-results");
+        let (cell_dir, _, _) = create_live_result_root(&result_root)?;
         let terminal_path = cell_dir.join("installed-host-terminal-failure.json");
         let mut terminal = LiveResultRecorder::new("codex", Some(terminal_path.clone()))?;
         terminal.release_candidate = Some(candidate.clone());
@@ -1438,9 +1835,7 @@ mod unix {
         );
         assert_eq!(terminal_cell["run_state"], "completed");
 
-        let unresolved_path = fixture
-            .runtime_home_path
-            .join("unresolved-installed-host-cell.json");
+        let unresolved_path = cell_dir.join("unresolved-installed-host-cell.json");
         {
             let mut unresolved = LiveResultRecorder::new("codex", Some(unresolved_path.clone()))?;
             unresolved.release_candidate = Some(candidate);
@@ -1544,8 +1939,11 @@ mod unix {
         let host_home_root = fixture.host_home_root.clone();
         let system_temp = fs::canonicalize(env::temp_dir())?;
         let codex_home = fs::canonicalize(&fixture.codex_home)?;
+        let target_directory = release_validation_context()?
+            .target_directory()
+            .to_path_buf();
         assert!(!codex_home.starts_with(system_temp));
-        assert!(codex_home.starts_with(fs::canonicalize(workspace_target_dir())?));
+        assert!(codex_home.starts_with(target_directory));
 
         drop(fixture);
         assert!(!host_home_root.exists());
@@ -2868,13 +3266,12 @@ mod unix {
                 host.replace('-', "_"),
                 profile.as_str()
             ))?;
-            let live_bin = fixture.runtime_home_path.join("live-bin");
             match host {
                 "codex" => {
-                    write_fake_codex(&live_bin)?;
+                    write_fake_codex(fixture.live_bin())?;
                 }
                 "claude-code" => {
-                    write_fake_claude_code(&live_bin)?;
+                    write_fake_claude_code(fixture.live_bin())?;
                 }
                 _ => unreachable!("the direct matrix has only maintained hosts"),
             }
@@ -3710,6 +4107,11 @@ mod unix {
             Some(IntegrationProfile::Detective),
         )?;
         let release_candidate = result_recorder.release_candidate()?.clone();
+        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            &recorder_label,
+            &release_candidate,
+            &mut result_recorder,
+        )?;
         let executable = find_executable(executable_name).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotFound,
@@ -3717,8 +4119,6 @@ mod unix {
             )
         })?;
         result_recorder.mark_installed_host_detected();
-        let fixture =
-            LiveSmokeFixture::new_with_release_candidate(&recorder_label, &release_candidate)?;
         let observed_identity = fixture.observe_and_bind_installed_host_identity(
             &mut result_recorder,
             executable_name,
@@ -5710,6 +6110,11 @@ mod unix {
             Some(profile),
         )?;
         let release_candidate = result_recorder.release_candidate()?.clone();
+        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            &recorder_host,
+            &release_candidate,
+            &mut result_recorder,
+        )?;
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -5728,8 +6133,6 @@ mod unix {
             }
         };
         result_recorder.mark_installed_host_detected();
-        let fixture =
-            LiveSmokeFixture::new_with_release_candidate(&recorder_host, &release_candidate)?;
         let ObservedReleaseHostIdentity {
             host_version,
             host_executable_sha256,
@@ -6300,6 +6703,11 @@ mod unix {
             Some(IntegrationProfile::Detective),
         )?;
         let release_candidate = result_recorder.release_candidate()?.clone();
+        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            &recorder_host,
+            &release_candidate,
+            &mut result_recorder,
+        )?;
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -6317,8 +6725,6 @@ mod unix {
             }
         };
         result_recorder.mark_installed_host_detected();
-        let fixture =
-            LiveSmokeFixture::new_with_release_candidate(&recorder_host, &release_candidate)?;
         let ObservedReleaseHostIdentity {
             host_version,
             host_executable_sha256,
@@ -6569,6 +6975,11 @@ mod unix {
         }
         let mut result_recorder = LiveResultRecorder::from_env(host)?;
         let release_candidate = result_recorder.release_candidate()?.clone();
+        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            &format!("{host}-user-action"),
+            &release_candidate,
+            &mut result_recorder,
+        )?;
         let executable = match find_executable(executable_name) {
             Some(executable) => executable,
             None => {
@@ -6586,10 +6997,6 @@ mod unix {
             }
         };
         result_recorder.mark_installed_host_detected();
-        let fixture = LiveSmokeFixture::new_with_release_candidate(
-            &format!("{host}-user-action"),
-            &release_candidate,
-        )?;
         let ObservedReleaseHostIdentity {
             host_version,
             host_executable_sha256,
@@ -7018,6 +7425,12 @@ mod unix {
         host_feature_diagnostics: &mut Option<ReleaseHostFeatureDiagnostics>,
         result_recorder: &mut LiveResultRecorder,
     ) -> Result<Value, Box<dyn Error>> {
+        *stage = "fixture_setup";
+        let fixture = LiveSmokeFixture::new_with_release_candidate_for_recorder(
+            &format!("{host}-evidence-observation"),
+            release_candidate,
+            result_recorder,
+        )?;
         *stage = "host_executable";
         let executable = find_executable(executable_name).ok_or_else(|| {
             io::Error::new(
@@ -7026,11 +7439,6 @@ mod unix {
             )
         })?;
         result_recorder.mark_installed_host_detected();
-        *stage = "fixture_setup";
-        let fixture = LiveSmokeFixture::new_with_release_candidate(
-            &format!("{host}-evidence-observation"),
-            release_candidate,
-        )?;
         let ObservedReleaseHostIdentity {
             host_version,
             host_executable_sha256,
@@ -13085,6 +13493,9 @@ mod unix {
         profile: Option<IntegrationProfile>,
         result_kind: &'static str,
         result_path: Option<PathBuf>,
+        release_path_context: Option<ValidationContext>,
+        publication_domain: Option<LivePublicationDomain>,
+        release_path_validation_failed: bool,
         run_id: String,
         started_at: String,
         started: bool,
@@ -13105,7 +13516,7 @@ mod unix {
         fn from_env(host: &str) -> Result<Self, Box<dyn Error>> {
             let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
             let mut recorder = Self::new(host, Some(result_path))?;
-            recorder.release_candidate = Some(ReleaseCandidate::from_env()?);
+            recorder.load_release_candidate_from_env()?;
             recorder.release_feature = Some(HostFeature::NativeUserAction);
             Ok(recorder)
         }
@@ -13116,7 +13527,7 @@ mod unix {
         ) -> Result<Self, Box<dyn Error>> {
             let result_path = required_live_result_path(env::var_os(LIVE_HOST_RESULT_PATH_ENV))?;
             let mut recorder = Self::new_for_kind(host, result_kind, Some(result_path))?;
-            recorder.release_candidate = Some(ReleaseCandidate::from_env()?);
+            recorder.load_release_candidate_from_env()?;
             recorder.release_feature = release_feature_for_result(result_kind, None);
             Ok(recorder)
         }
@@ -13135,7 +13546,7 @@ mod unix {
                 profile,
                 Some(result_path),
             )?;
-            recorder.release_candidate = Some(ReleaseCandidate::from_env()?);
+            recorder.load_release_candidate_from_env()?;
             recorder.release_feature = release_feature_for_result(result_kind, profile);
             Ok(recorder)
         }
@@ -13176,9 +13587,17 @@ mod unix {
             profile: Option<IntegrationProfile>,
             result_path: Option<PathBuf>,
         ) -> Result<Self, Box<dyn Error>> {
-            if let Some(path) = result_path.as_deref() {
-                validate_external_result_path(path, true)?;
-            }
+            let release_path_context = if let Some(path) = result_path.as_deref() {
+                let context = release_validation_context()?;
+                if release_feature_for_result(result_kind, profile).is_some() {
+                    ResultRootLease::prevalidate_cell_path(&context, path)?;
+                } else {
+                    ResultRootLease::prevalidate_auxiliary_path(&context, path)?;
+                }
+                Some(context)
+            } else {
+                None
+            };
             let started_at = recorded_at_now()?;
             let run_id = bounded_identity(
                 "live validation run_id",
@@ -13195,6 +13614,9 @@ mod unix {
                 profile,
                 result_kind,
                 result_path,
+                release_path_context,
+                publication_domain: None,
+                release_path_validation_failed: false,
                 run_id,
                 started_at,
                 started: false,
@@ -13214,6 +13636,107 @@ mod unix {
             };
             recorder.started = true;
             Ok(recorder)
+        }
+
+        fn required_release_path_context(&self) -> Result<&ValidationContext, Box<dyn Error>> {
+            self.release_path_context.as_ref().ok_or_else(|| {
+                io::Error::other(
+                    "live result recorder has no canonical release-path validation context",
+                )
+                .into()
+            })
+        }
+
+        fn load_release_candidate_from_env(&mut self) -> Result<(), Box<dyn Error>> {
+            let descriptor_path =
+                required_release_candidate_path(env::var_os(RELEASE_CANDIDATE_PATH_ENV));
+            let descriptor_path = match descriptor_path {
+                Ok(path) => path,
+                Err(error) => {
+                    self.release_path_validation_failed = true;
+                    return Err(error);
+                }
+            };
+            self.load_release_candidate(&descriptor_path)
+        }
+
+        fn load_release_candidate(&mut self, descriptor_path: &Path) -> Result<(), Box<dyn Error>> {
+            let candidate = ReleaseCandidate::from_descriptor_path(
+                self.required_release_path_context()?,
+                descriptor_path,
+            );
+            match candidate {
+                Ok(candidate) => {
+                    self.release_candidate = Some(candidate);
+                    Ok(())
+                }
+                Err(error) => {
+                    self.release_path_validation_failed = true;
+                    Err(error)
+                }
+            }
+        }
+
+        fn effective_release_path_context(&self) -> Result<ValidationContext, Box<dyn Error>> {
+            let mut context = match &self.release_path_context {
+                Some(context) => context.clone(),
+                None => release_validation_context()?,
+            };
+            if let Some(runtime_home) = self.observed_runtime_home.as_deref() {
+                context.add_runtime_home(runtime_home)?;
+            }
+            Ok(context)
+        }
+
+        fn validate_retained_release_paths(
+            &self,
+            context: &ValidationContext,
+        ) -> Result<(), Box<dyn Error>> {
+            if let Some(path) = self.result_path.as_deref() {
+                if release_feature_for_result(self.result_kind, self.profile).is_some() {
+                    ResultRootLease::prevalidate_cell_path(context, path)?;
+                } else {
+                    ResultRootLease::prevalidate_auxiliary_path(context, path)?;
+                }
+                if let Some(publication_domain) = &self.publication_domain {
+                    publication_domain.validate_before_publication(context, path)?;
+                }
+            }
+            if let Some(candidate) = &self.release_candidate {
+                candidate.validate_external_paths(context)?;
+            }
+            Ok(())
+        }
+
+        fn require_publication_domain_ready(&mut self) -> Result<(), Box<dyn Error>> {
+            if self.release_path_validation_failed {
+                return Err(io::Error::other(
+                    "live result recorder is poisoned by a rejected publication domain",
+                )
+                .into());
+            }
+            let context = self.effective_release_path_context()?;
+            let ready = (|| -> Result<(), Box<dyn Error>> {
+                self.validate_retained_release_paths(&context)?;
+                if self.publication_domain.is_none() {
+                    if let Some(path) = self.result_path.as_deref() {
+                        let publication_domain =
+                            if release_feature_for_result(self.result_kind, self.profile).is_some()
+                            {
+                                LivePublicationDomain::acquire_for_cell(&context, path)?
+                            } else {
+                                LivePublicationDomain::acquire_for_auxiliary(&context, path)?
+                            };
+                        self.publication_domain = Some(publication_domain);
+                    }
+                }
+                self.validate_retained_release_paths(&context)
+            })();
+            if let Err(error) = ready {
+                self.release_path_validation_failed = true;
+                return Err(error);
+            }
+            Ok(())
         }
 
         fn release_candidate(&self) -> Result<&ReleaseCandidate, Box<dyn Error>> {
@@ -13310,24 +13833,39 @@ mod unix {
             &mut self,
             runtime_home: &Path,
         ) -> Result<(), Box<dyn Error>> {
-            let runtime_home = fs::canonicalize(runtime_home)?;
-            if let Some(existing) = &self.observed_runtime_home {
-                if existing != &runtime_home {
-                    return Err(io::Error::other(
-                        "live result recorder cannot replace its observed runtime home",
-                    )
-                    .into());
+            let prospective =
+                (|| -> Result<Option<(ValidationContext, PathBuf)>, Box<dyn Error>> {
+                    let runtime_home = fs::canonicalize(runtime_home)?;
+                    if let Some(existing) = &self.observed_runtime_home {
+                        if existing != &runtime_home {
+                            return Err(io::Error::other(
+                                "live result recorder cannot replace its observed runtime home",
+                            )
+                            .into());
+                        }
+                        return Ok(None);
+                    }
+                    let mut context = match &self.release_path_context {
+                        Some(context) => context.clone(),
+                        None => release_validation_context()?,
+                    };
+                    context.add_runtime_home(&runtime_home)?;
+                    self.validate_retained_release_paths(&context)?;
+                    ensure_unregistered_runtime_home_read_only(&runtime_home)?;
+                    Ok(Some((context, runtime_home)))
+                })();
+            match prospective {
+                Ok(Some((context, runtime_home))) => {
+                    self.release_path_context = Some(context);
+                    self.observed_runtime_home = Some(runtime_home);
+                    Ok(())
                 }
-            } else {
-                if !list_projects(&runtime_home)?.is_empty() {
-                    return Err(io::Error::other(
-                        "live result recorder must bind a disposable runtime home before project registration",
-                    )
-                    .into());
+                Ok(None) => Ok(()),
+                Err(error) => {
+                    self.release_path_validation_failed = true;
+                    Err(error)
                 }
-                self.observed_runtime_home = Some(runtime_home);
             }
-            Ok(())
         }
 
         fn bind_observed_host_turn_baselines(
@@ -13575,23 +14113,62 @@ mod unix {
         }
 
         fn record_final(&mut self, summary: &Value) -> Result<(), Box<dyn Error>> {
+            if self.release_path_validation_failed {
+                return Err(io::Error::other(
+                    "live result recorder is poisoned by a rejected release path",
+                )
+                .into());
+            }
+            self.require_publication_domain_ready()?;
+            let path_context = match self.effective_release_path_context() {
+                Ok(context) => context,
+                Err(error) => {
+                    self.release_path_validation_failed = true;
+                    return Err(error);
+                }
+            };
+            if let Err(error) = self.validate_retained_release_paths(&path_context) {
+                self.release_path_validation_failed = true;
+                return Err(error);
+            }
             let summary = self.with_observed_host_identity(summary)?;
             validate_terminal_release_host_feature_diagnostics(&summary)?;
             self.refresh_observed_initialized_client_info(&summary)?;
             let summary = self.with_validation_run(&summary)?;
             let serialized = serialize_live_host_result(&summary)?;
-            let rendered = match (self.release_feature, self.result_path.as_deref()) {
-                (Some(feature), Some(cell_path)) => {
-                    self.write_release_cell(feature, cell_path, &summary, &serialized)?
-                }
+            let release_feature = self.release_feature;
+            let result_path = self.result_path.clone();
+            let rendered = match (release_feature, result_path.as_deref()) {
+                (Some(feature), Some(cell_path)) => self.write_release_cell(
+                    &path_context,
+                    feature,
+                    cell_path,
+                    &summary,
+                    &serialized,
+                )?,
                 (_, Some(path)) => {
-                    write_new_live_host_result(path, &serialized)?;
+                    let publication_domain = self.publication_domain.as_ref().ok_or_else(|| {
+                        io::Error::other("live result recorder has no publication domain")
+                    })?;
+                    write_new_live_host_result(
+                        &path_context,
+                        publication_domain,
+                        path,
+                        &serialized,
+                    )?;
                     serialized
                 }
                 (_, None) => serialized,
             };
+            if let Some(publication_domain) = self.publication_domain.as_mut() {
+                if let Err(error) = publication_domain.complete_publication_attempt(&path_context) {
+                    self.release_path_validation_failed = true;
+                    return Err(error);
+                }
+            }
             println!("{rendered}");
             self.finalized = true;
+            self.publication_domain.take();
             Ok(())
         }
 
@@ -13620,14 +14197,15 @@ mod unix {
         }
 
         fn write_release_cell(
-            &self,
+            &mut self,
+            path_context: &ValidationContext,
             feature: HostFeature,
             cell_path: &Path,
             summary: &Value,
             evidence_serialized: &str,
         ) -> Result<String, Box<dyn Error>> {
-            let candidate = self.release_candidate()?;
-            candidate.validate()?;
+            let candidate = self.release_candidate()?.clone();
+            candidate.validate_with_context(path_context)?;
             let host_kind = summary
                 .pointer("/host/kind")
                 .and_then(Value::as_str)
@@ -13712,7 +14290,7 @@ mod unix {
                 Some(Value::String(value)) => {
                     bounded_identity("release-cell adapter_version", value, MAX_BUILD_ID_BYTES)?
                 }
-                Some(Value::Null) | None => candidate.adapter_build_id()?,
+                Some(Value::Null) | None => candidate.adapter_build_id(path_context)?,
                 Some(_) => {
                     return Err(io::Error::other(
                         "release-cell adapter build id must be a string or null",
@@ -13752,18 +14330,23 @@ mod unix {
                 validate_release_cell_passed_summary(feature, summary)?;
             }
             let assertions = release_cell_assertions(feature, static_unsupported, completed_pass);
-            let (evidence_artifact_path, evidence_artifact_sha256) = if static_unsupported {
-                (Value::Null, Value::Null)
+            let evidence_path = if static_unsupported {
+                None
             } else {
-                let evidence_path = release_evidence_path(cell_path)?;
-                write_new_live_host_result(&evidence_path, evidence_serialized)?;
-                let evidence_sha256 =
-                    sha256_file(&evidence_path, MAX_LIVE_HOST_RESULT_BYTES as u64 + 1)?;
-                (
-                    Value::String(path_text(&evidence_path)),
-                    Value::String(evidence_sha256),
-                )
+                Some(release_evidence_path(cell_path)?)
             };
+            let evidence_sha256 = evidence_path
+                .as_ref()
+                .map(|_| serialized_live_host_result_sha256(evidence_serialized));
+            let (evidence_artifact_path, evidence_artifact_sha256) =
+                match (evidence_path.as_ref(), evidence_sha256.as_ref()) {
+                    (Some(path), Some(sha256)) => (
+                        Value::String(path_text(path)),
+                        Value::String(sha256.clone()),
+                    ),
+                    (None, None) => (Value::Null, Value::Null),
+                    _ => unreachable!("evidence path and digest are derived together"),
+                };
             let claimed_status = if static_unsupported {
                 "unsupported_by_host"
             } else if completed_pass && client_identity_exact {
@@ -13818,9 +14401,77 @@ mod unix {
             if serialized.len() > 1024 * 1024 {
                 return Err(io::Error::other("release cell exceeds the 1 MiB bound").into());
             }
-            candidate.validate()?;
-            write_new_live_host_result(cell_path, &serialized)?;
+            candidate.validate_with_context(path_context)?;
+            let publication = (|| -> Result<(), Box<dyn Error>> {
+                let publication_domain = self.publication_domain.as_ref().ok_or_else(|| {
+                    io::Error::other("release-cell recorder has no publication domain")
+                })?;
+                publication_domain.validate_before_publication(path_context, cell_path)?;
+                if let Some(expected_evidence_path) = evidence_path {
+                    let evidence_stage = publication_domain.stage(
+                        path_context,
+                        &expected_evidence_path,
+                        evidence_serialized,
+                        MAX_LIVE_HOST_RESULT_BYTES,
+                    )?;
+                    if Some(evidence_stage.sha256()) != evidence_sha256.as_deref() {
+                        return Err(io::Error::other(
+                            "held release evidence stage digest changed before publication",
+                        )
+                        .into());
+                    }
+                    let cell_stage = publication_domain.stage(
+                        path_context,
+                        cell_path,
+                        &serialized,
+                        1024 * 1024,
+                    )?;
+                    candidate.validate_with_context(path_context)?;
+                    publication_domain.validate_attached(path_context)?;
+                    evidence_stage.publish(path_context, publication_domain)?;
+                    cell_stage.publish(path_context, publication_domain)?;
+                } else {
+                    let cell_stage = publication_domain.stage(
+                        path_context,
+                        cell_path,
+                        &serialized,
+                        1024 * 1024,
+                    )?;
+                    candidate.validate_with_context(path_context)?;
+                    cell_stage.publish(path_context, publication_domain)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = publication {
+                self.release_path_validation_failed = true;
+                return Err(error);
+            }
             Ok(serialized)
+        }
+    }
+
+    fn ensure_unregistered_runtime_home_read_only(
+        runtime_home: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        match inspect_runtime_home(runtime_home).registry {
+            DatabaseInspection::Missing { .. } => Ok(()),
+            DatabaseInspection::Present(snapshot) if snapshot.projects.is_empty() => Ok(()),
+            DatabaseInspection::Present(_) => Err(io::Error::other(
+                "live result recorder must bind a disposable runtime home before project registration",
+            )
+            .into()),
+            DatabaseInspection::Unsupported { .. } => Err(io::Error::other(
+                "live result recorder cannot bind an unsupported Runtime Home registry",
+            )
+            .into()),
+            DatabaseInspection::Malformed { .. } => Err(io::Error::other(
+                "live result recorder cannot bind a malformed Runtime Home registry",
+            )
+            .into()),
+            DatabaseInspection::Unreadable { .. } => Err(io::Error::other(
+                "live result recorder cannot bind an unreadable Runtime Home registry",
+            )
+            .into()),
         }
     }
 
@@ -13951,31 +14602,6 @@ mod unix {
             .parent()
             .ok_or_else(|| io::Error::other("release cell directory has no result-root parent"))?;
         let evidence_dir = result_root.join("evidence");
-        match fs::symlink_metadata(&evidence_dir) {
-            Ok(metadata) => {
-                if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                    return Err(io::Error::other(
-                        "release evidence directory must be a real directory, not a symlink or file",
-                    )
-                    .into());
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                if let Err(create_error) = fs::create_dir(&evidence_dir) {
-                    if create_error.kind() != io::ErrorKind::AlreadyExists {
-                        return Err(create_error.into());
-                    }
-                    let metadata = fs::symlink_metadata(&evidence_dir)?;
-                    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                        return Err(io::Error::other(
-                            "release evidence directory race produced a symlink or file",
-                        )
-                        .into());
-                    }
-                }
-            }
-            Err(error) => return Err(error.into()),
-        }
         let file_name = cell_path
             .file_name()
             .and_then(|value| value.to_str())
@@ -13983,13 +14609,362 @@ mod unix {
         Ok(evidence_dir.join(format!("{file_name}.evidence.json")))
     }
 
+    struct PinnedLiveResultDirectory {
+        file: fs::File,
+        path: PathBuf,
+        device: u64,
+        inode: u64,
+    }
+
+    impl PinnedLiveResultDirectory {
+        fn open(context: &ValidationContext, path: &Path) -> Result<Self, Box<dyn Error>> {
+            context.validate_existing_directory(path)?;
+            let file = fs::File::open(path)?;
+            let metadata = file.metadata()?;
+            if !metadata.is_dir() {
+                return Err(io::Error::other(format!(
+                    "live publication directory is not a directory: {}",
+                    path.display()
+                ))
+                .into());
+            }
+            let directory = Self {
+                file,
+                path: path.to_path_buf(),
+                device: metadata.dev(),
+                inode: metadata.ino(),
+            };
+            directory.validate_attached(context)?;
+            Ok(directory)
+        }
+
+        fn try_clone(&self) -> Result<Self, Box<dyn Error>> {
+            Ok(Self {
+                file: self.file.try_clone()?,
+                path: self.path.clone(),
+                device: self.device,
+                inode: self.inode,
+            })
+        }
+
+        fn validate_attached(&self, context: &ValidationContext) -> Result<(), Box<dyn Error>> {
+            context.validate_existing_directory(&self.path)?;
+            let metadata = fs::symlink_metadata(&self.path)?;
+            if metadata.file_type().is_symlink()
+                || !metadata.is_dir()
+                || metadata.dev() != self.device
+                || metadata.ino() != self.inode
+            {
+                return Err(io::Error::other(format!(
+                    "live publication directory was replaced: {}",
+                    self.path.display()
+                ))
+                .into());
+            }
+            Ok(())
+        }
+    }
+
+    struct LivePublicationDomain {
+        lease: ResultRootLease,
+        output_directory: PinnedLiveResultDirectory,
+        evidence_directory: Option<PinnedLiveResultDirectory>,
+    }
+
+    impl LivePublicationDomain {
+        fn acquire_for_cell(
+            context: &ValidationContext,
+            cell_path: &Path,
+        ) -> Result<Self, Box<dyn Error>> {
+            let lease = ResultRootLease::acquire_exclusive_for_cell_path(context, cell_path)?;
+            let output_directory =
+                PinnedLiveResultDirectory::open(context, lease.output_directory())?;
+            let evidence_directory = Some(PinnedLiveResultDirectory::open(
+                context,
+                lease.evidence_directory().ok_or_else(|| {
+                    io::Error::other("release-cell lease has no evidence directory")
+                })?,
+            )?);
+            let mut domain = Self {
+                lease,
+                output_directory,
+                evidence_directory,
+            };
+            domain.validate_before_publication(context, cell_path)?;
+            domain.lease.begin_publication_attempt()?;
+            domain.validate_before_publication(context, cell_path)?;
+            Ok(domain)
+        }
+
+        fn acquire_for_auxiliary(
+            context: &ValidationContext,
+            output_path: &Path,
+        ) -> Result<Self, Box<dyn Error>> {
+            let lease =
+                ResultRootLease::acquire_exclusive_for_auxiliary_path(context, output_path)?;
+            let output_directory =
+                PinnedLiveResultDirectory::open(context, lease.output_directory())?;
+            let domain = Self {
+                lease,
+                output_directory,
+                evidence_directory: None,
+            };
+            domain.validate_before_publication(context, output_path)?;
+            Ok(domain)
+        }
+
+        fn validate_attached(&self, context: &ValidationContext) -> Result<(), Box<dyn Error>> {
+            self.lease.validate_attached(context)?;
+            self.output_directory.validate_attached(context)?;
+            if let Some(directory) = &self.evidence_directory {
+                directory.validate_attached(context)?;
+            }
+            Ok(())
+        }
+
+        fn validate_before_publication(
+            &self,
+            context: &ValidationContext,
+            output_path: &Path,
+        ) -> Result<(), Box<dyn Error>> {
+            self.validate_attached(context)?;
+            if output_path.parent() != Some(self.output_directory.path.as_path()) {
+                return Err(io::Error::other(
+                    "live result is not a direct child of its pinned output directory",
+                )
+                .into());
+            }
+            context.validate_new_output(output_path)?;
+            if let Some(evidence_directory) = &self.evidence_directory {
+                let evidence_path = release_evidence_path(output_path)?;
+                if evidence_path.parent() != Some(evidence_directory.path.as_path()) {
+                    return Err(io::Error::other(
+                        "release evidence is not a direct child of its pinned evidence directory",
+                    )
+                    .into());
+                }
+                context.validate_new_output(&evidence_path)?;
+            }
+            Ok(())
+        }
+
+        fn stage(
+            &self,
+            context: &ValidationContext,
+            final_path: &Path,
+            serialized: &str,
+            max_bytes: usize,
+        ) -> Result<StagedLiveHostResult, Box<dyn Error>> {
+            let directory = if final_path.parent() == Some(self.output_directory.path.as_path()) {
+                &self.output_directory
+            } else if self
+                .evidence_directory
+                .as_ref()
+                .is_some_and(|directory| final_path.parent() == Some(directory.path.as_path()))
+            {
+                self.evidence_directory
+                    .as_ref()
+                    .expect("evidence directory was matched")
+            } else {
+                return Err(io::Error::other(
+                    "live publication final path is outside its pinned directories",
+                )
+                .into());
+            };
+            StagedLiveHostResult::create(context, directory, final_path, serialized, max_bytes)
+        }
+
+        fn complete_publication_attempt(
+            &mut self,
+            context: &ValidationContext,
+        ) -> Result<(), Box<dyn Error>> {
+            self.validate_attached(context)?;
+            self.lease.complete_publication_attempt()?;
+            Ok(())
+        }
+    }
+
+    struct StagedLiveHostResult {
+        _file: fs::File,
+        directory: PinnedLiveResultDirectory,
+        stage_name: OsString,
+        final_name: OsString,
+        final_path: PathBuf,
+        sha256: String,
+    }
+
+    impl StagedLiveHostResult {
+        fn create(
+            context: &ValidationContext,
+            directory: &PinnedLiveResultDirectory,
+            final_path: &Path,
+            serialized: &str,
+            max_bytes: usize,
+        ) -> Result<Self, Box<dyn Error>> {
+            directory.validate_attached(context)?;
+            context.validate_new_output(final_path)?;
+            if final_path.parent() != Some(directory.path.as_path()) {
+                return Err(io::Error::other(
+                    "staged live result is not a direct child of its pinned directory",
+                )
+                .into());
+            }
+            let final_name = final_path
+                .file_name()
+                .ok_or_else(|| io::Error::other("live result final path has no filename"))?
+                .to_os_string();
+            let mut expected = serialized.as_bytes().to_vec();
+            expected.push(b'\n');
+            if expected.len() > max_bytes {
+                return Err(io::Error::other(format!(
+                    "staged live result exceeds the {max_bytes}-byte limit"
+                ))
+                .into());
+            }
+
+            let (stage_name, descriptor) = (0..64)
+                .find_map(|_| {
+                    let stage_name = random_live_stage_name().ok()?;
+                    match rustix::fs::openat(
+                        &directory.file,
+                        &stage_name,
+                        rustix::fs::OFlags::RDWR
+                            | rustix::fs::OFlags::CREATE
+                            | rustix::fs::OFlags::EXCL
+                            | rustix::fs::OFlags::CLOEXEC
+                            | rustix::fs::OFlags::NOFOLLOW,
+                        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+                    ) {
+                        Ok(descriptor) => Some(Ok((stage_name, descriptor))),
+                        Err(error) if error == rustix::io::Errno::EXIST => None,
+                        Err(error) => Some(Err(io::Error::from(error))),
+                    }
+                })
+                .transpose()?
+                .ok_or_else(|| {
+                    io::Error::other("could not allocate a private live-result stage")
+                })?;
+            let mut file = fs::File::from(descriptor);
+            let stage_path = directory.path.join(&stage_name);
+            let stage_result = (|| -> Result<String, Box<dyn Error>> {
+                file.write_all(&expected)?;
+                file.sync_all()?;
+                file.seek(SeekFrom::Start(0))?;
+                let mut observed = Vec::with_capacity(expected.len());
+                Read::by_ref(&mut file)
+                    .take(max_bytes as u64 + 1)
+                    .read_to_end(&mut observed)?;
+                if observed != expected {
+                    return Err(io::Error::other(
+                        "held live-result stage bytes changed before publication",
+                    )
+                    .into());
+                }
+                Ok(format!("{:x}", Sha256::digest(&observed)))
+            })();
+            let sha256 = stage_result.map_err(|error| {
+                io::Error::other(format!(
+                    "cannot complete private live-result stage {}: {error}",
+                    stage_path.display()
+                ))
+            })?;
+
+            Ok(Self {
+                _file: file,
+                directory: directory.try_clone()?,
+                stage_name,
+                final_name,
+                final_path: final_path.to_path_buf(),
+                sha256,
+            })
+        }
+
+        fn sha256(&self) -> &str {
+            &self.sha256
+        }
+
+        fn stage_path(&self) -> PathBuf {
+            self.directory.path.join(&self.stage_name)
+        }
+
+        fn publish(
+            self,
+            context: &ValidationContext,
+            domain: &LivePublicationDomain,
+        ) -> Result<(), Box<dyn Error>> {
+            domain.validate_attached(context)?;
+            self.directory.validate_attached(context)?;
+            context.validate_new_output(&self.final_path)?;
+            rename_live_stage_no_replace(&self.directory.file, &self.stage_name, &self.final_name)
+                .map_err(|error| {
+                    io::Error::other(format!(
+                        "cannot publish staged live result {} as {}: {error}",
+                        self.stage_path().display(),
+                        self.final_path.display()
+                    ))
+                })?;
+            self.directory.file.sync_all()?;
+            domain.validate_attached(context)?;
+            Ok(())
+        }
+    }
+
+    fn random_live_stage_name() -> io::Result<OsString> {
+        let mut random = [0_u8; 16];
+        getrandom::fill(&mut random)
+            .map_err(|error| io::Error::other(format!("stage randomness failed: {error}")))?;
+        let token = random
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        Ok(OsString::from(format!(".volicord-live-stage-{token}")))
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn rename_live_stage_no_replace(
+        parent: &fs::File,
+        source: &OsStr,
+        destination: &OsStr,
+    ) -> io::Result<()> {
+        use rustix::fs::{renameat_with, RenameFlags};
+
+        renameat_with(parent, source, parent, destination, RenameFlags::NOREPLACE)
+            .map_err(io::Error::from)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    fn rename_live_stage_no_replace(
+        _parent: &fs::File,
+        _source: &OsStr,
+        _destination: &OsStr,
+    ) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "atomic no-replace live-result publication is unavailable on this Unix platform",
+        ))
+    }
     fn required_live_result_path(value: Option<OsString>) -> Result<PathBuf, Box<dyn Error>> {
-        value.map(PathBuf::from).ok_or_else(|| {
+        value
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .ok_or_else(|| {
             io::Error::other(format!(
-                "{LIVE_HOST_RESULT_PATH_ENV} must name a new absolute result path outside the source repository"
+                "{LIVE_HOST_RESULT_PATH_ENV} must name a new path satisfying the canonical external release-path policy"
             ))
             .into()
         })
+    }
+
+    fn required_release_candidate_path(value: Option<OsString>) -> Result<PathBuf, Box<dyn Error>> {
+        value
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "{RELEASE_CANDIDATE_PATH_ENV} must name the exact external release-candidate descriptor"
+                ))
+                .into()
+            })
     }
 
     fn parse_release_requested_verified_claim(
@@ -14047,72 +15022,27 @@ mod unix {
         Ok(serialized)
     }
 
-    fn validate_external_result_path(
-        path: &Path,
-        reject_existing: bool,
-    ) -> Result<(), Box<dyn Error>> {
-        if !path.is_absolute() {
-            return Err(io::Error::other(format!(
-                "{LIVE_HOST_RESULT_PATH_ENV} must name an absolute path outside the source repository"
-            ))
-            .into());
-        }
-        let parent = path.parent().ok_or_else(|| {
-            io::Error::other(format!(
-                "{LIVE_HOST_RESULT_PATH_ENV} has no parent directory"
-            ))
-        })?;
-        let canonical_parent = fs::canonicalize(parent)?;
-        let source_repository = fs::canonicalize(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .and_then(Path::parent)
-                .ok_or_else(|| io::Error::other("could not resolve the source repository root"))?,
-        )?;
-        if canonical_parent.starts_with(&source_repository) {
-            return Err(io::Error::other(format!(
-                "{LIVE_HOST_RESULT_PATH_ENV} must stay outside the source repository"
-            ))
-            .into());
-        }
-        if path.file_name().is_none() {
-            return Err(io::Error::other(format!(
-                "{LIVE_HOST_RESULT_PATH_ENV} must name a result file"
-            ))
-            .into());
-        }
-        if let Ok(metadata) = fs::symlink_metadata(path) {
-            if reject_existing {
-                return Err(io::Error::other(format!(
-                    "{LIVE_HOST_RESULT_PATH_ENV} already exists; use a new result path so a prior pass cannot be mistaken for this run"
-                ))
-                .into());
-            }
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return Err(io::Error::other(format!(
-                    "{LIVE_HOST_RESULT_PATH_ENV} must name a regular file, not a symlink or directory"
-                ))
-                .into());
-            }
-        }
-        Ok(())
+    fn serialized_live_host_result_sha256(serialized: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(serialized.as_bytes());
+        hasher.update(b"\n");
+        format!("{:x}", hasher.finalize())
     }
 
-    fn write_new_live_host_result(path: &Path, serialized: &str) -> Result<(), Box<dyn Error>> {
-        validate_external_result_path(path, true)?;
-        let mut created = false;
-        let write_result = (|| -> Result<(), Box<dyn Error>> {
-            let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-            created = true;
-            file.write_all(serialized.as_bytes())?;
-            file.write_all(b"\n")?;
-            file.sync_all()?;
-            Ok(())
-        })();
-        if write_result.is_err() && created {
-            let _ = fs::remove_file(path);
-        }
-        write_result
+    fn release_validation_context() -> Result<ValidationContext, Box<dyn Error>> {
+        Ok(ValidationContext::from_process(&env::current_dir()?)?)
+    }
+
+    fn write_new_live_host_result(
+        context: &ValidationContext,
+        publication_domain: &LivePublicationDomain,
+        path: &Path,
+        serialized: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        publication_domain.validate_before_publication(context, path)?;
+        publication_domain
+            .stage(context, path, serialized, MAX_LIVE_HOST_RESULT_BYTES)?
+            .publish(context, publication_domain)
     }
 
     fn epoch_duration() -> Result<Duration, Box<dyn Error>> {
@@ -14548,7 +15478,7 @@ mod unix {
         Ok(true)
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
     struct ReleaseCandidateBuildEnvironment {
         runner_os: String,
@@ -14559,9 +15489,11 @@ mod unix {
         cargo_version: String,
     }
 
-    #[derive(Debug, Clone, Deserialize)]
+    #[derive(Debug, Clone, Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
     struct ReleaseCandidate {
+        #[serde(skip)]
+        descriptor_path: Option<PathBuf>,
         schema: String,
         candidate_id: String,
         candidate_path: String,
@@ -14577,26 +15509,47 @@ mod unix {
     }
 
     impl ReleaseCandidate {
-        fn from_env() -> Result<Self, Box<dyn Error>> {
-            let descriptor_path = env::var_os(RELEASE_CANDIDATE_PATH_ENV)
-                .map(PathBuf::from)
-                .ok_or_else(|| {
-                    io::Error::other(format!(
-                        "{RELEASE_CANDIDATE_PATH_ENV} must name the exact external release-candidate descriptor"
-                    ))
-                })?;
-            validate_external_regular_input(
-                &descriptor_path,
+        fn from_descriptor_path(
+            context: &ValidationContext,
+            descriptor_path: &Path,
+        ) -> Result<Self, Box<dyn Error>> {
+            let bytes = read_bounded_external_file(
+                context,
+                descriptor_path,
                 MAX_RELEASE_CANDIDATE_DESCRIPTOR_BYTES as u64,
-                RELEASE_CANDIDATE_PATH_ENV,
             )?;
-            let bytes = fs::read(&descriptor_path)?;
-            let candidate: Self = serde_json::from_slice(&bytes)?;
-            candidate.validate()?;
+            let mut candidate: Self = serde_json::from_slice(&bytes)?;
+            candidate.descriptor_path = Some(descriptor_path.to_path_buf());
+            candidate.validate_with_context(context)?;
             Ok(candidate)
         }
 
         fn validate(&self) -> Result<(), Box<dyn Error>> {
+            let context = release_validation_context()?;
+            self.validate_with_context(&context)
+        }
+
+        fn validate_external_paths(
+            &self,
+            context: &ValidationContext,
+        ) -> Result<(), Box<dyn Error>> {
+            if let Some(descriptor_path) = self.descriptor_path.as_deref() {
+                validate_external_regular_input(
+                    context,
+                    descriptor_path,
+                    MAX_RELEASE_CANDIDATE_DESCRIPTOR_BYTES as u64,
+                    RELEASE_CANDIDATE_PATH_ENV,
+                )?;
+            }
+            validate_external_regular_input(
+                context,
+                self.executable_path(),
+                MAX_RELEASE_CANDIDATE_BINARY_BYTES,
+                "candidate_path",
+            )
+        }
+
+        fn validate_with_context(&self, context: &ValidationContext) -> Result<(), Box<dyn Error>> {
             if self.schema != RELEASE_CANDIDATE_SCHEMA {
                 return Err(io::Error::other(format!(
                     "release candidate schema must be {RELEASE_CANDIDATE_SCHEMA}"
@@ -14645,12 +15598,12 @@ mod unix {
                 bounded_identity(name, value, 256)?;
             }
             let candidate_path = Path::new(&self.candidate_path);
-            validate_external_regular_input(
+            self.validate_external_paths(context)?;
+            let actual_sha256 = sha256_external_file(
+                context,
                 candidate_path,
-                MAX_RELEASE_CANDIDATE_BINARY_BYTES,
-                "candidate_path",
+                Some(MAX_RELEASE_CANDIDATE_BINARY_BYTES),
             )?;
-            let actual_sha256 = sha256_file(candidate_path, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
             if actual_sha256 != self.binary_sha256 {
                 return Err(io::Error::other(
                     "release candidate executable bytes do not match binary_sha256",
@@ -14664,8 +15617,8 @@ mod unix {
             Path::new(&self.candidate_path)
         }
 
-        fn adapter_build_id(&self) -> Result<String, Box<dyn Error>> {
-            self.validate()?;
+        fn adapter_build_id(&self, context: &ValidationContext) -> Result<String, Box<dyn Error>> {
+            self.validate_with_context(context)?;
             let mut command = Command::new(self.executable_path());
             command
                 .arg("--version")
@@ -14676,7 +15629,7 @@ mod unix {
             LiveSmokeFixture::remove_inherited_host_control_env(&mut command);
             LiveSmokeFixture::remove_inherited_auth_secret_env(&mut command);
             let outcome = run_with_timeout(command, COMMAND_TIMEOUT);
-            self.validate()?;
+            self.validate_with_context(context)?;
             let output = outcome?;
             release_build_id_from_version_output(
                 "exact release candidate volicord --version",
@@ -14741,15 +15694,12 @@ mod unix {
     }
 
     fn validate_external_regular_input(
+        context: &ValidationContext,
         path: &Path,
         max_bytes: u64,
         name: &str,
     ) -> Result<(), Box<dyn Error>> {
-        if !path.is_absolute() {
-            return Err(
-                io::Error::other(format!("{name} must be an absolute external path")).into(),
-            );
-        }
+        context.validate_existing_file(path)?;
         let metadata = fs::symlink_metadata(path)?;
         if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err(
@@ -14760,19 +15710,6 @@ mod unix {
             return Err(
                 io::Error::other(format!("{name} exceeds its {max_bytes}-byte bound")).into(),
             );
-        }
-        let canonical = fs::canonicalize(path)?;
-        let source_repository = fs::canonicalize(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .and_then(Path::parent)
-                .ok_or_else(|| io::Error::other("could not resolve source repository root"))?,
-        )?;
-        if canonical.starts_with(source_repository) {
-            return Err(io::Error::other(format!(
-                "{name} must stay outside the source repository"
-            ))
-            .into());
         }
         Ok(())
     }
@@ -14806,6 +15743,7 @@ mod unix {
         _runtime_home: TempRuntimeHome,
         host_home_root: PathBuf,
         runtime_home_path: PathBuf,
+        release_artifact_root: PathBuf,
         repo_root: PathBuf,
         repo_arg: String,
         runtime_home_arg: String,
@@ -14824,16 +15762,12 @@ mod unix {
         }
     }
 
-    fn workspace_target_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .expect("volicord-cli crate must remain under the workspace crates directory")
-            .join("target")
-    }
-
-    fn create_disposable_host_home() -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-        let base = workspace_target_dir().join("volicord-live-host-homes");
+    fn create_disposable_host_home(
+        path_context: &ValidationContext,
+    ) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+        let base = path_context
+            .target_directory()
+            .join("volicord-live-host-homes");
         fs::create_dir_all(&base)?;
         let base_metadata = fs::symlink_metadata(&base)?;
         if base_metadata.file_type().is_symlink() || !base_metadata.is_dir() {
@@ -14868,18 +15802,33 @@ mod unix {
 
     impl LiveSmokeFixture {
         fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
-            Self::new_with_volicord(prefix, Path::new(volicord_bin()), None)
+            Self::new_with_volicord(prefix, Path::new(volicord_bin()), None, None, None)
         }
 
         fn new_with_release_candidate(
             prefix: &str,
             candidate: &ReleaseCandidate,
         ) -> Result<Self, Box<dyn Error>> {
-            candidate.validate()?;
             Self::new_with_volicord(
                 prefix,
                 candidate.executable_path(),
                 Some(candidate.binary_sha256.as_str()),
+                Some(candidate),
+                None,
+            )
+        }
+
+        fn new_with_release_candidate_for_recorder(
+            prefix: &str,
+            candidate: &ReleaseCandidate,
+            recorder: &mut LiveResultRecorder,
+        ) -> Result<Self, Box<dyn Error>> {
+            Self::new_with_volicord(
+                prefix,
+                candidate.executable_path(),
+                Some(candidate.binary_sha256.as_str()),
+                Some(candidate),
+                Some(recorder),
             )
         }
 
@@ -14887,9 +15836,23 @@ mod unix {
             prefix: &str,
             source_volicord: &Path,
             expected_sha256: Option<&str>,
+            release_candidate: Option<&ReleaseCandidate>,
+            publication_recorder: Option<&mut LiveResultRecorder>,
         ) -> Result<Self, Box<dyn Error>> {
+            let mut path_context = release_validation_context()?;
             let runtime_home = TempRuntimeHome::new(&format!("live-host-smoke-{prefix}"))?;
             let runtime_home_path = runtime_home.path().to_path_buf();
+            if let Some(recorder) = publication_recorder {
+                recorder.bind_observed_runtime_home(&runtime_home_path)?;
+                recorder.require_publication_domain_ready()?;
+            }
+            path_context.add_runtime_home(&runtime_home_path)?;
+            if let Some(candidate) = release_candidate {
+                candidate.validate_with_context(&path_context)?;
+            }
+            let release_artifact_root = runtime_home.product_repo_path("release-artifacts");
+            fs::create_dir_all(&release_artifact_root)?;
+            path_context.validate_existing_directory(&release_artifact_root)?;
             let repo_root = runtime_home.create_product_repo("product-repo")?;
             initialize_git_repository(&repo_root)?;
             fs::write(
@@ -14897,7 +15860,7 @@ mod unix {
                 "Volicord live smoke repository\n",
             )?;
 
-            let bin_dir = runtime_home_path.join("live-bin");
+            let bin_dir = release_artifact_root.join("live-bin");
             fs::create_dir_all(&bin_dir)?;
             let volicord_path = bin_dir.join("volicord-release-candidate");
             fs::copy(source_volicord, &volicord_path)?;
@@ -14915,7 +15878,7 @@ mod unix {
             write_volicord_shim(&bin_dir, &volicord_path)?;
 
             let home = runtime_home_path.join("isolated-home");
-            let (host_home_root, codex_home) = create_disposable_host_home()?;
+            let (host_home_root, codex_home) = create_disposable_host_home(&path_context)?;
             let xdg_config_home = runtime_home_path.join("isolated-xdg-config");
             let claude_config_dir = runtime_home_path.join("isolated-claude-config");
             for path in [&home, &xdg_config_home, &claude_config_dir] {
@@ -14929,6 +15892,7 @@ mod unix {
                 _runtime_home: runtime_home,
                 host_home_root,
                 runtime_home_path,
+                release_artifact_root,
                 repo_root,
                 repo_arg,
                 runtime_home_arg,
@@ -14944,6 +15908,12 @@ mod unix {
 
         fn repo_arg(&self) -> &str {
             &self.repo_arg
+        }
+
+        fn live_bin(&self) -> &Path {
+            self.volicord_path
+                .parent()
+                .expect("live fixture candidate must have a bin directory")
         }
 
         fn runtime_home_arg(&self) -> &str {
@@ -15021,6 +15991,7 @@ mod unix {
             executable: &Path,
         ) -> Result<ObservedReleaseHostIdentity, Box<dyn Error>> {
             recorder.bind_observed_runtime_home(&self.runtime_home_path)?;
+            recorder.require_publication_domain_ready()?;
             recorder.mark_installed_host_detected();
             let host_executable_sha256 =
                 sha256_file(executable, MAX_RELEASE_CANDIDATE_BINARY_BYTES)?;
@@ -15083,6 +16054,7 @@ mod unix {
             prompt: &str,
             recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            recorder.require_publication_domain_ready()?;
             let before = self.managed_baseline_observations()?;
             self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
             let mut command = Command::new(program);
@@ -15111,6 +16083,7 @@ mod unix {
             prompt: &str,
             recorder: &mut LiveResultRecorder,
         ) -> Result<ExitStatus, Box<dyn Error>> {
+            recorder.require_publication_domain_ready()?;
             let before = self.managed_baseline_observations()?;
             self.require_codex_chatgpt_login_immediately_before_cell(host, program)?;
             let mut command = Command::new(program);

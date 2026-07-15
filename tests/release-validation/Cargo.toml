@@ -13,6 +13,16 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+] }
+
 [[bin]]
 name = "host-release-gate"
 path = "src/bin/host-release-gate.rs"

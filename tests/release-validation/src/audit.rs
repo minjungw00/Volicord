@@ -21,8 +21,8 @@ use crate::{
     io::{
         git_archive_sha256, git_head, git_is_clean, inspect_candidate_artifact, parse_strict_json,
         read_bounded_external_file, read_strict_json, sha256_bytes, sha256_external_file,
-        write_json_create_new, ValidationContext, MAX_AUDIT_JSON_BYTES, MAX_CANDIDATE_JSON_BYTES,
-        MAX_CELL_JSON_BYTES, MAX_EVIDENCE_BYTES, MAX_MANIFEST_JSON_BYTES,
+        write_json_create_new, ResultRootLease, ValidationContext, MAX_AUDIT_JSON_BYTES,
+        MAX_CANDIDATE_JSON_BYTES, MAX_CELL_JSON_BYTES, MAX_EVIDENCE_BYTES, MAX_MANIFEST_JSON_BYTES,
     },
     schema::{
         AuditExclusion, AuditInvariantResult, AuditVerdict, Candidate, Cell, GateVerdict, HostKind,
@@ -45,7 +45,13 @@ pub fn run_audit(
     context: &ValidationContext,
     request: &AuditRequest,
 ) -> ValidationResult<ReleaseAudit> {
-    context.validate_new_output(&request.audit_output)?;
+    ResultRootLease::prevalidate_summary_output(
+        context,
+        &request.cell_directory,
+        &request.audit_output,
+    )?;
+    let lease =
+        ResultRootLease::acquire_shared_for_cell_directory(context, &request.cell_directory)?;
     let started_at = parse_canonical_timestamp("audit.started_at", &request.started_at)?;
     let evaluated_at = parse_canonical_timestamp("audit.evaluated_at", &request.evaluated_at)?;
     if started_at > evaluated_at {
@@ -72,6 +78,7 @@ pub fn run_audit(
 
     let (original_cells, cell_inputs_sha256) =
         independently_read_cell_directory(context, &request.cell_directory)?;
+    lease.validate_attached(context)?;
     let cell_directory = request
         .cell_directory
         .to_str()
@@ -166,6 +173,7 @@ pub fn run_audit(
         audit_verdict,
     };
     write_json_create_new(context, &request.audit_output, &audit, MAX_AUDIT_JSON_BYTES)?;
+    lease.validate_attached(context)?;
     Ok(audit)
 }
 

@@ -24,6 +24,7 @@ toml_edit = "0.22"
 rustix = { version = "1", features = ["fs", "process"] }
 
 [dev-dependencies]
+volicord-release-validation-tests = { path = "../../tests/release-validation" }
 volicord-store = { path = "../volicord-store", features = ["test-support"] }
 volicord-test-support = { path = "../volicord-test-support" }
 rusqlite = { version = "0.32", features = ["bundled"] }

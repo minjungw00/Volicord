@@ -7,8 +7,8 @@ use crate::{
     error::{ValidationError, ValidationResult},
     evaluation::evaluate_release_matrix,
     io::{
-        read_strict_json, write_json_create_new, ValidationContext, MAX_CANDIDATE_JSON_BYTES,
-        MAX_CELL_JSON_BYTES, MAX_MANIFEST_JSON_BYTES,
+        read_strict_json, write_json_create_new, ResultRootLease, ValidationContext,
+        MAX_CANDIDATE_JSON_BYTES, MAX_CELL_JSON_BYTES, MAX_MANIFEST_JSON_BYTES,
     },
     schema::{Candidate, Cell, ReleaseManifest},
 };
@@ -25,13 +25,20 @@ pub fn run_gate(
     context: &ValidationContext,
     request: &GateRequest,
 ) -> ValidationResult<ReleaseManifest> {
-    context.validate_new_output(&request.manifest_output)?;
+    ResultRootLease::prevalidate_summary_output(
+        context,
+        &request.cell_directory,
+        &request.manifest_output,
+    )?;
+    let lease =
+        ResultRootLease::acquire_shared_for_cell_directory(context, &request.cell_directory)?;
     let candidate: Candidate = read_strict_json(
         context,
         &request.candidate_descriptor,
         MAX_CANDIDATE_JSON_BYTES,
     )?;
     let cells = read_cell_directory(context, &request.cell_directory)?;
+    lease.validate_attached(context)?;
     let evaluation = evaluate_release_matrix(context, candidate, cells, &request.evaluated_at)?;
     write_json_create_new(
         context,
@@ -39,6 +46,7 @@ pub fn run_gate(
         &evaluation.manifest,
         MAX_MANIFEST_JSON_BYTES,
     )?;
+    lease.validate_attached(context)?;
     Ok(evaluation.manifest)
 }
 

@@ -242,6 +242,30 @@ CI에서 이 보고서를 실행할 때 실패 종료 상태는 명령이 저장
 [관리 CLI](../reference/admin-cli.md#agent-connection-result-states)가 계속 담당합니다.
 이 절은 릴리스 검증 순서만 담당합니다.
 
+<a id="live-cell-result-root"></a>
+## 실제 셀 result root 준비와 복구
+
+12개 셀 행렬 하나에는 승인된 새 외부 `RESULT_ROOT` 하나를 만들고, 실제 정규 symlink 없는
+`RESULT_ROOT/cells`와 `RESULT_ROOT/evidence` 디렉터리를 미리 만듭니다. `CELL_DIR`는
+정확히 `RESULT_ROOT/cells`입니다. 각 행렬 `VOLICORD_LIVE_HOST_RESULT_PATH`는 그 디렉터리
+바로 아래의 서로 다른 존재하지 않는 경로이고, 유지되는 생산자는 구현 셀에 대응하는
+sidecar를 sibling `evidence` 디렉터리 아래에서 도출합니다. 생산자는 한 번에 하나만
+실행합니다. 생산자는 result root에 안정된 비공개 조정 항목을 만들거나 다시 열고 그
+협력적 lease를 유지합니다. 호스트 시작 전 `active`를 동기화합니다. 최종 셀과 담당
+디렉터리를 동기화한 뒤 정확한 `clean` 상태를 쓰며, 그 완전한 레코드가 관찰 가능한 게시
+커밋 표식입니다. 이 항목은 릴리스 증거가 아닙니다. 정확한 게시 동작은
+[append-only 실제 셀 게시 계약](../reference/host-release-evidence.md#append-only-live-cell-publication)이
+담당합니다.
+
+어떤 생산자든 게시 오류를 보고하거나 비정상 종료하거나 비-clean 상태, 비공개 stage, 고아
+증거, 완료 확인 없는 설치된 최종 이름을 남기면 행렬을 중단합니다. 쓰기 뒤 동기화 오류가
+정확한 `clean`을 남길 수도 있지만, 그 경우에도 유지되는 운영 절차는 보수적으로 root를
+포기합니다. 최종 이름을 삭제하거나 root를 정리하거나 그곳에서 셀을 재시도하거나 이전 셀을
+복사하거나 게이트를 실행하지 않습니다. 실패한 root를 필요에 따라 보존하고 보고한 뒤 두
+하위 디렉터리를 미리 만든 새 result root에서 12개 셀을 모두 다시 실행합니다. 게이트와
+audit은 복구를 수행하지 않습니다. 이 규칙은 12개 릴리스 셀에 적용하며 `auxiliary/` 아래의
+별도 CLI fallback 결과에는 적용하지 않습니다.
+
 <a id="live-host-final-output-release-validation"></a>
 ## 실제 호스트 최종 출력 릴리스 검증
 
@@ -253,10 +277,10 @@ Codex 또는 Claude Code의 Record profile이나 Detective profile에서 관리�
 [관리 CLI](../reference/admin-cli.md#managed-final-output-authority-disclosure), 그리고 그 집중
 의존 문서가 계속 담당합니다. 이 체크리스트는 릴리스 검증 실행과 증거 분리만 담당합니다.
 
-소스 저장소 밖에서 승인된 릴리스 기록 위치를 준비하고 릴리스 후보와 설치된 호스트의
-식별 정보를 기록합니다. 각 `VOLICORD_LIVE_HOST_RESULT_PATH`에는 부모 디렉터리가 이미
-있는 서로 다른 새 절대 경로를 지정해야 합니다. 아래 네 유지 호스트·프로필 셀 생산자를
-각각 호출합니다. 구현 셀만 인증된 대화형 호스트 검증으로 진행하고 정적 미지원 셀은
+[위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 릴리스 후보와 설치된
+호스트의 식별 정보를 기록합니다. 각 `VOLICORD_LIVE_HOST_RESULT_PATH`의 최종 셀 이름은
+존재하지 않아야 합니다. 아래 네 유지 호스트·프로필 셀 생산자를 각각 호출합니다. 구현
+셀만 인증된 대화형 호스트 검증으로 진행하고 정적 미지원 셀은
 호스트 turn 전에 끝납니다.
 
 | 호스트 | Record profile | Detective profile |
@@ -354,12 +378,14 @@ Task가 없을 때의 대체 안내 UI, 안전한 Detective `block` 진입점, �
 `0.144.4`의 두 최종 출력 셀은 모두 정적으로 미지원이므로 이 Codex 버전에서 유지되는 두
 호스트와 두 프로필을 모두 포괄하는 릴리스 지원 주장은 불가능합니다.
 
-결과 목적지는 기록기가 크기가 제한된 종단 셀 하나를 만들 때까지 존재하지 않습니다.
-일반적인 조기 반환이나 unwind는 `failed_before_completion`을 만들며 기존 목적지는
-덮어쓰지 않습니다. `result=incomplete`와 그 밖의 통과하지 않은 구현 셀 종단 결과는
+일반적인 완료나 unwind에서 기록기는 append-only 종단 게시 하나를 시도합니다. 게시가
+성공하면 구현 셀은 증거를 먼저 설치하고 크기가 제한된 셀을 마지막에 설치하며, 정적
+미지원 셀은 셀만 설치합니다. 게시 I/O 오류나 비정상 종료는 생산자 셀 없이 담당 문서가
+허용한 크기 제한 잔여물만 남길 수 있으므로 새 root 복구 절차를 적용합니다. 기존 최종
+목적지는 덮어쓰지 않습니다. `result=incomplete`와 그 밖의 통과하지 않은 구현 셀 종단 결과는
 불완전한 증거이며 통과로 세지 않습니다. 정규 정적 `not_applicable` 셀은 유효한 매트릭스
 입력이지만 통과한 지원 주장은 아닙니다. 크기가 제한된 결과와 릴리스 승인자의
-체크리스트는 소스 저장소 밖에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화
+체크리스트는 그 승인된 외부 릴리스 기록 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화
 기록, 녹화, 자격 증명, 비밀값, 전체 프롬프트, 비공개 운영자 입력을 커밋하지 않습니다.
 이 증거는 관찰한 호스트, 프로필, 릴리스 후보, 환경에만 적용됩니다. 이식 가능한 호스트
 적합성, 보안 증명, 제품 수락, 닫기 준비 상태, 일반적인 정확성 주장이 아닙니다.
@@ -377,10 +403,10 @@ Task가 없을 때의 대체 안내 UI, 안전한 Detective `block` 진입점, �
 [API 상태 스키마](../reference/api/schema-state.md)가 계속 담당합니다. 이 체크리스트는
 릴리스 검증 실행과 증거 처리만 담당합니다.
 
-소스 저장소 밖에서 승인된 릴리스 기록 위치를 준비한 뒤, 정확한 릴리스 후보와 두
-호스트의 식별 정보를 기록합니다. 아래의 각 결과 경로는 절대 경로여야 하고 부모
-디렉터리가 이미 있어야 하며 테스트 시작 전에는 존재하지 않아야 합니다. 이전
-`result=passed`를 이후 실행 결과로 오인하지 않도록 하네스는 기존 경로를 거부합니다.
+[위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 정확한 릴리스 후보와 두
+호스트의 식별 정보를 기록합니다. 아래의 각 최종 셀 경로는 `RESULT_ROOT/cells` 바로 아래에
+있어야 하며 테스트 시작 전에는 존재하지 않아야 합니다. 이전 `result=passed`를 이후 실행
+결과로 오인하지 않도록 lease 아래의 사전 검사가 기존 경로를 거부합니다.
 
 ```sh
 /absolute/candidate_path/from/CANDIDATE.json --version
@@ -446,13 +472,14 @@ Judgment inbox 대체 경로는 User Channel 복구 증거이며 최종 출력 `
 아니라 `SKIP` 또는 `FAIL`입니다. 유지되는 두 호스트를 모두 지원한다고 명시하는
 릴리스에서는 두 호스트별 검증이 모두 통과해야 합니다.
 
-하네스는 새 외부 결과 경로를 필수로 요구하며 임시 `running` 파일을 만들지 않습니다.
-명시적인 최종 결과 전에 일반적인 조기 반환이나 unwind가 발생하면 크기가 제한된
-`result=failed_before_completion` 종단 셀 하나를 만듭니다. 기존 목적지는 덮어쓰지
-않습니다.
+하네스는 새 외부 결과 경로를 필수로 요구하며 임시 `running` 셀을 만들지 않습니다.
+일반적인 완료나 unwind에서 기록기는 append-only 종단 게시 하나를 시도합니다. 게시가
+성공하면 구현 셀은 증거를 먼저 설치하고 크기가 제한된 셀을 마지막에 설치합니다. 게시
+I/O 오류나 비정상 종료는 생산자 셀 없이 담당 문서가 허용한 크기 제한 잔여물만 남길 수
+있으므로 새 root 복구 절차를 적용합니다. 기존 최종 목적지는 덮어쓰지 않습니다.
 
-크기가 제한된 각 JSON 결과와 릴리스 승인자의 체크리스트 기록은 소스 저장소 밖의
-승인된 릴리스 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화 기록,
+크기가 제한된 각 JSON 결과와 릴리스 승인자의 체크리스트 기록은 그 승인된 외부 릴리스
+기록 위치에 보존합니다. 결과 파일, Runtime Home, 스크린샷, 대화 기록,
 녹화, 자격 증명, 비밀값, 전체 프롬프트, 비공개 운영자 입력을 유지 문서나 소스
 저장소에 커밋하지 않습니다. 구조화 결과는 관찰한 호스트와 환경에 대한 릴리스 검증
 증거일 뿐이며 이식 가능한 호스트 적합성, 보안 증명, 제품 수락, 닫기 준비 상태,
@@ -479,10 +506,11 @@ Judgment 결과, CLI 대체 경로 결과, 최종 출력 결과는 이를 대신
 [API 상태 스키마](../reference/api/schema-state.md)가 담당합니다. 이 체크리스트는 릴리스
 검증 실행, 증거 분리, 안전한 결과 보존만 담당합니다.
 
-소스 저장소 밖에서 승인된 릴리스 기록 위치를 준비하고 정확한 릴리스 후보와 설치된
-호스트의 식별 정보를 기록합니다. 로컬 브라우저에서 루프백 consent 수신기에 접근할 수
-있어야 합니다. 각 결과 경로는 부모 디렉터리가 이미 있는 서로 다른 새 절대 경로여야
-하며, 하네스는 기존 경로를 거부합니다. 아래 유지 셀 생산자를 각각 호출합니다. 실제
+[위에서 미리 만든 result root](#live-cell-result-root)를 사용하고 정확한 릴리스 후보와
+설치된 호스트의 식별 정보를 기록합니다. 로컬 브라우저에서 루프백 consent 수신기에 접근할
+수 있어야 합니다. 각 최종 셀 경로는 `RESULT_ROOT/cells` 바로 아래에 있어야 하며 시작
+전에는 존재하지 않아야 합니다. Lease 아래의 사전 검사가 기존 경로를 거부합니다. 아래
+유지 셀 생산자를 각각 호출합니다. 실제
 호스트 경로에 도달하는 구현 셀에는 평소 인증된 호스트 환경의 대화형 TTY가 필요하지만,
 정적 미지원 셀은 호스트를 시작하기 전에 끝납니다.
 
@@ -549,7 +577,10 @@ capability 데이터나 신뢰되지 않은 경로의 브라우저 성공으로 
    bearer token, raw tool body, 원문 요약, 프롬프트나 대화 기록 내용, 스크린샷이나 녹화, 자격 증명,
    비밀값, 비공개 운영자 입력을 담으면 안 됩니다.
 
-기록기는 새 목적지에 크기가 제한된 종단 결과 하나만 만듭니다. 호스트 실행 파일이
+일반적인 완료나 unwind에서 기록기는 append-only 종단 게시 하나를 시도합니다. 게시가
+성공하면 구현 셀은 증거를 먼저 설치하고 크기가 제한된 셀을 마지막에 설치하며, 정적
+미지원 셀은 셀만 설치합니다. 게시 I/O 오류나 비정상 종료는 생산자 셀 없이 담당 문서가
+허용한 크기 제한 잔여물만 남길 수 있으므로 새 root 복구 절차를 적용합니다. 호스트 실행 파일이
 없거나 TTY가 대화형이 아니거나, 정확한 capability가 누락되거나 잘못됐거나, host 전용
 표시 표면이 없거나, host 전용 `_meta`와 모델 가시 결과 데이터를 구별할 수 없으면
 `result=unavailable`을 기록합니다. 픽스처 준비 실패,
@@ -565,7 +596,7 @@ capability 데이터나 신뢰되지 않은 경로의 브라우저 성공으로 
 없으므로 검토된 Codex `0.144.4` 행은 로컬 웹 증거 관찰 기능 지원을 주장할 수 없습니다.
 이 셀은 관찰된 증거 관찰 로컬 웹 경로만 검증합니다. 호스트 고유 Judgment, 실행 가능한
 CLI 대체 경로, 호스트 설정, 최종 출력 셀을 충족할 수 없고 그 반대도 마찬가지입니다.
-크기가 제한된 결과와 릴리스 승인자의 체크리스트는 소스 저장소 밖에 보존합니다. 결과나
+크기가 제한된 결과와 릴리스 승인자의 체크리스트는 그 승인된 외부 릴리스 기록 위치에 보존합니다. 결과나
 Runtime Home을 커밋하지 않습니다. 이 증거는 관찰한 호스트, 릴리스 후보, 환경에만
 적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 elicitation 증거, 제품
 수락, 닫기 준비 상태, 일반적인 정확성 주장이 아닙니다.
@@ -605,9 +636,10 @@ snapshot 사이에 새로 생겼거나 메타데이터 digest가 바뀐 행에�
 보존합니다. 변경이 없는 반복 turn과 같은 키를 전진시키는 이후 캡처 turn을 모두
 검증합니다. 후자는 before snapshot이 직전 예상 다이제스트와 정확히 일치할 때만 예상
 다이제스트를 교체할 수 있습니다. 마지막 snapshot 뒤에 조건을 만족한 같은 기준선을
-변경하는 negative case도 실행하고, 셀과 증거 목적지가 모두 없는 상태로 종단 기록이
+변경하는 negative case도 실행하고, 기록기가 어느 최종 이름도 게시하기 전에 종단 기록이
 실패하는지 확인합니다. 삭제, 같은 키의 행 교체, 반복 turn의 before snapshot 불일치도
-같은 닫힌 실패이며 정직한 null 정체성 하향 조정으로 처리하면 안 됩니다.
+같은 닫힌 실패입니다. 기록기는 동시에 존재하는 이름을 제거하거나 이 실패를 정직한 null
+정체성 하향 조정으로 처리하면 안 됩니다.
 
 Codex `0.144.4` 셀에서 하네스는 정확한 `clientInfo.name=codex-mcp-client`, 정규
 클라이언트·호스트 버전 `0.144.4`, 바깥·안쪽 thread 같음, root 세션 매핑 하나,
@@ -636,9 +668,13 @@ invocation identifier, URL, token, credential, 인증 cache를 보존하면 안 
 [`volicord.resolve_user_action`](../reference/api/method-resolve-user-action.md)이 계속
 담당합니다. 이 체크리스트는 릴리스 검증 실행과 증거 분리만 담당합니다.
 
-소스 저장소 밖에서 승인된 릴리스 기록 위치를 준비하고 정확한 릴리스 후보와 설치된
-호스트의 식별 정보를 기록합니다. 각 결과 경로는 부모 디렉터리가 이미 있는 서로 다른
-새 절대 경로여야 합니다. 아래 두 무시된 셀을 각각 실행합니다.
+[정규 외부 릴리스 경로 정책](../reference/host-release-evidence.md#external-release-path-policy)을
+충족하는 승인된 릴리스 기록 위치를 준비하고 정확한 릴리스 후보와 설치된 호스트의 식별
+정보를 기록합니다. 정규 symlink 없는 `RESULT_ROOT` 하나와 그 정확한 `auxiliary/` 하위
+디렉터리를 미리 만듭니다. 각 결과 경로는 `RESULT_ROOT/auxiliary` 바로 아래의 서로 다른
+존재하지 않는 경로여야 합니다. 생산자는 호스트 시작 전에 협력적 배타 result-root lease를
+획득하고 정확한 `clean` 상태를 요구하지만, auxiliary 실행은 행렬 게시 상태를 `active`로
+바꾸지 않습니다. 아래 두 무시된 셀을 각각 실행합니다.
 
 ```sh
 VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST_VERIFIED=0 VOLICORD_LIVE_HOST_RESULT_PATH=/path/to/approved-release-records/auxiliary/codex-cli-fallback.json VOLICORD_RUN_CODEX_CLI_FALLBACK_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke codex_live_cli_fallback_round_trip_is_opt_in -- --ignored --nocapture
@@ -680,14 +716,19 @@ VOLICORD_RELEASE_CANDIDATE_PATH=/path/to/CANDIDATE.json VOLICORD_RELEASE_REQUEST
    CLI 대체 경로 셀임을 명시하고 호스트 고유 Judgment와 최종 출력 매트릭스 셀을
    제외합니다.
 
-결과 경로는 필수입니다. 기록기는 크기가 제한된 종단 기록 또는
-`failed_before_completion` 기록만 만들며 기존 경로를 덮어쓰지 않습니다. `passed`가 아닌
+결과 경로는 필수입니다. Append-only 게시가 성공하면 기록기는 비공개 create-new stage와
+원자적 no-replace rename을 통해 크기가 제한된 종단 기록 또는
+`failed_before_completion` 기록 하나를 설치합니다. 기존 이름을 덮어쓰거나 삭제하지
+않습니다. 게시 실패는 크기가 제한된 비공개 stage 또는 명령이 성공하지 않았는데 이미
+설치된 최종 이름을 남길 수 있습니다. 같은 목적지를 정리하거나 재시도하지 말고 존재하지
+않는 새 auxiliary 경로를 사용합니다. 조정 상태가 정확한 `clean`이 아니면 새 result root를
+사용합니다. 이 auxiliary 복구는 12개 셀 행렬 재실행을 요구하지 않습니다. `passed`가 아닌
 모든 결과, 사용할 수 없는 실행 파일, 인증 환경,
 대화형 TTY, 같은 연결의 재개 경로, Task 결속 Stop, 완전한 receipt UI는 통과가 아니라
 `SKIP` 또는 `FAIL`로 처리합니다. 유지되는 두 호스트를 모두 지원한다고 명시하려면 두
 호스트별 셀이 모두 통과해야 합니다.
 
-크기가 제한된 결과와 릴리스 승인자의 체크리스트는 소스 저장소 밖에 보존합니다. 결과
+크기가 제한된 결과와 릴리스 승인자의 체크리스트는 그 승인된 외부 릴리스 기록 위치에 보존합니다. 결과
 파일, Runtime Home, 스크린샷, 대화 기록, 녹화, 자격 증명, 비밀값, 전체 프롬프트,
 비공개 운영자 입력을 커밋하지 않습니다. 이 증거는 관찰한 호스트, 릴리스 후보, 환경에만
 적용됩니다. 이식 가능한 호스트 적합성, 보안 증명, 호스트 고유 Judgment elicitation
@@ -712,8 +753,10 @@ cargo run --locked -p volicord-release-validation-tests --bin host-release-audit
 `CANDIDATE.json`이 이름 붙인 외부 경로에 둔 다음 12개 셀 모두에 같은 바이너리를
 사용합니다. 모든 행렬 명령은 `VOLICORD_RELEASE_CANDIDATE_PATH`로 그 설명자를 지정하고,
 `VOLICORD_RELEASE_REQUEST_VERIFIED=0|1`로 주장을 명시적으로 선택하며, 서로 다른 새 셀
-경로를 사용해야 합니다. 증거 sidecar는 `CELL_DIR` 밖에 둡니다. 그 디렉터리에는 `.json`
-셀 파일 정확히 12개만 두고 다른 항목을 두면 안 됩니다.
+경로를 `CELL_DIR=RESULT_ROOT/cells` 아래에 사용해야 합니다. 생산자는 sibling
+`RESULT_ROOT/evidence` 디렉터리 아래에서 증거 sidecar를 도출합니다. 셀 디렉터리에는 최종
+`.json` 셀 파일 정확히 12개만 두고 다른 항목을 두면 안 됩니다. 게시가 실패하면
+[새 root 복구 규칙](#live-cell-result-root)에 따라 그 result root를 포기합니다.
 
 설치된 호스트 버전과 실행 파일 digest는 그 호스트의 여섯 셀에서 같아야 합니다. 최상위와
 environment의 클라이언트 이름·버전 필드 네 개는 별도의 모두 문자열 또는 모두 null
@@ -750,6 +793,12 @@ Codex `0.144.4`에는 추가로 `client_name=codex-mcp-client`와
 exclusion, 상태, 판정을 별도 프로세스에서 다시 열고 계산하도록 게이트 프로세스를 끝낸 뒤
 audit을 시작합니다. 셀 또는 증거 파일이 없거나 잘못된 형식이면 하향 조정이 아니라
 manifest를 만들지 않는 구조적 명령 실패입니다.
+
+게이트와 audit은 result root의 협력적 공유 lease를 획득하며 게시 잔여물을 정리하거나
+채택하지 않습니다. 생산자가 실행 중이거나 조정 상태가 `active`, 빈 상태, 부분 상태,
+잘못된 상태이거나 `CELL_DIR`에 비공개 stage가 더 있거나 최종 셀이 누락되었으면 구조적
+실패입니다. 참조되지 않은 증거 stage나 고아 최종 증거 파일은
+입력 집합에 들어가지 않으며 행렬을 복구할 수 없습니다.
 
 후보·소스·바이너리 좌표, 두 호스트의 가용성 좌표, 존재할 때 호스트별 null이 아닌 단일
 클라이언트 정체성, 각 도출 셀 상태, 요청한 검증됨 주장,

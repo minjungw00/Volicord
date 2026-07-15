@@ -49,6 +49,131 @@ Configured exclusion roots are normalized before overlap checks. A relative
 `VOLICORD_HOME` is resolved from the invoking process's current directory;
 existing symlink prefixes and dot components do not weaken an exclusion.
 
+<a id="external-release-path-policy"></a>
+### Canonical external release-path policy
+
+The live-cell producer, gate, and independent audit apply one canonical
+external-path evaluator to every release-artifact input and create-new
+destination they consume. The common exclusion set contains the canonical
+source checkout, resolved Cargo target directory, maintained `docs/`
+directory, the explicit process Runtime Home, the default home-derived Runtime
+Home, every additional caller-supplied Runtime Home, each disposable Runtime
+Home bound to the current cell, and any registry-bearing ancestor discovered
+for an artifact path. Candidate descriptors, `candidate_path`, cell
+directories and outputs, evidence sidecars, manifests, and audit inputs and
+outputs all use this evaluator.
+
+Every accepted artifact path must have an exact UTF-8 representation. An
+existing input or directory must be canonical and have no symlink component. A
+create-new output must be absent and have an existing canonical, symlink-free
+parent. A manifest or audit destination must also be outside the supplied
+result root's `cells/` and `evidence/` directories so writing the summary
+cannot mutate its own cell or evidence input set. If the producer binds the cell's disposable Runtime Home after
+initially accepting a candidate or result path, it adds that root to the same
+exclusion context and revalidates every retained path before acquiring the
+result-root lease, launching a host, reading or executing the candidate again,
+staging output, or publishing a final name.
+
+A path-policy rejection, inability to acquire the cooperative result-root
+lease, or a final destination already present during leased prevalidation is a
+structural command error. It occurs before an authenticated host launch, or
+before terminal publication for a static unsupported cell, and this producer
+publishes no final release name. It is not a downgrade, an `ignored` cell, or an
+audit exclusion. A producer-only source check, a parallel path policy, or
+deferring the first rejection to the gate or audit is non-conforming.
+
+<a id="append-only-live-cell-publication"></a>
+### Append-only live-cell publication
+
+A maintained matrix cell uses one new external result root. The result root
+and its exact `cells/` and `evidence/` child directories must already exist, be
+canonical, contain no symlink component, and satisfy the shared external-path
+evaluator. The cell destination is a direct child of `RESULT_ROOT/cells`; an
+implemented cell's derived evidence destination is a direct child of
+`RESULT_ROOT/evidence`. The producer does not create, replace, rename, or
+remove either directory.
+
+After binding the disposable Runtime Home and revalidating all retained paths,
+the producer opens and pins the result root and both child directories,
+acquires one cooperative exclusive lease associated with that result root, and
+holds the lease through host execution and terminal publication. While holding
+the lease and before host launch, it requires the cell final name and, for an
+implemented cell, the evidence final name to be absent. A static
+`unsupported_by_host` cell performs the same leased cell-name check before its
+host-free terminal publication. The lease serializes conforming producers;
+final-name installation still uses atomic no-replace semantics so an
+uncooperative concurrent writer cannot be overwritten. The stable private
+coordination entry used for the lease also carries one bounded, synchronized
+publication state. A new entry starts `clean`. After leased consistency checks
+and before host launch, an implemented producer changes it to `active` and
+synchronizes it; a static unsupported producer does so before its host-free
+publication. Only after the final cell and owning directory are synchronized
+does that producer begin replacing `active` with the complete exact `clean`
+record and request its synchronization. A complete exact `clean` record
+observed under a later lease is the authoritative publication commit marker.
+An empty, partial, malformed, or `active` state is a structural failure. This
+coordination entry is not a release artifact or an input to any release digest.
+
+Before changing `clean` to `active`, a later producer requires every existing
+cell-directory entry to be a bounded strict-valid committed cell, requires
+every evidence-directory entry to be named exactly once by one such cell with
+matching bytes and digest, and rejects a private stage, orphan evidence,
+missing evidence, or already complete cell set. This consistency scan does not
+make remnants admissible and does not repair them; it durably enforces
+fresh-root recovery across producer processes.
+
+Once terminal bytes are known, an implemented-cell producer creates at most
+one private create-new stage file in each pinned owning directory. It
+completely writes, bounds, and synchronizes the evidence stage, calculates the
+recorded evidence digest from those held bytes, then completely writes, bounds,
+and synchronizes the cell stage that names that final evidence path and digest.
+It atomically installs the evidence final name first with no-replace semantics
+and synchronizes the evidence directory. It installs the cell final name last
+with the same semantics and synchronizes the cell directory. A strict-valid
+final cell is the only commit marker for that cell/evidence pair. A static
+`unsupported_by_host` cell has null evidence and stages and publishes only its
+final cell. No producer publishes a provisional `running` cell.
+
+Publication is append-only. The producer never unlinks, replaces, renames
+away, or rolls back a published final name and never removes the result root or
+its `cells/` or `evidence/` directory. On an I/O error, abnormal termination,
+or concurrent-name loss, it also does not perform check-then-delete cleanup.
+A failed implemented-cell attempt may leave up to two bounded private stages,
+an installed evidence final name without a producer cell, or both installed
+final names if failure occurs after the cell rename but before publication
+commit is acknowledged. A failed static unsupported attempt may likewise leave
+a bounded private cell stage or its installed final cell. An installed final
+cell under an `active`, empty, partial, or malformed coordination state is not
+an admissible committed cell.
+
+An error or termination before the complete exact `clean` record becomes
+observable leaves an `active`, empty, or malformed state and poisons that
+result root. A write or synchronization acknowledgement can be indeterminate:
+an error or termination after the full `clean` bytes become observable may
+leave a committed clean root even though the producer did not observe a
+successful return. A later process cannot infer that return; it treats only the
+exact `clean` record as the state commit and still independently checks the
+complete cell/evidence set. This is not repair or remnant adoption. The
+producer reports every observed failure and does not retry, and the maintained
+operator runbook conservatively abandons the root after any reported
+publication error or abnormal termination. Recovery uses a fresh external
+result root with newly precreated `cells/` and `evidence/` directories and
+reruns the complete twelve-cell matrix; prior cells, private stages, orphan
+evidence, and installed final names from the abandoned root are not copied,
+adopted, or synthesized.
+
+The gate and audit never repair or clean a result root. Before reopening cells,
+each acquires and retains a cooperative shared lease for that result root; an
+active or stale-`active` producer state, or an invalid lease entry, is a
+structural command failure. They
+accept exactly twelve final `.json` entries in the supplied cell directory and
+follow only the evidence paths named by those strict-valid cells. A missing
+final cell, an additional cell-directory entry including a private stage, or
+malformed or mismatched referenced evidence is a structural command failure.
+An unreferenced private evidence stage or orphan evidence file is outside the
+input set and cannot satisfy a missing cell. These remnants are neither
+downgrades nor audit exclusions.
+
 The v3 gate and audit reject the historical v1 and v2 cell, manifest, audit,
 and cell-input digest-domain identifiers. They do not import, migrate, or
 reinterpret those artifacts under v3 rules. The candidate remains
@@ -222,13 +347,14 @@ additional authenticated turn in the same cell may advance an already retained
 key only
 when that turn's before-observation contains the same expected digest; its
 after-observation then replaces the expected digest. An unchanged replay keeps
-the existing expected digest. Before creating either the cell or its evidence
-artifact, the recorder reopens every retained key and requires the row to
-exist with the exact managed session, connection, project, host, canonical
-baseline ID, and expected metadata digest. Deletion, replacement at the same
-key, or any metadata change not covered by such a later captured turn stops
-recording and leaves both destinations absent. It is not converted into a null
-client group or an `implemented_unverified` cell.
+the existing expected digest. Before entering publication, the recorder
+reopens every retained key and requires the row to exist with the exact
+managed session, connection, project, host, canonical baseline ID, and
+expected metadata digest. Deletion, same-key replacement, or a metadata change
+not covered by a later captured turn stops recording before this producer
+publishes either final name. It does not remove or replace a concurrently
+present name and does not convert the failure into a null client group or an
+`implemented_unverified` cell.
 
 Every cell with non-null client identity for one host kind uses one exact client
 pair. Every implemented exact-live cell can derive `verified` only when

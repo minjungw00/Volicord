@@ -22,6 +22,22 @@ adapter currently has no trusted manifest-acquisition path. A release artifact
 must therefore remain external validation evidence rather than a runtime trust
 input.
 
+The gate and audit already used one normalized source, Cargo target,
+documentation, and Runtime Home exclusion context, but the live-cell producer
+used separate source-only checks. That split allowed an authenticated host run
+to create candidate, cell, or evidence paths that the gate would reject later.
+Late rejection wastes the only host-native observation and violates the rule
+that every release layer makes the same path-eligibility decision.
+
+The earlier producer reserved final pathnames directly and attempted to delete
+them during rollback. A pathname identity check followed by deletion cannot
+prove that a concurrent replacement still names the producer-created inode.
+Moving the name to a quarantine entry does not close the gap: another actor
+can replace that quarantine name between the identity check and unlink, and
+the quarantine move can itself displace a foreign replacement from the
+expected final name. Release-cell publication therefore needs a protocol that
+never deletes a published namespace entry.
+
 ## Decision
 
 Volicord uses the versioned contract in
@@ -140,8 +156,30 @@ no release assertion identifier.
 
 The validation implementation is isolated in the test-only
 `tests/release-validation` workspace package. It may reuse implementation-owned
-evaluators, but production crates do not depend on it. Its maintained command
+evaluators, but production targets do not depend on it. Its maintained command
 routes are owned by Host Release Evidence and the Maintain Validation page.
+The live-cell producer, gate, and audit directly reuse that package's canonical
+external-path context. After adding the bound disposable Runtime Home and
+revalidating retained paths, the producer pins the precreated result root and
+its `cells/` and `evidence/` directories and holds a cooperative exclusive
+result-root lease before any host launch. Under that lease it prevalidates
+absent final names and prior committed-pair consistency, synchronizes a bounded
+private lease state from `clean` to `active`, stages and synchronizes complete
+bounded bytes in private sibling files, publishes implemented-cell evidence
+first with atomic no-replace semantics, and publishes the cell last as the
+commit marker for its evidence pair. Static unsupported cells publish only the
+cell. After synchronizing
+the final cell and its directory, the producer writes the exact `clean` state;
+that complete record, when observed under a later lease, is the authoritative
+publication commit marker. `active`, empty, partial, and malformed states are
+rejected. A post-write synchronization acknowledgement can be indeterminate,
+so a reported error or termination after complete `clean` bytes become visible
+may leave a committed clean root; a later process cannot infer whether the
+producer observed success. Published final names and result directories are
+never rolled back or deleted, and the maintained runbook abandons the root
+after every reported publication error or abnormal exit. The gate and separate
+audit hold a cooperative shared lease while reopening the cell set. No layer
+maintains a source-only approximation or repairs a failed publication root.
 
 ## Consequences
 
@@ -161,6 +199,23 @@ routes are owned by Host Release Evidence and the Maintain Validation page.
   fail-closed; CLI inbox remains the supported fallback.
 - Native session identifiers do not enter Volicord storage, diagnostics, or
   release evidence.
+- Forbidden or non-canonical release paths fail at the producer before an
+  authenticated host run or release-artifact write, and the gate and audit
+  independently enforce the same decision when reopening inputs.
+- Cooperative producers serialize per result root; an uncooperative concurrent
+  name can make publication fail but cannot be overwritten or later deleted by
+  the producer.
+- A committed implemented cell can become visible only after its complete
+  evidence final name; static unsupported cells remain cell-only.
+- A crash or I/O failure may leave bounded private stages, orphan evidence, or
+  already installed final names under a non-clean state. This deliberate
+  append-only residue is safer than rollback deletion; no installed cell is
+  admissible unless the coordination state is exactly `clean`.
+- Exact `clean` is the observable state-commit point. `active`, empty, partial,
+  and malformed records preserve ineligibility across process death even when
+  no other filesystem remnant is visible; the record is coordination state,
+  not release evidence or a digest input.
+- Recovery uses a fresh result root and reruns the complete twelve-cell matrix.
 
 ## Non-goals
 
@@ -168,6 +223,8 @@ routes are owned by Host Release Evidence and the Maintain Validation page.
 - It does not establish minimum Codex or Claude Code versions.
 - It does not prove OS isolation, host identity, user identity, or absence of
   later host changes.
+- The cooperative lease is not hostile same-user exclusion or a claim about
+  non-conforming writers or non-standard network-filesystem lock semantics.
 - It does not prove build reproducibility or attest source-to-binary provenance
   against a malicious candidate producer.
 - It does not permit results from different host versions or candidates to be
@@ -194,6 +251,25 @@ workspace SemVer because it does not add or break a supported public API or
 deployment surface; its externally stored v3 artifacts are opt-in release
 validation output.
 
+Using the shared external-path evaluator is a conformance correction to the
+existing v3 path contract. It does not change any artifact field, digest
+preimage, schema identifier, or valid artifact, so the candidate v1 and release
+artifact v3 identifiers remain current. Producer outputs previously accepted
+at forbidden paths were already invalid and rejected by the gate or audit; no
+migration or compatibility fallback is provided.
+
+The append-only publication protocol is another conformance correction within
+the existing v3 producer contract. It changes no serialized member, allowed
+value, digest preimage, status derivation, verdict, schema identifier, or
+strict-valid completed artifact. It therefore does not advance candidate v1,
+release artifact v3, the workspace SemVer, public API schemas, MCP methods,
+SQLite DDL, or storage-profile versions. Current gate and audit commands do,
+however, require the maintained `RESULT_ROOT/cells` and sibling `evidence/`
+layout plus an exact clean coordination record. A pre-protocol unleased v3
+artifact remains schema-valid as an individual artifact but is not an accepted
+input set for those commands. There is no migration, lease synthesis, or
+adoption path; rerun the complete twelve-cell matrix in a fresh result root.
+
 ## Rejected alternatives
 
 - Embedding live evidence in the candidate was rejected because rebuilding
@@ -219,6 +295,18 @@ validation output.
 - Binding Codex from `CODEX_THREAD_ID`, timing, arrival order, the newest open
   session, or proximity was rejected because concurrent and resumed sessions
   can produce indistinguishable but swapped pairings.
+- Keeping a smaller source-only validator in the live producer was rejected
+  because it permits host work and filesystem effects that the canonical gate
+  and audit must later discard.
+- Direct final-file reservation followed by rollback deletion was rejected
+  because a concurrent replacement can be deleted after the identity check.
+- Quarantine rename followed by identity check and unlink was rejected because
+  the quarantine name can itself be replaced and the move can displace a
+  foreign final-name replacement.
+- Publishing the cell before its evidence was rejected because a visible cell
+  would falsely act as a commit marker for incomplete evidence.
+- Cleaning remnants and retrying in the same result root was rejected because
+  no automatic cleanup can safely recover every concurrent or crash state.
 
 ## Related owners and planned validation location
 

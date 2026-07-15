@@ -720,6 +720,7 @@ dependencies = [
  "volicord-core",
  "volicord-mcp",
  "volicord-platform-fs",
+ "volicord-release-validation-tests",
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
@@ -795,11 +796,13 @@ name = "volicord-release-validation-tests"
 version = "0.9.0"
 dependencies = [
  "chrono",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "volicord-types",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

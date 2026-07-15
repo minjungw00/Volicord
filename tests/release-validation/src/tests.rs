@@ -19,7 +19,10 @@ use crate::{
     audit::{run_audit, AuditRequest},
     evaluation::evaluate_release_matrix,
     gate::{run_gate, GateRequest},
-    io::{git_archive_sha256, parse_strict_json, sha256_bytes, ValidationContext},
+    io::{
+        git_archive_sha256, parse_strict_json, sha256_bytes, ResultRootLease, ValidationContext,
+        RELEASE_RESULT_ROOT_ACTIVE_STATE, RELEASE_RESULT_ROOT_LOCK_NAME,
+    },
     schema::{
         expected_assertion_ids, AuditVerdict, Candidate, CandidateBuildEnvironment, Cell,
         CellAssertion, CellEnvironment, GateVerdict, HostKind, ImplementationDisposition,
@@ -1163,6 +1166,193 @@ fn structural_cell_and_evidence_failures_write_no_manifest() {
 
 #[cfg(unix)]
 #[test]
+fn gate_and_audit_reject_nonclean_or_staged_cells_and_never_adopt_orphan_evidence() {
+    let fixture = Fixture::new();
+    fixture.run_gate("baseline-manifest.json", EVALUATED_AT);
+    let manifest = fixture.external.path().join("baseline-manifest.json");
+
+    let missing_index = fixture.implemented_cell_index();
+    fs::remove_file(&fixture.cell_paths[missing_index]).expect("remove one committed cell");
+    let missing_audit_output = fixture.external.path().join("missing-audit.json");
+    let error = run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest: manifest.clone(),
+            audit_output: missing_audit_output.clone(),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("a missing committed cell must be an audit structural failure");
+    assert!(error.detail().contains("exactly twelve"));
+    assert!(!missing_audit_output.exists());
+    fixture.write_cell(missing_index);
+
+    let cell_stage = fixture
+        .cell_directory
+        .join(".volicord-live-stage-uncommitted");
+    fs::write(&cell_stage, b"private stage").expect("private cell stage");
+    let staged_gate_output = fixture.external.path().join("staged-gate.json");
+    let error = run_gate(
+        &fixture.context,
+        &GateRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest_output: staged_gate_output.clone(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("an extra cell stage must be a gate structural failure");
+    assert!(error.detail().contains("exactly twelve"));
+    assert!(!staged_gate_output.exists());
+
+    let staged_audit_output = fixture.external.path().join("staged-audit.json");
+    run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest: manifest.clone(),
+            audit_output: staged_audit_output.clone(),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("an extra cell stage must be an audit structural failure");
+    assert!(!staged_audit_output.exists());
+    assert_eq!(
+        fs::read(&cell_stage).expect("preserved cell stage"),
+        b"private stage"
+    );
+    fs::remove_file(&cell_stage).expect("remove test-only stage between cases");
+
+    let evidence_directory = fixture
+        .cell_directory
+        .parent()
+        .expect("result root")
+        .join("evidence");
+    let orphan_evidence = evidence_directory.join("unreferenced-orphan.bin");
+    fs::write(&orphan_evidence, b"unreferenced evidence").expect("orphan evidence");
+    let orphan_manifest = fixture.run_gate("orphan-manifest.json", EVALUATED_AT);
+    assert_eq!(orphan_manifest.verdict, GateVerdict::Pass);
+    let orphan_audit = run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest: fixture.external.path().join("orphan-manifest.json"),
+            audit_output: fixture.external.path().join("orphan-audit.json"),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect("unreferenced evidence remains outside the audit input set");
+    assert_eq!(orphan_audit.audit_verdict, AuditVerdict::Pass);
+    assert_eq!(
+        fs::read(&orphan_evidence).expect("preserved orphan evidence"),
+        b"unreferenced evidence"
+    );
+
+    let result_root = fixture.cell_directory.parent().expect("result root");
+    fs::write(
+        result_root.join(RELEASE_RESULT_ROOT_LOCK_NAME),
+        RELEASE_RESULT_ROOT_ACTIVE_STATE,
+    )
+    .expect("simulate a non-clean state after final-name installation");
+    let active_gate_output = fixture.external.path().join("active-gate.json");
+    let error = run_gate(
+        &fixture.context,
+        &GateRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest_output: active_gate_output.clone(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("a full final-name set under active state must fail the gate");
+    assert!(error.detail().contains("incomplete prior publication"));
+    assert!(!active_gate_output.exists());
+
+    let active_audit_output = fixture.external.path().join("active-audit.json");
+    let error = run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest,
+            audit_output: active_audit_output.clone(),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("a full final-name set under active state must fail the audit");
+    assert!(error.detail().contains("incomplete prior publication"));
+    assert!(!active_audit_output.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn gate_and_audit_outputs_cannot_mutate_their_cell_or_evidence_input_sets() {
+    let fixture = Fixture::new();
+    let evidence_directory = fixture
+        .cell_directory
+        .parent()
+        .expect("result root")
+        .join("evidence");
+
+    for forbidden_manifest in [
+        fixture.cell_directory.join("manifest.json"),
+        evidence_directory.join("manifest.json"),
+    ] {
+        let error = run_gate(
+            &fixture.context,
+            &GateRequest {
+                candidate_descriptor: fixture.candidate_descriptor.clone(),
+                cell_directory: fixture.cell_directory.clone(),
+                manifest_output: forbidden_manifest.clone(),
+                evaluated_at: EVALUATED_AT.to_owned(),
+            },
+        )
+        .expect_err("manifest output inside a live input directory must fail");
+        assert!(error
+            .detail()
+            .contains("outside the live cell and evidence"));
+        assert!(!forbidden_manifest.exists());
+    }
+    assert_eq!(
+        fs::read_dir(&fixture.cell_directory)
+            .expect("cell directory")
+            .count(),
+        12
+    );
+
+    fixture.run_gate("valid-output-separation-manifest.json", EVALUATED_AT);
+    let forbidden_audit = evidence_directory.join("audit.json");
+    let error = run_audit(
+        &fixture.context,
+        &AuditRequest {
+            candidate_descriptor: fixture.candidate_descriptor.clone(),
+            cell_directory: fixture.cell_directory.clone(),
+            manifest: fixture
+                .external
+                .path()
+                .join("valid-output-separation-manifest.json"),
+            audit_output: forbidden_audit.clone(),
+            started_at: EVALUATED_AT.to_owned(),
+            evaluated_at: EVALUATED_AT.to_owned(),
+        },
+    )
+    .expect_err("audit output inside a live input directory must fail");
+    assert!(error
+        .detail()
+        .contains("outside the live cell and evidence"));
+    assert!(!forbidden_audit.exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn present_null_host_cells_record_honest_not_run_downgrades() {
     let mut fixture = Fixture::new();
     let unavailable_host = HostKind::ClaudeCode;
@@ -1523,6 +1713,10 @@ fn configured_exclusion_roots_are_normalized_before_overlap_checks() {
         vec![sibling(runtime.path()), runtime_link],
     )
     .expect("normalized exclusion context");
+    assert_eq!(
+        context.target_directory(),
+        fs::canonicalize(target.path()).expect("canonical target root")
+    );
 
     for (path, expected) in [
         (&target_file, "Cargo target directory"),
@@ -1557,6 +1751,420 @@ fn configured_exclusion_roots_are_normalized_before_overlap_checks() {
         .validate_existing_file(&escaped_file)
         .expect_err("symlink-aware dot root must remain excluded");
     assert!(error.detail().contains("Cargo target directory"));
+}
+
+#[test]
+fn additional_runtime_home_exclusion_rejects_inputs_and_outputs_without_partial_mutation() {
+    let source = tempfile::tempdir().expect("source root");
+    let external = tempfile::tempdir().expect("external root");
+    let runtime_home = external.path().join("observed-runtime-home");
+    fs::create_dir(&runtime_home).expect("observed runtime home");
+    let input = runtime_home.join("candidate");
+    fs::write(&input, b"candidate").expect("runtime-home input");
+    let output = runtime_home.join("cell.json");
+    let new_directory = runtime_home.join("evidence");
+    let mut context = ValidationContext::new(
+        source.path().to_path_buf(),
+        source.path().join("target"),
+        source.path().join("docs"),
+        Vec::new(),
+    )
+    .expect("validation context");
+
+    context
+        .validate_existing_file(&input)
+        .expect("unregistered runtime root is initially external");
+    context
+        .validate_new_output(&output)
+        .expect("unregistered runtime output is initially external");
+    context
+        .validate_new_directory(&new_directory)
+        .expect("unregistered runtime directory is initially external");
+
+    let error = context
+        .add_runtime_home(Path::new("relative-runtime-home"))
+        .expect_err("an observed Runtime Home exclusion must be absolute");
+    assert!(error.detail().contains("must be absolute"));
+    context
+        .validate_existing_file(&input)
+        .expect("failed extension must not partially mutate the context");
+    context
+        .validate_new_output(&output)
+        .expect("failed extension must leave output policy unchanged");
+
+    context
+        .add_runtime_home(&runtime_home)
+        .expect("absolute observed Runtime Home exclusion");
+    for error in [
+        context
+            .validate_existing_file(&input)
+            .expect_err("Runtime Home input must be rejected"),
+        context
+            .validate_new_output(&output)
+            .expect_err("Runtime Home output must be rejected"),
+        context
+            .validate_new_directory(&new_directory)
+            .expect_err("Runtime Home directory must be rejected"),
+    ] {
+        assert!(
+            error.detail().contains("Volicord Runtime Home"),
+            "{}",
+            error.detail()
+        );
+    }
+    assert!(!output.exists());
+    assert!(!new_directory.exists());
+}
+
+#[test]
+fn new_directory_validation_rejects_an_ancestor_of_an_excluded_runtime_without_creating_it() {
+    let source = tempfile::tempdir().expect("source root");
+    let external = tempfile::tempdir().expect("external root");
+    let new_directory = external.path().join("release-records");
+    let future_runtime_home = new_directory.join("runtime-home");
+    let mut context = ValidationContext::new(
+        source.path().to_path_buf(),
+        source.path().join("target"),
+        source.path().join("docs"),
+        Vec::new(),
+    )
+    .expect("validation context");
+    context
+        .add_runtime_home(&future_runtime_home)
+        .expect("missing observed Runtime Home root is normalized from its existing prefix");
+
+    let error = context
+        .validate_new_directory(&new_directory)
+        .expect_err("a directory containing an excluded Runtime Home must be rejected");
+    assert!(error.detail().contains("Volicord Runtime Home"));
+    assert!(!new_directory.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn result_root_lease_process_helper() {
+    let Some(source) = std::env::var_os("VOLICORD_TEST_LEASE_SOURCE") else {
+        return;
+    };
+    let cell_path = PathBuf::from(
+        std::env::var_os("VOLICORD_TEST_LEASE_CELL").expect("lease helper cell path"),
+    );
+    let ready_path = PathBuf::from(
+        std::env::var_os("VOLICORD_TEST_LEASE_READY").expect("lease helper ready path"),
+    );
+    let release_path = PathBuf::from(
+        std::env::var_os("VOLICORD_TEST_LEASE_RELEASE").expect("lease helper release path"),
+    );
+    let source = PathBuf::from(source);
+    let context = ValidationContext::new(
+        source.clone(),
+        source.join("target"),
+        source.join("docs"),
+        Vec::new(),
+    )
+    .expect("lease helper validation context");
+    let mut lease = ResultRootLease::acquire_exclusive_for_cell_path(&context, &cell_path)
+        .expect("lease helper exclusive acquisition");
+    lease
+        .begin_publication_attempt()
+        .expect("lease helper active state");
+    fs::write(&ready_path, b"ready").expect("lease helper ready marker");
+    for _ in 0..500 {
+        if release_path.exists() {
+            return;
+        }
+        thread::sleep(StdDuration::from_millis(10));
+    }
+    panic!("lease helper release marker was not observed");
+}
+
+#[cfg(unix)]
+#[test]
+fn result_root_lease_serializes_processes_and_durably_rejects_failed_roots() {
+    fn create_result_root(parent: &Path, name: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let root = parent.join(name);
+        let cells = root.join("cells");
+        let evidence = root.join("evidence");
+        fs::create_dir_all(&cells).expect("cell directory");
+        fs::create_dir(&evidence).expect("evidence directory");
+        (root, cells, evidence)
+    }
+
+    let source = tempfile::tempdir().expect("lease source root");
+    let external = tempfile::tempdir().expect("lease external root");
+    let context = ValidationContext::new(
+        source.path().to_path_buf(),
+        source.path().join("target"),
+        source.path().join("docs"),
+        Vec::new(),
+    )
+    .expect("lease validation context");
+
+    let (failed_root, failed_cells, failed_evidence) =
+        create_result_root(external.path(), "failed-result-root");
+    let failed_cell = failed_cells.join("first.json");
+    let ready_path = external.path().join("lease-helper-ready");
+    let release_path = external.path().join("lease-helper-release");
+    let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+        .args([
+            "tests::result_root_lease_process_helper",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("VOLICORD_TEST_LEASE_SOURCE", source.path())
+        .env("VOLICORD_TEST_LEASE_CELL", &failed_cell)
+        .env("VOLICORD_TEST_LEASE_READY", &ready_path)
+        .env("VOLICORD_TEST_LEASE_RELEASE", &release_path)
+        .spawn()
+        .expect("spawn lease helper");
+    for _ in 0..500 {
+        if ready_path.exists() {
+            break;
+        }
+        assert!(
+            child.try_wait().expect("poll lease helper").is_none(),
+            "lease helper exited before acquiring its lease"
+        );
+        thread::sleep(StdDuration::from_millis(10));
+    }
+    assert!(ready_path.exists(), "lease helper never reported readiness");
+    let contention = ResultRootLease::acquire_exclusive_for_cell_path(
+        &context,
+        &failed_cells.join("second.json"),
+    )
+    .expect_err("a second process must not acquire the active result root");
+    assert!(contention.detail().contains("cannot acquire Exclusive"));
+    fs::write(&release_path, b"release").expect("release lease helper");
+    assert!(child.wait().expect("wait for lease helper").success());
+    assert_eq!(
+        fs::read_dir(&failed_cells).expect("failed cells").count(),
+        0
+    );
+    assert_eq!(
+        fs::read_dir(&failed_evidence)
+            .expect("failed evidence")
+            .count(),
+        0
+    );
+    let stale_active = ResultRootLease::acquire_exclusive_for_cell_path(
+        &context,
+        &failed_cells.join("second.json"),
+    )
+    .expect_err("stale active state must poison same-root recovery");
+    assert!(stale_active
+        .detail()
+        .contains("incomplete prior publication"));
+    let stale_shared = ResultRootLease::acquire_shared_for_cell_directory(&context, &failed_cells)
+        .expect_err("gate and audit shared leases must reject stale active state");
+    assert!(stale_shared
+        .detail()
+        .contains("incomplete prior publication"));
+
+    let (fresh_root, fresh_cells, _) = create_result_root(external.path(), "fresh-result-root");
+    let mut fresh =
+        ResultRootLease::acquire_exclusive_for_cell_path(&context, &fresh_cells.join("first.json"))
+            .expect("fresh root acquisition");
+    fresh
+        .begin_publication_attempt()
+        .expect("fresh root active state");
+    fresh
+        .complete_publication_attempt()
+        .expect("fresh root clean completion");
+    drop(fresh);
+    drop(
+        ResultRootLease::acquire_exclusive_for_cell_path(
+            &context,
+            &fresh_cells.join("second.json"),
+        )
+        .expect("clean completed root can accept its next serialized cell"),
+    );
+    let mut shared = ResultRootLease::acquire_shared_for_cell_directory(&context, &fresh_cells)
+        .expect("shared clean-root lease");
+    let shared_transition = shared
+        .begin_publication_attempt()
+        .expect_err("a shared lease must never mutate publication state");
+    assert!(shared_transition
+        .detail()
+        .contains("shared result-root lease"));
+    drop(shared);
+
+    fs::write(fresh_root.join(RELEASE_RESULT_ROOT_LOCK_NAME), b"")
+        .expect("simulate interrupted state rewrite");
+    let empty_state =
+        ResultRootLease::acquire_exclusive_for_cell_path(&context, &fresh_cells.join("third.json"))
+            .expect_err("an existing empty lease state must not be reinitialized");
+    assert!(empty_state.detail().contains("missing or malformed"));
+
+    let (_, staged_cells, _) = create_result_root(external.path(), "staged-result-root");
+    fs::write(staged_cells.join(".volicord-live-stage-fixture"), b"stage")
+        .expect("private cell stage");
+    let staged = ResultRootLease::acquire_exclusive_for_cell_path(
+        &context,
+        &staged_cells.join("first.json"),
+    )
+    .expect_err("a private cell stage must poison producer reuse");
+    assert!(staged.detail().contains("cannot adopt pre-existing"));
+
+    let (_, orphan_cells, orphan_evidence) =
+        create_result_root(external.path(), "orphan-result-root");
+    fs::write(orphan_evidence.join("orphan.json"), b"orphan").expect("orphan evidence");
+    let orphan = ResultRootLease::acquire_exclusive_for_cell_path(
+        &context,
+        &orphan_cells.join("first.json"),
+    )
+    .expect_err("orphan evidence must poison producer reuse");
+    assert!(orphan.detail().contains("cannot adopt pre-existing"));
+
+    assert!(failed_root.join(RELEASE_RESULT_ROOT_LOCK_NAME).exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn result_root_lease_rejects_a_shape_invalid_prior_cell_before_the_next_attempt() {
+    let fixture = Fixture::new();
+    let result_root = fixture.external.path().join("shape-invalid-result-root");
+    let cells = result_root.join("cells");
+    let evidence = result_root.join("evidence");
+    fs::create_dir_all(&cells).expect("cell directory");
+    fs::create_dir(&evidence).expect("evidence directory");
+
+    drop(
+        ResultRootLease::acquire_exclusive_for_cell_path(
+            &fixture.context,
+            &cells.join("lease-bootstrap-not-published.json"),
+        )
+        .expect("initialize clean result-root state"),
+    );
+
+    let mut invalid = fixture
+        .cells
+        .iter()
+        .find(|cell| cell.evidence_artifact_path.as_ref().is_none())
+        .expect("fixture includes a static unsupported cell")
+        .clone();
+    invalid.schema = "wrong-cell-schema".to_owned();
+    fs::write(
+        cells.join("prior.json"),
+        serde_json::to_vec_pretty(&invalid).expect("invalid prior cell JSON"),
+    )
+    .expect("invalid prior cell");
+
+    let error = ResultRootLease::acquire_exclusive_for_cell_path(
+        &fixture.context,
+        &cells.join("next.json"),
+    )
+    .expect_err("a shape-invalid prior cell must poison producer reuse");
+    assert!(error.detail().contains("cell schema identifier mismatch"));
+}
+
+#[cfg(unix)]
+#[test]
+fn new_directory_validation_requires_an_existing_canonical_symlink_free_parent_and_absent_leaf() {
+    use std::os::unix::fs::symlink;
+
+    let source = tempfile::tempdir().expect("source root");
+    let external = tempfile::tempdir().expect("external root");
+    let parent = external.path().join("real-parent");
+    fs::create_dir(&parent).expect("real output parent");
+    let context = ValidationContext::new(
+        source.path().to_path_buf(),
+        source.path().join("target"),
+        source.path().join("docs"),
+        Vec::new(),
+    )
+    .expect("validation context");
+
+    let accepted = parent.join("new-evidence");
+    context
+        .validate_new_directory(&accepted)
+        .expect("an absent directory under a canonical real parent is valid");
+    assert!(!accepted.exists());
+
+    let existing = parent.join("existing-evidence");
+    fs::create_dir(&existing).expect("existing output leaf");
+    let error = context
+        .validate_new_directory(&existing)
+        .expect_err("an existing directory must be rejected");
+    assert!(error.detail().contains("directory already exists"));
+
+    let missing_parent_output = external.path().join("missing-parent").join("evidence");
+    context
+        .validate_new_directory(&missing_parent_output)
+        .expect_err("a missing parent must be rejected");
+    assert!(!missing_parent_output.exists());
+
+    let parent_alias = external.path().join("parent-alias");
+    symlink(&parent, &parent_alias).expect("output-parent symlink");
+    let aliased_output = parent_alias.join("aliased-evidence");
+    let error = context
+        .validate_new_directory(&aliased_output)
+        .expect_err("a symlinked parent must be rejected");
+    assert!(error.detail().contains("symbolic links are not allowed"));
+    assert!(!parent.join("aliased-evidence").exists());
+}
+
+#[test]
+fn empty_home_uses_nonempty_userprofile_for_runtime_home_exclusion() {
+    let user_profile = tempfile::tempdir().expect("USERPROFILE root");
+    let runtime_home = user_profile.path().join(".volicord");
+    fs::create_dir(&runtime_home).expect("USERPROFILE Runtime Home");
+    let input = runtime_home.join("candidate");
+    fs::write(&input, b"candidate").expect("Runtime Home input");
+    let context = ValidationContext::from_process_environment(
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        None,
+        Some(std::ffi::OsString::new()),
+        Some(user_profile.path().as_os_str().to_os_string()),
+    )
+    .expect("process validation context");
+
+    let error = context
+        .validate_existing_file(&input)
+        .expect_err("nonempty USERPROFILE must replace an empty HOME");
+    assert!(error.detail().contains("Volicord Runtime Home"));
+}
+
+#[cfg(unix)]
+#[test]
+fn accepted_artifact_paths_require_exact_utf8_without_creating_outputs() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    let source = tempfile::tempdir().expect("source root");
+    let external = tempfile::tempdir().expect("external root");
+    let context = ValidationContext::new(
+        source.path().to_path_buf(),
+        source.path().join("target"),
+        source.path().join("docs"),
+        Vec::new(),
+    )
+    .expect("validation context");
+    let input = external
+        .path()
+        .join(OsString::from_vec(b"candidate-\xff".to_vec()));
+    let output = external
+        .path()
+        .join(OsString::from_vec(b"cell-\xfe.json".to_vec()));
+    let new_directory = external
+        .path()
+        .join(OsString::from_vec(b"evidence-\xfd".to_vec()));
+    fs::write(&input, b"candidate").expect("non-UTF-8 input fixture");
+
+    for error in [
+        context
+            .validate_existing_file(&input)
+            .expect_err("non-UTF-8 input path must fail"),
+        context
+            .validate_new_output(&output)
+            .expect_err("non-UTF-8 output path must fail"),
+        context
+            .validate_new_directory(&new_directory)
+            .expect_err("non-UTF-8 directory path must fail"),
+    ] {
+        assert!(error.detail().contains("not valid UTF-8"));
+    }
+    assert!(!output.exists());
+    assert!(!new_directory.exists());
 }
 
 #[cfg(unix)]
@@ -1688,6 +2296,20 @@ impl Fixture {
         let evidence_directory = external.path().join("evidence");
         fs::create_dir(&cell_directory).expect("cell directory");
         fs::create_dir(&evidence_directory).expect("evidence directory");
+        let context = ValidationContext::new(
+            source_checkout.clone(),
+            source_checkout.join("target"),
+            source_checkout.join("docs"),
+            vec![source_checkout.join(".volicord")],
+        )
+        .expect("validation context");
+        drop(
+            ResultRootLease::acquire_exclusive_for_cell_path(
+                &context,
+                &cell_directory.join("lease-bootstrap-not-published.json"),
+            )
+            .expect("initialize result-root lease"),
+        );
         let mut cells = Vec::new();
         let mut cell_paths = Vec::new();
         for host_kind in HostKind::ALL {
@@ -1787,13 +2409,6 @@ impl Fixture {
                 cell_paths.push(cell_path);
             }
         }
-        let context = ValidationContext::new(
-            source_checkout.clone(),
-            source_checkout.join("target"),
-            source_checkout.join("docs"),
-            vec![source_checkout.join(".volicord")],
-        )
-        .expect("validation context");
         Self {
             _source: source,
             external,

@@ -1,7 +1,7 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
@@ -26,6 +26,14 @@ pub const MAX_AUDIT_JSON_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_EVIDENCE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_VERSION_OUTPUT_BYTES: u64 = 16 * 1024;
 const CANDIDATE_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const RELEASE_RESULT_ROOT_LOCK_NAME: &str = ".volicord-live-publication.lock";
+const RELEASE_RESULT_ROOT_CLEAN_STATE: &[u8] = b"volicord-live-publication-v1 clean\n";
+pub(crate) const RELEASE_RESULT_ROOT_ACTIVE_STATE: &[u8] = b"volicord-live-publication-v1 active\n";
+const MAX_RELEASE_RESULT_ROOT_STATE_BYTES: u64 = 128;
+#[cfg(unix)]
+const RESULT_ROOT_LEASE_RETRY_TIMEOUT: Duration = Duration::from_millis(250);
+#[cfg(unix)]
+const RESULT_ROOT_LEASE_RETRY_INTERVAL: Duration = Duration::from_millis(5);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CandidateBuildIdentity {
@@ -58,6 +66,897 @@ pub struct ValidationContext {
     target_directory: PathBuf,
     docs_directory: PathBuf,
     runtime_homes: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultRootLeaseMode {
+    Exclusive,
+    Shared,
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FilesystemIdentity {
+    device: u64,
+    inode: u64,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FilesystemIdentity {
+    volume_serial_number: u32,
+    file_index: u64,
+    attributes: u32,
+}
+
+#[cfg(not(any(unix, windows)))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FilesystemIdentity;
+
+#[derive(Debug)]
+struct RetainedResultPath {
+    file: File,
+    path: PathBuf,
+    identity: FilesystemIdentity,
+    directory: bool,
+}
+
+struct ResultRootLayout {
+    result_root: PathBuf,
+    output_directory: PathBuf,
+    evidence_directory: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+pub struct ResultRootLease {
+    _lock: File,
+    mode: ResultRootLeaseMode,
+    lock_path: PathBuf,
+    lock_identity: FilesystemIdentity,
+    result_root: PathBuf,
+    output_directory: PathBuf,
+    evidence_directory: Option<PathBuf>,
+    retained_paths: Vec<RetainedResultPath>,
+    publication_attempt_active: bool,
+}
+
+impl ResultRootLease {
+    pub fn prevalidate_cell_path(
+        context: &ValidationContext,
+        cell_path: &Path,
+    ) -> ValidationResult<()> {
+        cell_result_root_layout(context, cell_path).map(|_| ())
+    }
+
+    pub fn prevalidate_auxiliary_path(
+        context: &ValidationContext,
+        output_path: &Path,
+    ) -> ValidationResult<()> {
+        auxiliary_result_root_layout(context, output_path).map(|_| ())
+    }
+
+    pub fn prevalidate_summary_output(
+        context: &ValidationContext,
+        cell_directory: &Path,
+        output_path: &Path,
+    ) -> ValidationResult<()> {
+        let layout = cell_directory_result_root_layout(context, cell_directory)?;
+        context.validate_new_output(output_path)?;
+        if output_path.starts_with(&layout.output_directory)
+            || layout
+                .evidence_directory
+                .as_ref()
+                .is_some_and(|directory| output_path.starts_with(directory))
+        {
+            return Err(ValidationError::new(format!(
+                "release summary output must be outside the live cell and evidence directories: {}",
+                output_path.display()
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn acquire_exclusive_for_cell_path(
+        context: &ValidationContext,
+        cell_path: &Path,
+    ) -> ValidationResult<Self> {
+        let layout = cell_result_root_layout(context, cell_path)?;
+        let lease = Self::acquire(
+            context,
+            &layout.result_root,
+            &layout.output_directory,
+            layout.evidence_directory.as_deref(),
+            ResultRootLeaseMode::Exclusive,
+            true,
+        )?;
+        lease.validate_attached(context)?;
+        context.validate_new_output(cell_path)?;
+        Ok(lease)
+    }
+
+    pub fn acquire_exclusive_for_auxiliary_path(
+        context: &ValidationContext,
+        output_path: &Path,
+    ) -> ValidationResult<Self> {
+        let layout = auxiliary_result_root_layout(context, output_path)?;
+        let lease = Self::acquire(
+            context,
+            &layout.result_root,
+            &layout.output_directory,
+            None,
+            ResultRootLeaseMode::Exclusive,
+            true,
+        )?;
+        lease.validate_attached(context)?;
+        context.validate_new_output(output_path)?;
+        Ok(lease)
+    }
+
+    pub fn acquire_shared_for_cell_directory(
+        context: &ValidationContext,
+        cell_directory: &Path,
+    ) -> ValidationResult<Self> {
+        let layout = cell_directory_result_root_layout(context, cell_directory)?;
+        let lease = Self::acquire(
+            context,
+            &layout.result_root,
+            &layout.output_directory,
+            layout.evidence_directory.as_deref(),
+            ResultRootLeaseMode::Shared,
+            false,
+        )?;
+        lease.validate_attached(context)?;
+        Ok(lease)
+    }
+
+    fn acquire(
+        context: &ValidationContext,
+        result_root: &Path,
+        output_directory: &Path,
+        evidence_directory: Option<&Path>,
+        mode: ResultRootLeaseMode,
+        create_lock: bool,
+    ) -> ValidationResult<Self> {
+        let mut retained_paths = Vec::with_capacity(4);
+        retained_paths.push(retain_result_path(context, result_root, true)?);
+        retained_paths.push(retain_result_path(context, output_directory, true)?);
+        if let Some(evidence_directory) = evidence_directory {
+            retained_paths.push(retain_result_path(context, evidence_directory, true)?);
+        }
+
+        let lock_path = result_root.join(RELEASE_RESULT_ROOT_LOCK_NAME);
+        let (mut lock, lock_created) =
+            open_result_root_lock(context, &retained_paths[0], &lock_path, create_lock, mode)?;
+        validate_opened_result_path(&lock, &lock_path, false)?;
+        let lock_identity = filesystem_identity(&lock)?;
+        acquire_file_lease(&lock, mode).map_err(|error| {
+            ValidationError::new(format!(
+                "cannot acquire {mode:?} result-root lease {}: {error}",
+                lock_path.display()
+            ))
+        })?;
+        if lock_created {
+            require_new_result_root_inputs_empty(
+                context,
+                result_root,
+                output_directory,
+                evidence_directory,
+            )?;
+        }
+        require_clean_result_root_state(&mut lock, lock_created)?;
+        if lock_created {
+            sync_retained_directory(&retained_paths[0])?;
+        }
+        if mode == ResultRootLeaseMode::Exclusive {
+            if let Some(evidence_directory) = evidence_directory {
+                validate_append_only_result_root_consistency(
+                    context,
+                    output_directory,
+                    evidence_directory,
+                )?;
+            }
+        }
+
+        let lease = Self {
+            _lock: lock,
+            mode,
+            lock_path,
+            lock_identity,
+            result_root: result_root.to_path_buf(),
+            output_directory: output_directory.to_path_buf(),
+            evidence_directory: evidence_directory.map(Path::to_path_buf),
+            retained_paths,
+            publication_attempt_active: false,
+        };
+        lease.validate_attached(context)?;
+        Ok(lease)
+    }
+
+    pub fn result_root(&self) -> &Path {
+        &self.result_root
+    }
+
+    pub fn output_directory(&self) -> &Path {
+        &self.output_directory
+    }
+
+    pub fn evidence_directory(&self) -> Option<&Path> {
+        self.evidence_directory.as_deref()
+    }
+
+    pub fn begin_publication_attempt(&mut self) -> ValidationResult<()> {
+        if self.mode != ResultRootLeaseMode::Exclusive {
+            return Err(ValidationError::new(
+                "a shared result-root lease cannot begin a publication attempt",
+            ));
+        }
+        if self.publication_attempt_active {
+            return Err(ValidationError::new(
+                "result-root publication attempt is already active",
+            ));
+        }
+        require_exact_result_root_state(&mut self._lock, RELEASE_RESULT_ROOT_CLEAN_STATE)?;
+        write_result_root_state(&mut self._lock, RELEASE_RESULT_ROOT_ACTIVE_STATE)?;
+        self.publication_attempt_active = true;
+        Ok(())
+    }
+
+    pub fn complete_publication_attempt(&mut self) -> ValidationResult<()> {
+        if self.mode != ResultRootLeaseMode::Exclusive {
+            return Err(ValidationError::new(
+                "a shared result-root lease cannot complete a publication attempt",
+            ));
+        }
+        if !self.publication_attempt_active {
+            return Ok(());
+        }
+        require_exact_result_root_state(&mut self._lock, RELEASE_RESULT_ROOT_ACTIVE_STATE)?;
+        // Callers synchronize final artifacts and owning directories first. The complete
+        // exact clean record is the externally observable commit marker. A write or
+        // sync error can be indeterminate after those bytes become visible, so callers
+        // still report the error and abandon the run; later readers accept only exact
+        // clean state plus independent cell/evidence validation.
+        write_result_root_state(&mut self._lock, RELEASE_RESULT_ROOT_CLEAN_STATE)?;
+        self.publication_attempt_active = false;
+        Ok(())
+    }
+
+    pub fn validate_attached(&self, context: &ValidationContext) -> ValidationResult<()> {
+        for retained in &self.retained_paths {
+            if retained.directory {
+                context.validate_existing_directory(&retained.path)?;
+            } else {
+                context.validate_existing_file(&retained.path)?;
+            }
+            let current = open_retained_result_path(&retained.path, retained.directory)?;
+            validate_opened_result_path(&current, &retained.path, retained.directory)?;
+            if filesystem_identity(&current)? != retained.identity {
+                return Err(ValidationError::new(format!(
+                    "retained result-root path was replaced: {}",
+                    retained.path.display()
+                )));
+            }
+        }
+        context.validate_existing_file(&self.lock_path)?;
+        let current_lock = open_retained_result_path(&self.lock_path, false)?;
+        validate_opened_result_path(&current_lock, &self.lock_path, false)?;
+        if filesystem_identity(&current_lock)? != self.lock_identity {
+            return Err(ValidationError::new(format!(
+                "result-root lease entry was replaced: {}",
+                self.lock_path.display()
+            )));
+        }
+        Ok(())
+    }
+}
+
+fn require_new_result_root_inputs_empty(
+    context: &ValidationContext,
+    result_root: &Path,
+    output_directory: &Path,
+    evidence_directory: Option<&Path>,
+) -> ValidationResult<()> {
+    let mut directories = vec![output_directory.to_path_buf()];
+    if let Some(evidence_directory) = evidence_directory {
+        directories.push(evidence_directory.to_path_buf());
+    } else {
+        let cells = result_root.join("cells");
+        let evidence = result_root.join("evidence");
+        if cells.is_dir() && evidence.is_dir() {
+            directories.push(cells);
+            directories.push(evidence);
+        }
+    }
+    directories.sort();
+    directories.dedup();
+    for directory in directories {
+        context.validate_existing_directory(&directory)?;
+        if fs::read_dir(&directory)?.next().is_some() {
+            return Err(ValidationError::new(format!(
+                "a new result-root lease cannot adopt pre-existing live result entries: {}",
+                directory.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn cell_result_root_layout(
+    context: &ValidationContext,
+    cell_path: &Path,
+) -> ValidationResult<ResultRootLayout> {
+    context.validate_new_output(cell_path)?;
+    let cell_directory = cell_path.parent().ok_or_else(|| {
+        ValidationError::new(format!(
+            "release cell path has no parent: {}",
+            cell_path.display()
+        ))
+    })?;
+    cell_directory_result_root_layout(context, cell_directory)
+}
+
+fn cell_directory_result_root_layout(
+    context: &ValidationContext,
+    cell_directory: &Path,
+) -> ValidationResult<ResultRootLayout> {
+    require_directory_name(cell_directory, "cells", "release cell directory")?;
+    let result_root = cell_directory.parent().ok_or_else(|| {
+        ValidationError::new(format!(
+            "release cell directory has no result root: {}",
+            cell_directory.display()
+        ))
+    })?;
+    let evidence_directory = result_root.join("evidence");
+    context.validate_existing_directory(result_root)?;
+    context.validate_existing_directory(cell_directory)?;
+    context.validate_existing_directory(&evidence_directory)?;
+    Ok(ResultRootLayout {
+        result_root: result_root.to_path_buf(),
+        output_directory: cell_directory.to_path_buf(),
+        evidence_directory: Some(evidence_directory),
+    })
+}
+
+fn auxiliary_result_root_layout(
+    context: &ValidationContext,
+    output_path: &Path,
+) -> ValidationResult<ResultRootLayout> {
+    context.validate_new_output(output_path)?;
+    let auxiliary_directory = output_path.parent().ok_or_else(|| {
+        ValidationError::new(format!(
+            "auxiliary live result has no parent: {}",
+            output_path.display()
+        ))
+    })?;
+    require_directory_name(
+        auxiliary_directory,
+        "auxiliary",
+        "auxiliary live-result directory",
+    )?;
+    let result_root = auxiliary_directory.parent().ok_or_else(|| {
+        ValidationError::new(format!(
+            "auxiliary live-result directory has no result root: {}",
+            auxiliary_directory.display()
+        ))
+    })?;
+    context.validate_existing_directory(result_root)?;
+    context.validate_existing_directory(auxiliary_directory)?;
+    Ok(ResultRootLayout {
+        result_root: result_root.to_path_buf(),
+        output_directory: auxiliary_directory.to_path_buf(),
+        evidence_directory: None,
+    })
+}
+
+fn require_clean_result_root_state(
+    file: &mut File,
+    initialize_empty: bool,
+) -> ValidationResult<()> {
+    let state = read_result_root_state(file)?;
+    if state.is_empty() && initialize_empty {
+        write_result_root_state(file, RELEASE_RESULT_ROOT_CLEAN_STATE)?;
+        return Ok(());
+    }
+    if state == RELEASE_RESULT_ROOT_CLEAN_STATE {
+        return Ok(());
+    }
+    if state == RELEASE_RESULT_ROOT_ACTIVE_STATE {
+        return Err(ValidationError::new(
+            "result root contains an incomplete prior publication attempt and must be abandoned",
+        ));
+    }
+    Err(ValidationError::new(
+        "result-root publication state is missing or malformed",
+    ))
+}
+
+fn require_exact_result_root_state(file: &mut File, expected: &[u8]) -> ValidationResult<()> {
+    if read_result_root_state(file)? == expected {
+        Ok(())
+    } else {
+        Err(ValidationError::new(
+            "result-root publication state changed while its lease was held",
+        ))
+    }
+}
+
+fn read_result_root_state(file: &mut File) -> ValidationResult<Vec<u8>> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut bytes = Vec::new();
+    Read::by_ref(file)
+        .take(MAX_RELEASE_RESULT_ROOT_STATE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_RELEASE_RESULT_ROOT_STATE_BYTES {
+        return Err(ValidationError::new(
+            "result-root publication state exceeds its byte bound",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn write_result_root_state(file: &mut File, state: &[u8]) -> ValidationResult<()> {
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(state)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn validate_append_only_result_root_consistency(
+    context: &ValidationContext,
+    cell_directory: &Path,
+    evidence_directory: &Path,
+) -> ValidationResult<()> {
+    use crate::evaluation::validate_cell_shape;
+    use crate::schema::Cell;
+
+    let mut cell_paths = fs::read_dir(cell_directory)?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.path())
+                .map_err(ValidationError::from)
+        })
+        .collect::<ValidationResult<Vec<_>>>()?;
+    cell_paths.sort();
+    if cell_paths.len() >= 12 {
+        return Err(ValidationError::new(
+            "result root already contains a complete or oversized cell set",
+        ));
+    }
+
+    let mut referenced_evidence = BTreeSet::new();
+    for cell_path in cell_paths {
+        if cell_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            != Some("json")
+        {
+            return Err(ValidationError::new(format!(
+                "result root contains a non-final cell entry and must be abandoned: {}",
+                cell_path.display()
+            )));
+        }
+        let cell: Cell = read_strict_json(context, &cell_path, MAX_CELL_JSON_BYTES)?;
+        validate_cell_shape(&cell)?;
+        match (
+            cell.evidence_artifact_path.as_ref(),
+            cell.evidence_artifact_sha256.as_ref(),
+        ) {
+            (Some(path), Some(expected_sha256)) => {
+                let path = PathBuf::from(path);
+                if path.parent() != Some(evidence_directory) {
+                    return Err(ValidationError::new(format!(
+                        "maintained live result cell references evidence outside its result root: {}",
+                        path.display()
+                    )));
+                }
+                let observed_sha256 =
+                    sha256_external_file(context, &path, Some(MAX_EVIDENCE_BYTES))?;
+                if &observed_sha256 != expected_sha256 {
+                    return Err(ValidationError::new(format!(
+                        "committed live result evidence digest mismatch: {}",
+                        path.display()
+                    )));
+                }
+                if !referenced_evidence.insert(path.clone()) {
+                    return Err(ValidationError::new(format!(
+                        "multiple committed cells reference the same evidence entry: {}",
+                        path.display()
+                    )));
+                }
+            }
+            (None, None) => {}
+            _ => {
+                return Err(ValidationError::new(format!(
+                    "committed live result cell has an incomplete evidence reference: {}",
+                    cell_path.display()
+                )))
+            }
+        }
+    }
+
+    let mut evidence_paths = fs::read_dir(evidence_directory)?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.path())
+                .map_err(ValidationError::from)
+        })
+        .collect::<ValidationResult<Vec<_>>>()?;
+    evidence_paths.sort();
+    let observed_evidence = evidence_paths.into_iter().collect::<BTreeSet<_>>();
+    if observed_evidence != referenced_evidence {
+        return Err(ValidationError::new(
+            "result root contains missing, staged, or orphan evidence and must be abandoned",
+        ));
+    }
+    Ok(())
+}
+
+fn require_directory_name(path: &Path, expected: &str, label: &str) -> ValidationResult<()> {
+    if path.file_name() != Some(OsStr::new(expected)) {
+        return Err(ValidationError::new(format!(
+            "{label} must be named `{expected}`: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn retain_result_path(
+    context: &ValidationContext,
+    path: &Path,
+    directory: bool,
+) -> ValidationResult<RetainedResultPath> {
+    if directory {
+        context.validate_existing_directory(path)?;
+    } else {
+        context.validate_existing_file(path)?;
+    }
+    let file = open_retained_result_path(path, directory)?;
+    validate_opened_result_path(&file, path, directory)?;
+    let retained = RetainedResultPath {
+        identity: filesystem_identity(&file)?,
+        file,
+        path: path.to_path_buf(),
+        directory,
+    };
+    let current = open_retained_result_path(path, directory)?;
+    if filesystem_identity(&current)? != retained.identity {
+        return Err(ValidationError::new(format!(
+            "result-root path changed while it was being pinned: {}",
+            path.display()
+        )));
+    }
+    Ok(retained)
+}
+
+fn open_result_root_lock(
+    context: &ValidationContext,
+    result_root: &RetainedResultPath,
+    lock_path: &Path,
+    create: bool,
+    mode: ResultRootLeaseMode,
+) -> ValidationResult<(File, bool)> {
+    let mut created = false;
+    if create {
+        match fs::symlink_metadata(lock_path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                context.validate_new_output(lock_path)?;
+                match open_result_root_lock_create_new(&result_root.file, lock_path) {
+                    Ok(file) => {
+                        created = true;
+                        return finish_open_result_root_lock(context, lock_path, file, created);
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Ok(_) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    context.validate_existing_file(lock_path)?;
+    let file = open_result_root_lock_existing(
+        &result_root.file,
+        lock_path,
+        mode == ResultRootLeaseMode::Exclusive,
+    )?;
+    finish_open_result_root_lock(context, lock_path, file, created)
+}
+
+fn finish_open_result_root_lock(
+    context: &ValidationContext,
+    lock_path: &Path,
+    file: File,
+    created: bool,
+) -> ValidationResult<(File, bool)> {
+    context.validate_existing_file(lock_path)?;
+    validate_opened_result_path(&file, lock_path, false)?;
+    let current = open_retained_result_path(lock_path, false)?;
+    if filesystem_identity(&current)? != filesystem_identity(&file)? {
+        return Err(ValidationError::new(format!(
+            "result-root lease entry changed while it was being opened: {}",
+            lock_path.display()
+        )));
+    }
+    Ok((file, created))
+}
+
+#[cfg(unix)]
+fn open_retained_result_path(path: &Path, directory: bool) -> std::io::Result<File> {
+    use rustix::fs::{open, Mode, OFlags};
+
+    let mut flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW;
+    if directory {
+        flags |= OFlags::DIRECTORY;
+    }
+    open(path, flags, Mode::empty())
+        .map(File::from)
+        .map_err(std::io::Error::from)
+}
+
+#[cfg(windows)]
+fn open_retained_result_path(path: &Path, directory: bool) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(
+            FILE_FLAG_OPEN_REPARSE_POINT
+                | if directory {
+                    FILE_FLAG_BACKUP_SEMANTICS
+                } else {
+                    0
+                },
+        );
+    options.open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_retained_result_path(path: &Path, _directory: bool) -> std::io::Result<File> {
+    File::open(path)
+}
+
+fn validate_opened_result_path(file: &File, path: &Path, directory: bool) -> ValidationResult<()> {
+    let metadata = file.metadata()?;
+    if metadata.is_dir() != directory || metadata.is_file() == directory {
+        return Err(ValidationError::new(format!(
+            "result-root path has an invalid type: {}",
+            path.display()
+        )));
+    }
+    #[cfg(windows)]
+    if filesystem_identity(file)?.attributes
+        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
+    {
+        return Err(ValidationError::new(format!(
+            "result-root path must not be a reparse point: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn filesystem_identity(file: &File) -> ValidationResult<FilesystemIdentity> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = file.metadata()?;
+
+    Ok(FilesystemIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn filesystem_identity(file: &File) -> ValidationResult<FilesystemIdentity> {
+    use std::{mem::zeroed, os::windows::io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+    };
+
+    let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut information) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+
+    Ok(FilesystemIdentity {
+        volume_serial_number: information.dwVolumeSerialNumber,
+        file_index: (u64::from(information.nFileIndexHigh) << 32)
+            | u64::from(information.nFileIndexLow),
+        attributes: information.dwFileAttributes,
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn filesystem_identity(_file: &File) -> ValidationResult<FilesystemIdentity> {
+    Ok(FilesystemIdentity)
+}
+
+#[cfg(unix)]
+fn open_result_root_lock_create_new(
+    result_root: &File,
+    _lock_path: &Path,
+) -> std::io::Result<File> {
+    use rustix::fs::{openat, Mode, OFlags};
+
+    openat(
+        result_root,
+        RELEASE_RESULT_ROOT_LOCK_NAME,
+        OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        Mode::RUSR | Mode::WUSR,
+    )
+    .map(File::from)
+    .map_err(std::io::Error::from)
+}
+
+#[cfg(unix)]
+fn open_result_root_lock_existing(
+    result_root: &File,
+    _lock_path: &Path,
+    writable: bool,
+) -> std::io::Result<File> {
+    use rustix::fs::{openat, Mode, OFlags};
+
+    let access = if writable {
+        OFlags::RDWR
+    } else {
+        OFlags::RDONLY
+    };
+    openat(
+        result_root,
+        RELEASE_RESULT_ROOT_LOCK_NAME,
+        access | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map(File::from)
+    .map_err(std::io::Error::from)
+}
+
+#[cfg(windows)]
+fn open_result_root_lock_create_new(
+    _result_root: &File,
+    lock_path: &Path,
+) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    options.open(lock_path)
+}
+
+#[cfg(windows)]
+fn open_result_root_lock_existing(
+    _result_root: &File,
+    lock_path: &Path,
+    writable: bool,
+) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .write(writable)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    options.open(lock_path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_result_root_lock_create_new(
+    _result_root: &File,
+    lock_path: &Path,
+) -> std::io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(lock_path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_result_root_lock_existing(
+    _result_root: &File,
+    lock_path: &Path,
+    writable: bool,
+) -> std::io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .write(writable)
+        .open(lock_path)
+}
+
+#[cfg(unix)]
+fn sync_retained_directory(directory: &RetainedResultPath) -> ValidationResult<()> {
+    directory.file.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_retained_directory(_directory: &RetainedResultPath) -> ValidationResult<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn acquire_file_lease(file: &File, mode: ResultRootLeaseMode) -> std::io::Result<()> {
+    use rustix::fs::{flock, FlockOperation};
+
+    let operation = match mode {
+        ResultRootLeaseMode::Exclusive => FlockOperation::NonBlockingLockExclusive,
+        ResultRootLeaseMode::Shared => FlockOperation::NonBlockingLockShared,
+    };
+    let deadline = Instant::now() + RESULT_ROOT_LEASE_RETRY_TIMEOUT;
+    loop {
+        match flock(file, operation) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let error = std::io::Error::from(error);
+                if error.kind() != std::io::ErrorKind::WouldBlock || Instant::now() >= deadline {
+                    return Err(error);
+                }
+            }
+        }
+        thread::sleep(RESULT_ROOT_LEASE_RETRY_INTERVAL);
+    }
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn acquire_file_lease(file: &File, mode: ResultRootLeaseMode) -> std::io::Result<()> {
+    use std::{mem::zeroed, os::windows::io::AsRawHandle};
+    use windows_sys::Win32::{
+        Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY},
+        System::IO::OVERLAPPED,
+    };
+
+    let mut overlapped: OVERLAPPED = unsafe { zeroed() };
+    let mut flags = LOCKFILE_FAIL_IMMEDIATELY;
+    if mode == ResultRootLeaseMode::Exclusive {
+        flags |= LOCKFILE_EXCLUSIVE_LOCK;
+    }
+    let result = unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            flags,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut overlapped,
+        )
+    };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn acquire_file_lease(_file: &File, _mode: ResultRootLeaseMode) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "result-root leases are unsupported on this platform",
+    ))
 }
 
 impl ValidationContext {
@@ -96,11 +995,25 @@ impl ValidationContext {
     }
 
     pub fn from_process(current_dir: &Path) -> ValidationResult<Self> {
+        Self::from_process_environment(
+            current_dir,
+            env::var_os("VOLICORD_HOME"),
+            env::var_os("HOME"),
+            env::var_os("USERPROFILE"),
+        )
+    }
+
+    pub(crate) fn from_process_environment(
+        current_dir: &Path,
+        volicord_home: Option<OsString>,
+        home: Option<OsString>,
+        user_profile: Option<OsString>,
+    ) -> ValidationResult<Self> {
         let source_checkout = git_toplevel(current_dir)?;
         let target_directory = cargo_target_directory(&source_checkout)?;
         let docs_directory = source_checkout.join("docs");
         let mut runtime_homes = Vec::new();
-        if let Some(value) = env::var_os("VOLICORD_HOME").filter(|value| !value.is_empty()) {
+        if let Some(value) = volicord_home.filter(|value| !value.is_empty()) {
             let path = PathBuf::from(value);
             runtime_homes.push(if path.is_absolute() {
                 path
@@ -108,16 +1021,17 @@ impl ValidationContext {
                 current_dir.join(path)
             });
         }
-        if let Some(home) = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")) {
-            if !home.is_empty() {
-                let home = PathBuf::from(home);
-                let home = if home.is_absolute() {
-                    home
-                } else {
-                    current_dir.join(home)
-                };
-                runtime_homes.push(home.join(".volicord"));
-            }
+        if let Some(home) = home
+            .filter(|value| !value.is_empty())
+            .or_else(|| user_profile.filter(|value| !value.is_empty()))
+        {
+            let home = PathBuf::from(home);
+            let home = if home.is_absolute() {
+                home
+            } else {
+                current_dir.join(home)
+            };
+            runtime_homes.push(home.join(".volicord"));
         }
         Self::new(
             source_checkout,
@@ -129,6 +1043,24 @@ impl ValidationContext {
 
     pub fn source_checkout(&self) -> &Path {
         &self.source_checkout
+    }
+
+    pub fn target_directory(&self) -> &Path {
+        &self.target_directory
+    }
+
+    pub fn add_runtime_home(&mut self, runtime_home: &Path) -> ValidationResult<()> {
+        if !runtime_home.is_absolute() {
+            return Err(ValidationError::new(format!(
+                "observed Volicord Runtime Home exclusion must be absolute: {}",
+                runtime_home.display()
+            )));
+        }
+        let runtime_home = normalize_configured_root(runtime_home, &self.source_checkout)?;
+        self.runtime_homes.push(runtime_home);
+        self.runtime_homes.sort();
+        self.runtime_homes.dedup();
+        Ok(())
     }
 
     pub fn validate_existing_file(&self, path: &Path) -> ValidationResult<()> {
@@ -160,10 +1092,18 @@ impl ValidationContext {
     }
 
     pub fn validate_new_output(&self, path: &Path) -> ValidationResult<()> {
+        self.validate_new_path(path, false, "output")
+    }
+
+    pub fn validate_new_directory(&self, path: &Path) -> ValidationResult<()> {
+        self.validate_new_path(path, true, "directory")
+    }
+
+    fn validate_new_path(&self, path: &Path, directory: bool, role: &str) -> ValidationResult<()> {
         validate_absolute_normalized(path)?;
-        self.validate_external(path, false)?;
+        self.validate_external(path, directory)?;
         let parent = path.parent().ok_or_else(|| {
-            ValidationError::new(format!("output has no parent: {}", path.display()))
+            ValidationError::new(format!("{role} has no parent: {}", path.display()))
         })?;
         validate_absolute_normalized(parent)?;
         self.validate_external(parent, true)?;
@@ -180,14 +1120,20 @@ impl ValidationContext {
                 parent.display()
             )));
         }
+        if !fs::metadata(parent)?.is_dir() {
+            return Err(ValidationError::new(format!(
+                "{role} parent is not a directory: {}",
+                parent.display()
+            )));
+        }
         match fs::symlink_metadata(path) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Ok(_) => Err(ValidationError::new(format!(
-                "output already exists: {}",
+                "{role} already exists: {}",
                 path.display()
             ))),
             Err(error) => Err(ValidationError::new(format!(
-                "cannot inspect output {}: {error}",
+                "cannot inspect {role} {}: {error}",
                 path.display()
             ))),
         }
@@ -562,6 +1508,12 @@ fn run_git_text(root: &Path, args: &[&str], max_bytes: usize) -> ValidationResul
 }
 
 fn validate_absolute_normalized(path: &Path) -> ValidationResult<()> {
+    if path.to_str().is_none() {
+        return Err(ValidationError::new(format!(
+            "release-evidence path is not valid UTF-8: {}",
+            path.display()
+        )));
+    }
     if !path.is_absolute() {
         return Err(ValidationError::new(format!(
             "path must be absolute: {}",
