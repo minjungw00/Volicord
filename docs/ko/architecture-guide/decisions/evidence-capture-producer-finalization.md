@@ -108,10 +108,10 @@ SQLite 형태 변경이었습니다. 당시 기준이던 `baseline_sqlite_v5`가
 공개 및 영속 capture-spec 형태에서 제거하지만 table, column, index, constraint를 추가하지
 않습니다. 따라서 별도 storage-profile 또는 package-version 전이를 만들지 않고 pre-major
 `baseline_sqlite_v5` / `0.8.0` 계약 batch 안에서 완료했습니다. 보정된 record family는
-현재 `baseline_sqlite_v6` / `0.9.0`에 유지되며 v6의 호스트 역량 Registry
-추가는 이 결정과 독립적입니다. 제거된 형태에는 legacy alias나 fallback decoder가
-없습니다. 호환되지 않는 v5 또는 이전 Runtime Home은 compatibility 검사에 실패하며 다시
-만들어야 합니다.
+현재 `baseline_sqlite_v7` / `0.9.0`에 유지되며 v6의 호스트 역량 Registry 추가와
+v7의 workflow 권한 추가는 이 결정과 독립적입니다. 제거된 형태에는 legacy alias나
+fallback decoder가 없습니다. 호환되지 않는 v5 또는 이전 Runtime Home은 compatibility
+검사에 실패하며 다시 만들어야 합니다.
 
 ## 결과
 

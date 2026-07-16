@@ -156,6 +156,10 @@ checks permit it.
   in public MCP tool calls unless the call is `volicord.list_projects`.
 - A `Product Repository` is a product-file boundary and may contain selected
   shared host configuration, but it is not Volicord authority.
+- A write ticket records one proposed product-file write or one exact
+  approval-bound non-product action under `sensitive` control against the
+  current work boundary. It is not OS permission, code-review approval, final
+  acceptance, or proof that the effect occurred.
 - A Write Ticket records that one proposed product-file write was checked
   against the current work boundary. It is not OS permission, code review
   approval, final acceptance, or proof that a write occurred.

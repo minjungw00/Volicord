@@ -326,16 +326,19 @@ manifest가 아닙니다. 정확한 외부 스키마와 게이트는
 5. 사용자 소유 판단과 증거의 canonical hash를 비교합니다.
 6. 내용이 없는 변환 보고서를 대상에 기록합니다.
 7. 원본 파일과 프로필 좌표가 바뀌지 않았는지 다시 확인합니다.
-8. 관리자가 별도로 활성화할 대상 경로를 반환합니다.
+8. 관리 대상 통합을 destination Runtime Home으로 명시적으로 재바인딩한 뒤 별도로
+   활성화할 대상 경로를 반환합니다.
 
 모든 단계가 통과한 뒤에만 성공을 보고합니다. 실패한 대상은 사용할 수 있거나 활성화된
 상태로 표시하면 안 됩니다. 재실행은 앞선 실패 시도가 자신이 만든 미완료 스테이징
 상태라고 식별한 대상만 재사용할 수 있으며, 그 밖의 비어 있지 않은 대상은 충돌입니다.
 JSON은 `status`, 원본·대상 프로필 식별자와 위치, 완료 단계, 보존 레코드 수,
-canonical-hash 점검 수, `source_unchanged`, `destination_ready`, 별도 활성화 동작을
-보고합니다. 판단 본문, 증거 본문, 프롬프트, 답변, Product Repository 파일 내용,
+canonical-hash 점검 수, `source_unchanged`, `destination_ready`,
+`activation_action=administrator_rebind_destination_home_and_activate_separately`를 보고합니다.
+판단 본문, 증거 본문, 프롬프트, 답변, Product Repository 파일 내용,
 비밀값, 원시 데이터베이스 행은 포함하지 않습니다.
 
+복사된 정책은 이 명시적 재바인딩 단계 전까지 source Runtime Home 바인딩을 유지합니다.
 이 명령은 `VOLICORD_HOME`을 전환하거나, 호스트 설정을 다시 쓰거나, 대상을 활성화하거나,
 원본을 삭제·변경하거나, 이전 프로필의 열기 규칙을 완화하거나, 복사된 기록으로 정확성을
 주장하지 않습니다. 정확한 프로필 변환과 레코드 보존은 집중 저장소 담당 문서가
@@ -1005,12 +1008,22 @@ volicord policy apply --repo PATH --file PATH --json
 `policy apply`는 엄격한 스키마 검증, Product Repository·Runtime Home·호스트·연결·guard
 installation 바인딩 검증, 현재 권한 fingerprint와 비교, canonical 정책·fingerprint·스키마와
 다음 `policy_version`을 프로젝트 상태에 기록, 관리 정책 파일의 조건부 원자적 교체, 다음
-쓰기 전 통제 수준 상향 재평가가 필요한 활성 Task 표시를 순서대로 수행합니다. 프로젝트
+쓰기 전 통제 수준 또는 수락 정책 상향 재평가가 필요한 활성 Task 표시를 순서대로 수행합니다. 프로젝트
 정책은 Agent가 요청한 통제 수준보다 항상 우선합니다. 덜 제한적인 정책을 적용해도 활성
 Task 수준을 자동으로 낮추지 않습니다.
 
+Fingerprint가 바뀌면 권위 있는 데이터베이스 단계는 하나의 트랜잭션입니다.
+`project_workflow_policies`를 교체하고 `project_state.state_version`과 정규 UTC 하한을
+각각 한 번 전진시키며, 프로젝트 범위 `project_workflow_policy_applied` 권한 이벤트
+하나를 추가하고, 필요하면 활성 Task의 닫힌 `policy_control_reevaluation` metadata
+표시를 상향 병합합니다. 표시가 필요하면 같은 트랜잭션에서 해당 Task의 모든 활성 티켓도
+`explicit_revoke`로 무효화하므로 강화 전 티켓은 정책 경계를 넘을 수 없습니다. 이후 완화된 정책은 기존의 더 강한 표시를 약화하지 않습니다.
+다음 쓰기 호환 Core 커밋은 Task를 표시된 통제 수준과 수락 정책 이상으로 높이고 두
+요구사항을 모두 충족한 같은 트랜잭션에서만 표시를 지웁니다.
+
 같은 canonical fingerprint를 다시 적용하는 것은 멱등이며 `policy_version`을 올리지
-않습니다. 다만 누락되거나 불일치하는 관리 파일은 복구할 수 있습니다. 변경된 canonical
+않고 `state_version`도 올리거나 권한 이벤트를 추가하지 않습니다. 다만 누락되거나
+불일치하는 관리 파일은 복구할 수 있습니다. 변경된 canonical
 정책은 `policy_version`을 정확히 한 번 올립니다. 프로젝트 데이터베이스가 권한 원천이므로
 커밋 뒤 검증된 파일 교체 전에 실패하면 `status=failed`, `database_changed=true`,
 `file_matches_authority=false`와 정확한 복구 행동을 반환하며 적용 완료를 보고하지 않습니다.
@@ -1368,35 +1381,51 @@ Codex 이벤트에는 정확한 최상위 `turn_id`도 있어야 합니다. 중�
   간결한 프로젝트, 현재 작업, 쓰기 티켓, 대기 사용자 행동, 차단 사유, 미해결 변경
   맥락과 함께 `inject_context`를 반환합니다.
 - `pre-tool`은 `MutationAssessment`를 반환합니다. `effect`는 `read_only`,
-  `product_write`, `outside_product_write`, `unknown` 중 하나이고 `confidence`는
-  `confirmed` 또는 `uncertain`이며, 결정은 `allow`, `warn`, `deny` 중 하나입니다.
-  하드 `deny`는 호스트가 구조화한 직접 제품 파일 쓰기이고, 구체적인 정규화 저장소 내부
-  대상 경로가 `confirmed`이며, 현재 Task나 정확히 하나의 현재 활성 일치 쓰기 티켓이
-  없거나 경로가 티켓 범위 밖이거나 sensitive 승인이 누락된 경우에만 허용됩니다. 명령
-  이름이나 셸 텍스트만으로 경로 또는 효과를 확정해서는 안 됩니다. 효과·경로·티켓 대조가
-  하나라도 불확실하면 `warn`이며 정상 작업을 하드 차단하지 않습니다.
+  `product_file_write`, `non_product_write`, `external_effect`, `unknown` 중 하나이고,
+  `confidence`는 `confirmed`, `structured`, `heuristic`, `unknown` 중 하나입니다.
+  구조화된 호스트 이벤트나 결정적인 직접 쓰기 도구가 Product Repository 쓰기를
+  확인하고 대상 경로를 알 수 있으며, 다음 하드 경계 중 하나 이상이 있을 때만 `deny`를
+  반환할 수 있습니다. 활성 Task가 없거나, 범위를 덮는 쓰기 티켓이 없거나, 저장소
+  이탈이나 티켓 범위 위반이 confirmed이거나, 필요한 민감 동작 승인이 없는
+  경우입니다. 결정적인 거부 정책 접두사도 confirmed 범위 위반입니다. 이는 협력형
+  호스트 결정이며 OS 수준 집행이 아닙니다.
 
-  안전한 읽기 분류는 구조화된 호스트 효과 또는 명시적으로 열거된 좁은 부작용 없는
-  subcommand에만 적용합니다. `git`, `cargo`, `npm`, `python`, `sh` 같은 전체 명령군을
-  읽기 전용으로 간주하지 않습니다. `pre-tool`이 구체적인 저장소 내부 경로 집합, 현재
-  Task, 정확히 하나의 현재 활성 일치 쓰기 티켓, 호환 프로젝트 범위를 가진 명확한 제품
-  파일 쓰기를 허용하면 예상 쓰기 상관 행을 기록합니다. 읽기 전용, 불확실한, 모호한,
-  티켓 범위 밖 시도는 그런 행을 만들지 않습니다. 이 결정은 협력형 호스트 결정이며 OS
-  수준 집행이 아닙니다.
-- `post-tool`은 변경 관찰을 다음 우선순위로 평가합니다. 먼저 호스트가 제공한 구조화된
-  `changed_paths`, 다음으로 세션 감시기의 before/after 스냅샷, 그다음 안전하고 경계가
-  정해진 Git diff, 마지막으로 제한된 heuristic을 사용합니다. 더 낮은 신뢰도 원천은 더
-  높은 신뢰도 원천과 모순되는 `confirmed` 사실을 만들 수 없습니다. 알려진 경로와 신뢰할
-  수 있는 before/after 증거가 실제 Product Repository 변경을 보이면 `confirmed`입니다.
-  감시기를 사용할 수 없거나 heuristic·모호한 Git 상태만 있으면 `suspected`입니다.
+  Guard는 활성 Task의 닫힌 `policy_control_reevaluation` metadata 표시를 엄격하게
+  디코딩합니다. 표시가 요구하는 통제 수준이나 선택적 필수 수락 정책이 대응하는 영속
+  Task 필드보다 강하면 Guard는 모든 활성 티켓을 현재 후보 집합에서 제외합니다. 이후
+  결정적인 Product Repository 쓰기는 `policy_control_reevaluation_required`로 거부하고
+  expected-write 상관관계를 만들지 않으며, Core가 더 강한 정책을 적용하고 현재 티켓을
+  발급하도록 호출자에게 `volicord.prepare_write`를 다시 실행하라고 안내합니다. Guard는
+  대기 요구사항을 context에 공개하지만 표시를 지우거나 다시 쓰지 않으며, 해당 전이는
+  Core가 담당합니다. 표시가 잘못된 형태면 기존 티켓을 허용하지 않고 Guard 명령이
+  실패합니다.
 
-  `confirmed` 변경은 이전 예상 쓰기 행 또는 정확히 하나의 현재 활성 일치 쓰기 티켓과
-  대조합니다. 범위 안에서 일치하면 미해결 미기록 변경을 만들지 않습니다. 일치하지 않거나
-  범위 밖인 confirmed 변경은 미해결 미기록 변경과 닫기 차단 사유를 기록하고 `warn`을
-  반환합니다. `suspected` 변경은 진단과 경고만 기록하며 닫기 차단 사유가 아닙니다. 이후
-  신뢰할 수 있는 관찰이 이를 confirmed로 승격하거나 변경 없음으로 해소해야 합니다.
-  `post-tool` 관찰은 제품 정확성, 행위자 신원, 쓰기 방지의 증명이 아니며 변경을 찾기 위해
-  신뢰할 수 없는 명령을 실행하지 않습니다.
+  경로 누락, 파서 불확실성, 복잡한 셸 구문, 파이프, 서브셸, 스크립트, 감시기 사용
+  불가, 둘 이상의 후보 티켓, `unknown` 효과는 정책이 선택한 하드 거부가 아니라 항상
+  `warn`을 반환합니다. 정확하고 안전한 명령 형태만 읽기 전용으로 분류할 수 있습니다.
+  기준 셸 allowlist에는 `git status`, `git diff`, `git log`, `git show`,
+  `git rev-parse`, `cargo metadata`가 포함됩니다. 명령 이름만으로 임의의 `git`,
+  `cargo`, `npm`, `pnpm`, `yarn`, `node`, `rustc` 호출을 읽기 전용으로 분류하면 안
+  됩니다. 특히 Git 변경 명령, 패키지 관리자 스크립트, Node 스크립트, 빌드,
+  리디렉션, 파이프, 서브셸은 변경 가능하거나 불확실한 상태로 남습니다.
+
+  pre-tool이 confirmed 또는 structured 제품 파일 쓰기를 허용하고, 구체적인 저장소
+  내부 경로 집합, 활성 Task, 정확히 하나의 현재 일치 쓰기 티켓, 호환 정책 범위가 있으면
+  expected-write 상관관계를 기록합니다. 읽기 전용, heuristic, unknown, 모호함,
+  티켓 범위 밖 시도는 expected-write 행을 만들지 않습니다.
+- `post-tool`은 관찰 결과를 기록하고 다음 순서로 변경 경로를 결정합니다. 구조화된 호스트
+  `changed_paths`, 같은 관리 세션의 세션 감시기 전후 비교, 해당 저장소와
+  기능을 사용할 수 있을 때의 제한된 읽기 전용 Git diff, 마지막으로 heuristic
+  경로 순서입니다. 변경을 찾기 위해 호출자가 제공한 명령을 실행하지 않습니다. 구조화된
+  경로나 독립적으로 관찰한 변경 경로는 `confirmed` 미기록 변경을 만들 수 있습니다.
+  heuristic 또는 불완전한 관찰은 `suspected` 변경을 만듭니다.
+
+  `post-tool`은 먼저 confirmed 경로를 일치하는 expected write와 대조하고, 그다음 정확히
+  하나의 호환되는 활성 쓰기 티켓과 대조합니다. 일치하지 않거나 범위 밖인 confirmed
+  변경은 `confirmed` 미해결 변경으로 기록되며 닫기 준비 차단 사유입니다. `suspected`
+  변경은 경고를 반환하고 확인을 요청하지만 그 자체로는 차단 사유가 아닙니다. 이후 diff가
+  변경을 확인하면 이를 승격하고 변경이 없으면 해소합니다. 일치 결과와 관찰 신뢰도는 관찰
+  기록이며 제품 정확성, 행위자 신원, 쓰기 방지를 증명하지 않습니다.
 - `prompt-capture`는 현재 호스트, 프로젝트, 연결의 프롬프트 캡처 사용 가능 상태가
   `configured`, `observed`, `active`일 때만 프롬프트 캡처 메타데이터를 기록하고 엄격한
   채팅 사용자 행동 명령을 인식합니다. 프롬프트에는 저장된 양식과 일치하는 명시적 줄이
@@ -1455,7 +1484,10 @@ Codex 이벤트에는 정확한 최상위 `turn_id`도 있어야 합니다. 중�
   영속화합니다. 모델의 최종 문장, 프롬프트, 명령, 파일 경로·내용, 사용자 답변, 오류 본문,
   원시 호스트 이벤트는 저장하지 않습니다. 정확한 replay는 호스트에 두 번째 Stop을
   요구하지 않고 같은 종료 결과를 반환합니다. 현재 최종 출력 표시는 별도의 새 읽기 전용
-  갱신을 수행할 수 있습니다.
+  갱신을 수행할 수 있습니다. 첫 Stop 전달은 재시도 없음 probe를 성공으로 기록하지 않고
+  `unavailable/probe_not_run`으로 기록합니다. 같은 세션의 후속 Stop이나 정확히 반복된
+  Stop은 `failed/second_stop_requested`를 기록하며, 크기가 제한된 더 새로운 호스트 소유
+  관찰만 `passed/none`을 확정할 수 있습니다.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ### 관리되는 최종 출력 권한 고지
@@ -1496,10 +1528,12 @@ receipt 크기 초과, 갱신 실패, 거부되거나 잘못된 결과, 연결·
 본문, 원시 호스트 이벤트 텍스트, 모델이 작성한 최종 산문을 복사하지 않습니다.
 
 갱신과 렌더링 경로는 Core 상태나 버전 변경, 이벤트, 재생 행, guard 이벤트, Agent
-Session, 설치 활성화, 감시기 상태, 호스트 관찰을 만들지 않습니다. 정확한 Detective
-재생은 변경 불가능한 과거 Stop 결정을 재사용하지만, 이와 별도인 표시는 현재 권한을
-다시 새로 읽습니다. 모델의 최종 산문, 변경 receipt, 캐시된 Stop 결과, 생성된 설정은
-현재 권한 입력이 아닙니다.
+Session, 설치 활성화, 감시기 상태를 만들지 않습니다. 생산자 측 호스트 고유 렌더링은
+성공한 호스트 관찰이 아닙니다. 크기가 제한된 호스트 소유 표시 확인이 없으면 Guard
+오케스트레이터는 `fixed_ui_authority_disclosure=unavailable/probe_not_run`을 기록하며
+상태는 `implemented_unverified`로 남습니다. 정확한 Detective 재생은 변경 불가능한 과거
+Stop 결정을 재사용하지만, 이와 별도인 표시는 현재 권한을 다시 새로 읽습니다. 모델의
+최종 산문, 변경 receipt, 캐시된 Stop 결과, 생성된 설정은 현재 권한 입력이 아닙니다.
 
 `systemMessage`는 별도의 호스트 고정 UI 표면입니다. 모델 맥락이 아니며 모델의 최종
 산문에 텍스트를 주입하지 않습니다. `generic`, 사용자 관리, 미지원, 누락, 비활성,
@@ -1754,7 +1788,31 @@ JSON 결과에는 다음 집계 횟수 또는 시간만 포함됩니다.
 - 관찰 confidence별 PreTool allow, warn, deny 횟수
 - confirmed 범위 밖 쓰기, 나중에 변경 없음으로 해소된 suspected 변경, 측정 가능한
   confirmed 미기록 변경 false-positive 횟수
-- 정상 작업 하드 차단, 누락된 sensitive 승인 차단, 완료 주장 억제 횟수
+- 확인된 구조화 제품 쓰기 PreTool deny, 누락된 sensitive 승인 차단, 완료 주장 억제 횟수
+
+`task_duration_micros`는 저장된 Task 생성 시각부터 처음 새로 커밋된 종료 닫기 작업
+시각까지를 측정합니다. `first_product_write_duration_micros`는 Task의 첫 번째 제품 쓰기
+Run이 새로 커밋될 때만, 그리고 그보다 앞선 실제 쓰기 관찰을 사용할 수 있을 때만
+기록합니다. 끝 시각은 경로 목록을 strict decode했을 때 정규화된 저장소 내부 경로가
+하나 이상 있고 관찰 시각이 Task 생성과 해당 Run 작업 사이에 있는 관찰 중, matched
+expected write의 가장 이른 `matched_at` 또는 confirmed unrecorded change의 가장 이른
+`detected_at`입니다. Run 기록 시각으로 누락된 쓰기 관찰을 대신하지 않습니다. 정확한
+재실행은 duration sample을 다시 추가하지 않습니다.
+
+confirmed 미기록 변경 false-positive 비율은 새로 커밋된 결정적 분류로 해소된 confirmed
+finding마다 이진 sample 하나를 사용합니다. `invalid_observation`과
+`not_product_change`는 `1`, `reverted`, `covered_by_write_ticket`,
+`recorded_as_expected_write`는 `0`을 더합니다. `accepted_by_user`와
+`superseded_by_new_observation`은 분류 sample이 아닙니다. 분자는 이진 값의 합이고 분모는
+sample 수입니다. `status_reread`는 한 연결에서 두 번째 이후의 공개 MCP
+`volicord.status` 호출만 셉니다. fresh Stop hook의 내부 권한 새로 고침은
+`authority_refresh`로 기록하고 정확한 Stop 재실행에는 sample을 추가하지 않습니다.
+`confirmed_structured_write_deny`는 권위 있는 Task 수준이 `light` 또는 `tracked`인
+상태에서 구조화된 제품 쓰기 PreTool deny가 발생했을 때만 기록합니다. Task가 없거나
+`sensitive` Task이거나, warn이거나, 효과를 분류하지 못한 경우는 해당하지 않으며,
+거부된 작업이 그 밖의 의미에서 정상이었다고 주장하지 않습니다.
+`sensitive_approval_missing_block`은 명시적인 Core `prepare_write`의
+`sensitive_approval_missing` 분기에서만 기록하며 Guard deny에서 추론하지 않습니다.
 
 필요한 관찰이 없으면 지속 시간과 false-positive 비율은 `null`이며 0이나 목표 달성을
 주장하는 대신 `measurement_pending`을 사용합니다. 제한된 범주형 method, host, profile,

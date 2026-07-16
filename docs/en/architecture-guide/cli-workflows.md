@@ -170,9 +170,9 @@ Phase handlers have distinct architecture responsibilities:
 - `prompt-capture` handles prompt metadata and strict chat command handling for
   User Channel action resolutions when prompt capture is available.
 - `stop` checks close-related facts through the shared typed status/receipt
-  validation boundary and renders the host-native allow or deny result for
-  session completion. Stop enforcement does not own the general final-output
-  disclosure surface.
+  validation boundary, always allows session termination, and renders
+  `completion_claim_allowed` plus incomplete-authority disclosure separately.
+  Stop handling does not own the general final-output disclosure surface.
 
 The event timestamp remains observation metadata for guard recording and
 correlation. Current Task, write-ticket, pending UserAction, and prompt-command

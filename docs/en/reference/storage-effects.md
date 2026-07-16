@@ -316,8 +316,10 @@ Those stored reasons are not:
 Project-policy application atomically writes the authoritative
 `project_workflow_policies` v2 copy, monotonic version, canonical JSON,
 fingerprint, and source, then reevaluates active Tasks upward only. It never
-silently lowers effective control. Exact command, file, and host behavior is an
-administrative-owner concern.
+silently lowers effective control. When it creates or preserves an unsatisfied
+active-Task reevaluation mark, the same transaction invalidates all active
+tickets for that Task with `explicit_revoke`. Exact command, file, and host
+behavior is an administrative-owner concern.
 
 Workflow metrics writes store aggregate counters, durations, serialized tool
 byte counts, and categorical outcomes only. Session-end recording stores a
@@ -609,7 +611,9 @@ Owner links:
 Committed `dry_run=false` may:
 
 - create `runs`
-- consume a compatible `write_tickets` row only when the Run records an actual Product Repository file write
+- consume a compatible `write_tickets` row when the Run records an actual
+  Product Repository file write or when an effective `sensitive` Task records
+  the exact approved non-product action bound by that ticket
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
 - create `evidence_claims` rows for new Task-scoped supplemental targets while preserving the immutable statement of an existing same-Task ID
@@ -623,7 +627,10 @@ Committed `dry_run=false` may:
 - create a replay row
 - increment `project_state.state_version` once
 
-A Run with no product-file write leaves a compatible ticket active for reuse.
+A non-sensitive Run with no product-file write leaves a compatible ticket active
+for reuse. An effective `sensitive` non-product Run instead requires and consumes
+its exact approval-bound ticket so close retains a Core-derived sensitive-action
+basis.
 Consumption, Run insertion, and all evidence/artifact effects are one atomic
 commit. Rejection records no consumption. `basis_state_version` is audit-only;
 validity uses the stored Task/Change Unit/scope/baseline/workspace/approval
@@ -657,9 +664,12 @@ Rejected attempts do not change:
 - acceptance criteria, supplemental evidence claims, or evidence observations
 - evidence-capture intents, receipts, producers, or receipt staging rows
 
-Product file write persistence boundary:
+Write-ticket consumption boundary:
 
-- When the method owner allows a committed run that records a product file write, storage may consume a compatible `write_tickets` row in the same commit.
+- When the method owner allows a committed run that records a product file write,
+  or an effective `sensitive` Run that records its exact approved non-product
+  action, storage may consume the compatible `write_tickets` row in the same
+  commit.
 - Test evidence persistence can promote staged artifacts, update evidence, and record evidence observations without implying a product file write observation.
 - Exact run classification belongs to the [`volicord.record_run` method](api/method-record-run.md).
 

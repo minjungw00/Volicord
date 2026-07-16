@@ -24,7 +24,8 @@ This document does not own:
 
 ## Purpose
 
-`volicord.prepare_write` checks one proposed product-file write against:
+`volicord.prepare_write` checks one proposed product-file write, or one exact
+non-product action for an effective `sensitive` Task, against:
 
 - current Task
 - currently applied Change Unit
@@ -39,11 +40,18 @@ When the check is allowed, the method first searches for a compatible active
 ticket. It reuses that ticket when its Task, Change Unit, `scope_revision`,
 baseline, workspace and approval basis are current, its allowed paths cover all
 newly intended paths, its sensitive basis is equal or stronger, and it remains
-unconsumed. Otherwise it issues one open ticket. A ticket is a Volicord
-authority record for authorized write intent within the current Task and Change
-Unit. It is not filesystem enforcement, OS permission, shell permission, or
-proof that a write occurred. When the check is not allowed, the method denies or
-defers the ticket path without invalidating an unrelated compatible ticket.
+unconsumed. Sensitive reuse additionally requires the exact normalized
+`intended_operation` and the same matching approval-resolution identity; a
+reworded operation cannot borrow an earlier approval or ticket. Otherwise it
+issues one open ticket. A ticket is a Volicord
+authority record for the bounded product-write or sensitive-action intent within
+the current Task and Change Unit. A non-product sensitive ticket has
+`product_file_write_intended=false`; it binds the named operation, an empty
+product-path set, baseline, Change Unit, scope revision, and user-owned approval
+basis, and is consumed only by the matching sensitive Run. It is not filesystem
+enforcement, OS permission, shell permission, or proof that an effect occurred.
+When the check is not allowed, the method denies or defers the ticket path
+without invalidating an unrelated compatible ticket.
 
 `Task.mode=advisor` is read-only with respect to Product Repository file effects. `volicord.prepare_write` rejects that Task mode before decision evaluation, does not recommend this method as the generic next action for an advisor Task, and never issues an advisor write ticket. A `work` Task must also have `work_phase=implementation`; shaping remains read-only. This does not prevent a compatible shaping `record_run` call from committing Core Run or evidence state.
 
@@ -84,7 +92,9 @@ Requires:
 - verified invocation context with `operation_category=agent_workflow`
 - a current Task whose mode is `direct` or `work` and whose `work_phase` is `implementation`; `advisor` and shaping are incompatible with write preparation
 - a current effective control level. `observe` is incompatible with product
-  writes. Before ticket selection Core applies any pending upward-only policy
+  writes. An effective `sensitive` Task also requires an exact ticket-backed
+  action basis when its Run has no product-file write. Before ticket selection
+  Core applies any pending upward-only policy
   reevaluation; a policy relaxation never lowers an active Task.
 - for `light`, every intended path must be covered by an allowed normalized
   repository-relative prefix and by no denied prefix. Prefixes match the exact

@@ -123,6 +123,9 @@ TaskLineageInput:
 - `resume_policy=resume_active`는 `acceptance_policy=null`을 요구하고 선택한 Task에
   저장된 요청을 유지합니다. 권위 있는 프로젝트 정책이 강화되면 Core가 유효
   수준과 수락 요구를 높일 수 있지만 정책 완화 뒤 활성 `Task`를 낮추지는 않습니다.
+- `resume_policy=create_new` 또는 `resume_policy=supersede_active`가 활성 Task 포인터를
+  교체하면 같은 커밋에서 이전 활성 Task의 모든 활성 쓰기 티켓을 `task_closed`로
+  무효화합니다.
 - `not_required`는 `observe`에서 필수이고, 권위 있는 프로젝트 정책이 저위험
   완료를 명시적으로 허용할 때만 `light`에서 유효합니다. `tracked`의 기준 면제가
   아니며 `sensitive`에서는 항상 유효하지 않습니다. Agent Connection이 값을

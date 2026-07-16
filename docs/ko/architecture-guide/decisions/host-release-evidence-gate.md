@@ -76,18 +76,13 @@ null이 아닌 클라이언트에는 null이 아닌 호스트가 필요합니다
 남습니다. 정적 미지원 셀은 `not_applicable`이고 disposition이 MCP initialize 전에 단락될
 수 있으므로 호스트 가용성이 null이 아니어도 null 클라이언트 정체성을 사용할 수 있습니다.
 구현된 셀의 검증됨 요청은 정체성이 없어도 게이트를 실패시킬 수 있으며, 명시적으로 제외할
-때만 `requested_verified=false`를 사용합니다. v3 평가기는 각 정적 disposition을 호스트
-버전을 인식하는 담당 표와 대조합니다. Codex의 정규 `host_version=0.144.4`에서는
-`native_user_action`, `verified_tool_producer`, `registered_connection_observation`가
-구현되었고, `local_web_user_channel`, `record_final_output`,
-`detective_final_output`은 해당 호스트 버전에서 지원되지 않습니다. 정확한 원문 버전 probe
-envelope는 `codex-cli 0.144.4`이고 셀에는 여기서 얻은 bare 정규 `0.144.4`를 저장합니다.
-null이 아닌 모든 Codex 버전은 공유 bare parser를 통과해야 하며 `host_version`에 원문 probe
-외피를 넣으면 구조적으로 유효하지 않습니다. null 또는 아직 검토하지 않은 Codex 버전에는
-호스트 종류 fallback을 유지하여 앞의 네 기능은
-구현됨, 두 final-output 기능은 미지원으로 둡니다. Claude Code는 여섯 기능 모두 구현된
-호스트 종류 fallback을 유지합니다. 이는 최소 버전 주장이 아니라 검토한 정확한 버전
-표입니다. null이 아닌 각 클라이언트 쌍은 그 셀에 사용한 성공한 관리 MCP `initialize`에서만
+때만 `requested_verified=false`를 사용합니다. v3 평가기는 각 정적 disposition을 호스트 종류
+담당 표와 대조합니다. Codex와 Claude Code는 여섯 기능을 모두 구현합니다. 검토된 Codex의
+정확한 원문 버전 probe envelope는 `codex-cli 0.144.4`이고 셀에는 여기서 얻은 bare 정규
+`0.144.4`를 저장합니다. null이 아닌 모든 Codex 버전은 공유 bare parser를 통과해야 하며
+`host_version`에 원문 probe 외피를 넣으면 구조적으로 유효하지 않습니다. null, 검토됨,
+미검토 버전 어느 것도 호스트 종류 기준 구현 disposition을 선택하거나 바꾸지 않습니다.
+검토된 좌표는 최소 버전 주장이 아닙니다. null이 아닌 각 클라이언트 쌍은 그 셀에 사용한 성공한 관리 MCP `initialize`에서만
 얻습니다. 호스트 종류, 실행 파일, probe 출력, 환경, 설정, 프로토콜 버전, 상수, 이후 도구
 메타데이터, 다른 셀에서 추론하지 않습니다. 한 호스트의 null이 아닌 모든 셀은 정확한
 클라이언트 쌍 하나를 사용합니다. 구현된 exact-live 셀은
@@ -172,12 +167,13 @@ namespace와 그 호스트·연결 좌표는 예약되고 변경할 수 없습�
 
 호스트 고유 UserAction 셀은 정확한 Task 결속 Stop 영수증을 닫기 준비 상태나 최종 출력 주장이
 아니라 권한 관찰로 취급합니다. Stop 결정, 이유, `close_state`, 완전한 `close_blockers`
-집합을 보존하고 검증합니다. 내부적으로 일관된 `ready` `allow`와 차단된 Detective 상태
-보기는 호스트 릴리스 증거가 소유한 두 가지 깨끗한 픽스처 형태일 때만 허용합니다. 하나는
-완전한 관찰 범위의 `ready` `allow`이고, 다른 하나는 일부 관찰 경고가 있는 정확한 활성
-관찰 범위의 `session_watch_unavailable` 차단입니다. 다른 결과이면 셀은 실패합니다.
+집합을 보존하고 검증합니다. 내부적으로 일관된 `ready` `allow`와
+`completion_claim_allowed=false`인 Detective `allow`는 호스트 릴리스 증거가 소유한 두 가지
+깨끗한 픽스처 형태일 때만 허용합니다. 하나는 완전한 관찰 범위의 `ready` `allow`이고,
+다른 하나는 일부 관찰 경고가 있는 정확한 활성 관찰 범위의
+`session_watch_unavailable` 미완료 고지입니다. 다른 결과이면 셀은 실패합니다.
 LocalUser `ready` 및 차단 사유 없음 검사는 깨끗한 픽스처의 별도 전제로 남습니다. 차단된
-Stop 상태 보기를 `allow`로 바꾸지 않으며 해당 LocalUser 영수증과 바이트 단위로 대조하지
+닫기 차단 상태 보기를 닫기 준비 상태로 바꾸지 않으며 해당 LocalUser 영수증과 바이트 단위로 대조하지
 않습니다. 두 영수증은 공유하는 Project, Task, 상태 버전, 최신 Run 권한 좌표에서만
 일치해야 합니다. 최종 출력 표시, 인증된 재생, 차단 종료는 별도 행렬 기능으로 남습니다.
 
@@ -217,7 +213,7 @@ result-root lease를 유지합니다. 그 lease 아래에서 최종 이름이 �
 - 운영 local-web manifest 획득은 계속 사용할 수 없어 닫힌 상태로 실패하며 CLI inbox가
   지원되는 fallback입니다.
 - Native session identifier는 Volicord 저장소, 진단, 릴리스 증거에 들어가지 않습니다.
-- 유지하는 정확한 일부 관찰 범위의 Detective 차단 사유는 닫기 준비 상태로 바뀌지 않고
+- 유지하는 정확한 일부 관찰 범위의 Detective 미완료 고지는 닫기 준비 상태로 바뀌지 않고
   호스트 고유 UserAction 증거에 그대로 드러나며, 그 밖의 Stop 결과는 깨끗한 픽스처를
   실패시킵니다.
 - 금지되었거나 정규화되지 않은 릴리스 경로는 인증된 호스트 실행이나 릴리스 아티팩트

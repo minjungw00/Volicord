@@ -854,7 +854,7 @@ Meaning:
 |---|---|---|
 | `task_id` | Opaque identifier. | Identifies the Task for the captured attempt boundary. |
 | `change_unit_id` | Opaque identifier. | Identifies the Change Unit for the captured attempt boundary. |
-| `intended_operation` | Free-form intent string. | Describes the intended operation without creating a controlled value set. |
+| `intended_operation` | Free-form exact operation coordinate. | Stores the prepare-write value after trimming outer whitespace while preserving case and interior text. A method that compares `performed_operation` uses exact equality; this coordinate is not proof that an external action occurred. |
 | `intended_paths` | Normalized Product Repository path strings. | Product Repository relative paths after API-level path normalization. |
 | `product_file_write_intended` | Boolean. | Indicates whether the captured attempt intended a product-file write. |
 | `sensitive_categories` | Opaque sensitive-category classification strings. | Not an exhaustive public enum unless an affected method or profile owner publishes a narrower local list. |

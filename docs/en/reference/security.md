@@ -109,6 +109,10 @@ Must not claim:
 - Sensitive-action approval is a write ticket, `WriteTicketScope`, OS permission, shell permission, command approval, deployment approval, final acceptance, residual-risk acceptance, or product correctness.
 - Sensitive-action approval authorizes product-file writes, commands, hosts, networks, secrets, destructive operations, or unbounded activity.
 - Broad approval substitutes for a required sensitive-action approval, final acceptance, residual-risk acceptance, scope decision, or write ticket.
+- Exact equality between a caller-reported `performed_operation` and a ticket's
+  `intended_operation` proves that the external action occurred, proves its
+  effect, or attributes that action to an actor. It is only a compatibility
+  check on caller-supplied coordinates.
 
 Owner links:
 - [Core Model](core-model.md) owns user-owned judgment and non-substitution rules.
@@ -287,9 +291,11 @@ namespace is reserved and bound immutably to one host and registered
 connection; invalid or conflicting markers fail without durable state. The
 mapped value is correlation metadata, not user identity, host attestation, or
 authority; missing or mismatched binding cannot produce Strong Evidence.
-This exact correlation does not promote `local_web_user_channel`: that feature
-is `unsupported_by_host` for reviewed Codex `0.144.4` and still requires every
-separate credential-delivery condition for any future reviewed version.
+This exact correlation does not promote `local_web_user_channel`. The feature
+still requires every separate credential-delivery condition and its current
+model-separation and advertised-and-exercised probes. The reviewed Codex
+`0.144.4` coordinate neither proves support nor produces
+`unsupported_by_host`; only current explicit capability absence does that.
 
 <a id="historical-operation-result-access"></a>
 ### Historical operation-result access

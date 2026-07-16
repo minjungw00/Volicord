@@ -309,8 +309,9 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 
 프로젝트 정책 적용은 권위 있는 `project_workflow_policies` v2 복사본, 단조 증가
 버전, 기준 JSON, 지문, source를 원자적으로 쓰고 활성 Task를 위쪽으로만 다시
-평가합니다. 유효 통제 수준을 조용히 낮추지 않습니다. 정확한 명령, 파일, host 동작은
-관리 담당 문서의 관심사입니다.
+평가합니다. 유효 통제 수준을 조용히 낮추지 않습니다. 충족되지 않은 활성 Task 재평가
+표시를 만들거나 보존하면 같은 트랜잭션에서 해당 Task의 모든 활성 티켓을
+`explicit_revoke`로 무효화합니다. 정확한 명령, 파일, host 동작은 관리 담당 문서의 관심사입니다.
 
 Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범주형
 outcome만 저장합니다. Session-end 기록은 크기가 제한된 권한 receipt를 저장합니다.
@@ -600,7 +601,9 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `runs`를 생성합니다.
-- Run이 실제 Product Repository 파일 쓰기를 기록할 때만 호환되는 `write_tickets` 행을 소비합니다.
+- Run이 실제 Product Repository 파일 쓰기를 기록하거나 유효 `sensitive` Task가 해당
+  티켓에 결속된 정확한 승인 비제품 동작을 기록할 때 호환되는 `write_tickets` 행을
+  소비합니다.
 - 사용할 수 있는 `artifact_staging`을 소비합니다.
 - `artifacts`를 승격하거나 연결합니다.
 - 새 `Task` 범위 보충 대상에 `evidence_claims` 행을 만들고, 기존 같은 `Task` ID의 불변 문장을 보존합니다.
@@ -613,7 +616,9 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
 
-제품 파일 쓰기가 없는 Run은 호환 티켓을 재사용할 수 있도록 활성 상태로 둡니다.
+제품 파일 쓰기가 없는 비민감 Run은 호환 티켓을 재사용할 수 있도록 활성 상태로
+둡니다. 반면 유효 `sensitive` 비제품 Run은 정확한 승인 결속 티켓을 요구하고 소비하여
+Core가 파생한 민감 동작 근거를 닫기까지 보존합니다.
 소비, Run 삽입, 모든 증거/아티팩트 효과는 하나의 원자적 커밋입니다. 거절은 소비를
 기록하지 않습니다. `basis_state_version`은 감사 전용이며 유효성은 저장된
 Task/Change Unit/범위/기준선/workspace/승인 근거, 상태, 선택적 idle timeout을 사용합니다.
@@ -646,9 +651,11 @@ Task/Change Unit/범위/기준선/workspace/승인 근거, 상태, 선택적 idl
 - 수락 기준, 보충 증거 주장, 증거 관찰.
 - evidence-capture intent, receipt, producer, receipt staging 행.
 
-제품 파일 쓰기 영속 저장 경계:
+쓰기 티켓 소비 경계:
 
-- 메서드 담당 문서가 제품 파일 쓰기를 기록하는 커밋된 실행을 허용할 때, 저장소는 같은 커밋에서 호환되는 `write_tickets` 행을 소비할 수 있습니다.
+- 메서드 담당 문서가 제품 파일 쓰기를 기록하는 커밋된 실행 또는 유효 `sensitive`
+  Run의 정확한 승인 비제품 동작 기록을 허용할 때 저장소는 같은 커밋에서 호환되는
+  `write_tickets` 행을 소비할 수 있습니다.
 - 테스트 증거 영속 저장은 제품 파일 쓰기 관찰을 뜻하지 않으면서도 스테이징된 아티팩트를 승격하고 증거를 갱신하며 증거 관찰을 기록할 수 있습니다.
 - 정확한 실행 분류는 [`volicord.record_run` 메서드](api/method-record-run.md)가 담당합니다.
 

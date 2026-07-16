@@ -124,10 +124,11 @@ connection-selector correction removes the caller-supplied future observation
 digest from the public and persisted capture-spec shape but adds no table,
 column, index, or constraint. It was therefore completed inside the pre-major
 `baseline_sqlite_v5` / `0.8.0` contract batch rather than creating a second
-storage-profile or package-version transition. Current `baseline_sqlite_v6` /
-`0.9.0` retains the corrected record families; its host-capability Registry
-addition is independent of this decision. The removed shape has no legacy
-alias or fallback decoder. Incompatible v5 or earlier Runtime Homes fail
+storage-profile or package-version transition. Current `baseline_sqlite_v7` /
+`0.9.0` retains the corrected record families; the v6 host-capability Registry
+addition and v7 workflow-authority additions are independent of this decision.
+The removed shape has no legacy alias or fallback decoder. Incompatible v5 or
+earlier Runtime Homes fail
 compatibility checks and require recreation.
 
 ## Consequences

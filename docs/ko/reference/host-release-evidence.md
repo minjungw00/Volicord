@@ -326,20 +326,16 @@ Manifest 하나에는 아래 두 집합의 모든 곱에 해당하는 셀이 정
 좌표가 아닙니다.
 
 v3 평가기는 생산자가 적은 `implementation_disposition`을 독립된 사실로 받아들이지 않고
-정확한 호스트 버전별 담당 표와 대조합니다. Codex의 정확한 정규
-`host_version=0.144.4`에서는 `native_user_action`, `verified_tool_producer`,
-`registered_connection_observation`가 `implemented`이고, `local_web_user_channel`,
-`record_final_output`, `detective_final_output`가 `unsupported_by_host`입니다. 설치된
-호스트의 정확한 probe 출력은 `codex-cli 0.144.4`이며 셀은 probe 외피가 아니라 해석된 정규
+정확한 호스트 종류별 담당 표와 대조합니다. Codex와 Claude Code는 여섯 기능 표면을 모두
+구현하며 `host_version`은 그 disposition을 선택하거나 바꾸지 않습니다. 검토된 Codex의
+정확한 probe 출력은 계속 `codex-cli 0.144.4`이고 셀은 probe 외피가 아니라 해석된 정규
 bare 좌표 `0.144.4`만 저장합니다. null이 아닌 모든 Codex `host_version`은 공유 정규 bare
 버전 parser를 통과해야 합니다. `host_version`에 `codex-cli 0.144.4` 같은 원문 probe 외피를
-넣으면 구조적 오류입니다. Codex 버전이 없거나 검토되지 않았으면 호스트 종류 대체 표를
-사용하여 앞의 네 기능은 `implemented`, 두 최종 출력 기능은 `unsupported_by_host`로
-둡니다. 정확한 증거가 없으면 구현된 셀은 `implemented_unverified`입니다. Claude Code는
-여섯 기능 모두 `implemented`인 호스트 종류 대체 표를 유지합니다. 새 검토 버전 표에는
-담당 문서 변경과 완전한 새 12개 셀 manifest가 필요합니다.
+넣으면 구조적 오류입니다. 정확한 셀 Evidence가 없으면 구현된 셀은
+`implemented_unverified`로 남으며 정적 `unsupported_by_host`가 되지 않습니다.
 
-이 정확한 버전 표는 릴리스 gate Evidence 좌표일 뿐 일반 런타임 기능 gate가 아닙니다.
+정확한 버전은 릴리스 Evidence와 검증 좌표일 뿐 기능 disposition이나 런타임 gate가
+아닙니다.
 런타임 지원은 [Agent Connection](agent-connection.md#host-feature-support-state)에 따라
 capability probe를 우선합니다. 다른 또는 더 새로운 유효 설치 버전은 구현된 표면에 대해
 probe와 최신 Evidence가 다른 상태를 확정할 때까지 `implemented_unverified`이며, 이 표에

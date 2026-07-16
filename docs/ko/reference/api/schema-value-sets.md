@@ -522,8 +522,9 @@ temporarily_unavailable
 `verified`에는 현재 최종 Volicord 아티팩트와 설치 호스트에 결속된 정확한 최신 증거와
 준비된 런타임 전제 조건이 필요합니다. `implemented_unverified`는 구현은 있지만 그 증거가
 없거나, 오래됐거나, 만료됐거나, 형식이 잘못됐거나, 일치하지 않는다는 뜻입니다.
-`unsupported_by_host`는 정확한 호스트·버전·플랫폼에 필요한 호스트 소유 역량이 없다는
-뜻입니다. `temporarily_unavailable`은 정확한 증거는 현재 유효하지만 지금의 런타임 전제
+`unsupported_by_host`는 현재 호스트 표면이 필요한 호스트 소유 역량의 부재를 명시적으로
+보고한다는 뜻입니다. 호스트 버전 동등성이나 버전 검토 부재만으로는 이 값을 만들 수
+없습니다. `temporarily_unavailable`은 정확한 증거는 현재 유효하지만 지금의 런타임 전제
 조건이 내려가 있다는 뜻입니다. 우선순위와 기준 호스트 매트릭스는
 [Agent Connection](../agent-connection.md#host-feature-support-state)이 담당합니다.
 
@@ -537,6 +538,43 @@ registered_connection_observation
 record_final_output
 detective_final_output
 ```
+
+`HostRuntimeProbeId`는 정확히 다음 값을 사용합니다.
+
+```text
+lifecycle_hook_delivery
+pre_tool_structured_target_paths
+post_tool_structured_changed_paths
+model_separated_user_action_ui
+stop_delivery_and_replay
+fixed_ui_authority_disclosure
+mcp_capability_advertised_and_exercised
+```
+
+`HostRuntimeProbeOutcome`은 정확히 `passed`, `failed`, `unavailable`,
+`unsupported`를 사용합니다. `HostRuntimeProbeFailureClass`는 정확히 다음 값을
+사용합니다.
+
+```text
+none
+explicit_capability_absent
+configuration_unavailable
+binding_mismatch
+approval_required
+listener_unavailable
+event_delivery_failed
+structured_paths_missing
+model_separation_unconfirmed
+replay_failed
+second_stop_requested
+fixed_ui_unconfirmed
+capability_not_advertised
+capability_not_exercised
+probe_not_run
+```
+
+outcome과 실패 종류의 조합 및 기능과 probe의 매핑은
+[Agent Connection](../agent-connection.md#host-feature-support-state)이 담당합니다.
 
 최종 출력 `required_subcapabilities`와 `subcapabilities` 키는
 `authority_display`, `authenticated_exact_replay`, `block_finalization`만 사용합니다.

@@ -102,11 +102,9 @@ exists, so its digest must not be embedded back into that executable: doing so
 would change the executable digest and create a recursive binding. A trusted
 internal acquisition path must instead verify the external manifest described
 above before publishing or evaluating a pass. The current adapter has no such
-trusted acquisition path. In addition, the reviewed Codex `0.144.4` table
-classifies `local_web_user_channel` as `unsupported_by_host`, so that exact
-coordinate is not eligible for a passing local-web row. Null or unreviewed
-Codex coordinates retain the host-kind implemented fallback, and Claude Code
-retains its implemented fallback, but without trusted acquisition those paths
+trusted acquisition path. Codex and Claude Code implement
+`local_web_user_channel` by host kind; the reviewed Codex `0.144.4` coordinate
+does not change that disposition. Without trusted acquisition those paths
 remain implemented and unverified. Production local-web eligibility therefore
 remains fail-closed and CLI inbox is used.
 

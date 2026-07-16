@@ -98,6 +98,7 @@ task_closed
 explicit_revoke
 product_write_flag_mismatch
 baseline_mismatch
+operation_mismatch
 workspace_mismatch
 approval_basis_mismatch
 sensitive_category_mismatch

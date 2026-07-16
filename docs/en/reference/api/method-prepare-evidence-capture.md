@@ -231,8 +231,8 @@ observation digest shape. It adds no table, column, index, or constraint and is
 the correction introduced in the `baseline_sqlite_v5` / `0.8.0` contract
 batch, so it did not itself create another storage-profile or package-version
 transition. The same corrected method shape remains current in
-`baseline_sqlite_v6` / `0.9.0`; v6's host-capability Registry addition is
-independent of this method. There is no
+`baseline_sqlite_v7` / `0.9.0`; the v6 host-capability Registry addition and
+the v7 workflow-authority additions are independent of this method. There is no
 legacy alias or fallback decoder for the removed request/capture-spec shape.
 There is no conversion from an incompatible v5 or earlier Runtime Home;
 incompatible state fails clearly and must be recreated. The current

@@ -24,7 +24,8 @@
 
 ## 목적
 
-`volicord.prepare_write`는 제안된 제품 파일 쓰기 하나를 아래 항목과 비교합니다.
+`volicord.prepare_write`는 제안된 제품 파일 쓰기 하나 또는 유효 통제 수준이
+`sensitive`인 Task의 정확한 비제품 동작 하나를 아래 항목과 비교합니다.
 
 - 현재 `Task`
 - 현재 적용 Change Unit
@@ -38,11 +39,16 @@
 확인이 허용되면 먼저 호환되는 활성 티켓을 찾습니다. 그 티켓의 `Task`, Change
 Unit, `scope_revision`, 기준선, workspace, 승인 근거가 현재 상태이고, 허용 경로가
 새 intended path를 모두 포함하며, 민감 근거가 같거나 더 강하고, 아직 소비되지
-않았으면 재사용합니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
-`Task`와 Change Unit 안에서 권한 있는 쓰기 의도를 나타내는 Volicord 권한
-기록입니다. 파일시스템 집행, OS 권한, 셸 권한, 쓰기가 실제로 일어났다는 증명이
-아닙니다. 확인이 허용되지 않으면 관련 없는 호환 티켓을 무효화하지 않고 쓰기
-티켓 경로를 거부하거나 미룹니다.
+않았으면 재사용합니다. 민감 티켓을 재사용하려면 정규화된 `intended_operation`이
+정확히 같고 일치하는 승인 resolution 정체성도 같아야 합니다. 표현을 바꾼 동작은
+이전 승인이나 티켓을 빌려 쓸 수 없습니다. 그렇지 않으면 열린 티켓 하나를 발급합니다. 티켓은 현재
+`Task`와 Change Unit 안에서 경계가 정해진 제품 쓰기 또는 민감 동작 의도를 나타내는
+Volicord 권한 기록입니다. 비제품 민감 티켓은
+`product_file_write_intended=false`이며 이름 붙은 동작, 빈 제품 경로 집합, 기준선,
+Change Unit, 범위 리비전, 사용자 소유 승인 근거를 결속하고 일치하는 민감 Run만
+소비합니다. 파일시스템 집행, OS 권한, 셸 권한, 효과가 실제로 일어났다는 증명이
+아닙니다. 확인이 허용되지 않으면 관련 없는 호환 티켓을 무효화하지 않고 티켓 경로를
+거부하거나 미룹니다.
 
 `Task.mode=advisor`는 Product Repository 파일 효과에 대해 읽기 전용인 자문 작업입니다. `volicord.prepare_write`는 결정 평가 전에 이 Task 모드를 거절하고, advisor Task의 일반 다음 행동으로 이 메서드를 추천하지 않으며, advisor 쓰기 티켓을 발급하지 않습니다. `work` Task도 `work_phase=implementation`이어야 하며 shaping은 읽기 전용으로 남습니다. 이는 호환되는 shaping `record_run` 호출이 Core Run이나 증거 상태를 커밋하는 것을 막지 않습니다.
 
@@ -82,8 +88,9 @@ PrepareWriteRequest:
 
 - `operation_category=agent_workflow`인 확인된 호출 맥락
 - 모드가 `direct` 또는 `work`이고 `work_phase=implementation`인 현재 Task. `advisor`와 shaping은 쓰기 준비와 호환되지 않습니다.
-- 현재 유효 통제 수준. `observe`는 제품 파일 쓰기와 호환되지 않습니다. 티켓을
-  고르기 전에 Core는 보류 중인 상향 전용 정책 재평가를 적용하며 정책 완화로
+- 현재 유효 통제 수준. `observe`는 제품 파일 쓰기와 호환되지 않습니다. 유효
+  `sensitive` Task는 제품 파일 쓰기가 없는 Run에도 정확한 티켓 결속 동작 근거가
+  필요합니다. 티켓을 고르기 전에 Core는 보류 중인 상향 전용 정책 재평가를 적용하며 정책 완화로
   활성 `Task`를 낮추지 않습니다.
 - `light`에서는 모든 intended path가 허용된 정규화 저장소 상대 prefix 안에 있고
   거부 prefix에는 없어야 합니다. Prefix는 정확한 경로나 하위 경로와 일치하며

@@ -128,7 +128,10 @@ StatusRequest:
 - `active_task`는 권위 있는 `policy_schema`, `policy_version`,
   `policy_fingerprint`, 정책 source와 함께 `requested_control_level`,
   `effective_control_level`, `control_level_reason`을 노출합니다. status는 저장된
-  값보다 낮은 유효 통제 수준을 도출하지 않습니다.
+  값보다 낮은 유효 통제 수준을 도출하지 않습니다. 영속
+  `policy_control_reevaluation` 표시가 아직 충족되지 않았으면 읽기 전용 projection은
+  표시를 지우지 않고 저장 값, 현재 정책, 표시된 통제·수락 요구사항 중 가장 강한 값을
+  보고합니다.
 - `authority_receipt.completion_claim_allowed`는 현재 닫기 근거가 유효하고 전체
   닫기 차단 사유 집합이 비어 있을 때만 `true`입니다. 활성 Task가 없거나 권한
   refresh를 완료할 수 없거나 차단 사유가 하나라도 남으면 `false`이며, 표시 문구나

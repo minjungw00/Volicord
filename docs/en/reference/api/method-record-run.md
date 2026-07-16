@@ -48,7 +48,8 @@ worktree cannot move Run authority to a different workspace without an explicit
 The method may also update the current close basis, update compact
 target-scoped evidence coverage, record evidence observations for stable
 criterion or supplemental-claim targets, consume a compatible write ticket
-when recording a product write, link existing Evidence attachments, and promote
+when recording a product write or an effective `sensitive` Task's exact
+approved non-product action, link existing Evidence attachments, and promote
 eligible staged attachment inputs to persistent `ArtifactRef` records where
 allowed. Input-only or staged-only items are not accepted Evidence and do not
 establish close readiness until this method records the target, provenance, and
@@ -58,7 +59,13 @@ any attachment link or promotion according to the evidence rules below.
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
-- Product-write runs require a compatible `status=active` write ticket from `volicord.prepare_write`.
+- Optional `performed_operation`. Omission is equivalent to `null`. Every
+  effective `sensitive` non-product Run must supply a non-empty value that
+  exactly matches the operation stored in the consumed write ticket after
+  trimming outer whitespace. An ordinary product-write Run may omit it.
+- Product-write Runs and all effective `sensitive` Runs require a compatible
+  `status=active` write ticket from `volicord.prepare_write`. A non-sensitive
+  Run with no product-file write does not.
 - New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes. The handle remains an Evidence attachment input until accepted in a committed run result.
 - A supported evidence update must be backed by a target-matching
   `EvidenceObservationInput`, a usable target-matching evidence observation ref,
@@ -96,6 +103,7 @@ RecordRunRequest:
   run_id: string | null
   baseline_ref: string
   write_ticket_id: string | null
+  performed_operation?: string | null
   summary: string
   observed_changes: ObservedChanges
   artifact_inputs: ArtifactInput[]
@@ -127,6 +135,12 @@ Nested owner links:
 - `kind`, artifact source values, `redaction_state`, and evidence coverage values are owned by [API Value Sets](schema-value-sets.md).
 
 Path and access notes:
+- A non-null `performed_operation` is normalized by trimming outer whitespace
+  only. Core does not perform case folding, semantic matching, or substitution
+  from `summary`. Whenever a ticket-consuming Run supplies the field, the
+  normalized value must exactly equal the ticket's normalized
+  `WriteTicketAttemptScope.intended_operation`; an effective `sensitive`
+  non-product Run cannot omit it.
 - `observed_changes.changed_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - `ArtifactInput[]` and staged handles do not create a second request-level operation category or actor source; the invocation remains the one in the verified invocation context.
 - `ArtifactInput[]` members are Evidence attachment inputs. Their optional
@@ -283,9 +297,19 @@ An empty `close_assessment.residual_risks` list explicitly means the current res
 
 Sensitive action requirements in the resulting `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write ticket. Category-only caller input in `close_assessment.sensitive_categories` can contribute display context but cannot establish, satisfy, or erase a sensitive approval requirement.
 
+An effective `sensitive` Task requires a compatible ticket even when the Run
+records no product-file write. That ticket is the exact action and approval
+basis: it must have `product_file_write_intended=false`, match the Run's empty
+product-path observation, and carry a current user-owned sensitive approval.
+The matching Run consumes it and preserves its operation, Change Unit, scope,
+baseline, and approval-bound sensitive-action requirement through close.
+Ordinary non-sensitive Runs with no product-file write still require no ticket.
+
+Category-only `observed_changes.sensitive_categories` is a caller report rather than a Core-confirmed approval basis. It does not by itself raise the Task's effective control level or create sensitive-action approval authority. It does atomically strengthen the Task's acceptance policy to `required`, so policy-dependent Light auto-close cannot consume the signal and current final acceptance remains mandatory. A Core-confirmed `sensitive` control basis still requires both matching user approval and final acceptance; category-only input can provide neither.
+
 The Run, current close basis, evidence updates, evidence observations, artifact links or promotions, write-ticket consumption, and revision changes are committed atomically when the result commits.
 
-Product-write recording consumes the write ticket only when:
+Ticket-backed recording consumes the write ticket only when:
 
 - the ticket has `status=active` and has not already been consumed or revoked
 - its `WriteTicketValidityBasis` still matches the current `task_id`,
@@ -294,13 +318,20 @@ Product-write recording consumes the write ticket only when:
 - it has not crossed a project-policy-selected optional `idle_expires_at`; the
   default idle timeout is `null`
 - the ticket and its `WriteTicketAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
-- the checked attempt has `product_file_write_intended=true`
+- the checked attempt's `product_file_write_intended` exactly matches whether
+  the Run observed a product-file write; an effective `sensitive` non-product
+  Run uses `false`
 - the checked attempt `baseline_ref` matches the Run `baseline_ref`
+- a supplied `performed_operation` exactly matches the checked attempt's
+  normalized `intended_operation`; the field is mandatory for an effective
+  `sensitive` non-product Run
 - the verified current Git workspace context still exactly matches the current
   Change Unit write basis captured when the ticket was issued; a branch, HEAD,
   worktree, or fingerprint change after issuance rejects consumption
 - observed sensitive categories match the checked attempt's normalized `sensitive_categories`
-- observed changed paths, after Product Repository path normalization, are compatible with the checked attempt
+- for a product-file write, observed changed paths after Product Repository
+  path normalization are compatible with the checked attempt; a non-product
+  sensitive Run records no product changed paths
 
 A ticket remains valid across unrelated `state_version` changes, including
 status or close checks, evidence recording, diagnostics, operation-result
@@ -322,7 +353,7 @@ Persisted invalidation uses `WRITE_TICKET_INVALID` with the stored reason:
 or `explicit_revoke`. Attempt compatibility mismatch uses method-local detail
 values such as `task_mismatch`, `change_unit_mismatch`,
 `product_write_flag_mismatch`, `baseline_mismatch`,
-`workspace_context_mismatch`, `sensitive_category_mismatch`, or
+`operation_mismatch`, `workspace_context_mismatch`, `sensitive_category_mismatch`, or
 `path_mismatch`.
 
 ## Method result fields
@@ -385,7 +416,7 @@ Returns `ToolRejectedResponse` for:
 - stale or mismatched current Git workspace context
 - missing or invalid write ticket for product writes
 - write ticket invalidated by optional idle timeout
-- incompatible write-ticket path, baseline, product-write flag, sensitivity category, Task, or Change Unit
+- incompatible write-ticket operation, path, baseline, product-write flag, sensitivity category, Task, or Change Unit
 - invalid staged handle
 - incompatible staged-handle provenance
 - missing, expired, already consumed, stale, cross-scope, or corrupt
@@ -405,6 +436,9 @@ Non-claim: invalid staged handles are validation failures with artifact-input de
 Public error code meaning, precedence, details, and rejected-response routing are owned by the error documents linked below.
 
 For an invalidated write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
+
+A missing required or mismatched `performed_operation` likewise rejects before
+ticket consumption and creates none of those effects.
 
 For an idle-timeout-invalidated write ticket, rejection happens before consumption and creates no Run, event, replay row, artifact promotion, evidence update, evidence observation, write-ticket consumption, or `project_state.state_version` increment.
 

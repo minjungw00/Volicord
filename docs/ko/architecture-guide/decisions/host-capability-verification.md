@@ -86,12 +86,10 @@ challenge를 보내고, User Action이나 token을 만들지 않으며, 호스�
 뒤에만 생성되므로 그 다이제스트를 실행 파일에 다시 내장하면 안 됩니다. 그렇게 다시
 빌드하면 결속 대상 실행 파일 다이제스트가 바뀌어 재귀 결속이 생깁니다. 대신 신뢰된 내부
 획득 경로가 위의 외부 manifest를 검증한 뒤에만 pass를 게시하거나 평가해야 합니다. 현재
-어댑터에는 그런 신뢰된 획득 경로가 없습니다. 또한 검토한 Codex `0.144.4` 표는
-`local_web_user_channel`을 `unsupported_by_host`로 분류하므로 이 정확한 좌표는 통과하는
-local-web 행의 자격이 없습니다. `null` 또는 아직 검토하지 않은 Codex 좌표는 호스트 종류
-구현됨 fallback을 유지하고 Claude Code도 구현됨 fallback을 유지하지만, 신뢰된 획득 경로가
-없으므로 그런 경로는 구현되었지만 검증되지 않은 상태에 머뭅니다. 따라서 운영 local-web
-자격은 닫힌 상태로 실패하며 CLI inbox를 사용합니다.
+어댑터에는 그런 신뢰된 획득 경로가 없습니다. Codex와 Claude Code는 호스트 종류 기준으로
+`local_web_user_channel`을 구현하며 검토한 Codex `0.144.4` 좌표도 이 disposition을 바꾸지
+않습니다. 신뢰된 획득 경로가 없으면 그런 경로는 구현되었지만 검증되지 않은 상태에
+머뭅니다. 따라서 운영 local-web 자격은 닫힌 상태로 실패하며 CLI inbox를 사용합니다.
 
 새 레지스트리 형태는 `baseline_sqlite_v6`입니다. v5 변환, relabel, 추론한 pass, 합성 이력은
 없으며 호환되지 않는 Runtime Home은 다시 만들어야 합니다. UTF-8 바이트 제약은 v6/0.9.0

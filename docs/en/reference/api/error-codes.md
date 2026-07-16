@@ -176,7 +176,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- A write-capable Run lacks a required write ticket.
+- A product-write Run or an effective `sensitive` Run lacks its required write ticket.
 
 <a id="errorcode-write-ticket-invalid"></a>
 ### `WRITE_TICKET_INVALID`

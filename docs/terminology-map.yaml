@@ -3313,7 +3313,7 @@ terms:
     ko_reference: "쓰기 티켓"
     ko_user: "쓰기 티켓"
     ko_reference_first_reference: "쓰기 티켓(`write ticket`)"
-    ko_explanation: "현재 작업과 범위에 맞는 제안된 제품 파일 변경 하나를 위한 Volicord 기록"
+    ko_explanation: "현재 Task와 범위에 맞는 제품 파일 변경 하나 또는 `sensitive` 통제에서 승인 근거에 결속된 정확한 비제품 동작 하나를 위한 Volicord 권한 기록"
     preserve_as_label:
       - "write ticket"
       - "Write Ticket"
@@ -3333,6 +3333,8 @@ terms:
       - "write_ticket_ref"
       - "write_ticket_summary"
       - "write_ticket_effect"
+      - "intended_operation"
+      - "performed_operation"
       - "write_ticket_effect_json"
       - "write_ticket_ids_json"
       - "write_ticket_reason"

@@ -57,7 +57,12 @@ UTC clock, not a public conflict version or schema version. Baseline SQLite DDL
 must not create `tasks.state_version`, storage `schema_version` columns, or a
 migration ledger table.
 
-The physical `write_tickets` table stores write-ticket authority records for product-file write attempts. These rows record Volicord-authorized write intent and compatibility state; they are not OS permissions, filesystem ACLs, sandboxing, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
+The physical `write_tickets` table stores authority records for product-file
+write attempts and exact approval-bound non-product actions under effective
+`sensitive` control. These rows record Volicord-authorized bounded intent and
+compatibility state; they are not OS permissions, filesystem ACLs, sandboxing,
+network policy, secret isolation, global filesystem interception, or proof that
+an effect occurred.
 
 ## Canonical SQL Sources
 
@@ -1072,7 +1077,7 @@ CREATE TABLE authority_events (
   event_type TEXT NOT NULL,
   actor_source TEXT NOT NULL,
   operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
-  task_id TEXT NOT NULL,
+  task_id TEXT,
   change_unit_id TEXT,
   payload_json TEXT NOT NULL DEFAULT '{}',
   request_hash TEXT NOT NULL,
@@ -1084,6 +1089,11 @@ CREATE TABLE authority_events (
   UNIQUE (project_id, event_hash),
   CHECK (length(trim(event_hash)) > 0),
   CHECK (previous_event_hash IS NULL OR length(trim(previous_event_hash)) > 0),
+  CHECK (
+    (event_type = 'project_workflow_policy_applied'
+      AND task_id IS NULL AND change_unit_id IS NULL)
+    OR (event_type <> 'project_workflow_policy_applied' AND task_id IS NOT NULL)
+  ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
@@ -1104,7 +1114,8 @@ SELECT
   event_type AS event_kind,
   payload_json AS event_payload_json,
   created_at
-FROM authority_events;
+FROM authority_events
+WHERE task_id IS NOT NULL;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -1596,7 +1607,7 @@ Project-state constraints:
 - `tasks.carry_forward_json` stores typed carry-forward dispositions. It does
   not make a predecessor row, judgment, evidence set, baseline, or write ticket
   current by storage presence alone.
-- `authority_events` stores one durable event row per committed authority event. Multiple event rows with the same `state_version` are one event batch for one committed state transition.
+- `authority_events` stores one durable event row per committed authority event. Multiple event rows with the same `state_version` are one event batch for one committed state transition. `task_id` is required except for the exact project-scoped `project_workflow_policy_applied` event, which also requires `change_unit_id` null. The `task_events` compatibility view includes only Task-scoped rows.
 - `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_action_requests.requested_by_actor_source`, `user_action_resolutions.resolved_by_actor_source`, `evidence_capture_intents.requested_by_actor_source`, `evidence_capture_receipts.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, and `tool_invocations.actor_source` store actor provenance.
 - `authority_events.operation_category` and `tool_invocations.operation_category` are constrained to `read`, `agent_workflow`, `user_only`, `admin_local`, or `local_recovery`.
 - `authority_events.request_hash` stores the request identity for the committed authority event. `previous_event_hash` and `event_hash` store a local hash chain for integrity checking and export correlation; they are not tamper-proof audit guarantees.
@@ -1609,7 +1620,7 @@ Project-state constraints:
 - Store application validation strict-decodes request, basis, and resolution JSON, derives the capture form from the stored request, and requires matching closed tags and derived `action_kind`. It limits target and artifact candidates to 32 each, note-like text to 1,000 Unicode scalar values, observation summary to 4,000 Unicode scalar values, and canonical serialized forms to 32 KiB, rejecting rather than truncating excess.
 - `user_action_channel_tokens` stores hashed one-time local-web User Channel tokens for pending user actions. The raw token is not stored. `created_metadata_json` strict-decodes as exactly `{fallback_kind, delivery_surface, endpoint, form_digest}` with `fallback_kind=local_web_consent`, `delivery_surface=model_invisible_user_surface`, `endpoint=/consent`, and a digest matching the canonical form derived from the stored closed request. Missing, extra, wrong-typed, or mismatched metadata—including a legacy row without `delivery_surface`—makes the row permanently unusable under corrected code. The four stored timestamps used to derive and validate the issuance window—`user_action_requests.requested_at`, optional `user_action_requests.expires_at`, token `created_at`, and token `expires_at`—must be the canonical RFC 3339 UTC strings for their instants. Store application validation requires token `created_at >= user_action_requests.requested_at` and requires token `expires_at` to equal exactly `min(user_action_requests.expires_at, created_at + 600 seconds)` when the request has an expiry, or exactly `created_at + 600 seconds` otherwise. A token is valid only in the half-open interval `created_at <= now < expires_at`. Invalid creation metadata, a noncanonical issuance-window timestamp, an earlier or later token expiry, or any other window mismatch is corrupt stored state: token validation, local-web GET or POST, expiry cleanup, and token consumption fail closed without rendering a form or changing token status, the project state or UTC floor, or user-action resolution state. Issuance advances `project_state.updated_at` to at least token `created_at` atomically with insertion. Token consumption and immutable resolution insertion commit together. These rows are transient capture metadata and are not Core user authority by themselves.
 - `write_tickets` records reusable-until-consumed, state-bound compatibility. `basis_state_version` is audit ordering and is not unique or a validity coordinate. Validity comes from `validity_basis_json`, status, stable invalidation reason, and optional `idle_expires_at`. The unique consumption indexes still prevent one consumption from forking across Runs. Prefix arrays are strict normalized repository-relative exact-or-descendant prefixes: no glob grammar, invalid absolute/empty/`..`/ambiguous entries, denied wins, and empty allowed means no product-file writes.
-- `project_workflow_policies` stores only the authoritative v2 database copy and its `sha256:<64-lowercase-hex>` fingerprint; administrative file/CLI/host behavior is outside this owner. Privacy-bounded workflow metrics belong to the separate non-authority `diagnostics.sqlite` store, never this authority database. `session_end_receipts` requires a managed session, a closed Task-state and next-actor value, blocker codes rather than blocker refs, and conditional completeness: refresh failure uses `authority_unknown`, no active Task uses `none`, and a completion claim is allowed only for a refreshed blocker-free `ready` Task.
+- `project_workflow_policies` stores only the authoritative v2 database copy and its `sha256:<64-lowercase-hex>` fingerprint; administrative file/CLI/host behavior is outside this owner. A changed fingerprint is written with the exact transaction `committed_at`, one state-version advance, one project-scoped policy event, and any upward-only active-Task reevaluation metadata mark in the same transaction. An unsatisfied resulting mark invalidates that Task's active tickets with `explicit_revoke` in that transaction. Privacy-bounded workflow metrics belong to the separate non-authority `diagnostics.sqlite` store, never this authority database. `session_end_receipts` requires a managed session, a closed Task-state and next-actor value, blocker codes rather than blocker refs, and conditional completeness: refresh failure uses `authority_unknown`, no active Task uses `none`, and a completion claim is allowed only for a refreshed blocker-free `ready` Task.
 - `artifact_staging.created_by_actor_source` records staging provenance. Staged bytes and notices remain artifact-owned and are not evidence authority by themselves.
 - `evidence_capture_intents` binds one expiring request to exact current-basis,
   command/tool source input or the Core-derived connection-source selector,

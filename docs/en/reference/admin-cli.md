@@ -361,8 +361,9 @@ The command performs these stages in order:
 5. compare canonical hashes for user-owned judgments and evidence;
 6. write a content-free conversion report in the destination;
 7. recheck that the source files and profile coordinates did not change; and
-8. return the destination path for a separate administrator-controlled
-   activation step.
+8. return the destination path for a separate administrator-controlled step
+   that explicitly rebinds the managed integration to the destination Runtime
+   Home before activation.
 
 The command reports success only after every stage passes. A failure must not
 mark the destination usable or active. A retry may reuse only a destination
@@ -370,11 +371,13 @@ that the prior failed attempt identifies as its own incomplete staging state;
 otherwise a nonempty destination is a conflict. JSON reports `status`, source
 and destination profile identifiers, source and destination locations,
 completed stages, preserved-record counts, canonical-hash check counts,
-`source_unchanged`, `destination_ready`, and the separate activation action.
+`source_unchanged`, `destination_ready`, and
+`activation_action=administrator_rebind_destination_home_and_activate_separately`.
 It contains no judgment body, evidence body, prompt, answer, Product Repository
 file content, secret, or raw database row.
 
-The command does not switch `VOLICORD_HOME`, rewrite host configuration, activate
+The copied policy retains its source Runtime Home binding until that explicit
+rebinding step. The command does not switch `VOLICORD_HOME`, rewrite host configuration, activate
 the destination, delete or alter the source, relax opening rules for an old
 profile, or claim that copied records prove correctness. Exact profile
 transformation and record preservation belong to the focused storage owners.
@@ -1130,13 +1133,25 @@ Runtime Home, host, connection, and guard-installation binding validation;
 comparison with the current authoritative fingerprint; recording the
 canonical policy, fingerprint, schema, and next `policy_version` in project
 state; conditional atomic replacement of the managed policy file; and marking
-active Tasks that require upward control-level reevaluation before another
-write. The project policy always takes precedence over an Agent-requested
+active Tasks that require upward control-level or acceptance-policy reevaluation
+before another write. The project policy always takes precedence over an Agent-requested
 control level. Applying a less restrictive policy never automatically lowers
 an active Task.
 
+For a changed fingerprint, the authoritative database step is one transaction:
+it replaces `project_workflow_policies`, advances `project_state.state_version`
+and the canonical UTC floor once, appends one project-scoped
+`project_workflow_policy_applied` authority event, and upward-merges the active
+Task's closed `policy_control_reevaluation` metadata mark when required. A
+required mark also invalidates every active ticket for that Task with
+`explicit_revoke` in the same transaction, so no pre-strengthening ticket can
+cross the policy boundary. A later relaxed policy does not weaken an existing stronger mark. The next
+write-compatible Core commit raises the Task to at least the marked control and
+acceptance levels and clears the mark atomically only after both are satisfied.
+
 Reapplying the same canonical fingerprint is idempotent and does not increment
-`policy_version`; it may repair a missing or mismatched managed file. A changed
+`policy_version` or `state_version` and does not append another authority event;
+it may repair a missing or mismatched managed file. A changed
 canonical policy increments `policy_version` exactly once. Because the project
 database is authoritative, failure after its commit but before verified file
 replacement returns `status=failed`, `database_changed=true`,
@@ -1550,6 +1565,18 @@ Lifecycle behavior:
   prefix is also a confirmed scope violation. These are cooperative host
   decisions, not OS-level enforcement.
 
+  Guard strictly decodes the active Task's closed
+  `policy_control_reevaluation` metadata mark. When its required control level
+  or optional required acceptance policy is stronger than the corresponding
+  persisted Task field, Guard excludes every active ticket from the current
+  candidate set. A deterministic Product Repository write is then denied with
+  `policy_control_reevaluation_required`, creates no expected-write
+  correlation, and directs the caller to run `volicord.prepare_write` again so
+  Core can apply the stronger policy and issue a current ticket. Guard exposes
+  the pending requirements in its context but never clears or rewrites the
+  mark; Core owns that transition. A malformed mark fails the Guard command
+  instead of allowing an existing ticket.
+
   Missing paths, parser uncertainty, complex shell syntax, pipes, subshells,
   scripts, watcher unavailability, more than one candidate ticket, or an
   unknown effect return `warn`, never a policy-selected hard denial. Only exact
@@ -1651,6 +1678,10 @@ Lifecycle behavior:
   user answer, error body, or raw host event. Exact replay returns the same
   termination result without asking the host to issue a second Stop; a current
   final-output display may still perform its separate fresh read-only refresh.
+  The first Stop delivery records the no-retry probe as
+  `unavailable/probe_not_run`, not as success. A later same-session or exact
+  repeated Stop records `failed/second_stop_requested`; only a bounded newer
+  host-owned observation can establish `passed/none`.
 
 <a id="managed-final-output-authority-disclosure"></a>
 ### Managed final-output authority disclosure
@@ -1697,9 +1728,13 @@ error messages or details, request or response bodies, raw host event text, or
 model-authored final prose.
 
 The refresh and rendering path creates no Core state or version change, event,
-replay row, guard event, Agent Session, installation activation, watcher state,
-or host observation. An exact Detective replay reuses the immutable historical
-Stop decision while this separate display refreshes current authority again.
+replay row, guard event, Agent Session, installation activation, or watcher
+state. Producer-side host-native rendering is not a successful host
+observation: without a bounded host-owned display acknowledgement the Guard
+orchestrator records `fixed_ui_authority_disclosure=unavailable/probe_not_run`,
+which remains `implemented_unverified`. An exact Detective replay reuses the
+immutable historical Stop decision while this separate display refreshes
+current authority again.
 The model's final prose, a mutation receipt, a cached Stop result, and generated
 configuration are never current-authority inputs.
 
@@ -1993,8 +2028,38 @@ The JSON result contains aggregate counts or durations only:
 - PreTool allow, warn, and deny counts by observation confidence;
 - confirmed out-of-scope writes, suspected changes later resolved as no
   change, and measurable confirmed-unrecorded-change false-positive counts;
-- normal-operation hard blocks, missing-sensitive-approval blocks, and
+- confirmed structured product-write PreTool denies, missing-sensitive-approval blocks, and
   completion-claim suppression counts.
+
+`task_duration_micros` measures from the Task's stored creation timestamp to
+the operation timestamp of its first freshly committed terminal close.
+`first_product_write_duration_micros` is emitted only with the first freshly
+committed product-write Run for a Task and only when a prior actual-write
+observation is available. Its endpoint is the earliest `matched_at` of a
+matched expected write or `detected_at` of a confirmed unrecorded change whose
+path list strict-decodes to at least one normalized in-repository path and
+whose timestamp lies between Task creation and that Run operation. The Run
+recording timestamp is not a substitute for a missing write observation.
+Exact replay never adds another duration sample.
+
+The confirmed-unrecorded-change false-positive rate uses one binary sample for
+each confirmed finding resolved by a freshly committed deterministic
+classification. `invalid_observation` and `not_product_change` contribute
+`1`; `reverted`, `covered_by_write_ticket`, and
+`recorded_as_expected_write` contribute `0`. `accepted_by_user` and
+`superseded_by_new_observation` are not classification samples. The numerator
+is the sum of the binary values and the denominator is their sample count.
+`status_reread` counts only the second and later public MCP `volicord.status`
+calls on one connection. A fresh Stop hook records its internal authority
+refresh as `authority_refresh`; exact Stop replay does not add that sample.
+`confirmed_structured_write_deny` requires a structured product-write PreTool
+deny while the authoritative Task level is `light` or `tracked`; a missing
+Task, a `sensitive` Task, a warning, or an unclassified effect does not
+qualify, and the metric does not claim the denied operation was otherwise
+normal.
+`sensitive_approval_missing_block` is emitted only from the explicit
+`sensitive_approval_missing` Core `prepare_write` branch, never inferred from
+a Guard denial.
 
 Durations and false-positive rates are nullable when the required observations
 are absent; the report uses `measurement_pending` rather than claiming a zero or

@@ -108,15 +108,14 @@ from configuration fixtures and output rendering. The minimum table is:
 | implemented | current and exactly bound | ready | `verified` |
 
 The tests also cover aggregate precedence in this order:
-`unsupported_by_host`, `implemented_unverified`,
-`temporarily_unavailable`, then `verified`. Configuration presence and
+`unsupported_by_host`, `temporarily_unavailable`,
+`implemented_unverified`, then `verified`. Configuration presence and
 configuration audit results are varied independently and must never change the
 expected support state.
 
-Table-driven host baselines cover all six stable feature keys. With no live
-evidence, Codex reports the first four features as `implemented_unverified` and
-both final-output features as `unsupported_by_host`; Claude Code reports all
-six as `implemented_unverified`; Generic reports all six as
+Table-driven host baselines cover all six stable feature keys. With no current
+matching probe evidence, Codex and Claude Code report all six as
+`implemented_unverified`; Generic reports all six as
 `unsupported_by_host`. Final-output tests additionally assert that Record uses
 only `authority_display` and `authenticated_exact_replay`, Detective adds
 `block_finalization`, and only those profile-applicable keys are serialized.
@@ -286,9 +285,9 @@ exact-session-bound Detective Stop event must appear after the pre-host cursor.
 The stored Stop decision, reasons, close state, complete blocker set, and its
 own receipt must be internally consistent. Full `mcp_start` coverage with no
 partial-coverage warning or other blocker yields ready `allow`; active partial
-coverage yields `deny` with
-`close_readiness_blocked` and the exact `session_watch_unavailable` blocker only
-when its warning-bearing basis is `first_project_selection` or
+coverage yields `allow` with `completion_claim_allowed=false`,
+`close_readiness_blocked`, and the exact `session_watch_unavailable` blocker
+only when its warning-bearing basis is `first_project_selection` or
 `method_boundary`.
 The LocalUser and Stop receipts must share Project, Task, state-version, and
 latest-Run coordinates, but their context-derived close fields need not match.
@@ -315,8 +314,8 @@ transcript, credential, secret, or full prompt.
 
 The persisted Task-bound Stop event is the required evidence of the
 post-Judgment authority observation, not evidence that Detective close is
-ready. Only the exact maintained partial-coverage block remains an eligible
-blocked outcome for the native UserAction cell. This observation cannot fill a
+ready. Only the exact maintained partial-coverage incomplete disclosure remains
+an eligible non-ready outcome for the native UserAction cell. This observation cannot fill a
 cell or evidence field in the four-cell
 final-output matrix, and final-output matrix evidence cannot establish native
 Judgment elicitation. Other final-output, fallback, or replay observations made

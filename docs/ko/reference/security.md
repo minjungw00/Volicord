@@ -107,6 +107,9 @@ Volicord가 어떤 보장을 설명하려면 [범위](scope.md)와 이 보안 �
 - 민감 동작 승인이 쓰기 티켓, `WriteTicketScope`, OS 권한, 셸 권한, 명령 승인, 배포 승인, 최종 수락, 잔여 위험 수락, 제품 정확성이라는 주장.
 - 민감 동작 승인이 제품 파일 쓰기, 명령, 호스트, 네트워크, 비밀값, 배포, 파괴적 동작, 포괄적인 활동을 승인한다는 주장.
 - 포괄적 승인이 필요한 민감 동작 승인, 최종 수락, 잔여 위험 수락, 범위 결정, 쓰기 티켓을 대신한다는 주장.
+- 호출자가 보고한 `performed_operation`과 티켓의 `intended_operation`이
+  정확히 같다는 사실이 외부 동작의 실행이나 효과를 입증하거나 그 동작을 특정
+  행위자에게 귀속한다는 주장. 이는 호출자가 제공한 좌표의 호환성 검사일 뿐입니다.
 
 담당 문서 링크:
 - [Core 모델](core-model.md): 사용자 소유 판단과 비대체 규칙.
@@ -270,9 +273,11 @@ tool-call, capture, turn, invocation identifier 및 원본 initialize 또는
 하나에 변경 불가능하게 결속됩니다. 잘못되거나 충돌하는 marker는 영속 상태 없이
 실패합니다. 매핑 값은 상관관계 메타데이터일 뿐 사용자 신원, host attestation, 권한이
 아니며 결속이 없거나 일치하지 않으면 Strong Evidence를 만들 수 없습니다.
-이 정확한 상관관계가 `local_web_user_channel`을 승격하지는 않습니다. 검토된 Codex
-`0.144.4`에서 이 기능은 `unsupported_by_host`이며 이후 다른 검토 버전에서도 별도의
-credential 전달 조건을 모두 충족해야 합니다.
+이 정확한 상관관계가 `local_web_user_channel`을 승격하지는 않습니다. 이 기능에는 별도
+credential 전달 조건과 현재 model-separation 및 advertised-and-exercised probe가 모두
+필요합니다. 검토된 Codex `0.144.4` 좌표는 지원을 증명하지도
+`unsupported_by_host`를 만들지도 않습니다. 현재 capability의 명시적 부재만 그 상태를
+만듭니다.
 
 <a id="historical-operation-result-access"></a>
 ### 과거 동작 결과 접근

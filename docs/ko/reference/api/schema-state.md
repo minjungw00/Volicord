@@ -843,7 +843,7 @@ WriteDecisionReason:
 |---|---|---|
 | `task_id` | 불투명 식별자. | 포착된 시도 경계의 `Task`를 식별합니다. |
 | `change_unit_id` | 불투명 식별자. | 포착된 시도 경계의 Change Unit을 식별합니다. |
-| `intended_operation` | 자유 형식 의도 문자열. | 제어 값 집합을 만들지 않고 의도한 작업을 설명합니다. |
+| `intended_operation` | 자유 형식의 정확한 동작 좌표. | 대소문자와 내부 텍스트를 보존하고 바깥쪽 공백만 제거한 prepare-write 값을 저장합니다. `performed_operation`을 비교하는 메서드는 정확한 일치를 사용하며, 이 좌표는 외부 동작이 실행됐다는 증명이 아닙니다. |
 | `intended_paths` | 정규화된 Product Repository 경로 문자열. | API 수준 경로 정규화 뒤의 Product Repository 상대 경로입니다. |
 | `product_file_write_intended` | 불리언. | 포착된 시도가 제품 파일 쓰기를 의도했는지 나타냅니다. |
 | `sensitive_categories` | 불투명 민감 범주 분류 문자열. | 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 공개 enum이 아닙니다. |

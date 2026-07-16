@@ -43,7 +43,7 @@
 | `crates/volicord-types/src/values.rs` | 문서화된 값 이름을 위한 제어된 Rust 열거형과 상수. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자 래퍼와 영속 ID 생성 도우미. |
 | `crates/volicord-types/src/canonical.rs` | 결정적인 기준 JSON 직렬화와 요청 해시. |
-| `crates/volicord-types/src/host_feature_support.rs` | 닫힌 호스트 기능과 최종 출력 하위 역량 식별자, 검토된 호스트·버전·클라이언트 사실, 정규 Codex 버전 파싱, 어댑터·진단·릴리스 검증이 소비하는 공유 정적 구현 매트릭스와 단일 기능 지원 상태 우선순위. |
+| `crates/volicord-types/src/host_feature_support.rs` | 닫힌 호스트 기능과 최종 출력 하위 역량 식별자, 호스트 종류 기준 구현 사실, 검토된 버전·클라이언트 증거 좌표, 정규 Codex 버전 파싱, 어댑터·진단·릴리스 검증이 소비하는 공유 정적 구현 매트릭스와 단일 기능 지원 상태 우선순위. |
 
 ## 플랫폼 파일시스템 파사드
 

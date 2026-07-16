@@ -145,8 +145,8 @@ CLI 훅 작업 흐름은 Runtime Home과 등록 프로젝트를 해석하고, �
 - `prompt-capture`는 프롬프트 캡처를 사용할 수 있을 때 User Channel 사용자 행동 resolution에 필요한
   프롬프트 메타데이터와 엄격한 채팅 명령 처리를 담당합니다.
 - `stop`은 공유 형식 status/receipt 검증 경계를 통해 닫기 관련 정보를 확인하고 세션
-  완료에 대한 호스트 고유 허용 또는 거부 결과를 렌더링합니다. Stop 집행은 일반 최종
-  출력 고지 표면을 담당하지 않습니다.
+  종료를 항상 허용하며, `completion_claim_allowed`와 미완료 권한 고지를 별도로
+  렌더링합니다. Stop 처리는 일반 최종 출력 고지 표면을 담당하지 않습니다.
 
 이벤트 timestamp는 guard 기록과 상관관계를 위한 관찰 metadata로만 남습니다. 현재
 Task, 쓰기 티켓, 대기 UserAction, 프롬프트 명령 적격성 조회는 호스트 보고 시각이 아니라

@@ -68,9 +68,10 @@ Volicord keeps these concepts distinct:
   of correctness.
 - **Verification criteria** describe what should be checked. They are not
   themselves Evidence or acceptance.
-- A **Write Ticket** records that one proposed product-file change was checked
+- A **Write Ticket** records that one proposed product-file change, or one exact
+  approval-bound non-product action under `sensitive` control, was checked
   against the current work boundary. It is not filesystem permission, code
-  review approval, or proof that the write occurred.
+  review approval, or proof that the effect occurred.
 - **Close Status** shows whether current records still contain blockers. It is
   not proof of correctness, test sufficiency, QA completion, deployment
   success, human review completion, or risk-free completion.

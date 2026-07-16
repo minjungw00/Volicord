@@ -133,7 +133,10 @@ Truthful projection rules:
 - `active_task` exposes `requested_control_level`, `effective_control_level`,
   and `control_level_reason`, together with the authoritative
   `policy_schema`, `policy_version`, `policy_fingerprint`, and policy source.
-  Status never derives a lower effective control than the stored value.
+  Status never derives a lower effective control than the stored value. When a
+  durable `policy_control_reevaluation` mark remains unsatisfied, the read-only
+  projection reports the strongest stored, current-policy, and marked control
+  and acceptance requirements without clearing the mark.
 - `authority_receipt.completion_claim_allowed` is `true` only when the current
   close basis is valid and the complete close-blocker set is empty. It is
   `false` when no active Task exists, authority refresh cannot be completed, or

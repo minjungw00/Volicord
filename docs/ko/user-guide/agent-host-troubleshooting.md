@@ -237,18 +237,14 @@ inbox`를 실행합니다. 선택자가 모호하거나 잘못된 저장소가
 - `verified`는 그 기능과 현재 증거 결속에만 적용됩니다. 다른 모든 기능, 제품 정확성, 사용자
   신원, OS 집행을 검증하지 않습니다.
 
-연결 상태와 Doctor가 현재 Codex 버전을 알 수 없을 때 사용하는 대체 표는 의도적으로
-보수적입니다. `native_user_action`, `local_web_user_channel`,
-`verified_tool_producer`, `registered_connection_observation`는
-`implemented_unverified`이고, `record_final_output`과 `detective_final_output`은
-`unsupported_by_host`입니다. 정확히 검토한 Codex `0.144.4` 좌표를 새로 검증한 결과는 더
-구체적입니다. `native_user_action`, `verified_tool_producer`,
-`registered_connection_observation`는 정확한 증거가 통과할 때까지
-`implemented_unverified`이며, `local_web_user_channel`과 두 최종 출력 기능은
-`unsupported_by_host`입니다. Claude Code의 여섯 기능은 모두
-`implemented_unverified`, Generic의 여섯 기능은 모두 `unsupported_by_host`입니다.
-구현과 설정이 있으면 최선형 권한 표시가 동작할 수 있지만 이를 기능 또는 릴리스 지원으로
-표현하면 안 됩니다.
+연결 상태와 Doctor는 Codex와 Claude Code의 여섯 기능을 모두 구현된 것으로 취급합니다.
+현재 일치하는 probe 증거가 없으면 각 기능은 `implemented_unverified`입니다. 검토된 Codex
+`0.144.4` 좌표를 포함한 정확한 호스트 버전은 표시하고 검증할 identity만 바꾸며 구현을
+gate하지 않습니다. 기능별로 명시적인 capability 부재가 현재 실패하거나 내려간 전제
+조건보다 우선하고, 현재 실패하거나 내려간 전제 조건은 누락되거나 검증되지 않은 증거보다
+우선합니다. 필요한 현재 probe가 모두 검증된 경우에만 `verified`입니다. Generic의 여섯
+기능은 모두 `unsupported_by_host`입니다. 구현과 설정이 있으면 최선형 권한 표시가 동작할
+수 있지만 현재 검증 증거 없이는 이를 기능 또는 릴리스 지원으로 표현하면 안 됩니다.
 
 전체 여섯 기능 map은 `states.host_feature_support`, 선택 프로필의 표시, 재생, block
 세부정보는 `states.final_output_authority_disclosure`에서 확인합니다. 후자의

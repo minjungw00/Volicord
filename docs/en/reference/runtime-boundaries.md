@@ -250,7 +250,7 @@ Rules:
 
 Does not imply:
 - These path rules do not provide OS sandboxing, command blocking, network blocking, secret blocking, or baseline detective enforcement.
-- Write-ticket compatibility applies only to a proposed product-file change recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that a write occurred.
+- Write-ticket compatibility applies only to a proposed product-file change or exact approval-bound non-product action recorded through the Core-owned method path; it is not global filesystem interception, shell permission, command approval, or proof that an effect occurred.
 - Method-specific compatibility decisions stay with API method owners.
 
 <a id="runtime-location-source-installation-processes"></a>

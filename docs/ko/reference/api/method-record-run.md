@@ -46,7 +46,8 @@ Run 권한을 다른 작업 공간으로 옮길 수 없습니다.
 
 이 메서드는 현재 닫기 근거와 대상별 간결한 증거 범위를 갱신하고, 안정적인
 수락 기준 또는 보충 주장 대상에 대한 증거 관찰을 기록하고, 제품 쓰기를
-기록할 때 호환되는 쓰기 티켓을 소비하며, 기존 증거 첨부를 연결하고,
+기록하거나 유효 `sensitive` Task의 정확한 승인 비제품 동작을 기록할 때 호환되는
+쓰기 티켓을 소비하며, 기존 증거 첨부를 연결하고,
 허용되는 경우 적격 스테이징 첨부 입력을 지속 `ArtifactRef`로 승격할 수도
 있습니다. 입력 전용 또는 스테이징 전용 항목은 받아들여진 증거가 아니며,
 이 메서드가 아래 증거 규칙에 따라 대상, 출처, 첨부 연결 또는 승격을
@@ -56,7 +57,13 @@ Run 권한을 다른 작업 공간으로 옮길 수 없습니다.
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, `close_assessment`.
-- 제품 쓰기 실행은 `volicord.prepare_write`가 발급한 호환되는 `status=active` 쓰기 티켓이 필요합니다.
+- 선택적 `performed_operation`. 생략은 `null`과 같습니다. 모든 유효
+  `sensitive` 비제품 Run은 바깥쪽 공백을 제거한 뒤 소비할 쓰기 티켓에 저장된
+  동작과 정확히 일치하는 비어 있지 않은 값을 제공해야 합니다. 일반 제품 쓰기
+  Run은 이 필드를 생략할 수 있습니다.
+- 제품 쓰기 Run과 모든 유효 `sensitive` Run은 `volicord.prepare_write`가 발급한
+  호환 `status=active` 쓰기 티켓이 필요합니다. 제품 파일 쓰기가 없는 비민감 Run에는
+  필요하지 않습니다.
 - 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `volicord.record_run`은 새 바이트를 스테이징하지 않습니다. 이 핸들은 커밋된 실행 결과에서 받아들여지기 전까지 증거 첨부 입력으로 남습니다.
 - `supported` 증거 갱신은 대상이 일치하는 `EvidenceObservationInput`, 사용할
   수 있는 대상 일치 증거 관찰 참조, 또는 Core가 증거 관찰을 만들 수 있는
@@ -92,6 +99,7 @@ RecordRunRequest:
   run_id: string | null
   baseline_ref: string
   write_ticket_id: string | null
+  performed_operation?: string | null
   summary: string
   observed_changes: ObservedChanges
   artifact_inputs: ArtifactInput[]
@@ -123,6 +131,11 @@ ResidualRiskInput:
 - `kind`, 아티팩트 출처 값, `redaction_state`, 증거 범위 값은 [API 값 집합](schema-value-sets.md)이 담당합니다.
 
 경로와 접근 참고:
+- `null`이 아닌 `performed_operation`은 바깥쪽 공백만 제거해 정규화합니다.
+  Core는 대소문자 변환, 의미 기반 일치, `summary` 값 대체를 하지 않습니다.
+  티켓을 소비하는 Run이 이 필드를 제공하면 정규화한 값이 티켓의 정규화된
+  `WriteTicketAttemptScope.intended_operation`과 정확히 같아야 하며, 유효
+  `sensitive` 비제품 Run은 이 필드를 생략할 수 없습니다.
 - `observed_changes.changed_paths` 항목은 `Product Repository` API 제품 경로입니다. `Product Repository` 경로 정규화는 [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization)가 담당합니다.
 - `ArtifactInput[]`와 스테이징 핸들은 두 번째 요청 수준 작업 범주나 행위자 출처를 만들지 않습니다. 호출은 확인된 호출 맥락의 값으로 유지됩니다.
 - `ArtifactInput[]` 멤버는 증거 첨부 입력입니다. 선택적
@@ -270,9 +283,18 @@ Capture-backed 관찰 규칙:
 
 결과 `CurrentCloseBasis` 안의 민감 동작 요구사항은 커밋된 실행 기록과 소비된 쓰기 티켓에서 Core가 파생합니다. `close_assessment.sensitive_categories` 안의 범주만 담은 호출자 입력은 표시 맥락에는 기여할 수 있지만 민감 승인 요구사항을 만들거나, 만족하거나, 지울 수 없습니다.
 
+유효 통제 수준이 `sensitive`인 Task는 Run이 제품 파일 쓰기를 기록하지 않아도 호환
+티켓이 필요합니다. 이 티켓은 정확한 동작과 승인 근거이며
+`product_file_write_intended=false`, Run의 빈 제품 경로 관찰, 현재 사용자 소유 민감
+승인에 일치해야 합니다. 일치하는 Run은 티켓을 소비하고 동작, Change Unit, 범위,
+기준선, 승인에 결속된 민감 동작 요구사항을 닫기까지 보존합니다. 제품 파일 쓰기가
+없는 일반 비민감 Run에는 계속 티켓이 필요하지 않습니다.
+
+범주만 담은 `observed_changes.sensitive_categories`는 Core가 확인한 승인 근거가 아니라 호출자 보고입니다. 이 입력만으로 Task의 유효 통제 수준을 높이거나 민감 동작 승인 권한을 만들지는 않습니다. 대신 Task의 수락 정책을 같은 트랜잭션에서 `required`로 강화하므로 정책 의존 `light` 자동 닫기가 이 신호를 소모할 수 없고 현재 최종 수락은 계속 필수입니다. Core가 확인한 `sensitive` 통제 근거에는 일치하는 사용자 승인과 최종 수락이 모두 필요하며, 범주만 담은 입력은 어느 쪽도 제공할 수 없습니다.
+
 실행 기록, 현재 닫기 근거, 증거 갱신, 증거 관찰, 아티팩트 연결 또는 승격, 쓰기 티켓 소비, 리비전 변경은 결과가 커밋될 때 원자적으로 커밋됩니다.
 
-제품 쓰기 기록이 쓰기 티켓을 소비하려면 아래 조건을 모두 만족해야 합니다.
+티켓 결속 실행 기록이 쓰기 티켓을 소비하려면 아래 조건을 모두 만족해야 합니다.
 
 - 티켓이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
 - `WriteTicketValidityBasis`가 현재 `task_id`, `change_unit_id`,
@@ -280,12 +302,16 @@ Capture-backed 관찰 규칙:
 - 프로젝트 정책이 선택한 선택적 `idle_expires_at` 경계를 지나지 않았습니다.
   기본 유휴 제한 시간은 `null`입니다.
 - 티켓과 그 `WriteTicketAttemptScope`가 기록하려는 Run과 같은 `task_id`와 `change_unit_id`를 식별합니다.
-- `WriteTicketAttemptScope`가 포착한 시도에 `product_file_write_intended=true`가 있습니다.
+- `WriteTicketAttemptScope`가 포착한 시도의 `product_file_write_intended`가 Run의 제품
+  파일 쓰기 관찰 여부와 정확히 일치합니다. 비제품 `sensitive` Run은 `false`를 사용합니다.
 - `WriteTicketAttemptScope`가 포착한 시도의 `baseline_ref`가 Run의 `baseline_ref`와 일치합니다.
+- 제공된 `performed_operation`이 포착한 시도의 정규화된 `intended_operation`과
+  정확히 일치합니다. 유효 `sensitive` 비제품 Run에는 이 필드가 필수입니다.
 - 확인된 현재 Git 작업 공간 맥락이 티켓 발급 시 포착한 현재 Change Unit 쓰기 근거와
   계속 정확히 일치합니다. 발급 뒤 브랜치, HEAD, worktree, 지문이 바뀌면 소비를 거절합니다.
 - 관찰된 민감 범주가 포착한 시도의 정규화된 `sensitive_categories`와 일치합니다.
-- `Product Repository` 경로 정규화 뒤의 관찰된 변경 경로가 포착한 시도와 호환됩니다.
+- 제품 파일 쓰기라면 `Product Repository` 경로 정규화 뒤의 관찰된 변경 경로가
+  포착한 시도와 호환됩니다. 비제품 민감 Run은 제품 변경 경로를 기록하지 않습니다.
 
 티켓은 상태/닫기 확인, 증거 기록, 진단, 과거 operation 결과 조회, 관련 없는
 사용자 행동, 커밋된 비허용 쓰기 준비 결정을 포함한 관련 없는 `state_version`
@@ -305,7 +331,7 @@ Capture-backed 관찰 규칙:
 `idle_timeout`, `task_closed`, `explicit_revoke`와 함께 `WRITE_TICKET_INVALID`를
 사용합니다. 시도 호환성 불일치는 `task_mismatch`, `change_unit_mismatch`,
 `product_write_flag_mismatch`, `baseline_mismatch`,
-`workspace_context_mismatch`, `sensitive_category_mismatch`, `path_mismatch`
+`operation_mismatch`, `workspace_context_mismatch`, `sensitive_category_mismatch`, `path_mismatch`
 같은 메서드 로컬 세부 값을 사용합니다.
 
 ## 메서드 결과 필드
@@ -368,7 +394,7 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 - 오래되었거나 일치하지 않는 현재 Git 작업 공간 맥락
 - 제품 쓰기에 필요한 쓰기 티켓 누락 또는 무효
 - 선택적 유휴 제한 시간으로 무효화된 쓰기 티켓
-- 쓰기 티켓 경로, 기준선, 제품 쓰기 플래그, 민감 범주, Task, Change Unit 비호환
+- 쓰기 티켓 동작, 경로, 기준선, 제품 쓰기 플래그, 민감 범주, Task, Change Unit 비호환
 - 유효하지 않은 스테이징 핸들
 - 스테이징 핸들 출처 불일치
 - 누락, 만료, 이미 소비됨, stale, cross-scope, 손상된 evidence-capture intent 또는 receipt
@@ -387,6 +413,9 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 공개 오류 코드 의미, 우선순위, 세부사항, 거절 응답 처리 경로는 아래 오류 담당 문서가 담당합니다.
 
 무효화된 쓰기 티켓 근거에서는 소비 전에 거절되며 Run, 증거 갱신, 증거 관찰, 아티팩트 연결, 아티팩트 승격, 이벤트, 재실행 행, `project_state.state_version` 증가를 만들지 않습니다.
+
+필수 `performed_operation`이 누락되거나 값이 일치하지 않아도 티켓 소비 전에
+거절되며 위 효과를 만들지 않습니다.
 
 유휴 제한 시간으로 무효화된 쓰기 티켓에서는 소비 전에 거절되며 Run, 이벤트, 재실행 행, 아티팩트 승격, 증거 갱신, 증거 관찰, 쓰기 티켓 소비, `project_state.state_version` 증가를 만들지 않습니다.
 

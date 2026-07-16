@@ -257,20 +257,17 @@ Read the value before choosing recovery:
   not verify every other feature, product correctness, user identity, or OS
   enforcement.
 
-The no-current-version Codex fallback used by connection status and Doctor is
-intentionally conservative: `native_user_action`, `local_web_user_channel`,
-`verified_tool_producer`, and `registered_connection_observation` are
-`implemented_unverified`; `record_final_output` and `detective_final_output`
-are `unsupported_by_host`. A fresh verification of the exact reviewed Codex
-`0.144.4` coordinate is more specific: `native_user_action`,
-`verified_tool_producer`, and `registered_connection_observation` remain
-`implemented_unverified` until exact evidence passes, while
-`local_web_user_channel` and both final-output features are
-`unsupported_by_host`. Claude Code reports all six as
-`implemented_unverified`; Generic reports all six as `unsupported_by_host`. A
-best-effort authority display can still run when its implementation and
-configuration are present, but it must not be presented as feature or release
-support.
+Connection status and Doctor treat all six features as implemented for both
+Codex and Claude Code. Without current matching probe evidence each feature is
+`implemented_unverified`. An exact host version, including the reviewed Codex
+`0.144.4` coordinate, changes only the displayed and verified identity; it
+never gates implementation. For a feature, explicit capability absence takes
+precedence over a current failed or down prerequisite, which takes precedence
+over missing or unverified evidence; only all required current verified probes
+establish `verified`. Generic reports all six features as
+`unsupported_by_host`. A best-effort authority display can still run when its
+implementation and configuration are present, but it must not be presented as
+feature or release support without current verified evidence.
 
 Inspect `states.host_feature_support` for the complete six-feature map and
 `states.final_output_authority_disclosure` for selected-profile display,

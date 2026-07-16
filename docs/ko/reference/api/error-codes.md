@@ -173,7 +173,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 쓰기 가능한 실행 기록에 필요한 쓰기 티켓이 없습니다.
+- 제품 쓰기 Run 또는 유효 `sensitive` Run에 필요한 쓰기 티켓이 없습니다.
 
 <a id="errorcode-write-ticket-invalid"></a>
 ### `WRITE_TICKET_INVALID`

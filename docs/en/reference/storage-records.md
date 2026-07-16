@@ -88,7 +88,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `registry.sqlite` | Runtime Home identity | Runtime identity | One stored `runtime_home_id`, Runtime Home path, registry database path, schema/storage profile, metadata, and timestamps. |
 | `registry.sqlite` | Installation profile | Executable profile | Selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps established by `volicord init`. |
 | `registry.sqlite` | Project registration and aliases | Project mapping | `project_internal_id`, display name, CLI selection alias, Runtime Home relationship, unique `repo_root`, location-owning `project_home`, stored `state_db_path` that must match `project_home/state.sqlite` for execution, status, metadata, and alias-to-internal-identity mappings. |
-| `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON, user actions JSON, metadata, and timestamps. |
+| `registry.sqlite` | Agent Connection | MCP host connection unit | Durable `connection_internal_id`, host kind, connection intent, host scope, optional `project_internal_id`, internal server name, config target, mode, enabled state, managed fingerprint, verification summary status, verification report JSON including the Store-owned current runtime-probe snapshot, user actions JSON, metadata, and timestamps. |
 | `registry.sqlite` | Connection Projects | Connection project allowlist | Explicit many-to-many membership between an Agent Connection and registered projects using `connection_internal_id` and `project_internal_id`. |
 | `registry.sqlite` | `host_capability_verifications` | Immutable host-capability validation history | Exact bounded connection/capability, outcome, host/client version, adapter profile, managed fingerprint, Volicord build/source/target/executable digest, bounded evidence-artifact digest, observation/expiry interval, strict canonical `{}` metadata, and creation time. |
 | `registry.sqlite` | `host_capability_state` | Current host-capability pointer | One bounded current immutable verification-row identifier per connection and capability, replaced atomically by later passing, failed, unavailable, or revoked observations. |
@@ -164,6 +164,22 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
   version must equal both the exact runtime `clientInfo.version` and the live
   artifact's installed-host version. Its `source_revision` is exact lowercase
   40- or 64-hex; `unknown` cannot pass.
+- `agent_connections.last_verification_report_json.host_runtime_probes` is the
+  Store-owned current runtime-probe snapshot, distinct from immutable release
+  evidence in `host_capability_verifications`. Its schema is exactly
+  `volicord-host-runtime-probes-v1`; it contains at most fourteen observations,
+  with at most one slot for each closed probe identifier and `record` or
+  `detective` profile pair. Every observation names the current enabled
+  connection, exact host kind, managed fingerprint, adapter profile and
+  adapter version, optional all-or-none client pair, optional display-only
+  host-version coordinate, closed outcome and failure class, and a canonical
+  half-open interval satisfying `observed_at < expires_at <= observed_at +
+  86,400 seconds`. Recording requires the current connection binding; an exact
+  retry is idempotent, an older or same-time conflicting replacement is a
+  conflict, and only a strictly newer observation replaces a slot. Replacing
+  the surrounding administrative verification report preserves this
+  Store-owned member. Missing, expired, or binding-mismatched observations are
+  not repaired from version text or older report content.
 - In host-capability history and current-pointer rows,
   `verification_internal_id`, `connection_internal_id`, `host_version`,
   `adapter_version`, `managed_fingerprint`, `volicord_build_id`,
@@ -521,6 +537,23 @@ Core. Its canonical JSON, version, fingerprint, and source are stored together.
 File discovery, command syntax, and host application belong to administrative
 owners, not this record contract.
 
+When a changed policy requires an active Task to rise later,
+`tasks.metadata_json.policy_control_reevaluation` is exactly the closed object
+`{policy_version, policy_fingerprint, required_effective_control_level,
+required_acceptance_policy?, marked_at}`. The required control level is one of
+`observe`, `light`, `tracked`, or `sensitive`; the optional required acceptance
+policy is one of `not_required`, `policy_dependent`, or `required`; the version
+is positive, the fingerprint is canonical, and `marked_at` is the policy
+commit's `committed_at`. Store preserves the stronger existing or newly derived
+requirement on each axis and removes the member only when the same transaction
+satisfies both requirements. Creating or preserving an unsatisfied mark also
+invalidates every active ticket for that Task with `explicit_revoke` in the
+policy transaction.
+
+`authority_events.task_id` is normally required. The exact
+`project_workflow_policy_applied` event is project-scoped and therefore has
+both `task_id` and `change_unit_id` null; `task_events` excludes this row.
+
 `workflow_metric_events` remain in the separate non-authority diagnostics
 store and are exposed only as aggregates. `session_end_receipts` are bounded
 project-authority snapshots. They store blocker codes, not model prose or
@@ -578,12 +611,12 @@ observations:
 
 `workflow_metric_events.metric_kind` is closed to
 `task_duration_micros`, `first_product_write_duration_micros`,
-`mcp_method_call`, `status_reread`, `write_ticket_issued`,
+`mcp_method_call`, `status_reread`, `authority_refresh`, `write_ticket_issued`,
 `write_ticket_reused`, `write_ticket_reissued`, `user_roundtrip`,
 `stop_call`, `stop_repeat`, `tools_list_serialized_bytes`,
 `pre_tool_decision`, `observation_assessment`,
 `confirmed_out_of_scope_write`, `suspected_resolved_no_change`,
-`confirmed_unrecorded_false_positive`, `normal_operation_hard_block`,
+`confirmed_unrecorded_false_positive`, `confirmed_structured_write_deny`,
 `sensitive_approval_missing_block`, and `completion_claim_suppressed`.
 Every row stores one non-negative integer `value`. Duration kinds use
 microseconds, the tool-list kind uses serialized UTF-8 bytes, and occurrence
@@ -592,6 +625,25 @@ integration profile, `allow|warn|deny` decision, owner-defined observation
 confidence, and bounded categorical outcome. Store validation rejects a
 dimension that is not applicable to its metric kind; no free-form label is
 accepted.
+
+Duration rows are written only for fresh commits: Task creation to the first
+terminal close for `task_duration_micros`, and Task creation to the earliest
+strictly valid in-repository `expected_writes.matched_at` or confirmed
+`unrecorded_changes.detected_at` observation available before the first
+product-write Run for `first_product_write_duration_micros`. A Run timestamp
+does not stand in for an absent write observation. Each
+`confirmed_unrecorded_false_positive` row is one binary classification sample:
+`1` for `invalid_observation` or `not_product_change`, `0` for `reverted`,
+`covered_by_write_ticket`, or `recorded_as_expected_write`; user-accepted and
+superseded findings produce no sample. Exact replay produces no duplicate
+sample. `status_reread` counts only the second and later public MCP
+`volicord.status` calls on one connection. `authority_refresh` counts a fresh
+Stop hook's internal authority refresh and is not emitted for exact Stop replay.
+`confirmed_structured_write_deny` requires a structured product-write PreTool
+denial bound to a `light` or `tracked` Task; it does not claim that the denied
+operation would otherwise have been normal. Meanwhile,
+`sensitive_approval_missing_block` requires Core's explicit
+`sensitive_approval_missing` result.
 
 The schema has no prompt, path, file-body, error-detail, secret, user-action
 question or capture-form, choice-note, or evidence-observation-summary column.

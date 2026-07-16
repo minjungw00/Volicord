@@ -495,6 +495,18 @@ feature availability comes from the current capability probes owned by
 [Agent Connection](agent-connection.md#host-feature-support), not equality to
 this reviewed coordinate.
 
+An actual successful managed local-web handoff, after current capability,
+listener, binding, response-budget, and token-creation checks, records
+`model_separated_user_action_ui=passed` and
+`mcp_capability_advertised_and_exercised=passed` for both managed profiles. An
+`initialize` response, capability advertisement, configured listener, or token
+candidate alone does not pass either probe. Current listener, binding, or
+configuration failure records a bounded failed or unavailable observation.
+Explicit advertised-capability absence records only
+`mcp_capability_advertised_and_exercised=unsupported`; it does not relabel the
+separate native user-action surface. These observations remain bound to the
+current Agent Connection fingerprint and actual client coordinates.
+
 When a managed binding materializes its `session_watch_baselines` row, the
 baseline's `metadata_json` retains only the exact bounded initialize identity as
 top-level `client_name` and `client_version` alongside the existing bounded
@@ -1052,16 +1064,26 @@ keeps each description to the tool's outcome, authority or write boundary, and
 when to call it. It does not embed mode matrices, long procedures, recovery
 catalogs, or examples. `ToolSchemaDetail::Documentation` retains the canonical
 examples and exhaustive branch documentation used by generated documentation
-and schema checks. The two modes use the same accepted argument shape,
-`required` fields, closed-field rules, output schema, and annotations; compact
-mode changes presentation size only. Mode-to-kind compatibility such as
+and schema checks. Runtime compact input schemas retain each tool's exact
+top-level properties, required list, closed-object rule, branch discriminators,
+and the essential nested required/closed skeleton, while omitting repeated
+nested validation detail that cannot fit the wire-size bound. Documentation
+detail remains the exhaustive validation schema, and the server always applies
+that exact validation regardless of the advertised detail. Runtime compact
+mode advertises a bounded root-object `outputSchema`; Documentation mode
+retains the exhaustive public response branches. These presentation differences
+do not change server-side validation or any public method request or response
+contract.
+Mode-to-kind compatibility such as
 `advisor`/`shaping_update`, `direct`/`direct`, and `work` with
 `shaping_update` or `implementation` remains in Documentation detail and the
 method owner, not the runtime description.
 
 Every listed Volicord tool also exposes an MCP 2025-11-25 `outputSchema` whose
-root type is `object`. Read-only public method tools derive that schema from
-their public method response branches. Mutation tools additionally advertise
+root type is `object`. Runtime compact detail uses the bounded root-object
+advertisement defined above. Documentation detail derives read-only public
+method tool schemas from their public method response branches. Mutation tools
+additionally advertise
 summary and workflow wrappers that pair a fresh `AuthorityReceipt` with the
 method result needed for the next step, a full wrapper that pairs the same
 fresh receipt with the exact public method response, and bounded post-effect

@@ -128,6 +128,9 @@ Acceptance-policy rules:
   the selected Task's stored request. Core may raise its effective level and
   acceptance requirement when authoritative project policy strengthened; it
   never lowers an active Task after policy relaxation.
+- When `resume_policy=create_new` or `resume_policy=supersede_active` replaces
+  the active Task pointer, the same commit invalidates every active write
+  ticket of the previously active Task with `task_closed`.
 - `not_required` is required for `observe`, is valid for `light` only when
   authoritative project policy explicitly permits low-risk completion, is not
   a baseline waiver for `tracked`, and is never valid for `sensitive`. An Agent

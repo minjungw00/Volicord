@@ -182,6 +182,15 @@ It increments only when a complete owner-allowed state-changing transaction comm
 
 Every newly committed authority mutation appends at least one durable `authority_events` row in the same transaction as the current projection updates. A normal committed mutation appends exactly one authority event. If an owner explicitly defines an event batch, all rows in that batch share the single resulting `project_state.state_version` for that committed state transition.
 
+A changed project workflow-policy fingerprint is one normal administrative
+authority mutation. The transaction replaces the policy row, advances the
+state version and persisted UTC floor, appends one project-scoped
+`project_workflow_policy_applied` event, and upward-merges any required active
+Task reevaluation mark. An unsatisfied resulting mark invalidates that Task's
+active tickets with `explicit_revoke` inside the same transaction. Reapplying
+the same fingerprint is a no-effect database operation and performs none of
+those effects.
+
 `tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is invalid storage shape and must not be used as a conflict, freshness, lock, or write-ticket basis.
 
 Related fields:
@@ -197,13 +206,13 @@ Related fields:
 
 ## Write Tickets
 
-A write ticket is reusable-until-consumed Volicord authority for compatible authorized product-file write intent. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, secret isolation, global filesystem interception, or proof that a write occurred.
+A write ticket is reusable-until-consumed Volicord authority for compatible authorized product-file write intent or one exact approval-bound non-product action under effective `sensitive` control. It is not OS permission, OS sandboxing, a filesystem ACL, network policy, secret isolation, global filesystem interception, or proof that an effect occurred.
 
 Write-ticket issuance and compatibility consumption follow normal state-version rules:
 
 - issuance can commit only through an owner-defined method branch
-- prepare-write may reuse an active unconsumed ticket when every validity coordinate matches, the existing allowed prefixes cover the requested prefixes, denied prefixes remain effective, and sensitive authority is equal or stronger
-- consumption can commit only for an actual product-file write when the row is active, compatible, unconsumed, not revoked or invalidated, and within an optional configured idle boundary
+- prepare-write may reuse an active unconsumed ticket when every validity coordinate matches, the existing allowed prefixes cover the requested prefixes, denied prefixes remain effective, and sensitive authority is equal or stronger; sensitive reuse also requires the exact normalized operation and matching approval-resolution identity
+- consumption can commit only for the compatible intended product-file write or exact approval-bound non-product sensitive action when the row is active, unconsumed, not revoked or invalidated, and within an optional configured idle boundary
 - unrelated state-version increments do not invalidate tickets; explicit invalidation reasons are `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, and `explicit_revoke`
 - issuance or consumption never occurs on rejected, dry-run, or replay-only branches
 
@@ -312,22 +321,30 @@ artifact, blocker, event, and replay identifiers; user authority; residual-risk
 decisions; canonical evidence and judgment hashes; and durable relationships.
 Legacy `advisor` maps to `observe`; `direct` and `work` map conservatively to
 `tracked`. Existing acceptance outcomes remain preserved. The initial v2 policy
-copy uses a conservative tracked default. Observation-derived confidence is
+copy uses a conservative tracked default while retaining the existing managed
+host, profile, connection, guard, MCP, and hook binding, including its source
+Runtime Home. Conversion does not reinterpret that binding as a destination
+binding. The administrator must explicitly rebind it to the destination Runtime
+Home during the separate activation step. Observation-derived confidence is
 transformed in two distinct domains: a copied `unrecorded_changes` row uses
 `UnrecordedChangeConfidence::Confirmed` only when v6 facts deterministically
 establish the product change and otherwise uses `Suspected`; a copied legacy
 Detective assessment in `guard_events.result_json` uses
 `ObservationConfidence::Confirmed` or `Structured` only when its v6 source
 facts prove that level and otherwise is annotated `Heuristic`. Neither domain
-borrows the other's value set. Every active v6 write ticket is copied as revoked with
-`invalidation_reason=explicit_revoke`; consumed ticket/Run links remain intact.
+borrows the other's value set. Every active, expired, or stale v6 write ticket is
+copied as revoked with `invalidation_reason=explicit_revoke`; consumed ticket/Run
+links remain intact. A legacy fixed `expires_at` never becomes the semantically
+different v7 `idle_expires_at`: the latter is `null`, while the exact legacy
+timestamp remains conversion provenance in ticket metadata.
 
 Before reporting success, the converter verifies foreign keys, table and
 eligible-row counts, identifier preservation, canonical JSON, policy and
 record fingerprints, evidence/judgment hashes, ticket transformations, and
 source immutability, and emits a bounded conversion report. Any failure leaves
 the source untouched and the destination unaccepted; partial output is never a
-successful v7 store. Activation is a separate administrative operation.
+successful v7 store. Activation is a separate administrative operation that
+explicitly rebinds the destination Runtime Home before switching use to it.
 
 ## Failure And Retry
 

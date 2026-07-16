@@ -422,21 +422,79 @@ detective_final_output
 6. 최종 권한 고지가 요구되는 고정 UI 표면에 표시되는지
 7. 실행 중인 MCP 클라이언트가 필요한 capability를 광고하고 실제로 수행하는지
 
+구조화 경로 probe 두 개는 이름 붙인 표면을 실제로 수행한 경우에만 적용합니다.
+`pre_tool_structured_target_paths`는 직접 파일 쓰기 도구 이벤트를 평가합니다. 해당
+이벤트가 구조화된 대상 경로를 제공하면 통과하고, 제공하지 않으면
+`structured_paths_missing`으로 실패합니다. `post_tool_structured_changed_paths`는 성공한
+쓰기를 보고한 직접 파일 쓰기 이벤트를 평가합니다. 비어 있지 않은 구조화된 변경 경로를
+제공하면 통과하고, 성공한 이벤트가 이를 누락하면 `structured_paths_missing`으로
+실패합니다. 일반 셸 이벤트, `git status` 같은 읽기 전용 명령, 직접 쓰기 실패, 변경이
+없음을 보고하는 명시적인 빈 변경 경로 집합은 이 probe를 수행하지 않으며 마지막 적용
+결과를 덮어쓰면 안 됩니다.
+
+일곱 probe 식별자는 다음으로 닫혀 있으며 정확히 이 값만 사용합니다.
+
+```text
+lifecycle_hook_delivery
+pre_tool_structured_target_paths
+post_tool_structured_changed_paths
+model_separated_user_action_ui
+stop_delivery_and_replay
+fixed_ui_authority_disclosure
+mcp_capability_advertised_and_exercised
+```
+
+Probe outcome은 정확히 `passed`, `failed`, `unavailable`, `unsupported`입니다. 실패
+종류는 정확히 `none`, `explicit_capability_absent`,
+`configuration_unavailable`, `binding_mismatch`, `approval_required`,
+`listener_unavailable`, `event_delivery_failed`, `structured_paths_missing`,
+`model_separation_unconfirmed`, `replay_failed`, `second_stop_requested`,
+`fixed_ui_unconfirmed`, `capability_not_advertised`,
+`capability_not_exercised`, `probe_not_run`입니다. `passed`는 `none`과만,
+`unsupported`는 `explicit_capability_absent`와만 짝을 이룹니다. 이름 붙인 표면을
+관찰하지 못했을 때는 `unavailable`이 `probe_not_run`과 짝을 이룹니다. 그 밖의
+`failed`와 `unavailable` 결과에는 `none`, `explicit_capability_absent`,
+`probe_not_run`이 아닌 실패 종류가 필요합니다.
+
+필수 probe 매핑은 결정적입니다.
+
+| 기능 또는 최종 출력 하위 역량 | 필수 probe 식별자 |
+|---|---|
+| `native_user_action` | `model_separated_user_action_ui` |
+| `local_web_user_channel` | `model_separated_user_action_ui`, `mcp_capability_advertised_and_exercised` |
+| `verified_tool_producer` | `lifecycle_hook_delivery`, `pre_tool_structured_target_paths`, `post_tool_structured_changed_paths` |
+| `registered_connection_observation` | `lifecycle_hook_delivery`, `post_tool_structured_changed_paths` |
+| `record_final_output`, `detective_final_output` | `fixed_ui_authority_disclosure`, `stop_delivery_and_replay` |
+| `authority_display` | `fixed_ui_authority_disclosure` |
+| `authenticated_exact_replay`, `block_finalization` | `stop_delivery_and_replay` |
+
 각 probe 결과는 capability, 관찰 상태, 관찰 시각, 크기가 제한된 실패 종류, 알 수 있을 때
 정확한 호스트·클라이언트·어댑터 Evidence 좌표를 식별합니다. 프롬프트, 모델 출력, 명령,
 경로, 파일 내용, 사용자 답변, 원시 호스트 이벤트는 저장하지 않습니다. Probe는 이름 붙인
 표면을 실제로 시험해야 하며 생성 파일, 자체 보고 버전, configured flag, fixture만으로는
 런타임 probe 성공이 아닙니다.
 
+호스트 고유 JSON을 생성했다는 사실은 호스트가 고정 UI에 이를 표시했다는 증거가 아닙니다.
+크기가 제한된 호스트 소유 확인이 없으면 Guard 생산자는
+`fixed_ui_authority_disclosure`를 `unavailable/probe_not_run`으로 기록합니다. 평가기는
+이 조합을 Evidence 부재로 취급하고 구현된 표면을 `implemented_unverified`로 유지합니다.
+마찬가지로 첫 Stop 전달만으로는 호스트가 재시도하지 않을 것임을 확정할 수 없습니다.
+첫 전달은 `stop_delivery_and_replay=unavailable/probe_not_run`을 기록합니다. 같은 세션의
+후속 Stop 전달, 정확히 반복된 전달 또는 호스트의 `stop_hook_active=true` 관찰은
+`failed/second_stop_requested`를 기록합니다. 해당 전달 관찰 구간이 지난 뒤의 더 새로운
+호스트 소유 관찰만 `passed/none`을 기록할 수 있으며, 생산자 측 렌더링이나 첫 Stop만으로
+이를 기록하면 안 됩니다.
+
 평가기에는 다음 순서를 적용합니다.
 
 1. 명시적 capability 응답이나 담당자가 검토한 호스트 표면이 필요한 capability가 없다고
    밝힐 때만 `unsupported_by_host`입니다. 알 수 없거나 더 새로운 유효 호스트 버전은
    부재가 아닙니다.
-2. 구현된 내장 표면에 일치하는 최신 probe Evidence가 없으면 아직 릴리스 Evidence가 없는
-   새 버전을 포함해 `implemented_unverified`입니다.
-3. 현재 probe가 실패했거나 이전에 입증한 capability의 현재 설정, 결속, 승인, listener,
+2. 현재 probe가 실패했거나 이전에 입증한 capability의 현재 설정, 결속, 승인, listener,
    이벤트 전달을 사용할 수 없으면 `temporarily_unavailable`입니다.
+3. 명시적인 `unavailable/probe_not_run` 결과를 포함해 구현된 내장 표면에 일치하는 최신
+   probe Evidence가 없으면 아직 릴리스 Evidence가 없는 새 버전과 마찬가지로
+   `implemented_unverified`입니다.
 4. 일치하는 최신 최종 아티팩트 Evidence, 필요한 probe 성공, 준비된 런타임 전제 조건을
    모두 갖췄을 때만 `verified`입니다.
 

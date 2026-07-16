@@ -56,7 +56,11 @@ PRAGMA foreign_keys = ON;
 버전이나 스키마 버전이 아닙니다. 기준 SQLite DDL은 `tasks.state_version`, 저장소
 `schema_version` 열, 마이그레이션 이력 테이블을 만들면 안 됩니다.
 
-물리 `write_tickets` 테이블은 제품 파일 쓰기 시도에 대한 쓰기 티켓 권한 기록을 저장합니다. 이 행은 Volicord 안에서 권한 있는 쓰기 의도와 호환성 상태를 기록합니다. OS 권한, 파일시스템 ACL, 샌드박싱, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 쓰기가 실제로 일어났다는 증명이 아닙니다.
+물리 `write_tickets` 테이블은 제품 파일 쓰기 시도와 유효 `sensitive` 통제 아래의
+정확한 승인 결속 비제품 동작에 대한 권한 기록을 저장합니다. 이 행은 Volicord 안에서
+경계가 정해진 권한 의도와 호환성 상태를 기록합니다. OS 권한, 파일시스템 ACL,
+샌드박싱, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 효과가 실제로
+일어났다는 증명이 아닙니다.
 
 ## 기준 SQL 원본
 
@@ -1066,7 +1070,7 @@ CREATE TABLE authority_events (
   event_type TEXT NOT NULL,
   actor_source TEXT NOT NULL,
   operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
-  task_id TEXT NOT NULL,
+  task_id TEXT,
   change_unit_id TEXT,
   payload_json TEXT NOT NULL DEFAULT '{}',
   request_hash TEXT NOT NULL,
@@ -1078,6 +1082,11 @@ CREATE TABLE authority_events (
   UNIQUE (project_id, event_hash),
   CHECK (length(trim(event_hash)) > 0),
   CHECK (previous_event_hash IS NULL OR length(trim(previous_event_hash)) > 0),
+  CHECK (
+    (event_type = 'project_workflow_policy_applied'
+      AND task_id IS NULL AND change_unit_id IS NULL)
+    OR (event_type <> 'project_workflow_policy_applied' AND task_id IS NOT NULL)
+  ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
@@ -1098,7 +1107,8 @@ SELECT
   event_type AS event_kind,
   payload_json AS event_payload_json,
   created_at
-FROM authority_events;
+FROM authority_events
+WHERE task_id IS NOT NULL;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -1584,7 +1594,7 @@ CREATE TABLE session_end_receipts (
 - `tasks.carry_forward_json`은 타입이 지정된 carry-forward disposition을
   저장합니다. 저장되어 있다는 사실만으로 predecessor 행, 판단, Evidence 집합,
   baseline, 쓰기 티켓을 현재 상태로 만들지 않습니다.
-- `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다.
+- `authority_events`는 커밋된 권한 이벤트마다 영속 이벤트 행 하나를 저장합니다. 같은 `state_version`을 가진 여러 이벤트 행은 하나의 커밋된 상태 전이에 속한 이벤트 배치입니다. `task_id`는 정확한 프로젝트 범위 `project_workflow_policy_applied` 이벤트를 제외하면 필수이고, 이 예외 이벤트는 `change_unit_id`도 null이어야 합니다. `task_events` 호환 view에는 Task 범위 행만 포함됩니다.
 - `authority_events.actor_source`, `tasks.created_by_actor_source`, `user_action_requests.requested_by_actor_source`, `user_action_resolutions.resolved_by_actor_source`, `evidence_capture_intents.requested_by_actor_source`, `evidence_capture_receipts.observed_by_actor_source`, `write_tickets.created_by_actor_source`, `runs.created_by_actor_source`, `artifact_staging.created_by_actor_source`, `evidence_observations.observed_by_actor_source`, `tool_invocations.actor_source`는 행위자 출처를 저장합니다.
 - `authority_events.operation_category`와 `tool_invocations.operation_category`는 `read`, `agent_workflow`, `user_only`, `admin_local`, `local_recovery`로 제한됩니다.
 - `authority_events.request_hash`는 커밋된 권한 이벤트의 요청 정체성을 저장합니다. `previous_event_hash`와 `event_hash`는 무결성 점검과 내보내기 상관을 위한 로컬 해시 체인을 저장하지만, 조작 방지 감사 보장을 뜻하지 않습니다.
@@ -1597,7 +1607,7 @@ CREATE TABLE session_end_receipts (
 - Store application validation은 요청, 근거, resolution JSON을 strict decode하고 저장 요청에서 캡처 폼을 도출하며 폐쇄형 tag와 파생 `action_kind` 일치를 요구합니다. 대상과 아티팩트 후보는 각각 32개, note 성격 텍스트는 Unicode scalar value 1,000개, 관찰 summary는 4,000개, canonical 직렬화 폼은 32 KiB로 제한하며 초과 값을 자르지 않고 거부합니다.
 - `user_action_channel_tokens`는 대기 사용자 행동의 해시된 일회성 로컬 웹 User Channel token을 저장합니다. raw token은 저장하지 않습니다. `created_metadata_json`은 정확히 `{fallback_kind, delivery_surface, endpoint, form_digest}`로 strict decode되어야 하며 `fallback_kind=local_web_consent`, `delivery_surface=model_invisible_user_surface`, `endpoint=/consent`, 저장된 닫힌 요청에서 도출한 canonical form과 일치하는 digest를 사용해야 합니다. Metadata가 누락됐거나 추가됐거나, 타입이 잘못됐거나, 값이 일치하지 않으면 사용할 수 없습니다. 특히 `delivery_surface`가 없는 기존 행은 수정된 코드에서 영구적으로 사용할 수 없습니다. 발급 창을 도출하고 검증하는 네 저장 timestamp인 `user_action_requests.requested_at`, 선택적 `user_action_requests.expires_at`, token `created_at`, token `expires_at`은 각 instant의 canonical RFC 3339 UTC 문자열이어야 합니다. Store application validation은 token `created_at >= user_action_requests.requested_at`을 요구합니다. 요청에 expiry가 있으면 token `expires_at`은 정확히 `min(user_action_requests.expires_at, created_at + 600 seconds)`여야 하고, 요청 expiry가 없으면 정확히 `created_at + 600 seconds`여야 합니다. Token은 반열린 구간 `created_at <= now < expires_at`에서만 유효합니다. 잘못된 생성 metadata, noncanonical 발급 창 timestamp, 더 이르거나 늦은 token expiry, 그 밖의 창 불일치는 손상된 저장 상태입니다. 이때 token 검증, 로컬 웹 GET·POST, expiry 정리, token 소비는 form을 표시하지 않고 닫힌 상태로 실패하며 token status, 프로젝트 상태나 UTC 하한, 사용자 행동 resolution 상태를 변경하지 않습니다. 발급은 token 삽입과 원자적으로 `project_state.updated_at`을 token `created_at` 이상으로 전진시킵니다. token 소비와 변경 불가능한 resolution 삽입은 함께 커밋합니다. 이 행은 일시적인 캡처 metadata이며 그 자체로 Core 사용자 권한이 아닙니다.
 - `write_tickets`는 소비 전까지 재사용 가능하고 상태에 묶인 호환성을 기록합니다. `basis_state_version`은 감사 순서이며 고유하거나 유효성 좌표가 아닙니다. 유효성은 `validity_basis_json`, status, 안정된 무효화 사유, 선택적 `idle_expires_at`에서 나옵니다. 고유 소비 인덱스는 소비 하나가 여러 Run으로 갈라지는 것을 계속 막습니다. Prefix 배열은 엄격하게 정규화된 repository-relative exact-or-descendant prefix이며 glob 문법 없음, 절대/빈 값/`..`/모호한 항목 거절, denied 우선, allowed 빈 배열은 product-file 쓰기 없음 규칙을 적용합니다.
-- `project_workflow_policies`는 권위 있는 v2 데이터베이스 복사본과 `sha256:<64자리 소문자 16진수>` 지문만 저장하며 관리 파일/CLI/host 동작은 이 담당 문서 밖입니다. 개인정보를 제한한 workflow metric은 이 권한 데이터베이스가 아니라 별도의 비권한 `diagnostics.sqlite` 저장소에만 둡니다. `session_end_receipts`에는 관리 세션, 닫힌 Task 상태와 다음 actor 값, blocker ref가 아닌 blocker code, 조건부 완전성이 필요합니다. Refresh 실패는 `authority_unknown`, 활성 Task 없음은 `none`을 사용하고 완료 주장은 새로 고친 blocker 없는 `ready` Task에서만 허용합니다.
+- `project_workflow_policies`는 권위 있는 v2 데이터베이스 복사본과 `sha256:<64자리 소문자 16진수>` 지문만 저장하며 관리 파일/CLI/host 동작은 이 담당 문서 밖입니다. 변경된 fingerprint는 정확한 트랜잭션 `committed_at`, 한 번의 상태 버전 전진, 프로젝트 범위 정책 이벤트 하나, 필요한 상향 전용 활성 Task 재평가 metadata 표시와 같은 트랜잭션에서 기록됩니다. 결과 표시가 아직 충족되지 않았으면 같은 트랜잭션에서 해당 Task의 활성 티켓을 `explicit_revoke`로 무효화합니다. 개인정보를 제한한 workflow metric은 이 권한 데이터베이스가 아니라 별도의 비권한 `diagnostics.sqlite` 저장소에만 둡니다. `session_end_receipts`에는 관리 세션, 닫힌 Task 상태와 다음 actor 값, blocker ref가 아닌 blocker code, 조건부 완전성이 필요합니다. Refresh 실패는 `authority_unknown`, 활성 Task 없음은 `none`을 사용하고 완료 주장은 새로 고친 blocker 없는 `ready` Task에서만 허용합니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.
 - `evidence_capture_intents`는 만료되는 요청 하나를 정확한 현재 근거, command/tool
   source input 또는 Core가 도출한 connection-source selector, connection/actor,

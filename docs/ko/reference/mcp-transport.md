@@ -428,6 +428,17 @@ Agent Connection은 연결 프로젝트가 하나도 없는 상태가 된 뒤에
 동등성이 아니라 [Agent Connection](agent-connection.md#host-feature-support)이 담당하는 현재
 capability probe 결과에서 나옵니다.
 
+현재 capability, listener, 결속, 응답 크기, token 생성 점검을 모두 통과한 실제 관리
+local-web handoff만 `record`와 `detective` 두 관리 프로필에
+`model_separated_user_action_ui=passed` 및
+`mcp_capability_advertised_and_exercised=passed`를 기록합니다. `initialize` 응답,
+capability 광고, 설정된 listener, token 후보만으로는 어느 probe도 통과하지 않습니다.
+현재 listener·결속·설정 실패는 크기가 제한된 `failed` 또는 `unavailable` 관찰을
+기록합니다. 광고한 capability의 명시적 부재는
+`mcp_capability_advertised_and_exercised=unsupported`만 기록하며 별도 native 사용자 행동
+표면을 다시 분류하지 않습니다. 이 관찰은 현재 Agent Connection 지문과 실제 client
+좌표에 계속 결속됩니다.
+
 관리 결속이 `session_watch_baselines` 행을 구체화할 때 기준선 `metadata_json`은 기존의
 크기가 제한된 감시 메타데이터와 함께 성공한 initialize의 정확한 정체성만 최상위
 `client_name`과 `client_version`으로 보존합니다. 이 문자열은 실제 성공한 initialize
@@ -925,14 +936,20 @@ MCP에 보이는 모든 변경 도구는 `detail=summary|workflow|full`도 받�
 `inputSchema.examples` 구성원을 생략하고 각 description을 도구의 결과, 권한 또는 쓰기
 경계, 호출해야 하는 시점으로 제한합니다. 모드 행렬, 긴 절차, 복구 목록, 예시를 넣지
 않습니다. `ToolSchemaDetail::Documentation`은 생성 문서와 스키마 점검에서 쓰는 canonical
-예시와 완전한 분기 설명을 유지합니다. 두 mode는 같은 허용 인자 형태, `required` 필드,
-닫힌 필드 규칙, output schema, annotation을 사용하며 compact mode는 표시 크기만 바꿉니다.
+예시와 완전한 분기 설명을 유지합니다. Runtime compact 입력 스키마는 각 도구의 정확한
+최상위 property, required 목록, 닫힌 객체 규칙, 분기 판별자와 핵심 중첩 required/닫힌
+골격을 유지하되 wire 크기 제한에 들어갈 수 없는 반복 중첩 검증 세부사항은 생략합니다.
+Documentation detail은 완전한 검증 스키마이며 서버는 광고 detail과 무관하게 항상 그
+정확한 검증을 적용합니다. Runtime compact mode는 크기가 제한된 루트 객체
+`outputSchema`를 광고하고 Documentation mode는 완전한 공개 응답 분기를 유지합니다. 이
+표현상의 차이는 서버 측 검증이나 공개 메서드 요청·응답 계약을 바꾸지 않습니다.
 `advisor`/`shaping_update`, `direct`/`direct`, `work`와 `shaping_update` 또는
 `implementation` 같은 mode-to-kind 호환성은 런타임 description이 아니라 Documentation
 detail과 메서드 담당 문서에 둡니다.
 
 나열되는 모든 Volicord 도구는 루트 타입이 `object`인 MCP 2025-11-25
-`outputSchema`도 노출합니다. 읽기 전용 공개 메서드 도구는 공개 메서드 응답 분기에서 이
+`outputSchema`도 노출합니다. Runtime compact detail은 위에서 정의한 크기 제한 루트 객체를
+광고합니다. Documentation detail의 읽기 전용 공개 메서드 도구는 공개 메서드 응답 분기에서
 스키마를 생성합니다. 변경 도구는 새 `AuthorityReceipt`와 다음 단계에 필요한 메서드 결과를
 결합한 summary·workflow 래퍼, 같은 새 receipt와 정확한 공개 메서드 응답을 결합한 full
 래퍼, 크기가 제한된 효과 적용 후 복구 분기를 광고합니다.

@@ -87,7 +87,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `registry.sqlite` | Runtime Home 식별 정보 | 런타임 식별 | 저장된 `runtime_home_id` 하나, Runtime Home 경로, 레지스트리 데이터베이스 경로, 스키마/저장 프로필, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 설치 프로필 | 실행 파일 프로필 | `volicord init`이 마련한 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | 프로젝트 등록과 별칭 | 프로젝트 매핑 | `project_internal_id`, 표시 이름, CLI 선택 별칭, Runtime Home 관계, 고유한 `repo_root`, 위치를 담당하는 `project_home`, 실행 시 `project_home/state.sqlite`와 일치해야 하는 저장된 `state_db_path`, 상태, 메타데이터, 별칭에서 내부 식별 정보로 가는 매핑. |
-| `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 영속 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
+| `registry.sqlite` | Agent Connection | MCP 호스트 연결 단위 | 영속 `connection_internal_id`, 호스트 종류, 연결 의도, 호스트 범위, 선택적 `project_internal_id`, 내부 서버 이름, 설정 대상, 모드, 활성 상태, 관리 지문, 검증 요약 상태, Store 소유 현재 런타임 probe snapshot을 포함한 검증 보고서 JSON, 사용자 동작 JSON, 메타데이터, 타임스탬프. |
 | `registry.sqlite` | Connection Projects | 연결 프로젝트 허용 목록 | `connection_internal_id`와 `project_internal_id`를 사용하는 Agent Connection과 등록된 프로젝트 사이의 명시적 다대다 멤버십. |
 | `registry.sqlite` | `host_capability_verifications` | 변경 불가능한 호스트 역량 검증 이력 | 정확하고 크기가 제한된 연결·역량, 결과, 호스트·클라이언트 버전, 어댑터 프로필, 관리 지문, Volicord 빌드·source·target·실행 파일 다이제스트, 크기가 제한된 증거 아티팩트 다이제스트, 관찰·만료 기간, 엄격한 정규 `{}` 메타데이터, 생성 시각. |
 | `registry.sqlite` | `host_capability_state` | 현재 호스트 역량 포인터 | 연결과 역량마다 크기가 제한된 현재 변경 불가능한 검증 행 식별 정보 하나를 가리키며 이후 통과·실패·사용 불가·취소 관찰로 원자적으로 교체됩니다. |
@@ -158,6 +158,18 @@ capture, turn, invocation identifier는 저장 기록, JSON 메타데이터, 로
   `clientInfo.version`, 실제 아티팩트의 설치 호스트 버전과 모두 같아야 합니다.
   `source_revision`은 정확한 소문자 40자리 또는 64자리 16진수이며 `unknown`은 통과할 수
   없습니다.
+- `agent_connections.last_verification_report_json.host_runtime_probes`는 Store가 소유하는
+  현재 런타임 probe snapshot이며 `host_capability_verifications`의 변경 불가능한 릴리스
+  Evidence와 구분됩니다. 스키마는 정확히 `volicord-host-runtime-probes-v1`입니다. 관찰은
+  최대 14개이며 닫힌 probe 식별자와 `record` 또는 `detective` 프로필의 각 조합에는 슬롯
+  하나만 있습니다. 각 관찰은 현재 활성 connection, 정확한 host kind, 관리 지문, adapter
+  profile과 version, 선택적 all-or-none client 쌍, 선택적 표시 전용 host-version 좌표,
+  닫힌 outcome과 failure class, `observed_at < expires_at <= observed_at + 86,400초`를
+  만족하는 정규 반개구간을 이름 붙입니다. 기록할 때 현재 connection 결속이 일치해야
+  합니다. 정확한 재시도는 멱등이고, 더 오래됐거나 같은 시각에 내용이 다른 교체는
+  충돌이며, 엄격히 더 새로운 관찰만 슬롯을 교체합니다. 바깥 관리 검증 보고서를 교체해도
+  Store 소유 구성원은 보존합니다. 누락·만료·결속 불일치 관찰을 버전 텍스트나 과거 보고서
+  내용으로 복구하면 안 됩니다.
 - 호스트 역량 이력과 현재 포인터 행의 `verification_internal_id`,
   `connection_internal_id`, `host_version`, `adapter_version`,
   `managed_fingerprint`, `volicord_build_id`, `source_revision`,
@@ -485,6 +497,21 @@ Confidence는 status와 독립적입니다. 미해결 `confirmed` 행은 닫기 
 기준 JSON, 버전, 지문, source를 함께 저장합니다. 파일 탐색, 명령 문법, 호스트 적용은
 이 기록 계약이 아니라 관리 담당 문서가 담당합니다.
 
+변경된 정책 때문에 활성 Task를 나중에 높여야 하면
+`tasks.metadata_json.policy_control_reevaluation`은 정확히 닫힌 객체
+`{policy_version, policy_fingerprint, required_effective_control_level,
+required_acceptance_policy?, marked_at}`입니다. 필수 통제 수준은 `observe`, `light`,
+`tracked`, `sensitive` 중 하나이고, 선택적 필수 수락 정책은 `not_required`,
+`policy_dependent`, `required` 중 하나입니다. 버전은 양수이며 fingerprint는 canonical이고
+`marked_at`은 정책 커밋의 `committed_at`입니다. Store는 각 축에서 기존 요구사항과 새로
+파생한 요구사항 중 더 강한 것을 보존하며, 같은 트랜잭션에서 두 요구사항을 모두 충족할
+때만 이 구성원을 제거합니다. 충족되지 않은 표시를 만들거나 보존하면 정책 트랜잭션에서
+해당 Task의 모든 활성 티켓도 `explicit_revoke`로 무효화합니다.
+
+`authority_events.task_id`는 일반적으로 필수입니다. 정확한
+`project_workflow_policy_applied` 이벤트는 프로젝트 범위이므로 `task_id`와
+`change_unit_id`가 모두 null이고 `task_events`는 이 행을 제외합니다.
+
 `workflow_metric_events`는 별도의 비권한 진단 저장소에만 남고 집계로만 노출됩니다.
 `session_end_receipts`는 크기가 제한된 프로젝트 권한 snapshot이며 모델 산문이나 blocker
 메시지가 아니라 blocker code를 저장합니다. 권한 refresh 실패, 활성 Task 없음, blocker 남음에서는
@@ -534,18 +561,35 @@ User Channel, 호스트 관찰 권한 데이터베이스가 아닙니다. 스키
 
 `workflow_metric_events.metric_kind`는
 `task_duration_micros`, `first_product_write_duration_micros`,
-`mcp_method_call`, `status_reread`, `write_ticket_issued`,
+`mcp_method_call`, `status_reread`, `authority_refresh`, `write_ticket_issued`,
 `write_ticket_reused`, `write_ticket_reissued`, `user_roundtrip`,
 `stop_call`, `stop_repeat`, `tools_list_serialized_bytes`,
 `pre_tool_decision`, `observation_assessment`,
 `confirmed_out_of_scope_write`, `suspected_resolved_no_change`,
-`confirmed_unrecorded_false_positive`, `normal_operation_hard_block`,
+`confirmed_unrecorded_false_positive`, `confirmed_structured_write_deny`,
 `sensitive_approval_missing_block`, `completion_claim_suppressed`로 닫혀 있습니다.
 각 행은 음이 아닌 정수 `value` 하나를 저장합니다. Duration kind는 microsecond,
 tool-list kind는 직렬화된 UTF-8 byte, occurrence kind는 count를 사용합니다. 선택적 차원은
 공개 method 이름, 통합 profile, `allow|warn|deny` 판단, 담당 문서가 정의한 observation
 confidence, 크기가 제한된 범주형 outcome으로 한정합니다. Store 검증은 metric kind에
 적용되지 않는 차원을 거부하며 자유 형식 label은 받지 않습니다.
+
+Duration 행은 새 커밋에만 기록합니다. `task_duration_micros`는 Task 생성부터 첫 종료
+닫기까지이고, `first_product_write_duration_micros`는 Task 생성부터 첫 제품 쓰기 Run
+전에 사용할 수 있는 관찰 중 strict 검증을 통과한 저장소 내부
+`expected_writes.matched_at` 또는 confirmed `unrecorded_changes.detected_at`의 가장 이른
+시각까지입니다. 누락된 쓰기 관찰을 Run 시각으로 대신하지 않습니다.
+`confirmed_unrecorded_false_positive` 행 하나는 이진 분류 sample 하나입니다.
+`invalid_observation` 또는 `not_product_change`는 `1`, `reverted`,
+`covered_by_write_ticket`, `recorded_as_expected_write`는 `0`이며 사용자가 수용했거나 새
+관찰로 대체된 finding은 sample을 만들지 않습니다. 정확한 재실행도 sample을 중복
+생성하지 않습니다. `status_reread`는 한 연결에서 두 번째 이후의 공개 MCP
+`volicord.status` 호출만 셉니다. `authority_refresh`는 새 Stop hook의 내부 권한
+새로 고침을 세며 정확한 Stop 재실행에는 기록하지 않습니다.
+`confirmed_structured_write_deny`에는 `light` 또는 `tracked` Task에 결합된 구조화
+제품 쓰기 PreTool deny가 필요하고, 거부된 작업이 그 밖의 의미에서 정상이었다고
+주장하지 않습니다. `sensitive_approval_missing_block`에는 Core의
+명시적인 `sensitive_approval_missing` 결과가 필요합니다.
 
 스키마에는 프롬프트, 경로, 파일 본문, 오류 세부 정보, 비밀값, 사용자 행동 질문이나
 캡처 양식, 선택 note, Evidence 관찰 summary 열이 없습니다. 크기가 제한된 도구 필드는 임의 요청 텍스트가 아니라 식별 정보만

@@ -497,6 +497,54 @@ separate bounded probe results for these seven areas when they apply:
 6. final authority disclosure is rendered in the required fixed UI surface;
 7. the running MCP client advertises and exercises the required capability.
 
+The two structured-path probes apply only when the named surface is exercised.
+`pre_tool_structured_target_paths` evaluates a direct file-write tool event: it
+passes when that event supplies structured target paths and fails with
+`structured_paths_missing` when it does not. `post_tool_structured_changed_paths`
+evaluates a direct file-write event that reports a successful write: it passes
+when the event supplies non-empty structured changed paths and fails with
+`structured_paths_missing` when the successful event omits them. General shell
+events, read-only commands such as `git status`, direct-write failures, and an
+explicit empty changed-path set that reports no change do not exercise these
+probes and must not overwrite their last applicable result.
+
+The seven probe identifiers are closed and exactly:
+
+```text
+lifecycle_hook_delivery
+pre_tool_structured_target_paths
+post_tool_structured_changed_paths
+model_separated_user_action_ui
+stop_delivery_and_replay
+fixed_ui_authority_disclosure
+mcp_capability_advertised_and_exercised
+```
+
+Probe outcomes are exactly `passed`, `failed`, `unavailable`, and
+`unsupported`. Failure classes are exactly `none`,
+`explicit_capability_absent`, `configuration_unavailable`,
+`binding_mismatch`, `approval_required`, `listener_unavailable`,
+`event_delivery_failed`, `structured_paths_missing`,
+`model_separation_unconfirmed`, `replay_failed`, `second_stop_requested`,
+`fixed_ui_unconfirmed`, `capability_not_advertised`,
+`capability_not_exercised`, and `probe_not_run`. `passed` pairs only with
+`none`; `unsupported` pairs only with `explicit_capability_absent`;
+`unavailable` pairs with `probe_not_run` when the named surface was not
+observed. Other `failed` and `unavailable` results require a non-`none`,
+non-`explicit_capability_absent`, non-`probe_not_run` failure class.
+
+The requirement mapping is deterministic:
+
+| Feature or final-output subcapability | Required probe identifiers |
+|---|---|
+| `native_user_action` | `model_separated_user_action_ui` |
+| `local_web_user_channel` | `model_separated_user_action_ui`, `mcp_capability_advertised_and_exercised` |
+| `verified_tool_producer` | `lifecycle_hook_delivery`, `pre_tool_structured_target_paths`, `post_tool_structured_changed_paths` |
+| `registered_connection_observation` | `lifecycle_hook_delivery`, `post_tool_structured_changed_paths` |
+| `record_final_output`, `detective_final_output` | `fixed_ui_authority_disclosure`, `stop_delivery_and_replay` |
+| `authority_display` | `fixed_ui_authority_disclosure` |
+| `authenticated_exact_replay`, `block_finalization` | `stop_delivery_and_replay` |
+
 Each probe result identifies the capability, observed status, observation time,
 bounded failure class, and the exact host/client/adapter evidence coordinates
 when known. It stores no prompt, model output, command, path, file content, user
@@ -504,18 +552,31 @@ answer, or raw host event. A probe must test the named surface; a generated file
 self-reported version, configured flag, or fixture alone is not a successful
 runtime probe.
 
+Producing host-native JSON does not prove that the host displayed its fixed UI.
+Without a bounded host-owned acknowledgement, the Guard publisher records
+`fixed_ui_authority_disclosure` as `unavailable/probe_not_run`; the evaluator
+treats that pair as missing evidence and keeps an implemented surface
+`implemented_unverified`. Likewise, the first Stop delivery cannot establish
+that the host will not retry. It records
+`stop_delivery_and_replay=unavailable/probe_not_run`. A later same-session Stop
+delivery, an exact repeated delivery, or a host `stop_hook_active=true`
+observation records `failed/second_stop_requested`. Only a newer bounded
+host-owned observation made after the relevant delivery window may record
+`passed/none`; producer-side rendering or the first Stop alone may not do so.
+
 The evaluator applies this order to a feature and all required probes and
 subcapabilities:
 
 1. `unsupported_by_host` is used only when an explicit capability response or
    owner-reviewed host surface says the required capability is absent. An
    unknown or newer valid host version is not absence.
-2. An implemented built-in surface with no fresh matching probe evidence is
-   `implemented_unverified`, including a new version that has not yet acquired
-   release evidence.
-3. A failed current probe, or a previously evidenced capability whose current
+2. A failed current probe, or a previously evidenced capability whose current
    configuration, binding, approval, listener, or event delivery is down, is
    `temporarily_unavailable`.
+3. An implemented built-in surface with no fresh matching probe evidence,
+   including an explicit `unavailable/probe_not_run` result, is
+   `implemented_unverified`, including a new version that has not yet acquired
+   release evidence.
 4. Only matching fresh final-artifact evidence, successful required probes, and
    ready runtime prerequisites yield `verified`.
 

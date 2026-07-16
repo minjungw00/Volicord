@@ -90,19 +90,14 @@ null client identity because its disposition may short-circuit before MCP
 initialize. An implemented requested claim remains eligible to fail when
 identity is missing; only an explicit exclusion sets
 `requested_verified=false`.
-The v3 evaluator validates each static disposition against a version-aware
-owner table. For canonical Codex `host_version=0.144.4`,
-`native_user_action`, `verified_tool_producer`, and
-`registered_connection_observation` are implemented, while
-`local_web_user_channel`, `record_final_output`, and
-`detective_final_output` are unsupported by that host version. The exact raw
-version-probe envelope is `codex-cli 0.144.4`, from which the cell stores the
-bare canonical `0.144.4`; every non-null Codex version passes the shared bare
-parser and a raw probe envelope in `host_version` is structurally invalid. A
-null or unreviewed Codex version retains the host-kind fallback:
-the first four features are implemented and the two final-output features are
-unsupported. Claude Code retains its all-implemented host-kind fallback. This
-is an exact reviewed-version table, not a minimum-version claim.
+The v3 evaluator validates each static disposition against the host-kind owner
+table. Codex and Claude Code implement all six features. The exact reviewed
+Codex raw version-probe envelope is `codex-cli 0.144.4`, from which the cell
+stores the bare canonical `0.144.4`; every non-null Codex version passes the
+shared bare parser and a raw probe envelope in `host_version` is structurally
+invalid. A null, reviewed, or unreviewed version never selects or changes the
+host-kind implementation disposition. The reviewed coordinate is not a
+minimum-version claim.
 Each non-null client pair comes only from the successful managed MCP
 `initialize` used by that cell. It is not inferred from host kind, executable,
 probe output, environment, configuration, protocol version, constants, later
@@ -210,12 +205,13 @@ The native UserAction cell treats the exact Task-bound Stop receipt as an
 authority observation, not as a close-readiness or final-output claim. It
 preserves and validates the Stop decision, reasons, close state, and complete
 blocker set. Both an internally consistent ready `allow` and an internally
-consistent blocked Detective projection are eligible only in the two clean
-fixture forms owned by Host Release Evidence: full-coverage ready `allow`, or
-the exact active partial-coverage `session_watch_unavailable` block. Any other
-outcome fails the cell. The LocalUser ready/blocker-free check remains a
-separate clean-fixture precondition. A blocked Stop projection does not become
-an `allow` and is not compared byte-for-byte with that LocalUser receipt. The
+consistent Detective `allow` with `completion_claim_allowed=false` are eligible
+only in the two clean fixture forms owned by Host Release Evidence:
+full-coverage ready `allow`, or the exact active partial-coverage
+`session_watch_unavailable` incomplete disclosure. Any other outcome fails the
+cell. The LocalUser ready/blocker-free check remains a separate clean-fixture
+precondition. A blocked close projection does not become close-ready and is not
+compared byte-for-byte with that LocalUser receipt. The
 two receipts must agree only on their shared Project, Task, state-version, and
 latest-Run authority coordinates. Final-output display, authenticated replay,
 and block-finalization remain separate matrix features.
@@ -266,9 +262,9 @@ maintains a source-only approximation or repairs a failed publication root.
   fail-closed; CLI inbox remains the supported fallback.
 - Native session identifiers do not enter Volicord storage, diagnostics, or
   release evidence.
-- The exact maintained partial-coverage Detective blocker remains visible in
-  native UserAction evidence instead of being rewritten as close-ready; other
-  Stop outcomes fail the clean fixture.
+- The exact maintained partial-coverage Detective incomplete disclosure remains
+  visible in native UserAction evidence instead of being rewritten as
+  close-ready; other Stop outcomes fail the clean fixture.
 - Forbidden or non-canonical release paths fail at the producer before an
   authenticated host run or release-artifact write, and the gate and audit
   independently enforce the same decision when reopening inputs.

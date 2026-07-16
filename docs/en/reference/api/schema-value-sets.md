@@ -512,7 +512,9 @@ temporarily_unavailable
 artifact and installed host plus ready runtime prerequisites.
 `implemented_unverified` means the implementation exists but that evidence is
 missing, stale, expired, malformed, or mismatched. `unsupported_by_host` means
-the exact host/version/platform lacks a required host-owned capability.
+the current host surface explicitly reports that a required host-owned
+capability is absent; host-version equality or a missing version review cannot
+produce this value.
 `temporarily_unavailable` means exact evidence is current but a present-time
 runtime prerequisite is down. The precedence and baseline host matrix are
 owned by [Agent Connection](../agent-connection.md#host-feature-support-state).
@@ -527,6 +529,42 @@ registered_connection_observation
 record_final_output
 detective_final_output
 ```
+
+`HostRuntimeProbeId` uses exactly:
+
+```text
+lifecycle_hook_delivery
+pre_tool_structured_target_paths
+post_tool_structured_changed_paths
+model_separated_user_action_ui
+stop_delivery_and_replay
+fixed_ui_authority_disclosure
+mcp_capability_advertised_and_exercised
+```
+
+`HostRuntimeProbeOutcome` uses exactly `passed`, `failed`, `unavailable`, and
+`unsupported`. `HostRuntimeProbeFailureClass` uses exactly:
+
+```text
+none
+explicit_capability_absent
+configuration_unavailable
+binding_mismatch
+approval_required
+listener_unavailable
+event_delivery_failed
+structured_paths_missing
+model_separation_unconfirmed
+replay_failed
+second_stop_requested
+fixed_ui_unconfirmed
+capability_not_advertised
+capability_not_exercised
+probe_not_run
+```
+
+The outcome/failure pair and feature-to-probe mapping are owned by
+[Agent Connection](../agent-connection.md#host-feature-support-state).
 
 Final-output `required_subcapabilities` and `subcapabilities` keys use only
 `authority_display`, `authenticated_exact_replay`, and `block_finalization`.

@@ -99,14 +99,13 @@ VOLICORD_RUN_CLAUDE_SMOKE=1 cargo test -p volicord-cli --test live_host_smoke cl
 | 구현됨 | 현재 상태이며 정확히 결속됨 | 일시적으로 사용할 수 없음 | `temporarily_unavailable` |
 | 구현됨 | 현재 상태이며 정확히 결속됨 | 준비됨 | `verified` |
 
-테스트는 `unsupported_by_host`, `implemented_unverified`,
-`temporarily_unavailable`, `verified` 순서의 집계 우선순위도 검증합니다. 설정 존재 여부와
+테스트는 `unsupported_by_host`, `temporarily_unavailable`,
+`implemented_unverified`, `verified` 순서의 집계 우선순위도 검증합니다. 설정 존재 여부와
 설정 감사 결과는 독립적으로 바꾸며 예상 지원 상태를 변경해서는 안 됩니다.
 
-표 기반 호스트 기준 테스트는 안정된 여섯 기능 키를 모두 다룹니다. 실제 증거가 없을 때
-Codex는 앞의 네 기능을 `implemented_unverified`, 두 최종 출력 기능을
-`unsupported_by_host`로 보고합니다. Claude Code는 여섯 기능을 모두
-`implemented_unverified`, Generic은 모두 `unsupported_by_host`로 보고합니다. 최종 출력
+표 기반 호스트 기준 테스트는 안정된 여섯 기능 키를 모두 다룹니다. 현재 일치하는 probe
+증거가 없으면 Codex와 Claude Code는 여섯 기능을 모두 `implemented_unverified`, Generic은
+모두 `unsupported_by_host`로 보고합니다. 최종 출력
 테스트는 Record가 `authority_display`, `authenticated_exact_replay`만 사용하고 Detective가
 `block_finalization`을 더하며, 프로필에 적용되는 키만 직렬화하는지도 검증합니다.
 
@@ -259,9 +258,10 @@ Stop 이벤트가 정확히 하나 생겨야 합니다. 저장된 Stop 결정, �
 `close_blockers`, 자체 영수증은
 내부적으로 일관되어야 합니다. 일부 관찰 경고나 다른 차단 사유가 없는 완전한
 `mcp_start` 관찰 범위에서는 `ready` `allow`가 되고, 일부 관찰 경고가 있는 활성
-`first_project_selection` 또는 `method_boundary` 관찰 범위에서는
-`close_readiness_blocked`와 정확한 `session_watch_unavailable` 차단 사유를 가진 `deny`가
-됩니다. LocalUser와 Stop 영수증은 Project, Task, 상태 버전, 최신 Run 좌표가 같아야
+`first_project_selection` 또는 `method_boundary` 관찰 범위에서는 `allow`,
+`completion_claim_allowed=false`, `close_readiness_blocked`, 정확한
+`session_watch_unavailable` 차단 사유가 됩니다. LocalUser와 Stop 영수증은 Project, Task,
+상태 버전, 최신 Run 좌표가 같아야
 하지만 호출 맥락에서 파생되는 닫기 필드는 같을 필요가 없습니다. LocalUser의 `ready` 및
 차단 사유 없음 영수증은 깨끗한 픽스처의 정상성 전제일 뿐 호스트 고유 검증 단언의 출처가
 아닙니다. 하네스는 영속 GuardEvent에서 완전한 정규 Stop 영수증을 직접 읽고 검증하며
@@ -282,8 +282,8 @@ JSON 요약을 출력합니다. 인증된
 비밀값, 전체 프롬프트는 들어가지 않습니다.
 
 영속 Task 결속 Stop 이벤트는 Judgment 이후 권한 관찰에 필요한 증거이지 Detective 닫기
-상태가 `ready`라는 증거가 아닙니다. 유지하는 정확한 일부 관찰 범위 차단만 호스트 고유
-UserAction 셀의 차단 결과로 사용할 수 있습니다. 이 관찰은 네 개 셀 최종 출력
+상태가 `ready`라는 증거가 아닙니다. 유지하는 정확한 일부 관찰 범위 미완료 고지만 호스트 고유
+UserAction 셀의 준비되지 않은 결과로 사용할 수 있습니다. 이 관찰은 네 개 셀 최종 출력
 매트릭스의 셀이나 증거 필드를
 채울 수 없고, 최종 출력 매트릭스 증거도 호스트 고유 Judgment 질의를 증명할 수 없습니다.
 Judgment 실행 중 관찰한 그 밖의 최종 출력, 대체 안내, 재생은 해당 실행의 진단 자료일

@@ -378,25 +378,18 @@ mismatch is a coordinate mismatch, and a copied or inferred identity is not an
 observed coordinate.
 
 The v3 evaluator validates `implementation_disposition` against the exact
-host-version-aware owner table rather than accepting the producer's value as
-an independent fact. For Codex, exact canonical `host_version=0.144.4` is
-reviewed as `implemented` for `native_user_action`,
-`verified_tool_producer`, and `registered_connection_observation`, and as
-`unsupported_by_host` for `local_web_user_channel`, `record_final_output`, and
-`detective_final_output`. The exact installed probe output is
-`codex-cli 0.144.4`; cells store only the parsed canonical bare coordinate
-`0.144.4`, not the probe envelope. Every non-null Codex `host_version` must pass
-the shared canonical bare-version parser. A raw probe envelope such as
-`codex-cli 0.144.4` in `host_version` is a structural error.
-For absent or unreviewed Codex versions, the host-kind fallback keeps the
-first four features `implemented` and both final-output features
-`unsupported_by_host`; lack of exact evidence leaves those implemented cells
-`implemented_unverified`. Claude Code keeps its host-kind fallback of all six
-features `implemented`. A new reviewed version table requires an owner change
-and a complete new twelve-cell manifest.
+host-kind owner table rather than accepting the producer's value as an
+independent fact. Codex and Claude Code implement all six feature surfaces;
+`host_version` never selects or changes that disposition. The exact reviewed
+Codex probe output remains `codex-cli 0.144.4`; cells store only the parsed
+canonical bare coordinate `0.144.4`, not the probe envelope. Every non-null
+Codex `host_version` must pass the shared canonical bare-version parser. A raw
+probe envelope such as `codex-cli 0.144.4` in `host_version` is a structural
+error. Missing exact cell evidence leaves an implemented cell
+`implemented_unverified`; it does not become static `unsupported_by_host`.
 
-This exact-version table is a release-gate evidence coordinate, not an ordinary
-runtime feature gate. Runtime support remains capability-probe-first under
+The exact version is a release-evidence and verification coordinate, not a
+feature-disposition or runtime gate. Runtime support remains capability-probe-first under
 [Agent Connection](agent-connection.md#host-feature-support-state). A different
 or newer valid installed version is `implemented_unverified` for an implemented
 surface until its probes and fresh evidence establish another state; it is not

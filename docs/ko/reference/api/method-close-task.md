@@ -90,7 +90,7 @@ API 경계 블록:
 닫기 조건:
 
 - `intent=complete`는 사전 확인이 성공하고, 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가가 유효하며, 현재 닫기 근거 참조가 그 아티팩트 및 실행 기록 호환성 규칙을 만족하고, 닫기 차단 사유가 남아 있지 않을 때만 닫을 수 있습니다.
-- 해당 `Task`의 쓰기 티켓이 활성이고 소비되지 않은 채 남아 있거나, 무효화됐지만 해결되지 않았거나, 호스트 훅 또는 감시자 관찰이 티켓 범위 밖의 확인된 미해결 Product Repository 경로를 보고하면 닫기 준비 상태는 차단됩니다. 선택적 idle timeout은 안정된 무효화 티켓 차단 사유로 처리하며 고정 티켓 만료는 없습니다.
+- `intent=check`와 `intent=complete`의 닫기 준비 상태는 해당 `Task`의 쓰기 티켓이 활성이고 소비되지 않은 채 남아 있을 때 차단됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 오래된 권한 상태로 계속 표시되지만 그 자체로 닫기를 막지 않습니다. 범위 밖 Product Repository 경로를 포함한 확인된 미해결 호스트 훅 또는 감시자 관찰은 별도 차단 사유로 유지됩니다. 고정 티켓 만료는 없습니다.
 - 유효한 `effective_control_level=observe` Task에는 쓰기 티켓이나 제품 파일 쓰기 경로가 없습니다. 닫기 준비 상태 결과는 `volicord.prepare_write`를 추천하지 않으며, 현재 결과나 닫기 근거가 없으면 호환되는 `volicord.record_run` 경로로 안내합니다.
 - 최종 수락은 유효 통제 수준과 권위 있는 프로젝트 정책을 따릅니다. `sensitive`와
   `tracked`는 호환되는 최종 수락을 요구하고 `observe`는 `not_required`를 사용합니다.
@@ -100,6 +100,10 @@ API 경계 블록:
   `not_required`를 사용할 수 있습니다. 정책 강화는 이 판단 전에 유효 통제 수준을
   올리며 절대 낮추지 않습니다. 어떤 정책도 Evidence, 민감 승인, 위험 수락, 다른
   blocker를 면제하지 않습니다.
+- 유효 `sensitive` 통제에는 티켓으로 결속된 정확한 민감 동작 근거와 현재 일치하는
+  사용자 소유 승인도 필요합니다. 최종 수락은 어느 것도 대신하지 않습니다. 정확한
+  근거를 기록하지 않았으면 닫기는 `missing_sensitive_action_basis`, 근거는 있지만
+  승인이 더 이상 현재 상태가 아니면 `missing_sensitive_approval`을 보고합니다.
 - `detective` 프로필에서는 호스트 훅 경로 안전성, 프롬프트 캡처 가능 여부, 확인된 미해결 미기록 변경, 호스트 훅이 감지한 쓰기 티켓 문제, `session-watch` 가용성을 포함한 `GuardHealthSummary` 상태도 확인합니다. 호스트 훅 상태를 선택하면 도출된 `CoverageSummary`도 보고합니다. `record` 프로필에서는 호스트 훅이 필요하지 않습니다. 확인된 미해결 미기록 변경은 조정으로 해결될 때까지 닫기를 막습니다. 의심 변경은 경고나 검증 요청으로 남으며 `confirmed`로 승격되지 않는 한 `unresolved_unrecorded_changes`를 만들지 않습니다.
 - `GuardHealthSummary.native_host_output_adapter_config_verified`는 Detective의 생성 설정
   닫기 gating에만 참여합니다. `false`이면 적용되는 `guard_*` 설정 차단 사유에 기여할 수
@@ -200,11 +204,11 @@ CloseTaskRequest:
 
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처, 요청한 종료 경로의 선행조건을 확인합니다.
-3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 각 쓰기 티켓의 명시적인 상태 결합 유효성을 확인합니다. 충돌하는 envelope 버전이나 요청 해시는 `ToolRejectedResponse`를 반환하고, 무효화된 미해결 티켓은 안정된 닫기 차단 사유로 처리합니다. `basis_state_version`은 감사 전용입니다.
+3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 각 쓰기 티켓의 명시적인 상태 결합 유효성을 확인합니다. 충돌하는 envelope 버전이나 요청 해시는 `ToolRejectedResponse`를 반환합니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓은 계속 표시되지만 그 자체로 닫기 차단 사유를 만들지 않습니다. `basis_state_version`은 감사 전용입니다.
 4. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
 5. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 모드와 호환되는 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다. 종료 결과는 `Task.mode=advisor`에서 `advice_only`, `Task.mode=direct` 또는 `work`에서 `completed`입니다.
 6. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.
-7. `intent=cancel` 또는 `intent=supersede`는 요청한 종료 경로만 평가합니다. 종료 경로 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=cancelled` 또는 `close_state=superseded`를 커밋합니다.
+7. `intent=cancel` 또는 `intent=supersede`는 요청한 종료 경로만 평가합니다. 종료 경로 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 해당 Task의 활성 쓰기 티켓을 `task_closed`로 원자적으로 무효화하고 `close_state=cancelled` 또는 `close_state=superseded`를 커밋합니다.
 
 ## 상태 버전 동작
 
@@ -215,7 +219,7 @@ CloseTaskRequest:
 | 상태 변경 `intent`의 차단 결과 | `project_state.state_version`을 증가시키지 않습니다. 종료 상태 변경, 이벤트, 재실행 행 없이 `base.effect_kind=no_effect`를 반환합니다. |
 | 사전 확인 거절 또는 유효한 `dry_run` 미리보기 | 아무것도 증가시키지 않습니다. |
 
-사전 확인 거절에는 오래된 `expected_state_version`과 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다. 쓰기 티켓 무효화는 상태에 묶이며 닫기 차단 사유 목록으로 처리합니다.
+사전 확인 거절에는 오래된 `expected_state_version`과 멱등 요청 해시 충돌이 포함됩니다. 이런 충돌은 오류 담당 문서로 처리되며 닫기 차단 사유가 아닙니다. 쓰기 티켓 무효화는 상태에 묶이고 티켓 권한 상태에 계속 표시되지만 그 자체로 닫기 차단 사유를 만들지 않습니다.
 
 읽기 전용 확인, 그 닫기 준비 상태 계산, 관련 없는 권한 상태 변경은 활성 쓰기
 티켓을 소비하거나 무효화하지 않습니다.
@@ -277,13 +281,12 @@ CloseTaskRequest:
 | `task_not_closeable` | `task` | 선택된 `Task` 생명주기나 종료 경로 상태가 요청한 닫기 의도를 받을 수 없습니다. |
 | `missing_active_change_unit` | `scope` | 닫기 경로에 현재 적용 Change Unit이 필요하지만 사용할 수 없습니다. |
 | `pending_user_action` | `pending_user_action` | 필요한 사용자 소유 행동이 아직 대기 중이거나 해결되지 않았습니다. |
+| `missing_sensitive_action_basis` | `sensitive_approval` | 유효 `sensitive` Task에 티켓으로 결속된 정확한 민감 동작 근거가 없습니다. `prepare_write`와 일치하는 `record_run`이 사용자 승인 동작, 범위, 기준선, Change Unit을 보존할 때까지 닫기를 차단합니다. |
 | `missing_sensitive_approval` | `sensitive_approval` | 필요한 별도 민감 동작 승인이 없습니다. |
 | `missing_cancellation_authority` | `user_action` | `intent=cancel`에 현재 `Task`, 범위 리비전, Change Unit에 묶이고 `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가진 현재 수락된 취소 `UserActionResolution`이 없습니다. |
 | `rejected_cancellation_authority` | `user_action` | 현재 로컬 사용자의 취소 `UserActionResolution`이 `intent=cancel`을 명시적으로 거부했습니다. |
 | `stale_cancellation_authority` | `user_action` | 취소 `UserActionResolution`은 있지만 그 `Task`, 범위 리비전, Change Unit 또는 유효 사용자 행동 근거가 더 이상 현재 상태가 아닙니다. |
 | `open_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 열려 있고 아직 해결되지 않았습니다. |
-| `expired_write_ticket` | `write_compatibility` | 선택된 `Task`의 쓰기 티켓이 선택적으로 설정된 `idle_timeout` 때문에 무효화됐고 해결되지 않았습니다. 고정 만료는 없습니다. |
-| `write_ticket_stale` | `write_compatibility` | 닫기 관련 티켓이 `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `task_closed`, `explicit_revoke` 같은 상태 결합 무효화 뒤에도 해결되지 않았습니다. 관련 없는 전역 상태 버전 증가는 이 차단 사유를 만들지 않습니다. |
 | `baseline_stale` | `baseline` | 닫기 관련 기준선 근거가 차단 사유 생성 경로에서 오래되었습니다. |
 | `guard_not_installed` | `connection_capability` | `detective` 닫기 경로에 검증된 연결에서 사용할 수 있는 호스트 훅 설치 기록이 없습니다. |
 | `guard_reload_required` | `connection_capability` | `detective` 호스트 훅 파일은 설치되어 있지만, Volicord가 설정된 훅을 관찰하려면 먼저 호스트를 다시 시작하거나 설정을 다시 불러와야 합니다. |
@@ -338,7 +341,7 @@ CloseTaskRequest:
 | 분기 | 생성 규칙 |
 |---|---|
 | `volicord.check_close` | 현재 닫기 준비 상태 차단 사유를 응답 관찰 데이터로 반환합니다. |
-| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 열려 있거나 만료된 미해결 쓰기 티켓, 미해결 미기록 변경, 호스트 훅 상태, `session-watch`, 호스트 훅이 감지한 쓰기 티켓 차단 사유가 포함됩니다. `detective`에서는 감시자가 `inactive`, `degraded`, `unavailable`, `disabled`이거나 일부만 관찰하면 `session_watch_unavailable`을 만듭니다. `record`에서는 감시 범위가 없음을 관찰되지 않는 범위로 보고하며, 그 자체로는 닫기 차단 사유가 아닙니다. |
+| `intent=complete` | 완료 경로가 닫기 준비 상태 평가에 도달했고 담당 문서가 정의한 닫기 요구사항이 해결되지 않았을 때 닫기 차단 사유를 만듭니다. 여기에는 활성이고 소비되지 않은 쓰기 티켓, 미해결 미기록 변경, 호스트 훅 상태, `session-watch`, 호스트 훅이 감지한 쓰기 티켓 차단 사유가 포함됩니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓 행은 그 자체로 차단하지 않습니다. `detective`에서는 감시자가 `inactive`, `degraded`, `unavailable`, `disabled`이거나 일부만 관찰하면 `session_watch_unavailable`을 만듭니다. `record`에서는 감시 범위가 없음을 관찰되지 않는 범위로 보고하며, 그 자체로는 닫기 차단 사유가 아닙니다. |
 | `intent=cancel` | 취소 권한 누락이나 비호환을 포함해 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 취소를 막지 않습니다. |
 | `intent=supersede` | 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거, 최종 수락, 잔여 위험 공백은 그 자체로 대체를 막지 않습니다. |
 

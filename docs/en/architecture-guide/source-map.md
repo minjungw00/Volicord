@@ -46,7 +46,7 @@ All source and test paths are relative to the repository root.
 | `crates/volicord-types/src/values.rs` | Controlled Rust enums and constants for documented value names. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifier wrappers and durable ID generation helpers. |
 | `crates/volicord-types/src/canonical.rs` | Deterministic canonical JSON serialization and request hashing. |
-| `crates/volicord-types/src/host_feature_support.rs` | Closed host-feature and final-output subcapability identifiers, reviewed host/version/client facts, canonical Codex version parsing, shared static implementation matrix, and single-feature support-state precedence consumed by adapters, diagnostics, and release validation. |
+| `crates/volicord-types/src/host_feature_support.rs` | Closed host-feature and final-output subcapability identifiers, host-kind implementation facts, reviewed version/client evidence coordinates, canonical Codex version parsing, shared static implementation matrix, and single-feature support-state precedence consumed by adapters, diagnostics, and release validation. |
 
 ## Platform filesystem facade
 

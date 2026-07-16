@@ -166,6 +166,13 @@ UTC 값은 시간 경계와 담당자가 정의한 시각을 나타내며 권한
 
 새 권한 변경이 커밋되면 현재 상태 보기 기록을 갱신하는 트랜잭션에서 영속 `authority_events` 행을 하나 이상 추가해야 합니다. 일반 변경은 권한 이벤트 하나를 추가합니다. 담당 문서가 이벤트 묶음을 명시하면 묶음의 모든 행이 해당 상태 전이로 생긴 하나의 `project_state.state_version`을 공유합니다.
 
+변경된 프로젝트 작업 흐름 정책 fingerprint는 하나의 일반 관리 권한 변경입니다. 이
+트랜잭션은 정책 행을 교체하고 상태 버전과 영속 UTC 하한을 전진시키며, 프로젝트 범위
+`project_workflow_policy_applied` 이벤트 하나를 추가하고, 필요한 활성 Task 재평가
+표시를 상향 병합합니다. 결과 표시가 아직 충족되지 않았으면 같은 트랜잭션에서 해당
+Task의 활성 티켓을 `explicit_revoke`로 무효화합니다. 같은 fingerprint를 다시 적용하는
+것은 효과 없는 데이터베이스 동작이며 이 효과를 어느 것도 만들지 않습니다.
+
 `tasks.state_version`은 기준 권한 필드가 아닙니다. 기준에 없는 `tasks.state_version` 열은 잘못된 저장소 형태입니다. 충돌, 최신성, 잠금, 쓰기 티켓의 근거로 사용하면 안 됩니다.
 
 관련 필드:
@@ -180,13 +187,13 @@ UTC 값은 시간 경계와 담당자가 정의한 시각을 나타내며 권한
 
 ## 쓰기 티켓
 
-쓰기 티켓은 호환되는 승인 product-file 쓰기 의도에 대해 소비 전까지 재사용 가능한 Volicord 권한입니다. OS 권한, OS 샌드박스, 파일시스템 ACL, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 실제 쓰기가 일어났다는 증거가 아닙니다.
+쓰기 티켓은 호환되는 승인 product-file 쓰기 의도 또는 유효 `sensitive` 통제 아래의 정확한 승인 결속 비제품 동작 하나에 대해 소비 전까지 재사용 가능한 Volicord 권한입니다. OS 권한, OS 샌드박스, 파일시스템 ACL, 네트워크 정책, 비밀값 격리, 전역 파일시스템 가로채기, 효과가 실제로 일어났다는 증거가 아닙니다.
 
 쓰기 티켓 발급과 호환되는 소비에는 일반 상태 버전 규칙이 적용됩니다.
 
 - 담당 문서가 정의한 메서드 분기만 쓰기 티켓 발급을 커밋할 수 있습니다.
-- prepare-write는 모든 유효성 좌표가 일치하고 기존 allowed prefix가 요청 prefix를 포함하며 denied prefix가 계속 적용되고 민감 권한이 같거나 더 강할 때 활성 미소비 티켓을 재사용할 수 있습니다.
-- 실제 product-file 쓰기에서만 행이 활성, 호환, 미소비, 미철회, 미무효화이고 선택적으로 설정된 idle 경계 안일 때 소비를 커밋할 수 있습니다.
+- prepare-write는 모든 유효성 좌표가 일치하고 기존 allowed prefix가 요청 prefix를 포함하며 denied prefix가 계속 적용되고 민감 권한이 같거나 더 강할 때 활성 미소비 티켓을 재사용할 수 있습니다. 민감 재사용에는 정규화된 동작과 일치하는 승인 resolution 정체성도 정확히 같아야 합니다.
+- 의도한 호환 product-file 쓰기 또는 정확한 승인 결속 비제품 민감 동작에서만 행이 활성, 미소비, 미철회, 미무효화이고 선택적으로 설정된 idle 경계 안일 때 소비를 커밋할 수 있습니다.
 - 관련 없는 상태 버전 증가는 티켓을 무효화하지 않습니다. 명시적 무효화 사유는 `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, `explicit_revoke`입니다.
 - 거부, `dry_run`, 재실행 전용 분기에서는 발급하거나 소비하지 않습니다.
 
@@ -286,21 +293,27 @@ database를 읽기 전용으로 열고 전체 v6 형태와 타입이 지정된 o
 replay 식별자, 사용자 권한, 잔여 위험 결정, 기준 Evidence/judgment hash, 영속 관계를
 보존합니다. 기존 `advisor`는 `observe`, `direct`와 `work`는 보수적으로 `tracked`로
 매핑합니다. 기존 acceptance outcome은 보존합니다. 초기 v2 정책 복사본은 보수적인
-tracked 기본값을 사용합니다. v6 사실이 변경을 결정적으로 확정할 때만 관찰 기반
+tracked 기본값을 사용하면서 기존의 관리 대상 host, profile, connection, guard, MCP,
+hook 바인딩과 그 source Runtime Home을 그대로 유지합니다. 변환은 이 바인딩을
+destination 바인딩으로 재해석하지 않습니다. 관리자는 별도 활성화 단계에서 destination
+Runtime Home으로 명시적으로 재바인딩해야 합니다. v6 사실이 변경을 결정적으로 확정할 때만 관찰 기반
 confidence를 두 영역에서 따로 변환합니다. 복사한 `unrecorded_changes` 행은 v6 사실이
 제품 변경을 결정적으로 확정할 때만 `UnrecordedChangeConfidence::Confirmed`, 그 밖에는
 `Suspected`를 사용합니다. 복사한 기존 Detective 평가의 `guard_events.result_json`은 v6
 source 사실이 해당 수준을 입증할 때만 `ObservationConfidence::Confirmed` 또는
 `Structured`를 사용하고 그 밖에는 `Heuristic`으로 표시합니다. 두 영역은 서로의 값
-집합을 빌려 쓰지 않습니다. 활성 v6 쓰기 티켓은
-모두 `invalidation_reason=explicit_revoke`인 revoked 상태로 복사하고 소비된 티켓/Run
-연결은 보존합니다.
+집합을 빌려 쓰지 않습니다. 활성, 만료, stale v6 쓰기 티켓은 모두
+`invalidation_reason=explicit_revoke`인 revoked 상태로 복사하고 소비된 티켓/Run 연결은
+보존합니다. 기존의 고정 `expires_at`은 의미가 다른 v7 `idle_expires_at`으로 옮기지
+않습니다. `idle_expires_at`은 `null`이고, 기존 timestamp의 정확한 값은 티켓 metadata의
+변환 provenance로 남깁니다.
 
 성공을 보고하기 전에 converter는 foreign key, table과 대상 row count, 식별자 보존,
 기준 JSON, 정책/record fingerprint, Evidence/judgment hash, 티켓 변환, source 불변성을
 검증하고 크기가 제한된 변환 report를 만듭니다. 실패하면 source는 그대로이고
 destination은 수락되지 않습니다. 일부 output을 성공한 v7 store로 취급하면 안 됩니다.
-활성화는 별도 관리 동작입니다.
+활성화는 사용 대상을 전환하기 전에 destination Runtime Home으로 명시적으로 재바인딩하는
+별도 관리 동작입니다.
 
 ## 실패와 재시도
 
