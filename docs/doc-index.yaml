@@ -50,7 +50,7 @@ owner_areas:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
   volicord_workspace_0_2:
-    description: Volicord workspace package version 0.9.0, as declared by the workspace `Cargo.toml`.
+    description: Volicord workspace package version 0.9.1, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
@@ -1402,8 +1402,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -2195,8 +2195,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-17'
+  last_verified_on: '2026-07-17'
   applies_to:
   - volicord_workspace_0_2
   - storage_baseline_sqlite_v6
