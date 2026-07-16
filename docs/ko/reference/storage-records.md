@@ -110,7 +110,7 @@ API 스키마 형태와 저장소 기록 구조는 서로 다른 담당 문서�
 | `state.sqlite` | `user_action_resolutions` | 변경 불가능한 User Channel resolution | 요청당 최대 하나이며 폐쇄형 종류 일치 본문, channel kind와 크기가 제한된 visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, Core 캡처 시각을 담습니다. Choice 사실 또는 전체 관찰 detail은 본문에 남습니다. |
 | `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | 요청, connection, expiry, capture basis, 정확한 fallback 종류·`delivery_surface=model_invisible_user_surface`·endpoint·canonical-form digest를 담은 폐쇄형 생성 metadata에 결속된 hash-only 일회성 local-web token. |
 | `state.sqlite` | `project_continuity_records` | 프로젝트 연속성 맥락 | 원천 `Task`가 닫힌 뒤에도 주소 지정할 수 있게 남는 프로젝트 수준 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약. |
-| `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 소비 전까지 재사용 가능한 권한이며 감사 근거 버전, 명시적 validity-basis JSON, path prefix, nullable idle 경계, 안정된 무효화 사유, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장합니다. |
+| `state.sqlite` | `write_tickets` | 쓰기 티켓 권한 | 소비 전까지 재사용 가능한 권한이며 감사 근거 버전, 명시적인 정책 결속 validity-basis JSON, path prefix, nullable idle 경계, 안정된 무효화 사유, 행위자 출처, 선택적 원천 판단, 소비 상태를 저장합니다. |
 | `state.sqlite` | `session_end_receipts` | Session-end 권한 receipt | 관리 세션, 선택적 활성 Task, 닫힌 Task 상태, 크기가 제한된 close-blocker code, 다음 actor, `completion_claim_allowed`, 권한 refresh 성공 여부, timestamp를 저장합니다. |
 | `state.sqlite` | `runs` | 실행 또는 관찰 기록 | 커밋된 실행 또는 관찰 기록, 선택적 호환 쓰기 티켓 소비, 행위자 출처, 간결한 증거 갱신. |
 | `state.sqlite`와 `artifacts/tmp/` | `artifact_staging` | 임시 아티팩트 스테이징 | 스테이징된 핸들 메타데이터, 생성자 행위자 출처, 안전한 스테이징 사실, 임시 바이트 또는 알림. |
@@ -497,16 +497,24 @@ Confidence는 status와 독립적입니다. 미해결 `confirmed` 행은 닫기 
 기준 JSON, 버전, 지문, source를 함께 저장합니다. 파일 탐색, 명령 문법, 호스트 적용은
 이 기록 계약이 아니라 관리 담당 문서가 담당합니다.
 
-변경된 정책 때문에 활성 Task를 나중에 높여야 하면
+Store는 쓰기 권한 부여, 상향, 쓰기 전 필수 승인, 티켓 유효성을 바꿀 수 있는 정책
+필드에서 정규화된 쓰기 권한 fingerprint를 파생합니다.
+`write_tickets.validity_basis_json`은 이 결속을 저장합니다. 파생 fingerprint가 바뀌면
+정책 트랜잭션은 결속이 없거나 새 fingerprint와 일치하지 않는 모든 활성 티켓을
+`explicit_revoke`로 무효화합니다. 소비된 티켓과 그 밖의 과거 행은 바꾸지 않고 계속
+조회할 수 있습니다.
+
+활성 Task가 있는 모든 쓰기 권한 변경에서
 `tasks.metadata_json.policy_control_reevaluation`은 정확히 닫힌 객체
 `{policy_version, policy_fingerprint, required_effective_control_level,
 required_acceptance_policy?, marked_at}`입니다. 필수 통제 수준은 `observe`, `light`,
 `tracked`, `sensitive` 중 하나이고, 선택적 필수 수락 정책은 `not_required`,
 `policy_dependent`, `required` 중 하나입니다. 버전은 양수이며 fingerprint는 canonical이고
 `marked_at`은 정책 커밋의 `committed_at`입니다. Store는 각 축에서 기존 요구사항과 새로
-파생한 요구사항 중 더 강한 것을 보존하며, 같은 트랜잭션에서 두 요구사항을 모두 충족할
-때만 이 구성원을 제거합니다. 충족되지 않은 표시를 만들거나 보존하면 정책 트랜잭션에서
-해당 Task의 모든 활성 티켓도 `explicit_revoke`로 무효화합니다.
+파생한 요구사항 중 더 강한 것을 보존합니다. 현재 Task 필드가 이미 그 수준과 같아도
+다음 쓰기 호환 Core 커밋이 현재 정책을 다시 평가하도록 표시를 남깁니다. 그 커밋은 두
+요구사항을 모두 충족한 뒤에만 표시를 제거합니다. 정책 트랜잭션은 표시된 Task의 모든
+활성 티켓도 `explicit_revoke`로 무효화합니다.
 
 `authority_events.task_id`는 일반적으로 필수입니다. 정확한
 `project_workflow_policy_applied` 이벤트는 프로젝트 범위이므로 `task_id`와
@@ -738,7 +746,7 @@ JSON을 저장하는 SQLite `TEXT` 열은 저장 표현 선택일 뿐이며 임�
 | `user_action_resolutions` | 폐쇄형 불변 resolution 본문, channel kind와 크기가 제한된 visible-ASCII submission ID, 파생 actor/verification/assurance, Core 캡처 시각, 선택적 비공개 note, choice 또는 Evidence 관찰 detail. Local-web 행은 파생 digest identity만 저장하며 원문 token은 저장하지 않습니다. |
 | `user_action_channel_tokens` | 요청 결합 local-web hash-token lifecycle, capture basis, 폐쇄형 delivery-surface 생성 metadata. |
 | `project_continuity_records` | 오래 유지하는 프로젝트 맥락을 위한 적용 대상 경로, 적용 대상 참조, 원천 참조, 아티팩트 참조, 대체된 참조, 검토 트리거, 비권한 메타데이터. |
-| `write_tickets` | 상태 결합 유효성 좌표, 정규화된 exact-or-descendant path prefix, 감사 순서, 선택적 idle 경계, 안정된 무효화 사유, 시도 범위, 비권한 메타데이터. Denied prefix가 우선하며 wildcard 문법은 저장하지 않습니다. |
+| `write_tickets` | 정규화된 프로젝트 쓰기 권한 fingerprint를 포함한 상태 결합 유효성 좌표, 정규화된 exact-or-descendant path prefix, 감사 순서, 선택적 idle 경계, 안정된 무효화 사유, 시도 범위, 비권한 메타데이터. Denied prefix가 우선하며 wildcard 문법은 저장하지 않습니다. Fingerprint가 없는 값도 과거 조회를 위해 디코딩하지만 활성 티켓에는 유효하지 않습니다. |
 | `runs` | 요약, 관찰된 변경, 증거 갱신, 쓰기 티켓 효과 데이터, 비권한 메타데이터. |
 | `artifact_staging` | 스테이징된 아티팩트 데이터, 안전 메타데이터, 비권한 메타데이터. |
 | `evidence_capture_intents` | 정확한 target/capture JSON, command/tool input digest 또는 Core가 파생한 connection source-selector digest, 예상 outcome, 등록 session 및 Git workspace 근거, actor/connection provenance, 만료, 비권한 메타데이터. Connection capture JSON에는 미래 source ID, observation timestamp, snapshot digest, raw-event digest가 없습니다. |

@@ -339,8 +339,11 @@ page 단위 과거 형태는 대기 요청에 대해 요청 ID, 과거 `pending`
 ### Detective 관찰 confidence와 종료
 
 Detective가 하드 deny할 수 있는 경우는 호스트가 구조화한 결정적 직접 Product Repository
-쓰기이고 구체적인 정규화 경로가 confirmed이며, 현재 Task, 정확히 하나의 일치하는 활성
-쓰기 티켓, 티켓 범위, 필요한 sensitive 승인이 누락된 때뿐입니다. 셸 텍스트, 넓은 명령
+쓰기이고 구체적인 정규화 경로가 confirmed이며, 현재 Task, 현재 정규화된 프로젝트 쓰기
+권한에 결속된 정확히 하나의 일치 활성 쓰기 티켓, 티켓 범위, 필요한 sensitive 승인이
+누락된 때뿐입니다. 결속이 없거나 stale인 티켓만 알려진 경로를 덮는
+결정적 confirmed 쓰기는 정책 새로 고침을 위해 하드 deny합니다. uncertain 셸 효과 경고로
+분류하지 않습니다. 셸 텍스트, 넓은 명령
 이름, 누락된 감시기 데이터, 모호한 대상, heuristic 추론은 uncertain입니다. 경고는 만들 수
 있지만 하드 보안 주장이나 정상 작업 deny의 근거가 될 수 없습니다.
 

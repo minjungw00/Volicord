@@ -101,6 +101,7 @@ baseline_mismatch
 operation_mismatch
 workspace_mismatch
 approval_basis_mismatch
+policy_authority_mismatch
 sensitive_category_mismatch
 path_mismatch
 ```
@@ -109,6 +110,8 @@ path_mismatch
 무효화 사유입니다. `*_mismatch`, `consumed`, `revoked`, `incompatible`는 시도 시점
 비호환을 식별합니다. 공개 코드는 `WRITE_TICKET_INVALID`를 유지합니다. 전역
 `basis_state_version` 불일치는 무효가 아니므로 보조 값이 없습니다.
+`policy_authority_mismatch`는 활성 티켓 결속이 없거나 현재 정규화된 프로젝트 쓰기
+권한 fingerprint와 일치하지 않는다는 뜻입니다.
 
 <a id="artifact-input-error-reason"></a>
 

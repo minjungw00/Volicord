@@ -315,6 +315,9 @@ Ticket-backed recording consumes the write ticket only when:
 - its `WriteTicketValidityBasis` still matches the current `task_id`,
   `change_unit_id`, `scope_revision`, baseline, workspace digest, and approval
   basis refs
+- its non-null `write_authority_fingerprint` exactly matches the fingerprint
+  independently reloaded from the current authoritative project policy; the
+  Store rechecks the same binding inside the ticket-consumption transaction
 - it has not crossed a project-policy-selected optional `idle_expires_at`; the
   default idle timeout is `null`
 - the ticket and its `WriteTicketAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
@@ -413,6 +416,7 @@ Returns `ToolRejectedResponse` for:
 - an `advisor` request that reports a product-file write, non-empty changed paths, or a non-null write ticket
 - stale `expected_state_version`
 - invalidated write-ticket validity basis
+- missing or mismatched write-ticket policy-authority binding
 - stale or mismatched current Git workspace context
 - missing or invalid write ticket for product writes
 - write ticket invalidated by optional idle timeout
@@ -436,6 +440,16 @@ Non-claim: invalid staged handles are validation failures with artifact-input de
 Public error code meaning, precedence, details, and rejected-response routing are owned by the error documents linked below.
 
 For an invalidated write-ticket basis, rejection happens before consumption and creates no Run, evidence update, evidence observation, artifact link, artifact promotion, event, replay row, or `project_state.state_version` increment.
+
+An otherwise active ticket whose policy-authority binding is missing or
+mismatched returns
+`WRITE_TICKET_INVALID` with
+`ToolError.details.write_ticket_reason=policy_authority_mismatch`; it does not
+consume the ticket or record an authorized Run. This check does not rely on
+Guard having observed or denied the write. Normal policy application first
+persists `status=invalidated,invalidation_reason=explicit_revoke`, so a later
+attempt against that already-invalidated row reports `explicit_revoke` by
+status precedence.
 
 A missing required or mismatched `performed_operation` likewise rejects before
 ticket consumption and creates none of those effects.

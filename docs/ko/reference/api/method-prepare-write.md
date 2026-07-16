@@ -90,8 +90,9 @@ PrepareWriteRequest:
 - 모드가 `direct` 또는 `work`이고 `work_phase=implementation`인 현재 Task. `advisor`와 shaping은 쓰기 준비와 호환되지 않습니다.
 - 현재 유효 통제 수준. `observe`는 제품 파일 쓰기와 호환되지 않습니다. 유효
   `sensitive` Task는 제품 파일 쓰기가 없는 Run에도 정확한 티켓 결속 동작 근거가
-  필요합니다. 티켓을 고르기 전에 Core는 보류 중인 상향 전용 정책 재평가를 적용하며 정책 완화로
-  활성 `Task`를 낮추지 않습니다.
+  필요합니다. 티켓을 고르기 전에 Core는 활성 Task를 낮추지 않으면서 보류 중인 정책
+  재평가를 적용합니다. 여기에는 더 강한 통제·수락 요구사항뿐 아니라 같은 수준의 쓰기
+  권한 변경도 포함됩니다.
 - `light`에서는 모든 intended path가 허용된 정규화 저장소 상대 prefix 안에 있고
   거부 prefix에는 없어야 합니다. Prefix는 정확한 경로나 하위 경로와 일치하며
   wildcard/glob 문법, 절대 경로, 빈 항목, `..`, 모호한 형태는 유효하지 않습니다.
@@ -177,8 +178,15 @@ PrepareWriteRequest:
 - 재실행을 사용하려면 현재 검증된 호출이 원래 재실행 행에 포착된 선택적 Git 작업 공간 맥락을 정확히 유지해야 합니다. 맥락이 달라지거나 새로 없어지거나 생기면 저장된 허용 응답이나 그 쓰기 티켓을 노출하지 않고 `INVOCATION_CONTEXT_MISMATCH`를 반환합니다.
 - 쓰기 티켓은 정규화된 저장소 상대 `intended_paths`를 사용하는 `WriteTicketScope`에 묶입니다.
 - `write_ticket.validity_basis`는 `Task`, Change Unit, `scope_revision`, 기준선,
-  선택적 workspace digest, 승인 근거 참조를 보고합니다.
+  선택적 workspace digest, 현재 정규화된 프로젝트 쓰기 권한 fingerprint, 승인 근거
+  참조를 보고합니다.
   `basis_state_version`은 감사 전용입니다.
+- Core는 발급이나 재사용 전에 요청 경로를 현재 권위 정책으로 다시 평가합니다.
+  재사용에는 null이 아닌 `write_authority_fingerprint`의 정확한 일치가 필요합니다.
+  결속이 없거나 일치하지 않는 티켓을 오래된 티켓으로 선택한 경우, 현재 결과가 허용이든
+  비허용이든 커밋된 non-dry-run 판단에서 `explicit_revoke`로 무효화합니다. 거절 및
+  dry-run 경로는 그 티켓을 변경하지 않습니다. 오래된 티켓으로 과거 Light 분류를
+  유지하여 현재 Sensitive 판단이나 승인 요구를 우회할 수 없습니다.
 - `active_user_action_refs`는 별도 `sensitive_approval`을 포함해 쓰기 선행조건을 만족하는 현재 `accepted` 결과의 사용자 소유 판단을 가리킬 수 있습니다.
 
 ## 차단 결과

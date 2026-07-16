@@ -2270,6 +2270,35 @@ fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
     let status_write_summary = status.response_value["write_ticket_summary"].clone();
     response_write_summary["guarantee_display"] = status_write_summary["guarantee_display"].clone();
     assert_eq!(status_write_summary, response_write_summary);
+
+    mutate_write_ticket_validity_basis_json(&harness, &write_ticket_id, |basis| {
+        basis
+            .as_object_mut()
+            .expect("validity basis should be an object")
+            .remove("write_authority_fingerprint");
+    })?;
+    let legacy_status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_run_write_legacy_consumed_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        legacy_status.response_value["write_ticket_summary"]["status"],
+        "consumed"
+    );
+    assert_eq!(
+        legacy_status.response_value["write_ticket_summary"]["write_ticket_ref"]["record_id"],
+        write_ticket_id
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
     assert_eq!(after.write_tickets, before.write_tickets);
@@ -2863,6 +2892,109 @@ fn record_run_rejects_write_ticket_baseline_mismatch_without_consumption(
     )?;
 
     assert_write_ticket_invalid_reason(&response, "baseline_mismatch");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_missing_write_authority_binding_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_missing_policy_binding")?;
+    let write_ticket_id = prepare_write_ticket(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "run_missing_policy_binding",
+    )?;
+    mutate_write_ticket_validity_basis_json(&harness, &write_ticket_id, |basis| {
+        basis
+            .as_object_mut()
+            .expect("validity basis should be an object")
+            .remove("write_authority_fingerprint");
+    })?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_missing_policy_binding",
+            "idem_run_missing_policy_binding",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_missing_policy_binding",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_write_ticket_invalid_reason(&response, "policy_authority_mismatch");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_missing_policy_binding",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        status.response_value["write_ticket_summary"]["status"],
+        "invalidated"
+    );
+    assert_eq!(
+        status.response_value["write_ticket_summary"]["invalidation_reason"],
+        "explicit_revoke"
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_mismatched_write_authority_binding_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_mismatched_policy_binding")?;
+    let write_ticket_id = prepare_write_ticket(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "run_mismatched_policy_binding",
+    )?;
+    mutate_write_ticket_validity_basis_json(&harness, &write_ticket_id, |basis| {
+        basis["write_authority_fingerprint"] =
+            json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+    })?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_run(
+        product_write_record_run_request(
+            "req_run_mismatched_policy_binding",
+            "idem_run_mismatched_policy_binding",
+            3,
+            &task_id,
+            &change_unit_id,
+            &write_ticket_id,
+            "run_mismatched_policy_binding",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_write_ticket_invalid_reason(&response, "policy_authority_mismatch");
     assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
     assert_eq!(harness.counts()?, before);
     Ok(())

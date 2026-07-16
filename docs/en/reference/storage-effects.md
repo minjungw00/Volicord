@@ -315,11 +315,17 @@ Those stored reasons are not:
 
 Project-policy application atomically writes the authoritative
 `project_workflow_policies` v2 copy, monotonic version, canonical JSON,
-fingerprint, and source, then reevaluates active Tasks upward only. It never
-silently lowers effective control. When it creates or preserves an unsatisfied
-active-Task reevaluation mark, the same transaction invalidates all active
-tickets for that Task with `explicit_revoke`. Exact command, file, and host
-behavior is an administrative-owner concern.
+fingerprint, and source. It also derives the normalized write-authority
+fingerprint. When that fingerprint changes, the same transaction invalidates
+with `explicit_revoke` every active ticket with a missing or different stored
+binding, creates or updates the active Task's reevaluation mark even when its
+current control and acceptance levels already satisfy the new minimums, and
+also invalidates with `explicit_revoke` every active ticket for that marked
+Task. It never silently
+lowers effective control. A canonically identical policy, or a changed policy
+whose normalized write-authority fingerprint is unchanged, has no ticket
+invalidation effect solely because policy apply ran. Exact command, file, and
+host behavior is an administrative-owner concern.
 
 Workflow metrics writes store aggregate counters, durations, serialized tool
 byte counts, and categorical outcomes only. Session-end recording stores a
@@ -483,6 +489,15 @@ the event/replay/state-version effects still occur exactly once. Neither this
 increment nor an unrelated Core mutation invalidates the ticket. A non-allow
 decision does not revoke unrelated active tickets.
 
+Issue stores the current normalized project write-authority fingerprint in
+`validity_basis_json`. Reuse requires an exact non-null match to that current
+fingerprint. On any committed non-dry-run decision, every active ticket selected
+as stale because its binding is missing or different is atomically set to
+`status=invalidated,invalidation_reason=explicit_revoke`. An allowed decision
+does so before issuing the new current ticket; a committed non-allow decision
+persists the invalidation without issuing a replacement. Rejected and dry-run
+paths do not mutate the legacy row; it remains dynamically unusable.
+
 Idempotent replay returns the stored original response under [Storage Versioning](storage-versioning.md) and does not repeat these effects.
 
 Committed non-allowed decisions:
@@ -633,8 +648,8 @@ its exact approval-bound ticket so close retains a Core-derived sensitive-action
 basis.
 Consumption, Run insertion, and all evidence/artifact effects are one atomic
 commit. Rejection records no consumption. `basis_state_version` is audit-only;
-validity uses the stored Task/Change Unit/scope/baseline/workspace/approval
-basis, status, and optional idle timeout.
+validity uses the stored Task/Change Unit/scope/baseline/workspace/current
+project write-authority/approval basis, status, and optional idle timeout.
 
 No-effect branches:
 
@@ -670,6 +685,13 @@ Write-ticket consumption boundary:
   or an effective `sensitive` Run that records its exact approved non-product
   action, storage may consume the compatible `write_tickets` row in the same
   commit.
+- Core reloads and verifies the current normalized write-authority fingerprint
+  before planning consumption. Inside the commit transaction, Store rereads the
+  policy and requires the active ticket's durable binding and the planned
+  expected binding to match it. If policy authority changes between planning
+  and consumption, the transaction rolls back: it consumes no ticket and
+  creates no Run, evidence, artifact, event, replay row, or state-version
+  effect.
 - Test evidence persistence can promote staged artifacts, update evidence, and record evidence observations without implying a product file write observation.
 - Exact run classification belongs to the [`volicord.record_run` method](api/method-record-run.md).
 

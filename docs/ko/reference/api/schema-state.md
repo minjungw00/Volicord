@@ -754,6 +754,7 @@ WriteTicketValidityBasis:
   scope_revision: integer
   baseline_ref: string | null
   workspace_context_sha256: string | null
+  write_authority_fingerprint: string | null
   approval_basis_refs: StateRecordRef[]
 
 WriteTicketScope:
@@ -820,6 +821,15 @@ WriteDecisionReason:
 - `WriteTicket.validity_basis`, 소비 상태, 선택적 idle timeout, 무효화 사유가
   유효성을 결정합니다. `basis_state_version`은 감사 순서만 기록하며 관련 없는 상태
   버전 증가는 티켓을 무효화하지 않습니다.
+- `WriteTicketValidityBasis.write_authority_fingerprint`는 정확한 정규화 객체
+  `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`를
+  canonical JSON으로 만든 뒤 계산한 `sha256:` 접두사 SHA-256입니다. 각 값은 대응하는
+  `workflow` 정책 필드에서 가져오고 두 패턴 배열은 canonicalization 전에 정렬하고 중복을
+  제거합니다. 쓰기 권한 판단에서 참조하지 않는 detective, host, connection,
+  integration binding 필드는 제외합니다. 따라서 패턴 순서와 중복 항목은 digest를 바꾸지
+  않습니다. 새로 발급되는 활성 티켓은 항상 현재 digest를 담습니다. `null`은 과거 기록
+  디코딩만 지원하며 활성 선택이나 소비에 유효한
+  결속이 아닙니다. 과거에 소비된 티켓은 계속 조회할 수 있습니다.
 - `WriteTicket.observed_paths`는 기준 범위에서 비어 있습니다. `detective` 호스트 훅과 세션 감시기 관찰은 티켓에 다시 쓰지 않고 호스트 관찰 및 미기록 변경 기록으로 남깁니다.
 - `WriteTicket.control_surface`와 `WriteTicket.guarantee_display`는 현재 Volicord 관찰 요약과 보장 문구를 공개합니다. OS 수준 파일시스템 집행을 주장하지 않습니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
@@ -860,7 +870,7 @@ WriteDecisionReason:
 | `path_patterns` | `WriteTicketPathPatterns`. | 티켓 결정에 대한 허용·거부 정규화 `Product Repository` 경로 패턴을 포착합니다. |
 | `observed_paths` | 정규화된 `Product Repository` 경로 문자열. | 담당 문서가 정의한 `detective` 경로가 관찰을 티켓에 연결했을 때만 관찰된 경로를 나열합니다. 연결된 관찰이 없으면 `[]`를 사용합니다. |
 | `basis_state_version` | 상태 시계 값. | 발급 또는 재사용 때 포착한 감사 순서이며 티켓 유효성 좌표가 아닙니다. |
-| `validity_basis` | `WriteTicketValidityBasis`. | 상태 결합 재사용과 무효화에 사용하는 정확한 Task, Change Unit, 범위, 기준선, workspace, 승인 좌표입니다. |
+| `validity_basis` | `WriteTicketValidityBasis`. | 상태 결합 재사용과 무효화에 사용하는 정확한 Task, Change Unit, 범위, 기준선, workspace, 프로젝트 쓰기 권한, 승인 좌표입니다. |
 | `invalidation_reason` | 제어되는 무효화 사유 또는 `null`. | 티켓이 무효화될 때 기록하는 안정된 사유입니다. |
 | `idle_expires_at` | UTC 타임스탬프 또는 `null`. | 선택적 프로젝트 정책 idle 경계입니다. `null`은 idle timeout이 없다는 뜻이며 고정 기본 수명은 없습니다. |
 | `control_surface` | `ControlSurfaceSummary | null`. | 현재 Volicord 제어 표면 공개입니다. |

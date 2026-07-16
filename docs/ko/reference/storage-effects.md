@@ -308,10 +308,14 @@ Core 상태 변경, 재실행 행, 권한 이벤트, 닫기 상태 변경,
 - 닫기 차단 사유 기록.
 
 프로젝트 정책 적용은 권위 있는 `project_workflow_policies` v2 복사본, 단조 증가
-버전, 기준 JSON, 지문, source를 원자적으로 쓰고 활성 Task를 위쪽으로만 다시
-평가합니다. 유효 통제 수준을 조용히 낮추지 않습니다. 충족되지 않은 활성 Task 재평가
-표시를 만들거나 보존하면 같은 트랜잭션에서 해당 Task의 모든 활성 티켓을
-`explicit_revoke`로 무효화합니다. 정확한 명령, 파일, host 동작은 관리 담당 문서의 관심사입니다.
+버전, 기준 JSON, 지문, source를 원자적으로 쓰고 정규화된 쓰기 권한 fingerprint도
+파생합니다. 이 fingerprint가 바뀌면 같은 트랜잭션에서 저장 결속이 없거나 다른 모든
+활성 티켓을 `explicit_revoke`로 무효화하고, 현재 통제 수준과 수락 수준이 이미 새
+최솟값을 충족해도 활성 Task 재평가 표시를 만들거나 갱신하며, 표시된 Task의 모든
+활성 티켓도 `explicit_revoke`로 무효화합니다. 유효 통제 수준을
+조용히 낮추지 않습니다. Canonical 정책이 같거나 변경된 정책의 정규화된 쓰기 권한
+fingerprint가 같으면 정책 적용을 실행했다는 이유만으로 티켓을 무효화하지 않습니다.
+정확한 명령, 파일, host 동작은 관리 담당 문서의 관심사입니다.
 
 Workflow metric 쓰기는 집계 counter, duration, 직렬화 tool byte 수, 범주형
 outcome만 저장합니다. Session-end 기록은 크기가 제한된 권한 receipt를 저장합니다.
@@ -474,6 +478,15 @@ prompt, file, answer, command 본문을 저장하지 않습니다.
 이벤트/재실행/상태 버전 효과는 정확히 한 번 발생합니다. 이 증가나 관련 없는 Core
 변경은 티켓을 무효화하지 않습니다. 비허용 판단은 관련 없는 활성 티켓을 철회하지 않습니다.
 
+발급은 현재 정규화된 프로젝트 쓰기 권한 fingerprint를 `validity_basis_json`에
+저장합니다. 재사용에는 null이 아닌 현재 fingerprint의 정확한 일치가 필요합니다.
+커밋된 모든 non-dry-run 판단에서는 결속이 없거나 달라 오래된 티켓으로 선택된 모든
+활성 티켓을 원자적으로
+`status=invalidated,invalidation_reason=explicit_revoke`로 바꿉니다. 허용 판단은 새
+현재 티켓을 발급하기 전에 무효화하고, 커밋된 비허용 판단은 교체 티켓을 발급하지 않은 채
+무효화를 영속합니다. 거절 및 dry-run 경로는 과거 행을 바꾸지 않으며 그 행은 동적으로
+사용할 수 없는 상태로 남습니다.
+
 멱등 재실행은 [저장소 버전 관리](storage-versioning.md)에 따라 저장된 원래 응답을 반환하며, 이러한 효과를 반복하지 않습니다.
 
 커밋되는 비허용 판단:
@@ -621,7 +634,8 @@ staged safe JSON bytes만 transient이며, 승격은 producer 감사 chain이 �
 Core가 파생한 민감 동작 근거를 닫기까지 보존합니다.
 소비, Run 삽입, 모든 증거/아티팩트 효과는 하나의 원자적 커밋입니다. 거절은 소비를
 기록하지 않습니다. `basis_state_version`은 감사 전용이며 유효성은 저장된
-Task/Change Unit/범위/기준선/workspace/승인 근거, 상태, 선택적 idle timeout을 사용합니다.
+Task/Change Unit/범위/기준선/workspace/현재 프로젝트 쓰기 권한/승인 근거, 상태, 선택적
+idle timeout을 사용합니다.
 
 효과가 없는 분기:
 
@@ -656,6 +670,11 @@ Task/Change Unit/범위/기준선/workspace/승인 근거, 상태, 선택적 idl
 - 메서드 담당 문서가 제품 파일 쓰기를 기록하는 커밋된 실행 또는 유효 `sensitive`
   Run의 정확한 승인 비제품 동작 기록을 허용할 때 저장소는 같은 커밋에서 호환되는
   `write_tickets` 행을 소비할 수 있습니다.
+- Core는 소비를 계획하기 전에 현재 정규화된 쓰기 권한 fingerprint를 다시 읽고
+  검증합니다. 커밋 트랜잭션 안에서 Store는 정책을 다시 읽어 활성 티켓의 영속 결속과
+  계획 시 예상 결속이 모두 일치하는지 확인합니다. 계획과 소비 사이에 정책 권한이
+  바뀌면 트랜잭션 전체를 롤백하여 티켓을 소비하지 않고 Run, 증거, 아티팩트, 이벤트,
+  재실행 행, 상태 버전 효과를 만들지 않습니다.
 - 테스트 증거 영속 저장은 제품 파일 쓰기 관찰을 뜻하지 않으면서도 스테이징된 아티팩트를 승격하고 증거를 갱신하며 증거 관찰을 기록할 수 있습니다.
 - 정확한 실행 분류는 [`volicord.record_run` 메서드](api/method-record-run.md)가 담당합니다.
 

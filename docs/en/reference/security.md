@@ -363,8 +363,11 @@ Must not claim:
 
 Detective may hard-deny only a deterministic, host-structured direct Product
 Repository write whose concrete normalized paths are confirmed and whose
-current Task, exactly one matching active write ticket, ticket scope, or
-required sensitive approval is missing. Shell text, a broad command name,
+current Task, exactly one matching active ticket bound to the current normalized
+project write authority, ticket scope, or required sensitive approval is
+missing. A deterministic confirmed known-path write covered only by a ticket
+with a missing or stale policy binding is hard-denied for policy refresh; it is
+not an uncertain shell-effect warning. Shell text, a broad command name,
 missing watcher data, an ambiguous target, or a heuristic inference is
 uncertain and can produce a warning, not a hard security claim or ordinary-work
 denial.

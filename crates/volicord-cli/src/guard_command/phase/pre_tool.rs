@@ -91,14 +91,19 @@ fn pre_tool_decision(
                 message: "Product-file writes require an active Volicord task.".to_owned(),
                 severity: "deny",
             });
-        } else if summary.policy_control_reevaluation.is_some() {
-            reasons.push(GuardReason {
-                code: "policy_control_reevaluation_required",
-                message: "Project policy now requires the active Task's control level or acceptance policy to be reevaluated. Run `volicord.prepare_write` again before this Product Repository write so Core can apply the stronger policy and issue a current write ticket.".to_owned(),
-                severity: "deny",
-            });
         } else {
-            match write_ticket_coverage(summary, observation) {
+            let coverage = write_ticket_coverage(summary, observation);
+            match coverage {
+                WriteTicketCoverage::PolicyAuthorityStale { .. } => reasons.push(GuardReason {
+                    code: "write_ticket_policy_changed",
+                    message: "Project workflow policy changed after the previously covering write ticket was issued, or that ticket lacks a current policy-authority binding. Run `volicord.prepare_write` again to reevaluate the paths and obtain current authorization before this Product Repository write.".to_owned(),
+                    severity: "deny",
+                }),
+                _ if summary.policy_control_reevaluation.is_some() => reasons.push(GuardReason {
+                    code: "policy_control_reevaluation_required",
+                    message: "Project policy now requires the active Task's control level or acceptance policy to be reevaluated. Run `volicord.prepare_write` again before this Product Repository write so Core can apply the stronger policy and issue a current write ticket.".to_owned(),
+                    severity: "deny",
+                }),
                 WriteTicketCoverage::NotWriteLike => {}
                 WriteTicketCoverage::TicketBacked { ticket, .. } => {
                     if ticket.workspace_validity_uncertain {

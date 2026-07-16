@@ -762,6 +762,7 @@ WriteTicketValidityBasis:
   scope_revision: integer
   baseline_ref: string | null
   workspace_context_sha256: string | null
+  write_authority_fingerprint: string | null
   approval_basis_refs: StateRecordRef[]
 
 WriteTicketScope:
@@ -831,6 +832,18 @@ Meaning:
 - `WriteTicket.validity_basis`, consumption state, optional idle timeout, and
   invalidation reason determine validity. `basis_state_version` records audit
   order only; an unrelated state-version increment never invalidates a ticket.
+- `WriteTicketValidityBasis.write_authority_fingerprint` is canonical-JSON
+  SHA-256 with the `sha256:` prefix over the exact normalized object
+  `{schema:"volicord-write-authority-v1",default_direct_control,default_work_control,light:{enabled,max_intended_paths,allowed_path_patterns,denied_path_patterns,final_acceptance},write_ticket:{idle_timeout_minutes}}`.
+  The values come from the corresponding `workflow` policy fields, and both
+  pattern arrays are sorted and deduplicated before canonicalization.
+  Detective, host, connection, and integration-binding fields are excluded
+  because write authorization does not consult them. Pattern order and
+  duplicate entries therefore do not change the digest. A newly issued active
+  ticket always carries the current digest.
+  `null` supports historical decoding only and is never a valid binding for
+  active selection or consumption; historical consumed tickets remain
+  inspectable.
 - `WriteTicket.observed_paths` is empty in the baseline. Detective host-hook and watcher observations are recorded through host-observation and unrecorded-change records rather than written back into the ticket.
 - `WriteTicket.control_surface` and `WriteTicket.guarantee_display` disclose the current Volicord observation summary and guarantee wording. They do not claim OS-level filesystem enforcement.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
@@ -871,7 +884,7 @@ Meaning:
 | `path_patterns` | `WriteTicketPathPatterns`. | Captures allowed and denied normalized Product Repository path patterns for the ticket decision. |
 | `observed_paths` | Normalized Product Repository path strings. | Lists observed paths only when an owner-defined detective path has connected observations to the ticket. Use `[]` when no observations are connected. |
 | `basis_state_version` | State-clock value. | Audit ordering captured at issue or reuse; never a ticket-validity coordinate. |
-| `validity_basis` | `WriteTicketValidityBasis`. | Exact Task, Change Unit, scope, baseline, workspace, and approval coordinates used for state-bound reuse and invalidation. |
+| `validity_basis` | `WriteTicketValidityBasis`. | Exact Task, Change Unit, scope, baseline, workspace, project write-authority, and approval coordinates used for state-bound reuse and invalidation. |
 | `invalidation_reason` | Controlled invalidation reason or `null`. | Stable reason recorded when the ticket is invalidated. |
 | `idle_expires_at` | UTC timestamp or `null`. | Optional project-policy idle boundary. `null` means no idle timeout; there is no fixed default lifetime. |
 | `control_surface` | `ControlSurfaceSummary | null`. | Disclosure of the current Volicord control surface. |

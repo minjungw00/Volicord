@@ -287,7 +287,7 @@ fn plan_prepare_write(
         )
     };
     let mut control_mutations = Vec::new();
-    if control_raised || acceptance_raised {
+    if control_raised || acceptance_raised || resolved_control.policy_reevaluation_marked {
         control_mutations.push(CoreStorageMutation::UpdateTaskControlLevel(
             TaskControlLevelUpdate {
                 task_id: task.task_id.clone(),
@@ -557,6 +557,7 @@ fn plan_prepare_write(
             .as_ref()
             .map(volicord_types::canonical_json_bare_sha256)
             .transpose()?,
+        write_authority_fingerprint: Some(workflow_policy.write_authority_fingerprint.clone()),
         approval_basis_refs: active_user_action_refs.clone(),
     };
     let active_ticket_selection = select_active_write_tickets(
@@ -863,6 +864,16 @@ fn plan_prepare_write(
                 },
             ));
         }
+        for write_ticket_id in active_ticket_selection.stale_policy_ticket_ids {
+            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
+                WriteTicketByIdInvalidation {
+                    write_ticket_id,
+                    invalidation_reason: WriteTicketInvalidationReason::ExplicitRevoke
+                        .as_str()
+                        .to_owned(),
+                },
+            ));
+        }
     }
     if issue_write_ticket {
         let write_ticket_id = write_ticket_id
@@ -937,6 +948,7 @@ struct ActiveWriteTicketSelection {
     compatible: Option<WriteTicketRecord>,
     stale_approval_ticket_ids: Vec<String>,
     stale_workspace_ticket_ids: Vec<String>,
+    stale_policy_ticket_ids: Vec<String>,
 }
 
 struct ActiveWriteTicketRequirements<'a> {
@@ -954,6 +966,10 @@ fn select_active_write_tickets(
     now: &UtcTimestamp,
 ) -> Result<ActiveWriteTicketSelection, PlanError> {
     let required_basis = requirements.validity_basis;
+    let required_write_authority_fingerprint = required_basis
+        .write_authority_fingerprint
+        .as_deref()
+        .expect("prepare_write always supplies the current write-authority fingerprint");
     let required_scope = requirements.attempt_scope;
     let mut selection = ActiveWriteTicketSelection::default();
     for record in store
@@ -971,6 +987,14 @@ fn select_active_write_tickets(
             "validity_basis_json",
             Some(&record.validity_basis_json),
         )?;
+        if basis.write_authority_fingerprint.as_deref()
+            != Some(required_write_authority_fingerprint)
+        {
+            selection
+                .stale_policy_ticket_ids
+                .push(record.write_ticket_id);
+            continue;
+        }
         let scope: WriteTicketAttemptScope =
             decode_required_json::<PersistedWriteTicketAttemptScope>(
                 "write_tickets",

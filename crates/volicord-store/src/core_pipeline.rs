@@ -411,6 +411,7 @@ pub struct WriteTicketConsumption {
     pub write_ticket_id: String,
     pub run_id: String,
     pub expected_basis_state_version: u64,
+    pub expected_write_authority_fingerprint: String,
 }
 
 /// Storage input for inserting one committed Run.
@@ -5149,6 +5150,173 @@ mod tests {
                 && attempted_request_hash == "sha256:second"
         ));
         assert_eq!(store.effect_counts()?, before_conflict);
+        Ok(())
+    }
+
+    #[test]
+    fn write_ticket_consumption_revalidates_policy_authority_inside_transaction(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_ticket_policy_transaction";
+        let write_ticket_id = "ticket_policy_transaction";
+        let run_id = "run_policy_transaction";
+        store.commit_mutation(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::Intake,
+                Some(&IdempotencyKey::new("idem_ticket_policy_transaction_setup")),
+                &RequestHash::new("sha256:ticket-policy-transaction-setup"),
+                Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                Some(0),
+                vec![pending_event_for_task(
+                    "ticket_policy_transaction_setup",
+                    task_id,
+                )],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::InsertTask(task_insert(task_id))
+                    .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+
+        let issued_fingerprint =
+            crate::workflow_records::project_write_authority_fingerprint(None)?;
+        let validity_basis_json = volicord_types::canonical_json_string(&json!({
+            "task_id": task_id,
+            "change_unit_id": "change_unit_ticket_policy_transaction",
+            "scope_revision": 0,
+            "baseline_ref": null,
+            "workspace_context_sha256": null,
+            "write_authority_fingerprint": issued_fingerprint,
+            "approval_basis_refs": []
+        }))?;
+        store.conn.execute(
+            "INSERT INTO write_tickets (
+                project_id, write_ticket_id, task_id, change_unit_id,
+                basis_state_version, status, validity_basis_json,
+                allowed_path_prefixes_json, denied_path_prefixes_json,
+                attempt_scope_json, created_by_actor_source, created_at,
+                metadata_json
+             ) VALUES (?1, ?2, ?3, NULL, 1, 'active', ?4,
+                       '[\"src/export.rs\"]', '[]', '{}', ?5,
+                       '2026-07-17T00:00:00Z', '{}')",
+            params![
+                PROJECT_ID,
+                write_ticket_id,
+                task_id,
+                validity_basis_json,
+                ACTOR_SOURCE
+            ],
+        )?;
+        let tightened_policy = json!({
+            "schema": "volicord-policy-v2",
+            "workflow": {
+                "default_direct_control": "tracked",
+                "default_work_control": "tracked",
+                "light": {
+                    "enabled": false,
+                    "max_intended_paths": 3,
+                    "allowed_path_patterns": [],
+                    "denied_path_patterns": ["src/**"],
+                    "final_acceptance": "policy_dependent"
+                },
+                "write_ticket": {
+                    "idle_timeout_minutes": null
+                }
+            }
+        });
+        let policy_json = volicord_types::canonical_json_string(&tightened_policy)?;
+        let policy_fingerprint =
+            volicord_types::canonical_json_sha256(&tightened_policy)?.into_inner();
+        let current_fingerprint =
+            crate::workflow_records::project_write_authority_fingerprint(Some(&policy_json))?;
+        assert_ne!(issued_fingerprint, current_fingerprint);
+        store.conn.execute(
+            "INSERT INTO project_workflow_policies (
+                project_id, policy_schema, policy_version, policy_json,
+                policy_fingerprint, source, applied_at, created_at
+             ) VALUES (?1, 'volicord-policy-v2', 1, ?2, ?3, 'store_test',
+                       '2026-07-17T00:00:00Z', '2026-07-17T00:00:00Z')",
+            params![PROJECT_ID, policy_json, policy_fingerprint],
+        )?;
+        let before_state = store.project_state()?;
+        let before_effects = store.effect_counts()?;
+
+        let error = store
+            .commit_mutation(
+                commit_input(
+                    &ProjectId::new(PROJECT_ID),
+                    MethodName::RecordRun,
+                    Some(&IdempotencyKey::new(
+                        "idem_ticket_policy_transaction_consume",
+                    )),
+                    &RequestHash::new("sha256:ticket-policy-transaction-consume"),
+                    Some(replay_context(CONNECTION_ID, "agent_workflow")),
+                    Some(1),
+                    vec![pending_event_for_task(
+                        "ticket_policy_transaction_consume",
+                        task_id,
+                    )],
+                ),
+                |mutation, facts| {
+                    CoreStorageMutation::InsertRun(RunInsert {
+                        run_id: run_id.to_owned(),
+                        task_id: task_id.to_owned(),
+                        change_unit_id: None,
+                        scope_revision: 0,
+                        write_ticket_id: Some(write_ticket_id.to_owned()),
+                        kind: "implementation".to_owned(),
+                        status: "recorded".to_owned(),
+                        summary_json: "{}".to_owned(),
+                        observed_changes_json: "{}".to_owned(),
+                        evidence_updates_json: "[]".to_owned(),
+                        write_ticket_effect_json: "{}".to_owned(),
+                        created_by_actor_source: ACTOR_SOURCE.to_owned(),
+                        metadata_json: "{}".to_owned(),
+                    })
+                    .apply(mutation, facts.committed_state_version)?;
+                    CoreStorageMutation::ConsumeWriteTicket(WriteTicketConsumption {
+                        write_ticket_id: write_ticket_id.to_owned(),
+                        run_id: run_id.to_owned(),
+                        expected_basis_state_version: 1,
+                        expected_write_authority_fingerprint: issued_fingerprint.clone(),
+                    })
+                    .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("changed policy authority must reject ticket consumption");
+
+        assert!(matches!(
+            error,
+            StoreError::Conflict {
+                entity: "write_ticket",
+                ..
+            }
+        ));
+        let (status, consumed_by_run_id): (String, Option<String>) = store.conn.query_row(
+            "SELECT status, consumed_by_run_id
+               FROM write_tickets
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            params![PROJECT_ID, write_ticket_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(status, "active");
+        assert_eq!(consumed_by_run_id, None);
+        let run_count: i64 = store.conn.query_row(
+            "SELECT COUNT(*)
+               FROM runs
+              WHERE project_id = ?1
+                AND run_id = ?2",
+            params![PROJECT_ID, run_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(run_count, 0);
+        assert_eq!(store.project_state()?, before_state);
+        assert_eq!(store.effect_counts()?, before_effects);
         Ok(())
     }
 

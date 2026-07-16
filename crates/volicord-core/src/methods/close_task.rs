@@ -3128,11 +3128,7 @@ fn unresolved_write_ticket_close_blockers(
         )
         .map_err(PlanError::Core)?;
         if status == WriteTicketStatus::Active
-            && !write_ticket_approval_basis_is_current_for_projection(
-                store,
-                &record,
-                *now.as_datetime(),
-            )?
+            && !write_ticket_is_current_for_projection(store, &record, *now.as_datetime())?
         {
             status = WriteTicketStatus::Invalidated;
         }

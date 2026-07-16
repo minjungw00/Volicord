@@ -299,6 +299,9 @@ Capture-backed 관찰 규칙:
 - 티켓이 `status=active`이고 이미 소비되거나 철회되지 않았습니다.
 - `WriteTicketValidityBasis`가 현재 `task_id`, `change_unit_id`,
   `scope_revision`, 기준선, workspace digest, 승인 근거 참조와 계속 일치합니다.
+- null이 아닌 `write_authority_fingerprint`가 현재 권위 프로젝트 정책에서 독립적으로
+  다시 읽어 계산한 fingerprint와 정확히 일치합니다. Store는 티켓 소비 트랜잭션
+  안에서 같은 결속을 다시 확인합니다.
 - 프로젝트 정책이 선택한 선택적 `idle_expires_at` 경계를 지나지 않았습니다.
   기본 유휴 제한 시간은 `null`입니다.
 - 티켓과 그 `WriteTicketAttemptScope`가 기록하려는 Run과 같은 `task_id`와 `change_unit_id`를 식별합니다.
@@ -391,6 +394,7 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 - 제품 파일 쓰기, 비어 있지 않은 변경 경로, 또는 `null`이 아닌 쓰기 티켓을 보고하는 `advisor` 요청
 - 오래된 `expected_state_version`
 - 무효화된 쓰기 티켓 유효성 근거
+- 누락되거나 일치하지 않는 쓰기 티켓 정책 권한 결속
 - 오래되었거나 일치하지 않는 현재 Git 작업 공간 맥락
 - 제품 쓰기에 필요한 쓰기 티켓 누락 또는 무효
 - 선택적 유휴 제한 시간으로 무효화된 쓰기 티켓
@@ -413,6 +417,14 @@ MCP compact 결과는 `evidence_observation_refs`와 함께
 공개 오류 코드 의미, 우선순위, 세부사항, 거절 응답 처리 경로는 아래 오류 담당 문서가 담당합니다.
 
 무효화된 쓰기 티켓 근거에서는 소비 전에 거절되며 Run, 증거 갱신, 증거 관찰, 아티팩트 연결, 아티팩트 승격, 이벤트, 재실행 행, `project_state.state_version` 증가를 만들지 않습니다.
+
+그 밖에는 활성인 티켓의 정책 권한 결속이 없거나 일치하지 않으면
+`ToolError.details.write_ticket_reason=policy_authority_mismatch`와 함께
+`WRITE_TICKET_INVALID`를 반환합니다. 티켓을 소비하거나 권한 있는 Run을 기록하지
+않으며, 이 검사는 Guard가 쓰기를 관찰하거나 거부했는지에 의존하지 않습니다. 일반
+정책 적용은 먼저 `status=invalidated,invalidation_reason=explicit_revoke`를 영속하므로,
+이미 무효화된 그 행을 나중에 사용하려는 시도는 상태 우선순위에 따라
+`explicit_revoke`를 보고합니다.
 
 필수 `performed_operation`이 누락되거나 값이 일치하지 않아도 티켓 소비 전에
 거절되며 위 효과를 만들지 않습니다.

@@ -11,7 +11,10 @@ use volicord_store::{
         latest_watch_baseline_for_session, watch_scan_summary_from_entries_json, WatchScanSummary,
         WatchSnapshot, DEFAULT_MAX_FILE_HASH_BYTES, DEFAULT_MAX_SCAN_FILE_COUNT,
     },
-    workflow_records::{task_policy_control_reevaluation, TaskPolicyControlReevaluation},
+    workflow_records::{
+        project_write_authority_fingerprint, task_policy_control_reevaluation,
+        TaskPolicyControlReevaluation,
+    },
 };
 use volicord_types::{
     canonical_json_bare_sha256, AcceptancePolicy, BaselineRef, JudgmentResolutionOutcome,
@@ -49,6 +52,7 @@ pub(super) struct GuardStateSummary {
     pub(super) stale_write_ticket_ids: Vec<String>,
     pub(super) uncertain_write_ticket_ids: Vec<String>,
     pub(super) active_write_tickets: Vec<ActiveWriteTicketSummary>,
+    pub(super) policy_stale_write_tickets: Vec<PolicyStaleWriteTicketSummary>,
     pub(super) pending_user_action_count: usize,
     pub(super) pending_user_actions: Vec<GuardPendingUserActionSummary>,
     pub(super) active_blocker_count: usize,
@@ -74,6 +78,13 @@ pub(super) struct ActiveWriteTicketSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PolicyStaleWriteTicketSummary {
+    pub(super) write_ticket_id: String,
+    pub(super) intended_paths: Vec<String>,
+    pub(super) denied_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GuardReason {
     pub(super) code: &'static str,
     pub(super) message: String,
@@ -88,11 +99,18 @@ pub(super) fn guard_state_summary(
 ) -> Result<GuardStateSummary, GuardCommandError> {
     let store = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))?;
     let project_state = store.project_state()?;
+    let workflow_policy = store.project_workflow_policy()?;
+    let current_write_authority_fingerprint = project_write_authority_fingerprint(
+        workflow_policy
+            .as_ref()
+            .map(|policy| policy.policy_json.as_str()),
+    )?;
     let now_timestamp = core_current_timestamp(&store)?;
     let mut current_write_ticket_ids = Vec::new();
     let mut stale_write_ticket_ids = Vec::new();
     let mut uncertain_write_ticket_ids = Vec::new();
     let mut active_write_tickets = Vec::new();
+    let mut policy_stale_write_tickets = Vec::new();
     let mut active_task_effective_control_level = None;
     let mut policy_control_reevaluation = None;
     let mut active_change_unit_id = None;
@@ -122,9 +140,34 @@ pub(super) fn guard_state_summary(
             .transpose()?;
         let current_sensitive_approvals =
             current_sensitive_approvals(&store, &task_id, &now_timestamp)?;
-        for record in store.active_write_tickets(&task_id)? {
+        for record in store.write_tickets_for_task(&task_id)? {
             let validity_basis: WriteTicketValidityBasis =
                 serde_json::from_str(&record.validity_basis_json).map_err(json_error)?;
+            let policy_binding_is_current = validity_basis.write_authority_fingerprint.as_deref()
+                == Some(current_write_authority_fingerprint.as_str());
+            if !policy_binding_is_current {
+                stale_write_ticket_ids.push(record.write_ticket_id.clone());
+                if record.status != "consumed" {
+                    let intended_paths: Vec<String> =
+                        serde_json::from_str(&record.allowed_path_prefixes_json)
+                            .map_err(json_error)?;
+                    let denied_paths: Vec<String> =
+                        serde_json::from_str(&record.denied_path_prefixes_json)
+                            .map_err(json_error)?;
+                    if !intended_paths.is_empty() {
+                        policy_stale_write_tickets.push(PolicyStaleWriteTicketSummary {
+                            write_ticket_id: record.write_ticket_id,
+                            intended_paths,
+                            denied_paths,
+                        });
+                    }
+                }
+                continue;
+            }
+            if record.status != "active" {
+                stale_write_ticket_ids.push(record.write_ticket_id);
+                continue;
+            }
             let attempt_scope: WriteTicketAttemptScope =
                 serde_json::from_str(&record.attempt_scope_json).map_err(json_error)?;
             let not_idle_expired = record
@@ -182,13 +225,6 @@ pub(super) fn guard_state_summary(
                 stale_write_ticket_ids.push(record.write_ticket_id);
             }
         }
-        for record in store.write_tickets_for_task(&task_id)? {
-            if record.status != "active"
-                && !stale_write_ticket_ids.contains(&record.write_ticket_id)
-            {
-                stale_write_ticket_ids.push(record.write_ticket_id);
-            }
-        }
         pending_user_action_count = store
             .pending_user_action_records(&task_id, &now_timestamp)?
             .len();
@@ -229,6 +265,7 @@ pub(super) fn guard_state_summary(
         stale_write_ticket_ids,
         uncertain_write_ticket_ids,
         active_write_tickets,
+        policy_stale_write_tickets,
         pending_user_action_count,
         pending_user_actions,
         active_blocker_count,

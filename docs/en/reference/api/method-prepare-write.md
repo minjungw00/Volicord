@@ -94,8 +94,9 @@ Requires:
 - a current effective control level. `observe` is incompatible with product
   writes. An effective `sensitive` Task also requires an exact ticket-backed
   action basis when its Run has no product-file write. Before ticket selection
-  Core applies any pending upward-only policy
-  reevaluation; a policy relaxation never lowers an active Task.
+  Core applies any pending policy reevaluation without lowering the active
+  Task; this includes same-level write-authority changes as well as stricter
+  control or acceptance requirements.
 - for `light`, every intended path must be covered by an allowed normalized
   repository-relative prefix and by no denied prefix. Prefixes match the exact
   path or descendants; wildcard/glob syntax, absolute paths, empty entries,
@@ -186,8 +187,17 @@ For `decision=allowed`:
 - replay eligibility requires the current verified invocation to retain the exact optional Git workspace context captured with the original replay row; a changed, newly absent, or newly present workspace context returns `INVOCATION_CONTEXT_MISMATCH` without exposing the stored allowed response or its write ticket
 - the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`
 - `write_ticket.validity_basis` reports its Task, Change Unit,
-  `scope_revision`, baseline, optional workspace digest, and approval-basis refs;
+  `scope_revision`, baseline, optional workspace digest, current normalized
+  project write-authority fingerprint, and approval-basis refs;
   `basis_state_version` is audit-only
+- Core reevaluates the requested paths against the current authoritative policy
+  before issuance or reuse. Reuse requires an exact non-null
+  `write_authority_fingerprint` match. A missing or mismatched binding is
+  invalidated with `explicit_revoke` on any committed non-dry-run decision that
+  selects it as stale, whether the current result is allowed or non-allow.
+  Rejected and dry-run paths do not mutate it. The stale ticket cannot preserve
+  an earlier Light classification across a current Sensitive decision or
+  approval requirement.
 - `active_user_action_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
 ## Blocked result

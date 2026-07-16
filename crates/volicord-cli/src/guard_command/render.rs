@@ -445,6 +445,16 @@ pub(super) fn write_ticket_backing_json(coverage: WriteTicketCoverage) -> Value 
             "observed_paths": observed_paths,
             "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
         }),
+        WriteTicketCoverage::PolicyAuthorityStale {
+            observed_paths,
+            stale_ticket_ids,
+        } => json!({
+            "status": "policy_authority_stale",
+            "ticket_backed": false,
+            "observed_paths": observed_paths,
+            "stale_write_ticket_ids": stale_ticket_ids,
+            "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
+        }),
         WriteTicketCoverage::OutOfScope {
             observed_paths,
             active_ticket_ids,

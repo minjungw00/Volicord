@@ -185,7 +185,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- A supplied ticket is consumed, revoked, explicitly invalidated, outside its allowed path prefixes, or incompatible with its state-bound Task, Change Unit, scope revision, baseline, workspace, approval basis, or optional idle timeout.
+- A supplied ticket is consumed, revoked, explicitly invalidated, outside its allowed path prefixes, missing the current normalized project write-authority binding, or incompatible with that authority, its state-bound Task, Change Unit, scope revision, baseline, workspace, approval basis, or optional idle timeout.
 
 Notes:
 - State-bound invalidation and attempt mismatch stay on this code with stable `ToolError.details.write_ticket_reason` values.

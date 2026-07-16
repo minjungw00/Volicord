@@ -454,6 +454,274 @@ fn guard_pre_tool_excludes_active_ticket_with_expired_sensitive_approval(
 }
 
 #[test]
+fn guard_pre_tool_rejects_ticket_after_write_authority_policy_changes() -> Result<(), Box<dyn Error>>
+{
+    let fixture = GuardCliFixture::new("guard-pre-policy-authority-stale")?;
+    fixture.apply_policy_allowing_product_path()?;
+    let task_id = fixture.create_light_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+    let store = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?;
+    assert_eq!(
+        store
+            .task_record(&volicord_types::TaskId::new(&task_id))?
+            .expect("active light Task")
+            .effective_control_level,
+        "light"
+    );
+
+    fixture.apply_policy_denying_product_path()?;
+    assert_ne!(
+        fixture.write_ticket_status(&write_ticket_id)?,
+        "active",
+        "the authoritative policy transaction must invalidate the earlier ticket"
+    );
+
+    let event = json!({
+        "event_id": "guard_pre_policy_authority_stale",
+        "session_id": "guard_session_policy_authority_stale",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": DEFAULT_PRODUCT_PATH
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_policy_changed");
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["status"],
+        "policy_authority_stale"
+    );
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["stale_write_ticket_ids"],
+        json!([write_ticket_id.clone()])
+    );
+    assert_eq!(
+        value["result"]["context"]["current_write_ticket_ids"],
+        json!([])
+    );
+    assert!(value["result"]["context"]["stale_write_ticket_ids"]
+        .as_array()
+        .is_some_and(|ids| ids.iter().any(|id| id == &write_ticket_id)));
+    assert!(value["result"]["expected_write"].is_null());
+    assert!(list_pending_expected_writes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .is_empty());
+
+    fs::create_dir_all(fixture.repo_root().join("src"))?;
+    fs::write(
+        fixture.repo_root().join(DEFAULT_PRODUCT_PATH),
+        "simulated Guard-bypass write\n",
+    )?;
+    let store = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?;
+    let before_record = store.effect_counts()?;
+    let rejected_record = fixture
+        .record_product_write_response(&task_id, &write_ticket_id, "record_policy_authority_stale")
+        .map_err(|error| -> Box<dyn Error> {
+            format!("direct record_run regression setup failed: {error}").into()
+        })?;
+    assert_eq!(
+        rejected_record["errors"][0]["code"], "WRITE_TICKET_INVALID",
+        "{rejected_record:#}"
+    );
+    assert_eq!(
+        rejected_record["errors"][0]["details"]["write_ticket_reason"],
+        "explicit_revoke"
+    );
+    assert_eq!(
+        CoreProjectStore::open(
+            fixture.runtime_home(),
+            &volicord_types::ProjectId::new(fixture.project_id()),
+        )?
+        .effect_counts()?,
+        before_record,
+        "direct record_run defense must create no authorized Run or state effect"
+    );
+
+    let refreshed_prepare = fixture
+        .prepare_write_after_policy_change(&task_id)
+        .map_err(|error| -> Box<dyn Error> {
+            format!("policy-refresh prepare_write regression setup failed: {error}").into()
+        })?;
+    assert_eq!(refreshed_prepare["decision"], "approval_required");
+    assert_eq!(refreshed_prepare["write_ticket_effect"], "none");
+    assert!(refreshed_prepare["write_ticket"].is_null());
+    assert!(refreshed_prepare["write_decision_reasons"]
+        .as_array()
+        .is_some_and(|reasons| reasons
+            .iter()
+            .any(|reason| reason["code"] == "sensitive_approval_missing")));
+
+    let store = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?;
+    let ticket = store
+        .write_ticket_record(&write_ticket_id)?
+        .expect("invalidated write ticket remains inspectable");
+    assert_eq!(ticket.consumed_by_run_id, None);
+    assert_eq!(ticket.consumed_at, None);
+    assert_eq!(
+        store
+            .task_record(&volicord_types::TaskId::new(task_id))?
+            .expect("active Task remains inspectable")
+            .effective_control_level,
+        "sensitive"
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_rejects_active_ticket_without_write_authority_binding(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-policy-authority-missing")?;
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    fixture.remove_ticket_write_authority_binding(&write_ticket_id)?;
+    assert_eq!(
+        fixture.write_ticket_status(&write_ticket_id)?,
+        "active",
+        "the regression requires a legacy-shaped active row"
+    );
+
+    let event = json!({
+        "event_id": "guard_pre_policy_authority_missing",
+        "session_id": "guard_session_policy_authority_missing",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": DEFAULT_PRODUCT_PATH
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_policy_changed");
+    assert!(!value["result"]["reasons"]
+        .as_array()
+        .expect("Guard reasons")
+        .iter()
+        .any(|reason| reason["code"] == "unknown_effect_warning"));
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["status"],
+        "policy_authority_stale"
+    );
+    assert_eq!(
+        value["result"]["context"]["current_write_ticket_ids"],
+        json!([])
+    );
+    assert_eq!(
+        value["result"]["context"]["stale_write_ticket_ids"],
+        json!([write_ticket_id.clone()])
+    );
+    assert!(value["result"]["expected_write"].is_null());
+    assert_eq!(
+        fixture.write_ticket_status(&write_ticket_id)?,
+        "active",
+        "Guard must fail closed without mutating Core-owned ticket status"
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_and_record_run_reject_ticket_after_timeout_policy_tightening() -> Result<(), Box<dyn Error>>
+{
+    let fixture = GuardCliFixture::new("guard-pre-policy-timeout-stale")?;
+    fixture.apply_policy_with_idle_timeout(None)?;
+    let task_id = fixture.create_light_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+
+    fixture.apply_policy_with_idle_timeout(Some(1))?;
+    assert_eq!(
+        fixture.write_ticket_status(&write_ticket_id)?,
+        "invalidated"
+    );
+
+    let event = json!({
+        "event_id": "guard_pre_policy_timeout_stale",
+        "session_id": "guard_session_policy_timeout_stale",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": DEFAULT_PRODUCT_PATH
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_policy_changed");
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["status"],
+        "policy_authority_stale"
+    );
+
+    fs::create_dir_all(fixture.repo_root().join("src"))?;
+    fs::write(
+        fixture.repo_root().join(DEFAULT_PRODUCT_PATH),
+        "simulated timeout-policy Guard-bypass write\n",
+    )?;
+    let before_record = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?
+    .effect_counts()?;
+    let rejected_record = fixture.record_product_write_response(
+        &task_id,
+        &write_ticket_id,
+        "record_policy_timeout_stale",
+    )?;
+    assert_eq!(
+        rejected_record["errors"][0]["code"], "WRITE_TICKET_INVALID",
+        "{rejected_record:#}"
+    );
+    assert_eq!(
+        rejected_record["errors"][0]["details"]["write_ticket_reason"],
+        "explicit_revoke"
+    );
+    let store = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?;
+    assert_eq!(store.effect_counts()?, before_record);
+    let ticket = store
+        .write_ticket_record(&write_ticket_id)?
+        .expect("invalidated timeout-policy ticket remains inspectable");
+    assert_eq!(ticket.status, "invalidated");
+    assert_eq!(ticket.consumed_by_run_id, None);
+    assert_eq!(ticket.consumed_at, None);
+    Ok(())
+}
+
+#[test]
 fn guard_pre_tool_excludes_old_empty_basis_ticket_after_task_becomes_sensitive(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-pre-policy-strengthened-sensitive")?;

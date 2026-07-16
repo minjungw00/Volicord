@@ -84,7 +84,7 @@ API 경계 블록:
 
 - `dry_run=false`인 상태 변경 `intent`에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - 오래된 `expected_state_version` 또는 멱등 요청 해시 충돌은 닫기 준비 상태 평가 전에 거절됩니다.
-- 닫기 관련 쓰기 티켓은 현재 Task, Change Unit, 범위 리비전, 기준선, workspace 맥락, 승인 근거, Task 상태, 선택적으로 설정된 idle timeout이라는 명시적 유효성 근거로 확인합니다. 감사 전용 `basis_state_version`은 전역 상태 버전과 비교하지 않습니다.
+- 닫기 관련 쓰기 티켓은 현재 Task, Change Unit, 범위 리비전, 기준선, workspace 맥락, 현재 정규화된 프로젝트 쓰기 권한 결속, 승인 근거, Task 상태, 선택적으로 설정된 idle timeout이라는 명시적 유효성 근거로 확인합니다. 감사 전용 `basis_state_version`은 전역 상태 버전과 비교하지 않습니다.
 - 쓰기 티켓 유효성 확인은 최종 수락, 잔여 위험 수락, 사용자 소유 판단, 민감 동작 승인, 포괄적 승인을 기록하지 않습니다.
 
 닫기 조건:
@@ -204,7 +204,7 @@ CloseTaskRequest:
 
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 호출 맥락, 작업 범주, 행위자 출처, 요청한 종료 경로의 선행조건을 확인합니다.
-3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 각 쓰기 티켓의 명시적인 상태 결합 유효성을 확인합니다. 충돌하는 envelope 버전이나 요청 해시는 `ToolRejectedResponse`를 반환합니다. 무효화되거나 취소됐거나 idle timeout에 따라 유효 상태가 무효화된 티켓은 계속 표시되지만 그 자체로 닫기 차단 사유를 만들지 않습니다. `basis_state_version`은 감사 전용입니다.
+3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 현재 프로젝트 쓰기 권한 결속을 포함한 닫기 관련 각 쓰기 티켓의 명시적인 상태 결합 유효성을 확인합니다. 충돌하는 envelope 버전이나 요청 해시는 `ToolRejectedResponse`를 반환합니다. 무효화되거나 취소됐거나 정책 권한이 stale이거나 idle timeout에 따라 유효 상태가 무효화된 티켓은 계속 표시되지만 그 자체로 닫기 차단 사유를 만들지 않습니다. `basis_state_version`은 감사 전용입니다.
 4. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
 5. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`, 모드와 호환되는 종료 닫기 결과, 잔여 위험 수락이 필요하지 않은 닫기 근거의 알려진 한계에 대해 메서드가 선택한 프로젝트 연속성 기록을 커밋합니다. 종료 결과는 `Task.mode=advisor`에서 `advice_only`, `Task.mode=direct` 또는 `work`에서 `completed`입니다.
 6. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, 호환 User Channel 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.

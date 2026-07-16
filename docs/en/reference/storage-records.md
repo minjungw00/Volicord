@@ -111,7 +111,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `user_action_resolutions` | Immutable User Channel resolution | At most one resolution per request, with a closed kind-matching body, channel kind and bounded visible-ASCII submission replay identity, local-user provenance, verification basis, assurance, and Core capture time. Choice facts or full observation detail stay in the body. |
 | `state.sqlite` | `user_action_channel_tokens` | User Channel fallback token | Hash-only one-time local-web token bound to one request, connection, expiry, capture basis, and closed creation metadata containing exactly the fallback kind, `delivery_surface=model_invisible_user_surface`, endpoint, and exact canonical-form digest. |
 | `state.sqlite` | `project_continuity_records` | Project continuity context | Durable project-level decisions, obligations, known limits, accepted residual risks, and constraints that remain addressable after the source `Task` closes. |
-| `state.sqlite` | `write_tickets` | Write-ticket authority | Reusable-until-consumed authority with audit basis version, explicit validity-basis JSON, path prefixes, nullable idle boundary, stable invalidation reason, actor source, optional originating judgment, and consumption state. |
+| `state.sqlite` | `write_tickets` | Write-ticket authority | Reusable-until-consumed authority with audit basis version, explicit policy-bound validity-basis JSON, path prefixes, nullable idle boundary, stable invalidation reason, actor source, optional originating judgment, and consumption state. |
 | `state.sqlite` | `session_end_receipts` | Session-end authority receipt | Managed session, optional active Task, closed Task state, bounded close-blocker codes, next actor, `completion_claim_allowed`, authority-refresh success, and timestamp. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, optional compatible write-ticket consumption, actor source, and compact evidence updates. |
 | `state.sqlite` plus `artifacts/tmp/` | `artifact_staging` | Transient artifact staging | Staged handle metadata, creator actor source, safe staging facts, and transient bytes or notices. |
@@ -537,7 +537,15 @@ Core. Its canonical JSON, version, fingerprint, and source are stored together.
 File discovery, command syntax, and host application belong to administrative
 owners, not this record contract.
 
-When a changed policy requires an active Task to rise later,
+Store derives a normalized write-authority fingerprint from the policy fields
+that can change write authorization, escalation, required pre-write approval,
+or ticket validity. `write_tickets.validity_basis_json` stores that binding.
+When the derived fingerprint changes, the policy transaction invalidates every
+active ticket whose binding is missing or does not equal the new fingerprint
+with `explicit_revoke`; consumed and other historical rows remain unchanged and
+addressable.
+
+On every write-authority change with an active Task,
 `tasks.metadata_json.policy_control_reevaluation` is exactly the closed object
 `{policy_version, policy_fingerprint, required_effective_control_level,
 required_acceptance_policy?, marked_at}`. The required control level is one of
@@ -545,10 +553,11 @@ required_acceptance_policy?, marked_at}`. The required control level is one of
 policy is one of `not_required`, `policy_dependent`, or `required`; the version
 is positive, the fingerprint is canonical, and `marked_at` is the policy
 commit's `committed_at`. Store preserves the stronger existing or newly derived
-requirement on each axis and removes the member only when the same transaction
-satisfies both requirements. Creating or preserving an unsatisfied mark also
-invalidates every active ticket for that Task with `explicit_revoke` in the
-policy transaction.
+requirement on each axis. The mark exists even when those levels already equal
+the current Task fields so the next write-compatible Core commit must reevaluate
+the current policy; that commit removes the member only after both requirements
+are satisfied. The policy transaction also invalidates every active ticket for
+the marked Task with `explicit_revoke`.
 
 `authority_events.task_id` is normally required. The exact
 `project_workflow_policy_applied` event is project-scoped and therefore has
@@ -803,7 +812,7 @@ Rules:
 | `user_action_resolutions` | Closed immutable resolution body, channel kind and bounded visible-ASCII submission id, derived actor/verification/assurance, Core capture time, optional private note, and choice or evidence-observation detail. Local-web rows store only the derived digest identity, never the raw token. |
 | `user_action_channel_tokens` | Request-bound local-web hash-token lifecycle, capture basis, and closed delivery-surface creation metadata. |
 | `project_continuity_records` | Applies-to paths, applies-to refs, source refs, artifact refs, superseded refs, review triggers, and non-authority metadata for durable project context. |
-| `write_tickets` | State-bound validity coordinates, normalized exact-or-descendant path prefixes, audit ordering, optional idle boundary, stable invalidation reason, attempt scope, and non-authority metadata. Denied prefixes win; no wildcard grammar is stored. |
+| `write_tickets` | State-bound validity coordinates including the normalized project write-authority fingerprint, normalized exact-or-descendant path prefixes, audit ordering, optional idle boundary, stable invalidation reason, attempt scope, and non-authority metadata. Denied prefixes win; no wildcard grammar is stored. A missing fingerprint remains decodable for history but is invalid for an active ticket. |
 | `runs` | Summary, observed changes, evidence updates, write-ticket effect data, and non-authority metadata. |
 | `artifact_staging` | Staged artifact data, safe metadata, and non-authority metadata. |
 | `evidence_capture_intents` | Exact target/capture JSON, command/tool input digest or Core-derived connection source-selector digest, expected outcome, registered session and Git workspace basis, actor/connection provenance, expiry, and non-authority metadata. Connection capture JSON contains no future source ID, observation timestamp, snapshot digest, or raw-event digest. |

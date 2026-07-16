@@ -84,7 +84,7 @@ Mutation conditions:
 
 - `dry_run=false` mutating intents require a non-null `idempotency_key` and current `expected_state_version`.
 - Stale `expected_state_version` or an idempotency request-hash conflict is rejected before close readiness evaluation.
-- A close-relevant write ticket is checked against its explicit validity basis: current Task, Change Unit, scope revision, baseline, workspace context, approval basis, task state, and an optional configured idle timeout. Its audit-only `basis_state_version` is not compared with the global state version.
+- A close-relevant write ticket is checked against its explicit validity basis: current Task, Change Unit, scope revision, baseline, workspace context, current normalized project write-authority binding, approval basis, task state, and an optional configured idle timeout. Its audit-only `basis_state_version` is not compared with the global state version.
 - A write-ticket validity check does not record final acceptance, residual-risk acceptance, user-owned judgment, sensitive-action approval, or broad approval.
 
 Close condition:
@@ -200,7 +200,7 @@ Implementations evaluate `volicord.close_task` in this order:
 
 1. Validate the envelope, method fields, intent-field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, actor source, and requested terminal-path preconditions.
-3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and the explicit state-bound validity of each close-relevant write ticket. A conflicting envelope version or request hash returns `ToolRejectedResponse`. An invalidated, revoked, or effective idle-timeout-invalidated ticket remains disclosed but does not create a close blocker by itself. `basis_state_version` remains audit-only.
+3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and the explicit state-bound validity of each close-relevant write ticket, including its current project write-authority binding. A conflicting envelope version or request hash returns `ToolRejectedResponse`. An invalidated, revoked, policy-authority-stale, or effective idle-timeout-invalidated ticket remains disclosed but does not create a close blocker by itself. `basis_state_version` remains audit-only.
 4. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
 5. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed`, the mode-compatible terminal close result, and any method-selected project continuity records for close-basis known limits that do not require residual-risk acceptance. The terminal result is `advice_only` for `Task.mode=advisor` and `completed` for `Task.mode=direct` or `work`.
 6. For `intent=cancel`, require a current accepted `judgment_kind=cancellation` with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and compatibility with the current Task, scope revision, and Change Unit. Missing or incompatible cancellation authority returns the blocked branch.

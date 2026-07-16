@@ -40,7 +40,7 @@ use volicord_store::{
         UserActionChannelTokenCreate, UserActionChannelTokenRecord,
         UserActionChannelTokenRejection, UserActionChannelTokenValidation,
     },
-    workflow_records::ProjectWorkflowPolicyUpsert,
+    workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::CloseMutationIntent;
@@ -3275,6 +3275,16 @@ fn insert_active_write_ticket_with_scope(
         rusqlite::params![PROJECT_ID, input.task_id],
         |row| row.get(0),
     )?;
+    let policy_json = conn
+        .query_row(
+            "SELECT policy_json
+               FROM project_workflow_policies
+              WHERE project_id = ?1",
+            [PROJECT_ID],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let write_authority_fingerprint = project_write_authority_fingerprint(policy_json.as_deref())?;
     let attempt_scope_json = json!({
         "task_id": input.task_id,
         "change_unit_id": input.change_unit_id,
@@ -3291,6 +3301,7 @@ fn insert_active_write_ticket_with_scope(
         "scope_revision": scope_revision,
         "baseline_ref": "baseline_test",
         "workspace_context_sha256": null,
+        "write_authority_fingerprint": write_authority_fingerprint,
         "approval_basis_refs": []
     })
     .to_string();
@@ -3363,6 +3374,32 @@ fn mutate_write_ticket_scope_json(
     conn.execute(
         "UPDATE write_tickets
             SET attempt_scope_json = ?3
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id, value.to_string()],
+    )?;
+    Ok(())
+}
+
+fn mutate_write_ticket_validity_basis_json(
+    harness: &MethodHarness,
+    write_ticket_id: &str,
+    mutate: impl FnOnce(&mut Value),
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let text: String = conn.query_row(
+        "SELECT validity_basis_json
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
+        |row| row.get(0),
+    )?;
+    let mut value: Value = serde_json::from_str(&text)?;
+    mutate(&mut value);
+    conn.execute(
+        "UPDATE write_tickets
+            SET validity_basis_json = ?3
           WHERE project_id = ?1
             AND write_ticket_id = ?2",
         rusqlite::params![PROJECT_ID, write_ticket_id, value.to_string()],

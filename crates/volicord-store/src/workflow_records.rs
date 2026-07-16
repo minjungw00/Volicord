@@ -1,5 +1,7 @@
 //! Store-owned workflow policy and managed session-end receipt records.
 
+use std::{cell::RefCell, collections::BTreeSet};
+
 use rusqlite::{params, OptionalExtension, Row, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -11,8 +13,8 @@ use volicord_types::{
 
 use crate::{
     core_pipeline::{
-        CommitMutationInput, CoreProjectStore, CoreStorageMutation, MutationCommitOutcome,
-        PendingTaskEvent, ProjectWorkflowPolicyMutation, TaskRecord, VerifiedReplayContext,
+        CommitMutationInput, CoreProjectStore, MutationCommitOutcome, PendingTaskEvent,
+        ProjectWorkflowPolicyMutation, TaskRecord, VerifiedReplayContext,
     },
     sqlite::begin_immediate_transaction,
     StoreError, StoreResult,
@@ -20,6 +22,7 @@ use crate::{
 
 pub const POLICY_CONTROL_REEVALUATION_METADATA_KEY: &str = "policy_control_reevaluation";
 const POLICY_APPLIED_EVENT_KIND: &str = "project_workflow_policy_applied";
+const WRITE_AUTHORITY_FINGERPRINT_SCHEMA: &str = "volicord-write-authority-v1";
 
 /// Authoritative project workflow-policy replacement input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,12 +53,78 @@ pub struct ProjectWorkflowPolicyApplyResult {
     pub basis_state_version: u64,
     pub resulting_state_version: u64,
     pub active_task_requires_escalation: bool,
+    pub active_task_requires_policy_reevaluation: bool,
+    pub write_authority_changed: bool,
+    pub prior_write_authority_fingerprint: String,
+    pub resulting_write_authority_fingerprint: String,
+    pub affected_task_ids: Vec<String>,
+    pub invalidated_write_ticket_ids: Vec<String>,
 }
 
 struct WorkflowPolicyApplyObservation {
     state_version: u64,
     prior: Option<ProjectWorkflowPolicyRecord>,
     active_task_requires_escalation: bool,
+    active_task_requires_policy_reevaluation: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProjectWorkflowPolicyMutationEffect {
+    pub(crate) write_authority_changed: bool,
+    pub(crate) prior_write_authority_fingerprint: String,
+    pub(crate) resulting_write_authority_fingerprint: String,
+    pub(crate) affected_task_ids: Vec<String>,
+    pub(crate) invalidated_write_ticket_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ProjectWriteAuthorityFingerprintBasis {
+    schema: &'static str,
+    default_direct_control: TaskControlLevel,
+    default_work_control: TaskControlLevel,
+    light: ProjectWriteAuthorityLightBasis,
+    write_ticket: ProjectWriteAuthorityTicketBasis,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ProjectWriteAuthorityLightBasis {
+    enabled: bool,
+    max_intended_paths: u64,
+    allowed_path_patterns: Vec<String>,
+    denied_path_patterns: Vec<String>,
+    final_acceptance: AcceptancePolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ProjectWriteAuthorityTicketBasis {
+    idle_timeout_minutes: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredProjectWriteAuthorityPolicy {
+    workflow: StoredProjectWriteAuthorityWorkflow,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredProjectWriteAuthorityWorkflow {
+    default_direct_control: TaskControlLevel,
+    default_work_control: TaskControlLevel,
+    light: StoredProjectWriteAuthorityLight,
+    write_ticket: StoredProjectWriteAuthorityTicket,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredProjectWriteAuthorityLight {
+    enabled: bool,
+    max_intended_paths: u64,
+    allowed_path_patterns: Vec<String>,
+    denied_path_patterns: Vec<String>,
+    final_acceptance: AcceptancePolicy,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredProjectWriteAuthorityTicket {
+    idle_timeout_minutes: Option<u64>,
 }
 
 /// Closed durable active-Task policy control reevaluation mark.
@@ -110,6 +179,70 @@ pub struct SessionEndReceiptRecord {
     pub completion_claim_allowed: bool,
     pub authority_refresh_succeeded: bool,
     pub created_at: String,
+}
+
+/// Derives the write-authority digest from an optional stored workflow-policy copy.
+pub fn project_write_authority_fingerprint(policy_json: Option<&str>) -> StoreResult<String> {
+    let mut basis = match policy_json {
+        Some(policy_json) => {
+            let stored: StoredProjectWriteAuthorityPolicy = serde_json::from_str(policy_json)
+                .map_err(|_| StoreError::InvalidInput {
+                    detail: "project workflow policy cannot produce a write-authority binding"
+                        .to_owned(),
+                })?;
+            if stored.workflow.light.max_intended_paths == 0
+                || stored
+                    .workflow
+                    .write_ticket
+                    .idle_timeout_minutes
+                    .is_some_and(|minutes| minutes == 0)
+            {
+                return Err(StoreError::InvalidInput {
+                    detail: "project workflow policy has an invalid write-authority value"
+                        .to_owned(),
+                });
+            }
+            ProjectWriteAuthorityFingerprintBasis {
+                schema: WRITE_AUTHORITY_FINGERPRINT_SCHEMA,
+                default_direct_control: stored.workflow.default_direct_control,
+                default_work_control: stored.workflow.default_work_control,
+                light: ProjectWriteAuthorityLightBasis {
+                    enabled: stored.workflow.light.enabled,
+                    max_intended_paths: stored.workflow.light.max_intended_paths,
+                    allowed_path_patterns: stored.workflow.light.allowed_path_patterns,
+                    denied_path_patterns: stored.workflow.light.denied_path_patterns,
+                    final_acceptance: stored.workflow.light.final_acceptance,
+                },
+                write_ticket: ProjectWriteAuthorityTicketBasis {
+                    idle_timeout_minutes: stored.workflow.write_ticket.idle_timeout_minutes,
+                },
+            }
+        }
+        None => ProjectWriteAuthorityFingerprintBasis {
+            schema: WRITE_AUTHORITY_FINGERPRINT_SCHEMA,
+            default_direct_control: TaskControlLevel::Tracked,
+            default_work_control: TaskControlLevel::Tracked,
+            light: ProjectWriteAuthorityLightBasis {
+                enabled: false,
+                max_intended_paths: 3,
+                allowed_path_patterns: Vec::new(),
+                denied_path_patterns: Vec::new(),
+                final_acceptance: AcceptancePolicy::PolicyDependent,
+            },
+            write_ticket: ProjectWriteAuthorityTicketBasis {
+                idle_timeout_minutes: None,
+            },
+        },
+    };
+    basis.light.allowed_path_patterns.sort();
+    basis.light.allowed_path_patterns.dedup();
+    basis.light.denied_path_patterns.sort();
+    basis.light.denied_path_patterns.dedup();
+    canonical_json_sha256(&basis)
+        .map(|fingerprint| fingerprint.into_inner())
+        .map_err(|_| StoreError::InvalidInput {
+            detail: "project write-authority binding cannot be canonicalized".to_owned(),
+        })
 }
 
 impl CoreProjectStore {
@@ -172,12 +305,21 @@ impl CoreProjectStore {
         let observation = self.workflow_policy_apply_observation()?;
         if let Some(prior) = observation.prior.as_ref() {
             if prior.policy_fingerprint == input.policy_fingerprint {
+                let write_authority_fingerprint =
+                    project_write_authority_fingerprint(Some(prior.policy_json.as_str()))?;
                 return Ok(ProjectWorkflowPolicyApplyResult {
                     policy: prior.clone(),
                     database_changed: false,
                     basis_state_version: observation.state_version,
                     resulting_state_version: observation.state_version,
                     active_task_requires_escalation: observation.active_task_requires_escalation,
+                    active_task_requires_policy_reevaluation: observation
+                        .active_task_requires_policy_reevaluation,
+                    write_authority_changed: false,
+                    prior_write_authority_fingerprint: write_authority_fingerprint.clone(),
+                    resulting_write_authority_fingerprint: write_authority_fingerprint,
+                    affected_task_ids: Vec::new(),
+                    invalidated_write_ticket_ids: Vec::new(),
                 });
             }
         }
@@ -188,10 +330,22 @@ impl CoreProjectStore {
             input.expected_prior_fingerprint.as_deref(),
         )?;
 
+        let prior_write_authority_fingerprint = project_write_authority_fingerprint(
+            observation
+                .prior
+                .as_ref()
+                .map(|record| record.policy_json.as_str()),
+        )?;
+        let resulting_write_authority_fingerprint =
+            project_write_authority_fingerprint(Some(&input.policy_json))?;
+        let write_authority_changed =
+            prior_write_authority_fingerprint != resulting_write_authority_fingerprint;
         let payload = canonical_json_string(&json!({
             "policy_schema": "volicord-policy-v2",
             "policy_version": input.policy_version,
             "policy_fingerprint": input.policy_fingerprint,
+            "write_authority_fingerprint": resulting_write_authority_fingerprint,
+            "write_authority_changed": write_authority_changed,
         }))
         .map_err(|_| StoreError::InvalidInput {
             detail: "policy authority event payload cannot be canonicalized".to_owned(),
@@ -243,11 +397,15 @@ impl CoreProjectStore {
                 event_payload_json: payload,
             }],
         };
+        let mutation_effect = RefCell::new(None);
         let outcome = self.commit_mutation(
             commit_input,
             |project_mutation, facts| {
-                CoreStorageMutation::ApplyProjectWorkflowPolicy(mutation)
-                    .apply(project_mutation, facts.committed_state_version)
+                let _ = facts.committed_state_version;
+                let effect =
+                    project_mutation.apply_project_workflow_policy_with_effect(&mutation)?;
+                mutation_effect.replace(Some(effect));
+                Ok(())
             },
             |_| Ok("{}".to_owned()),
         )?;
@@ -267,12 +425,27 @@ impl CoreProjectStore {
         let policy = self.project_workflow_policy()?.ok_or_else(|| {
             StoreError::schema_invariant("project_state", "workflow policy write vanished")
         })?;
+        let mutation_effect = mutation_effect.into_inner().ok_or_else(|| {
+            StoreError::schema_invariant(
+                "project_state",
+                "workflow policy commit returned no mutation effect",
+            )
+        })?;
         Ok(ProjectWorkflowPolicyApplyResult {
             policy,
             database_changed: true,
             basis_state_version,
             resulting_state_version,
             active_task_requires_escalation: active_task_has_policy_reevaluation(self)?,
+            active_task_requires_policy_reevaluation: active_task_has_any_policy_reevaluation(
+                self,
+            )?,
+            write_authority_changed: mutation_effect.write_authority_changed,
+            prior_write_authority_fingerprint: mutation_effect.prior_write_authority_fingerprint,
+            resulting_write_authority_fingerprint: mutation_effect
+                .resulting_write_authority_fingerprint,
+            affected_task_ids: mutation_effect.affected_task_ids,
+            invalidated_write_ticket_ids: mutation_effect.invalidated_write_ticket_ids,
         })
     }
 
@@ -308,11 +481,14 @@ impl CoreProjectStore {
         let prior = project_workflow_policy_from_conn(&tx, &project_id)?;
         let active_task_requires_escalation =
             active_task_has_policy_reevaluation_from_conn(&tx, &project_id)?;
+        let active_task_requires_policy_reevaluation =
+            active_task_has_any_policy_reevaluation_from_conn(&tx, &project_id)?;
         tx.commit()?;
         Ok(WorkflowPolicyApplyObservation {
             state_version,
             prior,
             active_task_requires_escalation,
+            active_task_requires_policy_reevaluation,
         })
     }
 
@@ -479,7 +655,7 @@ pub(crate) fn apply_project_workflow_policy_mutation(
     project_id: &str,
     committed_at: &str,
     input: &ProjectWorkflowPolicyMutation,
-) -> StoreResult<()> {
+) -> StoreResult<ProjectWorkflowPolicyMutationEffect> {
     validate_project_workflow_policy_fields(
         input.policy_version,
         &input.policy_json,
@@ -493,6 +669,13 @@ pub(crate) fn apply_project_workflow_policy_mutation(
         input.policy_version,
         input.expected_prior_fingerprint.as_deref(),
     )?;
+    let prior_write_authority_fingerprint = project_write_authority_fingerprint(
+        existing.as_ref().map(|record| record.policy_json.as_str()),
+    )?;
+    let resulting_write_authority_fingerprint =
+        project_write_authority_fingerprint(Some(&input.policy_json))?;
+    let write_authority_changed =
+        prior_write_authority_fingerprint != resulting_write_authority_fingerprint;
     let policy_version =
         i64::try_from(input.policy_version).map_err(|_| StoreError::InvalidInput {
             detail: "policy_version is outside the supported SQLite integer range".to_owned(),
@@ -524,7 +707,30 @@ pub(crate) fn apply_project_workflow_policy_mutation(
             created_at,
         ],
     )?;
-    merge_active_task_policy_reevaluation(tx, project_id, committed_at, input)
+    let reevaluated_task_id = merge_active_task_policy_reevaluation(
+        tx,
+        project_id,
+        committed_at,
+        input,
+        write_authority_changed,
+    )?;
+    let (affected_task_ids, invalidated_write_ticket_ids) = if write_authority_changed {
+        invalidate_incompatible_write_tickets(
+            tx,
+            project_id,
+            &resulting_write_authority_fingerprint,
+            reevaluated_task_id.as_deref(),
+        )?
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    Ok(ProjectWorkflowPolicyMutationEffect {
+        write_authority_changed,
+        prior_write_authority_fingerprint,
+        resulting_write_authority_fingerprint,
+        affected_task_ids,
+        invalidated_write_ticket_ids,
+    })
 }
 
 /// Strict-decodes the durable policy-control reevaluation mark on one Task.
@@ -571,6 +777,32 @@ pub(crate) fn clear_satisfied_task_policy_reevaluation(
 
 fn active_task_has_policy_reevaluation(store: &CoreProjectStore) -> StoreResult<bool> {
     active_task_has_policy_reevaluation_from_conn(&store.conn, &store.project.project_id)
+}
+
+fn active_task_has_any_policy_reevaluation(store: &CoreProjectStore) -> StoreResult<bool> {
+    active_task_has_any_policy_reevaluation_from_conn(&store.conn, &store.project.project_id)
+}
+
+fn active_task_has_any_policy_reevaluation_from_conn(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> StoreResult<bool> {
+    let active = conn
+        .query_row(
+            "SELECT t.task_id, t.metadata_json
+               FROM project_state AS ps
+               JOIN tasks AS t
+                 ON t.project_id = ps.project_id
+                AND t.task_id = ps.active_task_id
+              WHERE ps.project_id = ?1",
+            [project_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?;
+    let Some((task_id, metadata_json)) = active else {
+        return Ok(false);
+    };
+    Ok(task_policy_control_reevaluation_from_metadata(&metadata_json, &task_id)?.is_some())
 }
 
 fn active_task_has_policy_reevaluation_from_conn(
@@ -629,7 +861,11 @@ fn merge_active_task_policy_reevaluation(
     project_id: &str,
     committed_at: &str,
     input: &ProjectWorkflowPolicyMutation,
-) -> StoreResult<()> {
+    write_authority_changed: bool,
+) -> StoreResult<Option<String>> {
+    if !write_authority_changed {
+        return Ok(None);
+    }
     type ActiveTaskPolicyFacts = (String, String, String, String, String, String);
     let active: Option<ActiveTaskPolicyFacts> = tx
         .query_row(
@@ -655,7 +891,7 @@ fn merge_active_task_policy_reevaluation(
         .optional()?;
     let Some((task_id, mode, requested, current, current_acceptance, metadata_json)) = active
     else {
-        return Ok(());
+        return Ok(None);
     };
     let current_level =
         parse_control_level(&current, "tasks", &task_id, "effective_control_level")?;
@@ -682,11 +918,6 @@ fn merge_active_task_policy_reevaluation(
         .map(acceptance_policy_rank)
         .transpose()?;
 
-    let existing_needs_reevaluation = existing_required.is_some_and(|level| level > current_level)
-        || existing_required_acceptance.is_some_and(|rank| rank > current_acceptance_rank);
-    let policy_needs_reevaluation = required_level > current_level
-        || acceptance_policy_rank(acceptance_policy_name(required_acceptance))?
-            > current_acceptance_rank;
     let combined_required_level =
         std::cmp::max(required_level, existing_required.unwrap_or(current_level));
     let combined_control_acceptance =
@@ -698,33 +929,18 @@ fn merge_active_task_policy_reevaluation(
         ),
         existing_required_acceptance.unwrap_or(current_acceptance_rank),
     );
-    let existing_covers_combined = existing_required
-        .is_some_and(|level| level >= combined_required_level)
-        && existing_required_acceptance.unwrap_or(current_acceptance_rank)
-            >= combined_required_acceptance;
-
-    let next_mark = if existing_needs_reevaluation && existing_covers_combined {
-        existing_mark.clone()
-    } else if existing_needs_reevaluation || policy_needs_reevaluation {
-        Some(TaskPolicyControlReevaluation {
-            policy_version: input.policy_version,
-            policy_fingerprint: input.policy_fingerprint.clone(),
-            required_effective_control_level: combined_required_level.as_str().to_owned(),
-            required_acceptance_policy: Some(
-                acceptance_policy_name(acceptance_policy_from_rank(combined_required_acceptance))
-                    .to_owned(),
-            ),
-            marked_at: committed_at.to_owned(),
-        })
-    } else {
-        None
-    };
-    let policy_reevaluation_pending = next_mark.is_some();
+    let next_mark = Some(TaskPolicyControlReevaluation {
+        policy_version: input.policy_version,
+        policy_fingerprint: input.policy_fingerprint.clone(),
+        required_effective_control_level: combined_required_level.as_str().to_owned(),
+        required_acceptance_policy: Some(
+            acceptance_policy_name(acceptance_policy_from_rank(combined_required_acceptance))
+                .to_owned(),
+        ),
+        marked_at: committed_at.to_owned(),
+    });
     if next_mark == existing_mark {
-        if policy_reevaluation_pending {
-            invalidate_policy_reevaluation_write_tickets(tx, project_id, &task_id)?;
-        }
-        return Ok(());
+        return Ok(Some(task_id));
     }
     let mut metadata = task_metadata_object(&metadata_json, &task_id)?;
     match next_mark {
@@ -750,27 +966,71 @@ fn merge_active_task_policy_reevaluation(
             AND task_id = ?2",
         params![project_id, task_id, metadata_json, committed_at],
     )?;
-    if policy_reevaluation_pending {
-        invalidate_policy_reevaluation_write_tickets(tx, project_id, &task_id)?;
-    }
-    Ok(())
+    Ok(Some(task_id))
 }
 
-fn invalidate_policy_reevaluation_write_tickets(
+fn invalidate_incompatible_write_tickets(
     tx: &Transaction<'_>,
     project_id: &str,
-    task_id: &str,
-) -> StoreResult<()> {
-    tx.execute(
-        "UPDATE write_tickets
-            SET status = 'invalidated',
-                invalidation_reason = 'explicit_revoke'
-          WHERE project_id = ?1
-            AND task_id = ?2
-            AND status = 'active'",
-        params![project_id, task_id],
-    )?;
-    Ok(())
+    resulting_write_authority_fingerprint: &str,
+    reevaluated_task_id: Option<&str>,
+) -> StoreResult<(Vec<String>, Vec<String>)> {
+    let active_tickets = {
+        let mut statement = tx.prepare(
+            "SELECT write_ticket_id, task_id, validity_basis_json
+               FROM write_tickets
+              WHERE project_id = ?1
+                AND status = 'active'
+              ORDER BY write_ticket_id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    let mut affected_task_ids = BTreeSet::new();
+    if let Some(task_id) = reevaluated_task_id {
+        affected_task_ids.insert(task_id.to_owned());
+    }
+    let mut invalidated_write_ticket_ids = Vec::new();
+    for (write_ticket_id, task_id, validity_basis_json) in active_tickets {
+        let stored_write_authority_fingerprint =
+            serde_json::from_str::<Value>(&validity_basis_json)
+                .ok()
+                .and_then(|basis| {
+                    basis
+                        .get("write_authority_fingerprint")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                });
+        let policy_binding_mismatch = stored_write_authority_fingerprint.as_deref()
+            != Some(resulting_write_authority_fingerprint);
+        let task_reevaluation_pending = reevaluated_task_id == Some(task_id.as_str());
+        if !policy_binding_mismatch && !task_reevaluation_pending {
+            continue;
+        }
+        let updated = tx.execute(
+            "UPDATE write_tickets
+                SET status = 'invalidated',
+                    invalidation_reason = 'explicit_revoke'
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2
+                AND status = 'active'",
+            params![project_id, write_ticket_id],
+        )?;
+        if updated == 1 {
+            affected_task_ids.insert(task_id);
+            invalidated_write_ticket_ids.push(write_ticket_id);
+        }
+    }
+    Ok((
+        affected_task_ids.into_iter().collect(),
+        invalidated_write_ticket_ids,
+    ))
 }
 
 fn required_control_for_policy(
@@ -1231,6 +1491,7 @@ mod tests {
     use volicord_types::{canonical_json_sha256, canonical_json_string, ProjectId};
 
     use super::*;
+    use crate::core_pipeline::CoreStorageMutation;
 
     fn workflow_policy(
         default_direct_control: &str,
@@ -1269,6 +1530,38 @@ mod tests {
         ))
     }
 
+    fn workflow_policy_with_write_authority(
+        max_intended_paths: u64,
+        allowed_path_patterns: Vec<&str>,
+        denied_path_patterns: Vec<&str>,
+        idle_timeout_minutes: Option<u64>,
+        unknown_effect_behavior: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let value = json!({
+            "schema": "volicord-policy-v2",
+            "workflow": {
+                "default_direct_control": "light",
+                "default_work_control": "light",
+                "light": {
+                    "enabled": true,
+                    "max_intended_paths": max_intended_paths,
+                    "allowed_path_patterns": allowed_path_patterns,
+                    "denied_path_patterns": denied_path_patterns,
+                    "final_acceptance": "policy_dependent"
+                },
+                "write_ticket": {"idle_timeout_minutes": idle_timeout_minutes},
+                "detective": {
+                    "unknown_effect_behavior": unknown_effect_behavior,
+                    "stop_behavior": "allow_with_disclosure"
+                }
+            }
+        });
+        Ok((
+            canonical_json_string(&value)?,
+            canonical_json_sha256(&value)?.into_inner(),
+        ))
+    }
+
     #[test]
     fn workflow_policy_and_session_end_receipt_round_trip() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-record-round-trip")?;
@@ -1281,7 +1574,19 @@ mod tests {
             "schema": "volicord-policy-v2",
             "workflow": {
                 "default_direct_control": "tracked",
-                "default_work_control": "tracked"
+                "default_work_control": "tracked",
+                "light": {
+                    "enabled": false,
+                    "max_intended_paths": 3,
+                    "allowed_path_patterns": [],
+                    "denied_path_patterns": [],
+                    "final_acceptance": "policy_dependent"
+                },
+                "write_ticket": {"idle_timeout_minutes": null},
+                "detective": {
+                    "unknown_effect_behavior": "warn",
+                    "stop_behavior": "allow_with_disclosure"
+                }
             }
         });
         let policy_json = canonical_json_string(&policy_value)?;
@@ -1398,6 +1703,8 @@ mod tests {
         assert_eq!(initial.basis_state_version, 0);
         assert_eq!(initial.resulting_state_version, 1);
         assert!(!initial.active_task_requires_escalation);
+        assert!(initial.active_task_requires_policy_reevaluation);
+        assert!(initial.write_authority_changed);
         let (event_task_id, event_created_at): (Option<String>, String) = store.conn.query_row(
             "SELECT task_id, created_at FROM authority_events WHERE event_seq = 1",
             [],
@@ -1418,6 +1725,8 @@ mod tests {
             })?;
         assert!(!replay.database_changed);
         assert_eq!(replay.resulting_state_version, 1);
+        assert!(!replay.write_authority_changed);
+        assert!(replay.invalidated_write_ticket_ids.is_empty());
         assert_eq!(store.effect_counts()?.task_events, 0);
         let authority_event_count: i64 =
             store
@@ -1454,6 +1763,14 @@ mod tests {
             })?;
         assert_eq!(strengthened.resulting_state_version, 2);
         assert!(strengthened.active_task_requires_escalation);
+        assert_eq!(
+            strengthened.affected_task_ids,
+            vec!["task_policy_active".to_owned()]
+        );
+        assert_eq!(
+            strengthened.invalidated_write_ticket_ids,
+            vec!["ticket_policy_before_raise".to_owned()]
+        );
         let marked =
             task_policy_control_reevaluation(&store.active_task_record()?.expect("active Task"))?
                 .expect("strengthened policy must mark the active Task");
@@ -1485,8 +1802,11 @@ mod tests {
         let preserved =
             task_policy_control_reevaluation(&store.active_task_record()?.expect("active Task"))?
                 .expect("relaxed policy must preserve the stronger mark");
-        assert_eq!(preserved.policy_version, 2);
-        assert_eq!(preserved.policy_fingerprint, tracked_fingerprint);
+        assert_eq!(preserved.policy_version, 3);
+        assert_eq!(
+            preserved.policy_fingerprint,
+            relaxed.policy.policy_fingerprint
+        );
         assert_eq!(preserved.required_effective_control_level, "tracked");
 
         let marker_commit = CommitMutationInput {
@@ -1531,6 +1851,342 @@ mod tests {
         assert_eq!(raised.effective_control_level, "tracked");
         assert_eq!(task_policy_control_reevaluation(&raised)?, None);
         assert_eq!(store.project_state()?.state_version, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn write_authority_tightening_atomically_revokes_active_tickets() -> Result<(), Box<dyn Error>>
+    {
+        struct Case {
+            name: &'static str,
+            initial_max_paths: u64,
+            initial_allowed: Vec<&'static str>,
+            initial_denied: Vec<&'static str>,
+            initial_timeout: Option<u64>,
+            ticket_paths: Vec<&'static str>,
+            tightened_max_paths: u64,
+            tightened_allowed: Vec<&'static str>,
+            tightened_denied: Vec<&'static str>,
+            tightened_timeout: Option<u64>,
+        }
+
+        let cases = [
+            Case {
+                name: "policy-binding-denied-path",
+                initial_max_paths: 3,
+                initial_allowed: vec!["src/**"],
+                initial_denied: vec![],
+                initial_timeout: None,
+                ticket_paths: vec!["src/export.rs"],
+                tightened_max_paths: 3,
+                tightened_allowed: vec!["src/**"],
+                tightened_denied: vec!["src/export.rs"],
+                tightened_timeout: None,
+            },
+            Case {
+                name: "policy-binding-allowed-path",
+                initial_max_paths: 3,
+                initial_allowed: vec!["src/**"],
+                initial_denied: vec![],
+                initial_timeout: None,
+                ticket_paths: vec!["src/export.rs"],
+                tightened_max_paths: 3,
+                tightened_allowed: vec!["tests/**"],
+                tightened_denied: vec![],
+                tightened_timeout: None,
+            },
+            Case {
+                name: "policy-binding-max-paths",
+                initial_max_paths: 3,
+                initial_allowed: vec!["src/**"],
+                initial_denied: vec![],
+                initial_timeout: None,
+                ticket_paths: vec!["src/export.rs", "src/import.rs"],
+                tightened_max_paths: 1,
+                tightened_allowed: vec!["src/**"],
+                tightened_denied: vec![],
+                tightened_timeout: None,
+            },
+            Case {
+                name: "policy-binding-timeout",
+                initial_max_paths: 3,
+                initial_allowed: vec!["src/**"],
+                initial_denied: vec![],
+                initial_timeout: None,
+                ticket_paths: vec!["src/export.rs"],
+                tightened_max_paths: 3,
+                tightened_allowed: vec!["src/**"],
+                tightened_denied: vec![],
+                tightened_timeout: Some(5),
+            },
+        ];
+
+        for case in cases {
+            let ticket_path_count = u64::try_from(case.ticket_paths.len())?;
+            assert!(ticket_path_count <= case.initial_max_paths, "{}", case.name);
+            if case.name == "policy-binding-max-paths" {
+                assert!(ticket_path_count > case.tightened_max_paths);
+            }
+            let fixture = CoreFixture::new(case.name)?;
+            let mut store = CoreProjectStore::open(
+                fixture.runtime_home_path(),
+                &ProjectId::new(fixture.project_id()),
+            )?;
+            let (initial_json, initial_fingerprint) = workflow_policy_with_write_authority(
+                case.initial_max_paths,
+                case.initial_allowed,
+                case.initial_denied,
+                case.initial_timeout,
+                "warn",
+            )?;
+            let initial = store.apply_project_workflow_policy_authority(
+                ProjectWorkflowPolicyAuthorityApply {
+                    policy_version: 1,
+                    policy_json: initial_json,
+                    policy_fingerprint: initial_fingerprint.clone(),
+                    source: "project_database".to_owned(),
+                    expected_prior_fingerprint: None,
+                },
+            )?;
+            store.conn.execute(
+                "INSERT INTO tasks (
+                    project_id, task_id, created_by_actor_source, mode,
+                    requested_control_level, effective_control_level, control_level_reason,
+                    work_phase, acceptance_policy, acceptance_policy_reason,
+                    lifecycle_phase, created_at, updated_at
+                 ) VALUES (?1, 'task_policy_binding', ?2, 'direct', 'light', 'light',
+                           'Light policy fixture control.', 'implementation',
+                           'policy_dependent', 'Light policy fixture acceptance.',
+                           'implementation', '2026-07-17T00:00:00Z',
+                           '2026-07-17T00:00:00Z')",
+                params![fixture.project_id(), fixture.actor_source()],
+            )?;
+            store.conn.execute(
+                "UPDATE project_state
+                    SET active_task_id = 'task_policy_binding'
+                  WHERE project_id = ?1",
+                [fixture.project_id()],
+            )?;
+            let validity_basis_json = canonical_json_string(&json!({
+                "task_id": "task_policy_binding",
+                "change_unit_id": "cu_policy_binding",
+                "scope_revision": 1,
+                "baseline_ref": null,
+                "workspace_context_sha256": null,
+                "write_authority_fingerprint": initial.resulting_write_authority_fingerprint,
+                "approval_basis_refs": []
+            }))?;
+            let allowed_path_prefixes_json = canonical_json_string(&case.ticket_paths)?;
+            store.conn.execute(
+                "INSERT INTO write_tickets (
+                    project_id, write_ticket_id, task_id, change_unit_id,
+                    basis_state_version, status, validity_basis_json,
+                    allowed_path_prefixes_json, denied_path_prefixes_json,
+                    attempt_scope_json, created_by_actor_source,
+                    created_by_user_action_resolution_id, idle_expires_at,
+                    invalidation_reason, consumed_by_run_id, consumed_at,
+                    revoked_at, created_at, metadata_json
+                 ) VALUES (?1, 'ticket_policy_binding', 'task_policy_binding', NULL,
+                           1, 'active', ?2, ?3, '[]', '{}', ?4,
+                           NULL, NULL, NULL, NULL, NULL, NULL,
+                           '2026-07-17T00:00:00Z', '{}')",
+                params![
+                    fixture.project_id(),
+                    validity_basis_json,
+                    allowed_path_prefixes_json,
+                    fixture.actor_source()
+                ],
+            )?;
+
+            let (tightened_json, tightened_fingerprint) = workflow_policy_with_write_authority(
+                case.tightened_max_paths,
+                case.tightened_allowed,
+                case.tightened_denied,
+                case.tightened_timeout,
+                "warn",
+            )?;
+            let tightened = store.apply_project_workflow_policy_authority(
+                ProjectWorkflowPolicyAuthorityApply {
+                    policy_version: 2,
+                    policy_json: tightened_json,
+                    policy_fingerprint: tightened_fingerprint,
+                    source: "project_database".to_owned(),
+                    expected_prior_fingerprint: Some(initial_fingerprint),
+                },
+            )?;
+
+            assert!(tightened.write_authority_changed, "{}", case.name);
+            assert_ne!(
+                tightened.prior_write_authority_fingerprint,
+                tightened.resulting_write_authority_fingerprint,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                tightened.affected_task_ids,
+                vec!["task_policy_binding".to_owned()],
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                tightened.invalidated_write_ticket_ids,
+                vec!["ticket_policy_binding".to_owned()],
+                "{}",
+                case.name
+            );
+            let (status, reason): (String, Option<String>) = store.conn.query_row(
+                "SELECT status, invalidation_reason
+                   FROM write_tickets
+                  WHERE project_id = ?1
+                    AND write_ticket_id = 'ticket_policy_binding'",
+                [fixture.project_id()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            assert_eq!(status, "invalidated", "{}", case.name);
+            assert_eq!(reason.as_deref(), Some("explicit_revoke"), "{}", case.name);
+            let active_task = store.active_task_record()?.expect("active Task");
+            let mark = task_policy_control_reevaluation(&active_task)?
+                .expect("write-authority changes must mark the active Task");
+            assert_eq!(
+                mark.required_effective_control_level, "light",
+                "{}",
+                case.name
+            );
+            assert!(
+                tightened.active_task_requires_policy_reevaluation,
+                "{}",
+                case.name
+            );
+            assert!(
+                !tightened.active_task_requires_escalation,
+                "same-level reevaluation is not a control escalation: {}",
+                case.name
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_equivalent_write_authority_preserves_compatible_active_ticket(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("policy-binding-normalized-idempotency")?;
+        let mut store = CoreProjectStore::open(
+            fixture.runtime_home_path(),
+            &ProjectId::new(fixture.project_id()),
+        )?;
+        let (initial_json, initial_fingerprint) = workflow_policy_with_write_authority(
+            3,
+            vec!["src/**", "tests/**"],
+            vec!["target/**", "vendor/**"],
+            Some(30),
+            "warn",
+        )?;
+        let initial =
+            store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
+                policy_version: 1,
+                policy_json: initial_json,
+                policy_fingerprint: initial_fingerprint.clone(),
+                source: "project_database".to_owned(),
+                expected_prior_fingerprint: None,
+            })?;
+        store.conn.execute(
+            "INSERT INTO tasks (
+                project_id, task_id, created_by_actor_source, mode,
+                requested_control_level, effective_control_level, control_level_reason,
+                work_phase, acceptance_policy, acceptance_policy_reason,
+                lifecycle_phase, created_at, updated_at
+             ) VALUES (?1, 'task_policy_equivalent', ?2, 'direct', 'light', 'light',
+                       'Light policy fixture control.', 'implementation',
+                       'policy_dependent', 'Light policy fixture acceptance.',
+                       'implementation', '2026-07-17T00:00:00Z',
+                       '2026-07-17T00:00:00Z')",
+            params![fixture.project_id(), fixture.actor_source()],
+        )?;
+        store.conn.execute(
+            "UPDATE project_state
+                SET active_task_id = 'task_policy_equivalent'
+              WHERE project_id = ?1",
+            [fixture.project_id()],
+        )?;
+        let validity_basis_json = canonical_json_string(&json!({
+            "task_id": "task_policy_equivalent",
+            "change_unit_id": "cu_policy_equivalent",
+            "scope_revision": 1,
+            "baseline_ref": null,
+            "workspace_context_sha256": null,
+            "write_authority_fingerprint": initial.resulting_write_authority_fingerprint,
+            "approval_basis_refs": []
+        }))?;
+        store.conn.execute(
+            "INSERT INTO write_tickets (
+                project_id, write_ticket_id, task_id, change_unit_id,
+                basis_state_version, status, validity_basis_json,
+                allowed_path_prefixes_json, denied_path_prefixes_json,
+                attempt_scope_json, created_by_actor_source,
+                created_by_user_action_resolution_id, idle_expires_at,
+                invalidation_reason, consumed_by_run_id, consumed_at,
+                revoked_at, created_at, metadata_json
+             ) VALUES (?1, 'ticket_policy_equivalent', 'task_policy_equivalent', NULL,
+                       1, 'active', ?2, '[\"src/export.rs\"]', '[]', '{}', ?3,
+                       NULL, NULL, NULL, NULL, NULL, NULL,
+                       '2026-07-17T00:00:00Z', '{}')",
+            params![
+                fixture.project_id(),
+                validity_basis_json,
+                fixture.actor_source()
+            ],
+        )?;
+
+        let (equivalent_json, equivalent_fingerprint) = workflow_policy_with_write_authority(
+            3,
+            vec!["tests/**", "src/**", "src/**"],
+            vec!["vendor/**", "target/**", "target/**"],
+            Some(30),
+            "warn",
+        )?;
+        assert_ne!(initial_fingerprint, equivalent_fingerprint);
+        let equivalent =
+            store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
+                policy_version: 2,
+                policy_json: equivalent_json.clone(),
+                policy_fingerprint: equivalent_fingerprint.clone(),
+                source: "project_database".to_owned(),
+                expected_prior_fingerprint: Some(initial_fingerprint),
+            })?;
+        assert!(equivalent.database_changed);
+        assert!(!equivalent.write_authority_changed);
+        assert_eq!(
+            equivalent.prior_write_authority_fingerprint,
+            equivalent.resulting_write_authority_fingerprint
+        );
+        assert!(equivalent.affected_task_ids.is_empty());
+        assert!(equivalent.invalidated_write_ticket_ids.is_empty());
+        assert!(!equivalent.active_task_requires_policy_reevaluation);
+        let status: String = store.conn.query_row(
+            "SELECT status
+               FROM write_tickets
+              WHERE project_id = ?1
+                AND write_ticket_id = 'ticket_policy_equivalent'",
+            [fixture.project_id()],
+            |row| row.get(0),
+        )?;
+        assert_eq!(status, "active");
+
+        let replay =
+            store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
+                policy_version: 2,
+                policy_json: equivalent_json,
+                policy_fingerprint: equivalent_fingerprint.clone(),
+                source: "project_database".to_owned(),
+                expected_prior_fingerprint: Some(equivalent_fingerprint),
+            })?;
+        assert!(!replay.database_changed);
+        assert!(!replay.write_authority_changed);
+        assert_eq!(
+            replay.resulting_write_authority_fingerprint,
+            equivalent.resulting_write_authority_fingerprint
+        );
+        assert!(replay.invalidated_write_ticket_ids.is_empty());
         Ok(())
     }
 

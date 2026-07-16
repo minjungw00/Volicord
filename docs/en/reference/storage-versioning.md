@@ -185,17 +185,20 @@ Every newly committed authority mutation appends at least one durable `authority
 A changed project workflow-policy fingerprint is one normal administrative
 authority mutation. The transaction replaces the policy row, advances the
 state version and persisted UTC floor, appends one project-scoped
-`project_workflow_policy_applied` event, and upward-merges any required active
-Task reevaluation mark. An unsatisfied resulting mark invalidates that Task's
-active tickets with `explicit_revoke` inside the same transaction. Reapplying
-the same fingerprint is a no-effect database operation and performs none of
-those effects.
+`project_workflow_policy_applied` event, and derives the normalized
+write-authority fingerprint. When that derived fingerprint changes, it marks
+the active Task for reevaluation even when no level must rise and invalidates
+with `explicit_revoke` all active tickets with a missing or different binding
+plus every active ticket for the marked Task, all inside the same transaction.
+Reapplying the same canonical policy fingerprint is a no-effect
+database operation. A changed policy whose normalized write authority is
+unchanged performs no ticket invalidation solely because policy apply ran.
 
 `tasks.state_version` is not a baseline authority field. A non-baseline `tasks.state_version` column is invalid storage shape and must not be used as a conflict, freshness, lock, or write-ticket basis.
 
 Related fields:
 
-- `write_tickets.basis_state_version` stores audit ordering for issue or reuse. It is not unique and is never a validity coordinate. Ticket validity uses the explicit Task, Change Unit, scope revision, baseline, workspace, approval basis, consumption/revocation state, and optional idle timeout.
+- `write_tickets.basis_state_version` stores audit ordering for issue or reuse. It is not unique and is never a validity coordinate. Ticket validity uses the explicit Task, Change Unit, scope revision, baseline, workspace, normalized project write-authority fingerprint, approval basis, consumption/revocation state, and optional idle timeout.
 - `evidence_summaries.produced_at_state_version` stores the resulting
   `project_state.state_version` of the commit that most recently inserted or
   updated that summary. Current Evidence Summary selection orders this field
@@ -211,10 +214,16 @@ A write ticket is reusable-until-consumed Volicord authority for compatible auth
 Write-ticket issuance and compatibility consumption follow normal state-version rules:
 
 - issuance can commit only through an owner-defined method branch
-- prepare-write may reuse an active unconsumed ticket when every validity coordinate matches, the existing allowed prefixes cover the requested prefixes, denied prefixes remain effective, and sensitive authority is equal or stronger; sensitive reuse also requires the exact normalized operation and matching approval-resolution identity
-- consumption can commit only for the compatible intended product-file write or exact approval-bound non-product sensitive action when the row is active, unconsumed, not revoked or invalidated, and within an optional configured idle boundary
+- prepare-write may reuse an active unconsumed ticket when every validity coordinate, including the non-null current write-authority fingerprint, matches, the existing allowed prefixes cover the requested prefixes, denied prefixes remain effective, and sensitive authority is equal or stronger; sensitive reuse also requires the exact normalized operation and matching approval-resolution identity
+- consumption can commit only for the compatible intended product-file write or exact approval-bound non-product sensitive action when the row is active, unconsumed, not revoked or invalidated, bound to the current write authority, and within an optional configured idle boundary; Core validates before planning and Store revalidates inside the consumption transaction
 - unrelated state-version increments do not invalidate tickets; explicit invalidation reasons are `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, and `explicit_revoke`
 - issuance or consumption never occurs on rejected, dry-run, or replay-only branches
+
+The binding uses `write_tickets.validity_basis_json`, so this change preserves
+`baseline_sqlite_v7`; it adds no table, column, index, trigger, or offline-copy
+upgrade. An active historical ticket whose JSON lacks the binding is stale and
+must be reissued. Missing bindings on consumed historical tickets remain
+decodable and inspectable.
 
 ## Idempotency And Replay
 

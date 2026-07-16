@@ -175,6 +175,12 @@ struct PolicyApplyReport {
     file_matches_authority: bool,
     file_status: String,
     active_task_requires_escalation: bool,
+    active_task_requires_policy_reevaluation: bool,
+    write_authority_changed: bool,
+    prior_write_authority_fingerprint: String,
+    resulting_write_authority_fingerprint: String,
+    affected_task_ids: Vec<String>,
+    invalidated_write_ticket_ids: Vec<String>,
     actions: Vec<PolicyAction>,
 }
 
@@ -345,6 +351,14 @@ where
         file_matches_authority: file_state.matches_authority,
         file_status: file_state.status,
         active_task_requires_escalation,
+        active_task_requires_policy_reevaluation: authority_apply
+            .active_task_requires_policy_reevaluation,
+        write_authority_changed: authority_apply.write_authority_changed,
+        prior_write_authority_fingerprint: authority_apply.prior_write_authority_fingerprint,
+        resulting_write_authority_fingerprint: authority_apply
+            .resulting_write_authority_fingerprint,
+        affected_task_ids: authority_apply.affected_task_ids,
+        invalidated_write_ticket_ids: authority_apply.invalidated_write_ticket_ids,
         actions,
     };
     let output = render_json(&report)?;
@@ -1292,6 +1306,19 @@ mod tests {
         assert_eq!(first["file_changed"], true);
         assert_eq!(first["resulting_policy_version"], 1);
         assert_eq!(first["file_matches_authority"], true);
+        assert_eq!(first["write_authority_changed"], false);
+        assert!(first["prior_write_authority_fingerprint"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
+        assert!(first["resulting_write_authority_fingerprint"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
+        assert_eq!(
+            first["prior_write_authority_fingerprint"],
+            first["resulting_write_authority_fingerprint"]
+        );
+        assert_eq!(first["affected_task_ids"], json!([]));
+        assert_eq!(first["invalidated_write_ticket_ids"], json!([]));
         assert!(!first_output.contains(REDACTED_ENV_VALUE));
         assert_eq!(fixture.store()?.project_state()?.state_version, 1);
         assert_eq!(policy_event_count(&fixture)?, 1);
@@ -1317,6 +1344,12 @@ mod tests {
         assert_eq!(idempotent["database_changed"], false);
         assert_eq!(idempotent["file_changed"], false);
         assert_eq!(idempotent["resulting_policy_version"], 1);
+        assert_eq!(idempotent["write_authority_changed"], false);
+        assert_eq!(
+            idempotent["prior_write_authority_fingerprint"],
+            idempotent["resulting_write_authority_fingerprint"]
+        );
+        assert_eq!(idempotent["invalidated_write_ticket_ids"], json!([]));
         assert_eq!(fixture.store()?.project_state()?.state_version, 1);
         assert_eq!(policy_event_count(&fixture)?, 1);
 
@@ -1333,6 +1366,7 @@ mod tests {
         assert_eq!(second["file_changed"], true);
         assert_eq!(second["resulting_policy_version"], 2);
         assert_eq!(second["file_matches_authority"], true);
+        assert_eq!(second["write_authority_changed"], true);
         assert_eq!(fixture.store()?.project_state()?.state_version, 2);
         assert_eq!(policy_event_count(&fixture)?, 2);
 

@@ -1024,6 +1024,8 @@ pub struct WriteTicketValidityBasis {
     pub scope_revision: u64,
     pub baseline_ref: Option<BaselineRef>,
     pub workspace_context_sha256: Option<String>,
+    #[serde(default)]
+    pub write_authority_fingerprint: Option<String>,
     pub approval_basis_refs: Vec<StateRecordRef>,
 }
 

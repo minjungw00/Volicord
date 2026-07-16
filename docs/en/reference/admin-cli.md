@@ -1132,27 +1132,33 @@ contents, or user answers.
 Runtime Home, host, connection, and guard-installation binding validation;
 comparison with the current authoritative fingerprint; recording the
 canonical policy, fingerprint, schema, and next `policy_version` in project
-state; conditional atomic replacement of the managed policy file; and marking
-active Tasks that require upward control-level or acceptance-policy reevaluation
-before another write. The project policy always takes precedence over an Agent-requested
-control level. Applying a less restrictive policy never automatically lowers
-an active Task.
+state; deriving the normalized write-authority fingerprint; conditional atomic
+replacement of the managed policy file; and marking the active Task for
+reevaluation whenever write authority changes. The project policy always takes
+precedence over an Agent-requested control level. Applying a less restrictive
+policy never automatically lowers an active Task.
 
 For a changed fingerprint, the authoritative database step is one transaction:
 it replaces `project_workflow_policies`, advances `project_state.state_version`
 and the canonical UTC floor once, appends one project-scoped
-`project_workflow_policy_applied` authority event, and upward-merges the active
-Task's closed `policy_control_reevaluation` metadata mark when required. A
-required mark also invalidates every active ticket for that Task with
-`explicit_revoke` in the same transaction, so no pre-strengthening ticket can
-cross the policy boundary. A later relaxed policy does not weaken an existing stronger mark. The next
-write-compatible Core commit raises the Task to at least the marked control and
-acceptance levels and clears the mark atomically only after both are satisfied.
+`project_workflow_policy_applied` authority event, and creates or updates the
+active Task's closed `policy_control_reevaluation` metadata mark when the normalized
+write-authority fingerprint changes, including same-level path, path-count, or
+timeout changes. That transaction invalidates with `explicit_revoke` every
+active ticket with a missing or different stored binding and every active
+ticket for the marked Task, so no pre-change ticket can cross the policy
+boundary.
+A later relaxed policy does not weaken an existing stronger requirement. The
+next write-compatible Core commit reevaluates current policy, raises the Task
+when needed, and clears the mark atomically only after both control and
+acceptance requirements are satisfied.
 
 Reapplying the same canonical fingerprint is idempotent and does not increment
 `policy_version` or `state_version` and does not append another authority event;
 it may repair a missing or mismatched managed file. A changed
-canonical policy increments `policy_version` exactly once. Because the project
+canonical policy increments `policy_version` exactly once. When its normalized
+write-authority fingerprint is unchanged, it does not invalidate compatible
+tickets solely because apply ran. Because the project
 database is authoritative, failure after its commit but before verified file
 replacement returns `status=failed`, `database_changed=true`,
 `file_matches_authority=false`, and an exact repair action; it must not report
@@ -1161,7 +1167,18 @@ diagnostics must continue to surface that mismatch.
 
 Apply JSON reports `status`, `changed`, `database_changed`, `file_changed`,
 `restart_required`, schema, prior and resulting policy versions and
-fingerprints, file-match state, active-Task escalation state, and `actions`.
+fingerprints, file-match state, `active_task_requires_escalation`,
+`active_task_requires_policy_reevaluation`, `write_authority_changed`, prior
+and resulting write-authority fingerprints as
+`prior_write_authority_fingerprint` and
+`resulting_write_authority_fingerprint`, exact `affected_task_ids`, exact
+`invalidated_write_ticket_ids`, and `actions`.
+
+When no prior policy row exists, the prior write-authority fingerprint is the
+conservative-default digest. A changed normalized authority reports affected
+Task and invalidated-ticket identifiers in deterministic order; no-effect
+authority cases report empty arrays.
+
 It does not include policy source JSON, command text from hook bindings,
 environment values, prompts, Product Repository contents, or user answers.
 
@@ -1566,16 +1583,20 @@ Lifecycle behavior:
   decisions, not OS-level enforcement.
 
   Guard strictly decodes the active Task's closed
-  `policy_control_reevaluation` metadata mark. When its required control level
-  or optional required acceptance policy is stronger than the corresponding
-  persisted Task field, Guard excludes every active ticket from the current
-  candidate set. A deterministic Product Repository write is then denied with
-  `policy_control_reevaluation_required`, creates no expected-write
-  correlation, and directs the caller to run `volicord.prepare_write` again so
-  Core can apply the stronger policy and issue a current ticket. Guard exposes
-  the pending requirements in its context but never clears or rewrites the
-  mark; Core owns that transition. A malformed mark fails the Guard command
-  instead of allowing an existing ticket.
+  `policy_control_reevaluation` metadata mark and independently derives the
+  current normalized write-authority fingerprint. A ticket with a missing or
+  different binding is excluded from active authorization. If it would
+  otherwise cover a deterministic Product Repository write, Guard hard-denies
+  with `write_ticket_policy_changed`; `write_ticket_backing.status` is
+  `policy_authority_stale`, `ticket_backed=false`, and the output carries exact
+  `observed_paths` and `stale_write_ticket_ids`; the caller must run
+  `volicord.prepare_write` again. This stale-policy coverage reason takes
+  precedence over the generic reevaluation reason. Other pending cases deny with
+  `policy_control_reevaluation_required`. Neither case creates expected-write
+  correlation. Guard exposes the pending requirements in its context but never
+  clears or rewrites the mark; Core owns that transition. A malformed mark or
+  validity basis fails the Guard command instead of allowing an existing
+  ticket.
 
   Missing paths, parser uncertainty, complex shell syntax, pipes, subshells,
   scripts, watcher unavailability, more than one candidate ticket, or an

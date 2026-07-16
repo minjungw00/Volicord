@@ -1007,31 +1007,44 @@ volicord policy apply --repo PATH --file PATH --json
 
 `policy apply`는 엄격한 스키마 검증, Product Repository·Runtime Home·호스트·연결·guard
 installation 바인딩 검증, 현재 권한 fingerprint와 비교, canonical 정책·fingerprint·스키마와
-다음 `policy_version`을 프로젝트 상태에 기록, 관리 정책 파일의 조건부 원자적 교체, 다음
-쓰기 전 통제 수준 또는 수락 정책 상향 재평가가 필요한 활성 Task 표시를 순서대로 수행합니다. 프로젝트
-정책은 Agent가 요청한 통제 수준보다 항상 우선합니다. 덜 제한적인 정책을 적용해도 활성
-Task 수준을 자동으로 낮추지 않습니다.
+다음 `policy_version`을 프로젝트 상태에 기록, 정규화된 쓰기 권한 fingerprint 파생, 관리
+정책 파일의 조건부 원자적 교체, 쓰기 권한이 바뀔 때마다 활성 Task 재평가 표시를 순서대로
+수행합니다. 프로젝트 정책은 Agent가 요청한 통제 수준보다 항상 우선합니다. 덜 제한적인
+정책을 적용해도 활성 Task 수준을 자동으로 낮추지 않습니다.
 
 Fingerprint가 바뀌면 권위 있는 데이터베이스 단계는 하나의 트랜잭션입니다.
 `project_workflow_policies`를 교체하고 `project_state.state_version`과 정규 UTC 하한을
 각각 한 번 전진시키며, 프로젝트 범위 `project_workflow_policy_applied` 권한 이벤트
-하나를 추가하고, 필요하면 활성 Task의 닫힌 `policy_control_reevaluation` metadata
-표시를 상향 병합합니다. 표시가 필요하면 같은 트랜잭션에서 해당 Task의 모든 활성 티켓도
-`explicit_revoke`로 무효화하므로 강화 전 티켓은 정책 경계를 넘을 수 없습니다. 이후 완화된 정책은 기존의 더 강한 표시를 약화하지 않습니다.
-다음 쓰기 호환 Core 커밋은 Task를 표시된 통제 수준과 수락 정책 이상으로 높이고 두
-요구사항을 모두 충족한 같은 트랜잭션에서만 표시를 지웁니다.
+하나를 추가합니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 활성 Task의 닫힌
+`policy_control_reevaluation` metadata 표시를 만들거나 갱신합니다. 같은 수준의 경로,
+경로 수, timeout 변경도 포함합니다. 같은 트랜잭션에서 저장 결속이 없거나 다른 모든 활성
+티켓과 표시된 Task의 모든 활성 티켓을 모두 `explicit_revoke`로 무효화하므로 변경 전 티켓은 정책
+경계를 넘을 수 없습니다. 이후 완화된 정책은 기존의 더 강한 요구사항을 약화하지 않습니다.
+다음 쓰기 호환 Core 커밋은 현재 정책을 다시 평가하고 필요하면 Task를 높이며, 통제와
+수락 요구사항을 모두 충족한 뒤에만 표시를 원자적으로 지웁니다.
 
 같은 canonical fingerprint를 다시 적용하는 것은 멱등이며 `policy_version`을 올리지
 않고 `state_version`도 올리거나 권한 이벤트를 추가하지 않습니다. 다만 누락되거나
 불일치하는 관리 파일은 복구할 수 있습니다. 변경된 canonical
-정책은 `policy_version`을 정확히 한 번 올립니다. 프로젝트 데이터베이스가 권한 원천이므로
+정책은 `policy_version`을 정확히 한 번 올립니다.
+정규화된 쓰기 권한 fingerprint가 같으면 정책 적용을 실행했다는 이유만으로 호환 티켓을
+무효화하지 않습니다. 프로젝트 데이터베이스가 권한 원천이므로
 커밋 뒤 검증된 파일 교체 전에 실패하면 `status=failed`, `database_changed=true`,
 `file_matches_authority=false`와 정확한 복구 행동을 반환하며 적용 완료를 보고하지 않습니다.
 이후 `policy show`, doctor, connection status 진단은 계속 그 불일치를 드러내야 합니다.
 
 Apply JSON은 `status`, `changed`, `database_changed`, `file_changed`,
 `restart_required`, 스키마, 이전·결과 정책 version과 fingerprint, 파일 일치 상태, 활성 Task
-상향 상태, `actions`를 보고합니다. 정책 원본 JSON, 훅 바인딩의 명령 텍스트, 환경 값,
+상향 상태, `active_task_requires_policy_reevaluation`, `write_authority_changed`, 이전·결과
+쓰기 권한 fingerprint인 `prior_write_authority_fingerprint`와
+`resulting_write_authority_fingerprint`, 정확한 `affected_task_ids`, 정확한
+`invalidated_write_ticket_ids`, `actions`를 보고합니다.
+
+이전 정책 행이 없으면 이전 쓰기 권한 fingerprint는 보수적 기본값의 digest입니다.
+정규화된 권한이 바뀐 경우 영향받은 Task와 무효화된 티켓 식별자를 결정적 순서로
+보고하고, 권한 효과가 없는 경우에는 빈 배열을 보고합니다.
+
+정책 원본 JSON, 훅 바인딩의 명령 텍스트, 환경 값,
 프롬프트, Product Repository 내용, 사용자 답변은 포함하지 않습니다.
 
 <a id="volicord-agent-install"></a>
@@ -1391,14 +1404,17 @@ Codex 이벤트에는 정확한 최상위 `turn_id`도 있어야 합니다. 중�
   호스트 결정이며 OS 수준 집행이 아닙니다.
 
   Guard는 활성 Task의 닫힌 `policy_control_reevaluation` metadata 표시를 엄격하게
-  디코딩합니다. 표시가 요구하는 통제 수준이나 선택적 필수 수락 정책이 대응하는 영속
-  Task 필드보다 강하면 Guard는 모든 활성 티켓을 현재 후보 집합에서 제외합니다. 이후
-  결정적인 Product Repository 쓰기는 `policy_control_reevaluation_required`로 거부하고
-  expected-write 상관관계를 만들지 않으며, Core가 더 강한 정책을 적용하고 현재 티켓을
-  발급하도록 호출자에게 `volicord.prepare_write`를 다시 실행하라고 안내합니다. Guard는
-  대기 요구사항을 context에 공개하지만 표시를 지우거나 다시 쓰지 않으며, 해당 전이는
-  Core가 담당합니다. 표시가 잘못된 형태면 기존 티켓을 허용하지 않고 Guard 명령이
-  실패합니다.
+  디코딩하고 현재 정규화된 쓰기 권한 fingerprint를 독립적으로 파생합니다. 결속이 없거나
+  다른 티켓은 활성 권한 후보에서 제외합니다. 그 티켓이 다른 조건에서는 결정적인
+  Product Repository 쓰기를 덮는다면 Guard는 `write_ticket_policy_changed`로 하드 거부하고
+  `write_ticket_backing.status=policy_authority_stale`, `ticket_backed=false`, 정확한
+  `observed_paths`와 `stale_write_ticket_ids`를 보고하며 호출자에게
+  `volicord.prepare_write`를 다시 실행하라고 안내합니다. 이 stale 정책 범위 사유가 일반
+  재평가 사유보다 우선합니다. 그 밖의 대기 재평가 사례는
+  `policy_control_reevaluation_required`로 거부합니다. 어느 경우도 expected-write
+  상관관계를 만들지 않습니다. Guard는 대기 요구사항을 context에 공개하지만 표시를
+  지우거나 다시 쓰지 않으며, 해당 전이는 Core가 담당합니다. 표시나 validity basis가
+  잘못된 형태면 기존 티켓을 허용하지 않고 Guard 명령이 실패합니다.
 
   경로 누락, 파서 불확실성, 복잡한 셸 구문, 파이프, 서브셸, 스크립트, 감시기 사용
   불가, 둘 이상의 후보 티켓, `unknown` 효과는 정책이 선택한 하드 거부가 아니라 항상

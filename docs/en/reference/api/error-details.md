@@ -101,6 +101,7 @@ baseline_mismatch
 operation_mismatch
 workspace_mismatch
 approval_basis_mismatch
+policy_authority_mismatch
 sensitive_category_mismatch
 path_mismatch
 ```
@@ -110,6 +111,8 @@ stable recorded invalidation reasons. The `*_mismatch`, `consumed`, `revoked`,
 and `incompatible` values identify attempt-time incompatibility. They keep the
 public code `WRITE_TICKET_INVALID`. A global `basis_state_version` mismatch has
 no helper value because it is not invalidity.
+`policy_authority_mismatch` means the active ticket binding is missing or does
+not equal the current normalized project write-authority fingerprint.
 
 <a id="artifact-input-error-reason"></a>
 

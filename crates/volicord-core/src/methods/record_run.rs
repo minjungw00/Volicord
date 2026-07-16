@@ -602,6 +602,7 @@ fn plan_record_run(
                 change_unit: &change_unit,
                 verified_invocation,
                 observed_changes: &normalized_observed_changes,
+                write_authority_fingerprint: &workflow_policy.write_authority_fingerprint,
                 now: *plan_now.as_datetime(),
             },
         )?;
@@ -1045,6 +1046,9 @@ fn plan_record_run(
                 write_ticket_id: record.write_ticket_id.clone(),
                 run_id: run_id.as_str().to_owned(),
                 expected_basis_state_version: record.basis_state_version,
+                expected_write_authority_fingerprint: workflow_policy
+                    .write_authority_fingerprint
+                    .clone(),
             },
         ));
     }
@@ -5150,6 +5154,7 @@ struct WriteTicketRunValidationContext<'a> {
     change_unit: &'a ChangeUnitRecord,
     verified_invocation: &'a VerifiedInvocationContext,
     observed_changes: &'a ObservedChanges,
+    write_authority_fingerprint: &'a str,
     now: DateTime<Utc>,
 }
 
@@ -5164,6 +5169,7 @@ fn validate_write_ticket_for_run(
         change_unit,
         verified_invocation,
         observed_changes,
+        write_authority_fingerprint,
         now,
     } = context;
     if record.status != "active" {
@@ -5231,6 +5237,14 @@ fn validate_write_ticket_for_run(
         "validity_basis_json",
         Some(&record.validity_basis_json),
     )?;
+    if validity_basis.write_authority_fingerprint.as_deref() != Some(write_authority_fingerprint) {
+        return write_ticket_mismatch(
+            request,
+            project_state,
+            "policy_authority_mismatch",
+            "write ticket policy authority is no longer current",
+        );
+    }
     let current_workspace_sha256 = verified_invocation
         .git_workspace_context
         .as_ref()

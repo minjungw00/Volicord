@@ -45,6 +45,7 @@ use volicord_store::{
     bootstrap::list_projects,
     core_pipeline::CoreProjectStore,
     guards::{guard_installation, list_guard_installations},
+    workflow_records::ProjectWorkflowPolicyAuthorityApply,
 };
 
 #[cfg(unix)]
@@ -309,6 +310,35 @@ impl GuardCliFixture {
         Ok(task_id)
     }
 
+    pub(crate) fn create_light_active_task(&self) -> Result<String, Box<dyn Error>> {
+        let service = CoreService::new(self.runtime_home());
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let mut request = self.inner.intake_request(
+            "req_guard_light_intake",
+            "idem_guard_light_intake",
+            false,
+            Some(state_version),
+        );
+        request.requested_mode = RequestedMode::Direct;
+        let response =
+            service.intake(request, self.invocation(OperationCategory::AgentWorkflow))?;
+        let task_id = record_id(&response.response_value["task_ref"])?;
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        service.update_scope(
+            self.inner.update_scope_request(UpdateScopeFixture {
+                request_id: "req_guard_light_scope",
+                idempotency_key: "idem_guard_light_scope",
+                dry_run: false,
+                expected_state_version: Some(state_version),
+                task_id: &task_id,
+                operation: ChangeUnitOperation::CreateCurrent,
+                scope_summary: "Light Guard fixture scope for src/export.rs.",
+            }),
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        Ok(task_id)
+    }
+
     pub(crate) fn create_additional_active_task(
         &self,
         suffix: &str,
@@ -342,25 +372,170 @@ impl GuardCliFixture {
         record_id(&response.response_value["write_ticket_ref"])
     }
 
+    pub(crate) fn prepare_write_after_policy_change(
+        &self,
+        task_id: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        let service = CoreService::new(self.runtime_home());
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let response = service.prepare_write(
+            self.inner.prepare_write_request(
+                "req_guard_prepare_write_after_policy_change",
+                "idem_guard_prepare_write_after_policy_change",
+                Some(state_version),
+                Some(task_id),
+                None,
+            ),
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        Ok(response.response_value)
+    }
+
+    pub(crate) fn apply_policy_allowing_product_path(&self) -> Result<(), Box<dyn Error>> {
+        self.apply_product_path_policy(false, None)
+    }
+
+    pub(crate) fn apply_policy_denying_product_path(&self) -> Result<(), Box<dyn Error>> {
+        self.apply_product_path_policy(true, None)
+    }
+
+    pub(crate) fn apply_policy_with_idle_timeout(
+        &self,
+        idle_timeout_minutes: Option<u64>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.apply_product_path_policy(false, idle_timeout_minutes)
+    }
+
+    fn apply_product_path_policy(
+        &self,
+        deny_product_path: bool,
+        idle_timeout_minutes: Option<u64>,
+    ) -> Result<(), Box<dyn Error>> {
+        let denied_path_patterns = if deny_product_path {
+            vec![DEFAULT_PRODUCT_PATH]
+        } else {
+            Vec::new()
+        };
+        let policy = json!({
+            "schema": "volicord-policy-v2",
+            "workflow": {
+                "default_direct_control": "light",
+                "default_work_control": "tracked",
+                "light": {
+                    "enabled": true,
+                    "max_intended_paths": 3,
+                    "allowed_path_patterns": ["src"],
+                    "denied_path_patterns": denied_path_patterns,
+                    "final_acceptance": "policy_dependent"
+                },
+                "write_ticket": {"idle_timeout_minutes": idle_timeout_minutes},
+                "detective": {
+                    "unknown_effect_behavior": "warn",
+                    "stop_behavior": "allow_with_disclosure"
+                }
+            }
+        });
+        let policy_json = volicord_types::canonical_json_string(&policy)?;
+        let policy_fingerprint = volicord_types::canonical_json_sha256(&policy)?
+            .as_str()
+            .to_owned();
+        let mut store = self.inner.store()?;
+        let prior = store.project_workflow_policy()?;
+        let policy_version = prior.as_ref().map_or(1, |policy| policy.policy_version + 1);
+        let expected_prior_fingerprint = prior.map(|policy| policy.policy_fingerprint);
+        let result =
+            store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
+                policy_version,
+                policy_json,
+                policy_fingerprint,
+                source: "guard_test_fixture".to_owned(),
+                expected_prior_fingerprint,
+            })?;
+        if !result.database_changed {
+            return Err("Guard fixture policy application must change database authority".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn remove_ticket_write_authority_binding(
+        &self,
+        write_ticket_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let connection = self.inner.conn()?;
+        let raw: String = connection.query_row(
+            "SELECT validity_basis_json
+               FROM write_tickets
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            rusqlite::params![self.project_id(), write_ticket_id],
+            |row| row.get(0),
+        )?;
+        let mut validity: Value = serde_json::from_str(&raw)?;
+        let removed = validity
+            .as_object_mut()
+            .ok_or("write-ticket validity basis must be an object")?
+            .remove("write_authority_fingerprint");
+        if removed.is_none() {
+            return Err("write-ticket fixture expected a policy-authority binding".into());
+        }
+        let changed = connection.execute(
+            "UPDATE write_tickets
+                SET validity_basis_json = ?3
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            rusqlite::params![self.project_id(), write_ticket_id, validity.to_string()],
+        )?;
+        if changed != 1 {
+            return Err("write-ticket fixture failed to remove exactly one policy binding".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn record_product_write(
         &self,
         task_id: &str,
         write_ticket_id: &str,
     ) -> Result<String, Box<dyn Error>> {
+        let response =
+            self.record_product_write_response(task_id, write_ticket_id, "record_product_write")?;
+        Ok(response["run_summary"]["run_ref"]["record_id"]
+            .as_str()
+            .ok_or("record_run should expose run_ref.record_id")?
+            .to_owned())
+    }
+
+    pub(crate) fn record_product_write_response(
+        &self,
+        task_id: &str,
+        write_ticket_id: &str,
+        suffix: &str,
+    ) -> Result<Value, Box<dyn Error>> {
         let change_unit_id = self
             .inner
             .current_change_unit_id(task_id)?
             .ok_or("Guard fixture should have a current Change Unit")?;
         let service = CoreService::new(self.runtime_home());
-        let state_version = self.inner.store()?.project_state()?.state_version;
+        let store = self.inner.store()?;
+        let state_version = store.project_state()?.state_version;
+        let task = store
+            .task_record(&TaskId::new(task_id))?
+            .ok_or("Guard fixture should have a current Task")?;
+        let request_id = format!("req_guard_{suffix}");
+        let idempotency_key = format!("idem_guard_{suffix}");
         let mut request = self.inner.record_run_request(
-            "req_guard_record_product_write",
-            "idem_guard_record_product_write",
+            &request_id,
+            &idempotency_key,
             false,
             Some(state_version),
             task_id,
             &change_unit_id,
         );
+        request.kind = match (task.mode.as_str(), task.work_phase.as_str()) {
+            ("advisor", _) | ("work", "shaping") => RunKind::ShapingUpdate,
+            ("direct", _) => RunKind::Direct,
+            ("work", "implementation") => RunKind::Implementation,
+            _ => return Err("Guard fixture Task mode or work phase is unsupported".into()),
+        };
         request.write_ticket_id = Some(WriteTicketId::new(write_ticket_id)).into();
         request.observed_changes = ObservedChanges {
             changed_paths: vec!["src/export.rs".to_owned()],
@@ -368,24 +543,22 @@ impl GuardCliFixture {
             sensitive_categories: Vec::new(),
             baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
         };
-        let snapshot = capture_git_workspace_snapshot(&self.repo_root)?
-            .ok_or("Guard fixture should be Git-backed")?;
-        let invocation = self
-            .invocation(OperationCategory::AgentWorkflow)
-            .with_git_workspace_context(GitWorkspaceContext {
-                git_common_dir: snapshot.layout.common_dir.display().to_string(),
-                worktree_id: snapshot.worktree_id,
-                branch_ref: snapshot.branch_ref,
-                head_sha: snapshot.head_sha,
-                workspace_fingerprint: snapshot.workspace_fingerprint,
-            });
+        let invocation = if self.repo_root.join(".git/HEAD").is_file() {
+            let snapshot = capture_git_workspace_snapshot(&self.repo_root)?
+                .ok_or("Guard fixture Git workspace should be readable")?;
+            self.invocation(OperationCategory::AgentWorkflow)
+                .with_git_workspace_context(GitWorkspaceContext {
+                    git_common_dir: snapshot.layout.common_dir.display().to_string(),
+                    worktree_id: snapshot.worktree_id,
+                    branch_ref: snapshot.branch_ref,
+                    head_sha: snapshot.head_sha,
+                    workspace_fingerprint: snapshot.workspace_fingerprint,
+                })
+        } else {
+            self.invocation(OperationCategory::AgentWorkflow)
+        };
         let response = service.record_run(request, invocation)?;
-        Ok(
-            response.response_value["run_summary"]["run_ref"]["record_id"]
-                .as_str()
-                .ok_or("record_run should expose run_ref.record_id")?
-                .to_owned(),
-        )
+        Ok(response.response_value)
     }
 
     pub(crate) fn strengthen_active_task_to_sensitive_without_ticket_invalidation(

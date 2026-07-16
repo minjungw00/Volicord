@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use volicord_store::{
     core_pipeline::{CoreProjectStore, TaskRecord},
-    workflow_records::task_policy_control_reevaluation,
+    workflow_records::{project_write_authority_fingerprint, task_policy_control_reevaluation},
     StoreError,
 };
 use volicord_types::{
@@ -25,6 +25,7 @@ pub(crate) struct ProjectWorkflowPolicy {
     pub(crate) default_work_control: TaskControlLevel,
     pub(crate) light: LightWorkflowPolicy,
     pub(crate) write_ticket_idle_timeout_minutes: Option<u64>,
+    pub(crate) write_authority_fingerprint: String,
 }
 
 #[derive(Debug, Clone)]
@@ -70,8 +71,8 @@ struct StoredDetectiveWorkflowPolicy {
 }
 
 impl ProjectWorkflowPolicy {
-    fn conservative_default() -> Self {
-        Self {
+    fn conservative_default() -> Result<Self, StoreError> {
+        Ok(Self {
             summary: None,
             default_direct_control: TaskControlLevel::Tracked,
             default_work_control: TaskControlLevel::Tracked,
@@ -83,7 +84,8 @@ impl ProjectWorkflowPolicy {
                 final_acceptance: AcceptancePolicy::PolicyDependent,
             },
             write_ticket_idle_timeout_minutes: None,
-        }
+            write_authority_fingerprint: project_write_authority_fingerprint(None)?,
+        })
     }
 
     pub(crate) fn light_paths_are_allowed(&self, intended_paths: &[String]) -> bool {
@@ -116,7 +118,7 @@ pub(crate) fn project_workflow_policy(
     store: &CoreProjectStore,
 ) -> Result<ProjectWorkflowPolicy, StoreError> {
     let Some(record) = store.project_workflow_policy()? else {
-        return Ok(ProjectWorkflowPolicy::conservative_default());
+        return ProjectWorkflowPolicy::conservative_default();
     };
     let corrupt = || {
         StoreError::corrupt_owner_state_json(
@@ -145,6 +147,8 @@ pub(crate) fn project_workflow_policy(
     {
         return Err(corrupt());
     }
+    let write_authority_fingerprint =
+        project_write_authority_fingerprint(Some(&record.policy_json))?;
     Ok(ProjectWorkflowPolicy {
         summary: Some(ProjectWorkflowPolicySummary {
             policy_schema: record.policy_schema,
@@ -162,6 +166,7 @@ pub(crate) fn project_workflow_policy(
             final_acceptance: stored.light.final_acceptance,
         },
         write_ticket_idle_timeout_minutes: stored.write_ticket.idle_timeout_minutes,
+        write_authority_fingerprint,
     })
 }
 
@@ -173,6 +178,7 @@ pub(crate) struct ResolvedTaskControlAuthority {
     pub(crate) acceptance_policy_reason: String,
     pub(crate) control_raised: bool,
     pub(crate) acceptance_raised: bool,
+    pub(crate) policy_reevaluation_marked: bool,
     pub(crate) pending_policy_reevaluation: bool,
 }
 
@@ -210,6 +216,7 @@ pub(crate) fn resolve_task_control_authority(
     let control_raised = effective_control_level > current_control;
     let acceptance_raised =
         acceptance_policy_rank(acceptance_policy) > acceptance_policy_rank(current_acceptance);
+    let policy_reevaluation_marked = mark.is_some();
     let pending_policy_reevaluation = marked_control.is_some_and(|level| level > current_control)
         || marked_acceptance.is_some_and(|required| {
             acceptance_policy_rank(required) > acceptance_policy_rank(current_acceptance)
@@ -256,6 +263,7 @@ pub(crate) fn resolve_task_control_authority(
         acceptance_policy_reason,
         control_raised,
         acceptance_raised,
+        policy_reevaluation_marked,
         pending_policy_reevaluation,
     })
 }

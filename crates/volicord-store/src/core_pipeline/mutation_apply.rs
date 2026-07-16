@@ -5,7 +5,9 @@ use crate::evidence_capture::{
 use crate::user_action_channel::validate_persisted_user_action_channel_token_window;
 use crate::workflow_records::{
     apply_project_workflow_policy_mutation, clear_satisfied_task_policy_reevaluation,
+    project_write_authority_fingerprint, ProjectWorkflowPolicyMutationEffect,
 };
+use volicord_types::WriteTicketValidityBasis;
 
 fn task_control_level_rank(value: &str) -> StoreResult<u8> {
     match value {
@@ -112,17 +114,21 @@ impl CoreStorageMutation {
             Self::MarkUserActionsSupersededOrStale(input) => {
                 mutation.mark_user_actions_superseded_or_stale(input)
             }
-            Self::ApplyProjectWorkflowPolicy(input) => apply_project_workflow_policy_mutation(
-                mutation.tx,
-                mutation.project_id,
-                mutation.committed_at,
-                input,
-            ),
+            Self::ApplyProjectWorkflowPolicy(input) => mutation
+                .apply_project_workflow_policy_with_effect(input)
+                .map(|_| ()),
         }
     }
 }
 
 impl ProjectMutation<'_> {
+    pub(crate) fn apply_project_workflow_policy_with_effect(
+        &mut self,
+        input: &ProjectWorkflowPolicyMutation,
+    ) -> StoreResult<ProjectWorkflowPolicyMutationEffect> {
+        apply_project_workflow_policy_mutation(self.tx, self.project_id, self.committed_at, input)
+    }
+
     fn insert_task(&mut self, input: &TaskInsert) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
@@ -891,6 +897,65 @@ impl ProjectMutation<'_> {
     fn consume_write_ticket(&mut self, input: &WriteTicketConsumption) -> StoreResult<()> {
         validate_identifier("write_ticket_id", &input.write_ticket_id)?;
         validate_identifier("run_id", &input.run_id)?;
+        let (basis_state_version, status, validity_basis_json) = self
+            .tx
+            .query_row(
+                "SELECT basis_state_version, status, validity_basis_json
+                   FROM write_tickets
+                  WHERE project_id = ?1
+                    AND write_ticket_id = ?2",
+                params![self.project_id, input.write_ticket_id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "write_ticket",
+                id: input.write_ticket_id.clone(),
+            })?;
+        let basis_state_version =
+            nonnegative_i64_to_u64("write_tickets.basis_state_version", basis_state_version)?;
+        let validity_basis: WriteTicketValidityBasis = serde_json::from_str(&validity_basis_json)
+            .map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "write_tickets",
+                &input.write_ticket_id,
+                "validity_basis_json",
+            )
+        })?;
+        let policy_json = self
+            .tx
+            .query_row(
+                "SELECT policy_json
+                   FROM project_workflow_policies
+                  WHERE project_id = ?1",
+                [self.project_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let current_write_authority_fingerprint =
+            project_write_authority_fingerprint(policy_json.as_deref())?;
+        if status != "active"
+            || basis_state_version != input.expected_basis_state_version
+            || validity_basis.write_authority_fingerprint.as_deref()
+                != Some(input.expected_write_authority_fingerprint.as_str())
+            || current_write_authority_fingerprint != input.expected_write_authority_fingerprint
+        {
+            return Err(StoreError::Conflict {
+                entity: "write_ticket",
+                id: input.write_ticket_id.clone(),
+                detail: "write ticket authority changed before consumption".to_owned(),
+            });
+        }
+        let expected_basis_state_version = u64_to_i64(
+            "write_tickets.basis_state_version",
+            input.expected_basis_state_version,
+        )?;
         let changed = self.tx.execute(
             "UPDATE write_tickets
                 SET status = 'consumed',
@@ -898,12 +963,14 @@ impl ProjectMutation<'_> {
                     consumed_at = ?4
               WHERE project_id = ?1
                 AND write_ticket_id = ?2
-                AND status = 'active'",
+                AND status = 'active'
+                AND basis_state_version = ?5",
             params![
                 self.project_id,
                 input.write_ticket_id,
                 input.run_id,
-                self.committed_at
+                self.committed_at,
+                expected_basis_state_version,
             ],
         )?;
         if changed == 1 {

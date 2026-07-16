@@ -182,7 +182,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 제공된 티켓이 소비됨, 철회됨, 명시적으로 무효화됨, 허용 path prefix 밖이거나 상태에 묶인 Task, Change Unit, 범위 리비전, 기준선, workspace, 승인 근거, 선택적 idle timeout과 호환되지 않습니다.
+- 제공된 티켓이 소비됨, 철회됨, 명시적으로 무효화됨, 허용 path prefix 밖이거나 현재 정규화된 프로젝트 쓰기 권한 결속이 없거나 일치하지 않습니다. 또는 상태에 묶인 Task, Change Unit, 범위 리비전, 기준선, workspace, 승인 근거, 선택적 idle timeout과 호환되지 않습니다.
 
 참고:
 - 상태 결합 무효화와 시도 불일치는 안정된 `ToolError.details.write_ticket_reason` 값과 함께 이 코드를 유지합니다.

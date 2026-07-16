@@ -25,6 +25,10 @@ pub(super) enum WriteTicketCoverage {
     NoActiveTickets {
         observed_paths: Vec<String>,
     },
+    PolicyAuthorityStale {
+        observed_paths: Vec<String>,
+        stale_ticket_ids: Vec<String>,
+    },
     OutOfScope {
         observed_paths: Vec<String>,
         active_ticket_ids: Vec<String>,
@@ -46,9 +50,6 @@ pub(super) fn write_ticket_coverage(
     };
     if observed_paths.is_empty() {
         return WriteTicketCoverage::NoObservedPaths;
-    }
-    if summary.active_write_tickets.is_empty() {
-        return WriteTicketCoverage::NoActiveTickets { observed_paths };
     }
     let matching = summary
         .active_write_tickets
@@ -76,6 +77,27 @@ pub(super) fn write_ticket_coverage(
                 .map(|ticket| ticket.write_ticket_id)
                 .collect(),
         };
+    }
+    let policy_stale_ticket_ids = summary
+        .policy_stale_write_tickets
+        .iter()
+        .filter(|ticket| {
+            paths_are_authorized(
+                &observed_paths,
+                &ticket.intended_paths,
+                &ticket.denied_paths,
+            )
+        })
+        .map(|ticket| ticket.write_ticket_id.clone())
+        .collect::<Vec<_>>();
+    if !policy_stale_ticket_ids.is_empty() {
+        return WriteTicketCoverage::PolicyAuthorityStale {
+            observed_paths,
+            stale_ticket_ids: policy_stale_ticket_ids,
+        };
+    }
+    if summary.active_write_tickets.is_empty() {
+        return WriteTicketCoverage::NoActiveTickets { observed_paths };
     }
     WriteTicketCoverage::OutOfScope {
         observed_paths,

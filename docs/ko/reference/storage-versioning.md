@@ -168,16 +168,18 @@ UTC 값은 시간 경계와 담당자가 정의한 시각을 나타내며 권한
 
 변경된 프로젝트 작업 흐름 정책 fingerprint는 하나의 일반 관리 권한 변경입니다. 이
 트랜잭션은 정책 행을 교체하고 상태 버전과 영속 UTC 하한을 전진시키며, 프로젝트 범위
-`project_workflow_policy_applied` 이벤트 하나를 추가하고, 필요한 활성 Task 재평가
-표시를 상향 병합합니다. 결과 표시가 아직 충족되지 않았으면 같은 트랜잭션에서 해당
-Task의 활성 티켓을 `explicit_revoke`로 무효화합니다. 같은 fingerprint를 다시 적용하는
-것은 효과 없는 데이터베이스 동작이며 이 효과를 어느 것도 만들지 않습니다.
+`project_workflow_policy_applied` 이벤트 하나를 추가하고 정규화된 쓰기 권한 fingerprint를
+파생합니다. 파생 fingerprint가 바뀌면 상향할 수준이 없어도 활성 Task를 재평가하도록
+표시하고, 결속이 없거나 다른 모든 활성 티켓과 표시된 Task의 모든 활성 티켓을 같은
+트랜잭션에서 `explicit_revoke`로 무효화합니다. 같은 canonical 정책 fingerprint를 다시
+적용하면 데이터베이스 효과가 없습니다. 변경된 정책의 정규화된 쓰기 권한이 같으면 정책
+적용을 실행했다는 이유만으로 티켓을 무효화하지 않습니다.
 
 `tasks.state_version`은 기준 권한 필드가 아닙니다. 기준에 없는 `tasks.state_version` 열은 잘못된 저장소 형태입니다. 충돌, 최신성, 잠금, 쓰기 티켓의 근거로 사용하면 안 됩니다.
 
 관련 필드:
 
-- `write_tickets.basis_state_version`은 발급 또는 재사용의 감사 순서를 저장합니다. 고유하지 않고 유효성 좌표도 아닙니다. 티켓 유효성은 명시적 Task, Change Unit, 범위 리비전, 기준선, workspace, 승인 근거, 소비/철회 상태, 선택적 idle timeout을 사용합니다.
+- `write_tickets.basis_state_version`은 발급 또는 재사용의 감사 순서를 저장합니다. 고유하지 않고 유효성 좌표도 아닙니다. 티켓 유효성은 명시적 Task, Change Unit, 범위 리비전, 기준선, workspace, 정규화된 프로젝트 쓰기 권한 fingerprint, 승인 근거, 소비/철회 상태, 선택적 idle timeout을 사용합니다.
 - `evidence_summaries.produced_at_state_version`은 해당 요약을 가장 최근에 삽입하거나
   갱신한 커밋의 결과 `project_state.state_version`을 저장합니다. 현재 Evidence
   Summary를 선택할 때 이 필드를 내림차순으로 정렬하며 timestamp나 불투명 record
@@ -192,10 +194,15 @@ Task의 활성 티켓을 `explicit_revoke`로 무효화합니다. 같은 fingerp
 쓰기 티켓 발급과 호환되는 소비에는 일반 상태 버전 규칙이 적용됩니다.
 
 - 담당 문서가 정의한 메서드 분기만 쓰기 티켓 발급을 커밋할 수 있습니다.
-- prepare-write는 모든 유효성 좌표가 일치하고 기존 allowed prefix가 요청 prefix를 포함하며 denied prefix가 계속 적용되고 민감 권한이 같거나 더 강할 때 활성 미소비 티켓을 재사용할 수 있습니다. 민감 재사용에는 정규화된 동작과 일치하는 승인 resolution 정체성도 정확히 같아야 합니다.
-- 의도한 호환 product-file 쓰기 또는 정확한 승인 결속 비제품 민감 동작에서만 행이 활성, 미소비, 미철회, 미무효화이고 선택적으로 설정된 idle 경계 안일 때 소비를 커밋할 수 있습니다.
+- prepare-write는 null이 아닌 현재 쓰기 권한 fingerprint를 포함한 모든 유효성 좌표가 일치하고 기존 allowed prefix가 요청 prefix를 포함하며 denied prefix가 계속 적용되고 민감 권한이 같거나 더 강할 때 활성 미소비 티켓을 재사용할 수 있습니다. 민감 재사용에는 정규화된 동작과 일치하는 승인 resolution 정체성도 정확히 같아야 합니다.
+- 의도한 호환 product-file 쓰기 또는 정확한 승인 결속 비제품 민감 동작에서만 행이 활성, 미소비, 미철회, 미무효화이고 현재 쓰기 권한에 결속되며 선택적으로 설정된 idle 경계 안일 때 소비를 커밋할 수 있습니다. Core는 계획 전에 검증하고 Store는 소비 트랜잭션 안에서 다시 검증합니다.
 - 관련 없는 상태 버전 증가는 티켓을 무효화하지 않습니다. 명시적 무효화 사유는 `scope_revision_changed`, `change_unit_changed`, `baseline_changed`, `workspace_changed`, `approval_basis_changed`, `idle_timeout`, `task_closed`, `explicit_revoke`입니다.
 - 거부, `dry_run`, 재실행 전용 분기에서는 발급하거나 소비하지 않습니다.
+
+결속은 `write_tickets.validity_basis_json`을 사용하므로 이 변경은
+`baseline_sqlite_v7`을 유지합니다. 테이블, 열, index, trigger, offline-copy upgrade를
+추가하지 않습니다. JSON에 결속이 없는 과거 활성 티켓은 stale이며 다시 발급해야 합니다.
+결속이 없는 과거 소비 티켓은 계속 디코딩하고 조회할 수 있습니다.
 
 ## 멱등성과 재실행
 

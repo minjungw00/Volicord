@@ -136,6 +136,10 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         5
     );
     assert_eq!(
+        response.response_value["write_ticket"]["validity_basis"]["write_authority_fingerprint"],
+        project_write_authority_fingerprint(None)?
+    );
+    assert_eq!(
         response.response_value["write_ticket"]["control_surface"],
         response.response_value["control_surface"]
     );
@@ -249,6 +253,94 @@ fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
     );
     assert_eq!(write_ticket_count(&harness)?, 1);
     assert_eq!(write_ticket_status(&harness, &first_ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn prepare_write_replaces_active_ticket_missing_write_authority_binding(
+) -> Result<(), Box<dyn Error>> {
+    assert_prepare_write_replaces_policy_stale_ticket(None, "missing")
+}
+
+#[test]
+fn prepare_write_replaces_active_ticket_with_mismatched_write_authority_binding(
+) -> Result<(), Box<dyn Error>> {
+    assert_prepare_write_replaces_policy_stale_ticket(
+        Some("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+        "mismatched",
+    )
+}
+
+fn assert_prepare_write_replaces_policy_stale_ticket(
+    stale_fingerprint: Option<&str>,
+    fixture_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, &format!("prepare_policy_stale_{fixture_name}"))?;
+
+    let first = harness.service.prepare_write(
+        prepare_write_request(
+            &format!("req_prepare_policy_stale_{fixture_name}_first"),
+            &format!("idem_prepare_policy_stale_{fixture_name}_first"),
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let stale_ticket_id = response_record_id(&first.response_value, "write_ticket_ref");
+    mutate_write_ticket_validity_basis_json(&harness, &stale_ticket_id, |basis| {
+        let object = basis
+            .as_object_mut()
+            .expect("write-ticket validity basis is object-shaped");
+        if let Some(fingerprint) = stale_fingerprint {
+            object.insert(
+                "write_authority_fingerprint".to_owned(),
+                Value::String(fingerprint.to_owned()),
+            );
+        } else {
+            object.remove("write_authority_fingerprint");
+        }
+    })?;
+
+    let replacement = harness.service.prepare_write(
+        prepare_write_request(
+            &format!("req_prepare_policy_stale_{fixture_name}_replacement"),
+            &format!("idem_prepare_policy_stale_{fixture_name}_replacement"),
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(replacement.response_value["decision"], "allowed");
+    assert_eq!(replacement.response_value["write_ticket_effect"], "issued");
+    let replacement_ticket_id = response_record_id(&replacement.response_value, "write_ticket_ref");
+    assert_ne!(replacement_ticket_id, stale_ticket_id);
+    assert_eq!(write_ticket_count(&harness)?, 2);
+    assert_eq!(
+        write_ticket_status(&harness, &stale_ticket_id)?,
+        "invalidated"
+    );
+    assert_eq!(
+        write_ticket_status(&harness, &replacement_ticket_id)?,
+        "active"
+    );
+    let invalidation_reason: String = harness.conn()?.query_row(
+        "SELECT invalidation_reason
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, stale_ticket_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(invalidation_reason, "explicit_revoke");
+    assert!(replacement.response_value["write_ticket"]["validity_basis"]
+        ["write_authority_fingerprint"]
+        .as_str()
+        .is_some_and(|fingerprint| fingerprint.starts_with("sha256:")));
     Ok(())
 }
 
@@ -996,6 +1088,46 @@ fn prepare_write_honors_and_clears_durable_policy_reevaluation_mark() -> Result<
     assert!(task["active_task"]["control_level_reason"]
         .as_str()
         .is_some_and(|reason| reason.contains("pending project-policy reevaluation")));
+    let persisted_metadata: String = harness.conn()?.query_row(
+        "SELECT metadata_json FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    assert!(serde_json::from_str::<Value>(&persisted_metadata)?
+        .get("policy_control_reevaluation")
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn prepare_write_clears_same_level_policy_reevaluation_mark() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_same_level_policy_reevaluation")?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+
+    let marked_metadata: String = harness.conn()?.query_row(
+        "SELECT metadata_json FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    assert!(serde_json::from_str::<Value>(&marked_metadata)?
+        .get("policy_control_reevaluation")
+        .is_some());
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_same_level_policy_reevaluation",
+            "idem_prepare_same_level_policy_reevaluation",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["decision"], "allowed");
+    assert_eq!(response.response_value["write_ticket_effect"], "issued");
     let persisted_metadata: String = harness.conn()?.query_row(
         "SELECT metadata_json FROM tasks WHERE project_id = ?1 AND task_id = ?2",
         rusqlite::params![PROJECT_ID, task_id],

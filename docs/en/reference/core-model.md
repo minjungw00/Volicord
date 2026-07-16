@@ -56,7 +56,7 @@ User-owned judgment stays user-owned.
 Write ticket is narrow.
 
 - A write ticket records authorized write intent for one state-bound product-file change or one exact approval-bound non-product action under effective `sensitive` control. Repeating `prepare_write` may reuse the same compatible unconsumed ticket; sensitive reuse also requires the exact operation and approval-resolution identity, and reuse does not widen paths, approvals, or authority.
-- Ticket validity depends on the current Task, Change Unit, `scope_revision`, baseline, workspace binding, approval basis, explicit revocation state, and an optional policy-selected idle timeout. An unrelated `state_version` change is not an invalidation condition.
+- Ticket validity depends on the current Task, Change Unit, `scope_revision`, baseline, workspace binding, normalized current project write-authority fingerprint, approval basis, explicit revocation state, and an optional policy-selected idle timeout. An active ticket with a missing or different policy binding is unusable and must be reissued; consumed historical tickets remain inspectable. An unrelated `state_version` change is not an invalidation condition.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
 Runs and evidence record support, not authority substitutes.
@@ -199,9 +199,12 @@ Core resolves control as follows:
 - A sensitive category, denied or protected path, secret access, external
   transmission, destructive operation, or another owner-defined sensitive
   effect raises the effective level to `sensitive`.
-- Core never automatically lowers an active Task. A relaxed policy affects new
-  Tasks only. A strengthened policy marks an active Task for reevaluation and
-  Core raises it before the next write-compatible operation.
+- Core never automatically lowers an active Task. Relaxed minimum levels apply
+  automatically to new Tasks, while an active Task keeps its stronger persisted
+  requirements. Every normalized write-authority change marks an active Task
+  for reevaluation, even when control and final-acceptance ranks do not rise.
+  Core reevaluates current policy and raises the Task when needed before the
+  next write-compatible operation.
 - The durable mark is the closed `policy_control_reevaluation` member of
   `tasks.metadata_json`: `{policy_version, policy_fingerprint,
   required_effective_control_level, required_acceptance_policy?, marked_at}`.
@@ -209,11 +212,13 @@ Core resolves control as follows:
   `policy_dependent`, or `required`. A later policy application merges both
   requirements upward by their ranks and never replaces a stronger pending
   requirement with a weaker one. The Store clears the mark only in the same
-  transaction that satisfies both the marked control and acceptance levels. It
-  is not a second policy authority or permission to write. The policy commit
-  atomically invalidates every active ticket for that Task with
-  `explicit_revoke`; Guard and Core also treat any legacy active ticket observed
-  beside an unsatisfied mark as unusable and require `volicord.prepare_write`.
+  transaction that reevaluates current policy and satisfies both marked levels.
+  It is not a second policy authority or permission to write. When normalized
+  write authority changes, the policy commit atomically invalidates with
+  `explicit_revoke` every active ticket with a missing or different binding and
+  every active ticket for the marked Task; Guard and Core treat any remaining
+  legacy active ticket as unusable and require `volicord.prepare_write`.
+  A normalized-equivalent write authority preserves compatible tickets.
   Status, Intake resume, UpdateScope, RecordRun, and CloseTask resolve the
   strongest persisted, current-policy, and marked requirements consistently.
 
@@ -531,7 +536,7 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 | Change Unit effect contract | When present, requested product-file write effects and paths must fit the current Change Unit effect contract before a write ticket can be issued. |
 | User-owned judgment | Required product, technical, scope, sensitive-action, final-acceptance, residual-risk, or cancellation judgment must be resolved by the user with the required stored outcome and compatible with the affected object and consequence. |
 | Sensitive action | A named sensitive step must have its own compatible user approval when that approval is required. |
-| Write compatibility | A product-file write attempt, and an exact non-product action under effective `sensitive` control, must be compatible with current scope and an open write ticket. |
+| Write compatibility | A product-file write attempt, and an exact non-product action under effective `sensitive` control, must be compatible with current scope and an open write ticket bound to the current normalized project write authority. |
 | Run and evidence | Recorded Runs, evidence summaries, and evidence-eligible artifacts must support the claims they are used for. |
 | Final acceptance | Effective control and the Task-owned acceptance policy determine whether final acceptance is required; when required, it must be tied to the visible close basis. |
 | Residual risk | Known close-relevant residual risk must be visible, and required risk acceptance must be compatible with the requested close. |
@@ -547,8 +552,10 @@ It has these compatibility properties:
 
 - Scope-limited: it covers only its authorized path set and effect basis, not a broader project area.
 - State-bound: its validity basis is the exact Task, current Change Unit,
-  `scope_revision`, baseline, workspace binding, and approval-basis refs. Its
-  issuance `basis_state_version` is audit ordering only.
+  `scope_revision`, baseline, workspace binding, current normalized project
+  write-authority fingerprint, and approval-basis refs. Its issuance
+  `basis_state_version` is audit ordering only. A missing or mismatched binding
+  makes an active ticket unusable without hiding consumed history.
 - Reusable before consumption: a compatible active ticket may satisfy a later
   `prepare_write` when it covers every newly intended path and has the same or
   stronger sensitive basis. Sensitive reuse also requires the exact normalized
@@ -559,8 +566,11 @@ It has these compatibility properties:
   non-product sensitive Run consumes it once.
 - Explicitly invalidated: Task close or replacement, Change Unit or scope
   revision change, baseline or relevant workspace change, approval-basis
-  revocation/expiry/replacement, explicit revoke, or the policy's optional idle
-  timeout invalidates it with a structured reason. There is no default timeout.
+  revocation/expiry/replacement, a normalized write-authority change, explicit
+  revoke, or the policy's optional idle timeout invalidates it with a structured
+  reason. There is no default timeout. Canonically different policy input with
+  normalized-equivalent write authority does not invalidate it solely because
+  policy apply ran.
 - Unrelated reads, evidence recording, diagnostics, user actions, blocked
   prepare-write attempts, and unrelated global state changes do not invalidate
   it.

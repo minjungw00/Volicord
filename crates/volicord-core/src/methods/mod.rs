@@ -2633,10 +2633,9 @@ fn write_ticket_summary_for_record(
         effective_write_ticket_invalidation_reason(record, now)?;
     if effective_status == WriteTicketStatus::Active {
         if let (Some(store), Some(now)) = (store, now) {
-            if !write_ticket_approval_basis_is_current_for_projection(store, record, now)? {
+            if let Some(reason) = write_ticket_projection_invalidation_reason(store, record, now)? {
                 effective_status = WriteTicketStatus::Invalidated;
-                effective_invalidation_reason =
-                    Some(WriteTicketInvalidationReason::ApprovalBasisChanged);
+                effective_invalidation_reason = Some(reason);
             }
         }
     }
@@ -2711,11 +2710,11 @@ fn effective_write_ticket_invalidation_reason(
         .transpose()
 }
 
-fn write_ticket_approval_basis_is_current_for_projection(
+fn write_ticket_projection_invalidation_reason(
     store: &CoreProjectStore,
     record: &WriteTicketRecord,
     now: DateTime<Utc>,
-) -> CoreResult<bool> {
+) -> CoreResult<Option<WriteTicketInvalidationReason>> {
     let validity_basis: WriteTicketValidityBasis = decode_required_json(
         "write_tickets",
         record.write_ticket_id.clone(),
@@ -2739,14 +2738,20 @@ fn write_ticket_approval_basis_is_current_for_projection(
             })
         })?;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+    if validity_basis.write_authority_fingerprint.as_deref()
+        != Some(workflow_policy.write_authority_fingerprint.as_str())
+    {
+        return Ok(Some(WriteTicketInvalidationReason::ExplicitRevoke));
+    }
     let resolved_control =
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
     if resolved_control.pending_policy_reevaluation {
-        return Ok(false);
+        return Ok(Some(WriteTicketInvalidationReason::ExplicitRevoke));
     }
     if validity_basis.approval_basis_refs.is_empty() {
-        return Ok(scope.sensitive_categories.is_empty()
-            && resolved_control.effective_control_level != TaskControlLevel::Sensitive);
+        return Ok((!scope.sensitive_categories.is_empty()
+            || resolved_control.effective_control_level == TaskControlLevel::Sensitive)
+            .then_some(WriteTicketInvalidationReason::ApprovalBasisChanged));
     }
 
     let now = UtcTimestamp::from_datetime(now);
@@ -2778,11 +2783,20 @@ fn write_ticket_approval_basis_is_current_for_projection(
             }
         }
     }
-    Ok(!current_resolution_ids.is_empty()
+    let approval_basis_is_current = !current_resolution_ids.is_empty()
         && validity_basis.approval_basis_refs.iter().all(|stored| {
             stored.record_kind == StateRecordKind::UserActionResolution
                 && current_resolution_ids.contains(stored.record_id.as_str())
-        }))
+        });
+    Ok((!approval_basis_is_current).then_some(WriteTicketInvalidationReason::ApprovalBasisChanged))
+}
+
+fn write_ticket_is_current_for_projection(
+    store: &CoreProjectStore,
+    record: &WriteTicketRecord,
+    now: DateTime<Utc>,
+) -> CoreResult<bool> {
+    Ok(write_ticket_projection_invalidation_reason(store, record, now)?.is_none())
 }
 
 fn guarantee_display_for_invocation(
@@ -2858,7 +2872,7 @@ fn selected_write_ticket_for_projection(
     for record in records {
         let mut status = effective_write_ticket_status(&record, state_version, Some(now))?;
         if status == WriteTicketStatus::Active
-            && !write_ticket_approval_basis_is_current_for_projection(store, &record, now)?
+            && !write_ticket_is_current_for_projection(store, &record, now)?
         {
             status = WriteTicketStatus::Invalidated;
         }
