@@ -495,6 +495,17 @@ fn apply_init_provisioning(
         .map_err(ConnectionCommandError::from),
     )?;
     integration.migration_protection_applied = true;
+    migration_before_cleanup_step(
+        &plan,
+        &superseded_integrations,
+        is_integration_migration,
+        cleanup_resume,
+        record_authoritative_workflow_policy(
+            &plan.runtime_home,
+            &project.project_id,
+            &integration.policy,
+        ),
+    )?;
     let integration = migration_before_cleanup_step(
         &plan,
         &superseded_integrations,
@@ -677,6 +688,41 @@ fn apply_init_provisioning(
             "created"
         },
     })
+}
+
+pub(super) fn record_authoritative_workflow_policy(
+    runtime_home: &Path,
+    project_id: &str,
+    policy: &Value,
+) -> Result<(), ConnectionCommandError> {
+    let canonical_json = canonical_json_string(policy)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let fingerprint = canonical_json_sha256(policy)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
+        .into_inner();
+    let mut store = CoreProjectStore::open(runtime_home, &ProjectId::new(project_id))?;
+    let prior = store.project_workflow_policy()?;
+    if prior
+        .as_ref()
+        .is_some_and(|record| record.policy_fingerprint == fingerprint)
+    {
+        return Ok(());
+    }
+    let policy_version = prior.as_ref().map_or(Ok(1), |record| {
+        record.policy_version.checked_add(1).ok_or_else(|| {
+            ConnectionCommandError::runtime("project workflow policy version is exhausted")
+        })
+    })?;
+    store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
+        policy_version,
+        policy_json: canonical_json,
+        policy_fingerprint: fingerprint,
+        source: "project_database".to_owned(),
+        expected_prior_fingerprint: prior
+            .as_ref()
+            .map(|record| record.policy_fingerprint.clone()),
+    })?;
+    Ok(())
 }
 
 fn superseded_integrations_for_project(

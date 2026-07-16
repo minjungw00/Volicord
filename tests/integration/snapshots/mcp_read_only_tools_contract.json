@@ -104,8 +104,10 @@
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -121,6 +123,7 @@
           "StatusCloseState",
           "StatusResult",
           "SummaryCard",
+          "TaskControlLevel",
           "TaskFlowItem",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
@@ -137,12 +140,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0aa90d79a3bec8cf2ccb083073ad467b65db767d56e3f636056de26e50c5203b"
+        "sha256": "sha256:7d085f415356f1993f029d830440daa0e258b687bdff18e383a53bcb82706e47"
       }
     },
     {
@@ -237,6 +242,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -292,8 +299,10 @@
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -306,7 +315,9 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "SummaryCard",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -322,12 +333,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:422caea0a70fbc8202d401f1aa51e6cc262c166b24dc945f6f369f9900f1d34b"
+        "sha256": "sha256:ec063147347d56fd4232e399a56a948a4811d0aaa0c9be443f889a4352e46766"
       }
     },
     {

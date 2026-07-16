@@ -1,7 +1,8 @@
 use super::*;
 
 #[test]
-fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(), Box<dyn Error>> {
+fn reused_request_id_does_not_collide_except_for_compatible_write_ticket_reuse(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let request_id = "req_reused_for_generated_ids";
 
@@ -90,7 +91,8 @@ fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(),
     )?;
     let second_write_id = response_record_id(&second_write.response_value, "write_ticket_ref");
     let second_write_event_id = response_event_id(&second_write.response_value);
-    assert_ne!(first_write_id, second_write_id);
+    assert_eq!(first_write_id, second_write_id);
+    assert_eq!(second_write.response_value["write_ticket_effect"], "reused");
     assert_ne!(first_write_event_id, second_write_event_id);
 
     let first_judgment = harness.service.request_user_action(

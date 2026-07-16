@@ -39,6 +39,7 @@ use volicord_store::{
         ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
+    diagnostics::read_workflow_metric_aggregates,
 };
 use volicord_test_support::{
     core_fixtures::{CoreFixture, UpdateScopeFixture, DEFAULT_BASELINE_REF},
@@ -49,10 +50,11 @@ use volicord_types::{
     BaselineRef, ChangeUnitOperation, ConnectionObservationGuardEventKind,
     ConnectionObservationSourceSelector, EvidenceCaptureSpec, EvidenceRequirement, EvidenceTarget,
     IdempotencyKey, InitialScope, JudgmentKind, JudgmentPresentation, OperationCategory,
-    PrepareEvidenceCaptureRequest, ProjectId, RequestId, RequestedMode, RequiredNullable,
-    ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope, UserActionChoiceDraft,
-    UserActionContext, UserActionDraft, UserActionOptionId, UserActionOptionInput,
-    UserActionRequiredFor, UtcTimestamp, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    PrepareEvidenceCaptureRequest, ProjectId, RequestId, RequestedControlLevel, RequestedMode,
+    RequiredNullable, ResumePolicy, StateRecordKind, StateRecordRef, TaskId, ToolEnvelope,
+    UserActionChoiceDraft, UserActionContext, UserActionDraft, UserActionOptionId,
+    UserActionOptionInput, UserActionRequiredFor, UtcTimestamp,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 
 use support::{
@@ -192,6 +194,9 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
             "--post-event",
             "--guard-event",
             "--watch-observation",
+            "--file",
+            "--source-home",
+            "--destination-home",
         ],
     )?;
     assert_help_options(
@@ -221,7 +226,10 @@ fn binary_help_options_match_supported_contracts() -> Result<(), Box<dyn Error>>
         ],
     )?;
     assert_help_options(["status", "--help"], &["--repo", "--task", "--json"])?;
-    assert_help_options(["diagnostics", "--help"], &["--session", "--json"])?;
+    assert_help_options(
+        ["diagnostics", "--help"],
+        &["--session", "--repo", "--json"],
+    )?;
     assert_help_options(["doctor", "--help"], &["--json", "--privacy-footprint"])?;
     assert_help_options(
         ["connection", "add", "--help"],
@@ -3379,7 +3387,7 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "support_status": "unsupported_by_host",
+            "support_status": "implemented_unverified",
             "configured": true,
             "configuration_verified": true,
             "required_subcapabilities": [
@@ -3389,8 +3397,8 @@ fn init_codex_guarded_without_degraded_opt_in_generates_hooks() -> Result<(), Bo
             ],
             "subcapabilities": {
                 "authority_display": "implemented_unverified",
-                "authenticated_exact_replay": "unsupported_by_host",
-                "block_finalization": "unsupported_by_host"
+                "authenticated_exact_replay": "implemented_unverified",
+                "block_finalization": "implemented_unverified"
             }
         })
     );
@@ -3946,13 +3954,13 @@ fn init_codex_record_profile_installs_only_final_output_handler() -> Result<(), 
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "support_status": "unsupported_by_host",
+            "support_status": "implemented_unverified",
             "configured": true,
             "configuration_verified": true,
             "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
             "subcapabilities": {
                 "authority_display": "implemented_unverified",
-                "authenticated_exact_replay": "unsupported_by_host"
+                "authenticated_exact_replay": "implemented_unverified"
             }
         })
     );
@@ -4128,13 +4136,13 @@ fn init_codex_record_profile_succeeds_without_detective_hooks_or_watcher(
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "support_status": "unsupported_by_host",
+            "support_status": "implemented_unverified",
             "configured": true,
             "configuration_verified": true,
             "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
             "subcapabilities": {
                 "authority_display": "implemented_unverified",
-                "authenticated_exact_replay": "unsupported_by_host"
+                "authenticated_exact_replay": "implemented_unverified"
             }
         })
     );
@@ -4338,13 +4346,13 @@ fn record_final_output_status_degrades_without_activating_detective_hooks(
     assert_eq!(
         value["states"]["final_output_authority_disclosure"],
         json!({
-            "support_status": "unsupported_by_host",
+            "support_status": "implemented_unverified",
             "configured": false,
             "configuration_verified": false,
             "required_subcapabilities": ["authority_display", "authenticated_exact_replay"],
             "subcapabilities": {
                 "authority_display": "implemented_unverified",
-                "authenticated_exact_replay": "unsupported_by_host"
+                "authenticated_exact_replay": "implemented_unverified"
             }
         })
     );
@@ -5609,17 +5617,21 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
     assert_eq!(count_occurrences(&agents, START_MARKER), 1);
     assert!(agents.contains("Existing top"));
     assert!(agents.contains("Existing bottom"));
-    assert!(agents.contains("Check Volicord status before planning"));
-    assert!(agents.contains("Start a task before planning implementation"));
-    assert!(agents.contains("Prepare write before product-file changes"));
-    assert!(agents.contains("Request a user action through Volicord"));
-    assert!(agents.contains("Check close before claiming completion"));
-    assert!(agents.contains("If Volicord tools are unavailable"));
+    assert!(agents.contains("Treat Volicord's recorded scope"));
+    assert!(agents.contains("outside an active compatible write authorization"));
+    assert!(agents.contains("Do not infer, resolve, or record user-owned judgments"));
+    assert!(agents.contains("Follow the `next_action` returned by Volicord"));
+    assert!(agents.contains("Call `volicord.status` only when"));
+    assert!(agents.contains("Do not claim completion while Volicord reports close blockers"));
+    assert!(agents.contains("If Volicord is unavailable"));
+    assert!(!agents.contains("Check Volicord status before planning"));
+    assert!(!agents.contains("Start a task before planning implementation"));
+    assert!(!agents.contains("Check close before claiming completion"));
     assert!(!agents.contains("old managed text"));
 
     let policy_path = repo_root.join(".volicord/policy.json");
     let policy: Value = serde_json::from_str(&fs::read_to_string(&policy_path)?)?;
-    assert_eq!(policy["schema"], "volicord-policy-v1");
+    assert_eq!(policy["schema"], "volicord-policy-v2");
     assert_eq!(policy["managed_by"], "volicord");
     assert_eq!(policy["storage_scope"], "local_overlay");
     assert_eq!(policy["connection_intent"], "shared");
@@ -5631,6 +5643,9 @@ fn init_codex_guarded_writes_policy_mcp_and_guard_status_idempotently() -> Resul
         serde_json::json!(["mcp", "--stdio", "--discover-repository", "--host", "codex"])
     );
     assert_eq!(policy["host_hook"]["enabled"], true);
+    assert_eq!(policy["workflow"]["default_direct_control"], "tracked");
+    assert_eq!(policy["workflow"]["default_work_control"], "tracked");
+    assert_eq!(policy["workflow"]["light"]["enabled"], false);
     assert_guard_policy_invokes_required_phases(&policy, &connection_id);
     assert_eq!(
         policy["host_hook"]["commands"]["pre_tool"]["command"],
@@ -7681,7 +7696,8 @@ fn connection_verify_fails_when_workflow_reconcile_changes_tool_is_missing(
 
 #[cfg(unix)]
 #[test]
-fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(), Box<dyn Error>> {
+fn connection_status_reports_missing_authoritative_policy_as_broken() -> Result<(), Box<dyn Error>>
+{
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-missing-guard")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -7725,12 +7741,12 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
 
     assert_success(&status);
     let value = json_stdout(&status)?;
-    assert_eq!(value["states"]["guard_installation"], "files_missing");
-    assert_eq!(value["states"]["prompt_capture"], "not_configured");
-    assert_eq!(value["primary_next_action"]["id"], "guard_files_missing");
+    assert_eq!(value["states"]["guard_installation"], "broken");
+    assert_eq!(value["states"]["prompt_capture"], "degraded");
+    assert_eq!(value["primary_next_action"]["id"], "guard_files_broken");
     assert_eq!(
         value["summary_card"]["next"],
-        "Reinstall missing detective host-hook files, then rerun verification."
+        "Repair broken detective host-hook files, then rerun verification."
     );
     assert!(!value["summary_card"]["next"]
         .as_str()
@@ -7746,7 +7762,8 @@ fn connection_status_reports_missing_guard_files_as_primary_action() -> Result<(
 
 #[cfg(unix)]
 #[test]
-fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(), Box<dyn Error>> {
+fn connection_status_reports_tampered_authoritative_policy_as_broken() -> Result<(), Box<dyn Error>>
+{
     let runtime_home = TempRuntimeHome::new("cli-bin-connection-stale-guard")?;
     let repo_root = create_git_repo(&runtime_home, "product-repo")?;
     let bin_dir = runtime_home.path().join("bin");
@@ -7798,8 +7815,8 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
 
     assert_success(&status);
     let value = json_stdout(&status)?;
-    assert_eq!(value["states"]["guard_installation"], "stale");
-    assert_eq!(value["primary_next_action"]["id"], "guard_files_stale");
+    assert_eq!(value["states"]["guard_installation"], "broken");
+    assert_eq!(value["primary_next_action"]["id"], "guard_files_broken");
     assert!(value["host_hook"]["stale_files"]
         .as_array()
         .expect("stale_files should be an array")
@@ -7823,7 +7840,7 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
     assert!(text.contains("Agent Connection status for Codex"));
     assert!(text.contains("Profile:\n  detective"));
     assert!(text.contains("  Host follow-up: action required"));
-    assert!(text.contains("Refresh stale detective host-hook files."));
+    assert!(text.contains("Repair broken detective host-hook files."));
     let repair_command = format!(
         "volicord init --host codex --shared --repo {}",
         repo_root.display()
@@ -7839,8 +7856,14 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
     assert_connection_text_omits_diagnostic_dump_fields(&text);
 
     let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
-    assert_success(&doctor);
+    assert_eq!(doctor.status.code(), Some(1));
     let doctor_json = json_stdout(&doctor)?;
+    assert_eq!(doctor_json["status"], "failed");
+    assert!(doctor_json["checks"]
+        .as_array()
+        .expect("Doctor checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "project_policy_authority" && check["status"] == "failed"));
     assert_eq!(doctor_json["states"]["guard_files"], "action_recommended");
     assert_eq!(doctor_json["states"]["volicord_policy_file"], "stale");
     assert_eq!(
@@ -7854,7 +7877,7 @@ fn connection_status_reports_stale_guard_files_as_primary_action() -> Result<(),
     assert!(doctor_json["summary_card"]["next"]
         .as_str()
         .expect("summary next should be text")
-        .starts_with("recommended: Reinstall or refresh detective host-hook files"));
+        .starts_with("Reinstall or refresh detective host-hook files"));
     Ok(())
 }
 
@@ -8090,7 +8113,7 @@ fn fresh_codex_version_drives_verify_but_stored_history_does_not_drive_status_or
     assert_eq!(connected["verification"]["host"]["host_version"], "0.144.4");
     assert_eq!(
         connected["states"]["host_feature_support"]["local_web_user_channel"],
-        "unsupported_by_host"
+        "implemented_unverified"
     );
 
     let status = run_with_home_env(
@@ -8118,8 +8141,14 @@ fn fresh_codex_version_drives_verify_but_stored_history_does_not_drive_status_or
     );
 
     let doctor = run_with_home_env(runtime_home.path(), ["doctor", "--json"], &[])?;
-    assert_success(&doctor);
+    assert_eq!(doctor.status.code(), Some(1));
     let doctor = json_stdout(&doctor)?;
+    assert_eq!(doctor["status"], "failed");
+    assert!(doctor["checks"]
+        .as_array()
+        .expect("Doctor checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "project_policy_authority" && check["status"] == "failed"));
     let row = doctor["states"]["host_feature_support_by_connection"]
         .as_array()
         .and_then(|rows| rows.iter().find(|row| row["host_kind"] == "codex"))
@@ -8721,6 +8750,10 @@ fn user_channel_resolves_pending_action_with_local_user_provenance() -> Result<(
         store.project_state()?.state_version,
         committed_state_version
     );
+    let metrics = read_workflow_metric_aggregates(runtime_home.path(), "project_user_channel")?;
+    assert!(metrics.iter().any(|row| {
+        row.metric_kind == "user_roundtrip" && row.value_total == 1 && row.sample_count == 1
+    }));
 
     let state_db = runtime_home
         .path()
@@ -8905,6 +8938,7 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
             session_id: None,
             connection_internal_id: "connection_cli_user_channel".to_owned(),
             task_id: Some(task_id.clone()),
+            confidence: "confirmed".to_owned(),
             summary: "Product Repository change observed outside a recorded run.".to_owned(),
             observed_paths_json: "[]".to_owned(),
             detection_json: "{}".to_owned(),
@@ -9004,6 +9038,7 @@ fn changes_reconcile_runs_as_local_recovery() -> Result<(), Box<dyn Error>> {
             session_id: None,
             connection_internal_id: "connection_cli_user_channel".to_owned(),
             task_id: Some(task_id.clone()),
+            confidence: "confirmed".to_owned(),
             summary: "Second Product Repository change observed outside a recorded run.".to_owned(),
             observed_paths_json: "[]".to_owned(),
             detection_json: "{}".to_owned(),
@@ -9814,8 +9849,8 @@ fn assert_complete_host_feature_support(value: &Value, host_kind: HostKind) {
             "local_web_user_channel": "implemented_unverified",
             "verified_tool_producer": "implemented_unverified",
             "registered_connection_observation": "implemented_unverified",
-            "record_final_output": "unsupported_by_host",
-            "detective_final_output": "unsupported_by_host"
+            "record_final_output": "implemented_unverified",
+            "detective_final_output": "implemented_unverified"
         }),
         HostKind::ClaudeCode => json!({
             "native_user_action": "implemented_unverified",
@@ -10605,6 +10640,7 @@ fn intake_request(
         ),
         plain_language_request: "Create a focused CLI user-channel test task.".to_owned(),
         requested_mode: RequestedMode::Work,
+        requested_control_level: RequestedControlLevel::Auto,
         resume_policy: ResumePolicy::CreateNew,
         acceptance_policy: volicord_types::RequiredNullable::null(),
         lineage: volicord_types::RequiredNullable::null(),

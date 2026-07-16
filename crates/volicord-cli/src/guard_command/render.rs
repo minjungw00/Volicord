@@ -333,13 +333,23 @@ fn post_tool_context_message(result: &Value) -> Option<String> {
     let changes = result
         .get("unrecorded_changes")
         .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    if changes == 0 {
+        .cloned()
+        .unwrap_or_default();
+    if changes.is_empty() {
         return guard_context_message(result);
     }
+    let confirmed = changes
+        .iter()
+        .filter(|change| change.get("confidence").and_then(Value::as_str) == Some("confirmed"))
+        .count();
+    let suspected = changes.len().saturating_sub(confirmed);
+    if confirmed == 0 {
+        return Some(format!(
+            "Volicord recorded {suspected} suspected Product Repository change finding(s) after this tool call. Verify the actual repository diff; suspected findings do not block close by themselves."
+        ));
+    }
     Some(format!(
-        "Volicord observed {changes} unresolved Product Repository change finding(s) after this tool call. Reconcile them before close."
+        "Volicord observed {confirmed} confirmed and {suspected} suspected unresolved Product Repository change finding(s) after this tool call. Reconcile confirmed findings before close."
     ))
 }
 
@@ -359,11 +369,19 @@ pub(super) fn context_json(summary: &GuardStateSummary) -> Value {
         "repo_root": summary.repo_root,
         "state_version": summary.state_version,
         "active_task_id": summary.active_task_id,
+        "active_task_effective_control_level": summary.active_task_effective_control_level,
+        "policy_control_reevaluation": summary.policy_control_reevaluation.as_ref().map(|mark| json!({
+            "required": true,
+            "required_effective_control_level": mark.required_effective_control_level,
+            "required_acceptance_policy": mark.required_acceptance_policy,
+            "prepare_write_required": true
+        })),
         "active_change_unit_id": summary.active_change_unit_id,
         "prompt_capture_status": summary.prompt_capture_status.as_str(),
         "prompt_capture_enabled": summary.prompt_capture_enabled,
         "current_write_ticket_ids": summary.current_write_ticket_ids,
         "stale_write_ticket_ids": summary.stale_write_ticket_ids,
+        "uncertain_write_ticket_ids": summary.uncertain_write_ticket_ids,
         "active_write_tickets": summary.active_write_tickets
             .iter()
             .map(active_write_ticket_json)
@@ -375,6 +393,7 @@ pub(super) fn context_json(summary: &GuardStateSummary) -> Value {
             .collect::<Vec<_>>(),
         "active_blocker_count": summary.active_blocker_count,
         "unresolved_unrecorded_change_count": summary.unresolved_unrecorded_change_count,
+        "suspected_unrecorded_change_count": summary.suspected_unrecorded_change_count,
         "session_watch_scan_summary": summary.session_watch_scan_summary
     })
 }
@@ -383,8 +402,10 @@ fn active_write_ticket_json(ticket: &ActiveWriteTicketSummary) -> Value {
     json!({
         "write_ticket_id": ticket.write_ticket_id,
         "change_unit_id": ticket.change_unit_id,
-        "intended_paths": ticket.intended_paths,
-        "expires_at": ticket.expires_at
+        "allowed_path_prefixes": ticket.intended_paths,
+        "denied_path_prefixes": ticket.denied_paths,
+        "idle_expires_at": ticket.idle_expires_at,
+        "workspace_validity_uncertain": ticket.workspace_validity_uncertain
     })
 }
 
@@ -406,8 +427,9 @@ pub(super) fn write_ticket_backing_json(coverage: WriteTicketCoverage) -> Value 
             "observed_paths": observed_paths,
             "scope": {
                 "change_unit_id": ticket.change_unit_id,
-                "intended_paths": ticket.intended_paths,
-                "expires_at": ticket.expires_at
+                "allowed_path_prefixes": ticket.intended_paths,
+                "denied_path_prefixes": ticket.denied_paths,
+                "idle_expires_at": ticket.idle_expires_at
             },
             "disclosure": "Volicord reports cooperative host-hook detection only; this is not OS-level enforcement and does not prove who changed a file."
         }),
@@ -460,9 +482,13 @@ pub(super) fn tool_observation_json(observation: &ToolObservation) -> Value {
         "host_invocation_id": observation.host_invocation_id,
         "command": observation.command,
         "classification": observation.classification.as_str(),
+        "effect": observation.effect(),
+        "confidence": observation.confidence(),
         "paths": path_assessments_json(&observation.paths),
+        "structured_paths": path_assessments_json(&observation.structured_paths),
         "changed_paths": path_assessments_json(&observation.changed_paths),
         "explicit_write_attempt": observation.explicit_write_attempt,
+        "reported_effect": observation.reported_effect,
         "exit_code": observation.exit_code,
         "success": observation.success,
         "status": observation.status

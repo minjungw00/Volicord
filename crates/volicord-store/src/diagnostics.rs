@@ -12,15 +12,18 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
-use serde::Serialize;
-use volicord_types::{validate_managed_host_session_id, MANAGED_HOST_SESSION_ID_PREFIX};
+use serde::{Deserialize, Serialize};
+use volicord_types::{
+    validate_managed_host_session_id, IntegrationProfile, MethodName, ObservationConfidence,
+    MANAGED_HOST_SESSION_ID_PREFIX,
+};
 
 use crate::{sqlite::enable_foreign_keys, StoreError, StoreResult};
 
 /// Runtime Home filename for the non-authoritative diagnostics store.
 pub const DIAGNOSTICS_DB_FILE: &str = "diagnostics.sqlite";
 /// Current local diagnostics schema version.
-pub const DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+pub const DIAGNOSTICS_SCHEMA_VERSION: u32 = 2;
 /// Maximum age retained for diagnostic sessions.
 pub const DIAGNOSTICS_RETENTION_DAYS: u32 = 7;
 /// Maximum diagnostic sessions retained in one Runtime Home.
@@ -31,7 +34,7 @@ pub const DIAGNOSTICS_MAX_EVENTS_PER_SESSION: u32 = 1_024;
 const DATABASE_KIND: &str = "local_diagnostics";
 const BUSY_TIMEOUT_MILLIS: u64 = 250;
 
-const DIAGNOSTICS_SCHEMA_SQL: &str = r#"
+pub(crate) const DIAGNOSTICS_SCHEMA_V1_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS diagnostic_sessions (
     session_id TEXT PRIMARY KEY NOT NULL,
     connection_id TEXT,
@@ -81,6 +84,116 @@ CREATE INDEX IF NOT EXISTS idx_diagnostic_events_session
     ON diagnostic_events(session_id, event_id);
 CREATE INDEX IF NOT EXISTS idx_diagnostic_events_tool
     ON diagnostic_events(session_id, tool_name, event_id);
+"#;
+
+pub(crate) const DIAGNOSTICS_SCHEMA_V2_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS workflow_metric_events (
+    workflow_metric_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES diagnostic_sessions(session_id) ON DELETE CASCADE,
+    project_id TEXT,
+    metric_kind TEXT NOT NULL CHECK (
+        metric_kind IN (
+            'task_duration_micros',
+            'first_product_write_duration_micros',
+            'mcp_method_call',
+            'status_reread',
+            'authority_refresh',
+            'write_ticket_issued',
+            'write_ticket_reused',
+            'write_ticket_reissued',
+            'user_roundtrip',
+            'stop_call',
+            'stop_repeat',
+            'tools_list_serialized_bytes',
+            'pre_tool_decision',
+            'observation_assessment',
+            'confirmed_out_of_scope_write',
+            'suspected_resolved_no_change',
+            'confirmed_unrecorded_false_positive',
+            'confirmed_structured_write_deny',
+            'sensitive_approval_missing_block',
+            'completion_claim_suppressed'
+        )
+    ),
+    value INTEGER NOT NULL CHECK (value >= 0),
+    method_name TEXT CHECK (
+        method_name IS NULL OR method_name IN (
+            'volicord.intake',
+            'volicord.update_scope',
+            'volicord.status',
+            'volicord.get_operation_result',
+            'volicord.check_close',
+            'volicord.prepare_evidence_capture',
+            'volicord.prepare_write',
+            'volicord.stage_artifact',
+            'volicord.record_run',
+            'volicord.request_user_action',
+            'volicord.resolve_user_action',
+            'volicord.reconcile_changes',
+            'volicord.close_task'
+        )
+    ),
+    integration_profile TEXT CHECK (
+        integration_profile IS NULL OR integration_profile IN ('record', 'detective')
+    ),
+    decision TEXT CHECK (
+        decision IS NULL OR decision IN ('allow', 'warn', 'deny')
+    ),
+    observation_confidence TEXT CHECK (
+        observation_confidence IS NULL OR observation_confidence IN (
+            'confirmed', 'structured', 'heuristic', 'unknown'
+        )
+    ),
+    outcome TEXT CHECK (
+        outcome IS NULL OR outcome IN (
+            'success', 'rejected', 'validation_failure', 'tool_error',
+            'transport_error', 'unavailable', 'read_only',
+            'product_file_write', 'non_product_write', 'external_effect',
+            'unknown'
+        )
+    ),
+    occurred_at TEXT NOT NULL,
+    CHECK (
+        (metric_kind = 'mcp_method_call' AND method_name IS NOT NULL)
+        OR (metric_kind <> 'mcp_method_call' AND method_name IS NULL)
+    ),
+    CHECK (
+        (
+            metric_kind = 'pre_tool_decision'
+            AND decision IS NOT NULL
+            AND observation_confidence IS NOT NULL
+            AND outcome IS NULL
+        )
+        OR (
+            metric_kind = 'observation_assessment'
+            AND decision IS NULL
+            AND observation_confidence IS NOT NULL
+            AND outcome IN (
+                'read_only', 'product_file_write', 'non_product_write',
+                'external_effect', 'unknown'
+            )
+        )
+        OR (
+            metric_kind NOT IN ('pre_tool_decision', 'observation_assessment')
+            AND decision IS NULL
+            AND observation_confidence IS NULL
+            AND (
+                outcome IS NULL OR outcome IN (
+                    'success', 'rejected', 'validation_failure', 'tool_error',
+                    'transport_error', 'unavailable'
+                )
+            )
+        )
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_metric_events_session
+    ON workflow_metric_events(session_id, workflow_metric_event_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_metric_events_aggregate
+    ON workflow_metric_events(
+        project_id, metric_kind, method_name, integration_profile,
+        decision, observation_confidence, outcome
+    );
 "#;
 
 /// Returns the diagnostics database path for a Runtime Home.
@@ -216,6 +329,187 @@ impl DiagnosticFallbackKind {
             Self::CliInbox => "cli_inbox",
         }
     }
+}
+
+/// Closed kind set for privacy-bounded workflow measurements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowMetricKind {
+    TaskDurationMicros,
+    FirstProductWriteDurationMicros,
+    McpMethodCall,
+    StatusReread,
+    AuthorityRefresh,
+    WriteTicketIssued,
+    WriteTicketReused,
+    WriteTicketReissued,
+    UserRoundtrip,
+    StopCall,
+    StopRepeat,
+    ToolsListSerializedBytes,
+    PreToolDecision,
+    ObservationAssessment,
+    ConfirmedOutOfScopeWrite,
+    SuspectedResolvedNoChange,
+    ConfirmedUnrecordedFalsePositive,
+    ConfirmedStructuredWriteDeny,
+    SensitiveApprovalMissingBlock,
+    CompletionClaimSuppressed,
+}
+
+impl WorkflowMetricKind {
+    /// All supported workflow metric kinds in stable contract order.
+    pub const ALL: [Self; 20] = [
+        Self::TaskDurationMicros,
+        Self::FirstProductWriteDurationMicros,
+        Self::McpMethodCall,
+        Self::StatusReread,
+        Self::AuthorityRefresh,
+        Self::WriteTicketIssued,
+        Self::WriteTicketReused,
+        Self::WriteTicketReissued,
+        Self::UserRoundtrip,
+        Self::StopCall,
+        Self::StopRepeat,
+        Self::ToolsListSerializedBytes,
+        Self::PreToolDecision,
+        Self::ObservationAssessment,
+        Self::ConfirmedOutOfScopeWrite,
+        Self::SuspectedResolvedNoChange,
+        Self::ConfirmedUnrecordedFalsePositive,
+        Self::ConfirmedStructuredWriteDeny,
+        Self::SensitiveApprovalMissingBlock,
+        Self::CompletionClaimSuppressed,
+    ];
+
+    /// Returns the stable storage spelling for this metric kind.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TaskDurationMicros => "task_duration_micros",
+            Self::FirstProductWriteDurationMicros => "first_product_write_duration_micros",
+            Self::McpMethodCall => "mcp_method_call",
+            Self::StatusReread => "status_reread",
+            Self::AuthorityRefresh => "authority_refresh",
+            Self::WriteTicketIssued => "write_ticket_issued",
+            Self::WriteTicketReused => "write_ticket_reused",
+            Self::WriteTicketReissued => "write_ticket_reissued",
+            Self::UserRoundtrip => "user_roundtrip",
+            Self::StopCall => "stop_call",
+            Self::StopRepeat => "stop_repeat",
+            Self::ToolsListSerializedBytes => "tools_list_serialized_bytes",
+            Self::PreToolDecision => "pre_tool_decision",
+            Self::ObservationAssessment => "observation_assessment",
+            Self::ConfirmedOutOfScopeWrite => "confirmed_out_of_scope_write",
+            Self::SuspectedResolvedNoChange => "suspected_resolved_no_change",
+            Self::ConfirmedUnrecordedFalsePositive => "confirmed_unrecorded_false_positive",
+            Self::ConfirmedStructuredWriteDeny => "confirmed_structured_write_deny",
+            Self::SensitiveApprovalMissingBlock => "sensitive_approval_missing_block",
+            Self::CompletionClaimSuppressed => "completion_claim_suppressed",
+        }
+    }
+}
+
+/// Closed allow/warn/deny dimension for a PreTool decision metric.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowMetricDecision {
+    Allow,
+    Warn,
+    Deny,
+}
+
+impl WorkflowMetricDecision {
+    /// Returns the stable storage spelling for this decision.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Allow => "allow",
+            Self::Warn => "warn",
+            Self::Deny => "deny",
+        }
+    }
+}
+
+/// Closed categorical result or observation-effect dimension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowMetricOutcome {
+    Success,
+    Rejected,
+    ValidationFailure,
+    ToolError,
+    TransportError,
+    Unavailable,
+    ReadOnly,
+    ProductFileWrite,
+    NonProductWrite,
+    ExternalEffect,
+    Unknown,
+}
+
+impl WorkflowMetricOutcome {
+    /// Returns the stable storage spelling for this bounded outcome.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Rejected => "rejected",
+            Self::ValidationFailure => "validation_failure",
+            Self::ToolError => "tool_error",
+            Self::TransportError => "transport_error",
+            Self::Unavailable => "unavailable",
+            Self::ReadOnly => "read_only",
+            Self::ProductFileWrite => "product_file_write",
+            Self::NonProductWrite => "non_product_write",
+            Self::ExternalEffect => "external_effect",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    const fn is_observation_effect(self) -> bool {
+        matches!(
+            self,
+            Self::ReadOnly
+                | Self::ProductFileWrite
+                | Self::NonProductWrite
+                | Self::ExternalEffect
+                | Self::Unknown
+        )
+    }
+}
+
+/// Strict content-free input for one workflow metric observation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowMetricEvent {
+    pub session_id: String,
+    pub metric_kind: WorkflowMetricKind,
+    pub value: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method_name: Option<MethodName>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integration_profile: Option<IntegrationProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<WorkflowMetricDecision>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_confidence: Option<ObservationConfidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<WorkflowMetricOutcome>,
+}
+
+/// Aggregate-only workflow metric row for one bounded dimension group.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkflowMetricAggregateRow {
+    pub metric_kind: String,
+    pub method_name: Option<String>,
+    pub host_kind: Option<String>,
+    pub integration_profile: Option<String>,
+    pub decision: Option<String>,
+    pub effect: Option<String>,
+    pub observation_confidence: Option<String>,
+    pub outcome: Option<String>,
+    pub sample_count: u64,
+    pub value_total: u64,
+    pub value_min: u64,
+    pub value_max: u64,
 }
 
 /// Metadata used to start or refresh one bounded diagnostic session.
@@ -501,21 +795,138 @@ pub fn record_diagnostic_event(
           WHERE session_id = ?1",
         [input.session_id],
     )?;
-    tx.execute(
-        "DELETE FROM diagnostic_events
-          WHERE session_id = ?1
-            AND event_id NOT IN (
-                SELECT event_id
-                  FROM diagnostic_events
-                 WHERE session_id = ?1
-                 ORDER BY event_id DESC
-                 LIMIT ?2
-            )",
-        params![input.session_id, DIAGNOSTICS_MAX_EVENTS_PER_SESSION],
-    )?;
+    trim_session_events(&tx, input.session_id)?;
     prune_diagnostics(&tx)?;
     tx.commit()?;
     Ok(())
+}
+
+/// Records one privacy-bounded workflow metric and enforces shared event retention.
+pub fn record_workflow_metric_event(
+    runtime_home: impl AsRef<Path>,
+    input: &WorkflowMetricEvent,
+) -> StoreResult<()> {
+    validate_workflow_metric_event(input)?;
+    let value = sqlite_integer(input.value, "workflow metric value")?;
+
+    let mut conn = open_diagnostics_database(runtime_home)?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let project_id = tx
+        .query_row(
+            "SELECT project_id
+               FROM diagnostic_sessions
+              WHERE session_id = ?1",
+            [&input.session_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "diagnostic_session",
+            id: input.session_id.clone(),
+        })?;
+    tx.execute(
+        "INSERT INTO workflow_metric_events (
+             session_id, project_id, metric_kind, value, method_name,
+             integration_profile, decision, observation_confidence, outcome,
+             occurred_at
+         ) VALUES (
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+             strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         )",
+        params![
+            input.session_id,
+            project_id,
+            input.metric_kind.as_str(),
+            value,
+            input.method_name.map(MethodName::as_str),
+            input.integration_profile.map(IntegrationProfile::as_str),
+            input.decision.map(WorkflowMetricDecision::as_str),
+            input
+                .observation_confidence
+                .map(observation_confidence_as_str),
+            input.outcome.map(WorkflowMetricOutcome::as_str),
+        ],
+    )?;
+    tx.execute(
+        "UPDATE diagnostic_sessions
+            SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE session_id = ?1",
+        [&input.session_id],
+    )?;
+    trim_session_events(&tx, &input.session_id)?;
+    prune_diagnostics(&tx)?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Reads project-scoped workflow metrics as aggregate rows without creating storage.
+pub fn read_workflow_metric_aggregates(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+) -> StoreResult<Vec<WorkflowMetricAggregateRow>> {
+    validate_identifier("project_id", project_id)?;
+    let path = diagnostics_db_path(runtime_home);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn = open_diagnostics_database_read_only(&path)?;
+    let mut statement = conn.prepare(
+        "SELECT metrics.metric_kind,
+                metrics.method_name,
+                sessions.host_kind,
+                metrics.integration_profile,
+                metrics.decision,
+                CASE
+                    WHEN metrics.metric_kind = 'observation_assessment'
+                    THEN metrics.outcome
+                    ELSE NULL
+                END AS effect,
+                metrics.observation_confidence,
+                CASE
+                    WHEN metrics.metric_kind = 'observation_assessment'
+                    THEN NULL
+                    ELSE metrics.outcome
+                END AS outcome,
+                COUNT(*),
+                COALESCE(SUM(metrics.value), 0),
+                COALESCE(MIN(metrics.value), 0),
+                COALESCE(MAX(metrics.value), 0)
+           FROM workflow_metric_events AS metrics
+           JOIN diagnostic_sessions AS sessions
+             ON sessions.session_id = metrics.session_id
+          WHERE metrics.project_id = ?1
+          GROUP BY metrics.metric_kind,
+                   metrics.method_name,
+                   sessions.host_kind,
+                   metrics.integration_profile,
+                   metrics.decision,
+                   metrics.observation_confidence,
+                   metrics.outcome
+          ORDER BY metrics.metric_kind,
+                   COALESCE(metrics.method_name, ''),
+                   COALESCE(sessions.host_kind, ''),
+                   COALESCE(metrics.integration_profile, ''),
+                   COALESCE(metrics.decision, ''),
+                   COALESCE(metrics.observation_confidence, ''),
+                   COALESCE(metrics.outcome, '')",
+    )?;
+    let rows = statement.query_map([project_id], |row| {
+        Ok(WorkflowMetricAggregateRow {
+            metric_kind: row.get(0)?,
+            method_name: row.get(1)?,
+            host_kind: row.get(2)?,
+            integration_profile: row.get(3)?,
+            decision: row.get(4)?,
+            effect: row.get(5)?,
+            observation_confidence: row.get(6)?,
+            outcome: row.get(7)?,
+            sample_count: row.get(8)?,
+            value_total: row.get(9)?,
+            value_min: row.get(10)?,
+            value_max: row.get(11)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 /// Reads the latest session, or an explicitly selected session, without creating storage.
@@ -570,23 +981,41 @@ fn open_diagnostics_database(runtime_home: impl AsRef<Path>) -> StoreResult<Conn
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let conn = Connection::open(&path)?;
+    let mut conn = Connection::open(&path)?;
     harden_diagnostics_permissions(&path)?;
     conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
     enable_foreign_keys(&conn)?;
     let version = conn.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))?;
-    if version == 0 {
-        conn.execute_batch(DIAGNOSTICS_SCHEMA_SQL)?;
-        conn.pragma_update(None, "user_version", DIAGNOSTICS_SCHEMA_VERSION)?;
-    } else if version != DIAGNOSTICS_SCHEMA_VERSION {
-        return Err(StoreError::UnsupportedStorageProfile {
-            database_kind: DATABASE_KIND,
-            actual_storage_profile: version.to_string(),
-            expected_storage_profile: "1",
-        });
+    match version {
+        0 => {
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            tx.execute_batch(DIAGNOSTICS_SCHEMA_V1_SQL)?;
+            tx.execute_batch(DIAGNOSTICS_SCHEMA_V2_SQL)?;
+            tx.pragma_update(None, "user_version", DIAGNOSTICS_SCHEMA_VERSION)?;
+            tx.commit()?;
+        }
+        1 => {
+            validate_diagnostics_schema_v1(&conn)?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            tx.execute_batch(DIAGNOSTICS_SCHEMA_V2_SQL)?;
+            tx.pragma_update(None, "user_version", DIAGNOSTICS_SCHEMA_VERSION)?;
+            tx.commit()?;
+        }
+        DIAGNOSTICS_SCHEMA_VERSION => {}
+        _ => {
+            return Err(StoreError::UnsupportedStorageProfile {
+                database_kind: DATABASE_KIND,
+                actual_storage_profile: version.to_string(),
+                expected_storage_profile: "2",
+            });
+        }
     }
     validate_diagnostics_schema(&conn)?;
     Ok(conn)
+}
+
+pub(crate) fn ensure_current_diagnostics_schema(runtime_home: impl AsRef<Path>) -> StoreResult<()> {
+    open_diagnostics_database(runtime_home).map(drop)
 }
 
 fn open_diagnostics_database_read_only(path: &Path) -> StoreResult<Connection> {
@@ -601,7 +1030,7 @@ fn open_diagnostics_database_read_only(path: &Path) -> StoreResult<Connection> {
         return Err(StoreError::UnsupportedStorageProfile {
             database_kind: DATABASE_KIND,
             actual_storage_profile: version.to_string(),
-            expected_storage_profile: "1",
+            expected_storage_profile: "2",
         });
     }
     validate_diagnostics_schema(&conn)?;
@@ -609,6 +1038,59 @@ fn open_diagnostics_database_read_only(path: &Path) -> StoreResult<Connection> {
 }
 
 fn validate_diagnostics_schema(conn: &Connection) -> StoreResult<()> {
+    validate_diagnostics_schema_v1(conn)?;
+    let columns = table_columns(conn, "workflow_metric_events")?;
+    let expected_columns = [
+        "workflow_metric_event_id",
+        "session_id",
+        "project_id",
+        "metric_kind",
+        "value",
+        "method_name",
+        "integration_profile",
+        "decision",
+        "observation_confidence",
+        "outcome",
+        "occurred_at",
+    ];
+    if columns != expected_columns {
+        return Err(StoreError::SchemaInvariant {
+            database_kind: DATABASE_KIND,
+            detail: format!(
+                "workflow_metric_events columns do not match the privacy-bounded v2 schema: {columns:?}"
+            ),
+        });
+    }
+    let table_sql = conn
+        .query_row(
+            "SELECT sql
+               FROM sqlite_schema
+              WHERE type = 'table' AND name = 'workflow_metric_events'",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten()
+        .ok_or_else(|| StoreError::SchemaInvariant {
+            database_kind: DATABASE_KIND,
+            detail: "required table workflow_metric_events is missing".to_owned(),
+        })?;
+    for metric_kind in WorkflowMetricKind::ALL {
+        let expected = format!("'{}'", metric_kind.as_str());
+        if !table_sql.contains(&expected) {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: DATABASE_KIND,
+                detail: format!(
+                    "workflow_metric_events is missing the closed metric kind {}",
+                    metric_kind.as_str()
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_diagnostics_schema_v1(conn: &Connection) -> StoreResult<()> {
     for table in ["diagnostic_sessions", "diagnostic_events"] {
         let exists = conn
             .query_row(
@@ -628,6 +1110,13 @@ fn validate_diagnostics_schema(conn: &Connection) -> StoreResult<()> {
     Ok(())
 }
 
+fn table_columns(conn: &Connection, table: &'static str) -> StoreResult<Vec<String>> {
+    // `table` is selected only by this module and is never runtime input.
+    let mut statement = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
 fn prune_diagnostics(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "DELETE FROM diagnostic_sessions
@@ -643,6 +1132,51 @@ fn prune_diagnostics(conn: &Connection) -> rusqlite::Result<()> {
                LIMIT ?1
           )",
         [DIAGNOSTICS_MAX_SESSIONS],
+    )?;
+    Ok(())
+}
+
+fn trim_session_events(conn: &Connection, session_id: &str) -> rusqlite::Result<()> {
+    const RETAINED_EVENTS: &str = "SELECT item_id, source_order
+           FROM (
+               SELECT event_id AS item_id,
+                      0 AS source_order,
+                      julianday(occurred_at) AS occurred_order,
+                      occurred_at
+                 FROM diagnostic_events
+                WHERE session_id = ?1
+               UNION ALL
+               SELECT workflow_metric_event_id AS item_id,
+                      1 AS source_order,
+                      julianday(occurred_at) AS occurred_order,
+                      occurred_at
+                 FROM workflow_metric_events
+                WHERE session_id = ?1
+                ORDER BY occurred_order DESC,
+                         occurred_at DESC,
+                         source_order DESC,
+                         item_id DESC
+                LIMIT ?2
+           )";
+    conn.execute(
+        &format!(
+            "DELETE FROM diagnostic_events
+              WHERE session_id = ?1
+                AND event_id NOT IN (
+                    SELECT item_id FROM ({RETAINED_EVENTS}) WHERE source_order = 0
+                )"
+        ),
+        params![session_id, DIAGNOSTICS_MAX_EVENTS_PER_SESSION],
+    )?;
+    conn.execute(
+        &format!(
+            "DELETE FROM workflow_metric_events
+              WHERE session_id = ?1
+                AND workflow_metric_event_id NOT IN (
+                    SELECT item_id FROM ({RETAINED_EVENTS}) WHERE source_order = 1
+                )"
+        ),
+        params![session_id, DIAGNOSTICS_MAX_EVENTS_PER_SESSION],
     )?;
     Ok(())
 }
@@ -756,6 +1290,70 @@ fn read_category_counts(
         .map_err(Into::into)
 }
 
+fn validate_workflow_metric_event(input: &WorkflowMetricEvent) -> StoreResult<()> {
+    validate_identifier("session_id", &input.session_id)?;
+
+    if matches!(input.metric_kind, WorkflowMetricKind::McpMethodCall) != input.method_name.is_some()
+    {
+        return Err(invalid_workflow_metric_dimensions(
+            "method_name is required only for mcp_method_call",
+        ));
+    }
+
+    match input.metric_kind {
+        WorkflowMetricKind::PreToolDecision => {
+            if input.decision.is_none()
+                || input.observation_confidence.is_none()
+                || input.outcome.is_some()
+            {
+                return Err(invalid_workflow_metric_dimensions(
+                    "pre_tool_decision requires decision and observation_confidence and disallows outcome",
+                ));
+            }
+        }
+        WorkflowMetricKind::ObservationAssessment => {
+            if input.decision.is_some()
+                || input.observation_confidence.is_none()
+                || !input
+                    .outcome
+                    .is_some_and(WorkflowMetricOutcome::is_observation_effect)
+            {
+                return Err(invalid_workflow_metric_dimensions(
+                    "observation_assessment requires observation_confidence and a bounded effect outcome",
+                ));
+            }
+        }
+        _ => {
+            if input.decision.is_some()
+                || input.observation_confidence.is_some()
+                || input
+                    .outcome
+                    .is_some_and(WorkflowMetricOutcome::is_observation_effect)
+            {
+                return Err(invalid_workflow_metric_dimensions(
+                    "decision, observation_confidence, or effect outcome is not applicable to this metric kind",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn invalid_workflow_metric_dimensions(detail: &str) -> StoreError {
+    StoreError::InvalidInput {
+        detail: format!("invalid workflow metric dimensions: {detail}"),
+    }
+}
+
+const fn observation_confidence_as_str(value: ObservationConfidence) -> &'static str {
+    match value {
+        ObservationConfidence::Confirmed => "confirmed",
+        ObservationConfidence::Structured => "structured",
+        ObservationConfidence::Heuristic => "heuristic",
+        ObservationConfidence::Unknown => "unknown",
+    }
+}
+
 fn validate_identifier(field: &'static str, value: &str) -> StoreResult<()> {
     let valid = !value.is_empty()
         && value.len() <= 160
@@ -849,6 +1447,23 @@ mod tests {
             product_file_write_count: 1,
             authoritative_refresh_failure: false,
             outcome: DiagnosticOutcome::Success,
+        }
+    }
+
+    fn metric(
+        session_id: &str,
+        metric_kind: WorkflowMetricKind,
+        value: u64,
+    ) -> WorkflowMetricEvent {
+        WorkflowMetricEvent {
+            session_id: session_id.to_owned(),
+            metric_kind,
+            value,
+            method_name: None,
+            integration_profile: None,
+            decision: None,
+            observation_confidence: None,
+            outcome: None,
         }
     }
 
@@ -1069,11 +1684,266 @@ mod tests {
     }
 
     #[test]
+    fn workflow_metric_kind_and_payload_are_closed_and_content_free() {
+        let kinds = WorkflowMetricKind::ALL.map(WorkflowMetricKind::as_str);
+        assert_eq!(
+            kinds,
+            [
+                "task_duration_micros",
+                "first_product_write_duration_micros",
+                "mcp_method_call",
+                "status_reread",
+                "authority_refresh",
+                "write_ticket_issued",
+                "write_ticket_reused",
+                "write_ticket_reissued",
+                "user_roundtrip",
+                "stop_call",
+                "stop_repeat",
+                "tools_list_serialized_bytes",
+                "pre_tool_decision",
+                "observation_assessment",
+                "confirmed_out_of_scope_write",
+                "suspected_resolved_no_change",
+                "confirmed_unrecorded_false_positive",
+                "confirmed_structured_write_deny",
+                "sensitive_approval_missing_block",
+                "completion_claim_suppressed",
+            ]
+        );
+
+        let valid = serde_json::json!({
+            "session_id": "session_test",
+            "metric_kind": "status_reread",
+            "value": 1
+        });
+        serde_json::from_value::<WorkflowMetricEvent>(valid.clone()).expect("closed payload");
+        for forbidden in ["prompt", "command", "path", "content", "user_answer"] {
+            let mut payload = valid.clone();
+            payload
+                .as_object_mut()
+                .expect("object")
+                .insert(forbidden.to_owned(), serde_json::json!("private value"));
+            assert!(
+                serde_json::from_value::<WorkflowMetricEvent>(payload).is_err(),
+                "content-bearing field {forbidden} must be rejected"
+            );
+        }
+        let mut unknown_kind = valid;
+        unknown_kind["metric_kind"] = serde_json::json!("custom_metric");
+        assert!(serde_json::from_value::<WorkflowMetricEvent>(unknown_kind).is_err());
+    }
+
+    #[test]
+    fn workflow_metric_dimensions_are_kind_specific() {
+        let mut invalid = metric("session_test", WorkflowMetricKind::StatusReread, 1);
+        invalid.method_name = Some(MethodName::Status);
+        assert!(matches!(
+            validate_workflow_metric_event(&invalid),
+            Err(StoreError::InvalidInput { .. })
+        ));
+
+        invalid = metric("session_test", WorkflowMetricKind::McpMethodCall, 1);
+        assert!(validate_workflow_metric_event(&invalid).is_err());
+
+        invalid = metric("session_test", WorkflowMetricKind::PreToolDecision, 1);
+        invalid.decision = Some(WorkflowMetricDecision::Allow);
+        assert!(validate_workflow_metric_event(&invalid).is_err());
+
+        invalid = metric("session_test", WorkflowMetricKind::ObservationAssessment, 1);
+        invalid.observation_confidence = Some(ObservationConfidence::Heuristic);
+        invalid.outcome = Some(WorkflowMetricOutcome::Success);
+        assert!(validate_workflow_metric_event(&invalid).is_err());
+
+        invalid = metric("session_test", WorkflowMetricKind::StopCall, 1);
+        invalid.observation_confidence = Some(ObservationConfidence::Unknown);
+        assert!(validate_workflow_metric_event(&invalid).is_err());
+    }
+
+    #[test]
+    fn workflow_metrics_are_exposed_only_as_bounded_aggregate_rows() {
+        let fixture = TempRuntimeHome::new("workflow-metric-aggregates").expect("fixture");
+        start_diagnostic_session(fixture.path(), start("session_metrics")).expect("start");
+
+        let mut method_call = metric("session_metrics", WorkflowMetricKind::McpMethodCall, 1);
+        method_call.method_name = Some(MethodName::Status);
+        method_call.integration_profile = Some(IntegrationProfile::Detective);
+        method_call.outcome = Some(WorkflowMetricOutcome::Success);
+        record_workflow_metric_event(fixture.path(), &method_call).expect("method call one");
+        record_workflow_metric_event(fixture.path(), &method_call).expect("method call two");
+
+        let mut pre_tool = metric("session_metrics", WorkflowMetricKind::PreToolDecision, 1);
+        pre_tool.integration_profile = Some(IntegrationProfile::Detective);
+        pre_tool.decision = Some(WorkflowMetricDecision::Allow);
+        pre_tool.observation_confidence = Some(ObservationConfidence::Confirmed);
+        record_workflow_metric_event(fixture.path(), &pre_tool).expect("pre-tool decision");
+
+        let mut observation = metric(
+            "session_metrics",
+            WorkflowMetricKind::ObservationAssessment,
+            3,
+        );
+        observation.integration_profile = Some(IntegrationProfile::Detective);
+        observation.observation_confidence = Some(ObservationConfidence::Heuristic);
+        observation.outcome = Some(WorkflowMetricOutcome::ReadOnly);
+        record_workflow_metric_event(fixture.path(), &observation).expect("observation");
+
+        let rows = read_workflow_metric_aggregates(fixture.path(), "project_test")
+            .expect("aggregate rows");
+        assert_eq!(rows.len(), 3);
+        let calls = rows
+            .iter()
+            .find(|row| row.metric_kind == "mcp_method_call")
+            .expect("method aggregate");
+        assert_eq!(calls.method_name.as_deref(), Some("volicord.status"));
+        assert_eq!(calls.host_kind.as_deref(), Some("codex"));
+        assert_eq!(calls.integration_profile.as_deref(), Some("detective"));
+        assert_eq!(calls.outcome.as_deref(), Some("success"));
+        assert_eq!(calls.effect, None);
+        assert_eq!(calls.sample_count, 2);
+        assert_eq!(calls.value_total, 2);
+        assert_eq!(calls.value_min, 1);
+        assert_eq!(calls.value_max, 1);
+
+        let assessed = rows
+            .iter()
+            .find(|row| row.metric_kind == "observation_assessment")
+            .expect("observation aggregate");
+        assert_eq!(assessed.effect.as_deref(), Some("read_only"));
+        assert_eq!(assessed.outcome, None);
+        assert_eq!(
+            assessed.observation_confidence.as_deref(),
+            Some("heuristic")
+        );
+        assert_eq!(assessed.value_total, 3);
+        assert!(
+            read_workflow_metric_aggregates(fixture.path(), "project_other")
+                .expect("other project")
+                .is_empty()
+        );
+
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
+        let columns = table_columns(&conn, "workflow_metric_events").expect("columns");
+        for forbidden in [
+            "prompt",
+            "command",
+            "path",
+            "content",
+            "user_answer",
+            "answer",
+            "file_body",
+            "error_detail",
+            "secret",
+        ] {
+            assert!(
+                columns.iter().all(|column| !column.contains(forbidden)),
+                "forbidden workflow-metric column {forbidden}: {columns:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn diagnostics_v1_migrates_additively_to_workflow_metrics_v2() {
+        let fixture = TempRuntimeHome::new("diagnostics-v1-migration").expect("fixture");
+        let path = diagnostics_db_path(fixture.path());
+        let conn = Connection::open(&path).expect("v1 diagnostics db");
+        conn.execute_batch(DIAGNOSTICS_SCHEMA_V1_SQL)
+            .expect("v1 schema");
+        conn.pragma_update(None, "user_version", 1)
+            .expect("v1 version");
+        conn.execute(
+            "INSERT INTO diagnostic_sessions (
+                 session_id, connection_id, project_id, transport, host_kind,
+                 package_version, build_id, started_at, updated_at
+             ) VALUES (
+                 'session_v1', 'connection_test', 'project_test', 'mcp_stdio',
+                 'codex', '0.1.0', '0.1.0;git=unknown;tree=unknown',
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+             )",
+            [],
+        )
+        .expect("v1 session");
+        conn.execute(
+            "INSERT INTO diagnostic_events (
+                 session_id, event_kind, tool_name, latency_micros,
+                 request_bytes, response_bytes, validation_failure,
+                 retry_after_validation_failure, core_reached, core_committed,
+                 replayed, user_channel_kind, fallback_kind,
+                 product_file_write_count, authoritative_refresh_failure,
+                 outcome, occurred_at
+             ) VALUES (
+                 'session_v1', 'mcp_tool_call', 'volicord.status', 1,
+                 2, 3, 0, 0, 1, 0, 0, NULL, NULL, 0, 0, 'success',
+                 '2026-01-01T00:00:00.000Z'
+             )",
+            [],
+        )
+        .expect("v1 event");
+        drop(conn);
+
+        let status_reread = metric("session_v1", WorkflowMetricKind::StatusReread, 1);
+        record_workflow_metric_event(fixture.path(), &status_reread).expect("migrated metric");
+
+        let conn = Connection::open(&path).expect("migrated diagnostics db");
+        let version = conn
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+            .expect("schema version");
+        assert_eq!(version, DIAGNOSTICS_SCHEMA_VERSION);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM diagnostic_events", [], |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("preserved v1 event"),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workflow_metric_events", [], |row| row
+                .get::<_, u64>(0),)
+                .expect("new v2 event"),
+            1
+        );
+    }
+
+    #[test]
+    fn workflow_metrics_share_the_per_session_event_retention_limit() {
+        let fixture = TempRuntimeHome::new("workflow-metric-retention").expect("fixture");
+        start_diagnostic_session(fixture.path(), start("session_metrics")).expect("start");
+        record_diagnostic_event(fixture.path(), event("session_metrics", "volicord.status"))
+            .expect("legacy event");
+        let status_reread = metric("session_metrics", WorkflowMetricKind::StatusReread, 1);
+        for _ in 0..DIAGNOSTICS_MAX_EVENTS_PER_SESSION {
+            record_workflow_metric_event(fixture.path(), &status_reread).expect("workflow event");
+        }
+
+        let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
+        let legacy_count = conn
+            .query_row(
+                "SELECT COUNT(*) FROM diagnostic_events WHERE session_id = 'session_metrics'",
+                [],
+                |row| row.get::<_, u64>(0),
+            )
+            .expect("legacy count");
+        let workflow_count = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_metric_events WHERE session_id = 'session_metrics'",
+                [],
+                |row| row.get::<_, u64>(0),
+            )
+            .expect("workflow count");
+        assert_eq!(legacy_count + workflow_count, 1_024);
+    }
+
+    #[test]
     fn reads_do_not_create_a_diagnostics_database() {
         let fixture = TempRuntimeHome::new("diagnostics-read-only").expect("fixture");
         assert!(read_diagnostic_session(fixture.path(), None)
             .expect("empty read")
             .is_none());
+        assert!(
+            read_workflow_metric_aggregates(fixture.path(), "project_test")
+                .expect("empty workflow read")
+                .is_empty()
+        );
         assert!(!diagnostics_db_path(fixture.path()).exists());
     }
 }

@@ -15,7 +15,9 @@ use volicord_store::{
         connection_metadata_pending_host_cleanup_replacement, CONNECTION_MODE_READ_ONLY,
         CONNECTION_MODE_WORKFLOW,
     },
+    core_pipeline::CoreProjectStore,
     guards::{guard_observation_matches_current_capability, GuardObservationMatch},
+    host_runtime_probes::host_runtime_probe_snapshot_from_report,
     inspection::{
         inspect_runtime_home, DatabaseInspection, InspectionSchemaState,
         InstallationProfileInspectionRecord, RegistryInspectionSnapshot, RuntimeHomeInspection,
@@ -27,7 +29,10 @@ use volicord_store::{
         DEFAULT_MAX_SCAN_FILE_COUNT,
     },
 };
-use volicord_types::{GuardInstallationStatus, IntegrationProfile, SummaryCard};
+use volicord_types::{
+    canonical_json_sha256, GuardInstallationStatus, IntegrationProfile, ProjectId, SummaryCard,
+    UtcTimestamp,
+};
 
 use crate::{
     disclosure::detective_observation_disclosure_json,
@@ -41,12 +46,14 @@ use crate::{
     guard_integration::{host_hook_capability_has_exact_v2_shape, HOOK_WRAPPER_MARKER},
     host_integration::{
         capability_status::{
-            default_host_feature_support_json, HostFeature, HostFeatureDiagnosticProjection,
+            host_feature_support_json, host_feature_support_matrix_from_runtime_probes,
+            HostFeature, HostFeatureDiagnosticProjection,
         },
         codex::managed_entry_from_item_for_diagnostics,
         is_legacy_repository_discovery_entry, is_volicord_managed_entry, managed_entry_from_json,
         HostKind, ManagedServerEntry,
     },
+    policy_command::read_validated_policy_file,
     setup_command::{path_text, CommandOutcome, CommandStatus},
     shell_path::{
         detect_command_on_path, is_executable_file, mcp_binary_name, path_directory_is_on_path,
@@ -204,6 +211,7 @@ where
             inspect_guard_installations(snapshot, &mut checks, &mut actions);
             inspect_personal_local_git_tracking(snapshot, &mut checks, &mut actions);
             inspect_integration_intent_drift(snapshot, &mut checks, &mut actions);
+            inspect_project_policy_authority(&runtime_home, snapshot, &mut checks, &mut actions);
             inspect_session_watch_baselines(&runtime_home, snapshot, &mut checks);
         }
         DatabaseInspection::Unsupported { path, detail } => {
@@ -1106,6 +1114,93 @@ fn connected_enabled_projects(
         .collect()
 }
 
+fn inspect_project_policy_authority(
+    runtime_home: &Path,
+    snapshot: &RegistryInspectionSnapshot,
+    checks: &mut Vec<DiagnosticCheck>,
+    actions: &mut Vec<DiagnosticAction>,
+) {
+    let mut projects = connected_enabled_projects(snapshot);
+    projects.sort_by(|left, right| left.project_id.cmp(&right.project_id));
+    let project_count = projects.len();
+    let mut truncated = project_count > MAX_PERSONAL_GIT_PROJECTS;
+    projects.truncate(MAX_PERSONAL_GIT_PROJECTS);
+    let mut findings = Vec::new();
+    for project in projects {
+        let file_path = project.repo_root.join(".volicord/policy.json");
+        let status = (|| {
+            let store = CoreProjectStore::open_read_only(
+                runtime_home,
+                &ProjectId::new(project.project_id.clone()),
+            )
+            .ok()?;
+            let authority = store.project_workflow_policy().ok()??;
+            if authority.policy_schema != "volicord-policy-v2"
+                || authority.source != "project_database"
+            {
+                return None;
+            }
+            let authority_value = serde_json::from_str::<Value>(&authority.policy_json).ok()?;
+            validate_policy_schema(
+                &authority_value,
+                authority_value.get("connection_intent")?.as_str()?,
+            )
+            .ok()?;
+            let authority_fingerprint = canonical_json_sha256(&authority_value).ok()?;
+            if authority_fingerprint.as_str() != authority.policy_fingerprint {
+                return None;
+            }
+            let managed = read_validated_policy_file(&file_path).ok()?;
+            (managed.fingerprint == authority.policy_fingerprint).then_some("matches")
+        })()
+        .unwrap_or("mismatch_or_unavailable");
+        if status != "matches" {
+            truncated |= findings.len() >= MAX_INTENT_DRIFT_FINDINGS;
+            if findings.len() < MAX_INTENT_DRIFT_FINDINGS {
+                findings.push(json!({
+                    "project_id": project.project_id,
+                    "repo_root": path_text(&project.repo_root),
+                    "status": status,
+                }));
+            }
+            push_unique_diagnostic_action(
+                actions,
+                DiagnosticAction {
+                    id: "repair_project_policy".to_owned(),
+                    instruction: "Inspect the authoritative project policy and apply one validated v2 policy file to repair the database/file mismatch."
+                        .to_owned(),
+                    command: Some(format!(
+                        "volicord policy show --repo {} --json",
+                        doctor_shell_word(&path_text(&project.repo_root))
+                    )),
+                },
+            );
+        }
+    }
+    let details = json!({
+        "project_count": project_count,
+        "findings": findings,
+        "truncated": truncated,
+    });
+    if details["findings"].as_array().is_some_and(Vec::is_empty) {
+        checks.push(
+            DiagnosticCheck::passed(
+                "project_policy_authority",
+                "managed project policies match authoritative database fingerprints",
+            )
+            .with_details(details),
+        );
+    } else {
+        checks.push(
+            DiagnosticCheck::failed(
+                "project_policy_authority",
+                "one or more managed project policies do not match database authority",
+            )
+            .with_details(details),
+        );
+    }
+}
+
 fn connection_is_attached_to_project(
     snapshot: &RegistryInspectionSnapshot,
     connection: &volicord_store::inspection::AgentConnectionInspectionRecord,
@@ -1189,6 +1284,9 @@ fn doctor_host_feature_support_rows(snapshot: &RegistryInspectionSnapshot) -> (V
 
     let mut rows = Vec::with_capacity(connections.len());
     let mut unreadable_connection_count = 0;
+    let now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
+        std::time::SystemTime::now(),
+    ));
     for connection in connections {
         let Some(host_kind) = doctor_host_kind(&connection.host_kind) else {
             unreadable_connection_count += 1;
@@ -1202,6 +1300,22 @@ fn doctor_host_feature_support_rows(snapshot: &RegistryInspectionSnapshot) -> (V
             })
             .collect::<Vec<_>>();
         let selected_profile = exact_connection_profile(&installations);
+        let probe_snapshot = match host_runtime_probe_snapshot_from_report(
+            &connection.last_verification_report_json,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                unreadable_connection_count += 1;
+                continue;
+            }
+        };
+        let support = host_feature_support_matrix_from_runtime_probes(
+            &probe_snapshot,
+            host_kind,
+            &connection.managed_fingerprint,
+            selected_profile.unwrap_or(IntegrationProfile::Record),
+            &now,
+        );
         let final_output_authority_disclosure = selected_profile.map(|profile| {
             let mut findings = GuardFileFindings::default();
             for installation in &installations {
@@ -1212,8 +1326,8 @@ fn doctor_host_feature_support_rows(snapshot: &RegistryInspectionSnapshot) -> (V
                 ));
             }
             findings.sort_dedup();
-            HostFeatureDiagnosticProjection::baseline(
-                host_kind,
+            HostFeatureDiagnosticProjection::from_matrix(
+                support,
                 profile,
                 findings.final_output_authority_disclosure_configured(),
                 findings.final_output_authority_disclosure_configuration_verified(),
@@ -1224,7 +1338,7 @@ fn doctor_host_feature_support_rows(snapshot: &RegistryInspectionSnapshot) -> (V
             "connection_id": &connection.connection_internal_id,
             "host_kind": host_kind.as_str(),
             "selected_profile": selected_profile.map(IntegrationProfile::as_str),
-            "host_feature_support": default_host_feature_support_json(host_kind),
+            "host_feature_support": host_feature_support_json(support),
             "final_output_authority_disclosure": final_output_authority_disclosure,
         }));
     }
@@ -3770,12 +3884,14 @@ mod tests {
         assert_eq!(rows[1]["selected_profile"], "record");
         assert_eq!(
             rows[1]["host_feature_support"],
-            default_host_feature_support_json(HostKind::Codex),
+            crate::host_integration::capability_status::default_host_feature_support_json(
+                HostKind::Codex,
+            ),
             "Doctor and connection consumers use the same canonical map projection"
         );
         let final_output = &rows[1]["final_output_authority_disclosure"];
         assert_eq!(final_output.as_object().map(serde_json::Map::len), Some(5));
-        assert_eq!(final_output["support_status"], "unsupported_by_host");
+        assert_eq!(final_output["support_status"], "implemented_unverified");
         assert_eq!(
             final_output["required_subcapabilities"],
             json!(["authority_display", "authenticated_exact_replay"])
@@ -3785,6 +3901,74 @@ mod tests {
             .is_none());
         assert!(final_output.get("supported").is_none());
         assert!(final_output.get("verified").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_consumes_current_probe_failures_before_missing_evidence(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = TestDirectory::new("host-feature-current-probes")?;
+        let mut snapshot = cross_host_snapshot(&repo.path);
+        let connection = snapshot
+            .agent_connections
+            .iter_mut()
+            .find(|connection| connection.connection_internal_id == "conn-codex")
+            .expect("Codex inspection connection");
+        let now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
+            std::time::SystemTime::now(),
+        ));
+        let observation =
+            |probe_id, outcome, failure_class| volicord_types::HostRuntimeProbeObservation {
+                probe_id,
+                outcome,
+                failure_class,
+                connection_internal_id: connection.connection_internal_id.clone(),
+                host_kind: connection.host_kind.clone(),
+                host_version: Some("99.0.0".to_owned()),
+                client_name: None,
+                client_version: None,
+                adapter_profile: IntegrationProfile::Record,
+                adapter_version: "doctor-test".to_owned(),
+                managed_fingerprint: connection.managed_fingerprint.clone(),
+                observed_at: now.clone(),
+                expires_at: now
+                    .checked_add(chrono::Duration::hours(1))
+                    .expect("test expiry"),
+            };
+        let probe_snapshot = volicord_types::HostRuntimeProbeSnapshot {
+            schema: volicord_types::HOST_RUNTIME_PROBE_SNAPSHOT_SCHEMA.to_owned(),
+            observations: vec![
+                observation(
+                    volicord_types::HostRuntimeProbeId::LifecycleHookDelivery,
+                    volicord_types::HostRuntimeProbeOutcome::Passed,
+                    volicord_types::HostRuntimeProbeFailureClass::None,
+                ),
+                observation(
+                    volicord_types::HostRuntimeProbeId::PostToolStructuredChangedPaths,
+                    volicord_types::HostRuntimeProbeOutcome::Failed,
+                    volicord_types::HostRuntimeProbeFailureClass::StructuredPathsMissing,
+                ),
+            ],
+        };
+        connection.last_verification_report_json = json!({
+            "host_runtime_probes": probe_snapshot,
+        })
+        .to_string();
+        let mut checks = Vec::new();
+        inspect_host_feature_support(&snapshot, &mut checks);
+        let rows = doctor_host_feature_support_by_connection_value(&checks);
+        let codex = rows
+            .as_array()
+            .and_then(|rows| rows.iter().find(|row| row["connection_id"] == "conn-codex"))
+            .expect("Codex Doctor support row");
+        assert_eq!(
+            codex["host_feature_support"]["verified_tool_producer"], "temporarily_unavailable",
+            "the current PostTool failure outranks the missing PreTool probe"
+        );
+        assert_eq!(
+            codex["host_feature_support"]["registered_connection_observation"],
+            "temporarily_unavailable"
+        );
         Ok(())
     }
 
@@ -4109,7 +4293,7 @@ mod tests {
         })
         .collect::<serde_json::Map<_, _>>();
         let policy = json!({
-            "schema": "volicord-policy-v1",
+            "schema": "volicord-policy-v2",
             "managed_by": "volicord",
             "storage_scope": "local_overlay",
             "connection_intent": intent,
@@ -4127,6 +4311,7 @@ mod tests {
                 "enabled": false,
                 "commands": commands,
             },
+            "workflow": crate::guard_integration::policy::default_workflow_policy_json(),
         });
         let policy_dir = repo_root.join(".volicord");
         fs::create_dir_all(&policy_dir)?;

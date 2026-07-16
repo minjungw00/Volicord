@@ -40,6 +40,7 @@ use volicord_store::{
         UserActionChannelTokenCreate, UserActionChannelTokenRecord,
         UserActionChannelTokenRejection, UserActionChannelTokenValidation,
     },
+    workflow_records::ProjectWorkflowPolicyUpsert,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::CloseMutationIntent;
@@ -291,6 +292,36 @@ impl MethodHarness {
         Ok(())
     }
 
+    fn set_workflow_policy(&self, workflow: Value) -> Result<(), Box<dyn Error>> {
+        self.set_workflow_policy_version(1, workflow)
+    }
+
+    fn set_workflow_policy_version(
+        &self,
+        policy_version: u64,
+        workflow: Value,
+    ) -> Result<(), Box<dyn Error>> {
+        let policy_value = json!({
+            "schema": "volicord-policy-v2",
+            "workflow": workflow,
+        });
+        let policy_json = volicord_types::canonical_json_string(&policy_value)?;
+        let policy_fingerprint = volicord_types::canonical_json_sha256(&policy_value)?
+            .as_str()
+            .to_owned();
+        let mut store =
+            CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        store.upsert_project_workflow_policy(ProjectWorkflowPolicyUpsert {
+            policy_version,
+            policy_json,
+            policy_fingerprint,
+            source: "test_fixture".to_owned(),
+            applied_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
+            created_at: DEFAULT_METHOD_TEST_CLOCK.to_owned(),
+        })?;
+        Ok(())
+    }
+
     fn use_generator_and_clock(
         &mut self,
         generator: CountingDurableIdGenerator,
@@ -432,6 +463,7 @@ mod stage_artifact;
 mod status;
 mod update_scope;
 mod user_action;
+mod workflow_metrics;
 
 fn envelope(
     request_id: &str,
@@ -943,6 +975,7 @@ fn intake_request(
         ),
         plain_language_request: "Create a test export flow.".to_owned(),
         requested_mode,
+        requested_control_level: RequestedControlLevel::Auto,
         resume_policy: ResumePolicy::CreateNew,
         acceptance_policy: RequiredNullable::null(),
         lineage: RequiredNullable::null(),
@@ -957,6 +990,25 @@ fn intake_request(
         initial_context_refs: Vec::new(),
         initial_source_refs: Vec::new(),
     }
+}
+
+fn light_workflow_policy() -> Value {
+    json!({
+        "default_direct_control": "light",
+        "default_work_control": "tracked",
+        "light": {
+            "enabled": true,
+            "max_intended_paths": 2,
+            "allowed_path_patterns": ["src", "tests"],
+            "denied_path_patterns": ["src/denied"],
+            "final_acceptance": "policy_dependent"
+        },
+        "write_ticket": { "idle_timeout_minutes": null },
+        "detective": {
+            "unknown_effect_behavior": "warn",
+            "stop_behavior": "allow_with_disclosure"
+        }
+    })
 }
 
 fn update_scope_request(
@@ -1084,6 +1136,7 @@ fn record_run_request(
         run_id: None.into(),
         baseline_ref: BaselineRef::new("baseline_test"),
         write_ticket_id: None.into(),
+        performed_operation: Some("local_sensitive_step".to_owned()).into(),
         summary: "Recorded implementation run.".to_owned(),
         observed_changes: ObservedChanges {
             changed_paths: Vec::new(),
@@ -1661,6 +1714,7 @@ fn insert_project_unrecorded_change(
             session_id: None,
             connection_internal_id: CONNECTION_ID.to_owned(),
             task_id,
+            confidence: UnrecordedChangeConfidence::Confirmed.as_str().to_owned(),
             summary: "Product Repository change observed outside a recorded run.".to_owned(),
             observed_paths_json: observed_paths_json.to_owned(),
             detection_json: "{}".to_owned(),
@@ -2497,13 +2551,25 @@ fn assert_close_blocker_resolution(
         blocker["outside_chat_action_required"],
         outside_chat_action_required
     );
+    let next_actions = blocker["next_actions"]
+        .as_array()
+        .expect("guard blocker next_actions should be an array");
     assert!(
-        !blocker["next_actions"]
-            .as_array()
-            .expect("guard blocker next_actions should be an array")
-            .is_empty(),
+        !next_actions.is_empty(),
         "guard blocker should include a next action: {blocker:?}"
     );
+    for action in next_actions {
+        assert!(
+            action["owner_method"].is_string(),
+            "workflow next action must identify its retry owner: {action:?}"
+        );
+        assert!(
+            action["allowed_operation_categories"]
+                .as_array()
+                .is_some_and(|categories| !categories.is_empty()),
+            "workflow next action must identify an allowed operation category: {action:?}"
+        );
+    }
 }
 
 fn assert_no_close_blocker(response_value: &Value, code: &str) {
@@ -2586,13 +2652,14 @@ fn create_task_with_policy_and_change_unit(
     requested_mode: RequestedMode,
     acceptance_policy: Option<AcceptancePolicy>,
 ) -> Result<(String, String), Box<dyn Error>> {
+    let initial_state_version = harness.counts()?.state_version;
     let intake_request_id = format!("req_{prefix}_task");
     let intake_idempotency_key = format!("idem_{prefix}_task");
     let mut request = intake_request(
         &intake_request_id,
         &intake_idempotency_key,
         false,
-        Some(0),
+        Some(initial_state_version),
         requested_mode,
     );
     request.acceptance_policy = acceptance_policy.into();
@@ -2611,7 +2678,7 @@ fn create_task_with_policy_and_change_unit(
             &scope_request_id,
             &scope_idempotency_key,
             false,
-            Some(1),
+            Some(initial_state_version + 1),
             &task_id,
             ChangeUnitOperation::CreateCurrent,
             "Initial current scope.",
@@ -2768,6 +2835,9 @@ fn insert_superseding_task(harness: &MethodHarness, task_id: &str) -> Result<(),
                 task_id,
                 created_by_actor_source,
                 mode,
+                requested_control_level,
+                effective_control_level,
+                control_level_reason,
                 work_phase,
                 acceptance_policy,
                 acceptance_policy_reason,
@@ -2788,6 +2858,9 @@ fn insert_superseding_task(harness: &MethodHarness, task_id: &str) -> Result<(),
                 ?2,
                 ?3,
                 'work',
+                'tracked',
+                'tracked',
+                'Superseding work uses tracked control.',
                 'shaping',
                 'required',
                 'Superseding work requires explicit acceptance.',
@@ -3197,6 +3270,11 @@ fn insert_active_write_ticket_with_scope(
     input: WriteTicketScopeFixture<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
+    let scope_revision: i64 = conn.query_row(
+        "SELECT scope_revision FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, input.task_id],
+        |row| row.get(0),
+    )?;
     let attempt_scope_json = json!({
         "task_id": input.task_id,
         "change_unit_id": input.change_unit_id,
@@ -3207,6 +3285,16 @@ fn insert_active_write_ticket_with_scope(
         "baseline_ref": "baseline_test"
     })
     .to_string();
+    let validity_basis_json = json!({
+        "task_id": input.task_id,
+        "change_unit_id": input.change_unit_id,
+        "scope_revision": scope_revision,
+        "baseline_ref": "baseline_test",
+        "workspace_context_sha256": null,
+        "approval_basis_refs": []
+    })
+    .to_string();
+    let allowed_path_prefixes_json = serde_json::to_string(input.intended_paths)?;
     conn.execute(
         "INSERT INTO write_tickets (
                 project_id,
@@ -3215,9 +3303,12 @@ fn insert_active_write_ticket_with_scope(
                 change_unit_id,
                 basis_state_version,
                 status,
+                validity_basis_json,
+                allowed_path_prefixes_json,
+                denied_path_prefixes_json,
                 attempt_scope_json,
                 created_by_actor_source,
-                expires_at,
+                idle_expires_at,
                 created_at
             )
             VALUES (
@@ -3230,7 +3321,10 @@ fn insert_active_write_ticket_with_scope(
                 ?6,
                 ?7,
                 ?8,
-                ?9
+                ?9,
+                ?10,
+                ?11,
+                ?12
             )",
         rusqlite::params![
             PROJECT_ID,
@@ -3238,6 +3332,9 @@ fn insert_active_write_ticket_with_scope(
             input.task_id,
             input.change_unit_id,
             i64::try_from(input.basis_state_version)?,
+            validity_basis_json,
+            allowed_path_prefixes_json,
+            "[]",
             attempt_scope_json,
             AGENT_ACTOR_SOURCE,
             input.expires_at,
@@ -3359,10 +3456,10 @@ fn write_ticket_basis(
 fn write_ticket_timestamps(
     harness: &MethodHarness,
     write_ticket_id: &str,
-) -> Result<(String, String), Box<dyn Error>> {
+) -> Result<(String, Option<String>), Box<dyn Error>> {
     let conn = harness.conn()?;
     Ok(conn.query_row(
-        "SELECT created_at, expires_at
+        "SELECT created_at, idle_expires_at
                FROM write_tickets
               WHERE project_id = ?1
                 AND write_ticket_id = ?2",

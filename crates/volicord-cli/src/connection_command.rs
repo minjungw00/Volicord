@@ -28,16 +28,19 @@ use volicord_store::{
         project_record_by_repo_root, write_installation_profile, InstallationProfileRecord,
         InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
+    core_pipeline::CoreProjectStore,
     guards::{
         guard_health_record, guard_installation_observation_is_current, list_guard_installations,
         GuardInstallationRecord,
     },
+    host_runtime_probes::host_runtime_probe_snapshot_from_report,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
+    workflow_records::ProjectWorkflowPolicyAuthorityApply,
     StoreError,
 };
 use volicord_types::{
-    GuardInstallationStatus, HostFeatureSupportStatus, IntegrationProfile, PromptCaptureStatus,
-    UtcTimestamp,
+    canonical_json_sha256, canonical_json_string, GuardInstallationStatus,
+    HostFeatureSupportStatus, IntegrationProfile, ProjectId, PromptCaptureStatus, UtcTimestamp,
 };
 
 use crate::guard_integration::audit::{
@@ -66,7 +69,8 @@ use crate::guard_integration::{
 use crate::host_integration::REQUIRED_GUARD_PHASES;
 use crate::host_integration::{
     capability_status::{
-        default_host_feature_support_matrix_for_version, host_feature_support_json, HostFeature,
+        default_host_feature_support_matrix_for_version, host_feature_support_json,
+        host_feature_support_matrix_from_runtime_probes, HostFeature,
         HostFeatureDiagnosticProjection, HostFeatureSupportMatrix,
     },
     claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
@@ -1291,6 +1295,39 @@ impl ConnectionHostFeatureDiagnostics {
         }
     }
 
+    fn from_runtime_probes(
+        host_kind: HostKind,
+        profile: Option<IntegrationProfile>,
+        configured: bool,
+        configuration_verified: bool,
+        connection: &AgentConnectionRecord,
+        now: &UtcTimestamp,
+    ) -> Result<Self, ConnectionCommandError> {
+        let selected_profile = profile.unwrap_or(IntegrationProfile::Record);
+        let snapshot =
+            host_runtime_probe_snapshot_from_report(&connection.last_verification_report_json)
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        let support = host_feature_support_matrix_from_runtime_probes(
+            &snapshot,
+            host_kind,
+            &connection.managed_fingerprint,
+            selected_profile,
+            now,
+        );
+        let final_output = profile.map(|profile| {
+            HostFeatureDiagnosticProjection::from_matrix(
+                support,
+                profile,
+                configured,
+                configuration_verified,
+            )
+        });
+        Ok(Self {
+            support,
+            final_output,
+        })
+    }
+
     fn host_feature_support_json(self) -> Value {
         host_feature_support_json(self.support)
     }
@@ -1581,6 +1618,24 @@ impl GuardOperationalState {
             self.final_output_authority_disclosure.configured,
             self.final_output_authority_disclosure
                 .configuration_verified,
+        )
+    }
+
+    fn host_feature_diagnostic_from_runtime_probes(
+        &self,
+        host_kind: HostKind,
+        profile: Option<IntegrationProfile>,
+        connection: &AgentConnectionRecord,
+        now: &UtcTimestamp,
+    ) -> Result<ConnectionHostFeatureDiagnostics, ConnectionCommandError> {
+        ConnectionHostFeatureDiagnostics::from_runtime_probes(
+            host_kind,
+            profile,
+            self.final_output_authority_disclosure.configured,
+            self.final_output_authority_disclosure
+                .configuration_verified,
+            connection,
+            now,
         )
     }
 
@@ -1876,7 +1931,8 @@ fn guard_state_for_connection(
     let mut every_detective_prompt_capture_observed = true;
     let mut last_observed_at = None;
     for installation in &installations {
-        let findings = guard_file_findings_for_installation(installation, connection, projects);
+        let findings =
+            guard_file_findings_for_installation(runtime_home, installation, connection, projects);
         file_findings.merge(findings);
         if installation.last_seen_at.is_some() {
             last_observed_at = max_optional_utc_timestamp(
@@ -2794,7 +2850,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_reviewed_codex_version_drives_only_the_fresh_connection_projection() {
+    fn reviewed_codex_version_never_changes_the_connection_projection() {
         let guard_state = GuardOperationalState::not_configured();
         let fresh =
             guard_state.host_feature_diagnostic_for_version(HostKind::Codex, Some("0.144.4"), None);
@@ -2802,7 +2858,7 @@ mod tests {
 
         assert_eq!(
             fresh.host_feature_support_json()["local_web_user_channel"],
-            "unsupported_by_host"
+            "implemented_unverified"
         );
         assert_eq!(
             no_current_probe.host_feature_support_json()["local_web_user_channel"],
@@ -2814,7 +2870,11 @@ mod tests {
         );
         assert_eq!(
             fresh.host_feature_support_json()["record_final_output"],
-            "unsupported_by_host"
+            "implemented_unverified"
+        );
+        assert_eq!(
+            fresh.host_feature_support_json(),
+            no_current_probe.host_feature_support_json()
         );
     }
 
@@ -3977,6 +4037,11 @@ mod tests {
             "guard_installation_alpha",
             &entry,
         )?)?;
+        service::record_authoritative_workflow_policy(
+            &runtime_home,
+            &project.project_id,
+            &integration.policy,
+        )?;
         ensure_agent_connection(
             &runtime_home,
             AgentConnectionRegistration {
@@ -4128,6 +4193,11 @@ mod tests {
             "guard_installation_beta",
             &entry,
         )?)?;
+        service::record_authoritative_workflow_policy(
+            &runtime_home,
+            &project_beta.project_id,
+            &integration_beta.policy,
+        )?;
         add_connection_project(
             &runtime_home,
             ConnectionProjectRegistration {
@@ -4224,6 +4294,11 @@ mod tests {
             "guard_installation_missing_bash",
             &entry,
         )?)?;
+        service::record_authoritative_workflow_policy(
+            &runtime_home,
+            &project.project_id,
+            &integration.policy,
+        )?;
 
         let hooks_path = repo.join(".codex/hooks.json");
         let hooks_without_bash = fs::read_to_string(&hooks_path)?.replace("Bash|", "");

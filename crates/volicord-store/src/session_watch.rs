@@ -784,6 +784,16 @@ fn persisted_baseline_snapshot(baseline: &WatchBaselineRecord) -> StoreResult<Wa
     )
 }
 
+/// Reconstructs and validates the canonical snapshot stored by one baseline.
+///
+/// Callers can compare this snapshot with a fresh bounded repository snapshot;
+/// no project authority state is changed by reconstruction.
+pub fn validated_watch_baseline_snapshot(
+    baseline: &WatchBaselineRecord,
+) -> StoreResult<WatchSnapshot> {
+    persisted_baseline_snapshot(baseline)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn persisted_snapshot(
     table: &'static str,
@@ -2927,6 +2937,7 @@ mod tests {
                 session_id: Some("session_watch_a".to_owned()),
                 connection_internal_id: "conn_watch_a".to_owned(),
                 task_id: None,
+                confidence: "confirmed".to_owned(),
                 summary: "Watch observation found a Product Repository change".to_owned(),
                 observed_paths_json: diff.observed_paths_json(),
                 detection_json: r#"{"source":"session_watch"}"#.to_owned(),
@@ -3221,6 +3232,9 @@ mod tests {
                     task_id,
                     created_by_actor_source,
                     mode,
+                    requested_control_level,
+                    effective_control_level,
+                    control_level_reason,
                     work_phase,
                     acceptance_policy,
                     acceptance_policy_reason,
@@ -3231,6 +3245,7 @@ mod tests {
                 )
                 VALUES (
                     ?1, ?2, 'agent_connection:conn_watch_a', 'work',
+                    'tracked', 'tracked', 'Session-watch fixture control.',
                     'shaping', 'required', 'Session-watch fixture requires acceptance.', '[]',
                     'shaping', 't0', 't0'
                 )",

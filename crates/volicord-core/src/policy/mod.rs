@@ -6,4 +6,5 @@ pub(crate) mod evidence;
 pub(crate) mod path;
 pub(crate) mod replay;
 pub(crate) mod user_action_relevance;
+pub(crate) mod workflow;
 pub(crate) mod write_ticket;

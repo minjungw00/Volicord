@@ -8,6 +8,7 @@ struct ReconciliationPlan {
     event_payload: JsonObject,
     result_fields: JsonObject,
     dry_run_summary: DryRunSummary,
+    confirmed_false_positive_samples: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,7 +127,9 @@ impl CoreService {
             );
         }
 
-        self.execute_prepared_request(
+        let confirmed_false_positive_samples = plan.confirmed_false_positive_samples;
+        let session_id = prepared.context.verified_invocation.session_id.clone();
+        let response = self.execute_prepared_request(
             prepared,
             OwnerPipelineBranch::CommitMutation {
                 result_fields: plan.result_fields,
@@ -136,7 +139,18 @@ impl CoreService {
                 change_unit_id: None,
                 storage_mutations: plan.storage_mutations,
             },
-        )
+        )?;
+        if response_committed_fresh_effect(&response) {
+            for sample in confirmed_false_positive_samples {
+                record_core_workflow_metric_best_effort(
+                    self,
+                    session_id.as_deref(),
+                    WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
+                    sample,
+                );
+            }
+        }
+        Ok(response)
     }
 }
 
@@ -423,6 +437,7 @@ fn plan_reconcile_changes(
         planned_state_version,
     )?;
     let state = build_state_summary(SummaryBuild {
+        store,
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task,
@@ -510,6 +525,24 @@ fn plan_reconcile_changes(
         &close_plan.blockers,
         result_next_actions,
     )?;
+    let confirmed_false_positive_samples = planned_resolutions
+        .iter()
+        .filter(|resolution| {
+            resolution.record.confidence == "confirmed"
+                && !matches!(
+                    resolution.basis,
+                    UnrecordedChangeResolutionBasis::AcceptedByUser
+                        | UnrecordedChangeResolutionBasis::SupersededByNewObservation
+                )
+        })
+        .map(|resolution| {
+            u64::from(matches!(
+                resolution.basis,
+                UnrecordedChangeResolutionBasis::InvalidObservation
+                    | UnrecordedChangeResolutionBasis::NotProductChange
+            ))
+        })
+        .collect();
 
     Ok(ReconciliationPlan {
         task_id: request.task_id,
@@ -517,6 +550,7 @@ fn plan_reconcile_changes(
         event_payload,
         result_fields: strip_base(serde_json::to_value(result)?)?,
         dry_run_summary,
+        confirmed_false_positive_samples,
     })
 }
 
@@ -605,7 +639,7 @@ fn deterministic_resolution(
     task_id: &TaskId,
     runs: &[RunObservedChangesRecord],
     write_tickets: &[WriteTicketRecord],
-    state_version: u64,
+    _state_version: u64,
     now: DateTime<Utc>,
 ) -> CoreResult<Option<ResolutionCandidate>> {
     let observed_paths = match observed_paths(record) {
@@ -649,8 +683,25 @@ fn deterministic_resolution(
             "attempt_scope_json",
             Some(&write_ticket.attempt_scope_json),
         )?;
+        let allowed_paths: Vec<String> = decode_required_json(
+            "write_tickets",
+            write_ticket.write_ticket_id.clone(),
+            "allowed_path_prefixes_json",
+            Some(&write_ticket.allowed_path_prefixes_json),
+        )?;
+        let denied_paths: Vec<String> = decode_required_json(
+            "write_tickets",
+            write_ticket.write_ticket_id.clone(),
+            "denied_path_prefixes_json",
+            Some(&write_ticket.denied_path_prefixes_json),
+        )?;
         if attempt_scope.product_file_write_intended
-            && paths_are_authorized(&observed_paths, &attempt_scope.intended_paths)
+            && paths_are_authorized(&observed_paths, &allowed_paths)
+            && !observed_paths.iter().any(|path| {
+                denied_paths
+                    .iter()
+                    .any(|denied| path_is_within(path, denied))
+            })
         {
             if write_ticket.status == "consumed" && write_ticket.consumed_by_run_id.is_some() {
                 return Ok(Some(system_resolution(
@@ -658,9 +709,7 @@ fn deterministic_resolution(
                     "core_deterministic_write_ticket",
                 )));
             }
-            if write_ticket.status == "active"
-                && write_ticket.basis_state_version == state_version
-                && !write_ticket_is_expired(write_ticket, now)?
+            if write_ticket.status == "active" && !write_ticket_is_idle_expired(write_ticket, now)?
             {
                 active_matches.push(write_ticket.write_ticket_id.clone());
             }
@@ -1044,6 +1093,7 @@ fn adjusted_guard_health(
         let resolved_for_connection = planned_resolutions
             .iter()
             .filter(|resolution| resolution.record.connection_internal_id == connection_id.as_str())
+            .filter(|resolution| resolution.record.confidence == "confirmed")
             .count() as u64;
         summary.unresolved_unrecorded_change_count = summary
             .unresolved_unrecorded_change_count
@@ -1078,6 +1128,10 @@ fn unrecorded_finding(
     Ok(UnrecordedChangeFinding {
         unrecorded_change_ref: unrecorded_change_ref(record, request, state_version),
         status: UnrecordedChangeStatus::Unresolved,
+        confidence: parse_storage_value(
+            "unrecorded_changes.confidence",
+            &record.confidence,
+        )?,
         summary: record.summary.clone(),
         observed_paths: observed_paths(record).unwrap_or_default(),
         detected_at: parse_owner_storage_value(

@@ -2,14 +2,18 @@ use serde_json::{json, Map, Value};
 pub use volicord_types::{
     canonical_codex_host_version, canonical_codex_host_version_from_probe, CurrentRuntimeReadiness,
     ExactLiveEvidenceState, FinalOutputSubcapability, HostFeature, HostFeatureEvaluationInput,
-    HostFeatureImplementation, REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
+    HostFeatureImplementation, HostRuntimeProbeFailureClass, HostRuntimeProbeId,
+    HostRuntimeProbeObservation, HostRuntimeProbeOutcome, HostRuntimeProbeSnapshot,
+    REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
 };
 use volicord_types::{
     evaluate_host_feature_support_for_version as shared_evaluate_host_feature_support_for_version,
     evaluate_support_status, host_feature_implementation as shared_host_feature_implementation,
     host_feature_implementation_for_version as shared_host_feature_implementation_for_version,
     host_final_output_subcapability_implementation as shared_host_final_output_subcapability_implementation,
-    required_final_output_subcapabilities, HostFeatureSupportStatus, IntegrationProfile,
+    required_final_output_subcapabilities, required_runtime_probes_for_feature,
+    required_runtime_probes_for_final_output_subcapability, runtime_probe_evaluation_input,
+    HostFeatureSupportStatus, IntegrationProfile, UtcTimestamp,
 };
 
 use super::HostKind;
@@ -128,7 +132,7 @@ impl HostFeatureDiagnosticProjection {
         Self::baseline_for_version(host_kind, None, profile, configured, configuration_verified)
     }
 
-    /// Evaluates the version-aware no-live-evidence baseline once for CLI projections.
+    /// Retains a display-only version coordinate while evaluating the no-evidence baseline.
     pub fn baseline_for_version(
         host_kind: HostKind,
         host_version: Option<&str>,
@@ -200,7 +204,7 @@ pub fn default_host_feature_support_json(host_kind: HostKind) -> Value {
     host_feature_support_json(default_host_feature_support_matrix(host_kind))
 }
 
-/// Projects the version-aware no-live-evidence host baseline.
+/// Projects a no-live-evidence baseline; the version is a display-only coordinate.
 pub fn default_host_feature_support_json_for_version(
     host_kind: HostKind,
     host_version: Option<&str>,
@@ -253,7 +257,7 @@ pub fn host_feature_implementation(
     shared_host_feature_implementation(host_kind.as_str(), feature)
 }
 
-/// Returns the reviewed exact-version fact, falling back to the host-kind table.
+/// Returns the host-kind fact while retaining a display-only version coordinate.
 pub fn host_feature_implementation_for_version(
     host_kind: HostKind,
     host_version: Option<&str>,
@@ -303,14 +307,97 @@ pub fn aggregate_required_support_statuses(
     }
     for candidate in [
         HostFeatureSupportStatus::UnsupportedByHost,
-        HostFeatureSupportStatus::ImplementedUnverified,
         HostFeatureSupportStatus::TemporarilyUnavailable,
+        HostFeatureSupportStatus::ImplementedUnverified,
     ] {
         if statuses.contains(&candidate) {
             return Some(candidate);
         }
     }
     Some(HostFeatureSupportStatus::Verified)
+}
+
+/// Builds dynamic inputs for all managed-host features from one current probe snapshot.
+pub fn host_feature_matrix_inputs_from_runtime_probes(
+    snapshot: &HostRuntimeProbeSnapshot,
+    host_kind: HostKind,
+    managed_fingerprint: &str,
+    selected_profile: IntegrationProfile,
+    now: &UtcTimestamp,
+) -> HostFeatureMatrixInputs {
+    let feature_input = |feature, profile| {
+        runtime_probe_evaluation_input(
+            snapshot,
+            required_runtime_probes_for_feature(feature),
+            host_kind.as_str(),
+            managed_fingerprint,
+            profile,
+            now,
+        )
+    };
+    let final_output_inputs = |profile| FinalOutputEvaluationInputs {
+        authority_display: runtime_probe_evaluation_input(
+            snapshot,
+            required_runtime_probes_for_final_output_subcapability(
+                FinalOutputSubcapability::AuthorityDisplay,
+            ),
+            host_kind.as_str(),
+            managed_fingerprint,
+            profile,
+            now,
+        ),
+        authenticated_exact_replay: runtime_probe_evaluation_input(
+            snapshot,
+            required_runtime_probes_for_final_output_subcapability(
+                FinalOutputSubcapability::AuthenticatedExactReplay,
+            ),
+            host_kind.as_str(),
+            managed_fingerprint,
+            profile,
+            now,
+        ),
+        block_finalization: runtime_probe_evaluation_input(
+            snapshot,
+            required_runtime_probes_for_final_output_subcapability(
+                FinalOutputSubcapability::BlockFinalization,
+            ),
+            host_kind.as_str(),
+            managed_fingerprint,
+            profile,
+            now,
+        ),
+    };
+    HostFeatureMatrixInputs {
+        native_user_action: feature_input(HostFeature::NativeUserAction, selected_profile),
+        local_web_user_channel: feature_input(HostFeature::LocalWebUserChannel, selected_profile),
+        verified_tool_producer: feature_input(HostFeature::VerifiedToolProducer, selected_profile),
+        registered_connection_observation: feature_input(
+            HostFeature::RegisteredConnectionObservation,
+            selected_profile,
+        ),
+        record_final_output: final_output_inputs(IntegrationProfile::Record),
+        detective_final_output: final_output_inputs(IntegrationProfile::Detective),
+    }
+}
+
+/// Evaluates the six-feature matrix from actual current-state runtime observations.
+pub fn host_feature_support_matrix_from_runtime_probes(
+    snapshot: &HostRuntimeProbeSnapshot,
+    host_kind: HostKind,
+    managed_fingerprint: &str,
+    selected_profile: IntegrationProfile,
+    now: &UtcTimestamp,
+) -> HostFeatureSupportMatrix {
+    evaluate_host_feature_support_matrix(
+        host_kind,
+        host_feature_matrix_inputs_from_runtime_probes(
+            snapshot,
+            host_kind,
+            managed_fingerprint,
+            selected_profile,
+            now,
+        ),
+    )
 }
 
 /// Evaluates and aggregates only the final-output capabilities required by the profile.
@@ -406,7 +493,7 @@ pub fn default_host_feature_support_matrix(host_kind: HostKind) -> HostFeatureSu
     default_host_feature_support_matrix_for_version(host_kind, None)
 }
 
-/// Returns the version-aware no-live-evidence baseline for all six host features.
+/// Returns a no-live-evidence baseline; the version is a display-only coordinate.
 pub fn default_host_feature_support_matrix_for_version(
     host_kind: HostKind,
     host_version: Option<&str>,
@@ -544,23 +631,15 @@ mod tests {
     }
 
     #[test]
-    fn reviewed_codex_version_implementation_matrix_is_exact() {
-        let expected = [
-            HostFeatureImplementation::Implemented,
-            HostFeatureImplementation::UnsupportedByHost,
-            HostFeatureImplementation::Implemented,
-            HostFeatureImplementation::Implemented,
-            HostFeatureImplementation::UnsupportedByHost,
-            HostFeatureImplementation::UnsupportedByHost,
-        ];
-        for (feature, expected) in HostFeature::ALL.into_iter().zip(expected) {
+    fn reviewed_codex_version_is_not_an_implementation_gate() {
+        for feature in HostFeature::ALL {
             assert_eq!(
                 host_feature_implementation_for_version(
                     HostKind::Codex,
                     Some(REVIEWED_CODEX_HOST_VERSION),
                     feature,
                 ),
-                expected,
+                HostFeatureImplementation::Implemented,
                 "{}",
                 feature.as_str()
             );
@@ -572,11 +651,11 @@ mod tests {
         );
         let expected_statuses = [
             HostFeatureSupportStatus::ImplementedUnverified,
-            HostFeatureSupportStatus::UnsupportedByHost,
             HostFeatureSupportStatus::ImplementedUnverified,
             HostFeatureSupportStatus::ImplementedUnverified,
-            HostFeatureSupportStatus::UnsupportedByHost,
-            HostFeatureSupportStatus::UnsupportedByHost,
+            HostFeatureSupportStatus::ImplementedUnverified,
+            HostFeatureSupportStatus::ImplementedUnverified,
+            HostFeatureSupportStatus::ImplementedUnverified,
         ];
         assert_eq!(matrix.rows().map(|(_, status)| status), expected_statuses);
 
@@ -587,7 +666,7 @@ mod tests {
                 HostFeature::LocalWebUserChannel,
                 CURRENT_READY,
             ),
-            HostFeatureSupportStatus::UnsupportedByHost
+            HostFeatureSupportStatus::Verified
         );
     }
 
@@ -629,20 +708,10 @@ mod tests {
                 HostFeatureImplementation::Implemented
             );
         }
-        assert_eq!(
-            host_final_output_subcapability_implementation(
-                HostKind::Codex,
-                FinalOutputSubcapability::AuthorityDisplay,
-            ),
-            HostFeatureImplementation::Implemented
-        );
-        for subcapability in [
-            FinalOutputSubcapability::AuthenticatedExactReplay,
-            FinalOutputSubcapability::BlockFinalization,
-        ] {
+        for subcapability in FinalOutputSubcapability::ALL {
             assert_eq!(
                 host_final_output_subcapability_implementation(HostKind::Codex, subcapability),
-                HostFeatureImplementation::UnsupportedByHost
+                HostFeatureImplementation::Implemented
             );
         }
         for feature in HostFeature::ALL {
@@ -698,20 +767,20 @@ mod tests {
     fn final_output_aggregation_uses_profile_and_host_facts() {
         let cases = [
             (
-                "Codex Record lacks authenticated replay",
+                "Codex Record is probe-verified only when every required probe passed",
                 HostKind::Codex,
                 IntegrationProfile::Record,
                 FinalOutputEvaluationInputs::uniform(CURRENT_READY),
-                HostFeatureSupportStatus::UnsupportedByHost,
+                HostFeatureSupportStatus::Verified,
                 None,
             ),
             (
-                "Codex Detective lacks replay and block",
+                "Codex Detective is probe-verified only when every required probe passed",
                 HostKind::Codex,
                 IntegrationProfile::Detective,
                 FinalOutputEvaluationInputs::uniform(CURRENT_READY),
-                HostFeatureSupportStatus::UnsupportedByHost,
-                Some(HostFeatureSupportStatus::UnsupportedByHost),
+                HostFeatureSupportStatus::Verified,
+                Some(HostFeatureSupportStatus::Verified),
             ),
             (
                 "Claude Record defaults to implemented unverified",
@@ -741,7 +810,7 @@ mod tests {
                 Some(HostFeatureSupportStatus::TemporarilyUnavailable),
             ),
             (
-                "stale evidence outranks a runtime outage",
+                "a runtime outage outranks stale evidence",
                 HostKind::ClaudeCode,
                 IntegrationProfile::Detective,
                 FinalOutputEvaluationInputs {
@@ -749,7 +818,7 @@ mod tests {
                     block_finalization: CURRENT_DOWN,
                     ..FinalOutputEvaluationInputs::uniform(CURRENT_READY)
                 },
-                HostFeatureSupportStatus::ImplementedUnverified,
+                HostFeatureSupportStatus::TemporarilyUnavailable,
                 Some(HostFeatureSupportStatus::TemporarilyUnavailable),
             ),
             (
@@ -808,11 +877,11 @@ mod tests {
         }
         assert_eq!(
             codex.status_for(HostFeature::RecordFinalOutput),
-            HostFeatureSupportStatus::UnsupportedByHost
+            HostFeatureSupportStatus::ImplementedUnverified
         );
         assert_eq!(
             codex.status_for(HostFeature::DetectiveFinalOutput),
-            HostFeatureSupportStatus::UnsupportedByHost
+            HostFeatureSupportStatus::ImplementedUnverified
         );
 
         let claude_current = evaluate_host_feature_support_matrix(
@@ -849,7 +918,7 @@ mod tests {
                 "Codex Record",
                 HostKind::Codex,
                 IntegrationProfile::Record,
-                HostFeatureSupportStatus::UnsupportedByHost,
+                HostFeatureSupportStatus::ImplementedUnverified,
                 &["authority_display", "authenticated_exact_replay"][..],
             ),
             (

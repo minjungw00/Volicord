@@ -122,7 +122,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
 }
 
 #[test]
-fn update_scope_replaces_current_and_marks_write_ticket_stale() -> Result<(), Box<dyn Error>> {
+fn update_scope_replaces_current_and_invalidates_write_ticket() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let intake = harness.service.intake(
         intake_request(
@@ -182,7 +182,42 @@ fn update_scope_replaces_current_and_marks_write_ticket_stale() -> Result<(), Bo
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.change_units, before.change_units + 1);
     assert_eq!(active_current_change_units(&harness, &task_id)?, 1);
-    assert_eq!(write_ticket_status(&harness, "wa_replace")?, "stale");
+    assert_eq!(write_ticket_status(&harness, "wa_replace")?, "invalidated");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, "wa_replace")?,
+        Some("change_unit_changed".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn update_scope_baseline_replacement_uses_baseline_invalidation_reason(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "scope_baseline_replacement")?;
+    insert_active_write_ticket(&harness, &task_id, &change_unit_id)?;
+    let mut request = update_scope_request(
+        "req_scope_baseline_replacement",
+        "idem_scope_baseline_replacement",
+        false,
+        Some(2),
+        &task_id,
+        ChangeUnitOperation::ReplaceCurrent,
+        "Replace the current scope and baseline.",
+    );
+    request.baseline_ref = RequiredNullable::some(BaselineRef::new("baseline_retargeted"));
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(write_ticket_status(&harness, "wa_replace")?, "invalidated");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, "wa_replace")?,
+        Some("baseline_changed".to_owned())
+    );
     Ok(())
 }
 
@@ -209,6 +244,7 @@ fn material_scope_change_increments_revision_and_invalidates_basis() -> Result<(
         .record_run(record, invocation(OperationCategory::AgentWorkflow))?;
     let before = task_revision(&harness, &task_id)?;
     assert!(before.current_close_basis.is_some());
+    insert_active_write_ticket(&harness, &task_id, &change_unit_id)?;
 
     let response = harness.service.update_scope(
         update_scope_request(
@@ -240,7 +276,26 @@ fn material_scope_change_increments_revision_and_invalidates_basis() -> Result<(
         event_payload["close_basis_revision"],
         after.close_basis_revision
     );
+    assert_eq!(write_ticket_status(&harness, "wa_replace")?, "invalidated");
+    assert_eq!(
+        write_ticket_invalidation_reason(&harness, "wa_replace")?,
+        Some("scope_revision_changed".to_owned())
+    );
     Ok(())
+}
+
+fn write_ticket_invalidation_reason(
+    harness: &MethodHarness,
+    write_ticket_id: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    Ok(harness.conn()?.query_row(
+        "SELECT invalidation_reason
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
+        |row| row.get(0),
+    )?)
 }
 
 #[test]

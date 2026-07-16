@@ -1,12 +1,16 @@
-use std::{fmt, path::Path};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use serde::Serialize;
 use serde_json::json;
 use volicord_store::{
+    bootstrap::project_record_by_repo_root_read_only,
     diagnostics::{
-        read_diagnostic_session, DiagnosticSessionAggregate, DIAGNOSTICS_DB_FILE,
-        DIAGNOSTICS_MAX_EVENTS_PER_SESSION, DIAGNOSTICS_MAX_SESSIONS, DIAGNOSTICS_RETENTION_DAYS,
-        DIAGNOSTICS_SCHEMA_VERSION,
+        read_diagnostic_session, read_workflow_metric_aggregates, DiagnosticSessionAggregate,
+        WorkflowMetricAggregateRow, DIAGNOSTICS_DB_FILE, DIAGNOSTICS_MAX_EVENTS_PER_SESSION,
+        DIAGNOSTICS_MAX_SESSIONS, DIAGNOSTICS_RETENTION_DAYS, DIAGNOSTICS_SCHEMA_VERSION,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
@@ -43,6 +47,7 @@ impl From<RuntimeHomeResolutionError> for DiagnosticsCommandError {
 pub fn diagnostics_usage() -> String {
     concat!(
         "volicord diagnostics session [--session ID] [--json]\n",
+        "volicord diagnostics workflow-metrics --repo PATH --json\n",
         "volicord diagnostics --help\n"
     )
     .to_owned()
@@ -60,31 +65,119 @@ where
     match args.first().map(String::as_str) {
         None | Some("-h" | "--help" | "help") => {
             if args.len() <= 1 {
-                return Ok(diagnostics_usage());
+                Ok(diagnostics_usage())
+            } else {
+                Err(DiagnosticsCommandError::Usage(format!(
+                    "unexpected argument: {}\n\n{}",
+                    args[1],
+                    diagnostics_usage()
+                )))
             }
-            return Err(DiagnosticsCommandError::Usage(format!(
-                "unexpected argument: {}\n\n{}",
-                args[1],
-                diagnostics_usage()
-            )));
         }
-        Some("session") => {}
-        Some(other) => {
-            return Err(DiagnosticsCommandError::Usage(format!(
-                "unknown diagnostics command: {other}\n\n{}",
-                diagnostics_usage()
-            )));
+        Some("session") => {
+            let options = parse_session_options(&args[1..])?;
+            let runtime_home = resolve_runtime_home(env_var, current_dir)?;
+            let aggregate = read_diagnostic_session(&runtime_home, options.session_id.as_deref())?;
+            if options.json {
+                render_json(aggregate)
+            } else {
+                Ok(render_text(aggregate))
+            }
         }
+        Some("workflow-metrics") => run_workflow_metrics(&args[1..], env_var, current_dir),
+        Some(other) => Err(DiagnosticsCommandError::Usage(format!(
+            "unknown diagnostics command: {other}\n\n{}",
+            diagnostics_usage()
+        ))),
     }
+}
 
-    let options = parse_session_options(&args[1..])?;
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct WorkflowMetricsOptions {
+    repo: Option<PathBuf>,
+    json: bool,
+}
+
+fn run_workflow_metrics<F>(
+    args: &[String],
+    env_var: F,
+    current_dir: &Path,
+) -> Result<String, DiagnosticsCommandError>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    let options = parse_workflow_metrics_options(args)?;
+    let repo = options
+        .repo
+        .as_deref()
+        .expect("workflow metrics parser requires --repo");
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
-    let aggregate = read_diagnostic_session(&runtime_home, options.session_id.as_deref())?;
-    if options.json {
-        render_json(aggregate)
+    let repo_root = if repo.is_absolute() {
+        repo.to_path_buf()
     } else {
-        Ok(render_text(aggregate))
+        current_dir.join(repo)
+    };
+    let project =
+        project_record_by_repo_root_read_only(&runtime_home, &repo_root)?.ok_or_else(|| {
+            DiagnosticsCommandError::Runtime(format!(
+                "project is not registered for repository {}; run `volicord project use`",
+                repo_root.display()
+            ))
+        })?;
+    let rows = read_workflow_metric_aggregates(&runtime_home, &project.project_id)?;
+    serde_json::to_string_pretty(&workflow_metrics_report(rows))
+        .map(|output| format!("{output}\n"))
+        .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
+}
+
+fn parse_workflow_metrics_options(
+    args: &[String],
+) -> Result<WorkflowMetricsOptions, DiagnosticsCommandError> {
+    let mut options = WorkflowMetricsOptions::default();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                if options.json {
+                    return Err(usage_error("--json was supplied more than once"));
+                }
+                options.json = true;
+                index += 1;
+            }
+            "--repo" => {
+                if options.repo.is_some() {
+                    return Err(usage_error("--repo was supplied more than once"));
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .filter(|value| !value.starts_with('-'))
+                    .ok_or_else(|| usage_error("--repo requires a value"))?;
+                options.repo = Some(PathBuf::from(value));
+                index += 1;
+            }
+            "-h" | "--help" | "help" => {
+                return Err(usage_error(
+                    "help cannot be combined with diagnostics workflow-metrics options",
+                ));
+            }
+            option if option.starts_with('-') => {
+                return Err(usage_error(format!("unknown option: {option}")));
+            }
+            argument => {
+                return Err(usage_error(format!("unexpected argument: {argument}")));
+            }
+        }
     }
+    if options.repo.is_none() {
+        return Err(usage_error(
+            "diagnostics workflow-metrics requires --repo PATH",
+        ));
+    }
+    if !options.json {
+        return Err(usage_error("diagnostics workflow-metrics requires --json"));
+    }
+    Ok(options)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -217,6 +310,140 @@ struct DiagnosticToolReport {
     core_reached_count: u64,
     core_committed_count: u64,
     replayed_count: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkflowMetricsReport {
+    schema_version: u32,
+    status: &'static str,
+    scope: &'static str,
+    duration_measurements: WorkflowDurationMeasurements,
+    confirmed_unrecorded_false_positive_rate: WorkflowRateMeasurement,
+    aggregates: Vec<WorkflowMetricAggregateRow>,
+    redaction: WorkflowMetricsRedactionReport,
+    authority_isolation: AuthorityIsolationReport,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkflowDurationMeasurements {
+    task_duration_micros: WorkflowDistributionMeasurement,
+    first_product_write_duration_micros: WorkflowDistributionMeasurement,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkflowDistributionMeasurement {
+    status: &'static str,
+    value: Option<WorkflowDistribution>,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkflowDistribution {
+    sample_count: u64,
+    total: u64,
+    minimum: u64,
+    maximum: u64,
+    average: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkflowRateMeasurement {
+    status: &'static str,
+    numerator: Option<u64>,
+    denominator: Option<u64>,
+    value: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkflowMetricsRedactionReport {
+    aggregate_only: bool,
+    stores_or_returns_command_prompt_path_content_or_user_answer: bool,
+}
+
+fn workflow_metrics_report(rows: Vec<WorkflowMetricAggregateRow>) -> WorkflowMetricsReport {
+    let task_duration = distribution_measurement(&rows, "task_duration_micros");
+    let first_write_duration =
+        distribution_measurement(&rows, "first_product_write_duration_micros");
+    let false_positive_rows = rows
+        .iter()
+        .filter(|row| row.metric_kind == "confirmed_unrecorded_false_positive")
+        .collect::<Vec<_>>();
+    let false_positive_numerator = false_positive_rows
+        .iter()
+        .map(|row| row.value_total)
+        .sum::<u64>();
+    let classified_confirmed_findings = false_positive_rows
+        .iter()
+        .map(|row| row.sample_count)
+        .sum::<u64>();
+    let false_positive_rate = if classified_confirmed_findings > 0 {
+        WorkflowRateMeasurement {
+            status: "available",
+            numerator: Some(false_positive_numerator),
+            denominator: Some(classified_confirmed_findings),
+            value: Some(false_positive_numerator as f64 / classified_confirmed_findings as f64),
+        }
+    } else {
+        WorkflowRateMeasurement {
+            status: "measurement_pending",
+            numerator: None,
+            denominator: None,
+            value: None,
+        }
+    };
+    WorkflowMetricsReport {
+        schema_version: DIAGNOSTICS_SCHEMA_VERSION,
+        status: if rows.is_empty() {
+            "no_data"
+        } else {
+            "available"
+        },
+        scope: "bounded_local_operability_aggregates_only",
+        duration_measurements: WorkflowDurationMeasurements {
+            task_duration_micros: task_duration,
+            first_product_write_duration_micros: first_write_duration,
+        },
+        confirmed_unrecorded_false_positive_rate: false_positive_rate,
+        aggregates: rows,
+        redaction: WorkflowMetricsRedactionReport {
+            aggregate_only: true,
+            stores_or_returns_command_prompt_path_content_or_user_answer: false,
+        },
+        authority_isolation: AuthorityIsolationReport {
+            project_state_database_opened_by_report: false,
+            changes_state_version: false,
+            changes_evidence_or_assurance: false,
+            changes_close_readiness: false,
+            changes_user_actions: false,
+        },
+    }
+}
+
+fn distribution_measurement(
+    rows: &[WorkflowMetricAggregateRow],
+    metric_kind: &str,
+) -> WorkflowDistributionMeasurement {
+    let matching = rows
+        .iter()
+        .filter(|row| row.metric_kind == metric_kind)
+        .collect::<Vec<_>>();
+    let sample_count = matching.iter().map(|row| row.sample_count).sum::<u64>();
+    if sample_count == 0 {
+        return WorkflowDistributionMeasurement {
+            status: "measurement_pending",
+            value: None,
+        };
+    }
+    let total = matching.iter().map(|row| row.value_total).sum::<u64>();
+    WorkflowDistributionMeasurement {
+        status: "available",
+        value: Some(WorkflowDistribution {
+            sample_count,
+            total,
+            minimum: matching.iter().map(|row| row.value_min).min().unwrap_or(0),
+            maximum: matching.iter().map(|row| row.value_max).max().unwrap_or(0),
+            average: total.checked_div(sample_count).unwrap_or(0),
+        }),
+    }
 }
 
 fn diagnostics_report(aggregate: Option<DiagnosticSessionAggregate>) -> DiagnosticsReport {
@@ -353,14 +580,19 @@ mod tests {
     use std::{ffi::OsString, fs};
 
     use rusqlite::OptionalExtension;
+    use serde_json::Value;
     use volicord_core::{CoreService, InvocationContext};
     use volicord_store::diagnostics::{
-        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
-        DiagnosticFallbackKind, DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart,
-        DiagnosticTransport,
+        diagnostics_db_path, record_diagnostic_event, record_workflow_metric_event,
+        start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind,
+        DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
+        WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
-    use volicord_types::{ActorSource, JudgmentKind, OperationCategory, ProjectId};
+    use volicord_types::{
+        ActorSource, IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence,
+        OperationCategory, ProjectId,
+    };
 
     use super::*;
 
@@ -421,6 +653,198 @@ mod tests {
             false
         );
         assert_eq!(report["redaction"]["stores_secret_text"], false);
+    }
+
+    #[test]
+    fn workflow_metrics_no_data_is_read_only_and_reports_pending_measurements() {
+        let fixture = CoreFixture::new("workflow-metrics-no-data").expect("fixture");
+        let diagnostics_path = diagnostics_db_path(fixture.runtime_home_path());
+        assert!(!diagnostics_path.exists());
+
+        let output = run_diagnostics_command(
+            &[
+                "workflow-metrics".to_owned(),
+                "--repo".to_owned(),
+                fixture.product_repo_path().display().to_string(),
+                "--json".to_owned(),
+            ],
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("workflow metrics no-data report");
+        let report: Value = serde_json::from_str(&output).expect("JSON");
+        assert_eq!(report["status"], "no_data");
+        assert_eq!(
+            report["duration_measurements"]["task_duration_micros"]["status"],
+            "measurement_pending"
+        );
+        assert_eq!(
+            report["confirmed_unrecorded_false_positive_rate"]["status"],
+            "measurement_pending"
+        );
+        assert!(report["aggregates"]
+            .as_array()
+            .expect("aggregates")
+            .is_empty());
+        assert!(!diagnostics_path.exists());
+    }
+
+    #[test]
+    fn workflow_metrics_returns_only_bounded_project_aggregates() {
+        let fixture = CoreFixture::new("workflow-metrics-json").expect("fixture");
+        start_diagnostic_session(
+            fixture.runtime_home_path(),
+            DiagnosticSessionStart {
+                session_id: "session_workflow_metrics",
+                connection_id: Some(fixture.connection_id()),
+                project_id: Some(fixture.project_id()),
+                transport: DiagnosticTransport::McpStdio,
+                host_kind: Some(DiagnosticHostKind::Codex),
+                package_version: "0.2.0",
+                build_id: "0.2.0;git=unknown",
+            },
+        )
+        .expect("session");
+        for duration in [100_u64, 300] {
+            record_workflow_metric_event(
+                fixture.runtime_home_path(),
+                &WorkflowMetricEvent {
+                    session_id: "session_workflow_metrics".to_owned(),
+                    metric_kind: WorkflowMetricKind::TaskDurationMicros,
+                    value: duration,
+                    method_name: None,
+                    integration_profile: Some(IntegrationProfile::Detective),
+                    decision: None,
+                    observation_confidence: None,
+                    outcome: None,
+                },
+            )
+            .expect("task duration");
+        }
+        record_workflow_metric_event(
+            fixture.runtime_home_path(),
+            &WorkflowMetricEvent {
+                session_id: "session_workflow_metrics".to_owned(),
+                metric_kind: WorkflowMetricKind::McpMethodCall,
+                value: 1,
+                method_name: Some(MethodName::Status),
+                integration_profile: Some(IntegrationProfile::Detective),
+                decision: None,
+                observation_confidence: None,
+                outcome: Some(WorkflowMetricOutcome::Success),
+            },
+        )
+        .expect("method call");
+        record_workflow_metric_event(
+            fixture.runtime_home_path(),
+            &WorkflowMetricEvent {
+                session_id: "session_workflow_metrics".to_owned(),
+                metric_kind: WorkflowMetricKind::ObservationAssessment,
+                value: 1,
+                method_name: None,
+                integration_profile: Some(IntegrationProfile::Detective),
+                decision: None,
+                observation_confidence: Some(ObservationConfidence::Confirmed),
+                outcome: Some(WorkflowMetricOutcome::ProductFileWrite),
+            },
+        )
+        .expect("observation");
+        for sample in [0_u64, 1] {
+            record_workflow_metric_event(
+                fixture.runtime_home_path(),
+                &WorkflowMetricEvent {
+                    session_id: "session_workflow_metrics".to_owned(),
+                    metric_kind: WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
+                    value: sample,
+                    method_name: None,
+                    integration_profile: Some(IntegrationProfile::Detective),
+                    decision: None,
+                    observation_confidence: None,
+                    outcome: None,
+                },
+            )
+            .expect("binary false-positive sample");
+        }
+
+        let output = run_diagnostics_command(
+            &[
+                "workflow-metrics".to_owned(),
+                "--repo".to_owned(),
+                fixture.product_repo_path().display().to_string(),
+                "--json".to_owned(),
+            ],
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect("workflow metrics report");
+        let report: Value = serde_json::from_str(&output).expect("JSON");
+        assert_eq!(report["status"], "available");
+        assert_eq!(
+            report["duration_measurements"]["task_duration_micros"]["value"]["sample_count"],
+            2
+        );
+        assert_eq!(
+            report["duration_measurements"]["task_duration_micros"]["value"]["average"],
+            200
+        );
+        assert_eq!(
+            report["duration_measurements"]["first_product_write_duration_micros"]["status"],
+            "measurement_pending"
+        );
+        assert_eq!(
+            report["confirmed_unrecorded_false_positive_rate"]["status"],
+            "available"
+        );
+        assert_eq!(
+            report["confirmed_unrecorded_false_positive_rate"]["numerator"],
+            1
+        );
+        assert_eq!(
+            report["confirmed_unrecorded_false_positive_rate"]["denominator"],
+            2
+        );
+        assert_eq!(
+            report["confirmed_unrecorded_false_positive_rate"]["value"],
+            0.5
+        );
+        assert!(report["aggregates"]
+            .as_array()
+            .expect("aggregate rows")
+            .iter()
+            .any(|row| row["metric_kind"] == "mcp_method_call"
+                && row["method_name"] == "volicord.status"));
+        for forbidden in [
+            "SENSITIVE_COMMAND_SENTINEL",
+            "SENSITIVE_PROMPT_SENTINEL",
+            "SENSITIVE_FILE_BODY_SENTINEL",
+            "SENSITIVE_USER_ANSWER_SENTINEL",
+        ] {
+            assert!(!output.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn workflow_metrics_requires_repo_and_json() {
+        let fixture = CoreFixture::new("workflow-metrics-usage").expect("fixture");
+        let missing_repo = run_diagnostics_command(
+            &["workflow-metrics".to_owned(), "--json".to_owned()],
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect_err("--repo is required");
+        assert!(matches!(missing_repo, DiagnosticsCommandError::Usage(_)));
+
+        let missing_json = run_diagnostics_command(
+            &[
+                "workflow-metrics".to_owned(),
+                "--repo".to_owned(),
+                fixture.product_repo_path().display().to_string(),
+            ],
+            env_for(fixture.runtime_home_path()),
+            fixture.product_repo_path().as_path(),
+        )
+        .expect_err("--json is required");
+        assert!(matches!(missing_json, DiagnosticsCommandError::Usage(_)));
     }
 
     #[derive(Debug, PartialEq, Eq)]

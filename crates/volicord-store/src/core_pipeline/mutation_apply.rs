@@ -3,6 +3,52 @@ use crate::evidence_capture::{
     validate_evidence_capture_intent_window, EvidenceCaptureIntentWindowError,
 };
 use crate::user_action_channel::validate_persisted_user_action_channel_token_window;
+use crate::workflow_records::{
+    apply_project_workflow_policy_mutation, clear_satisfied_task_policy_reevaluation,
+};
+
+fn task_control_level_rank(value: &str) -> StoreResult<u8> {
+    match value {
+        "observe" => Ok(0),
+        "light" => Ok(1),
+        "tracked" => Ok(2),
+        "sensitive" => Ok(3),
+        _ => Err(StoreError::InvalidInput {
+            detail: "effective_control_level is not supported".to_owned(),
+        }),
+    }
+}
+
+fn acceptance_policy_rank(value: &str) -> StoreResult<u8> {
+    match value {
+        "not_required" => Ok(0),
+        "policy_dependent" => Ok(1),
+        "required" => Ok(2),
+        _ => Err(StoreError::InvalidInput {
+            detail: "acceptance_policy is not supported".to_owned(),
+        }),
+    }
+}
+
+fn validate_write_ticket_invalidation_reason(value: &str) -> StoreResult<()> {
+    if matches!(
+        value,
+        "scope_revision_changed"
+            | "change_unit_changed"
+            | "baseline_changed"
+            | "workspace_changed"
+            | "approval_basis_changed"
+            | "idle_timeout"
+            | "task_closed"
+            | "explicit_revoke"
+    ) {
+        Ok(())
+    } else {
+        Err(StoreError::InvalidInput {
+            detail: "write-ticket invalidation reason is not supported".to_owned(),
+        })
+    }
+}
 
 impl CoreStorageMutation {
     /// Applies this storage mutation inside the active Core commit transaction.
@@ -16,6 +62,7 @@ impl CoreStorageMutation {
             Self::SetActiveTask { task_id } => mutation.set_active_task(task_id),
             Self::SupersedeTask { task_id } => mutation.supersede_task(task_id),
             Self::CloseTask(input) => mutation.close_task(input),
+            Self::UpdateTaskControlLevel(input) => mutation.update_task_control_level(input),
             Self::UpdateTaskScope(input) => mutation.update_task_scope(input),
             Self::UpdateTaskScopeRevision(input) => mutation.update_task_scope_revision(input),
             Self::UpdateTaskCloseBasis(input) => mutation.update_task_close_basis(input),
@@ -30,6 +77,10 @@ impl CoreStorageMutation {
             Self::MarkActiveWriteTicketsStale { task_id } => {
                 mutation.mark_active_write_tickets_stale(task_id)
             }
+            Self::InvalidateActiveWriteTickets(input) => {
+                mutation.invalidate_active_write_tickets(input)
+            }
+            Self::InvalidateWriteTicket(input) => mutation.invalidate_write_ticket(input),
             Self::InsertWriteTicket(input) => {
                 mutation.insert_write_ticket(input, committed_state_version)
             }
@@ -61,6 +112,12 @@ impl CoreStorageMutation {
             Self::MarkUserActionsSupersededOrStale(input) => {
                 mutation.mark_user_actions_superseded_or_stale(input)
             }
+            Self::ApplyProjectWorkflowPolicy(input) => apply_project_workflow_policy_mutation(
+                mutation.tx,
+                mutation.project_id,
+                mutation.committed_at,
+                input,
+            ),
         }
     }
 }
@@ -70,6 +127,27 @@ impl ProjectMutation<'_> {
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
         validate_identifier("mode", &input.mode)?;
+        if !matches!(
+            input.requested_control_level.as_str(),
+            "auto" | "observe" | "light" | "tracked" | "sensitive"
+        ) {
+            return Err(StoreError::InvalidInput {
+                detail: "requested_control_level is not supported".to_owned(),
+            });
+        }
+        if !matches!(
+            input.effective_control_level.as_str(),
+            "observe" | "light" | "tracked" | "sensitive"
+        ) {
+            return Err(StoreError::InvalidInput {
+                detail: "effective_control_level is not supported".to_owned(),
+            });
+        }
+        if input.control_level_reason.trim().is_empty() {
+            return Err(StoreError::InvalidInput {
+                detail: "control_level_reason must not be empty".to_owned(),
+            });
+        }
         validate_identifier("work_phase", &input.work_phase)?;
         validate_identifier("acceptance_policy", &input.acceptance_policy)?;
         if input.acceptance_policy_reason.trim().is_empty() {
@@ -93,6 +171,9 @@ impl ProjectMutation<'_> {
                 task_id,
                 created_by_actor_source,
                 mode,
+                requested_control_level,
+                effective_control_level,
+                control_level_reason,
                 work_phase,
                 acceptance_policy,
                 acceptance_policy_reason,
@@ -119,14 +200,18 @@ impl ProjectMutation<'_> {
                 ?4,
                 ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
                 ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                ?21,
-                ?21
+                ?21, ?22, ?23,
+                ?24,
+                ?24
             )",
             params![
                 self.project_id,
                 input.task_id,
                 input.created_by_actor_source,
                 input.mode,
+                input.requested_control_level,
+                input.effective_control_level,
+                input.control_level_reason,
                 input.work_phase,
                 input.acceptance_policy,
                 input.acceptance_policy_reason,
@@ -143,6 +228,98 @@ impl ProjectMutation<'_> {
                 input.autonomy_boundary_json,
                 input.close_summary_json,
                 input.current_change_unit_id,
+                self.committed_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn update_task_control_level(&mut self, input: &TaskControlLevelUpdate) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        let requested_rank = task_control_level_rank(&input.effective_control_level)?;
+        if input.control_level_reason.trim().is_empty() {
+            return Err(StoreError::InvalidInput {
+                detail: "control_level_reason must not be empty".to_owned(),
+            });
+        }
+        let acceptance_update = match (
+            input.acceptance_policy.as_deref(),
+            input.acceptance_policy_reason.as_deref(),
+        ) {
+            (None, None) => None,
+            (Some(policy), Some(reason)) if !reason.trim().is_empty() => {
+                Some((policy, reason, acceptance_policy_rank(policy)?))
+            }
+            _ => {
+                return Err(StoreError::InvalidInput {
+                    detail: "acceptance_policy and acceptance_policy_reason must be supplied together with a non-empty reason".to_owned(),
+                })
+            }
+        };
+        let (current_level, current_acceptance_policy, metadata_json) = self
+            .tx
+            .query_row(
+                "SELECT effective_control_level, acceptance_policy, metadata_json
+                   FROM tasks
+                  WHERE project_id = ?1
+                    AND task_id = ?2",
+                params![self.project_id, input.task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "task",
+                id: input.task_id.clone(),
+            })?;
+        if requested_rank < task_control_level_rank(&current_level)? {
+            return Err(StoreError::Conflict {
+                entity: "task",
+                id: input.task_id.clone(),
+                detail: "effective Task control level cannot decrease".to_owned(),
+            });
+        }
+        if let Some((_, _, requested_acceptance_rank)) = &acceptance_update {
+            if *requested_acceptance_rank < acceptance_policy_rank(&current_acceptance_policy)? {
+                return Err(StoreError::Conflict {
+                    entity: "task",
+                    id: input.task_id.clone(),
+                    detail: "Task acceptance policy cannot decrease".to_owned(),
+                });
+            }
+        }
+        let (acceptance_policy, acceptance_policy_reason) = acceptance_update
+            .map(|(policy, reason, _)| (Some(policy), Some(reason)))
+            .unwrap_or((None, None));
+        let metadata_json = clear_satisfied_task_policy_reevaluation(
+            &metadata_json,
+            &input.task_id,
+            &input.effective_control_level,
+            acceptance_policy.unwrap_or(&current_acceptance_policy),
+        )?;
+        self.tx.execute(
+            "UPDATE tasks
+                SET effective_control_level = ?3,
+                    control_level_reason = ?4,
+                    acceptance_policy = COALESCE(?5, acceptance_policy),
+                    acceptance_policy_reason = COALESCE(?6, acceptance_policy_reason),
+                    metadata_json = ?7,
+                    updated_at = ?8
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            params![
+                self.project_id,
+                input.task_id,
+                input.effective_control_level,
+                input.control_level_reason,
+                acceptance_policy,
+                acceptance_policy_reason,
+                metadata_json,
                 self.committed_at
             ],
         )?;
@@ -563,16 +740,54 @@ impl ProjectMutation<'_> {
     }
 
     fn mark_active_write_tickets_stale(&mut self, task_id: &str) -> StoreResult<()> {
-        validate_identifier("task_id", task_id)?;
+        self.invalidate_active_write_tickets(&WriteTicketInvalidation {
+            task_id: task_id.to_owned(),
+            invalidation_reason: "scope_revision_changed".to_owned(),
+        })
+    }
+
+    fn invalidate_active_write_tickets(
+        &mut self,
+        input: &WriteTicketInvalidation,
+    ) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        validate_write_ticket_invalidation_reason(&input.invalidation_reason)?;
         self.tx.execute(
             "UPDATE write_tickets
-                SET status = 'stale'
+                SET status = 'invalidated',
+                    invalidation_reason = ?3
               WHERE project_id = ?1
                 AND task_id = ?2
                 AND status = 'active'",
-            params![self.project_id, task_id],
+            params![self.project_id, input.task_id, input.invalidation_reason],
         )?;
         Ok(())
+    }
+
+    fn invalidate_write_ticket(&mut self, input: &WriteTicketByIdInvalidation) -> StoreResult<()> {
+        validate_identifier("write_ticket_id", &input.write_ticket_id)?;
+        validate_write_ticket_invalidation_reason(&input.invalidation_reason)?;
+        let changed = self.tx.execute(
+            "UPDATE write_tickets
+                SET status = 'invalidated',
+                    invalidation_reason = ?3
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2
+                AND status = 'active'",
+            params![
+                self.project_id,
+                input.write_ticket_id,
+                input.invalidation_reason
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "identified active write ticket invalidation changed no rows".to_owned(),
+            })
+        }
     }
 
     fn insert_write_ticket(
@@ -584,6 +799,18 @@ impl ProjectMutation<'_> {
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("change_unit_id", &input.change_unit_id)?;
         validate_json_text(
+            "write_tickets.validity_basis_json",
+            &input.validity_basis_json,
+        )?;
+        validate_json_text(
+            "write_tickets.allowed_path_prefixes_json",
+            &input.allowed_path_prefixes_json,
+        )?;
+        validate_json_text(
+            "write_tickets.denied_path_prefixes_json",
+            &input.denied_path_prefixes_json,
+        )?;
+        validate_json_text(
             "write_tickets.attempt_scope_json",
             &input.attempt_scope_json,
         )?;
@@ -591,7 +818,9 @@ impl ProjectMutation<'_> {
         if let Some(resolution_id) = &input.created_by_user_action_resolution_id {
             validate_identifier("created_by_user_action_resolution_id", resolution_id)?;
         }
-        validate_timestamp("write_tickets.expires_at", &input.expires_at)?;
+        if let Some(idle_expires_at) = &input.idle_expires_at {
+            validate_timestamp("write_tickets.idle_expires_at", idle_expires_at)?;
+        }
         validate_timestamp("write_tickets.created_at", &input.created_at)?;
         validate_json_text("write_tickets.metadata_json", &input.metadata_json)?;
         let basis_state_version = u64_to_i64("basis_state_version", committed_state_version)?;
@@ -604,10 +833,14 @@ impl ProjectMutation<'_> {
                 change_unit_id,
                 basis_state_version,
                 status,
+                validity_basis_json,
+                allowed_path_prefixes_json,
+                denied_path_prefixes_json,
                 attempt_scope_json,
                 created_by_actor_source,
                 created_by_user_action_resolution_id,
-                expires_at,
+                idle_expires_at,
+                invalidation_reason,
                 consumed_by_run_id,
                 consumed_at,
                 revoked_at,
@@ -625,11 +858,15 @@ impl ProjectMutation<'_> {
                 ?7,
                 ?8,
                 ?9,
-                NULL,
-                NULL,
-                NULL,
                 ?10,
-                ?11
+                ?11,
+                ?12,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                ?13,
+                ?14
             )",
             params![
                 self.project_id,
@@ -637,10 +874,13 @@ impl ProjectMutation<'_> {
                 input.task_id,
                 input.change_unit_id,
                 basis_state_version,
+                input.validity_basis_json,
+                input.allowed_path_prefixes_json,
+                input.denied_path_prefixes_json,
                 input.attempt_scope_json,
                 input.created_by_actor_source,
                 input.created_by_user_action_resolution_id,
-                input.expires_at,
+                input.idle_expires_at,
                 input.created_at,
                 input.metadata_json
             ],
@@ -651,24 +891,18 @@ impl ProjectMutation<'_> {
     fn consume_write_ticket(&mut self, input: &WriteTicketConsumption) -> StoreResult<()> {
         validate_identifier("write_ticket_id", &input.write_ticket_id)?;
         validate_identifier("run_id", &input.run_id)?;
-        let expected_basis = u64_to_i64(
-            "write_tickets.basis_state_version",
-            input.expected_basis_state_version,
-        )?;
         let changed = self.tx.execute(
             "UPDATE write_tickets
                 SET status = 'consumed',
                     consumed_by_run_id = ?3,
-                    consumed_at = ?5
+                    consumed_at = ?4
               WHERE project_id = ?1
                 AND write_ticket_id = ?2
-                AND status = 'active'
-                AND basis_state_version = ?4",
+                AND status = 'active'",
             params![
                 self.project_id,
                 input.write_ticket_id,
                 input.run_id,
-                expected_basis,
                 self.committed_at
             ],
         )?;

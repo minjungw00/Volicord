@@ -7,9 +7,7 @@ use crate::repository_discovery::RepositoryDiscoveryHost;
 use crate::routing::*;
 use crate::util::*;
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    ManagedMcpClientInfo, REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
-};
+use volicord_types::{ManagedMcpClientInfo, REVIEWED_CODEX_MCP_CLIENT_NAME};
 
 const VOLICORD_MCP_VERIFICATION: &str = "VOLICORD_MCP_VERIFICATION";
 const VOLICORD_MCP_LAUNCH: &str = "VOLICORD_MCP_LAUNCH";
@@ -717,6 +715,7 @@ impl CodexManagedBinding {
 struct DeferredCodexLifecycle {
     initialize_observed: bool,
     tools_list_observed: bool,
+    first_tools_list_serialized_bytes: Option<u64>,
     startup_materialized: bool,
     initialize_materialized: bool,
     tools_list_materialized: bool,
@@ -732,6 +731,7 @@ pub(crate) struct ConnectionState {
     pub(crate) session_id: String,
     pub(crate) managed_host_lifecycle_observations: bool,
     pub(crate) launch_origin: &'static str,
+    status_method_call_count: u64,
     codex_binding: CodexManagedBinding,
     deferred_codex_lifecycle: DeferredCodexLifecycle,
 }
@@ -747,6 +747,7 @@ impl Default for ConnectionState {
             session_id: generated_metadata_id("session", "mcp", "stdio"),
             managed_host_lifecycle_observations: false,
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
+            status_method_call_count: 0,
             codex_binding: CodexManagedBinding::NotApplicable,
             deferred_codex_lifecycle: DeferredCodexLifecycle::default(),
         }
@@ -981,8 +982,21 @@ where
             }
             match adapter.tools() {
                 Ok(tools) => {
+                    let result = json!({ "tools": tools });
+                    let serialized_bytes = serde_json::to_vec(&result)
+                        .ok()
+                        .and_then(|bytes| u64::try_from(bytes.len()).ok());
                     if state.codex_binding.is_pending() {
                         state.deferred_codex_lifecycle.tools_list_observed = true;
+                        if state
+                            .deferred_codex_lifecycle
+                            .first_tools_list_serialized_bytes
+                            .is_none()
+                        {
+                            state
+                                .deferred_codex_lifecycle
+                                .first_tools_list_serialized_bytes = serialized_bytes;
+                        }
                     } else {
                         record_managed_lifecycle_event(
                             adapter,
@@ -990,8 +1004,11 @@ where
                             ManagedLifecycleEvent::ToolsList,
                             None,
                         );
+                        if let Some(serialized_bytes) = serialized_bytes {
+                            record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
+                        }
                     }
-                    json!({ "tools": tools })
+                    result
                 }
                 Err(error) => return Ok(json_rpc_error_for_adapter(response_id, error)),
             }
@@ -1094,15 +1111,8 @@ fn bind_codex_managed_tool_call(
     }
     if state.client_info.as_ref().map(ManagedMcpClientInfo::name)
         != Some(REVIEWED_CODEX_MCP_CLIENT_NAME)
-        || state
-            .client_info
-            .as_ref()
-            .map(ManagedMcpClientInfo::version)
-            != Some(REVIEWED_CODEX_HOST_VERSION)
     {
-        return Err(
-            "managed Codex tools/call requires the reviewed client identity codex-mcp-client/0.144.4",
-        );
+        return Err("managed Codex tools/call requires the Codex MCP client identity");
     }
 
     let binding =
@@ -1630,6 +1640,16 @@ where
     };
     if codex_was_pending {
         let _ = start_transport_diagnostic_session(adapter, state);
+        if let Some(serialized_bytes) = state
+            .deferred_codex_lifecycle
+            .first_tools_list_serialized_bytes
+            .take()
+        {
+            record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
+        }
+    }
+    if tool_name == STATUS_TOOL_NAME {
+        state.status_method_call_count = state.status_method_call_count.saturating_add(1);
     }
     if managed_lifecycle_ready {
         record_managed_lifecycle_event(
@@ -2208,6 +2228,23 @@ fn materialize_local_web_handoff_with_token_creator(
         return Ok(output);
     };
     if !adapter.effective_local_web_consent_available(capabilities) {
+        let (outcome, failure_class) = if !capabilities.model_invisible_user_surface {
+            (
+                HostRuntimeProbeOutcome::Unsupported,
+                HostRuntimeProbeFailureClass::ExplicitCapabilityAbsent,
+            )
+        } else if !adapter.local_web_consent_listener_ready() {
+            (
+                HostRuntimeProbeOutcome::Unavailable,
+                HostRuntimeProbeFailureClass::ListenerUnavailable,
+            )
+        } else {
+            (
+                HostRuntimeProbeOutcome::Unavailable,
+                HostRuntimeProbeFailureClass::BindingMismatch,
+            )
+        };
+        adapter.record_local_web_runtime_probe_best_effort(capabilities, outcome, failure_class);
         output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
         return Ok(output);
     }
@@ -2218,6 +2255,11 @@ fn materialize_local_web_handoff_with_token_creator(
     let token = match generate_bearer_token() {
         Ok(token) => token,
         Err(_) => {
+            adapter.record_local_web_runtime_probe_best_effort(
+                capabilities,
+                HostRuntimeProbeOutcome::Failed,
+                HostRuntimeProbeFailureClass::ConfigurationUnavailable,
+            );
             output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
             return Ok(output);
         }
@@ -2238,12 +2280,22 @@ fn materialize_local_web_handoff_with_token_creator(
         MutationDetailLevel::Full => MAX_MCP_FULL_MUTATION_RESULT_BYTES,
     };
     if rendered_tool_call_output_size(&output)? > response_budget {
+        adapter.record_local_web_runtime_probe_best_effort(
+            capabilities,
+            HostRuntimeProbeOutcome::Failed,
+            HostRuntimeProbeFailureClass::ConfigurationUnavailable,
+        );
         output.host_meta = None;
         output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
         return Ok(output);
     }
     output.host_meta = None;
     let Some(_issuance_lease) = adapter.local_web_consent_issuance_lease(capabilities) else {
+        adapter.record_local_web_runtime_probe_best_effort(
+            capabilities,
+            HostRuntimeProbeOutcome::Unavailable,
+            HostRuntimeProbeFailureClass::ListenerUnavailable,
+        );
         output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
         return Ok(output);
     };
@@ -2267,10 +2319,20 @@ fn materialize_local_web_handoff_with_token_creator(
     ) {
         Ok(record) => record,
         Err(_) => {
+            adapter.record_local_web_runtime_probe_best_effort(
+                capabilities,
+                HostRuntimeProbeOutcome::Failed,
+                HostRuntimeProbeFailureClass::ConfigurationUnavailable,
+            );
             output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::CliInbox);
             return Ok(output);
         }
     };
+    adapter.record_local_web_runtime_probe_best_effort(
+        capabilities,
+        HostRuntimeProbeOutcome::Passed,
+        HostRuntimeProbeFailureClass::None,
+    );
     output.host_meta = Some(local_web_host_meta(&url, &record.expires_at));
     output.diagnostic_facts.fallback_kind = Some(DiagnosticFallbackKind::LocalWebConsent);
     debug_assert!(rendered_tool_call_output_size(&output).is_ok_and(|size| size <= response_budget));
@@ -2897,6 +2959,9 @@ fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
     match tool_name {
         INTAKE_TOOL_NAME => Some(MethodName::Intake),
         UPDATE_SCOPE_TOOL_NAME => Some(MethodName::UpdateScope),
+        STATUS_TOOL_NAME => Some(MethodName::Status),
+        GET_OPERATION_RESULT_TOOL_NAME => Some(MethodName::GetOperationResult),
+        CHECK_CLOSE_TOOL_NAME => Some(MethodName::CheckClose),
         PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => Some(MethodName::PrepareEvidenceCapture),
         PREPARE_WRITE_TOOL_NAME => Some(MethodName::PrepareWrite),
         STAGE_ARTIFACT_TOOL_NAME => Some(MethodName::StageArtifact),
@@ -3031,6 +3096,82 @@ fn start_transport_diagnostic_session(
     )
 }
 
+fn record_tools_list_metric_best_effort(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    serialized_bytes: u64,
+) {
+    if state.codex_binding.is_pending()
+        || start_transport_diagnostic_session(adapter, state).is_err()
+    {
+        return;
+    }
+    let _ = record_workflow_metric_event(
+        &adapter.runtime_home,
+        &WorkflowMetricEvent {
+            session_id: state.session_id.clone(),
+            metric_kind: WorkflowMetricKind::ToolsListSerializedBytes,
+            value: serialized_bytes,
+            method_name: None,
+            integration_profile: None,
+            decision: None,
+            observation_confidence: None,
+            outcome: Some(WorkflowMetricOutcome::Success),
+        },
+    );
+}
+
+fn record_public_method_metrics_best_effort(
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+    tool_name: Option<&str>,
+    outcome: DiagnosticOutcome,
+) {
+    let Some(method_name) = tool_name.and_then(method_name_for_tool) else {
+        return;
+    };
+    let outcome = workflow_metric_outcome(outcome);
+    let _ = record_workflow_metric_event(
+        &adapter.runtime_home,
+        &WorkflowMetricEvent {
+            session_id: state.session_id.clone(),
+            metric_kind: WorkflowMetricKind::McpMethodCall,
+            value: 1,
+            method_name: Some(method_name),
+            integration_profile: None,
+            decision: None,
+            observation_confidence: None,
+            outcome: Some(outcome),
+        },
+    );
+    if method_name == MethodName::Status && state.status_method_call_count > 1 {
+        let _ = record_workflow_metric_event(
+            &adapter.runtime_home,
+            &WorkflowMetricEvent {
+                session_id: state.session_id.clone(),
+                metric_kind: WorkflowMetricKind::StatusReread,
+                value: 1,
+                method_name: None,
+                integration_profile: None,
+                decision: None,
+                observation_confidence: None,
+                outcome: Some(outcome),
+            },
+        );
+    }
+}
+
+const fn workflow_metric_outcome(outcome: DiagnosticOutcome) -> WorkflowMetricOutcome {
+    match outcome {
+        DiagnosticOutcome::Success => WorkflowMetricOutcome::Success,
+        DiagnosticOutcome::Rejected => WorkflowMetricOutcome::Rejected,
+        DiagnosticOutcome::ValidationFailure => WorkflowMetricOutcome::ValidationFailure,
+        DiagnosticOutcome::ToolError => WorkflowMetricOutcome::ToolError,
+        DiagnosticOutcome::TransportError => WorkflowMetricOutcome::TransportError,
+        DiagnosticOutcome::Unavailable => WorkflowMetricOutcome::Unavailable,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn record_tool_diagnostic_best_effort(
     adapter: &McpAdapter,
@@ -3074,6 +3215,7 @@ fn record_tool_diagnostic_best_effort(
             outcome,
         },
     );
+    record_public_method_metrics_best_effort(adapter, state, tool_name, outcome);
 }
 
 pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {

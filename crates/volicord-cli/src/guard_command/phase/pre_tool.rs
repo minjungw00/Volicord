@@ -12,7 +12,7 @@ use super::GuardPhaseResult;
 use crate::guard_command::{
     args::GuardInput,
     context::{guard_state_summary, ActiveWriteTicketSummary, GuardReason, GuardStateSummary},
-    envelope::{event_bool, event_string, event_time_or_now, GuardEnvelope},
+    envelope::{event_time_or_now, GuardEnvelope},
     format_timestamp, json_error,
     mutation::ToolClassification,
     render::{context_json, reasons_json, tool_observation_json, write_ticket_backing_json},
@@ -37,7 +37,7 @@ pub(in crate::guard_command) fn handle_pre_tool(
 ) -> Result<GuardPhaseResult, GuardCommandError> {
     let summary = guard_state_summary(runtime_home, project, envelope, input)?;
     let observation = tool_observation(&input.raw_value, &project.repo_root);
-    let (decision, reasons) = pre_tool_decision(&summary, &observation, &input.raw_value);
+    let (decision, reasons) = pre_tool_decision(&summary, &observation);
     let write_ticket_backing = if tool_attempts_product_write(&observation) {
         write_ticket_backing_json(write_ticket_coverage(&summary, &observation))
     } else {
@@ -68,15 +68,14 @@ pub(in crate::guard_command) fn handle_pre_tool(
 fn pre_tool_decision(
     summary: &GuardStateSummary,
     observation: &ToolObservation,
-    event: &Value,
 ) -> (GuardDecision, Vec<GuardReason>) {
     let mut reasons = Vec::new();
-    let product_file_write_attempt = tool_attempts_product_write(observation);
-    if observation
-        .paths
-        .iter()
-        .chain(observation.changed_paths.iter())
-        .any(|path| !path.inside_repo)
+    let product_file_write_attempt = observation.deterministic_product_write_attempt();
+    if observation.deterministic_write_attempt()
+        && observation
+            .structured_paths
+            .iter()
+            .any(|path| !path.inside_repo)
     {
         reasons.push(GuardReason {
             code: "target_outside_project_allowlist",
@@ -92,10 +91,24 @@ fn pre_tool_decision(
                 message: "Product-file writes require an active Volicord task.".to_owned(),
                 severity: "deny",
             });
+        } else if summary.policy_control_reevaluation.is_some() {
+            reasons.push(GuardReason {
+                code: "policy_control_reevaluation_required",
+                message: "Project policy now requires the active Task's control level or acceptance policy to be reevaluated. Run `volicord.prepare_write` again before this Product Repository write so Core can apply the stronger policy and issue a current write ticket.".to_owned(),
+                severity: "deny",
+            });
         } else {
             match write_ticket_coverage(summary, observation) {
                 WriteTicketCoverage::NotWriteLike => {}
-                WriteTicketCoverage::TicketBacked { .. } => {}
+                WriteTicketCoverage::TicketBacked { ticket, .. } => {
+                    if ticket.workspace_validity_uncertain {
+                        reasons.push(GuardReason {
+                            code: "write_ticket_workspace_unverified",
+                            message: "Volicord could not refresh the Git workspace coordinate for this otherwise compatible write ticket. The cooperative guard is allowing the attempt with degraded workspace verification.".to_owned(),
+                            severity: "warn",
+                        });
+                    }
+                }
                 WriteTicketCoverage::NoObservedPaths => reasons.push(GuardReason {
                     code: "write_ticket_scope_indeterminate",
                     message: "The host hook did not expose a deterministic Product Repository path for this write-like operation. This is a cooperative Volicord host decision, not OS-level enforcement.".to_owned(),
@@ -114,41 +127,21 @@ fn pre_tool_decision(
                 WriteTicketCoverage::Ambiguous { .. } => reasons.push(GuardReason {
                     code: "write_ticket_ambiguous",
                     message: "More than one active write ticket could cover this Product Repository path, so Volicord cannot deterministically link the operation. This is a cooperative Volicord host decision, not OS-level enforcement.".to_owned(),
-                    severity: "deny",
+                    severity: "warn",
                 }),
             }
         }
     }
-    if observation.classification == ToolClassification::UnknownMutationRisk {
-        let severity = event_string(
-            event,
-            &[
-                &["policy", "unknown_mutation_decision"],
-                &["guard_policy", "unknown_mutation_decision"],
-            ],
-        )
-        .unwrap_or_else(|| "warn".to_owned());
-        reasons.push(GuardReason {
-            code: "unknown_mutation_risk",
-            message: "Volicord could not confidently classify this tool invocation as read-only."
-                .to_owned(),
-            severity: if severity == "deny" { "deny" } else { "warn" },
-        });
-    }
-    if observation.classification == ToolClassification::Mutating
-        && event_bool(
-            event,
-            &[
-                &["policy", "block_mutating_shell"],
-                &["guard_policy", "block_mutating_shell"],
-            ],
-        )
-        .unwrap_or(false)
+    if matches!(
+        observation.classification,
+        ToolClassification::UnknownMutationRisk | ToolClassification::Mutating
+    ) && !observation.deterministic_write_attempt()
+        && observation.structured_reported_effect().is_none()
     {
         reasons.push(GuardReason {
-            code: "mutating_shell_blocked_by_policy",
-            message: "Guard policy blocks clearly mutating shell commands.".to_owned(),
-            severity: "deny",
+            code: "unknown_effect_warning",
+            message: "Volicord cannot determine this invocation's write paths from structured host facts; it is allowed with a warning and must be checked against actual post-tool changes.".to_owned(),
+            severity: "warn",
         });
     }
     let decision = if reasons.iter().any(|reason| reason.severity == "deny") {
@@ -163,13 +156,13 @@ fn pre_tool_decision(
 
 fn tool_attempts_product_write(observation: &ToolObservation) -> bool {
     observation.explicit_write_attempt
+        || observation.structured_reported_effect() == Some("product_file_write")
         || observation.classification == ToolClassification::Mutating
         || tool_name_implies_write(observation.tool_name.as_deref())
 }
 
 fn confidently_expects_product_write(observation: &ToolObservation) -> bool {
-    observation.classification == ToolClassification::Mutating
-        || tool_name_implies_write(observation.tool_name.as_deref())
+    observation.deterministic_product_write_attempt()
 }
 
 fn tool_name_implies_write(tool_name: Option<&str>) -> bool {
@@ -198,19 +191,13 @@ fn expected_write_candidate(
         return Ok(None);
     };
     if observation
-        .paths
+        .structured_paths
         .iter()
-        .chain(observation.changed_paths.iter())
         .any(|path| !path.inside_repo)
     {
         return Ok(None);
     }
-    let expected_paths = normalized_observed_paths(
-        observation
-            .paths
-            .iter()
-            .chain(observation.changed_paths.iter()),
-    );
+    let expected_paths = normalized_observed_paths(observation.structured_paths.iter());
     if expected_paths.is_empty() {
         return Ok(None);
     }

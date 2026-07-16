@@ -17,6 +17,9 @@ CREATE TABLE tasks (
   task_id TEXT NOT NULL,
   created_by_actor_source TEXT NOT NULL,
   mode TEXT NOT NULL,
+  requested_control_level TEXT NOT NULL CHECK (requested_control_level IN ('auto', 'observe', 'light', 'tracked', 'sensitive')),
+  effective_control_level TEXT NOT NULL CHECK (effective_control_level IN ('observe', 'light', 'tracked', 'sensitive')),
+  control_level_reason TEXT NOT NULL CHECK (length(trim(control_level_reason)) > 0),
   work_phase TEXT NOT NULL CHECK (work_phase IN ('shaping', 'implementation')),
   acceptance_policy TEXT NOT NULL CHECK (
     acceptance_policy IN ('required', 'not_required', 'policy_dependent')
@@ -267,18 +270,27 @@ CREATE TABLE write_tickets (
   task_id TEXT NOT NULL,
   change_unit_id TEXT,
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version > 0),
-  status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'expired', 'stale', 'revoked')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'consumed', 'invalidated', 'revoked')),
+  validity_basis_json TEXT NOT NULL,
+  allowed_path_prefixes_json TEXT NOT NULL DEFAULT '[]',
+  denied_path_prefixes_json TEXT NOT NULL DEFAULT '[]',
   attempt_scope_json TEXT NOT NULL DEFAULT '{}',
   created_by_actor_source TEXT NOT NULL,
   created_by_user_action_resolution_id TEXT,
-  expires_at TEXT NOT NULL,
+  idle_expires_at TEXT,
+  invalidation_reason TEXT CHECK (
+    invalidation_reason IS NULL OR invalidation_reason IN (
+      'scope_revision_changed', 'change_unit_changed', 'baseline_changed',
+      'workspace_changed', 'approval_basis_changed', 'idle_timeout',
+      'task_closed', 'explicit_revoke'
+    )
+  ),
   consumed_by_run_id TEXT,
   consumed_at TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, write_ticket_id),
-  UNIQUE (project_id, task_id, basis_state_version),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -659,7 +671,7 @@ CREATE TABLE authority_events (
   event_type TEXT NOT NULL,
   actor_source TEXT NOT NULL,
   operation_category TEXT NOT NULL CHECK (operation_category IN ('read', 'agent_workflow', 'user_only', 'admin_local', 'local_recovery')),
-  task_id TEXT NOT NULL,
+  task_id TEXT,
   change_unit_id TEXT,
   payload_json TEXT NOT NULL DEFAULT '{}',
   request_hash TEXT NOT NULL,
@@ -671,6 +683,11 @@ CREATE TABLE authority_events (
   UNIQUE (project_id, event_hash),
   CHECK (length(trim(event_hash)) > 0),
   CHECK (previous_event_hash IS NULL OR length(trim(previous_event_hash)) > 0),
+  CHECK (
+    (event_type = 'project_workflow_policy_applied'
+      AND task_id IS NULL AND change_unit_id IS NULL)
+    OR (event_type <> 'project_workflow_policy_applied' AND task_id IS NOT NULL)
+  ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
@@ -691,7 +708,8 @@ SELECT
   event_type AS event_kind,
   payload_json AS event_payload_json,
   created_at
-FROM authority_events;
+FROM authority_events
+WHERE task_id IS NOT NULL;
 
 CREATE TABLE tool_invocations (
   project_id TEXT NOT NULL,
@@ -863,6 +881,7 @@ CREATE TABLE unrecorded_changes (
   connection_internal_id TEXT NOT NULL,
   task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('unresolved', 'resolved')),
+  confidence TEXT NOT NULL CHECK (confidence IN ('confirmed', 'suspected')),
   summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
   observed_paths_json TEXT NOT NULL DEFAULT '[]',
   detection_json TEXT NOT NULL DEFAULT '{}',
@@ -1084,3 +1103,59 @@ CREATE INDEX idx_user_action_channel_tokens_connection
   ON user_action_channel_tokens (project_id, connection_internal_id, channel_kind, status, expires_at);
 CREATE INDEX idx_user_action_channel_tokens_expiry
   ON user_action_channel_tokens (project_id, status, expires_at);
+
+CREATE TABLE project_workflow_policies (
+  project_id TEXT PRIMARY KEY,
+  policy_schema TEXT NOT NULL CHECK (policy_schema = 'volicord-policy-v2'),
+  policy_version INTEGER NOT NULL CHECK (policy_version > 0),
+  policy_json TEXT NOT NULL,
+  policy_fingerprint TEXT NOT NULL CHECK (
+    length(policy_fingerprint) = 71
+    AND substr(policy_fingerprint, 1, 7) = 'sha256:'
+    AND substr(policy_fingerprint, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  source TEXT NOT NULL CHECK (length(trim(source)) > 0),
+  applied_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id)
+);
+
+CREATE TABLE session_end_receipts (
+  project_id TEXT NOT NULL,
+  session_end_receipt_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  active_task_id TEXT,
+  task_state TEXT NOT NULL CHECK (
+    task_state IN (
+      'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded',
+      'authority_unknown'
+    )
+  ),
+  close_blocker_codes_json TEXT NOT NULL DEFAULT '[]',
+  next_actor TEXT NOT NULL CHECK (next_actor IN ('agent', 'user', 'none')),
+  completion_claim_allowed INTEGER NOT NULL CHECK (completion_claim_allowed IN (0, 1)),
+  authority_refresh_succeeded INTEGER NOT NULL CHECK (authority_refresh_succeeded IN (0, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_end_receipt_id),
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id),
+  FOREIGN KEY (project_id, session_id) REFERENCES agent_sessions (project_id, session_id),
+  FOREIGN KEY (project_id, active_task_id) REFERENCES tasks (project_id, task_id),
+  CHECK (
+    (authority_refresh_succeeded = 0 AND task_state = 'authority_unknown')
+    OR (authority_refresh_succeeded = 1 AND task_state <> 'authority_unknown')
+  ),
+  CHECK (
+    (task_state = 'none' AND active_task_id IS NULL)
+    OR (task_state = 'authority_unknown')
+    OR (task_state NOT IN ('none', 'authority_unknown') AND active_task_id IS NOT NULL)
+  ),
+  CHECK (
+    completion_claim_allowed = 0
+    OR (
+      authority_refresh_succeeded = 1
+      AND task_state = 'ready'
+      AND active_task_id IS NOT NULL
+      AND close_blocker_codes_json = '[]'
+    )
+  )
+);

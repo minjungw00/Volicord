@@ -140,5 +140,5 @@ pub(crate) fn record_id(value: &Value) -> Result<String, Box<dyn Error>> {
     value["record_id"]
         .as_str()
         .map(str::to_owned)
-        .ok_or_else(|| "record_id should be present".into())
+        .ok_or_else(|| format!("record_id should be present in {value}").into())
 }

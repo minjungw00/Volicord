@@ -5,11 +5,15 @@ use std::{
 
 use serde_json::Value;
 use volicord_store::agent_connections::agent_connection_record_read_only;
-use volicord_store::bootstrap::project_record_read_only;
 use volicord_store::guards::guard_installation;
 use volicord_store::session_watch::{snapshot_product_repository, WatchSnapshotOptions};
+use volicord_store::{
+    bootstrap::{project_record_by_repo_root_read_only, project_record_read_only},
+    core_pipeline::CoreProjectStore,
+};
 use volicord_types::{
     host_hook_capability_matches_owner_binding, HostHookCapabilityOwnerBinding, IntegrationProfile,
+    ProjectId,
 };
 
 use crate::{
@@ -29,8 +33,8 @@ use crate::{
         },
         hosts::{plan_host_generated_files, HostGeneratedFilesRequest},
         policy::{
-            lifecycle_phase_names, policy_json, recorded_local_policy, LocalPolicyContext,
-            RecordedLocalPolicy,
+            lifecycle_phase_names, policy_json, recorded_local_policy, validate_policy_v2,
+            LocalPolicyContext, RecordedLocalPolicy,
         },
         public_host_label, GuardIntegrationError,
     },
@@ -130,7 +134,7 @@ pub(crate) fn plan_guard_integration(
         profile,
         None,
     );
-    let policy = policy_json(
+    let mut policy = policy_json(
         host_kind,
         profile,
         LocalPolicyContext {
@@ -142,6 +146,7 @@ pub(crate) fn plan_guard_integration(
         mcp_entry,
         &policy_guard_commands,
     )?;
+    preserve_authoritative_workflow_policy(runtime_home, repo_root, &mut policy)?;
     let policy_hash =
         policy_hash(&policy).map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
     let guard_commands = guard_command_specs(
@@ -289,6 +294,39 @@ pub(crate) fn plan_guard_integration(
         capabilities,
         missing_required_hooks,
     })
+}
+
+fn preserve_authoritative_workflow_policy(
+    runtime_home: &Path,
+    repo_root: &Path,
+    generated_policy: &mut Value,
+) -> Result<(), GuardIntegrationError> {
+    let Some(project) = project_record_by_repo_root_read_only(runtime_home, repo_root)
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?
+    else {
+        return Ok(());
+    };
+    let store =
+        CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(project.project_id.clone()))
+            .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
+    let Some(authority) = store
+        .project_workflow_policy()
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?
+    else {
+        return Ok(());
+    };
+    let authority_value = serde_json::from_str::<Value>(&authority.policy_json).map_err(|_| {
+        GuardIntegrationError::runtime(
+            "authoritative project workflow policy is malformed; repair project policy before rerunning init",
+        )
+    })?;
+    validate_policy_v2(&authority_value, None).map_err(|_| {
+        GuardIntegrationError::runtime(
+            "authoritative project workflow policy has an invalid v2 shape; repair project policy before rerunning init",
+        )
+    })?;
+    generated_policy["workflow"] = authority_value["workflow"].clone();
+    Ok(())
 }
 
 fn plan_retired_files(
@@ -562,7 +600,7 @@ fn ensure_observe_session_watcher_supported(
 
 fn agents_guidance_block() -> String {
     format!(
-        "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Check Volicord status before planning: `volicord.status`.\n- Start a task before planning implementation: `volicord.intake`.\n- Prepare write before product-file changes: `volicord.prepare_write`.\n- Request a user action through Volicord: `volicord.request_user_action`; the user resolves it through the `User Channel`.\n- Check close before claiming completion: `volicord.check_close`.\n- If Volicord tools are unavailable, say so explicitly and do not imply Volicord state was updated.\n{GUIDANCE_END_MARKER}\n"
+        "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Treat Volicord's recorded scope and user-owned decisions as authoritative.\n- Do not modify Product Repository files outside an active compatible write authorization.\n- Do not infer, resolve, or record user-owned judgments on the user's behalf.\n- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.\n- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n{GUIDANCE_END_MARKER}\n"
     )
 }
 

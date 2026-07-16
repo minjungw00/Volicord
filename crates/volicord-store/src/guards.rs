@@ -4,6 +4,7 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
+use serde::Deserialize;
 use serde_json::Value;
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::{
@@ -45,6 +46,9 @@ const KNOWN_GUARD_OBSERVATION_PHASES: &[&str] = &[
     "prompt_capture",
     "stop",
 ];
+
+/// Maximum prior post-tool events considered for one durable-correlation subtraction.
+pub const POST_TOOL_CORRELATION_EVENT_LIMIT: usize = 512;
 
 /// Guard installation creation or update input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -246,6 +250,27 @@ pub struct GuardEventRecord {
     pub metadata_json: String,
 }
 
+/// Strictly decoded Run-side confirmation that one Write Ticket was consumed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedRunWriteTicketConsumption {
+    pub run_id: String,
+    pub write_ticket_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredRunWriteTicketEffect {
+    write_ticket_id: Option<String>,
+    effect: StoredRunWriteTicketEffectKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum StoredRunWriteTicketEffectKind {
+    None,
+    Consumed,
+}
+
 /// Prompt capture insert input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptCaptureInsert {
@@ -337,6 +362,7 @@ pub struct UnrecordedChangeInsert {
     pub session_id: Option<String>,
     pub connection_internal_id: String,
     pub task_id: Option<String>,
+    pub confidence: String,
     pub summary: String,
     pub observed_paths_json: String,
     pub detection_json: String,
@@ -352,6 +378,14 @@ pub struct UnrecordedChangeResolution {
     pub resolved_by_actor_source: String,
 }
 
+/// Deterministic observation used to promote one unresolved suspected change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnrecordedChangePromotion {
+    pub observed_paths_json: String,
+    pub detection_json: String,
+    pub confirmed_at: String,
+}
+
 /// Unrecorded Product Repository change row stored in project `state.sqlite`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnrecordedChangeRecord {
@@ -361,6 +395,7 @@ pub struct UnrecordedChangeRecord {
     pub connection_internal_id: String,
     pub task_id: Option<String>,
     pub status: String,
+    pub confidence: String,
     pub summary: String,
     pub observed_paths_json: String,
     pub detection_json: String,
@@ -881,6 +916,51 @@ pub fn guard_event(
         .map(Option::flatten)
 }
 
+/// Reports whether an earlier event of one kind exists for the exact managed session.
+///
+/// The query is intentionally existence-only and excludes the current event so a first
+/// delivery cannot be mistaken for evidence about a later host retry.
+pub fn prior_guard_event_exists_for_session_kind(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    session_id: &str,
+    connection_internal_id: &str,
+    event_kind: &str,
+    current_guard_event_id: &str,
+) -> StoreResult<bool> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("session_id", session_id)?;
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_guard_hook_phase("event_kind", event_kind)?;
+    validate_identifier("current_guard_event_id", current_guard_event_id)?;
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Ok(false);
+    };
+    project
+        .conn
+        .query_row(
+            "SELECT 1
+               FROM guard_events
+              WHERE project_id = ?1
+                AND session_id = ?2
+                AND connection_internal_id = ?3
+                AND event_kind = ?4
+                AND guard_event_id <> ?5
+              LIMIT 1",
+            params![
+                project.project.project_id,
+                session_id,
+                connection_internal_id,
+                event_kind,
+                current_guard_event_id
+            ],
+            |_| Ok(true),
+        )
+        .optional()
+        .map(Option::unwrap_or_default)
+        .map_err(Into::into)
+}
+
 /// Inserts one project-scoped prompt capture row.
 pub fn insert_prompt_capture(
     runtime_home: impl AsRef<Path>,
@@ -1275,19 +1355,21 @@ pub fn insert_unrecorded_change(
             connection_internal_id,
             task_id,
             status,
+            confidence,
             summary,
             observed_paths_json,
             detection_json,
             detected_at,
             metadata_json
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, 'unresolved', ?6, ?7, ?8, ?9, ?10)",
+        VALUES (?1, ?2, ?3, ?4, ?5, 'unresolved', ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             project.project.project_id,
             input.unrecorded_change_id,
             input.session_id,
             input.connection_internal_id,
             input.task_id,
+            input.confidence,
             input.summary,
             input.observed_paths_json,
             input.detection_json,
@@ -1325,6 +1407,71 @@ pub fn unrecorded_change(
         .map(Option::flatten)
 }
 
+/// Promotes one unresolved suspected change after deterministic observation.
+pub fn promote_suspected_unrecorded_change(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    unrecorded_change_id: &str,
+    promotion: UnrecordedChangePromotion,
+) -> StoreResult<UnrecordedChangeRecord> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("unrecorded_change_id", unrecorded_change_id)?;
+    validate_json_array(
+        "unrecorded_changes.observed_paths_json",
+        &promotion.observed_paths_json,
+    )?;
+    validate_json_object(
+        "unrecorded_changes.detection_json",
+        &promotion.detection_json,
+    )?;
+    validate_timestamp_text("confirmed_at", &promotion.confirmed_at)?;
+
+    let mut project = open_project_for_required_read(runtime_home, project_id)?;
+    let tx = begin_immediate_transaction(&mut project.conn)?;
+    let changed = tx.execute(
+        "UPDATE unrecorded_changes
+            SET confidence = 'confirmed',
+                observed_paths_json = ?3,
+                detection_json = ?4
+          WHERE project_id = ?1
+            AND unrecorded_change_id = ?2
+            AND status = 'unresolved'
+            AND confidence = 'suspected'",
+        params![
+            project.project.project_id,
+            unrecorded_change_id,
+            promotion.observed_paths_json,
+            promotion.detection_json,
+        ],
+    )?;
+    tx.commit()?;
+
+    if changed == 0 {
+        let Some(existing) = unrecorded_change_from_conn(
+            &project.conn,
+            &project.project.project_id,
+            unrecorded_change_id,
+        )?
+        else {
+            return Err(StoreError::NotFound {
+                entity: "unrecorded_change",
+                id: unrecorded_change_id.to_owned(),
+            });
+        };
+        return Err(StoreError::Conflict {
+            entity: "unrecorded_change",
+            id: existing.unrecorded_change_id,
+            detail: "unrecorded change is not an unresolved suspected observation".to_owned(),
+        });
+    }
+
+    unrecorded_change_by_conn(
+        &project.conn,
+        &project.project.project_id,
+        unrecorded_change_id,
+    )
+}
+
 /// Lists unresolved unrecorded changes for a project, optionally narrowed by connection.
 pub fn list_unresolved_unrecorded_changes(
     runtime_home: impl AsRef<Path>,
@@ -1346,6 +1493,7 @@ pub fn list_unresolved_unrecorded_changes(
             connection_internal_id,
             task_id,
             status,
+            confidence,
             summary,
             observed_paths_json,
             detection_json,
@@ -1405,6 +1553,125 @@ pub fn guard_health_record(
         co_latest_events,
         unresolved_unrecorded_changes,
     })
+}
+
+/// Reads post-tool GuardEvents for one exact session/connection at or after a timestamp.
+///
+/// This is used by the detective adapter to re-check durable write correlations without
+/// treating a session-wide watcher or Git worktree diff as a new effect on every later tool.
+pub fn post_tool_guard_events_for_session_since(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    session_id: &str,
+    connection_internal_id: &str,
+    not_before: &str,
+) -> StoreResult<Vec<GuardEventRecord>> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("session_id", session_id)?;
+    validate_identifier("connection_internal_id", connection_internal_id)?;
+    validate_timestamp_text("not_before", not_before)?;
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Ok(Vec::new());
+    };
+    let mut stmt = project.conn.prepare(
+        "SELECT
+                project_id,
+                guard_event_id,
+                session_id,
+                connection_internal_id,
+                guard_installation_id,
+                event_kind,
+                decision,
+                subject_json,
+                result_json,
+                occurred_at,
+                metadata_json
+           FROM guard_events
+          WHERE project_id = ?1
+            AND session_id = ?2
+            AND connection_internal_id = ?3
+            AND event_kind = 'post_tool'
+            AND (
+              volicord_utc_seconds(occurred_at) > volicord_utc_seconds(?4)
+              OR (
+                volicord_utc_seconds(occurred_at) = volicord_utc_seconds(?4)
+                AND volicord_utc_subsec_nanos(occurred_at)
+                    >= volicord_utc_subsec_nanos(?4)
+              )
+            )
+          ORDER BY volicord_utc_seconds(occurred_at) DESC,
+                   volicord_utc_subsec_nanos(occurred_at) DESC,
+                   guard_event_id DESC
+          LIMIT ?5",
+    )?;
+    let rows = stmt.query_map(
+        params![
+            project.project.project_id,
+            session_id,
+            connection_internal_id,
+            not_before,
+            (POST_TOOL_CORRELATION_EVENT_LIMIT + 1) as i64
+        ],
+        guard_event_from_row,
+    )?;
+    let records = collect_rows(rows)?;
+    if records.len() > POST_TOOL_CORRELATION_EVENT_LIMIT {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "post-tool correlation window exceeds the bounded event limit of {}",
+                POST_TOOL_CORRELATION_EVENT_LIMIT
+            ),
+        });
+    }
+    Ok(records)
+}
+
+/// Reads and strictly validates the Run-side half of one ticket-consumption link.
+pub fn recorded_run_write_ticket_consumption(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+    run_id: &str,
+) -> StoreResult<Option<RecordedRunWriteTicketConsumption>> {
+    validate_identifier("project_id", project_id)?;
+    validate_identifier("run_id", run_id)?;
+    let Some(project) = open_project_for_read(runtime_home, project_id)? else {
+        return Ok(None);
+    };
+    let row = project
+        .conn
+        .query_row(
+            "SELECT status, write_ticket_effect_json
+               FROM runs
+              WHERE project_id = ?1
+                AND run_id = ?2",
+            params![project.project.project_id, run_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?;
+    let Some((status, raw_effect)) = row else {
+        return Ok(None);
+    };
+    if status != "recorded" {
+        return Ok(None);
+    }
+    let effect: StoredRunWriteTicketEffect = serde_json::from_str(&raw_effect).map_err(|_| {
+        StoreError::corrupt_owner_state_json("runs", run_id.to_owned(), "write_ticket_effect_json")
+    })?;
+    match (effect.effect, effect.write_ticket_id) {
+        (StoredRunWriteTicketEffectKind::Consumed, Some(write_ticket_id)) => {
+            validate_identifier("write_ticket_id", &write_ticket_id)?;
+            Ok(Some(RecordedRunWriteTicketConsumption {
+                run_id: run_id.to_owned(),
+                write_ticket_id,
+            }))
+        }
+        (StoredRunWriteTicketEffectKind::None, None) => Ok(None),
+        _ => Err(StoreError::corrupt_owner_state_json(
+            "runs",
+            run_id.to_owned(),
+            "write_ticket_effect_json",
+        )),
+    }
 }
 
 /// Derives prompt-capture availability from the selected guard-health record.
@@ -2124,6 +2391,11 @@ fn validate_unrecorded_change_insert(input: &UnrecordedChangeInsert) -> StoreRes
     if let Some(task_id) = &input.task_id {
         validate_identifier("task_id", task_id)?;
     }
+    if !matches!(input.confidence.as_str(), "confirmed" | "suspected") {
+        return Err(StoreError::InvalidInput {
+            detail: "confidence must be confirmed or suspected".to_owned(),
+        });
+    }
     validate_identifier("summary", &input.summary)?;
     validate_json_array(
         "unrecorded_changes.observed_paths_json",
@@ -2743,6 +3015,7 @@ fn unrecorded_change_from_conn(
             connection_internal_id,
             task_id,
             status,
+            confidence,
             summary,
             observed_paths_json,
             detection_json,
@@ -2785,14 +3058,15 @@ fn unrecorded_change_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChang
         connection_internal_id: row.get(3)?,
         task_id: row.get(4)?,
         status: row.get(5)?,
-        summary: row.get(6)?,
-        observed_paths_json: row.get(7)?,
-        detection_json: row.get(8)?,
-        resolution_json: row.get(9)?,
-        detected_at: row.get(10)?,
-        resolved_at: row.get(11)?,
-        resolved_by_actor_source: row.get(12)?,
-        metadata_json: row.get(13)?,
+        confidence: row.get(6)?,
+        summary: row.get(7)?,
+        observed_paths_json: row.get(8)?,
+        detection_json: row.get(9)?,
+        resolution_json: row.get(10)?,
+        detected_at: row.get(11)?,
+        resolved_at: row.get(12)?,
+        resolved_by_actor_source: row.get(13)?,
+        metadata_json: row.get(14)?,
     })
 }
 
@@ -3570,6 +3844,7 @@ mod tests {
                 session_id: Some("session_guard_a".to_owned()),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 task_id: None,
+                confidence: "confirmed".to_owned(),
                 summary: "Product file changed without a matching Core run".to_owned(),
                 observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
                 detection_json: r#"{"source":"guard"}"#.to_owned(),
@@ -3619,6 +3894,70 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_observation_promotes_only_unresolved_suspected_change(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = GuardFixture::new("guard-promote-suspected")?;
+        fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
+        insert_agent_session(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            AgentSessionInsert {
+                session_id: "session_guard_a".to_owned(),
+                connection_internal_id: "conn_guard_a".to_owned(),
+                guard_installation_id: None,
+                host_kind: "codex".to_owned(),
+                guard_mode: "detective".to_owned(),
+                started_at: "2026-06-30T00:00:00Z".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        insert_unrecorded_change(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            UnrecordedChangeInsert {
+                unrecorded_change_id: "unrecorded_change_suspected".to_owned(),
+                session_id: Some("session_guard_a".to_owned()),
+                connection_internal_id: "conn_guard_a".to_owned(),
+                task_id: None,
+                confidence: "suspected".to_owned(),
+                summary: "A heuristic host event may have changed a product file".to_owned(),
+                observed_paths_json: "[]".to_owned(),
+                detection_json: r#"{"source":"heuristic_event"}"#.to_owned(),
+                detected_at: "2026-06-30T00:01:00Z".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+
+        let promoted = promote_suspected_unrecorded_change(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            "unrecorded_change_suspected",
+            UnrecordedChangePromotion {
+                observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
+                detection_json: r#"{"source":"structured_host_changed_paths","promotion":{"basis":"deterministic_post_tool_observation"}}"#.to_owned(),
+                confirmed_at: "2026-06-30T00:02:00Z".to_owned(),
+            },
+        )?;
+        assert_eq!(promoted.status, "unresolved");
+        assert_eq!(promoted.confidence, "confirmed");
+        assert_eq!(promoted.observed_paths_json, r#"["src/lib.rs"]"#);
+
+        let error = promote_suspected_unrecorded_change(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            "unrecorded_change_suspected",
+            UnrecordedChangePromotion {
+                observed_paths_json: r#"["src/lib.rs"]"#.to_owned(),
+                detection_json: r#"{"source":"structured_host_changed_paths"}"#.to_owned(),
+                confirmed_at: "2026-06-30T00:03:00Z".to_owned(),
+            },
+        )
+        .expect_err("a confirmed row cannot be promoted twice");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        Ok(())
+    }
+
+    #[test]
     fn guard_records_are_project_and_connection_scoped() -> Result<(), Box<dyn Error>> {
         let fixture = GuardFixture::new("guard-scope")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
@@ -3645,6 +3984,7 @@ mod tests {
                 session_id: Some("session_guard_a".to_owned()),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 task_id: None,
+                confidence: "confirmed".to_owned(),
                 summary: "Unrecorded change in project A".to_owned(),
                 observed_paths_json: r#"["a.txt"]"#.to_owned(),
                 detection_json: "{}".to_owned(),
@@ -4365,6 +4705,9 @@ mod tests {
                     task_id,
                     created_by_actor_source,
                     mode,
+                    requested_control_level,
+                    effective_control_level,
+                    control_level_reason,
                     work_phase,
                     acceptance_policy,
                     acceptance_policy_reason,
@@ -4375,6 +4718,7 @@ mod tests {
                 )
                 VALUES (
                     ?1, ?2, 'agent_connection:conn_guard_a', 'work',
+                    'tracked', 'tracked', 'Guard fixture control.',
                     'shaping', 'required', 'Guard fixture requires acceptance.', '[]',
                     'shaping', 't0', 't0'
                 )",

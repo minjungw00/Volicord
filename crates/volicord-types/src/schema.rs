@@ -28,15 +28,16 @@ use crate::values::{
     EvidenceStatus, GuaranteeClass, GuaranteeLevel, GuardConfigurationStatus, GuardDecision,
     GuardEffectiveStatus, GuardInstallationStatus, GuardObservationStatus, HostKind,
     IntegrationProfile, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
-    NextActionKind, NextActionPresentationRole, NonGuarantee, OperationCategory,
-    PlannedBlockerSourceKind, ProjectContinuityKind, ProjectContinuityStatus,
-    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, PromptCaptureStatus,
-    RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis, SessionWatchStatus,
-    StateRecordKind, StatusCloseState, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
-    TaskResult, UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
+    NextActionKind, NextActionPresentationRole, NonGuarantee, ObservationConfidence,
+    ObservedEffectKind, OperationCategory, PlannedBlockerSourceKind, ProjectContinuityKind,
+    ProjectContinuityStatus, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
+    PromptCaptureStatus, RedactionState, ResponseKind, RunKind, SessionWatchCoverageBasis,
+    SessionWatchStatus, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
+    TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
     UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
     UserActionStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
-    WriteDecisionCategory, WriteTicketState, WriteTicketStatus,
+    WriteDecisionCategory, WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -547,6 +548,7 @@ pub struct UnrecordedChange {
     pub connection_id: AgentConnectionId,
     pub task_id: RequiredNullable<TaskId>,
     pub status: UnrecordedChangeStatus,
+    pub confidence: UnrecordedChangeConfidence,
     pub summary: String,
     pub observed_paths: Vec<String>,
     pub detection: JsonObject,
@@ -563,6 +565,7 @@ pub struct UnrecordedChange {
 pub struct UnrecordedChangeFinding {
     pub unrecorded_change_ref: StateRecordRef,
     pub status: UnrecordedChangeStatus,
+    pub confidence: UnrecordedChangeConfidence,
     pub summary: String,
     pub observed_paths: Vec<String>,
     pub detected_at: UtcTimestamp,
@@ -750,6 +753,16 @@ pub fn baseline_project_enforcement_profile() -> ProjectEnforcementProfile {
     }
 }
 
+/// Compact reference to the authoritative project workflow-policy copy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectWorkflowPolicySummary {
+    pub policy_schema: String,
+    pub policy_version: u64,
+    pub policy_fingerprint: String,
+    pub source: String,
+}
+
 /// Compact current-position state returned by public methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum AgentSafePendingUserActionStatus {
@@ -792,6 +805,10 @@ pub struct StateSummary {
     pub state_version: u64,
     pub task_ref: Option<StateRecordRef>,
     pub mode: Option<TaskMode>,
+    pub requested_control_level: Option<crate::values::RequestedControlLevel>,
+    pub effective_control_level: Option<TaskControlLevel>,
+    pub control_level_reason: Option<String>,
+    pub project_policy: Option<ProjectWorkflowPolicySummary>,
     pub work_phase: Option<WorkPhase>,
     pub acceptance_policy: Option<AcceptancePolicy>,
     pub acceptance_policy_reason: Option<String>,
@@ -886,6 +903,7 @@ pub struct AuthorityReceipt {
     pub evidence_gate: Option<EvidenceGateSummary>,
     pub close_state: StatusCloseState,
     pub close_blockers: Vec<CloseReadinessBlocker>,
+    pub completion_claim_allowed: bool,
     pub next_actor: AuthorityNextActor,
     pub next_action: Option<NextActionSummary>,
 }
@@ -980,6 +998,9 @@ pub struct WriteTicketStateSummary {
     pub status: WriteTicketStatus,
     pub write_ticket_ref: Option<StateRecordRef>,
     pub basis_state_version: Option<u64>,
+    pub validity_basis: Option<WriteTicketValidityBasis>,
+    pub invalidation_reason: Option<WriteTicketInvalidationReason>,
+    pub idle_expires_at: Option<UtcTimestamp>,
     pub intended_paths: Vec<String>,
     pub consumed_by_run_ref: Option<StateRecordRef>,
     pub observation_refs: Vec<StateRecordRef>,
@@ -992,6 +1013,18 @@ pub struct WriteTicketStateSummary {
 pub struct WriteTicketPathPatterns {
     pub allowed: Vec<String>,
     pub denied: Vec<String>,
+}
+
+/// Explicit state coordinates that govern write-ticket reuse and invalidation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WriteTicketValidityBasis {
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
+    pub scope_revision: u64,
+    pub baseline_ref: Option<BaselineRef>,
+    pub workspace_context_sha256: Option<String>,
+    pub approval_basis_refs: Vec<StateRecordRef>,
 }
 
 /// One-attempt boundary captured by a write ticket.
@@ -1017,7 +1050,9 @@ pub struct WriteTicket {
     pub path_patterns: WriteTicketPathPatterns,
     pub observed_paths: Vec<String>,
     pub basis_state_version: u64,
-    pub expires_at: Option<UtcTimestamp>,
+    pub validity_basis: WriteTicketValidityBasis,
+    pub invalidation_reason: Option<WriteTicketInvalidationReason>,
+    pub idle_expires_at: Option<UtcTimestamp>,
     pub control_surface: Option<ControlSurfaceSummary>,
     pub guarantee_display: Option<GuaranteeDisplay>,
 }
@@ -1032,6 +1067,25 @@ pub struct WriteTicketAttemptScope {
     pub product_file_write_intended: bool,
     pub sensitive_categories: Vec<String>,
     pub baseline_ref: Option<BaselineRef>,
+}
+
+/// One normalized path observation used by a mutation assessment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PathAssessment {
+    pub raw: String,
+    pub normalized: Option<String>,
+    pub inside_repo: bool,
+}
+
+/// Bounded mutation-effect classification shared by managed host adapters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MutationAssessment {
+    pub effect: ObservedEffectKind,
+    pub confidence: ObservationConfidence,
+    pub paths: Vec<PathAssessment>,
+    pub reason_codes: Vec<String>,
 }
 
 /// Method-scoped prepare-write decision reason.

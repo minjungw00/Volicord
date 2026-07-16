@@ -32,10 +32,12 @@ use crate::stdio::{
 use crate::{
     routing::McpStorageCapability,
     tool_registry::{
-        canonical_tool_examples, mcp_tool_naming_style, mcp_tools_for_mode_and_storage,
+        canonical_tool_examples, compact_runtime_schema, mcp_tool_naming_style,
+        mcp_tools_for_mode_and_storage, mcp_tools_for_mode_and_storage_with_detail,
         validate_tools_list_json_compatibility, validate_tools_list_schema_compatibility,
-        CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
-        GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
+        ToolSchemaDetail, CHECK_CLOSE_MISSING_FINAL_ACCEPTANCE_EXAMPLE_ID,
+        GET_OPERATION_RESULT_FIRST_PAGE_EXAMPLE_ID, MAX_RUNTIME_TOOLS_LIST_BYTES,
+        PREPARE_EVIDENCE_CAPTURE_CONNECTION_EXAMPLE_ID,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_COMMAND_EXAMPLE_ID,
         PREPARE_EVIDENCE_CAPTURE_VERIFIED_TOOL_EXAMPLE_ID, PREPARE_WRITE_SIMPLE_EXAMPLE_ID,
         RECORD_RUN_ADVISOR_NO_PRODUCT_WRITE_EXAMPLE_ID,
@@ -52,7 +54,10 @@ use volicord_store::agent_connections::{
     VERIFIED_STATUS_COMPLETE,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
-use volicord_store::diagnostics::{diagnostics_db_path, read_diagnostic_session};
+use volicord_store::diagnostics::{
+    diagnostics_db_path, read_diagnostic_session, read_workflow_metric_aggregates,
+    WorkflowMetricAggregateRow,
+};
 use volicord_store::guards::{
     agent_session, end_agent_session, insert_agent_session, list_unresolved_unrecorded_changes,
     upsert_guard_installation, AgentSessionInsert, GuardInstallationUpsert,
@@ -62,6 +67,7 @@ use volicord_store::host_capabilities::{
     HOST_CAPABILITY_ADAPTER_PROFILE_LOCAL_WEB_V1, HOST_CAPABILITY_MODEL_INVISIBLE_USER_SURFACE,
     HOST_CAPABILITY_OUTCOME_FAILED, HOST_CAPABILITY_OUTCOME_PASSED,
 };
+use volicord_store::host_runtime_probes::host_runtime_probe_snapshot_read_only;
 use volicord_store::session_watch::{
     latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
 };
@@ -71,6 +77,7 @@ use volicord_test_support::core_fixtures::{
 };
 use volicord_types::{
     AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, EvidenceTarget,
+    HostRuntimeProbeFailureClass, HostRuntimeProbeId, HostRuntimeProbeOutcome,
     ManagedMcpClientInfo, OperationCategory, ResidualRiskInput, StagedArtifactHandle,
     REVIEWED_CODEX_HOST_VERSION, REVIEWED_CODEX_MCP_CLIENT_NAME,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
@@ -190,6 +197,207 @@ fn mcp_tools_list_schema_is_client_compatible() -> Result<(), Box<dyn Error>> {
         tool_names_from_list_response(&responses[1]).len(),
         tools.len()
     );
+    Ok(())
+}
+
+#[test]
+fn runtime_tools_list_is_compact_example_free_and_validation_equivalent() {
+    for mode in [AgentConnectionMode::Workflow, AgentConnectionMode::ReadOnly] {
+        for storage_capability in [
+            McpStorageCapability::ReadWrite,
+            McpStorageCapability::ReadOnly,
+            McpStorageCapability::Unavailable,
+            McpStorageCapability::Unknown,
+        ] {
+            let runtime = mcp_tools_for_mode_and_storage_with_detail(
+                mode,
+                storage_capability,
+                ToolSchemaDetail::RuntimeCompact,
+            );
+            let documentation = mcp_tools_for_mode_and_storage_with_detail(
+                mode,
+                storage_capability,
+                ToolSchemaDetail::Documentation,
+            );
+
+            assert_eq!(tool_names(&runtime), tool_names(&documentation));
+            for (runtime_tool, documentation_tool) in runtime.iter().zip(&documentation) {
+                assert_eq!(runtime_tool.name, documentation_tool.name);
+                assert_eq!(runtime_tool.annotations, documentation_tool.annotations);
+                assert_eq!(runtime_tool.output_schema, json!({ "type": "object" }));
+                assert_eq!(documentation_tool.output_schema["type"], "object");
+
+                assert_eq!(
+                    root_properties(&runtime_tool.input_schema),
+                    root_properties(&documentation_tool.input_schema),
+                    "{} compact schema must preserve top-level properties",
+                    runtime_tool.name
+                );
+                assert_eq!(
+                    root_required_fields(&runtime_tool.input_schema),
+                    root_required_fields(&documentation_tool.input_schema),
+                    "{} compact schema must preserve top-level required fields",
+                    runtime_tool.name
+                );
+                assert_eq!(
+                    runtime_tool.input_schema.get("additionalProperties"),
+                    documentation_tool.input_schema.get("additionalProperties"),
+                    "{} compact schema must preserve the closed root",
+                    runtime_tool.name
+                );
+
+                let mut documented_input = documentation_tool.input_schema.clone();
+                documented_input
+                    .as_object_mut()
+                    .expect("tool input schema should be an object")
+                    .remove("examples");
+                strip_schema_presentation_for_test(&mut documented_input);
+                assert_eq!(runtime_tool.input_schema, documented_input);
+                assert!(
+                    !json_member_exists(&runtime_tool.input_schema, "examples"),
+                    "{} runtime input schema must not contain examples",
+                    runtime_tool.name
+                );
+                assert_local_schema_refs_resolve(&runtime_tool.input_schema, runtime_tool.name);
+            }
+
+            let payload = serde_json::to_vec(&json!({ "tools": runtime }))
+                .expect("runtime tools/list result should serialize");
+            assert!(
+                payload.len() <= MAX_RUNTIME_TOOLS_LIST_BYTES,
+                "{mode:?}/{storage_capability:?} runtime tools/list is {} bytes (limit {})",
+                payload.len(),
+                MAX_RUNTIME_TOOLS_LIST_BYTES
+            );
+        }
+    }
+}
+
+#[test]
+fn runtime_schema_compaction_preserves_data_properties_named_like_schema_keywords() {
+    let mut schema = json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Presentation-only root title",
+        "type": "object",
+        "properties": {
+            "description": {
+                "description": "Presentation-only field description",
+                "$ref": "#/definitions/Text"
+            },
+            "definitions": {
+                "type": "object",
+                "properties": {
+                    "default": { "$ref": "#/definitions/Text" }
+                },
+                "additionalProperties": false
+            }
+        },
+        "required": ["description", "definitions"],
+        "additionalProperties": false,
+        "definitions": {
+            "Text": {
+                "title": "Presentation-only definition title",
+                "type": "string",
+                "minLength": 1
+            },
+            "Unused": { "type": "string" }
+        }
+    });
+
+    compact_runtime_schema(&mut schema);
+
+    let properties = schema["properties"]
+        .as_object()
+        .expect("compacted fixture should retain its properties");
+    assert!(properties.contains_key("description"));
+    assert!(properties.contains_key("definitions"));
+    assert!(properties["definitions"]["properties"]
+        .as_object()
+        .is_some_and(|properties| properties.contains_key("default")));
+    assert_eq!(schema["required"], json!(["description", "definitions"]));
+    assert_eq!(schema["$schema"], "http://json-schema.org/draft-07/schema#");
+    assert!(!json_member_exists(&schema, "title"));
+    assert_local_schema_refs_resolve(&schema, "keyword-named-properties fixture");
+    assert_eq!(
+        schema["definitions"]
+            .as_object()
+            .expect("the shared definition should remain")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rereads(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-workflow-metrics")?;
+    let private_marker = "private_prompt_marker_must_not_be_persisted";
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        request(2, "tools/list", json!({})),
+        tools_call(3, STATUS_TOOL_NAME, json!({ "detail": "workflow" })),
+        tools_call(4, STATUS_TOOL_NAME, json!({ "detail": "workflow" })),
+        tools_call(
+            5,
+            CHECK_CLOSE_TOOL_NAME,
+            json!({
+                "private_marker": private_marker
+            }),
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter(&fixture)?, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 5);
+    assert_eq!(responses[2]["result"]["isError"], false);
+    assert_eq!(responses[3]["result"]["isError"], false);
+    assert_eq!(responses[4]["result"]["isError"], true);
+    let exact_tools_list_bytes = u64::try_from(serde_json::to_vec(&responses[1]["result"])?.len())?;
+    let metrics =
+        read_workflow_metric_aggregates(fixture.runtime_home_path(), fixture.project_id())?;
+
+    let tools_list = workflow_metric_row(
+        &metrics,
+        WorkflowMetricKind::ToolsListSerializedBytes,
+        None,
+        Some(WorkflowMetricOutcome::Success),
+    );
+    assert_eq!(tools_list.sample_count, 1);
+    assert_eq!(tools_list.host_kind.as_deref(), Some("codex"));
+    assert_eq!(tools_list.value_total, exact_tools_list_bytes);
+    assert_eq!(tools_list.value_min, exact_tools_list_bytes);
+    assert_eq!(tools_list.value_max, exact_tools_list_bytes);
+
+    let successful_status = workflow_metric_row(
+        &metrics,
+        WorkflowMetricKind::McpMethodCall,
+        Some(MethodName::Status),
+        Some(WorkflowMetricOutcome::Success),
+    );
+    assert_eq!(successful_status.sample_count, 2);
+    assert_eq!(successful_status.value_total, 2);
+    let invalid_check_close = workflow_metric_row(
+        &metrics,
+        WorkflowMetricKind::McpMethodCall,
+        Some(MethodName::CheckClose),
+        Some(WorkflowMetricOutcome::ValidationFailure),
+    );
+    assert_eq!(invalid_check_close.sample_count, 1);
+    assert_eq!(invalid_check_close.value_total, 1);
+    let status_reread = workflow_metric_row(
+        &metrics,
+        WorkflowMetricKind::StatusReread,
+        None,
+        Some(WorkflowMetricOutcome::Success),
+    );
+    assert_eq!(status_reread.sample_count, 1);
+    assert_eq!(status_reread.value_total, 1);
+
+    let diagnostics_bytes = fs::read(diagnostics_db_path(fixture.runtime_home_path()))?;
+    assert!(!String::from_utf8_lossy(&diagnostics_bytes).contains(private_marker));
     Ok(())
 }
 
@@ -385,6 +593,7 @@ fn common_mcp_omissions_advertise_and_decode_exact_defaults() -> Result<(), Box<
             vec![
                 ("run_id", Value::Null),
                 ("write_ticket_id", Value::Null),
+                ("performed_operation", Value::Null),
                 ("artifact_inputs", json!([])),
                 ("evidence_updates", json!([])),
                 ("evidence_observations", json!([])),
@@ -2339,6 +2548,7 @@ fn managed_codex_tools_list_buffers_without_durable_session() -> Result<(), Box<
     )?
     .is_none());
     assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
+    assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
     Ok(())
 }
 
@@ -2401,6 +2611,71 @@ fn managed_stdio_tool_call_records_lifecycle_observation() -> Result<(), Box<dyn
     assert_eq!(tool_call["tool_name"], "volicord.status");
     assert_eq!(tool_call["storage_capability"], "read_write");
     assert_eq!(tool_call["effective_tool_mode"], "workflow");
+    let exact_tools_list_bytes = u64::try_from(serde_json::to_vec(&responses[1]["result"])?.len())?;
+    let metrics =
+        read_workflow_metric_aggregates(fixture.runtime_home_path(), fixture.project_id())?;
+    let tools_list = workflow_metric_row(
+        &metrics,
+        WorkflowMetricKind::ToolsListSerializedBytes,
+        None,
+        Some(WorkflowMetricOutcome::Success),
+    );
+    assert_eq!(tools_list.sample_count, 1);
+    assert_eq!(tools_list.host_kind.as_deref(), Some("codex"));
+    assert_eq!(tools_list.value_total, exact_tools_list_bytes);
+    let status_call = workflow_metric_row(
+        &metrics,
+        WorkflowMetricKind::McpMethodCall,
+        Some(MethodName::Status),
+        Some(WorkflowMetricOutcome::Success),
+    );
+    assert_eq!(status_call.sample_count, 1);
+    assert_eq!(status_call.value_total, 1);
+    Ok(())
+}
+
+#[test]
+fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-stdio-managed-new-codex-version")?;
+    let observed_version = "0.145.0";
+    let input = Cursor::new(json_lines(&[
+        initialize_request_with_client_info(
+            1,
+            json!({}),
+            REVIEWED_CODEX_MCP_CLIENT_NAME,
+            observed_version,
+        ),
+        initialized_notification(),
+        tools_call_with_codex_metadata(
+            2,
+            STATUS_TOOL_NAME,
+            json!({"detail":"workflow"}),
+            CODEX_TEST_SESSION_ID,
+            CODEX_TEST_THREAD_ID,
+            CODEX_TEST_TURN_ID,
+        ),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio_with_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| managed_codex_stdio_env(&fixture, true, name),
+    )?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[1]["result"]["isError"], false);
+    let baseline = latest_watch_baseline_for_connection(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .expect("a structurally valid managed call should materialize its session baseline");
+    let metadata: Value = serde_json::from_str(&baseline.metadata_json)?;
+    assert_eq!(metadata["client_name"], REVIEWED_CODEX_MCP_CLIENT_NAME);
+    assert_eq!(metadata["client_version"], observed_version);
     Ok(())
 }
 
@@ -5697,16 +5972,18 @@ fn corrupt_diagnostics_store_is_nonfatal_to_mcp_core_result() -> Result<(), Box<
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
         initialized_notification(),
-        tools_call(2, STATUS_TOOL_NAME, json!({})),
+        request(2, "tools/list", json!({})),
+        tools_call(3, STATUS_TOOL_NAME, json!({})),
     ])?);
     let mut output = Vec::new();
 
     run_stdio(adapter, BufReader::new(input), &mut output)?;
 
     let responses = stdio_responses(&output)?;
-    assert_eq!(responses.len(), 2);
-    assert_eq!(responses[1]["result"]["isError"], false);
-    let response = volicord_response_from_tool(&responses[1])?;
+    assert_eq!(responses.len(), 3);
+    assert!(responses[1]["result"]["tools"].is_array());
+    assert_eq!(responses[2]["result"]["isError"], false);
+    let response = volicord_response_from_tool(&responses[2])?;
     assert_eq!(response["base"]["response_kind"], "result");
     assert_eq!(response["base"]["effect_kind"], "read_only");
     assert_eq!(fixture.counts()?, before);
@@ -6843,27 +7120,46 @@ fn adapter_without_expected_release_evidence_digest_fails_closed_for_exact_manag
 }
 
 #[test]
-fn reviewed_codex_local_web_is_statically_unsupported_at_selection_and_issuance(
+fn newer_codex_local_web_uses_current_capability_evidence_at_selection_and_issuance(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-local-web-reviewed-codex-static-unsupported")?;
+    let fixture = CoreFixture::new("mcp-local-web-newer-codex-capability-evidence")?;
     let setup_adapter = adapter(&fixture)?;
     let (task_id, state_version) = create_task(&setup_adapter)?;
-    let label = "reviewed_codex_static_unsupported";
-    publish_exact_host_capability_verification(&fixture, label)?;
+    let label = "newer_codex_capability_evidence";
+    let observed_version = "0.145.0";
+    let now = DateTime::<Utc>::from(std::time::SystemTime::now());
+    let mut verification = exact_host_capability_input(
+        &fixture,
+        label,
+        now - Duration::seconds(1),
+        now + Duration::hours(1),
+    )?;
+    verification.host_version = observed_version.to_owned();
+    verification.client_version = observed_version.to_owned();
+    publish_host_capability_verification(fixture.runtime_home_path(), verification)?;
     let runtime_adapter = adapter_with_local_web_consent(&fixture)?
         .with_expected_evidence_artifact_sha256_for_test(
             exact_host_capability_evidence_artifact_sha256(label),
         );
-    let capabilities = exact_local_web_test_capabilities(&fixture)?;
+    let capabilities = McpUserChannelCapabilities::new(false, true).with_stdio_session(
+        McpLaunchOrigin::ManagedHost.as_str(),
+        Some(REVIEWED_CODEX_MCP_CLIENT_NAME),
+        Some(observed_version),
+    );
 
     assert!(runtime_adapter.local_web_consent_listener_ready());
-    assert!(!runtime_adapter.effective_local_web_consent_available(&capabilities));
+    assert!(runtime_adapter.effective_local_web_consent_available(&capabilities));
     assert!(runtime_adapter
         .local_web_consent_issuance_lease(&capabilities)
-        .is_none());
+        .is_some());
 
     let input = Cursor::new(json_lines(&[
-        initialize_request(1, model_invisible_user_surface_capability()),
+        initialize_request_with_client_info(
+            1,
+            model_invisible_user_surface_capability(),
+            REVIEWED_CODEX_MCP_CLIENT_NAME,
+            observed_version,
+        ),
         initialized_notification(),
         tools_call(
             2,
@@ -6882,9 +7178,33 @@ fn reviewed_codex_local_web_is_statically_unsupported_at_selection_and_issuance(
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 2);
     assert_eq!(responses[1]["result"]["isError"], false);
-    assert!(responses[1]["result"].get("_meta").is_none());
-    assert_eq!(local_web_token_count(&fixture)?, 0);
-    assert!(result_mentions_cli_recovery(&responses[1]["result"]));
+    assert!(responses[1]["result"]["_meta"]["io.volicord/user-channel"]["url"].is_string());
+    assert_eq!(local_web_token_count(&fixture)?, 1);
+    let probe_snapshot = host_runtime_probe_snapshot_read_only(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+    )?
+    .expect("managed local-web exercise stores runtime probes");
+    for profile in [IntegrationProfile::Record, IntegrationProfile::Detective] {
+        for probe_id in [
+            HostRuntimeProbeId::ModelSeparatedUserActionUi,
+            HostRuntimeProbeId::McpCapabilityAdvertisedAndExercised,
+        ] {
+            let observation = probe_snapshot
+                .observations
+                .iter()
+                .find(|observation| {
+                    observation.probe_id == probe_id && observation.adapter_profile == profile
+                })
+                .expect("actual local-web exercise publishes each required probe slot");
+            assert_eq!(observation.outcome, HostRuntimeProbeOutcome::Passed);
+            assert_eq!(
+                observation.failure_class,
+                HostRuntimeProbeFailureClass::None
+            );
+            assert_eq!(observation.host_version.as_deref(), Some(observed_version));
+        }
+    }
     Ok(())
 }
 
@@ -11281,6 +11601,79 @@ fn read_only_table_count(fixture: &CoreFixture, table: &str) -> Result<i64, Box<
         table.replace('"', "\"\"")
     );
     Ok(conn.query_row(&sql, [fixture.project_id()], |row| row.get(0))?)
+}
+
+fn json_member_exists(value: &Value, member: &str) -> bool {
+    match value {
+        Value::Object(object) => {
+            object.contains_key(member)
+                || object
+                    .values()
+                    .any(|child| json_member_exists(child, member))
+        }
+        Value::Array(items) => items.iter().any(|child| json_member_exists(child, member)),
+        _ => false,
+    }
+}
+
+fn workflow_metric_row(
+    rows: &[WorkflowMetricAggregateRow],
+    metric_kind: WorkflowMetricKind,
+    method_name: Option<MethodName>,
+    outcome: Option<WorkflowMetricOutcome>,
+) -> &WorkflowMetricAggregateRow {
+    rows.iter()
+        .find(|row| {
+            row.metric_kind == metric_kind.as_str()
+                && row.method_name.as_deref() == method_name.map(MethodName::as_str)
+                && row.outcome.as_deref() == outcome.map(WorkflowMetricOutcome::as_str)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "missing workflow metric row kind={} method={:?} outcome={:?}; rows={rows:?}",
+                metric_kind.as_str(),
+                method_name.map(MethodName::as_str),
+                outcome.map(WorkflowMetricOutcome::as_str),
+            )
+        })
+}
+
+fn assert_local_schema_refs_resolve(schema: &Value, tool_name: &str) {
+    let definitions = schema.get("definitions").and_then(Value::as_object);
+    assert_schema_value_refs_resolve(schema, definitions, tool_name);
+}
+
+fn assert_schema_value_refs_resolve(
+    value: &Value,
+    definitions: Option<&Map<String, Value>>,
+    tool_name: &str,
+) {
+    match value {
+        Value::Object(object) => {
+            if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
+                let name = reference.strip_prefix("#/definitions/").unwrap_or_else(|| {
+                    panic!("{tool_name} has a non-local runtime ref {reference}")
+                });
+                assert!(
+                    definitions.is_some_and(|definitions| definitions.contains_key(name)),
+                    "{tool_name} has an unresolved runtime ref {reference}"
+                );
+            }
+            for child in object.values() {
+                assert_schema_value_refs_resolve(child, definitions, tool_name);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                assert_schema_value_refs_resolve(child, definitions, tool_name);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn strip_schema_presentation_for_test(value: &mut Value) {
+    compact_runtime_schema(value);
 }
 
 fn root_properties(schema: &Value) -> Vec<String> {

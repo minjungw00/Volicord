@@ -89,6 +89,7 @@ fn plan_intake(
     let user_action_now = operation_now.clone();
     let planned_state_version = project_state.state_version + 1;
     let mode = resolve_requested_mode(request.requested_mode);
+    let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let active_task = store
         .active_task_record()
         .map_err(CorePipelineError::from)?;
@@ -107,6 +108,21 @@ fn plan_intake(
         )?;
         unreachable!("validation_plan_error always returns Err");
     }
+    if create_new
+        && mode == TaskMode::Advisor
+        && !matches!(
+            request.requested_control_level,
+            RequestedControlLevel::Auto | RequestedControlLevel::Observe
+        )
+    {
+        validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "requested_control_level",
+            "advisor mode accepts only auto or observe control",
+        )?;
+        unreachable!("validation_plan_error always returns Err");
+    }
     let planned_lineage = if create_new {
         plan_task_lineage(
             store,
@@ -118,15 +134,46 @@ fn plan_intake(
     } else {
         None
     };
-    let (acceptance_policy, acceptance_policy_reason) = if create_new {
-        resolve_acceptance_policy(mode, request.acceptance_policy.as_ref().copied(), &request)?
+    let (
+        requested_control_level,
+        effective_control_level,
+        control_level_reason,
+        acceptance_policy,
+        acceptance_policy_reason,
+        control_or_acceptance_raised,
+    ) = if create_new {
+        let (effective_control_level, control_level_reason) =
+            effective_control_level(mode, request.requested_control_level, &workflow_policy);
+        let (acceptance_policy, acceptance_policy_reason) = resolve_acceptance_policy(
+            effective_control_level,
+            request.acceptance_policy.as_ref().copied(),
+            &workflow_policy,
+            &request,
+        )?;
+        (
+            request.requested_control_level,
+            effective_control_level,
+            control_level_reason,
+            acceptance_policy,
+            acceptance_policy_reason,
+            false,
+        )
     } else {
         let active = active_task
             .as_ref()
             .expect("active_task exists when resume selects an existing Task");
+        let requested_control_level =
+            parse_requested_control_level(&active.requested_control_level)
+                .map_err(CorePipelineError::from)?;
+        let resolved_control = resolve_task_control_authority(active, &workflow_policy)
+            .map_err(CorePipelineError::from)?;
         (
-            parse_acceptance_policy(&active.acceptance_policy)?,
-            active.acceptance_policy_reason.clone(),
+            requested_control_level,
+            resolved_control.effective_control_level,
+            resolved_control.control_level_reason,
+            resolved_control.acceptance_policy,
+            resolved_control.acceptance_policy_reason,
+            resolved_control.control_raised || resolved_control.acceptance_raised,
         )
     };
     let task_id = if create_new {
@@ -187,12 +234,35 @@ fn plan_intake(
     }
 
     let mut storage_mutations = Vec::new();
+    if create_new {
+        if let Some(active) = &active_task {
+            storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
+                WriteTicketInvalidation {
+                    task_id: active.task_id.clone(),
+                    invalidation_reason: WriteTicketInvalidationReason::TaskClosed
+                        .as_str()
+                        .to_owned(),
+                },
+            ));
+        }
+    }
     if request.resume_policy == ResumePolicy::SupersedeActive {
         if let Some(active) = &active_task {
             storage_mutations.push(CoreStorageMutation::SupersedeTask {
                 task_id: active.task_id.clone(),
             });
         }
+    }
+    if !create_new && control_or_acceptance_raised {
+        storage_mutations.push(CoreStorageMutation::UpdateTaskControlLevel(
+            TaskControlLevelUpdate {
+                task_id: task_id.as_str().to_owned(),
+                effective_control_level: effective_control_level.as_str().to_owned(),
+                control_level_reason: control_level_reason.clone(),
+                acceptance_policy: Some(acceptance_policy_storage(acceptance_policy).to_owned()),
+                acceptance_policy_reason: Some(acceptance_policy_reason.clone()),
+            },
+        ));
     }
 
     let acceptance_criteria = if create_new {
@@ -244,6 +314,9 @@ fn plan_intake(
             project_id: request.envelope.project_id.as_str().to_owned(),
             task_id: task_id.as_str().to_owned(),
             mode: task_mode_storage(mode).to_owned(),
+            requested_control_level: requested_control_level.as_str().to_owned(),
+            effective_control_level: effective_control_level.as_str().to_owned(),
+            control_level_reason: control_level_reason.clone(),
             work_phase: work_phase_storage(work_phase).to_owned(),
             acceptance_policy: acceptance_policy_storage(acceptance_policy).to_owned(),
             acceptance_policy_reason: acceptance_policy_reason.clone(),
@@ -282,11 +355,15 @@ fn plan_intake(
             }))?,
             current_change_unit_id: None,
             closed_at: None,
+            metadata_json: "{}".to_owned(),
         };
         storage_mutations.push(CoreStorageMutation::InsertTask(TaskInsert {
             task_id: task.task_id.clone(),
             created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
             mode: task.mode.clone(),
+            requested_control_level: task.requested_control_level.clone(),
+            effective_control_level: task.effective_control_level.clone(),
+            control_level_reason: task.control_level_reason.clone(),
             work_phase: task.work_phase.clone(),
             acceptance_policy: task.acceptance_policy.clone(),
             acceptance_policy_reason: task.acceptance_policy_reason.clone(),
@@ -328,7 +405,12 @@ fn plan_intake(
         });
         task
     } else {
-        active_task.expect("active_task exists when create_new is false")
+        let mut active = active_task.expect("active_task exists when create_new is false");
+        active.effective_control_level = effective_control_level.as_str().to_owned();
+        active.control_level_reason = control_level_reason;
+        active.acceptance_policy = acceptance_policy_storage(acceptance_policy).to_owned();
+        active.acceptance_policy_reason = acceptance_policy_reason;
+        active
     };
 
     let current_change_unit = if create_new {
@@ -425,6 +507,7 @@ fn plan_intake(
         )?
     };
     let state = build_state_summary(SummaryBuild {
+        store,
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &task_record,
@@ -862,34 +945,73 @@ fn reference_only_carry_sources(
 }
 
 fn resolve_acceptance_policy(
-    mode: TaskMode,
+    control: TaskControlLevel,
     requested: Option<AcceptancePolicy>,
+    workflow_policy: &ProjectWorkflowPolicy,
     request: &volicord_types::IntakeRequest,
 ) -> Result<(AcceptancePolicy, String), PlanError> {
-    let selected = requested.unwrap_or(match mode {
-        TaskMode::Advisor => AcceptancePolicy::NotRequired,
-        TaskMode::Direct | TaskMode::Work => AcceptancePolicy::Required,
-    });
-    if selected == AcceptancePolicy::NotRequired && mode != TaskMode::Advisor {
+    let authoritative = acceptance_policy_for_control(control, workflow_policy);
+    let selected = if control == TaskControlLevel::Light {
+        requested
+            .map(|requested| stronger_acceptance_policy(authoritative, requested))
+            .unwrap_or(authoritative)
+    } else {
+        requested.unwrap_or(authoritative)
+    };
+    let valid = match control {
+        TaskControlLevel::Observe => selected == AcceptancePolicy::NotRequired,
+        TaskControlLevel::Light => match selected {
+            AcceptancePolicy::Required | AcceptancePolicy::PolicyDependent => true,
+            AcceptancePolicy::NotRequired => {
+                workflow_policy.light.final_acceptance == AcceptancePolicy::NotRequired
+            }
+        },
+        TaskControlLevel::Tracked | TaskControlLevel::Sensitive => {
+            selected == AcceptancePolicy::Required
+        }
+    };
+    if !valid {
         validation_plan_error(
             request.envelope.dry_run,
             None,
             "acceptance_policy",
-            "not_required acceptance is limited to advisor Tasks",
+            "acceptance_policy is incompatible with the effective Task control level and project workflow policy",
         )?;
         unreachable!("validation_plan_error always returns Err");
     }
-    let reason = match (selected, mode) {
-        (AcceptancePolicy::NotRequired, TaskMode::Advisor) => {
-            "Pure advice does not require final result acceptance unless intake selects another policy."
+    Ok((selected, acceptance_policy_reason(selected, control)))
+}
+
+fn acceptance_policy_reason(
+    acceptance_policy: AcceptancePolicy,
+    control: TaskControlLevel,
+) -> String {
+    match acceptance_policy {
+        AcceptancePolicy::NotRequired => {
+            format!("Effective control `{}` does not require final result acceptance.", control.as_str())
         }
-        (AcceptancePolicy::Required, _) => {
-            "This Task requires final acceptance for its current close basis."
+        AcceptancePolicy::Required => {
+            format!("Effective control `{}` requires final acceptance for the current close basis.", control.as_str())
         }
-        (AcceptancePolicy::PolicyDependent, _) => {
-            "Core evaluates final acceptance from the current result and residual-risk basis."
+        AcceptancePolicy::PolicyDependent => {
+            "Core evaluates final acceptance from the current low-risk completion conditions and residual-risk basis."
+                .to_owned()
         }
-        (AcceptancePolicy::NotRequired, _) => unreachable!("validated above"),
+    }
+}
+
+fn stronger_acceptance_policy(
+    current: AcceptancePolicy,
+    candidate: AcceptancePolicy,
+) -> AcceptancePolicy {
+    let rank = |policy| match policy {
+        AcceptancePolicy::NotRequired => 0,
+        AcceptancePolicy::PolicyDependent => 1,
+        AcceptancePolicy::Required => 2,
     };
-    Ok((selected, reason.to_owned()))
+    if rank(candidate) > rank(current) {
+        candidate
+    } else {
+        current
+    }
 }

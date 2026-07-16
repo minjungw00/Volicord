@@ -9,7 +9,8 @@ use std::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_cli::host_integration::{MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1};
-use volicord_core::{Clock, CoreService, InvocationContext, SystemClock};
+use volicord_core::{Clock, CoreService, GitWorkspaceContext, InvocationContext, SystemClock};
+use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::agent_connections::{
     add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
     ConnectionProjectRegistration, CONNECTION_INTENT_SHARED, CONNECTION_MODE_WORKFLOW,
@@ -19,11 +20,12 @@ use volicord_store::core_pipeline::StorageEffectCounts;
 use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
 use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, choice_user_action_resolution, CoreFixture,
-    ObservationUserActionFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserActionFixture,
+    ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
+    UpdateScopeFixture, UserActionFixture,
 };
 use volicord_types::{
-    chat_user_action_verification_code, managed_host_session_id, ActorSource, ChangeUnitOperation,
-    JudgmentKind, OperationCategory, ProjectId, UtcTimestamp,
+    canonical_json_bare_sha256, chat_user_action_verification_code, managed_host_session_id,
+    ActorSource, ChangeUnitOperation, JudgmentKind, OperationCategory, ProjectId, UtcTimestamp,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
 };
@@ -58,10 +60,10 @@ use volicord_types::{
     CheckCloseRequest, CloseAssessmentInput, CloseMutationIntent, CloseReason, CloseTaskRequest,
     EvidenceRequirement, EvidenceTarget, IdempotencyKey, InitialScope, IntakeRequest,
     ObservedChanges, PrepareWriteRequest, ReconcileChangesRequest, RecordId, RecordRunRequest,
-    RedactionState, RequestId, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
-    StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef, TaskId,
-    ToolEnvelope, UpdateScopeRequest, UserActionChoiceDraft, UserActionContext, UserActionDraft,
-    UserActionRequestId, UserActionRequiredFor, WriteTicketId,
+    RedactionState, RequestId, RequestedControlLevel, RequestedMode, ResumePolicy, RunKind,
+    ScopeUpdate, StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef,
+    TaskId, ToolEnvelope, UpdateScopeRequest, UserActionChoiceDraft, UserActionContext,
+    UserActionDraft, UserActionRequestId, UserActionRequiredFor, WriteTicketId,
 };
 
 #[cfg(unix)]
@@ -280,6 +282,33 @@ impl GuardCliFixture {
         Ok(task_id)
     }
 
+    pub(crate) fn create_sensitive_active_task(&self) -> Result<String, Box<dyn Error>> {
+        let service = CoreService::new(self.runtime_home());
+        let mut request = self.inner.intake_request(
+            "req_guard_sensitive_intake",
+            "idem_guard_sensitive_intake",
+            false,
+            Some(0),
+        );
+        request.requested_control_level = RequestedControlLevel::Sensitive;
+        let response =
+            service.intake(request, self.invocation(OperationCategory::AgentWorkflow))?;
+        let task_id = record_id(&response.response_value["task_ref"])?;
+        service.update_scope(
+            self.inner.update_scope_request(UpdateScopeFixture {
+                request_id: "req_guard_sensitive_scope",
+                idempotency_key: "idem_guard_sensitive_scope",
+                dry_run: false,
+                expected_state_version: Some(1),
+                task_id: &task_id,
+                operation: ChangeUnitOperation::CreateCurrent,
+                scope_summary: "Sensitive Guard fixture scope for src/export.rs.",
+            }),
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        Ok(task_id)
+    }
+
     pub(crate) fn create_additional_active_task(
         &self,
         suffix: &str,
@@ -296,7 +325,7 @@ impl GuardCliFixture {
         record_id(&response.response_value["task_ref"])
     }
 
-    pub(crate) fn prepare_write(&self, task_id: &str) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn prepare_write(&self, task_id: &str) -> Result<String, Box<dyn Error>> {
         let service = CoreService::new(self.runtime_home());
         let state_version = self.inner.store()?.project_state()?.state_version;
         let response = service.prepare_write(
@@ -310,7 +339,367 @@ impl GuardCliFixture {
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
         assert_eq!(response.response_value["decision"], "allowed");
+        record_id(&response.response_value["write_ticket_ref"])
+    }
+
+    pub(crate) fn record_product_write(
+        &self,
+        task_id: &str,
+        write_ticket_id: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let change_unit_id = self
+            .inner
+            .current_change_unit_id(task_id)?
+            .ok_or("Guard fixture should have a current Change Unit")?;
+        let service = CoreService::new(self.runtime_home());
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let mut request = self.inner.record_run_request(
+            "req_guard_record_product_write",
+            "idem_guard_record_product_write",
+            false,
+            Some(state_version),
+            task_id,
+            &change_unit_id,
+        );
+        request.write_ticket_id = Some(WriteTicketId::new(write_ticket_id)).into();
+        request.observed_changes = ObservedChanges {
+            changed_paths: vec!["src/export.rs".to_owned()],
+            product_file_write_observed: true,
+            sensitive_categories: Vec::new(),
+            baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)).into(),
+        };
+        let snapshot = capture_git_workspace_snapshot(&self.repo_root)?
+            .ok_or("Guard fixture should be Git-backed")?;
+        let invocation = self
+            .invocation(OperationCategory::AgentWorkflow)
+            .with_git_workspace_context(GitWorkspaceContext {
+                git_common_dir: snapshot.layout.common_dir.display().to_string(),
+                worktree_id: snapshot.worktree_id,
+                branch_ref: snapshot.branch_ref,
+                head_sha: snapshot.head_sha,
+                workspace_fingerprint: snapshot.workspace_fingerprint,
+            });
+        let response = service.record_run(request, invocation)?;
+        Ok(
+            response.response_value["run_summary"]["run_ref"]["record_id"]
+                .as_str()
+                .ok_or("record_run should expose run_ref.record_id")?
+                .to_owned(),
+        )
+    }
+
+    pub(crate) fn strengthen_active_task_to_sensitive_without_ticket_invalidation(
+        &self,
+        task_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let changed = self.inner.conn()?.execute(
+            "UPDATE tasks
+                SET effective_control_level = 'sensitive',
+                    control_level_reason = 'test_policy_strengthening'
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            rusqlite::params![self.project_id(), task_id],
+        )?;
+        if changed != 1 {
+            return Err("test fixture failed to strengthen exactly one active Task".into());
+        }
         Ok(())
+    }
+
+    pub(crate) fn mark_active_task_policy_control_reevaluation_without_ticket_invalidation(
+        &self,
+        task_id: &str,
+        required_effective_control_level: &str,
+        required_acceptance_policy: Option<&str>,
+    ) -> Result<(), Box<dyn Error>> {
+        let connection = self.inner.conn()?;
+        let metadata_json = connection.query_row(
+            "SELECT metadata_json
+               FROM tasks
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            rusqlite::params![self.project_id(), task_id],
+            |row| row.get::<_, String>(0),
+        )?;
+        let mut metadata: Value = serde_json::from_str(&metadata_json)?;
+        let object = metadata
+            .as_object_mut()
+            .ok_or("Guard fixture Task metadata must be an object")?;
+        let mut mark = json!({
+            "policy_version": 2,
+            "policy_fingerprint": format!("sha256:{}", "a".repeat(64)),
+            "required_effective_control_level": required_effective_control_level,
+            "marked_at": "2026-07-16T00:00:00Z"
+        });
+        if let Some(required) = required_acceptance_policy {
+            mark["required_acceptance_policy"] = json!(required);
+        }
+        object.insert("policy_control_reevaluation".to_owned(), mark);
+        let changed = connection.execute(
+            "UPDATE tasks
+                SET metadata_json = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            rusqlite::params![self.project_id(), task_id, metadata.to_string()],
+        )?;
+        if changed != 1 {
+            return Err("test fixture failed to mark exactly one active Task".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn set_active_task_acceptance_policy_without_ticket_invalidation(
+        &self,
+        task_id: &str,
+        acceptance_policy: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let changed = self.inner.conn()?.execute(
+            "UPDATE tasks
+                SET acceptance_policy = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            rusqlite::params![self.project_id(), task_id, acceptance_policy],
+        )?;
+        if changed != 1 {
+            return Err(
+                "test fixture failed to update exactly one active Task acceptance policy".into(),
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) fn change_current_baseline_without_ticket_invalidation(
+        &self,
+        task_id: &str,
+        baseline_ref: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let change_unit_id = self
+            .inner
+            .current_change_unit_id(task_id)?
+            .ok_or("Guard fixture should have a current Change Unit")?;
+        let connection = self.inner.conn()?;
+        let (task_json, change_unit_json): (String, String) = connection.query_row(
+            "SELECT tasks.shaping_summary_json, change_units.write_basis_json
+               FROM tasks
+               JOIN change_units
+                 ON change_units.project_id = tasks.project_id
+                AND change_units.task_id = tasks.task_id
+                AND change_units.change_unit_id = ?3
+              WHERE tasks.project_id = ?1
+                AND tasks.task_id = ?2",
+            rusqlite::params![self.project_id(), task_id, change_unit_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let mut task_value: Value = serde_json::from_str(&task_json)?;
+        let mut change_unit_value: Value = serde_json::from_str(&change_unit_json)?;
+        task_value["baseline_ref"] = json!(baseline_ref);
+        change_unit_value["baseline_ref"] = json!(baseline_ref);
+        let changed = connection.execute(
+            "UPDATE tasks
+                SET shaping_summary_json = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            rusqlite::params![self.project_id(), task_id, task_value.to_string()],
+        )? + connection.execute(
+            "UPDATE change_units
+                SET write_basis_json = ?4
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND change_unit_id = ?3",
+            rusqlite::params![
+                self.project_id(),
+                task_id,
+                change_unit_id,
+                change_unit_value.to_string()
+            ],
+        )?;
+        if changed != 2 {
+            return Err("test fixture failed to change the current baseline coordinates".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn make_ticket_workspace_stale(
+        &self,
+        task_id: &str,
+        write_ticket_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let refs_dir = self.repo_root.join(".git/refs/heads");
+        fs::create_dir_all(&refs_dir)?;
+        fs::write(self.repo_root.join(".git/HEAD"), "ref: refs/heads/main\n")?;
+        fs::write(refs_dir.join("main"), format!("{}\n", "1".repeat(40)))?;
+        let snapshot = capture_git_workspace_snapshot(&self.repo_root)?
+            .ok_or("Guard fixture should now be Git-backed")?;
+        let context = GitWorkspaceContext {
+            git_common_dir: snapshot.layout.common_dir.display().to_string(),
+            worktree_id: snapshot.worktree_id,
+            branch_ref: snapshot.branch_ref,
+            head_sha: snapshot.head_sha,
+            workspace_fingerprint: snapshot.workspace_fingerprint,
+        };
+        self.bind_ticket_workspace_context(task_id, write_ticket_id, &context)?;
+        fs::write(refs_dir.join("main"), format!("{}\n", "2".repeat(40)))?;
+        Ok(())
+    }
+
+    pub(crate) fn bind_ticket_to_current_workspace(
+        &self,
+        task_id: &str,
+        write_ticket_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let snapshot = capture_git_workspace_snapshot(&self.repo_root)?
+            .ok_or("Guard fixture should be Git-backed")?;
+        let context = GitWorkspaceContext {
+            git_common_dir: snapshot.layout.common_dir.display().to_string(),
+            worktree_id: snapshot.worktree_id,
+            branch_ref: snapshot.branch_ref,
+            head_sha: snapshot.head_sha,
+            workspace_fingerprint: snapshot.workspace_fingerprint,
+        };
+        self.bind_ticket_workspace_context(task_id, write_ticket_id, &context)
+    }
+
+    pub(crate) fn make_ticket_workspace_probe_unavailable(
+        &self,
+        task_id: &str,
+        write_ticket_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let context = GitWorkspaceContext {
+            git_common_dir: self.repo_root.join(".git").display().to_string(),
+            worktree_id: format!("sha256:{}", "3".repeat(64)),
+            branch_ref: Some("refs/heads/main".to_owned()),
+            head_sha: Some("4".repeat(40)),
+            workspace_fingerprint: format!("sha256:{}", "5".repeat(64)),
+        };
+        self.bind_ticket_workspace_context(task_id, write_ticket_id, &context)
+    }
+
+    fn bind_ticket_workspace_context(
+        &self,
+        task_id: &str,
+        write_ticket_id: &str,
+        context: &GitWorkspaceContext,
+    ) -> Result<(), Box<dyn Error>> {
+        let change_unit_id = self
+            .inner
+            .current_change_unit_id(task_id)?
+            .ok_or("Guard fixture should have a current Change Unit")?;
+        let connection = self.inner.conn()?;
+        let mut change_unit_value: Value = serde_json::from_str(&connection.query_row(
+            "SELECT write_basis_json
+               FROM change_units
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND change_unit_id = ?3",
+            rusqlite::params![self.project_id(), task_id, change_unit_id],
+            |row| row.get::<_, String>(0),
+        )?)?;
+        let mut validity_value: Value = serde_json::from_str(&connection.query_row(
+            "SELECT validity_basis_json
+               FROM write_tickets
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            rusqlite::params![self.project_id(), write_ticket_id],
+            |row| row.get::<_, String>(0),
+        )?)?;
+        change_unit_value["git_workspace_context"] = serde_json::to_value(context)?;
+        validity_value["workspace_context_sha256"] = json!(canonical_json_bare_sha256(context)?);
+        let changed = connection.execute(
+            "UPDATE change_units
+                SET write_basis_json = ?4
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND change_unit_id = ?3",
+            rusqlite::params![
+                self.project_id(),
+                task_id,
+                change_unit_id,
+                change_unit_value.to_string()
+            ],
+        )? + connection.execute(
+            "UPDATE write_tickets
+                SET validity_basis_json = ?3
+              WHERE project_id = ?1
+                AND write_ticket_id = ?2",
+            rusqlite::params![
+                self.project_id(),
+                write_ticket_id,
+                validity_value.to_string()
+            ],
+        )?;
+        if changed != 2 {
+            return Err("test fixture failed to bind the ticket workspace coordinates".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn prepare_sensitive_write_with_approval(
+        &self,
+        task_id: &str,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let service = CoreService::new(self.runtime_home());
+        let change_unit_id = self
+            .inner
+            .current_change_unit_id(task_id)?
+            .ok_or("sensitive Guard fixture should have a current Change Unit")?;
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let mut approval_request = self.inner.user_action_request(UserActionFixture {
+            request_id: "req_guard_sensitive_approval",
+            idempotency_key: "idem_guard_sensitive_approval",
+            dry_run: false,
+            expected_state_version: Some(state_version),
+            task_id,
+            change_unit_id: Some(&change_unit_id),
+            judgment_kind: JudgmentKind::SensitiveApproval,
+        });
+        let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+            return Err("sensitive approval fixture should be choice-shaped".into());
+        };
+        choice
+            .sensitive_action_scope
+            .as_mut()
+            .expect("sensitive approval should carry an action scope")
+            .action_kind = "local_product_file_update".to_owned();
+        let requested = service.request_user_action(
+            approval_request,
+            self.invocation(OperationCategory::AgentWorkflow),
+        )?;
+        let approval_request_id = requested.response_value["user_action_request_summary"]
+            ["user_action_request_id"]
+            .as_str()
+            .ok_or("sensitive approval request summary should identify the request")?
+            .to_owned();
+        service.resolve_user_action(
+            self.inner
+                .resolve_user_action_request(ResolveUserActionFixture {
+                    request_id: "req_guard_sensitive_approval_resolve",
+                    task_id,
+                    user_action_request_id: &approval_request_id,
+                    channel_submission_id: "submission_guard_sensitive_approval",
+                    resolution: choice_user_action_resolution("accept"),
+                }),
+            InvocationContext::new(
+                ProjectId::new(self.project_id()),
+                ActorSource::LocalUser,
+                OperationCategory::UserOnly,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?;
+
+        let state_version = self.inner.store()?.project_state()?.state_version;
+        let mut prepare = self.inner.prepare_write_request(
+            "req_guard_sensitive_prepare_write",
+            "idem_guard_sensitive_prepare_write",
+            Some(state_version),
+            Some(task_id),
+            Some(&change_unit_id),
+        );
+        prepare.sensitive_categories = vec!["network".to_owned()];
+        let prepared =
+            service.prepare_write(prepare, self.invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(prepared.response_value["decision"], "allowed");
+        let write_ticket_id = record_id(&prepared.response_value["write_ticket_ref"])?;
+        Ok((approval_request_id, write_ticket_id))
     }
 
     pub(crate) fn create_pending_user_action(
@@ -617,6 +1006,13 @@ impl GuardCliFixture {
         Ok(self.inner.user_action_status(user_action_request_id)?)
     }
 
+    pub(crate) fn write_ticket_status(
+        &self,
+        write_ticket_id: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        Ok(self.inner.write_ticket_status(write_ticket_id)?)
+    }
+
     pub(crate) fn user_action_resolution(
         &self,
         user_action_request_id: &str,
@@ -663,19 +1059,38 @@ impl GuardCliFixture {
         let current_core_now = SystemClock.project_now(&store)?;
         let mut conn = self.inner.conn()?;
         let tx = conn.transaction()?;
-        let (requested_at, request_json): (String, String) = tx.query_row(
+        let (requested_at, request_json, basis_json, resolved_at): (
+            String,
+            String,
+            String,
+            Option<String>,
+        ) = tx.query_row(
             "SELECT requested_at
                     , request_json
+                    , basis_json
+                    , (SELECT resolved_at
+                         FROM user_action_resolutions
+                        WHERE project_id = user_action_requests.project_id
+                          AND user_action_request_id = user_action_requests.user_action_request_id)
                FROM user_action_requests
               WHERE project_id = ?1
                 AND user_action_request_id = ?2",
             rusqlite::params![self.project_id(), user_action_request_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
         let requested_at = UtcTimestamp::parse(&requested_at)?;
-        let minimum_expiry = UtcTimestamp::from_datetime(
+        let mut minimum_expiry = UtcTimestamp::from_datetime(
             *requested_at.as_datetime() + chrono::Duration::milliseconds(1),
         );
+        if let Some(resolved_at) = resolved_at {
+            let resolved_at = UtcTimestamp::parse(&resolved_at)?;
+            minimum_expiry = std::cmp::max(
+                minimum_expiry,
+                UtcTimestamp::from_datetime(
+                    *resolved_at.as_datetime() + chrono::Duration::milliseconds(1),
+                ),
+            );
+        }
         let expires_at = std::cmp::max(current_core_now, minimum_expiry);
         let persisted_floor: String = tx.query_row(
             "SELECT updated_at FROM project_state WHERE project_id = ?1",
@@ -685,17 +1100,28 @@ impl GuardCliFixture {
         let persisted_floor = UtcTimestamp::parse(&persisted_floor)?;
         let clock_floor = std::cmp::max(persisted_floor, expires_at.clone());
         let mut request_json: Value = serde_json::from_str(&request_json)?;
-        request_json["expires_at"] = json!(expires_at.to_string());
+        let expires_at_text = expires_at.to_string();
+        request_json["expires_at"] = json!(expires_at_text.clone());
+        if request_json["body"]["sensitive_action_scope"].is_object() {
+            request_json["body"]["sensitive_action_scope"]["expires_at"] =
+                json!(expires_at_text.clone());
+        }
+        let mut basis_json: Value = serde_json::from_str(&basis_json)?;
+        if basis_json["sensitive_action_scope"].is_object() {
+            basis_json["sensitive_action_scope"]["expires_at"] = json!(expires_at_text);
+        }
         let request_changed = tx.execute(
             "UPDATE user_action_requests
                 SET request_json = ?3,
-                    expires_at = ?4
+                    basis_json = ?4,
+                    expires_at = ?5
               WHERE project_id = ?1
                 AND user_action_request_id = ?2",
             rusqlite::params![
                 self.project_id(),
                 user_action_request_id,
                 request_json.to_string(),
+                basis_json.to_string(),
                 expires_at.to_string()
             ],
         )?;
@@ -961,7 +1387,7 @@ impl GuardCliFixture {
             "stop": {"command": "volicord", "args": guard_fixture_command_args(&self.repo_root, connection_id, &guard_installation_id, policy_host, "stop", None)}
         });
         let policy = json!({
-            "schema": "volicord-policy-v1",
+            "schema": "volicord-policy-v2",
             "managed_by": "volicord",
             "storage_scope": "local_overlay",
             "connection_intent": "shared",
@@ -970,6 +1396,22 @@ impl GuardCliFixture {
             "selected_profile": "detective",
             "connection_id": connection_id,
             "guard_installation_id": guard_installation_id,
+            "workflow": {
+                "default_direct_control": "tracked",
+                "default_work_control": "tracked",
+                "light": {
+                    "enabled": false,
+                    "max_intended_paths": 3,
+                    "allowed_path_patterns": [],
+                    "denied_path_patterns": [],
+                    "final_acceptance": "policy_dependent"
+                },
+                "write_ticket": {"idle_timeout_minutes": null},
+                "detective": {
+                    "unknown_effect_behavior": "warn",
+                    "stop_behavior": "allow_with_disclosure"
+                }
+            },
             "mcp": {"command": "volicord", "args": ["mcp", "--stdio"], "env": {}},
             "host_hook": {"enabled": true, "commands": commands}
         });
@@ -1454,16 +1896,18 @@ impl GuardedLifecycleFixture {
         suffix: &str,
     ) -> Result<(String, String), Box<dyn Error>> {
         let service = self.service();
+        let initial_state_version = self.state_version()?;
         let intake = service.intake(
             IntakeRequest {
                 envelope: self.envelope(
                     &format!("req_{suffix}_intake"),
                     Some(&format!("idem_{suffix}_intake")),
-                    Some(0),
+                    Some(initial_state_version),
                     None,
                 ),
                 plain_language_request: "Create a guarded lifecycle fixture task.".to_owned(),
                 requested_mode: RequestedMode::Work,
+                requested_control_level: RequestedControlLevel::Auto,
                 resume_policy: ResumePolicy::CreateNew,
                 acceptance_policy: volicord_types::RequiredNullable::null(),
                 lineage: volicord_types::RequiredNullable::null(),
@@ -1482,7 +1926,12 @@ impl GuardedLifecycleFixture {
             },
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
-        let task_id = record_id(&intake.response_value["task_ref"])?;
+        let task_id = record_id(&intake.response_value["task_ref"]).map_err(|error| {
+            format!(
+                "guarded lifecycle intake did not return task_ref: {error}; response={}",
+                intake.response_value
+            )
+        })?;
         let after_intake = self.state_version()?;
         let mut fields = serde_json::Map::new();
         fields.insert(
@@ -1524,7 +1973,12 @@ impl GuardedLifecycleFixture {
             },
             self.invocation(OperationCategory::AgentWorkflow),
         )?;
-        let change_unit_id = record_id(&scope.response_value["change_unit_ref"])?;
+        let change_unit_id = record_id(&scope.response_value["change_unit_ref"]).map_err(|error| {
+            format!(
+                "guarded lifecycle scope update did not return change_unit_ref: {error}; response={}",
+                scope.response_value
+            )
+        })?;
         Ok((task_id, change_unit_id))
     }
 
@@ -1656,6 +2110,7 @@ impl GuardedLifecycleFixture {
             run_id: None.into(),
             baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
             write_ticket_id: write_ticket_id.map(WriteTicketId::new).into(),
+            performed_operation: Some("local_product_file_update".to_owned()).into(),
             summary: "Recorded guarded lifecycle fixture run.".to_owned(),
             observed_changes: ObservedChanges {
                 changed_paths: if product_write_observed {

@@ -13,6 +13,9 @@ use volicord_core::{
 };
 use volicord_store::{
     core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
+    diagnostics::{
+        start_diagnostic_session, DiagnosticHostKind, DiagnosticSessionStart, DiagnosticTransport,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
@@ -146,6 +149,7 @@ pub(crate) struct UserActionResolutionRecordingInput<'a> {
     pub verification_basis: &'a str,
     pub request_id: Option<String>,
     pub channel_submission_id: Option<String>,
+    pub session_id: Option<&'a str>,
 }
 
 pub fn status_usage() -> String {
@@ -410,6 +414,20 @@ where
         }
     };
     let (stable_request_id, channel_submission_id) = stable_cli_resolution_ids(request_id);
+    let diagnostic_session_id = generated_id("diag_cli_inbox");
+    let build = volicord_mcp::build_info();
+    let _ = start_diagnostic_session(
+        &resolved.runtime_home,
+        DiagnosticSessionStart {
+            session_id: &diagnostic_session_id,
+            connection_id: None,
+            project_id: Some(&resolved.project_id),
+            transport: DiagnosticTransport::Unknown,
+            host_kind: Some(DiagnosticHostKind::Unknown),
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    );
     let response = resolve_user_action_from_record(UserActionResolutionRecordingInput {
         runtime_home: &resolved.runtime_home,
         project_id: &resolved.project_id,
@@ -418,6 +436,7 @@ where
         verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         request_id: Some(stable_request_id),
         channel_submission_id: Some(channel_submission_id),
+        session_id: Some(&diagnostic_session_id),
     })?;
     render_resolve_response(&response, parsed.output)
 }
@@ -892,6 +911,15 @@ pub(crate) fn resolve_user_action_from_record(
     let channel_submission_id = input
         .channel_submission_id
         .unwrap_or_else(|| generated_id("submission_user_action"));
+    let invocation = invocation_with_basis(
+        input.project_id,
+        OperationCategory::UserOnly,
+        input.verification_basis,
+    );
+    let invocation = match input.session_id {
+        Some(session_id) => invocation.with_session_id(session_id),
+        None => invocation,
+    };
     CoreService::new(input.runtime_home)
         .resolve_user_action(
             ResolveUserActionRequest {
@@ -907,11 +935,7 @@ pub(crate) fn resolve_user_action_from_record(
                 channel_submission_id,
                 resolution: input.resolution,
             },
-            invocation_with_basis(
-                input.project_id,
-                OperationCategory::UserOnly,
-                input.verification_basis,
-            ),
+            invocation,
         )
         .map_err(Into::into)
 }

@@ -854,6 +854,24 @@ pub fn update_agent_connection_verification_report(
     let mut conn = open_registry_database(&registry_path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
+    let existing_report_json = tx
+        .query_row(
+            "SELECT last_verification_report_json
+               FROM agent_connections
+              WHERE connection_internal_id = ?1",
+            [connection_internal_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: connection_internal_id.to_owned(),
+        })?;
+    let last_verification_report_json =
+        crate::host_runtime_probes::preserve_runtime_probe_snapshot(
+            &existing_report_json,
+            last_verification_report_json,
+        )?;
     let changed = tx.execute(
         "UPDATE agent_connections
             SET managed_fingerprint = ?2,

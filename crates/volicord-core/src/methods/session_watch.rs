@@ -538,6 +538,7 @@ fn insert_unrecorded_change_for_observation(
             session_id: Some(observation.session_id.clone()),
             connection_internal_id: observation.connection_internal_id.clone(),
             task_id: task_id.map(|id| id.as_str().to_owned()),
+            confidence: UnrecordedChangeConfidence::Confirmed.as_str().to_owned(),
             summary:
                 "Session watch detected Product Repository changes not covered by expected writes."
                     .to_owned(),
@@ -670,12 +671,9 @@ fn active_write_tickets_covering_paths(
     let Some(task_id) = task_id else {
         return Ok(Vec::new());
     };
-    let project_state = store.project_state()?;
     let mut matches = Vec::new();
     for record in store.active_write_tickets(task_id)? {
-        if record.basis_state_version != project_state.state_version
-            || write_ticket_is_expired(&record, now)?
-        {
+        if write_ticket_is_idle_expired(&record, now)? {
             continue;
         }
         let attempt_scope: WriteTicketAttemptScope = decode_required_json(
@@ -684,8 +682,25 @@ fn active_write_tickets_covering_paths(
             "attempt_scope_json",
             Some(&record.attempt_scope_json),
         )?;
+        let allowed_paths: Vec<String> = decode_required_json(
+            "write_tickets",
+            record.write_ticket_id.clone(),
+            "allowed_path_prefixes_json",
+            Some(&record.allowed_path_prefixes_json),
+        )?;
+        let denied_paths: Vec<String> = decode_required_json(
+            "write_tickets",
+            record.write_ticket_id.clone(),
+            "denied_path_prefixes_json",
+            Some(&record.denied_path_prefixes_json),
+        )?;
         if attempt_scope.product_file_write_intended
-            && paths_are_authorized(observed_paths, &attempt_scope.intended_paths)
+            && paths_are_authorized(observed_paths, &allowed_paths)
+            && !observed_paths.iter().any(|path| {
+                denied_paths
+                    .iter()
+                    .any(|denied| path_is_within(path, denied))
+            })
         {
             matches.push(record);
         }

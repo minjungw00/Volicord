@@ -15,9 +15,11 @@ use volicord_cli::{
     final_output_command::{run_final_output_command, FinalOutputCommandError},
     guard_command::{run_guard_command, GuardCommandError},
     host_integration::{MANAGED_PROCESS_BINDING_ENV, MANAGED_PROCESS_BINDING_V1},
+    policy_command::{policy_usage, run_policy_command, PolicyCommandError},
     project_context::{project_usage, run_project_command, ProjectCommandError},
     serve_command::{run_serve_command, serve_usage, ServeCommand, ServeCommandError},
     setup_command::CommandOutcome,
+    storage_command::{run_storage_command, storage_usage, StorageCommandError},
     user_command::{
         inbox_usage, run_inbox_command, run_status_command, status_usage, UserCommandError,
     },
@@ -115,6 +117,7 @@ where
             }
             run_diagnostics_command(&args[2..], env_var, current_dir).map_err(CliError::from)
         }
+        "storage" => run_storage_command(&args[2..], current_dir).map_err(CliError::from),
         "mcp" => command_mcp(&args[2..], env_var, current_dir),
         "serve" => command_serve(&args[2..], env_var, current_dir),
         "init" => {
@@ -181,6 +184,12 @@ where
             }
             command_project(&args[2..], env_var, current_dir)
         }
+        "policy" => {
+            if policy_subcommand_requires_setup(&args[2..]) {
+                require_setup_completed(&env_var, current_dir)?;
+            }
+            run_policy_command(&args[2..], env_var, current_dir).map_err(CliError::from)
+        }
         other => Err(CliError::usage(format!(
             "unknown command: {other}\n\n{}",
             usage()
@@ -204,6 +213,10 @@ fn project_subcommand_requires_setup(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("use" | "current" | "list" | "rename" | "forget")
     )
+}
+
+fn policy_subcommand_requires_setup(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("show" | "apply"))
 }
 
 fn simple_help_requested(args: &[String]) -> bool {
@@ -573,7 +586,7 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands resolve pending user actions.\nThese are local administrative commands, not public Volicord API methods.\n",
+        "Usage:\n  volicord --help\n  volicord --version\n{}{}{}{}{}{}{}{}{}{}{}{}{}{}\nEnvironment:\n  VOLICORD_HOME  Override Runtime Home path (default: $HOME/.volicord)\n\nAgent Connection commands manage local MCP host connections. User Channel commands resolve pending user actions.\nThese are local administrative commands, not public Volicord API methods.\n",
         indent_usage_block(&init_usage()),
         indent_usage_block(&status_usage()),
         indent_usage_block(&doctor_usage()),
@@ -586,6 +599,8 @@ fn usage() -> String {
         indent_usage_block(&mcp_usage()),
         indent_usage_block(&serve_usage()),
         indent_usage_block(&diagnostics_usage()),
+        indent_usage_block(&policy_usage()),
+        indent_usage_block(&storage_usage()),
     )
 }
 
@@ -745,6 +760,30 @@ impl From<DiagnosticsCommandError> for CliError {
     }
 }
 
+impl From<PolicyCommandError> for CliError {
+    fn from(error: PolicyCommandError) -> Self {
+        match error {
+            PolicyCommandError::Usage(message) => Self::Usage(message),
+            PolicyCommandError::Validation {
+                code,
+                field_path,
+                message,
+            } => Self::Runtime(format!("{code} at {field_path}: {message}")),
+            PolicyCommandError::FailureOutput(output) => Self::FailureOutput(output),
+            PolicyCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
+impl From<StorageCommandError> for CliError {
+    fn from(error: StorageCommandError) -> Self {
+        match error {
+            StorageCommandError::Usage(message) => Self::Usage(message),
+            StorageCommandError::Runtime(message) => Self::Runtime(message),
+        }
+    }
+}
+
 impl From<GuardCommandError> for CliError {
     fn from(error: GuardCommandError) -> Self {
         match error {
@@ -842,6 +881,9 @@ mod tests {
         assert!(output.contains("volicord status"));
         assert!(output.contains("volicord doctor"));
         assert!(output.contains("volicord diagnostics session"));
+        assert!(output.contains(
+            "volicord storage upgrade --source-home PATH --destination-home PATH --json"
+        ));
         assert!(output.contains("volicord project use"));
         assert!(output.contains("volicord connection add"));
         assert!(output.contains("volicord connection list"));
@@ -860,6 +902,18 @@ mod tests {
         assert!(!output.contains("\nvolicord inbox"));
         assert!(!output.contains("volicord _hook"));
         assert!(!output.contains("volicord _final-output"));
+    }
+
+    #[test]
+    fn storage_help_dispatches_without_active_runtime_home_setup() {
+        let output = run_cli(
+            ["volicord", "storage", "--help"],
+            |_| None,
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("storage help should not require setup");
+
+        assert_eq!(output, storage_usage());
     }
 
     #[test]

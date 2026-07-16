@@ -1,12 +1,12 @@
 use std::{collections::BTreeSet, path::Path};
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use volicord_store::{core_pipeline::WriteTicketRecord, StoreError};
 use volicord_types::{
     BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, ObservedChanges, PlannedBlocker,
     PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision, SensitiveActionScope,
     StateRecordRef, TaskId, UserActionKind, UserActionRequiredFor, UtcTimestamp,
-    UtcTimestampRangeError, WriteDecisionCategory, WriteDecisionReason, WriteTicketAttemptScope,
+    WriteDecisionCategory, WriteDecisionReason, WriteTicketAttemptScope,
 };
 
 use crate::policy::{
@@ -14,63 +14,25 @@ use crate::policy::{
     path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
 };
 
-const WRITE_TICKET_LIFETIME_MINUTES: i64 = 15;
-
-pub(crate) fn write_ticket_expires_at(
-    created_at: &UtcTimestamp,
-) -> Result<UtcTimestamp, UtcTimestampRangeError> {
-    created_at.checked_add(Duration::minutes(WRITE_TICKET_LIFETIME_MINUTES))
-}
-
-pub(crate) fn write_ticket_is_expired(
+pub(crate) fn write_ticket_is_idle_expired(
     record: &WriteTicketRecord,
     now: DateTime<Utc>,
 ) -> Result<bool, StoreError> {
-    Ok(UtcTimestamp::from_datetime(now) >= effective_write_ticket_expiration(record)?)
-}
-
-pub(crate) fn effective_write_ticket_expiration(
-    record: &WriteTicketRecord,
-) -> Result<UtcTimestamp, StoreError> {
-    let stored_expires_at = parse_write_ticket_timestamp(record, "expires_at")?;
-    let created_at = parse_write_ticket_timestamp(record, "created_at")?;
-    let maximum_expires_at = write_ticket_expires_at(&created_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "write_tickets",
-            record.write_ticket_id.clone(),
-            "created_at",
-        )
-    })?;
-    Ok(std::cmp::min(stored_expires_at, maximum_expires_at))
-}
-
-fn parse_write_ticket_timestamp(
-    record: &WriteTicketRecord,
-    logical_column: &'static str,
-) -> Result<UtcTimestamp, StoreError> {
-    let raw = match logical_column {
-        "created_at" => &record.created_at,
-        "expires_at" => &record.expires_at,
-        _ => {
-            return Err(StoreError::corrupt_owner_state_value(
-                "write_tickets",
-                record.write_ticket_id.clone(),
-                logical_column,
-            ));
-        }
+    let Some(raw) = record.idle_expires_at.as_ref() else {
+        return Ok(false);
     };
     let corrupt = || {
         StoreError::corrupt_owner_state_value(
             "write_tickets",
             record.write_ticket_id.clone(),
-            logical_column,
+            "idle_expires_at",
         )
     };
     let timestamp = UtcTimestamp::parse(raw).map_err(|_| corrupt())?;
     timestamp
         .ensure_canonical_rfc3339_representable()
         .map_err(|_| corrupt())?;
-    Ok(timestamp)
+    Ok(UtcTimestamp::from_datetime(now) >= timestamp)
 }
 
 pub(crate) fn prepare_write_decision(reasons: &[WriteDecisionReason]) -> PrepareWriteDecision {
@@ -129,50 +91,71 @@ pub(crate) struct RunWriteTicketMismatch {
     pub(crate) message: &'static str,
 }
 
+pub(crate) struct RunWriteTicketAttempt<'a> {
+    pub(crate) task_id: &'a TaskId,
+    pub(crate) change_unit_id: &'a ChangeUnitId,
+    pub(crate) baseline_ref: &'a BaselineRef,
+    pub(crate) performed_operation: Option<&'a str>,
+    pub(crate) performed_operation_required: bool,
+    pub(crate) observed_changes: &'a ObservedChanges,
+    pub(crate) normalized_scope_paths: &'a [String],
+}
+
 pub(crate) fn run_write_ticket_mismatch(
     record: &WriteTicketRecord,
     scope: &WriteTicketAttemptScope,
-    task_id: &TaskId,
-    change_unit_id: &ChangeUnitId,
-    baseline_ref: &BaselineRef,
-    observed_changes: &ObservedChanges,
-    normalized_scope_paths: &[String],
+    attempt: RunWriteTicketAttempt<'_>,
 ) -> Option<RunWriteTicketMismatch> {
-    if record.task_id != task_id.as_str() || scope.task_id != *task_id {
+    if record.task_id != attempt.task_id.as_str() || scope.task_id != *attempt.task_id {
         return Some(run_mismatch(
             "task_mismatch",
             "write ticket task is not compatible with the recorded run",
         ));
     }
-    if record.change_unit_id.as_deref() != Some(change_unit_id.as_str())
-        || scope.change_unit_id != *change_unit_id
+    if record.change_unit_id.as_deref() != Some(attempt.change_unit_id.as_str())
+        || scope.change_unit_id != *attempt.change_unit_id
     {
         return Some(run_mismatch(
             "change_unit_mismatch",
             "write ticket Change Unit is not compatible with the recorded run",
         ));
     }
-    if !scope.product_file_write_intended {
+    if scope.product_file_write_intended != attempt.observed_changes.product_file_write_observed {
         return Some(run_mismatch(
             "product_write_flag_mismatch",
-            "write ticket does not cover a product-file write attempt",
+            "write ticket product-file intent is not compatible with the recorded run",
         ));
     }
-    if scope.baseline_ref.as_ref() != Some(baseline_ref) {
+    if scope.baseline_ref.as_ref() != Some(attempt.baseline_ref) {
         return Some(run_mismatch(
             "baseline_mismatch",
             "write ticket baseline is not compatible with the recorded run",
         ));
     }
+    if attempt
+        .performed_operation
+        .is_some_and(|operation| operation != scope.intended_operation.as_str())
+        || (attempt.performed_operation_required && attempt.performed_operation.is_none())
+    {
+        return Some(run_mismatch(
+            "operation_mismatch",
+            "performed operation does not exactly match the write ticket operation",
+        ));
+    }
     if category_set(&normalized_string_set(&scope.sensitive_categories))
-        != category_set(&observed_changes.sensitive_categories)
+        != category_set(&attempt.observed_changes.sensitive_categories)
     {
         return Some(run_mismatch(
             "sensitive_category_mismatch",
             "write ticket sensitive categories are not compatible with the recorded run",
         ));
     }
-    if !paths_are_authorized(&observed_changes.changed_paths, normalized_scope_paths) {
+    if attempt.observed_changes.product_file_write_observed
+        && !paths_are_authorized(
+            &attempt.observed_changes.changed_paths,
+            attempt.normalized_scope_paths,
+        )
+    {
         return Some(run_mismatch(
             "path_mismatch",
             "write ticket paths are not compatible with the recorded run",

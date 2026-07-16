@@ -111,13 +111,6 @@ impl CoreService {
             Ok(prepared) => prepared,
             Err(response) => return Ok(response),
         };
-        if let Some(response) = reject_stale_close_write_ticket(
-            &prepared.store,
-            &prepared.context.project_state,
-            &request,
-        )? {
-            return Ok(response);
-        }
         let plan_now = prepared.operation_now.clone();
         if request.intent == CloseIntent::Complete && !request.envelope.dry_run {
             if let Err(error) = session_watch::run_session_watch_check(
@@ -218,7 +211,14 @@ impl CoreService {
                 .extend(continuity_plans.into_iter().map(|plan| plan.mutation));
         }
 
-        self.execute_prepared_request(
+        let task_duration = prepared
+            .store
+            .task_created_at(&request.task_id)
+            .ok()
+            .flatten()
+            .and_then(|created_at| elapsed_micros(&created_at, &plan_now));
+        let session_id = prepared.context.verified_invocation.session_id.clone();
+        let response = self.execute_prepared_request(
             prepared,
             OwnerPipelineBranch::CommitMutation {
                 result_fields: plan.result_fields,
@@ -228,7 +228,18 @@ impl CoreService {
                 change_unit_id: plan.change_unit_id,
                 storage_mutations: plan.storage_mutations,
             },
-        )
+        )?;
+        if response_committed_fresh_effect(&response) {
+            if let Some(duration) = task_duration {
+                record_core_workflow_metric_best_effort(
+                    self,
+                    session_id.as_deref(),
+                    WorkflowMetricKind::TaskDurationMicros,
+                    duration,
+                );
+            }
+        }
+        Ok(response)
     }
 }
 
@@ -290,6 +301,14 @@ fn validate_close_task_identity(
         return validation_rejected(envelope.dry_run, None, "task_id", mismatch_message).map(Some);
     }
     validation_rejected(envelope.dry_run, None, "envelope.task_id", missing_message).map(Some)
+}
+
+fn close_acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
+    match policy {
+        AcceptancePolicy::NotRequired => 0,
+        AcceptancePolicy::PolicyDependent => 1,
+        AcceptancePolicy::Required => 2,
+    }
 }
 
 fn check_close_policy(request: &CloseTaskPlanRequest) -> MethodPolicy {
@@ -386,26 +405,6 @@ fn validate_close_intent_fields(
     Ok(None)
 }
 
-fn reject_stale_close_write_ticket(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &CloseTaskPlanRequest,
-) -> CoreResult<Option<PipelineResponse>> {
-    let active_write_tickets = store
-        .active_write_tickets(&request.task_id)
-        .map_err(CorePipelineError::from)?;
-    Ok(active_write_tickets
-        .iter()
-        .find(|record| record.basis_state_version != project_state.state_version)
-        .map(|record| {
-            stale_write_ticket_basis_response(
-                &request.envelope,
-                record,
-                project_state.state_version,
-            )
-        }))
-}
-
 fn close_task_dry_run_summary(intent: CloseIntent) -> DryRunSummary {
     let (action, description) = match intent {
         CloseIntent::Check => (
@@ -459,6 +458,80 @@ pub(super) fn plan_close_task_with_context(
     context: CloseTaskContext,
 ) -> Result<CloseTaskPlan, PlanError> {
     let mut context = context;
+    let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+    let current_control = parse_task_control_level(&context.task.effective_control_level)
+        .map_err(CorePipelineError::from)?;
+    let resolved_control = resolve_task_control_authority(&context.task, &workflow_policy)
+        .map_err(CorePipelineError::from)?;
+    let sensitive_effect = context
+        .current_change_unit
+        .as_ref()
+        .map(change_unit_effect_contract)
+        .transpose()?
+        .flatten()
+        .is_some_and(|contract| {
+            !contract.sensitive_action_expectations.is_empty()
+                || contract.allowed_effects.iter().any(|effect| {
+                    matches!(
+                        effect,
+                        ChangeUnitEffectKind::SensitiveAction
+                            | ChangeUnitEffectKind::ExternalNetwork
+                            | ChangeUnitEffectKind::SecretAccess
+                    )
+                })
+        });
+    let next_control = if sensitive_effect {
+        TaskControlLevel::Sensitive
+    } else {
+        resolved_control.effective_control_level
+    };
+    let current_acceptance = parse_acceptance_policy(&context.task.acceptance_policy)?;
+    let control_acceptance = acceptance_policy_for_control(next_control, &workflow_policy);
+    let next_acceptance = if close_acceptance_policy_rank(resolved_control.acceptance_policy)
+        >= close_acceptance_policy_rank(control_acceptance)
+    {
+        resolved_control.acceptance_policy
+    } else {
+        control_acceptance
+    };
+    let acceptance_raised = close_acceptance_policy_rank(next_acceptance)
+        > close_acceptance_policy_rank(current_acceptance);
+    let control_raised = next_control > current_control;
+    let control_update = (control_raised || acceptance_raised).then(|| {
+        let reason = if sensitive_effect && control_raised {
+            "Core raised control to `sensitive` for the current Change Unit effect contract."
+                .to_owned()
+        } else if control_raised {
+            resolved_control.control_level_reason.clone()
+        } else {
+            context.task.control_level_reason.clone()
+        };
+        context.task.effective_control_level = next_control.as_str().to_owned();
+        context.task.control_level_reason = reason.clone();
+        if acceptance_raised {
+            context.task.acceptance_policy = acceptance_policy_storage(next_acceptance).to_owned();
+            context.task.acceptance_policy_reason = if next_control
+                == resolved_control.effective_control_level
+                && resolved_control.acceptance_raised
+            {
+                resolved_control.acceptance_policy_reason.clone()
+            } else {
+                format!(
+                    "Effective control `{}` requires final acceptance for the current close basis.",
+                    next_control.as_str()
+                )
+            };
+        }
+        CoreStorageMutation::UpdateTaskControlLevel(TaskControlLevelUpdate {
+            task_id: context.task.task_id.clone(),
+            effective_control_level: next_control.as_str().to_owned(),
+            control_level_reason: reason,
+            acceptance_policy: acceptance_raised
+                .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
+            acceptance_policy_reason: acceptance_raised
+                .then(|| context.task.acceptance_policy_reason.clone()),
+        })
+    });
     if context.guard_health.is_none() {
         context.guard_health =
             projected_guard_health(store, project_state, verified_invocation, &request)?;
@@ -476,6 +549,12 @@ pub(super) fn plan_close_task_with_context(
             now,
         )?);
         blockers.extend(guard_close_blockers(project_state, &request, &context));
+    } else {
+        blockers.extend(
+            guard_close_blockers(project_state, &request, &context)
+                .into_iter()
+                .filter(|blocker| blocker.code == "unresolved_unrecorded_changes"),
+        );
     }
     normalize_close_blocker_action_projection(&mut blockers, project_state.state_version);
 
@@ -518,6 +597,9 @@ pub(super) fn plan_close_task_with_context(
 
     let mut synthetic_task = context.task.clone();
     let mut storage_mutations = Vec::new();
+    if committed_terminal {
+        storage_mutations.extend(control_update);
+    }
     let mut event_kind = String::new();
     let mut event_payload = Map::new();
     let closed_at = if committed_terminal {
@@ -533,6 +615,14 @@ pub(super) fn plan_close_task_with_context(
         synthetic_task.result = Some(terminal.result.to_owned());
         synthetic_task.close_summary_json = close_summary_json.clone();
         synthetic_task.closed_at = Some(closed_at.to_string());
+        storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
+            WriteTicketInvalidation {
+                task_id: request.task_id.as_str().to_owned(),
+                invalidation_reason: WriteTicketInvalidationReason::TaskClosed
+                    .as_str()
+                    .to_owned(),
+            },
+        ));
         storage_mutations.push(CoreStorageMutation::CloseTask(TaskCloseUpdate {
             task_id: request.task_id.as_str().to_owned(),
             lifecycle_phase: terminal.lifecycle_phase.to_owned(),
@@ -611,6 +701,7 @@ pub(super) fn plan_close_task_with_context(
     }
 
     let state = build_state_summary(SummaryBuild {
+        store,
         project_id: &request.envelope.project_id,
         state_version: response_state_version,
         task: &synthetic_task,
@@ -668,6 +759,88 @@ pub(super) fn plan_close_task_with_context(
             .expect("close task result planning requires verified invocation context"),
         next_action: primary_next_action(no_next_actions, &blockers),
     });
+    let task_ref = state_ref(
+        StateRecordKind::Task,
+        request.task_id.as_str(),
+        &request.envelope.project_id,
+        Some(&request.task_id),
+        Some(response_state_version),
+    );
+    let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
+        state_ref(
+            StateRecordKind::ChangeUnit,
+            &record.change_unit_id,
+            &request.envelope.project_id,
+            Some(&request.task_id),
+            Some(response_state_version),
+        )
+    });
+    let latest_run = store
+        .run_observed_changes_for_task(&request.task_id)
+        .map_err(CorePipelineError::from)?
+        .into_iter()
+        .find(|record| record.status == "recorded");
+    let latest_run_ref = latest_run.as_ref().map(|record| {
+        state_ref(
+            StateRecordKind::Run,
+            &record.run_id,
+            &request.envelope.project_id,
+            Some(&request.task_id),
+            Some(response_state_version),
+        )
+    });
+    let product_file_write_observed = latest_run
+        .as_ref()
+        .is_some_and(|record| record.observed_changes.product_file_write_observed);
+    let next_action = if blockers.is_empty() && close_state == CloseState::Ready {
+        Some(close_next_action(
+            "Complete the current Task.",
+            vec![task_ref.clone()],
+        ))
+    } else {
+        primary_next_action(no_next_actions, &blockers).cloned()
+    };
+    let next_actor = next_action
+        .as_ref()
+        .map(|action| {
+            if action
+                .allowed_operation_categories
+                .contains(&OperationCategory::UserOnly)
+            {
+                AuthorityNextActor::User
+            } else if action
+                .allowed_operation_categories
+                .contains(&OperationCategory::AgentWorkflow)
+            {
+                AuthorityNextActor::Agent
+            } else {
+                AuthorityNextActor::None
+            }
+        })
+        .unwrap_or(AuthorityNextActor::None);
+    let authority_receipt = AuthorityReceipt {
+        project_id: request.envelope.project_id.clone(),
+        state_version: response_state_version,
+        task_ref,
+        change_unit_ref,
+        scope_revision: synthetic_task.scope_revision,
+        latest_run_ref,
+        product_file_write_observed,
+        evidence_gate: Some(evidence_gate),
+        close_state: match close_state {
+            CloseState::Ready => StatusCloseState::Ready,
+            CloseState::Blocked => StatusCloseState::Blocked,
+            CloseState::Closed => StatusCloseState::Closed,
+            CloseState::Cancelled => StatusCloseState::Cancelled,
+            CloseState::Superseded => StatusCloseState::Superseded,
+        },
+        close_blockers: blockers.clone(),
+        completion_claim_allowed: result_current_close_basis.is_some()
+            && blockers.is_empty()
+            && matches!(close_state, CloseState::Ready | CloseState::Closed),
+        next_actor,
+        next_action,
+    };
     let result = CloseTaskResult {
         base: placeholder_base(),
         summary_card,
@@ -683,6 +856,7 @@ pub(super) fn plan_close_task_with_context(
         evidence_summary: result_evidence_summary.clone(),
         evidence_gate,
         artifact_refs: result_artifact_refs.clone(),
+        authority_receipt,
     };
 
     Ok(CloseTaskPlan {
@@ -1229,7 +1403,11 @@ pub(super) fn guard_health_summary_from_record(
         session_watch_partial_coverage_warning: RequiredNullable::null(),
         session_watch_detail: RequiredNullable::null(),
         session_watch_scan_summary: RequiredNullable::null(),
-        unresolved_unrecorded_change_count: record.unresolved_unrecorded_changes.len() as u64,
+        unresolved_unrecorded_change_count: record
+            .unresolved_unrecorded_changes
+            .iter()
+            .filter(|change| change.confidence == "confirmed")
+            .count() as u64,
         missing_or_stale_write_ticket,
         write_ticket_path_scope_violation,
     };
@@ -2578,9 +2756,10 @@ fn guard_close_blockers(
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::CloseTask,
-                owner_method: None,
-                allowed_operation_categories: Vec::new(),
-                label: "Repair or retry session watch before completing the Task.".to_owned(),
+                owner_method: Some(MethodName::CloseTask),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+                label: "Repair session watch outside this API, then retry volicord.close_task."
+                    .to_owned(),
                 blocking_question: None,
                 expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
@@ -2598,9 +2777,11 @@ fn guard_close_blockers(
             vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::CloseTask,
-                owner_method: None,
-                allowed_operation_categories: Vec::new(),
-                label: "Repair Agent Connection health before completing the Task.".to_owned(),
+                owner_method: Some(MethodName::CloseTask),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+                label:
+                    "Repair Agent Connection health outside this API, then retry volicord.close_task."
+                        .to_owned(),
                 blocking_question: None,
                 expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
@@ -2778,9 +2959,11 @@ fn guard_installation_close_blocker(
         vec![NextActionSummary {
             presentation_role: NextActionPresentationRole::Primary,
             action_kind: NextActionKind::CloseTask,
-            owner_method: None,
-            allowed_operation_categories: Vec::new(),
-            label,
+            owner_method: Some(MethodName::CloseTask),
+            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+            label: format!(
+                "{label} The repair is outside this API; then retry volicord.close_task."
+            ),
             blocking_question: None,
             expected_state_version: RequiredNullable::null(),
             required_refs: vec![task_ref.clone()],
@@ -2867,12 +3050,14 @@ fn terminal_close_blockers(
         ));
     }
 
-    blockers.extend(unresolved_write_ticket_close_blockers(
-        store,
-        project_state,
-        request,
-        now,
-    )?);
+    if matches!(request.intent, CloseIntent::Check | CloseIntent::Complete) {
+        blockers.extend(unresolved_write_ticket_close_blockers(
+            store,
+            project_state,
+            request,
+            now,
+        )?);
+    }
 
     match request.intent {
         CloseIntent::Cancel => {
@@ -2936,41 +3121,29 @@ fn unresolved_write_ticket_close_blockers(
             )))
         })?
     {
-        let status = effective_write_ticket_status(
+        let mut status = effective_write_ticket_status(
             &record,
             project_state.state_version,
             Some(*now.as_datetime()),
         )
         .map_err(PlanError::Core)?;
+        if status == WriteTicketStatus::Active
+            && !write_ticket_approval_basis_is_current_for_projection(
+                store,
+                &record,
+                *now.as_datetime(),
+            )?
+        {
+            status = WriteTicketStatus::Invalidated;
+        }
         match status {
             WriteTicketStatus::Active => blockers.push(open_write_ticket_close_blocker(
                 task_ref.clone(),
                 write_ticket_ref(&record, project_state.state_version),
             )),
-            WriteTicketStatus::Expired => blockers.push(close_blocker(
-                CloseReadinessBlockerCategory::WriteCompatibility,
-                "expired_write_ticket",
-                "An expired write ticket remains unresolved for this Task.",
-                vec![write_ticket_ref(&record, project_state.state_version)],
-                vec![NextActionSummary {
-                    presentation_role: NextActionPresentationRole::Primary,
-                    action_kind: NextActionKind::ReconcileChanges,
-                    owner_method: Some(MethodName::ReconcileChanges),
-                    allowed_operation_categories: vec![
-                        OperationCategory::AgentWorkflow,
-                        OperationCategory::LocalRecovery,
-                    ],
-                    label: "Reconcile observed changes for the expired write ticket before close."
-                        .to_owned(),
-                    blocking_question: Some(
-                        "Does the user accept any observed Product Repository change after the expired write ticket?"
-                            .to_owned(),
-                    ),
-                    expected_state_version: RequiredNullable::null(),
-                    required_refs: vec![task_ref.clone()],
-                }],
-            )),
-            WriteTicketStatus::Stale | WriteTicketStatus::Consumed | WriteTicketStatus::Revoked => {}
+            WriteTicketStatus::Invalidated
+            | WriteTicketStatus::Revoked
+            | WriteTicketStatus::Consumed => {}
         }
     }
     Ok(blockers)
@@ -3343,7 +3516,29 @@ fn completion_close_blockers(
         ));
     }
 
-    if sensitive_approval_required(context)?
+    if sensitive_action_basis_missing(context)? {
+        blockers.push(close_blocker(
+            CloseReadinessBlockerCategory::SensitiveApproval,
+            "missing_sensitive_action_basis",
+            "The effective sensitive Task has no ticket-backed sensitive-action basis for close.",
+            change_unit_ref
+                .clone()
+                .into_iter()
+                .chain(std::iter::once(task_ref.clone()))
+                .collect(),
+            vec![NextActionSummary {
+                presentation_role: NextActionPresentationRole::Primary,
+                action_kind: NextActionKind::PrepareWrite,
+                owner_method: Some(MethodName::PrepareWrite),
+                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
+                label: "Prepare the exact sensitive action with user-owned approval, then record its ticket-backed Run."
+                    .to_owned(),
+                blocking_question: None,
+                expected_state_version: RequiredNullable::null(),
+                required_refs: vec![task_ref.clone()],
+            }],
+        ));
+    } else if sensitive_approval_required(context)?
         && !has_current_sensitive_approval_for_close(store, project_state, request, context, now)?
     {
         let related_refs = refs_with_context(
@@ -3367,37 +3562,6 @@ fn completion_close_blockers(
                 owner_method: Some(MethodName::RequestUserAction),
                 allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
                 label: "Request the user-owned sensitive-action approval.".to_owned(),
-                blocking_question: None,
-                expected_state_version: RequiredNullable::null(),
-                required_refs: vec![task_ref.clone()],
-            }],
-        ));
-    }
-
-    for record in store
-        .active_write_tickets(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
-        .iter()
-        .filter(|_| context.task.mode != "advisor")
-        .filter(|record| record.basis_state_version != project_state.state_version)
-    {
-        blockers.push(close_blocker(
-            CloseReadinessBlockerCategory::WriteCompatibility,
-            "write_ticket_stale",
-            "An active write ticket is stale against the current state version.",
-            vec![write_ticket_ref(record, project_state.state_version)],
-            vec![NextActionSummary {
-                presentation_role: NextActionPresentationRole::Primary,
-                action_kind: NextActionKind::PrepareWrite,
-                owner_method: Some(MethodName::PrepareWrite),
-                allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-                label: "Refresh the write ticket before completing the Task.".to_owned(),
                 blocking_question: None,
                 expected_state_version: RequiredNullable::null(),
                 required_refs: vec![task_ref.clone()],
@@ -4474,16 +4638,22 @@ fn final_acceptance_blocker(
     context: &CloseTaskContext,
 ) -> Result<Option<CloseReadinessBlocker>, PlanError> {
     let acceptance_policy = parse_acceptance_policy(&context.task.acceptance_policy)?;
-    let acceptance_required = match acceptance_policy {
-        AcceptancePolicy::Required => true,
-        AcceptancePolicy::NotRequired => false,
-        AcceptancePolicy::PolicyDependent => {
-            parse_task_mode(&context.task.mode)? != TaskMode::Advisor
-                || context
-                    .current_close_basis
-                    .as_ref()
-                    .is_some_and(|basis| !basis.residual_risks.is_empty())
-        }
+    let control = parse_task_control_level(&context.task.effective_control_level)
+        .map_err(CorePipelineError::from)?;
+    let acceptance_required = match control {
+        TaskControlLevel::Observe => false,
+        TaskControlLevel::Tracked | TaskControlLevel::Sensitive => true,
+        TaskControlLevel::Light => match acceptance_policy {
+            AcceptancePolicy::Required => true,
+            AcceptancePolicy::NotRequired | AcceptancePolicy::PolicyDependent => {
+                !light_completion_without_acceptance_allowed(
+                    store,
+                    project_state,
+                    request,
+                    context,
+                )?
+            }
+        },
     };
     if !acceptance_required {
         return Ok(None);
@@ -4570,6 +4740,131 @@ fn final_acceptance_blocker(
     )))
 }
 
+fn light_completion_without_acceptance_allowed(
+    store: &CoreProjectStore,
+    project_state: &ProjectStateHeader,
+    request: &CloseTaskPlanRequest,
+    context: &CloseTaskContext,
+) -> Result<bool, PlanError> {
+    if parse_task_control_level(&context.task.effective_control_level)
+        .map_err(CorePipelineError::from)?
+        != TaskControlLevel::Light
+    {
+        return Ok(false);
+    }
+    let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+    if !workflow_policy.light.enabled
+        || workflow_policy.light.final_acceptance == AcceptancePolicy::Required
+        || !context.pending_user_action_refs.is_empty()
+    {
+        return Ok(false);
+    }
+    let Some(close_basis) = context.current_close_basis.as_ref() else {
+        return Ok(false);
+    };
+    if close_basis
+        .residual_risks
+        .iter()
+        .any(|risk| risk.acceptance_required)
+        || !close_basis.sensitive_categories.is_empty()
+        || !close_basis.sensitive_action_requirements.is_empty()
+        || context
+            .guard_health
+            .as_ref()
+            .is_some_and(|health| health.unresolved_unrecorded_change_count > 0)
+    {
+        return Ok(false);
+    }
+    let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
+        state_ref(
+            StateRecordKind::ChangeUnit,
+            &record.change_unit_id,
+            &request.envelope.project_id,
+            Some(&request.task_id),
+            Some(project_state.state_version),
+        )
+    });
+    if !close_evidence_blockers(store, project_state, request, context, change_unit_ref)?.is_empty()
+    {
+        return Ok(false);
+    }
+
+    let tickets = store
+        .write_tickets_for_task(&request.task_id)
+        .map_err(CorePipelineError::from)?;
+    for observed in store
+        .run_observed_changes_for_task(&request.task_id)
+        .map_err(CorePipelineError::from)?
+    {
+        if observed.status != "recorded" {
+            return Ok(false);
+        }
+        if !observed.observed_changes.sensitive_categories.is_empty() {
+            return Ok(false);
+        }
+        if !observed.observed_changes.product_file_write_observed {
+            continue;
+        }
+        if !workflow_policy.light_paths_are_allowed(&observed.observed_changes.changed_paths) {
+            return Ok(false);
+        }
+        let Some(run) = store
+            .run_record(&observed.run_id)
+            .map_err(CorePipelineError::from)?
+        else {
+            return Ok(false);
+        };
+        if run.scope_revision != context.task.scope_revision
+            || run.change_unit_id.as_deref() != Some(close_basis.change_unit_id.as_str())
+            || run.baseline_ref.as_deref()
+                != close_basis.baseline_ref.as_ref().map(BaselineRef::as_str)
+        {
+            return Ok(false);
+        }
+        let Some(ticket) = tickets.iter().find(|ticket| {
+            ticket.status == "consumed"
+                && ticket.consumed_by_run_id.as_deref() == Some(observed.run_id.as_str())
+        }) else {
+            return Ok(false);
+        };
+        let validity_basis: WriteTicketValidityBasis = decode_required_json(
+            "write_tickets",
+            ticket.write_ticket_id.clone(),
+            "validity_basis_json",
+            Some(&ticket.validity_basis_json),
+        )?;
+        if validity_basis.task_id != request.task_id
+            || validity_basis.change_unit_id != close_basis.change_unit_id
+            || validity_basis.scope_revision != context.task.scope_revision
+            || validity_basis.baseline_ref.as_ref() != close_basis.baseline_ref.as_ref()
+        {
+            return Ok(false);
+        }
+        let allowed: Vec<String> = decode_required_json(
+            "write_tickets",
+            ticket.write_ticket_id.clone(),
+            "allowed_path_prefixes_json",
+            Some(&ticket.allowed_path_prefixes_json),
+        )?;
+        let denied: Vec<String> = decode_required_json(
+            "write_tickets",
+            ticket.write_ticket_id.clone(),
+            "denied_path_prefixes_json",
+            Some(&ticket.denied_path_prefixes_json),
+        )?;
+        if !paths_are_authorized(&observed.observed_changes.changed_paths, &allowed)
+            || observed.observed_changes.changed_paths.iter().any(|path| {
+                denied
+                    .iter()
+                    .any(|denied_prefix| path_is_within(path, denied_prefix))
+            })
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 fn has_current_sensitive_approval_for_close(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
@@ -4581,7 +4876,7 @@ fn has_current_sensitive_approval_for_close(
         return Ok(false);
     };
     if close_basis.sensitive_action_requirements.is_empty() {
-        return Ok(true);
+        return Ok(false);
     }
     let authorities = resolved_judgment_authorities_for_context(
         store,
@@ -4686,11 +4981,27 @@ fn refs_with_context(
 }
 
 fn sensitive_approval_required(context: &CloseTaskContext) -> CoreResult<bool> {
-    Ok(context
-        .current_close_basis
-        .as_ref()
-        .map(|basis| !basis.sensitive_action_requirements.is_empty())
-        .unwrap_or(false))
+    Ok(
+        parse_task_control_level(&context.task.effective_control_level)?
+            == TaskControlLevel::Sensitive
+            || context
+                .current_close_basis
+                .as_ref()
+                .map(|basis| !basis.sensitive_action_requirements.is_empty())
+                .unwrap_or(false),
+    )
+}
+
+fn sensitive_action_basis_missing(context: &CloseTaskContext) -> CoreResult<bool> {
+    Ok(
+        parse_task_control_level(&context.task.effective_control_level)?
+            == TaskControlLevel::Sensitive
+            && context
+                .current_close_basis
+                .as_ref()
+                .map(|basis| basis.sensitive_action_requirements.is_empty())
+                .unwrap_or(true),
+    )
 }
 
 fn baseline_stale_for_close(context: &CloseTaskContext) -> CoreResult<bool> {

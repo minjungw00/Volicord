@@ -158,6 +158,25 @@ pub fn validate_authority_status(
         .close_blockers
         .as_ref()
         .ok_or(AuthorityStatusValidationError::MissingProjection)?;
+    let completion_claim_allowed = status_close_blockers.is_empty()
+        && matches!(
+            status_close_state,
+            StatusCloseState::Ready | StatusCloseState::Closed
+        );
+    let missing_agent_owner_method = status
+        .next_actions
+        .iter()
+        .chain(
+            status_close_blockers
+                .iter()
+                .flat_map(|blocker| blocker.next_actions.iter()),
+        )
+        .any(|action| {
+            action
+                .allowed_operation_categories
+                .contains(&OperationCategory::AgentWorkflow)
+                && action.owner_method.is_none()
+        });
 
     if receipt.project_id != expectation.project_id
         || receipt.task_ref.record_kind != StateRecordKind::Task
@@ -200,6 +219,8 @@ pub fn validate_authority_status(
         || status_close_blockers != &receipt.close_blockers
         || status.next_actions.first() != receipt.next_action.as_ref()
         || authority_next_actor(receipt.next_action.as_ref()) != receipt.next_actor
+        || receipt.completion_claim_allowed != completion_claim_allowed
+        || missing_agent_owner_method
     {
         return Err(AuthorityStatusValidationError::ProjectionMismatch);
     }
@@ -469,6 +490,13 @@ mod tests {
             }),
             ("next actor", |value| {
                 value["authority_receipt"]["next_actor"] = serde_json::json!("none")
+            }),
+            ("completion claim", |value| {
+                value["authority_receipt"]["completion_claim_allowed"] = serde_json::json!(true)
+            }),
+            ("agent action owner method", |value| {
+                value["authority_receipt"]["next_action"]["owner_method"] = Value::Null;
+                value["next_actions"][0]["owner_method"] = Value::Null;
             }),
         ];
 

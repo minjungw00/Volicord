@@ -11,6 +11,7 @@ use volicord_store::{
     agent_connections::agent_connection_project_access_read_only,
     artifacts::{ArtifactStagingInsert, PersistentArtifactVerificationStatus, StagedPayloadKind},
     core_pipeline::*,
+    diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
     evidence_capture::{
         EvidenceCaptureIntentInsert, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
         EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
@@ -66,10 +67,15 @@ use crate::policy::{
         user_action_blocks_operation, user_action_keeps_task_waiting, user_action_required_for,
         UserActionOperation, UserActionOperationContext,
     },
+    workflow::{
+        acceptance_policy_for_control, effective_control_level, parse_requested_control_level,
+        parse_task_control_level, project_workflow_policy, resolve_task_control_authority,
+        ProjectWorkflowPolicy,
+    },
     write_ticket::{
         current_sensitive_approval, normalize_sensitive_action_scope, normalized_string_set,
         prepare_write_decision, prepare_write_dry_run_summary, run_write_ticket_mismatch,
-        write_decision_reason, write_ticket_expires_at, write_ticket_is_expired,
+        write_decision_reason, write_ticket_is_idle_expired, RunWriteTicketAttempt,
         SensitiveApprovalRequirement,
     },
 };
@@ -187,6 +193,74 @@ struct ValidatedStageArtifactInput {
 }
 
 const MAX_STAGED_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+fn elapsed_micros(start: &UtcTimestamp, end: &UtcTimestamp) -> Option<u64> {
+    end.as_datetime()
+        .signed_duration_since(start.as_datetime())
+        .num_microseconds()
+        .and_then(|value| u64::try_from(value).ok())
+}
+
+fn first_product_write_duration_micros(
+    store: &CoreProjectStore,
+    task_id: &TaskId,
+    observed_no_later_than: &UtcTimestamp,
+) -> Option<u64> {
+    let task_created_at = store.task_created_at(task_id).ok()??;
+    store
+        .product_write_observation_candidates_for_task(task_id)
+        .ok()?
+        .into_iter()
+        .filter_map(|candidate| {
+            let paths = serde_json::from_str::<Vec<String>>(&candidate.observed_paths_json).ok()?;
+            let normalized =
+                normalize_product_paths(&store.project_record().repo_root, &paths).ok()?;
+            if normalized.is_empty() {
+                return None;
+            }
+            let observed_at = UtcTimestamp::parse(&candidate.observed_at).ok()?;
+            if observed_at.as_datetime() < task_created_at.as_datetime()
+                || observed_at.as_datetime() > observed_no_later_than.as_datetime()
+            {
+                return None;
+            }
+            elapsed_micros(&task_created_at, &observed_at)
+        })
+        .min()
+}
+
+fn record_core_workflow_metric_best_effort(
+    service: &CoreService,
+    session_id: Option<&str>,
+    metric_kind: WorkflowMetricKind,
+    value: u64,
+) {
+    let Some(session_id) = session_id else {
+        return;
+    };
+    let _ = record_workflow_metric_event(
+        service.runtime_home(),
+        &WorkflowMetricEvent {
+            session_id: session_id.to_owned(),
+            metric_kind,
+            value,
+            method_name: None,
+            integration_profile: None,
+            decision: None,
+            observation_confidence: None,
+            outcome: None,
+        },
+    );
+}
+
+fn response_committed_fresh_effect(response: &PipelineResponse) -> bool {
+    !response.replayed
+        && response
+            .response_value
+            .pointer("/base/effect_kind")
+            .and_then(Value::as_str)
+            == Some("core_committed")
+}
 
 enum PlanError {
     Core(CorePipelineError),
@@ -2012,50 +2086,6 @@ fn write_ticket_invalid_response(
     )
 }
 
-fn stale_write_ticket_basis_response(
-    envelope: &ToolEnvelope,
-    record: &WriteTicketRecord,
-    current_state_version: u64,
-) -> PipelineResponse {
-    let mut details = Map::new();
-    details.insert(
-        "state_clock".to_owned(),
-        Value::String("project_state.state_version".to_owned()),
-    );
-    details.insert(
-        "current_state_version".to_owned(),
-        Value::from(current_state_version),
-    );
-    details.insert(
-        "write_ticket_basis_state_version".to_owned(),
-        Value::from(record.basis_state_version),
-    );
-    details.insert(
-        "write_ticket_id".to_owned(),
-        Value::String(record.write_ticket_id.clone()),
-    );
-    details.insert(
-        "project_id".to_owned(),
-        Value::String(envelope.project_id.as_str().to_owned()),
-    );
-    if let Some(task_id) = envelope.task_id.as_ref() {
-        details.insert(
-            "task_id".to_owned(),
-            Value::String(task_id.as_str().to_owned()),
-        );
-    }
-    infallible_rejected_pipeline_response(
-        envelope.dry_run,
-        Some(current_state_version),
-        vec![tool_error(
-            ErrorCode::StateVersionConflict,
-            "write ticket basis_state_version is stale",
-            true,
-            Some(details),
-        )],
-    )
-}
-
 fn baseline_stale_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
@@ -2385,6 +2415,7 @@ fn agent_safe_pending_user_action_summaries(
 }
 
 struct SummaryBuild<'a> {
+    store: &'a CoreProjectStore,
     project_id: &'a ProjectId,
     state_version: u64,
     task: &'a TaskRecord,
@@ -2403,6 +2434,7 @@ struct SummaryBuild<'a> {
 
 fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::StateSummary> {
     let SummaryBuild {
+        store,
         project_id,
         state_version,
         task,
@@ -2418,6 +2450,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         guard_health,
         guarantee_display,
     } = input;
+    let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let task_id = TaskId::new(task.task_id.clone());
     let task_ref = state_ref(
         StateRecordKind::Task,
@@ -2508,6 +2541,16 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         state_version,
         task_ref: Some(task_ref),
         mode: Some(parse_task_mode(&task.mode)?),
+        requested_control_level: Some(
+            parse_requested_control_level(&task.requested_control_level)
+                .map_err(CorePipelineError::from)?,
+        ),
+        effective_control_level: Some(
+            parse_task_control_level(&task.effective_control_level)
+                .map_err(CorePipelineError::from)?,
+        ),
+        control_level_reason: Some(task.control_level_reason.clone()),
+        project_policy: workflow_policy.summary,
         work_phase: Some(parse_work_phase(&task.work_phase)?),
         acceptance_policy: Some(parse_acceptance_policy(&task.acceptance_policy)?),
         acceptance_policy_reason: Some(task.acceptance_policy_reason.clone()),
@@ -2585,10 +2628,41 @@ fn write_ticket_summary_for_record(
         ),
         _ => Vec::new(),
     };
+    let mut effective_status = effective_write_ticket_status(record, state_version, now)?;
+    let mut effective_invalidation_reason =
+        effective_write_ticket_invalidation_reason(record, now)?;
+    if effective_status == WriteTicketStatus::Active {
+        if let (Some(store), Some(now)) = (store, now) {
+            if !write_ticket_approval_basis_is_current_for_projection(store, record, now)? {
+                effective_status = WriteTicketStatus::Invalidated;
+                effective_invalidation_reason =
+                    Some(WriteTicketInvalidationReason::ApprovalBasisChanged);
+            }
+        }
+    }
     Ok(WriteTicketStateSummary {
-        status: effective_write_ticket_status(record, state_version, now)?,
+        status: effective_status,
         write_ticket_ref: Some(write_ticket_ref(record, state_version)),
         basis_state_version: Some(record.basis_state_version),
+        validity_basis: Some(decode_required_json(
+            "write_tickets",
+            record.write_ticket_id.clone(),
+            "validity_basis_json",
+            Some(&record.validity_basis_json),
+        )?),
+        invalidation_reason: effective_invalidation_reason,
+        idle_expires_at: record
+            .idle_expires_at
+            .as_ref()
+            .map(|value| {
+                parse_owner_storage_value(
+                    "write_tickets",
+                    record.write_ticket_id.clone(),
+                    "idle_expires_at",
+                    value,
+                )
+            })
+            .transpose()?,
         intended_paths: attempt_scope.intended_paths,
         consumed_by_run_ref,
         observation_refs,
@@ -2598,26 +2672,117 @@ fn write_ticket_summary_for_record(
 
 fn effective_write_ticket_status(
     record: &WriteTicketRecord,
-    state_version: u64,
+    _state_version: u64,
     now: Option<DateTime<Utc>>,
 ) -> CoreResult<WriteTicketStatus> {
     let stored_status = parse_storage_value("write_tickets.status", &record.status)?;
     if stored_status != WriteTicketStatus::Active {
         return Ok(stored_status);
     }
-    if record.basis_state_version != state_version {
-        return Ok(WriteTicketStatus::Stale);
-    }
     if now
-        .map(|now| write_ticket_is_expired(record, now))
+        .map(|now| write_ticket_is_idle_expired(record, now))
         .transpose()
         .map_err(CorePipelineError::from)?
         .unwrap_or(false)
     {
-        Ok(WriteTicketStatus::Expired)
+        Ok(WriteTicketStatus::Invalidated)
     } else {
         Ok(WriteTicketStatus::Active)
     }
+}
+
+fn effective_write_ticket_invalidation_reason(
+    record: &WriteTicketRecord,
+    now: Option<DateTime<Utc>>,
+) -> CoreResult<Option<WriteTicketInvalidationReason>> {
+    if record.status == "active"
+        && now
+            .map(|now| write_ticket_is_idle_expired(record, now))
+            .transpose()
+            .map_err(CorePipelineError::from)?
+            .unwrap_or(false)
+    {
+        return Ok(Some(WriteTicketInvalidationReason::IdleTimeout));
+    }
+    record
+        .invalidation_reason
+        .as_deref()
+        .map(|value| parse_storage_value("write_tickets.invalidation_reason", value))
+        .transpose()
+}
+
+fn write_ticket_approval_basis_is_current_for_projection(
+    store: &CoreProjectStore,
+    record: &WriteTicketRecord,
+    now: DateTime<Utc>,
+) -> CoreResult<bool> {
+    let validity_basis: WriteTicketValidityBasis = decode_required_json(
+        "write_tickets",
+        record.write_ticket_id.clone(),
+        "validity_basis_json",
+        Some(&record.validity_basis_json),
+    )?;
+    let scope: WriteTicketAttemptScope = decode_required_json::<PersistedWriteTicketAttemptScope>(
+        "write_tickets",
+        record.write_ticket_id.clone(),
+        "attempt_scope_json",
+        Some(&record.attempt_scope_json),
+    )?
+    .into();
+    let task = store
+        .task_record(&validity_basis.task_id)
+        .map_err(CorePipelineError::from)?
+        .ok_or_else(|| {
+            CorePipelineError::Store(StoreError::NotFound {
+                entity: "task",
+                id: validity_basis.task_id.as_str().to_owned(),
+            })
+        })?;
+    let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+    let resolved_control =
+        resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
+    if resolved_control.pending_policy_reevaluation {
+        return Ok(false);
+    }
+    if validity_basis.approval_basis_refs.is_empty() {
+        return Ok(scope.sensitive_categories.is_empty()
+            && resolved_control.effective_control_level != TaskControlLevel::Sensitive);
+    }
+
+    let now = UtcTimestamp::from_datetime(now);
+    let requirement = SensitiveApprovalRequirement {
+        task_id: &validity_basis.task_id,
+        change_unit_id: &validity_basis.change_unit_id,
+        scope_revision: task.scope_revision,
+        operation: &scope.intended_operation,
+        normalized_paths: &scope.intended_paths,
+        sensitive_categories: &scope.sensitive_categories,
+        baseline_ref: scope.baseline_ref.as_ref(),
+        required_for: UserActionRequiredFor::PrepareWrite,
+        now: &now,
+        repo_root: &store.project_record().repo_root,
+    };
+    let records = store
+        .resolved_user_action_records(
+            &validity_basis.task_id,
+            UserActionKind::SensitiveApproval,
+            &now,
+        )
+        .map_err(CorePipelineError::from)?;
+    let mut current_resolution_ids = BTreeSet::new();
+    for record in records {
+        let authority = user_action_authority_from_record(&record)?;
+        if current_sensitive_approval(&authority, &requirement) {
+            if let Some(resolution_id) = authority.user_action_resolution_id {
+                current_resolution_ids.insert(resolution_id);
+            }
+        }
+    }
+    Ok(!current_resolution_ids.is_empty()
+        && validity_basis.approval_basis_refs.iter().all(|stored| {
+            stored.record_kind == StateRecordKind::UserActionResolution
+                && current_resolution_ids.contains(stored.record_id.as_str())
+        }))
 }
 
 fn guarantee_display_for_invocation(
@@ -2691,13 +2856,17 @@ fn selected_write_ticket_for_projection(
     let mut selected = None;
     let mut selected_priority = u8::MAX;
     for record in records {
-        let status = effective_write_ticket_status(&record, state_version, Some(now))?;
+        let mut status = effective_write_ticket_status(&record, state_version, Some(now))?;
+        if status == WriteTicketStatus::Active
+            && !write_ticket_approval_basis_is_current_for_projection(store, &record, now)?
+        {
+            status = WriteTicketStatus::Invalidated;
+        }
         let priority = match status {
             WriteTicketStatus::Active => 0,
-            WriteTicketStatus::Expired => 1,
-            WriteTicketStatus::Stale => 2,
-            WriteTicketStatus::Consumed => 3,
-            WriteTicketStatus::Revoked => 4,
+            WriteTicketStatus::Invalidated => 1,
+            WriteTicketStatus::Consumed => 2,
+            WriteTicketStatus::Revoked => 3,
         };
         if priority < selected_priority {
             selected_priority = priority;
@@ -3336,8 +3505,7 @@ fn write_ticket_summary_text(selected: bool, summary: Option<&WriteTicketStateSu
         .map(|summary| match summary.status {
             WriteTicketStatus::Active => "active",
             WriteTicketStatus::Consumed => "consumed",
-            WriteTicketStatus::Expired => "expired",
-            WriteTicketStatus::Stale => "stale",
+            WriteTicketStatus::Invalidated => "invalidated",
             WriteTicketStatus::Revoked => "revoked",
         })
         .unwrap_or("none")

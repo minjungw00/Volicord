@@ -1,38 +1,6 @@
 use super::*;
 
 #[test]
-fn prepare_write_ttl_overflow_rejects_without_effects() -> Result<(), Box<dyn Error>> {
-    let mut harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, "prepare_write_ttl_overflow")?;
-    harness.use_clock(ManualClock::at("9999-12-31T23:50:00Z"));
-    let before = harness.counts()?;
-
-    let response = harness.service.prepare_write(
-        prepare_write_request(
-            "req_prepare_write_ttl_overflow",
-            "idem_prepare_write_ttl_overflow",
-            Some(2),
-            Some(&task_id),
-            Some(&change_unit_id),
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "VALIDATION_FAILED"
-    );
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["field"],
-        "write_ticket.expires_at"
-    );
-    assert_eq!(harness.counts()?, before);
-    Ok(())
-}
-
-#[test]
 fn advisor_prepare_write_rejects_without_ticket_or_state_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
@@ -199,16 +167,12 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
     let ref_write_ticket_id = response_record_id(&response.response_value, "write_ticket_ref");
     assert_eq!(write_ticket_id, ref_write_ticket_id);
     assert_eq!(write_ticket_basis(&harness, &ref_write_ticket_id)?, 5);
-    let (created_at, expires_at) = write_ticket_timestamps(&harness, &ref_write_ticket_id)?;
+    let (created_at, idle_expires_at) = write_ticket_timestamps(&harness, &ref_write_ticket_id)?;
     assert_eq!(created_at, "2026-06-18T00:00:00Z");
-    assert_eq!(expires_at, "2026-06-18T00:15:00Z");
+    assert_eq!(idle_expires_at, None);
     assert_eq!(
-        response.response_value["write_ticket"]["expires_at"],
-        expires_at
-    );
-    assert_eq!(
-        response.response_value["write_ticket"]["expires_at"],
-        expires_at
+        response.response_value["write_ticket"]["idle_expires_at"],
+        Value::Null
     );
     let status = harness.service.status(
         StatusRequest {
@@ -231,6 +195,425 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
         status_state["write_ticket_summary"]["guarantee_display"].clone();
     assert_eq!(response_state, status_state);
     assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 1);
+    Ok(())
+}
+
+#[test]
+fn prepare_write_reuses_compatible_ticket_across_unrelated_state_increment(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_ticket_reuse")?;
+
+    let first = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_ticket_reuse_first",
+            "idem_prepare_ticket_reuse_first",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let first_ticket_id = response_record_id(&first.response_value, "write_ticket_ref");
+
+    let mut blocked_request = prepare_write_request(
+        "req_prepare_ticket_reuse_blocked",
+        "idem_prepare_ticket_reuse_blocked",
+        Some(3),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    blocked_request.intended_paths = vec!["src/other.rs".to_owned()];
+    let blocked = harness.service.prepare_write(
+        blocked_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(blocked.response_value["decision"], "blocked");
+
+    let reused = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_ticket_reuse_again",
+            "idem_prepare_ticket_reuse_again",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(reused.response_value["decision"], "allowed");
+    assert_eq!(reused.response_value["write_ticket_effect"], "reused");
+    assert_eq!(
+        response_record_id(&reused.response_value, "write_ticket_ref"),
+        first_ticket_id
+    );
+    assert_eq!(write_ticket_count(&harness)?, 1);
+    assert_eq!(write_ticket_status(&harness, &first_ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn prepare_write_reuses_ticket_after_status_user_action_evidence_and_non_product_run(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_reuse_unrelated_sequence")?;
+    let first = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_reuse_sequence_first",
+            "idem_prepare_reuse_sequence_first",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&first.response_value, "write_ticket_ref");
+
+    harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_prepare_reuse_sequence_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    let action = harness.service.request_user_action(
+        user_action_request(
+            "req_prepare_reuse_sequence_action",
+            "idem_prepare_reuse_sequence_action",
+            false,
+            Some(3),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::Cancellation,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let action_id = response_record_id(&action.response_value, "user_action_request_ref");
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_prepare_reuse_sequence_resolve",
+            "idem_prepare_reuse_sequence_resolve",
+            Some(4),
+            &task_id,
+            &action_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+    let mut run = record_run_request(
+        "req_prepare_reuse_sequence_run",
+        "idem_prepare_reuse_sequence_run",
+        false,
+        Some(harness.counts()?.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::Implementation;
+    run.evidence_updates = vec![supported_evidence_update(
+        "Unrelated evidence recording preserves the active write ticket.",
+    )];
+    let before_run = harness.counts()?;
+    let recorded = harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        recorded.response_value["base"]["response_kind"], "result",
+        "{:#}",
+        recorded.response_value
+    );
+    assert!(
+        recorded.response_value["evidence_summary"]["coverage_items"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["coverage_state"] == "supported"))
+    );
+    let after_run = harness.counts()?;
+    assert_eq!(after_run.runs, before_run.runs + 1);
+    assert_eq!(
+        after_run.evidence_summaries,
+        before_run.evidence_summaries + 1
+    );
+    assert_eq!(after_run.write_tickets, before_run.write_tickets);
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "active");
+
+    let reused = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_reuse_sequence_again",
+            "idem_prepare_reuse_sequence_again",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(reused.response_value["decision"], "allowed");
+    assert_eq!(reused.response_value["write_ticket_effect"], "reused");
+    assert_eq!(
+        response_record_id(&reused.response_value, "write_ticket_ref"),
+        ticket_id
+    );
+    assert_eq!(write_ticket_count(&harness)?, 1);
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn prepare_write_reuses_sensitive_ticket_only_for_exact_operation_and_approval_basis(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_sensitive_ticket_identity")?;
+    let approval = harness.service.request_user_action(
+        user_action_request(
+            "req_prepare_sensitive_ticket_identity_approval",
+            "idem_prepare_sensitive_ticket_identity_approval",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::SensitiveApproval,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let approval_id = response_record_id(&approval.response_value, "user_action_request_ref");
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_prepare_sensitive_ticket_identity_resolve",
+            "idem_prepare_sensitive_ticket_identity_resolve",
+            None,
+            &task_id,
+            &approval_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    let mut first_request = prepare_write_request(
+        "req_prepare_sensitive_ticket_identity_first",
+        "idem_prepare_sensitive_ticket_identity_first",
+        Some(4),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    first_request.sensitive_categories = vec!["network".to_owned()];
+    let first = harness
+        .service
+        .prepare_write(first_request, invocation(OperationCategory::AgentWorkflow))?;
+    let first_ticket_id = response_record_id(&first.response_value, "write_ticket_ref");
+
+    let mut reworded = prepare_write_request(
+        "req_prepare_sensitive_ticket_identity_reworded",
+        "idem_prepare_sensitive_ticket_identity_reworded",
+        Some(5),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    reworded.intended_operation = "Reworded description of the already authorized step".to_owned();
+    reworded.sensitive_categories = vec!["network".to_owned()];
+    let rejected = harness
+        .service
+        .prepare_write(reworded, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(rejected.response_value["decision"], "approval_required");
+    assert_eq!(rejected.response_value["write_ticket_effect"], "none");
+    assert!(rejected.response_value["write_decision_reasons"]
+        .as_array()
+        .is_some_and(|reasons| reasons
+            .iter()
+            .any(|reason| { reason["code"] == "sensitive_approval_missing" })));
+    assert_eq!(write_ticket_count(&harness)?, 1);
+    assert_eq!(write_ticket_status(&harness, &first_ticket_id)?, "active");
+
+    let mut exact = prepare_write_request(
+        "req_prepare_sensitive_ticket_identity_exact",
+        "idem_prepare_sensitive_ticket_identity_exact",
+        Some(harness.counts()?.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    exact.sensitive_categories = vec!["network".to_owned()];
+    let reused = harness
+        .service
+        .prepare_write(exact, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(reused.response_value["decision"], "allowed");
+    assert_eq!(reused.response_value["write_ticket_effect"], "reused");
+    assert_eq!(
+        response_record_id(&reused.response_value, "write_ticket_ref"),
+        first_ticket_id
+    );
+    assert_eq!(write_ticket_count(&harness)?, 1);
+    assert_eq!(write_ticket_status(&harness, &first_ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn denied_sensitive_prepare_for_different_scope_preserves_current_ticket(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_sensitive_unrelated_scope")?;
+    let approval = harness.service.request_user_action(
+        user_action_request(
+            "req_prepare_sensitive_unrelated_scope_approval",
+            "idem_prepare_sensitive_unrelated_scope_approval",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::SensitiveApproval,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let approval_id = response_record_id(&approval.response_value, "user_action_request_ref");
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_prepare_sensitive_unrelated_scope_resolve",
+            "idem_prepare_sensitive_unrelated_scope_resolve",
+            None,
+            &task_id,
+            &approval_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    let mut initial = prepare_write_request(
+        "req_prepare_sensitive_unrelated_scope_initial",
+        "idem_prepare_sensitive_unrelated_scope_initial",
+        Some(harness.counts()?.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    initial.sensitive_categories = vec!["network".to_owned()];
+    let initial = harness
+        .service
+        .prepare_write(initial, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(initial.response_value["decision"], "allowed");
+    let ticket_id = response_record_id(&initial.response_value, "write_ticket_ref");
+
+    let mut different_scope = prepare_write_request(
+        "req_prepare_sensitive_unrelated_scope_denied",
+        "idem_prepare_sensitive_unrelated_scope_denied",
+        Some(harness.counts()?.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    different_scope.intended_paths = vec!["tests/export.rs".to_owned()];
+    different_scope.sensitive_categories = vec!["network".to_owned()];
+    let denied = harness.service.prepare_write(
+        different_scope,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(denied.response_value["decision"], "approval_required");
+    assert_prepare_reason(&denied.response_value, "sensitive_approval_missing");
+    assert_eq!(denied.response_value["write_ticket_effect"], "none");
+    assert_eq!(write_ticket_count(&harness)?, 1);
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn prepare_write_invalidates_expired_approval_basis_even_when_new_write_is_not_allowed(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock.clone());
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_expired_approval_basis")?;
+    let mut approval_request = user_action_request(
+        "req_prepare_expired_approval_basis_approval",
+        "idem_prepare_expired_approval_basis_approval",
+        false,
+        Some(2),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::SensitiveApproval,
+    );
+    let expires_at = UtcTimestamp::parse("2026-06-18T00:05:00Z")?;
+    approval_request.expires_at = Some(expires_at.clone()).into();
+    let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+        unreachable!("sensitive approval fixture is choice-shaped")
+    };
+    choice
+        .sensitive_action_scope
+        .as_mut()
+        .expect("sensitive approval scope")
+        .expires_at = Some(expires_at).into();
+    let approval = harness.service.request_user_action(
+        approval_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let approval_id = response_record_id(&approval.response_value, "user_action_request_ref");
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_prepare_expired_approval_basis_resolve",
+            "idem_prepare_expired_approval_basis_resolve",
+            None,
+            &task_id,
+            &approval_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    let mut initial_request = prepare_write_request(
+        "req_prepare_expired_approval_basis_initial",
+        "idem_prepare_expired_approval_basis_initial",
+        Some(4),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    initial_request.sensitive_categories = vec!["network".to_owned()];
+    let initial = harness.service.prepare_write(
+        initial_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let write_ticket_id = response_record_id(&initial.response_value, "write_ticket_ref");
+    clock.advance(Duration::minutes(6));
+    let before = harness.counts()?;
+
+    let mut retry = prepare_write_request(
+        "req_prepare_expired_approval_basis_retry",
+        "idem_prepare_expired_approval_basis_retry",
+        Some(before.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    retry.sensitive_categories = vec!["network".to_owned()];
+    let blocked = harness
+        .service
+        .prepare_write(retry, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(blocked.response_value["decision"], "approval_required");
+    assert_prepare_reason(&blocked.response_value, "sensitive_approval_missing");
+    assert_eq!(blocked.response_value["write_ticket_effect"], "none");
+    assert_eq!(
+        write_ticket_status(&harness, &write_ticket_id)?,
+        "invalidated"
+    );
+    let invalidation_reason: String = harness.conn()?.query_row(
+        "SELECT invalidation_reason
+           FROM write_tickets
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, write_ticket_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(invalidation_reason, "approval_basis_changed");
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.write_tickets, before.write_tickets);
     Ok(())
 }
 
@@ -468,6 +851,208 @@ fn effect_contract_does_not_replace_sensitive_approval() -> Result<(), Box<dyn E
     assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
     assert!(response.response_value["write_ticket"].is_null());
     assert_eq!(harness.counts()?.write_tickets, before.write_tickets);
+    Ok(())
+}
+
+#[test]
+fn effective_sensitive_control_requires_approval_even_without_declared_categories(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_effect_contract(
+        &harness,
+        "contract_sensitive_implicit",
+        ChangeUnitEffectContract {
+            allowed_effects: vec![
+                ChangeUnitEffectKind::ProductFileWrite,
+                ChangeUnitEffectKind::ExternalNetwork,
+            ],
+            ..ChangeUnitEffectContract::default()
+        },
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_contract_sensitive_implicit",
+            "idem_contract_sensitive_implicit",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["decision"], "approval_required");
+    assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
+    assert!(response.response_value["write_ticket"].is_null());
+    assert_eq!(harness.counts()?.write_tickets, before.write_tickets);
+    Ok(())
+}
+
+#[test]
+fn policy_denied_path_raises_light_task_to_sensitive() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let mut policy = light_workflow_policy();
+    policy["light"]["denied_path_patterns"] = json!(["src/export.rs"]);
+    harness.set_workflow_policy(policy)?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "prepare_policy_denied_path",
+        RequestedMode::Direct,
+    )?;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_policy_denied_path",
+            "idem_prepare_policy_denied_path",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["decision"], "approval_required");
+    assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
+    assert!(response.response_value["write_ticket"].is_null());
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_prepare_policy_denied_path",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        status.response_value["active_task"]["effective_control_level"],
+        "sensitive"
+    );
+    assert!(status.response_value["active_task"]["control_level_reason"]
+        .as_str()
+        .is_some_and(|reason| reason.contains("denied project-policy prefix")));
+    Ok(())
+}
+
+#[test]
+fn prepare_write_honors_and_clears_durable_policy_reevaluation_mark() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "prepare_policy_reevaluation_mark",
+        RequestedMode::Direct,
+    )?;
+    let marker_fingerprint = format!("sha256:{}", "a".repeat(64));
+    let metadata_json = volicord_types::canonical_json_string(&json!({
+        "policy_control_reevaluation": {
+            "policy_version": 2,
+            "policy_fingerprint": marker_fingerprint,
+            "required_effective_control_level": "tracked",
+            "marked_at": "2026-06-18T00:00:00Z"
+        }
+    }))?;
+    harness.conn()?.execute(
+        "UPDATE tasks SET metadata_json = ?3 WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id, metadata_json],
+    )?;
+    let before = harness.counts()?.state_version;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_policy_reevaluation_mark",
+            "idem_prepare_policy_reevaluation_mark",
+            Some(before),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["decision"], "allowed");
+    let task = harness
+        .service
+        .status(
+            StatusRequest {
+                envelope: envelope(
+                    "req_status_prepare_policy_reevaluation_mark",
+                    None,
+                    false,
+                    None,
+                    Some(&task_id),
+                ),
+                include: status_include(),
+            },
+            invocation(OperationCategory::Read),
+        )?
+        .response_value;
+    assert_eq!(task["active_task"]["effective_control_level"], "tracked");
+    assert!(task["active_task"]["control_level_reason"]
+        .as_str()
+        .is_some_and(|reason| reason.contains("pending project-policy reevaluation")));
+    let persisted_metadata: String = harness.conn()?.query_row(
+        "SELECT metadata_json FROM tasks WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?;
+    assert!(serde_json::from_str::<Value>(&persisted_metadata)?
+        .get("policy_control_reevaluation")
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn policy_strengthening_requires_approval_instead_of_reusing_nonsensitive_ticket(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "prepare_policy_strengthening")?;
+    let initial = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_policy_strengthening_initial",
+            "idem_prepare_policy_strengthening_initial",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let initial_ticket_id = response_record_id(&initial.response_value, "write_ticket_ref");
+    let marker_fingerprint = format!("sha256:{}", "b".repeat(64));
+    let metadata_json = volicord_types::canonical_json_string(&json!({
+        "policy_control_reevaluation": {
+            "policy_version": 2,
+            "policy_fingerprint": marker_fingerprint,
+            "required_effective_control_level": "sensitive",
+            "marked_at": "2026-06-18T00:00:00Z"
+        }
+    }))?;
+    harness.conn()?.execute(
+        "UPDATE tasks SET metadata_json = ?3 WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id, metadata_json],
+    )?;
+
+    let response = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_policy_strengthening_retry",
+            "idem_prepare_policy_strengthening_retry",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["decision"], "approval_required");
+    assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
+    assert_eq!(response.response_value["write_ticket_effect"], "none");
+    assert_eq!(write_ticket_status(&harness, &initial_ticket_id)?, "active");
     Ok(())
 }
 
@@ -1320,8 +1905,8 @@ fn prepare_write_idempotency_replays_without_second_write_ticket() -> Result<(),
     assert_eq!(write_ticket_count(&harness)?, 1);
     assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 1);
     assert_eq!(
-        second.response_value["write_ticket"]["expires_at"],
-        first.response_value["write_ticket"]["expires_at"]
+        second.response_value["write_ticket"]["idle_expires_at"],
+        first.response_value["write_ticket"]["idle_expires_at"]
     );
     Ok(())
 }
@@ -1556,6 +2141,17 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
         scoped.response_value["state"]["workspace_context"]["branch_ref"],
         "refs/heads/original"
     );
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_workspace_original_write",
+            "idem_workspace_original_write",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(original.clone()),
+    )?;
+    let original_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
 
     let mut changed = original;
     changed.branch_ref = Some("refs/heads/other".to_owned());
@@ -1565,7 +2161,7 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
         prepare_write_request(
             "req_workspace_write",
             "idem_workspace_write",
-            Some(2),
+            Some(3),
             Some(&task_id),
             Some(&change_unit_id),
         ),
@@ -1580,5 +2176,16 @@ fn prepare_write_blocks_changed_git_workspace_until_explicit_retarget() -> Resul
             reason["category"] == "workspace" && reason["code"] == "workspace_context_mismatch"
         }));
     assert!(response.response_value["write_ticket"].is_null());
+    assert_eq!(
+        write_ticket_status(&harness, &original_ticket_id)?,
+        "invalidated"
+    );
+    let reason: String = harness.conn()?.query_row(
+        "SELECT invalidation_reason FROM write_tickets
+          WHERE project_id = ?1 AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, original_ticket_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(reason, "workspace_changed");
     Ok(())
 }

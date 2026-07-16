@@ -4,6 +4,9 @@ use crate::routing::{
     McpStorageCapability,
 };
 
+#[cfg(test)]
+pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 35_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpToolAnnotations {
@@ -51,6 +54,12 @@ pub struct McpToolDefinition {
     #[serde(rename = "outputSchema")]
     pub output_schema: Value,
     pub annotations: McpToolAnnotations,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ToolSchemaDetail {
+    RuntimeCompact,
+    Documentation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -287,19 +296,26 @@ pub(crate) fn canonical_tool_examples(tool_name: &str) -> &'static [McpToolExamp
 }
 
 pub fn public_method_tools() -> Vec<McpToolDefinition> {
-    method_tools(PUBLIC_METHOD_TOOL_NAMES)
+    method_tools(PUBLIC_METHOD_TOOL_NAMES, ToolSchemaDetail::Documentation)
 }
 
 /// Returns adapter utility tool definitions.
 pub fn adapter_utility_tools() -> Vec<McpToolDefinition> {
+    adapter_utility_tools_with_detail(ToolSchemaDetail::Documentation)
+}
+
+fn adapter_utility_tools_with_detail(detail: ToolSchemaDetail) -> Vec<McpToolDefinition> {
     ADAPTER_UTILITY_TOOL_NAMES
         .iter()
         .map(|name| McpToolDefinition {
             name,
-            description: tool_description(name),
-            input_schema: mcp_tool_input_schema(name)
+            description: tool_description(name, detail),
+            input_schema: mcp_tool_input_schema_with_detail(name, detail)
                 .expect("adapter utility tool input schema should exist"),
-            output_schema: list_projects_output_schema(),
+            output_schema: match detail {
+                ToolSchemaDetail::RuntimeCompact => compact_output_schema(),
+                ToolSchemaDetail::Documentation => list_projects_output_schema(),
+            },
             annotations: McpToolAnnotations::read_only(),
         })
         .collect()
@@ -313,7 +329,9 @@ pub fn mcp_tools() -> Vec<McpToolDefinition> {
 /// Returns MCP-visible tools for the supplied Agent Connection mode.
 pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<McpToolDefinition> {
     let mut tools = match mode {
-        AgentConnectionMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES),
+        AgentConnectionMode::ReadOnly => {
+            method_tools(READ_ONLY_METHOD_TOOL_NAMES, ToolSchemaDetail::Documentation)
+        }
         AgentConnectionMode::Workflow => public_method_tools(),
     };
     tools.extend(adapter_utility_tools());
@@ -321,22 +339,38 @@ pub fn mcp_tools_for_mode(mode: AgentConnectionMode) -> Vec<McpToolDefinition> {
 }
 
 /// Returns MCP-visible tools for the effective connection and storage capability.
-pub fn mcp_tools_for_mode_and_storage(
+#[cfg(test)]
+pub(crate) fn mcp_tools_for_mode_and_storage(
     mode: AgentConnectionMode,
     storage_capability: McpStorageCapability,
 ) -> Vec<McpToolDefinition> {
+    mcp_tools_for_mode_and_storage_with_detail(
+        mode,
+        storage_capability,
+        ToolSchemaDetail::Documentation,
+    )
+}
+
+pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
+    mode: AgentConnectionMode,
+    storage_capability: McpStorageCapability,
+    detail: ToolSchemaDetail,
+) -> Vec<McpToolDefinition> {
     let mut tools = match effective_tool_mode_for_mode_and_storage(mode, storage_capability) {
         McpEffectiveToolMode::Unavailable => Vec::new(),
-        McpEffectiveToolMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES),
-        McpEffectiveToolMode::ReadOnlyDegraded => method_tools([
-            STATUS_TOOL_NAME,
-            GET_OPERATION_RESULT_TOOL_NAME,
-            REQUEST_USER_ACTION_TOOL_NAME,
-            CHECK_CLOSE_TOOL_NAME,
-        ]),
-        McpEffectiveToolMode::Workflow => public_method_tools(),
+        McpEffectiveToolMode::ReadOnly => method_tools(READ_ONLY_METHOD_TOOL_NAMES, detail),
+        McpEffectiveToolMode::ReadOnlyDegraded => method_tools(
+            [
+                STATUS_TOOL_NAME,
+                GET_OPERATION_RESULT_TOOL_NAME,
+                REQUEST_USER_ACTION_TOOL_NAME,
+                CHECK_CLOSE_TOOL_NAME,
+            ],
+            detail,
+        ),
+        McpEffectiveToolMode::Workflow => method_tools(PUBLIC_METHOD_TOOL_NAMES, detail),
     };
-    tools.extend(adapter_utility_tools());
+    tools.extend(adapter_utility_tools_with_detail(detail));
     tools
 }
 
@@ -423,21 +457,37 @@ pub(crate) fn validate_tools_list_json_compatibility(tools: &[Value]) -> Result<
     }
 }
 
-pub(crate) fn method_tools<const N: usize>(names: [&'static str; N]) -> Vec<McpToolDefinition> {
+pub(crate) fn method_tools<const N: usize>(
+    names: [&'static str; N],
+    detail: ToolSchemaDetail,
+) -> Vec<McpToolDefinition> {
     names
         .iter()
         .map(|name| McpToolDefinition {
             name,
-            description: tool_description(name),
-            input_schema: mcp_tool_input_schema(name).expect("MCP tool schema should exist"),
-            output_schema: mcp_response_schema(name)
-                .expect("MCP tool response schema should exist"),
+            description: tool_description(name, detail),
+            input_schema: mcp_tool_input_schema_with_detail(name, detail)
+                .expect("MCP tool schema should exist"),
+            output_schema: match detail {
+                ToolSchemaDetail::RuntimeCompact => compact_output_schema(),
+                ToolSchemaDetail::Documentation => {
+                    mcp_response_schema(name).expect("MCP tool response schema should exist")
+                }
+            },
             annotations: tool_annotations(name),
         })
         .collect()
 }
 
+fn compact_output_schema() -> Value {
+    json!({ "type": "object" })
+}
+
 pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
+    mcp_tool_input_schema_with_detail(name, ToolSchemaDetail::Documentation)
+}
+
+fn mcp_tool_input_schema_with_detail(name: &str, detail: ToolSchemaDetail) -> Option<Value> {
     let mut schema = if name == LIST_PROJECTS_TOOL_NAME {
         json!({
             "type": "object",
@@ -447,20 +497,430 @@ pub(crate) fn mcp_tool_input_schema(name: &str) -> Option<Value> {
     } else {
         mcp_request_schema(name)?
     };
-    let examples = canonical_tool_examples(name)
-        .iter()
-        .map(|example| {
-            serde_json::from_str(example.arguments_json)
-                .expect("canonical MCP tool example should be valid JSON")
-        })
-        .collect::<Vec<Value>>();
-    if !examples.is_empty() {
-        schema
-            .as_object_mut()
-            .expect("MCP tool input schema should be an object")
-            .insert("examples".to_owned(), Value::Array(examples));
+    match detail {
+        ToolSchemaDetail::RuntimeCompact => compact_runtime_schema(&mut schema),
+        ToolSchemaDetail::Documentation => {
+            let examples = canonical_tool_examples(name)
+                .iter()
+                .map(|example| {
+                    serde_json::from_str(example.arguments_json)
+                        .expect("canonical MCP tool example should be valid JSON")
+                })
+                .collect::<Vec<Value>>();
+            if !examples.is_empty() {
+                schema
+                    .as_object_mut()
+                    .expect("MCP tool input schema should be an object")
+                    .insert("examples".to_owned(), Value::Array(examples));
+            }
+        }
     }
     Some(schema)
+}
+
+pub(crate) fn compact_runtime_schema(schema: &mut Value) {
+    // Keep the draft marker and validation semantics. Runtime compaction
+    // removes annotations and redundant constraints, drops unreachable
+    // definitions, and rewrites only local definition references.
+    strip_schema_presentation_annotations(schema);
+    prune_unreferenced_definitions(schema);
+    inline_single_use_definitions(schema);
+    compact_definition_names(schema);
+}
+
+fn strip_schema_presentation_annotations(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    for annotation in [
+        "$comment",
+        "default",
+        "deprecated",
+        "description",
+        "examples",
+        "readOnly",
+        "title",
+        "writeOnly",
+    ] {
+        object.remove(annotation);
+    }
+    if enum_makes_type_redundant(object) {
+        object.remove("type");
+    }
+
+    for keyword in [
+        "additionalItems",
+        "additionalProperties",
+        "contains",
+        "contentSchema",
+        "else",
+        "if",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    ] {
+        if let Some(child) = object.get_mut(keyword) {
+            strip_schema_presentation_annotations(child);
+        }
+    }
+    if let Some(items) = object.get_mut("items") {
+        match items {
+            Value::Array(items) => {
+                for item in items {
+                    strip_schema_presentation_annotations(item);
+                }
+            }
+            item => strip_schema_presentation_annotations(item),
+        }
+    }
+    for keyword in ["allOf", "anyOf", "oneOf", "prefixItems"] {
+        if let Some(items) = object.get_mut(keyword).and_then(Value::as_array_mut) {
+            for item in items {
+                strip_schema_presentation_annotations(item);
+            }
+        }
+    }
+    for keyword in [
+        "$defs",
+        "definitions",
+        "dependentSchemas",
+        "patternProperties",
+        "properties",
+    ] {
+        if let Some(children) = object.get_mut(keyword).and_then(Value::as_object_mut) {
+            for child in children.values_mut() {
+                strip_schema_presentation_annotations(child);
+            }
+        }
+    }
+    if let Some(dependencies) = object
+        .get_mut("dependencies")
+        .and_then(Value::as_object_mut)
+    {
+        for dependency in dependencies.values_mut() {
+            if dependency.is_object() {
+                strip_schema_presentation_annotations(dependency);
+            }
+        }
+    }
+}
+
+fn enum_makes_type_redundant(schema: &Map<String, Value>) -> bool {
+    let Some(values) = schema.get("enum").and_then(Value::as_array) else {
+        return false;
+    };
+    if values.is_empty() {
+        return false;
+    }
+    let schema_types = match schema.get("type") {
+        Some(Value::String(schema_type)) if recognized_schema_type(schema_type) => {
+            vec![schema_type.as_str()]
+        }
+        Some(Value::Array(schema_types)) => {
+            let schema_type_names = schema_types
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>();
+            if schema_type_names.len() != schema_types.len() {
+                return false;
+            }
+            schema_type_names
+        }
+        _ => return false,
+    };
+    !schema_types.is_empty()
+        && schema_types
+            .iter()
+            .all(|schema_type| recognized_schema_type(schema_type))
+        && values.iter().all(|value| {
+            schema_types
+                .iter()
+                .any(|schema_type| value_matches_schema_type(value, schema_type))
+        })
+}
+
+fn recognized_schema_type(schema_type: &str) -> bool {
+    matches!(
+        schema_type,
+        "null" | "boolean" | "number" | "integer" | "string" | "array" | "object"
+    )
+}
+
+fn value_matches_schema_type(value: &Value, schema_type: &str) -> bool {
+    match schema_type {
+        "null" => value.is_null(),
+        "boolean" => value.is_boolean(),
+        "number" => value.is_number(),
+        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+        "string" => value.is_string(),
+        "array" => value.is_array(),
+        "object" => value.is_object(),
+        _ => false,
+    }
+}
+
+fn prune_unreferenced_definitions(schema: &mut Value) {
+    let Some(definitions) = schema
+        .get("definitions")
+        .and_then(Value::as_object)
+        .cloned()
+    else {
+        return;
+    };
+    let mut pending = Vec::new();
+    if let Some(root) = schema.as_object() {
+        for (keyword, child) in root {
+            if keyword != "definitions" {
+                collect_definition_refs(child, &mut pending);
+            }
+        }
+    }
+    let mut reachable = BTreeSet::new();
+    let mut index = 0;
+    while index < pending.len() {
+        let name = pending[index].clone();
+        index += 1;
+        if !reachable.insert(name.clone()) {
+            continue;
+        }
+        if let Some(definition) = definitions.get(&name) {
+            collect_definition_refs(definition, &mut pending);
+        }
+    }
+
+    if let Some(definitions) = schema
+        .as_object_mut()
+        .and_then(|object| object.get_mut("definitions"))
+        .and_then(Value::as_object_mut)
+    {
+        definitions.retain(|name, _| reachable.contains(name));
+    }
+    remove_empty_definitions(schema);
+}
+
+fn collect_definition_refs(value: &Value, refs: &mut Vec<String>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(name) = object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(definition_name_from_ref)
+            {
+                refs.push(name.to_owned());
+            }
+            for child in object.values() {
+                collect_definition_refs(child, refs);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                collect_definition_refs(child, refs);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn inline_single_use_definitions(schema: &mut Value) {
+    loop {
+        let Some(definitions) = schema
+            .get("definitions")
+            .and_then(Value::as_object)
+            .cloned()
+        else {
+            return;
+        };
+        let mut counts = BTreeMap::<String, usize>::new();
+        count_definition_refs(schema, &mut counts);
+        let candidate = definitions
+            .iter()
+            .find(|(name, definition)| {
+                counts.get(*name).copied() == Some(1)
+                    && !value_references_definition(definition, name)
+            })
+            .map(|(name, definition)| (name.clone(), definition.clone()));
+        let Some((name, definition)) = candidate else {
+            break;
+        };
+
+        let replaced = replace_one_definition_ref(schema, &name, &definition);
+        debug_assert!(replaced);
+        if !replaced {
+            break;
+        }
+        if let Some(definitions) = schema
+            .as_object_mut()
+            .and_then(|object| object.get_mut("definitions"))
+            .and_then(Value::as_object_mut)
+        {
+            definitions.remove(&name);
+        }
+    }
+    remove_empty_definitions(schema);
+}
+
+fn count_definition_refs(value: &Value, counts: &mut BTreeMap<String, usize>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(name) = object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(definition_name_from_ref)
+            {
+                *counts.entry(name.to_owned()).or_default() += 1;
+            }
+            for child in object.values() {
+                count_definition_refs(child, counts);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                count_definition_refs(child, counts);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn value_references_definition(value: &Value, name: &str) -> bool {
+    match value {
+        Value::Object(object) => {
+            object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(definition_name_from_ref)
+                == Some(name)
+                || object
+                    .values()
+                    .any(|child| value_references_definition(child, name))
+        }
+        Value::Array(items) => items
+            .iter()
+            .any(|child| value_references_definition(child, name)),
+        _ => false,
+    }
+}
+
+fn replace_one_definition_ref(value: &mut Value, name: &str, definition: &Value) -> bool {
+    match value {
+        Value::Object(object) => {
+            if object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(definition_name_from_ref)
+                == Some(name)
+            {
+                *value = definition.clone();
+                return true;
+            }
+            for child in object.values_mut() {
+                if replace_one_definition_ref(child, name, definition) {
+                    return true;
+                }
+            }
+            false
+        }
+        Value::Array(items) => {
+            for child in items {
+                if replace_one_definition_ref(child, name, definition) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+fn compact_definition_names(schema: &mut Value) {
+    let names = schema
+        .get("definitions")
+        .and_then(Value::as_object)
+        .map(|definitions| definitions.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let aliases = names
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| (name, base36(index)))
+        .collect::<BTreeMap<_, _>>();
+    replace_definition_refs(schema, &aliases);
+
+    let Some(definitions) = schema
+        .as_object_mut()
+        .and_then(|object| object.get_mut("definitions"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    let original = std::mem::take(definitions);
+    for (name, definition) in original {
+        definitions.insert(
+            aliases
+                .get(&name)
+                .expect("every retained definition should have a compact alias")
+                .clone(),
+            definition,
+        );
+    }
+}
+
+fn replace_definition_refs(value: &mut Value, aliases: &BTreeMap<String, String>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::String(reference)) = object.get_mut("$ref") {
+                if let Some(name) = definition_name_from_ref(reference) {
+                    if let Some(alias) = aliases.get(name) {
+                        *reference = format!("#/definitions/{alias}");
+                    }
+                }
+            }
+            for child in object.values_mut() {
+                replace_definition_refs(child, aliases);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                replace_definition_refs(child, aliases);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn definition_name_from_ref(reference: &str) -> Option<&str> {
+    reference.strip_prefix("#/definitions/")
+}
+
+fn remove_empty_definitions(schema: &mut Value) {
+    if schema
+        .get("definitions")
+        .and_then(Value::as_object)
+        .is_some_and(Map::is_empty)
+    {
+        schema
+            .as_object_mut()
+            .expect("generated schema should be an object")
+            .remove("definitions");
+    }
+}
+
+fn base36(mut value: usize) -> String {
+    if value == 0 {
+        return "0".to_owned();
+    }
+    let mut digits = Vec::new();
+    while value > 0 {
+        let digit = value % 36;
+        digits.push(if digit < 10 {
+            char::from(b'0' + digit as u8)
+        } else {
+            char::from(b'a' + (digit - 10) as u8)
+        });
+        value /= 36;
+    }
+    digits.iter().rev().collect()
 }
 
 fn tool_annotations(name: &str) -> McpToolAnnotations {
@@ -481,41 +941,86 @@ fn tool_annotations(name: &str) -> McpToolAnnotations {
     }
 }
 
-pub(crate) fn tool_description(name: &str) -> &'static str {
-    match name {
-        INTAKE_TOOL_NAME => "Start, resume, supersede, or reject an ordinary user work loop.",
-        UPDATE_SCOPE_TOOL_NAME => {
+pub(crate) fn tool_description(name: &str, detail: ToolSchemaDetail) -> &'static str {
+    match (detail, name) {
+        (ToolSchemaDetail::RuntimeCompact, INTAKE_TOOL_NAME) => {
+            "Start or resume work and return its authority state."
+        }
+        (ToolSchemaDetail::RuntimeCompact, UPDATE_SCOPE_TOOL_NAME) => {
+            "Update Task scope and Change Unit before more work."
+        }
+        (ToolSchemaDetail::RuntimeCompact, STATUS_TOOL_NAME) => {
+            "Refresh unknown Task authority, blockers, and next action."
+        }
+        (ToolSchemaDetail::RuntimeCompact, GET_OPERATION_RESULT_TOOL_NAME) => {
+            "Read one bounded immutable mutation-result page."
+        }
+        (ToolSchemaDetail::RuntimeCompact, PREPARE_EVIDENCE_CAPTURE_TOOL_NAME) => {
+            "Before capture, register an evidence intent; this records no Evidence."
+        }
+        (ToolSchemaDetail::RuntimeCompact, PREPARE_WRITE_TOOL_NAME) => {
+            "Before editing, check Product Repository paths and get a write decision."
+        }
+        (ToolSchemaDetail::RuntimeCompact, STAGE_ARTIFACT_TOOL_NAME) => {
+            "Stage an Evidence attachment; staging records no Evidence."
+        }
+        (ToolSchemaDetail::RuntimeCompact, RECORD_RUN_TOOL_NAME) => {
+            "After work, record its Run, changes, and evidence."
+        }
+        (ToolSchemaDetail::RuntimeCompact, REQUEST_USER_ACTION_TOOL_NAME) => {
+            "Create or resume one user action through an available User Channel."
+        }
+        (ToolSchemaDetail::RuntimeCompact, RECONCILE_CHANGES_TOOL_NAME) => {
+            "Reconcile unresolved Product Repository changes with current authority."
+        }
+        (ToolSchemaDetail::RuntimeCompact, CHECK_CLOSE_TOOL_NAME) => {
+            "Read close readiness without requesting a terminal change."
+        }
+        (ToolSchemaDetail::RuntimeCompact, CLOSE_TASK_TOOL_NAME) => {
+            "Request completion, cancellation, or supersession to end the Task."
+        }
+        (ToolSchemaDetail::RuntimeCompact, LIST_PROJECTS_TOOL_NAME) => {
+            "List projects available to this MCP connection."
+        }
+        (_, INTAKE_TOOL_NAME) => {
+            "Start, resume, supersede, or reject an ordinary user work loop."
+        }
+        (_, UPDATE_SCOPE_TOOL_NAME) => {
             "Update the current Task scope and keep, create, or replace its current Change Unit."
         }
-        STATUS_TOOL_NAME => "Read the current Core status view without creating Core authority state.",
-        GET_OPERATION_RESULT_TOOL_NAME => {
+        (_, STATUS_TOOL_NAME) => {
+            "Read the current Core status view without creating Core authority state."
+        }
+        (_, GET_OPERATION_RESULT_TOOL_NAME) => {
             "Read one bounded page of an immutable historical mutation response; read current status separately."
         }
-        PREPARE_EVIDENCE_CAPTURE_TOOL_NAME => {
+        (_, PREPARE_EVIDENCE_CAPTURE_TOOL_NAME) => {
             "Create a short-lived, current-basis intent for a registered evidence source. This does not execute the source or record Evidence."
         }
-        PREPARE_WRITE_TOOL_NAME => {
+        (_, PREPARE_WRITE_TOOL_NAME) => {
             "Check a proposed Product Repository write against current Core scope. The default result includes the decision and any issued write ticket."
         }
-        STAGE_ARTIFACT_TOOL_NAME => {
+        (_, STAGE_ARTIFACT_TOOL_NAME) => {
             "Prepare an Evidence attachment input; staging alone is not recorded Evidence. The default compact result includes the staged handle and expiry."
         }
-        RECORD_RUN_TOOL_NAME => {
+        (_, RECORD_RUN_TOOL_NAME) => {
             "Record a Run and evidence. Mode/kind: advisor/shaping_update; direct/direct; work/shaping_update or implementation. Advisor has no Product Repository writes."
         }
-        REQUEST_USER_ACTION_TOOL_NAME => {
+        (_, REQUEST_USER_ACTION_TOOL_NAME) => {
             "Create one focused user action, or resume its original result by request ID, and capture only a still-pending action through an available verified User Channel."
         }
-        RECONCILE_CHANGES_TOOL_NAME => {
+        (_, RECONCILE_CHANGES_TOOL_NAME) => {
             "Reconcile unresolved Product Repository changes without agent-only dismissal. The default result includes per-finding outcomes."
         }
-        CHECK_CLOSE_TOOL_NAME => {
+        (_, CHECK_CLOSE_TOOL_NAME) => {
             "Read current close readiness without requesting a terminal mutation."
         }
-        CLOSE_TASK_TOOL_NAME => {
+        (_, CLOSE_TASK_TOOL_NAME) => {
             "Request the complete, cancel, or supersede terminal path for one Task."
         }
-        LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP connection.",
+        (_, LIST_PROJECTS_TOOL_NAME) => {
+            "List projects explicitly allowed for this MCP connection."
+        }
         _ => "Unsupported Volicord method.",
     }
 }

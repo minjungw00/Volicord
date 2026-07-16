@@ -322,8 +322,11 @@ impl McpConnectionStartupInspection {
         let storage_capability = storage_capability_for_projects(&self.projects);
         let effective_tool_mode =
             effective_tool_mode_for_mode_and_storage(self.mode, storage_capability);
-        let tools =
-            crate::tool_registry::mcp_tools_for_mode_and_storage(self.mode, storage_capability);
+        let tools = crate::tool_registry::mcp_tools_for_mode_and_storage_with_detail(
+            self.mode,
+            storage_capability,
+            crate::tool_registry::ToolSchemaDetail::RuntimeCompact,
+        );
         let tools_list_schema_validation =
             crate::tool_registry::tools_list_schema_validation_status(&tools);
         let tool_naming_style = crate::tool_registry::mcp_tool_naming_style(&tools);

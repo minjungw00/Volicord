@@ -401,14 +401,25 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         before_approval.write_tickets
     );
 
+    let (after_approval, _) = record_sensitive_approval(
+        &fixture,
+        &service,
+        &task_id,
+        &change_unit_id,
+        4,
+        "write_lifecycle",
+    )?;
+    let mut allowed_request = fixture.prepare_write_request(
+        "req_prepare_allowed",
+        "idem_prepare_allowed",
+        Some(after_approval),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    allowed_request.intended_operation = "local_sensitive_step".to_owned();
+    allowed_request.sensitive_categories = vec!["network".to_owned()];
     let allowed = service.prepare_write(
-        fixture.prepare_write_request(
-            "req_prepare_allowed",
-            "idem_prepare_allowed",
-            Some(4),
-            Some(&task_id),
-            Some(&change_unit_id),
-        ),
+        allowed_request,
         invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     let write_ticket_id = allowed.response_value["write_ticket_ref"]["record_id"]
@@ -445,16 +456,25 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         "req_run_consumes_write",
         "idem_run_consumes_write",
         false,
-        Some(5),
+        Some(after_approval + 1),
         &task_id,
         &change_unit_id,
     );
     run.observed_changes.product_file_write_observed = true;
     run.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
+    run.observed_changes.sensitive_categories = vec!["network".to_owned()];
     run.write_ticket_id = Some(WriteTicketId::new(&ref_write_ticket_id)).into();
     let consumed =
         service.record_run(run, invocation(&fixture, OperationCategory::AgentWorkflow))?;
-    assert_eq!(consumed.response_value["base"]["state_version"], 6);
+    assert_eq!(
+        consumed.response_value["base"]["response_kind"], "result",
+        "{}",
+        consumed.response_json
+    );
+    assert_eq!(
+        consumed.response_value["base"]["state_version"],
+        after_approval + 2
+    );
     assert_eq!(
         fixture.write_ticket_status(&ref_write_ticket_id)?,
         "consumed"
@@ -471,12 +491,13 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         "req_run_reuses_write",
         "idem_run_reuses_write",
         false,
-        Some(6),
+        Some(after_approval + 2),
         &task_id,
         &change_unit_id,
     );
     reuse.observed_changes.product_file_write_observed = true;
     reuse.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
+    reuse.observed_changes.sensitive_categories = vec!["network".to_owned()];
     reuse.write_ticket_id = Some(WriteTicketId::new(&ref_write_ticket_id)).into();
     let rejected = service.record_run(
         reuse,
@@ -509,7 +530,10 @@ fn write_ticket_lifecycle_is_single_use_and_state_bound() -> Result<(), Box<dyn 
         }),
         invocation(&stale_fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_eq!(stale_fixture.write_ticket_status(&stale_auth)?, "stale");
+    assert_eq!(
+        stale_fixture.write_ticket_status(&stale_auth)?,
+        "invalidated"
+    );
     Ok(())
 }
 
@@ -1369,6 +1393,11 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
 
     let expired = prepared_write_fixture("auth_expired_exact", preferred_t0)?;
     let expired_t0 = expired.operation_time;
+    expired.fixture.set_write_ticket_timestamps(
+        &expired.write_ticket_id,
+        &format_time(expired_t0),
+        &format_time(expired_t0 + Duration::minutes(15)),
+    )?;
     let before_expired = expired.fixture.counts()?;
     let expired_response = service_at(&expired.fixture, expired_t0 + Duration::minutes(15))
         .record_run(
@@ -1386,7 +1415,7 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
     assert_rejected_code(&expired_response.response_value, "WRITE_TICKET_INVALID");
     assert_eq!(
         expired_response.response_value["errors"][0]["details"]["write_ticket_reason"],
-        "expired"
+        "idle_timeout"
     );
     assert_eq!(expired.fixture.counts()?, before_expired);
     assert_eq!(
@@ -1417,8 +1446,16 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
             ),
             invocation(&capped.fixture, OperationCategory::AgentWorkflow),
         )?;
-    assert_rejected_code(&capped_response.response_value, "WRITE_TICKET_INVALID");
-    assert_eq!(capped.fixture.counts()?, before_capped);
+    assert_eq!(
+        capped_response.response_value["base"]["response_kind"],
+        "result"
+    );
+    assert_eq!(
+        capped
+            .fixture
+            .write_ticket_status(&capped.write_ticket_id)?,
+        "consumed"
+    );
 
     let stale = prepared_write_fixture("auth_stale_precedence", preferred_t0)?;
     let stale_t0 = stale.operation_time;
@@ -1451,11 +1488,15 @@ fn write_ticket_expiration_is_enforced_through_record_run() -> Result<(), Box<dy
         ),
         invocation(&stale.fixture, OperationCategory::AgentWorkflow),
     )?;
-    assert_rejected_code(&stale_response.response_value, "STATE_VERSION_CONFLICT");
+    assert_rejected_code(&stale_response.response_value, "WRITE_TICKET_INVALID");
+    assert_eq!(
+        stale_response.response_value["errors"][0]["details"]["write_ticket_reason"],
+        "change_unit_changed"
+    );
     assert_eq!(stale.fixture.counts()?, before_stale);
     assert_eq!(
         stale.fixture.write_ticket_status(&stale.write_ticket_id)?,
-        "stale"
+        "invalidated"
     );
 
     Ok(())
@@ -2083,7 +2124,12 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
     assert_eq!(fixture.counts()?, before);
 
     let preferred_t0 = fixed_time("2026-06-18T00:00:00Z")?;
-    let expired = prepared_write_fixture("status_expired_projection", preferred_t0)?;
+    let expired = prepared_write_fixture("status_configured_expiry_projection", preferred_t0)?;
+    expired.fixture.set_write_ticket_timestamps(
+        &expired.write_ticket_id,
+        &format_time(expired.operation_time),
+        &format_time(expired.operation_time + Duration::minutes(15)),
+    )?;
     let before_status = expired.fixture.counts()?;
     let expired_status = service_at(
         &expired.fixture,
@@ -2097,7 +2143,11 @@ fn status_projection_matches_public_close_check_and_stays_read_only() -> Result<
     )?;
     assert_eq!(
         expired_status.response_value["write_ticket_summary"]["status"],
-        "expired"
+        "invalidated"
+    );
+    assert_eq!(
+        expired_status.response_value["write_ticket_summary"]["invalidation_reason"],
+        "idle_timeout"
     );
     assert_eq!(
         expired
@@ -4139,6 +4189,7 @@ fn insert_guarded_unrecorded_change(
             session_id: None,
             connection_internal_id: fixture.connection_id().to_owned(),
             task_id: Some(task_id.to_owned()),
+            confidence: "confirmed".to_owned(),
             summary: "Product Repository change observed outside a recorded run.".to_owned(),
             observed_paths_json: r#"["src/export.rs"]"#.to_owned(),
             detection_json: "{}".to_owned(),

@@ -233,7 +233,7 @@ impl CoreProjectStore {
                 event_type: &event.event_kind,
                 actor_source: replay_context.actor_source.as_str(),
                 operation_category: replay_context.operation_category.as_str(),
-                task_id: &event.task_id,
+                task_id: event.task_id.as_deref(),
                 change_unit_id: event.change_unit_id.as_deref(),
                 payload_json: &event.event_payload_json,
                 request_hash: &input.request_hash,
@@ -415,7 +415,7 @@ struct AuthorityEventHashInput<'a> {
     event_type: &'a str,
     actor_source: &'a str,
     operation_category: &'a str,
-    task_id: &'a str,
+    task_id: Option<&'a str>,
     change_unit_id: Option<&'a str>,
     payload_json: &'a str,
     request_hash: &'a str,
@@ -440,7 +440,7 @@ fn authority_event_hash(input: AuthorityEventHashInput<'_>) -> String {
     update_field(&mut hasher, input.event_type);
     update_field(&mut hasher, input.actor_source);
     update_field(&mut hasher, input.operation_category);
-    update_field(&mut hasher, input.task_id);
+    update_field(&mut hasher, input.task_id.unwrap_or(""));
     update_field(&mut hasher, input.change_unit_id.unwrap_or(""));
     update_field(&mut hasher, input.payload_json);
     update_field(&mut hasher, input.request_hash);

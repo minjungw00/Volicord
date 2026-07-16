@@ -371,6 +371,7 @@ fn record_prompt_user_action_command(
         verification_basis: VERIFICATION_BASIS_USER_PROMPT_SUBMIT_HOOK,
         request_id: Some(format!("req_{replay_id}")),
         channel_submission_id: Some(format!("submission_{replay_id}")),
+        session_id: envelope.session_id.as_deref(),
     })
     .map_err(prompt_block_from_user_error)?;
     if response.response_value["base"]["response_kind"].as_str() != Some("result") {

@@ -101,6 +101,7 @@
         "InitialScope",
         "RedactionState",
         "RepositoryFileSource",
+        "RequestedControlLevel",
         "RequestedMode",
         "ResumePolicy",
         "SourceLineRange",
@@ -121,6 +122,7 @@
         "initial_source_refs",
         "lineage",
         "plain_language_request",
+        "requested_control_level",
         "requested_mode",
         "resume_policy"
       ],
@@ -135,7 +137,7 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:606287dd872046380e8eeb49d7e0d156ea6b9e38ba2d3805309aae8ffb256790"
+      "sha256": "sha256:0ba45d2dc14aa477dc2018e44564bc6376e408b1ccbeb2c12b90d261331249b9"
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
@@ -250,6 +252,7 @@
         "evidence_updates",
         "kind",
         "observed_changes",
+        "performed_operation",
         "run_id",
         "summary",
         "task_id",
@@ -270,7 +273,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:cf07386f3fb918a99dd6c42fe1b457c43639fa4bd01a73b8c224dce63e65cfbb"
+      "sha256": "sha256:ec5c18f51fcdf9a2d8a8855cdd35b7d44d164cc01905e796df17b6727b21cb95"
     },
     "volicord.request_user_action": {
       "definitions": [

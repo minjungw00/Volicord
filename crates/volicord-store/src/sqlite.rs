@@ -552,6 +552,8 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             "session_watch_baselines",
             "session_watch_observations",
             "user_action_channel_tokens",
+            "project_workflow_policies",
+            "session_end_receipts",
         ],
     )?;
     require_views(conn, PROJECT_STATE_DATABASE_KIND, &["task_events"])?;
@@ -655,6 +657,59 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             primary_key_position: 0,
         },
     )?;
+    for column in [
+        "requested_control_level",
+        "effective_control_level",
+        "control_level_reason",
+    ] {
+        require_column(conn, PROJECT_STATE_DATABASE_KIND, "tasks", column)?;
+    }
+    for column in [
+        "validity_basis_json",
+        "allowed_path_prefixes_json",
+        "denied_path_prefixes_json",
+        "idle_expires_at",
+        "invalidation_reason",
+    ] {
+        require_column(conn, PROJECT_STATE_DATABASE_KIND, "write_tickets", column)?;
+    }
+    for column in [
+        "project_id",
+        "policy_schema",
+        "policy_version",
+        "policy_json",
+        "policy_fingerprint",
+        "source",
+        "applied_at",
+        "created_at",
+    ] {
+        require_column(
+            conn,
+            PROJECT_STATE_DATABASE_KIND,
+            "project_workflow_policies",
+            column,
+        )?;
+    }
+    for column in [
+        "project_id",
+        "session_end_receipt_id",
+        "session_id",
+        "active_task_id",
+        "task_state",
+        "close_blocker_codes_json",
+        "next_actor",
+        "completion_claim_allowed",
+        "authority_refresh_succeeded",
+        "created_at",
+    ] {
+        require_column(
+            conn,
+            PROJECT_STATE_DATABASE_KIND,
+            "session_end_receipts",
+            column,
+        )?;
+    }
+    validate_v7_workflow_constraints(conn)?;
     reject_column(
         conn,
         PROJECT_STATE_DATABASE_KIND,
@@ -1624,6 +1679,78 @@ fn validate_user_action_channel_tokens(conn: &Connection) -> StoreResult<()> {
     Ok(())
 }
 
+fn validate_v7_workflow_constraints(conn: &Connection) -> StoreResult<()> {
+    let tasks_sql = normalized_table_sql(conn, "tasks")?;
+    for fragment in [
+        "requested_control_level in ('auto', 'observe', 'light', 'tracked', 'sensitive')",
+        "effective_control_level in ('observe', 'light', 'tracked', 'sensitive')",
+        "length(trim(control_level_reason)) > 0",
+    ] {
+        if !tasks_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                PROJECT_STATE_DATABASE_KIND,
+                "Task control constraints are missing or malformed",
+            ));
+        }
+    }
+
+    let tickets_sql = normalized_table_sql(conn, "write_tickets")?;
+    for fragment in [
+        "status in ('active', 'consumed', 'invalidated', 'revoked')",
+        "scope_revision_changed",
+        "change_unit_changed",
+        "baseline_changed",
+        "workspace_changed",
+        "approval_basis_changed",
+        "idle_timeout",
+        "task_closed",
+        "explicit_revoke",
+    ] {
+        if !tickets_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                PROJECT_STATE_DATABASE_KIND,
+                "write-ticket v7 constraints are missing or malformed",
+            ));
+        }
+    }
+
+    let policy_sql = normalized_table_sql(conn, "project_workflow_policies")?;
+    for fragment in [
+        "policy_schema = 'volicord-policy-v2'",
+        "policy_version > 0",
+        "length(policy_fingerprint) = 71",
+        "substr(policy_fingerprint, 1, 7) = 'sha256:'",
+        "substr(policy_fingerprint, 8) not glob '*[^0-9a-f]*'",
+    ] {
+        if !policy_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                PROJECT_STATE_DATABASE_KIND,
+                "project workflow-policy constraints are missing or malformed",
+            ));
+        }
+    }
+
+    let receipt_sql = normalized_table_sql(conn, "session_end_receipts")?;
+    for fragment in [
+        "task_state in ( 'none', 'ready', 'blocked', 'closed', 'cancelled', 'superseded', 'authority_unknown' )",
+        "next_actor in ('agent', 'user', 'none')",
+        "completion_claim_allowed in (0, 1)",
+        "authority_refresh_succeeded in (0, 1)",
+        "authority_refresh_succeeded = 0 and task_state = 'authority_unknown'",
+        "task_state = 'none' and active_task_id is null",
+        "completion_claim_allowed = 0",
+        "close_blocker_codes_json = '[]'",
+    ] {
+        if !receipt_sql.contains(fragment) {
+            return Err(StoreError::schema_invariant(
+                PROJECT_STATE_DATABASE_KIND,
+                "session-end receipt constraints are missing or malformed",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_guard_project_record_tables(conn: &Connection) -> StoreResult<()> {
     for (table, columns) in [
         (
@@ -1706,6 +1833,7 @@ fn validate_guard_project_record_tables(conn: &Connection) -> StoreResult<()> {
                 "connection_internal_id",
                 "task_id",
                 "status",
+                "confidence",
                 "summary",
                 "observed_paths_json",
                 "detection_json",
@@ -1802,6 +1930,8 @@ fn validate_guard_project_record_tables(conn: &Connection) -> StoreResult<()> {
 
     let unrecorded_changes_sql = normalized_table_sql(conn, "unrecorded_changes")?;
     let has_status_values = unrecorded_changes_sql.contains("status in ('unresolved', 'resolved')");
+    let has_confidence_values =
+        unrecorded_changes_sql.contains("confidence in ('confirmed', 'suspected')");
     let has_unresolved_group = unrecorded_changes_sql.contains("status = 'unresolved'")
         && unrecorded_changes_sql.contains("resolution_json is null")
         && unrecorded_changes_sql.contains("resolved_at is null")
@@ -1810,7 +1940,8 @@ fn validate_guard_project_record_tables(conn: &Connection) -> StoreResult<()> {
         && unrecorded_changes_sql.contains("resolution_json is not null")
         && unrecorded_changes_sql.contains("resolved_at is not null")
         && unrecorded_changes_sql.contains("resolved_by_actor_source is not null");
-    if !has_status_values || !has_unresolved_group || !has_resolved_group {
+    if !has_status_values || !has_confidence_values || !has_unresolved_group || !has_resolved_group
+    {
         return Err(StoreError::schema_invariant(
             PROJECT_STATE_DATABASE_KIND,
             "unrecorded_changes resolution constraints are missing or malformed",
@@ -2090,26 +2221,26 @@ mod tests {
     }
 
     #[test]
-    fn previous_v5_project_profile_requires_recreation() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("project-state-v5-profile")?;
-        let path = project_state_db_path(runtime_home.path(), "PRJ-v5-profile");
+    fn previous_v6_project_profile_requires_recreation() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("project-state-v6-profile")?;
+        let path = project_state_db_path(runtime_home.path(), "PRJ-v6-profile");
         let conn = open_project_state_database(&path)?;
         conn.execute(
             "INSERT INTO project_state (
                 project_id, storage_profile, created_at, updated_at
-            ) VALUES ('project_v5', 'baseline_sqlite_v5', 't0', 't0')",
+            ) VALUES ('project_v6', 'baseline_sqlite_v6', 't0', 't0')",
             [],
         )?;
 
         let error = validate_project_state_schema(&conn)
-            .expect_err("the previous v5 profile must not open as baseline_sqlite_v6");
+            .expect_err("the previous v6 profile must not open as baseline_sqlite_v7");
         assert!(matches!(
             error,
             StoreError::UnsupportedStorageProfile {
                 actual_storage_profile,
-                expected_storage_profile: "baseline_sqlite_v6",
+                expected_storage_profile: "baseline_sqlite_v7",
                 ..
-            } if actual_storage_profile == "baseline_sqlite_v5"
+            } if actual_storage_profile == "baseline_sqlite_v6"
         ));
         Ok(())
     }
@@ -2137,6 +2268,9 @@ mod tests {
                     task_id,
                     created_by_actor_source,
                     mode,
+                    requested_control_level,
+                    effective_control_level,
+                    control_level_reason,
                     work_phase,
                     acceptance_policy,
                     acceptance_policy_reason,
@@ -2150,6 +2284,9 @@ mod tests {
                     'task_missing',
                     'agent_connection:conn_main',
                     'work',
+                    'tracked',
+                    'tracked',
+                    'Foreign-key fixture control.',
                     'shaping',
                     'required',
                     'Foreign-key fixture requires acceptance.',
@@ -2465,6 +2602,9 @@ mod tests {
                 task_id,
                 created_by_actor_source,
                 mode,
+                requested_control_level,
+                effective_control_level,
+                control_level_reason,
                 work_phase,
                 acceptance_policy,
                 acceptance_policy_reason,
@@ -2478,6 +2618,9 @@ mod tests {
                 'task_a',
                 'agent_connection:conn_main',
                 'work',
+                'tracked',
+                'tracked',
+                'SQLite fixture control.',
                 'shaping',
                 'required',
                 'SQLite fixture requires acceptance.',

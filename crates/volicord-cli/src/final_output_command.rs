@@ -17,16 +17,17 @@ use volicord_store::{
     bootstrap::{project_record_by_repo_root_read_only, ProjectRecord, ACTIVE_PROJECT_STATUS},
     core_pipeline::CoreProjectStore,
     guards::guard_installation,
+    host_runtime_probes::host_runtime_probe_snapshot_from_report,
     runtime_home::resolve_runtime_home,
 };
 #[cfg(test)]
 use volicord_types::HOST_HOOK_CAPABILITY_SCHEMA;
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_string, host_hook_capability_matches_owner_binding,
-    ActorSource, AuthorityReceipt, EffectKind, HostHookCapabilityOwnerBinding, IntegrationProfile,
-    OperationCategory, ProjectId, RequestId, ResponseKind, StateRecordKind, StatusInclude,
-    StatusRequest, StatusResult, TaskId, ToolEnvelope,
-    VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
+    ActorSource, AuthorityReceipt, EffectKind, HostFeatureSupportStatus,
+    HostHookCapabilityOwnerBinding, IntegrationProfile, OperationCategory, ProjectId, RequestId,
+    ResponseKind, StateRecordKind, StatusInclude, StatusRequest, StatusResult, TaskId,
+    ToolEnvelope, UtcTimestamp, VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
 };
 
 use crate::guard_integration::{
@@ -34,6 +35,9 @@ use crate::guard_integration::{
     files::VOLICORD_POLICY_FILE,
     git_exclude::git_exclude_path,
     policy::{recorded_local_policy, RecordedLocalPolicy},
+};
+use crate::host_integration::{
+    capability_status::host_feature_support_matrix_from_runtime_probes, HostKind,
 };
 
 /// Maximum complete host-native final-output response size, including its final LF.
@@ -688,6 +692,34 @@ fn verify_binding(
     {
         return Err(BindingFailure::AdapterUnavailable);
     }
+    let probe_snapshot =
+        host_runtime_probe_snapshot_from_report(&connection.last_verification_report_json)
+            .map_err(|_| BindingFailure::AdapterUnavailable)?;
+    let host_kind = match options.host {
+        ManagedFinalOutputHost::Codex => HostKind::Codex,
+        ManagedFinalOutputHost::ClaudeCode => HostKind::ClaudeCode,
+    };
+    let now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
+        std::time::SystemTime::now(),
+    ));
+    let support = host_feature_support_matrix_from_runtime_probes(
+        &probe_snapshot,
+        host_kind,
+        &connection.managed_fingerprint,
+        options.profile,
+        &now,
+    );
+    let authority_display = match options.profile {
+        IntegrationProfile::Record => support.record_final_output.authority_display,
+        IntegrationProfile::Detective => support.detective_final_output.authority_display,
+    };
+    if matches!(
+        authority_display,
+        HostFeatureSupportStatus::UnsupportedByHost
+            | HostFeatureSupportStatus::TemporarilyUnavailable
+    ) {
+        return Err(BindingFailure::AdapterUnavailable);
+    }
     Ok(())
 }
 
@@ -957,9 +989,14 @@ mod tests {
     use std::error::Error;
 
     use volicord_core::{CoreService, InvocationContext};
+    use volicord_store::agent_connections::agent_connection_record;
     use volicord_store::guards::{upsert_guard_installation, GuardInstallationUpsert};
+    use volicord_store::host_runtime_probes::record_host_runtime_probe_observation;
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{ActorSource, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING};
+    use volicord_types::{
+        ActorSource, HostRuntimeProbeFailureClass, HostRuntimeProbeId, HostRuntimeProbeObservation,
+        HostRuntimeProbeOutcome, OperationCategory, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    };
 
     fn fixture_policy(
         fixture: &CoreFixture,
@@ -1000,7 +1037,7 @@ mod tests {
             "stop": policy_command("stop"),
         });
         let policy = json!({
-            "schema": "volicord-policy-v1",
+            "schema": "volicord-policy-v2",
             "managed_by": "volicord",
             "storage_scope": "local_overlay",
             "connection_intent": "shared",
@@ -1010,7 +1047,8 @@ mod tests {
             "guard_installation_id": installation_id,
             "selected_profile": profile.as_str(),
             "mcp": {"command": "volicord", "args": ["mcp", "--stdio"], "env": {}},
-            "host_hook": {"enabled": profile == IntegrationProfile::Detective, "commands": commands}
+            "host_hook": {"enabled": profile == IntegrationProfile::Detective, "commands": commands},
+            "workflow": crate::guard_integration::policy::default_workflow_policy_json()
         });
         let digest = policy_hash(&policy)?;
         let policy_dir = fixture.product_repo_path().join(".volicord");
@@ -1220,6 +1258,62 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(after_observations, before_observations);
+        Ok(())
+    }
+
+    #[test]
+    fn final_output_current_fixed_ui_probe_failure_forces_bounded_fallback(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("final-output-current-probe-failure")?;
+        let task_id = create_active_task(&fixture)?;
+        let installation_id = "guard_final_output_probe_failure";
+        let digest = fixture_policy(&fixture, IntegrationProfile::Record, installation_id)?;
+        let connection =
+            agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
+                .expect("fixture connection");
+        let now = UtcTimestamp::from_datetime(chrono::DateTime::<chrono::Utc>::from(
+            std::time::SystemTime::now(),
+        ));
+        record_host_runtime_probe_observation(
+            fixture.runtime_home_path(),
+            HostRuntimeProbeObservation {
+                probe_id: HostRuntimeProbeId::FixedUiAuthorityDisclosure,
+                outcome: HostRuntimeProbeOutcome::Failed,
+                failure_class: HostRuntimeProbeFailureClass::FixedUiUnconfirmed,
+                connection_internal_id: fixture.connection_id().to_owned(),
+                host_kind: "codex".to_owned(),
+                host_version: Some("9.9.9".to_owned()),
+                client_name: None,
+                client_version: None,
+                adapter_profile: IntegrationProfile::Record,
+                adapter_version: env!("CARGO_PKG_VERSION").to_owned(),
+                managed_fingerprint: connection.managed_fingerprint,
+                observed_at: now.clone(),
+                expires_at: now.checked_add(chrono::Duration::hours(1))?,
+            },
+        )?;
+        let event_file = fixture.runtime_home_path().join("final-event.json");
+        fs::write(&event_file, "{}")?;
+
+        let outcome = run_final_output_command(
+            &command_args(
+                &fixture,
+                &event_file,
+                IntegrationProfile::Record,
+                installation_id,
+                &digest,
+            ),
+            |name| {
+                (name == "VOLICORD_HOME")
+                    .then(|| fixture.runtime_home_path().as_os_str().to_owned())
+            },
+            &fixture.product_repo_path(),
+        )?;
+        let response: Value = serde_json::from_str(&outcome.stdout)?;
+        let message = response["systemMessage"].as_str().expect("systemMessage");
+        assert!(message.contains("adapter_unavailable"));
+        assert!(message.contains(&format!("`volicord status --task {task_id} --json`")));
+        assert!(!message.contains(AUTHORITY_RECEIPT_PREFIX));
         Ok(())
     }
 

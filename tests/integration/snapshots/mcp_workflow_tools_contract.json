@@ -42,6 +42,7 @@
           "MutationDetailLevel",
           "RedactionState",
           "RepositoryFileSource",
+          "RequestedControlLevel",
           "RequestedMode",
           "ResumePolicy",
           "SourceLineRange",
@@ -62,6 +63,7 @@
           "lineage",
           "plain_language_request",
           "project_selector",
+          "requested_control_level",
           "requested_mode",
           "resume_policy"
         ],
@@ -73,7 +75,7 @@
           "requested_mode",
           "resume_policy"
         ],
-        "sha256": "sha256:920970a2887c8eb64df080b15b36c1eaf911d078835769a042a694aad0f86b99"
+        "sha256": "sha256:e3475753cd394fbefe3f105a81daed1f073836eb4f5d0ec05594ec32fde7aaef"
       },
       "name": "volicord.intake",
       "output_schema": {
@@ -148,8 +150,10 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResponseKind",
           "SessionWatchCoverageBasis",
           "SessionWatchScanSummary",
@@ -160,6 +164,7 @@
           "StateRecordRef",
           "StateSummary",
           "StatusCloseState",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -175,12 +180,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a2e67371eea8bbea46f898afecfb0db8223dc33c4d11a204e75447ce972400f8"
+        "sha256": "sha256:61f07565788f5e656a35d92d32ea7fc8954a02d9e22ff9f3b0689b95839eec38"
       }
     },
     {
@@ -296,8 +303,10 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResponseKind",
           "SessionWatchCoverageBasis",
           "SessionWatchScanSummary",
@@ -308,6 +317,7 @@
           "StateRecordRef",
           "StateSummary",
           "StatusCloseState",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -324,12 +334,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:f58997d4ce24113893f8b0dba2dc4b3626e28eb3479004cca4ffb230184f990c"
+        "sha256": "sha256:d9bd5d0030f03c9737c633fcc0d55f780de192d678228cce8dcad84a9b82ef73"
       }
     },
     {
@@ -420,8 +432,10 @@
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -437,6 +451,7 @@
           "StatusCloseState",
           "StatusResult",
           "SummaryCard",
+          "TaskControlLevel",
           "TaskFlowItem",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
@@ -453,12 +468,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0aa90d79a3bec8cf2ccb083073ad467b65db767d56e3f636056de26e50c5203b"
+        "sha256": "sha256:7d085f415356f1993f029d830440daa0e258b687bdff18e383a53bcb82706e47"
       }
     },
     {
@@ -618,7 +635,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8ba2ec332deef85c917cb37e9ca73c1343b534add41c1bb01dedae26793cec8b"
+        "sha256": "sha256:46b32c4075b2373284f511e21c15c5e22fd387701e7283713e44c49150bd1079"
       }
     },
     {
@@ -730,8 +747,10 @@
           "PlannedEffect",
           "PrepareWriteDecision",
           "PrepareWriteResult",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResponseKind",
           "SensitiveActionScope",
           "SessionWatchCoverageBasis",
@@ -743,6 +762,7 @@
           "StateRecordRef",
           "StateSummary",
           "StatusCloseState",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -765,15 +785,17 @@
           "WriteDecisionReason",
           "WriteTicket",
           "WriteTicketEffect",
+          "WriteTicketInvalidationReason",
           "WriteTicketPathPatterns",
           "WriteTicketScope",
           "WriteTicketState",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5023db3e88d082a8d8cc8d0279898e26bb93da705fcd179b47ee552a8b9e5209"
+        "sha256": "sha256:4d2867332cda648e183738c27ff1ea345c70cc06578b68120cb5c9001bce0a43"
       }
     },
     {
@@ -870,7 +892,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:026204b11cc79259f2efb249fe427dd36fa12bc5cd9209a2a58a2abf6a3490ad"
+        "sha256": "sha256:4461b640a56e20b5aadfb1970f5dcaffdacfe6f1fbcb3feb241d5d1e29f1f6eb"
       }
     },
     {
@@ -925,6 +947,7 @@
           "evidence_updates",
           "kind",
           "observed_changes",
+          "performed_operation",
           "project_selector",
           "run_id",
           "summary",
@@ -939,7 +962,7 @@
           "summary",
           "task_id"
         ],
-        "sha256": "sha256:45eed868693f37f1351e1a1a3d1b65197f7f7032ba9b36215a2db20e34e9b217"
+        "sha256": "sha256:56308502fb236c6e66d2caee18b6cb2373cd1bd889c0676d9ac4b3972db3dc9f"
       },
       "name": "volicord.record_run",
       "output_schema": {
@@ -1029,10 +1052,12 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RecordRunResult",
           "RedactionState",
           "RepositoryFileSource",
+          "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RunKind",
@@ -1049,6 +1074,7 @@
           "StateRecordRef",
           "StateSummary",
           "StatusCloseState",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -1065,12 +1091,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e37c427e6381330d168c7ef65d43346495a2da6862e20e33d4e9d54ffb9337cd"
+        "sha256": "sha256:50c9eaa8ed86a85a1286c35d8c704d98a5cc54f56ffe6e9f37a1b951672dda78"
       }
     },
     {
@@ -1191,9 +1219,11 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
           "RequestUserActionResult",
+          "RequestedControlLevel",
           "ResponseKind",
           "SessionWatchCoverageBasis",
           "SessionWatchScanSummary",
@@ -1204,6 +1234,7 @@
           "StateRecordRef",
           "StateSummary",
           "StatusCloseState",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -1223,12 +1254,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d3135a716ef39681c0a52b85a5d7d950a62dd8d65e782fecf2f9740be4af058e"
+        "sha256": "sha256:1a80a4db404e254c0dda84eb7b47f9109715f0885375c72ccbc051289571b025"
       }
     },
     {
@@ -1329,9 +1362,11 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "ReconcileChangesResult",
           "RedactionState",
+          "RequestedControlLevel",
           "ResponseKind",
           "SessionWatchCoverageBasis",
           "SessionWatchScanSummary",
@@ -1343,6 +1378,7 @@
           "StateSummary",
           "StatusCloseState",
           "SummaryCard",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -1354,6 +1390,7 @@
           "ToolRejectedResponse",
           "ToolResponse_for_ReconcileChangesResult",
           "ToolResultBase",
+          "UnrecordedChangeConfidence",
           "UnrecordedChangeFinding",
           "UnrecordedChangeRejection",
           "UnrecordedChangeResolutionBasis",
@@ -1363,12 +1400,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:cb9f17de961c5c4d4ccfc98431d98077a9262c87338fd5ee7844200d5961e572"
+        "sha256": "sha256:e7033e9f01aa33a1a4bf984ae8c21d2cfd6931b27da4b4ea9df7ab6caf16c0c7"
       }
     },
     {
@@ -1402,6 +1441,8 @@
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
+          "AuthorityNextActor",
+          "AuthorityReceipt",
           "CarryForwardDisposition",
           "CarryForwardDispositionStatus",
           "CarryForwardKind",
@@ -1457,8 +1498,10 @@
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -1471,7 +1514,9 @@
           "StateRecordKind",
           "StateRecordRef",
           "StateSummary",
+          "StatusCloseState",
           "SummaryCard",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -1487,12 +1532,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:422caea0a70fbc8202d401f1aa51e6cc262c166b24dc945f6f369f9900f1d34b"
+        "sha256": "sha256:ec063147347d56fd4232e399a56a948a4811d0aaa0c9be443f889a4352e46766"
       }
     },
     {
@@ -1604,8 +1651,10 @@
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
+          "ProjectWorkflowPolicySummary",
           "PromptCaptureStatus",
           "RedactionState",
+          "RequestedControlLevel",
           "ResidualRisk",
           "ResponseKind",
           "RiskAcceptanceCoverage",
@@ -1620,6 +1669,7 @@
           "StateSummary",
           "StatusCloseState",
           "SummaryCard",
+          "TaskControlLevel",
           "TaskLifecyclePhase",
           "TaskLifecycleState",
           "TaskLineageRelation",
@@ -1635,12 +1685,14 @@
           "WorkPhase",
           "WorkspaceContext",
           "WorkspaceVcs",
+          "WriteTicketInvalidationReason",
           "WriteTicketStateSummary",
-          "WriteTicketStatus"
+          "WriteTicketStatus",
+          "WriteTicketValidityBasis"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b9e812f6d9a7d97a683637815c42a968c3bfd68f78c7790a40a4afb4ad1635b2"
+        "sha256": "sha256:2d5091c7271881468d79f0b735aa7b8140dfdbffa5a608d4edb378fbb03fdec1"
       }
     },
     {

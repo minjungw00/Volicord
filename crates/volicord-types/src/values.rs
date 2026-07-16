@@ -887,6 +887,45 @@ impl UnrecordedChangeStatus {
     }
 }
 
+/// Confidence assigned to an observed unrecorded Product Repository change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UnrecordedChangeConfidence {
+    Confirmed,
+    Suspected,
+}
+
+impl UnrecordedChangeConfidence {
+    /// Returns the stable value name for this confidence.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Suspected => "suspected",
+        }
+    }
+}
+
+/// Confidence of one mutation-effect observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservationConfidence {
+    Confirmed,
+    Structured,
+    Heuristic,
+    Unknown,
+}
+
+/// Effect kind reported by one mutation observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedEffectKind {
+    ReadOnly,
+    ProductFileWrite,
+    NonProductWrite,
+    ExternalEffect,
+    Unknown,
+}
+
 /// Resolution basis for an unrecorded Product Repository change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -967,6 +1006,55 @@ pub enum TaskMode {
     Work,
 }
 
+/// Intake control request, including Core-selected automatic resolution.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestedControlLevel {
+    #[default]
+    Auto,
+    Observe,
+    Light,
+    Tracked,
+    Sensitive,
+}
+
+impl RequestedControlLevel {
+    /// Returns the stable value name for this requested control.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Observe => "observe",
+            Self::Light => "light",
+            Self::Tracked => "tracked",
+            Self::Sensitive => "sensitive",
+        }
+    }
+}
+
+/// Effective upward-only Task control level.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskControlLevel {
+    Observe,
+    Light,
+    Tracked,
+    Sensitive,
+}
+
+impl TaskControlLevel {
+    /// Returns the stable value name for this effective control.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Observe => "observe",
+            Self::Light => "light",
+            Self::Tracked => "tracked",
+            Self::Sensitive => "sensitive",
+        }
+    }
+}
+
 /// Current delivery phase inside one Task's longer-lived outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1034,6 +1122,69 @@ pub enum AuthorityNextActor {
     Agent,
     User,
     None,
+}
+
+impl AuthorityNextActor {
+    /// Returns the stable value name for this next-actor value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::User => "user",
+            Self::None => "none",
+        }
+    }
+
+    /// Parses one stable next-actor value.
+    pub fn from_stable_str(value: &str) -> Option<Self> {
+        match value {
+            "agent" => Some(Self::Agent),
+            "user" => Some(Self::User),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
+
+/// Task state captured by a bounded session-end authority receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionEndTaskState {
+    None,
+    Ready,
+    Blocked,
+    Closed,
+    Cancelled,
+    Superseded,
+    AuthorityUnknown,
+}
+
+impl SessionEndTaskState {
+    /// Returns the stable value name for this receipt state.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+            Self::Closed => "closed",
+            Self::Cancelled => "cancelled",
+            Self::Superseded => "superseded",
+            Self::AuthorityUnknown => "authority_unknown",
+        }
+    }
+
+    /// Parses one stable receipt state.
+    pub fn from_stable_str(value: &str) -> Option<Self> {
+        match value {
+            "none" => Some(Self::None),
+            "ready" => Some(Self::Ready),
+            "blocked" => Some(Self::Blocked),
+            "closed" => Some(Self::Closed),
+            "cancelled" => Some(Self::Cancelled),
+            "superseded" => Some(Self::Superseded),
+            "authority_unknown" => Some(Self::AuthorityUnknown),
+            _ => None,
+        }
+    }
 }
 
 /// MCP mutation response detail requested by the caller.
@@ -1194,6 +1345,7 @@ pub enum WriteTicketEffect {
     None,
     WouldIssue,
     Issued,
+    Reused,
 }
 
 /// Write ticket state values.
@@ -1204,7 +1356,7 @@ pub enum WriteTicketState {
     Observed,
     Reconciled,
     Closed,
-    Expired,
+    Invalidated,
     Revoked,
 }
 
@@ -1214,9 +1366,38 @@ pub enum WriteTicketState {
 pub enum WriteTicketStatus {
     Active,
     Consumed,
-    Expired,
-    Stale,
+    Invalidated,
     Revoked,
+}
+
+/// Stable reason recorded when a write ticket becomes invalid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteTicketInvalidationReason {
+    ScopeRevisionChanged,
+    ChangeUnitChanged,
+    BaselineChanged,
+    WorkspaceChanged,
+    ApprovalBasisChanged,
+    IdleTimeout,
+    TaskClosed,
+    ExplicitRevoke,
+}
+
+impl WriteTicketInvalidationReason {
+    /// Returns the stable value name for this invalidation reason.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ScopeRevisionChanged => "scope_revision_changed",
+            Self::ChangeUnitChanged => "change_unit_changed",
+            Self::BaselineChanged => "baseline_changed",
+            Self::WorkspaceChanged => "workspace_changed",
+            Self::ApprovalBasisChanged => "approval_basis_changed",
+            Self::IdleTimeout => "idle_timeout",
+            Self::TaskClosed => "task_closed",
+            Self::ExplicitRevoke => "explicit_revoke",
+        }
+    }
 }
 
 /// Run kind values.
@@ -1771,7 +1952,71 @@ mod tests {
     use schemars::schema_for;
     use serde_json::{json, Value};
 
-    use super::{HostFeatureSupportStatus, UtcTimestamp};
+    use super::{
+        AuthorityNextActor, HostFeatureSupportStatus, ObservationConfidence, ObservedEffectKind,
+        RequestedControlLevel, SessionEndTaskState, TaskControlLevel, UnrecordedChangeConfidence,
+        UtcTimestamp, WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState,
+        WriteTicketStatus,
+    };
+
+    #[test]
+    fn v7_workflow_values_have_exact_json_names_and_ordering() {
+        let cases = [
+            (
+                serde_json::to_value(RequestedControlLevel::Auto).unwrap(),
+                json!("auto"),
+            ),
+            (
+                serde_json::to_value(TaskControlLevel::Light).unwrap(),
+                json!("light"),
+            ),
+            (
+                serde_json::to_value(WriteTicketEffect::Reused).unwrap(),
+                json!("reused"),
+            ),
+            (
+                serde_json::to_value(WriteTicketState::Invalidated).unwrap(),
+                json!("invalidated"),
+            ),
+            (
+                serde_json::to_value(WriteTicketStatus::Invalidated).unwrap(),
+                json!("invalidated"),
+            ),
+            (
+                serde_json::to_value(WriteTicketInvalidationReason::WorkspaceChanged).unwrap(),
+                json!("workspace_changed"),
+            ),
+            (
+                serde_json::to_value(UnrecordedChangeConfidence::Suspected).unwrap(),
+                json!("suspected"),
+            ),
+            (
+                serde_json::to_value(ObservationConfidence::Structured).unwrap(),
+                json!("structured"),
+            ),
+            (
+                serde_json::to_value(ObservedEffectKind::ProductFileWrite).unwrap(),
+                json!("product_file_write"),
+            ),
+            (
+                serde_json::to_value(SessionEndTaskState::AuthorityUnknown).unwrap(),
+                json!("authority_unknown"),
+            ),
+        ];
+        for (actual, expected) in cases {
+            assert_eq!(actual, expected);
+        }
+        assert!(TaskControlLevel::Observe < TaskControlLevel::Sensitive);
+        assert_eq!(
+            AuthorityNextActor::from_stable_str("user"),
+            Some(AuthorityNextActor::User)
+        );
+        assert_eq!(
+            SessionEndTaskState::from_stable_str("ready"),
+            Some(SessionEndTaskState::Ready)
+        );
+        assert_eq!(SessionEndTaskState::from_stable_str("unknown"), None);
+    }
 
     #[test]
     fn utc_timestamp_checked_add_enforces_canonical_four_digit_range() {

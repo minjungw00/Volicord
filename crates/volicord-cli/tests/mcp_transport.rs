@@ -38,6 +38,8 @@ use support::{
     },
 };
 
+const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 35_000;
+
 #[test]
 fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-preflight")?;
@@ -519,6 +521,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     assert_success_captured(&workflow_output);
     assert_eq!(captured_stderr(&workflow_output), "");
     let workflow_responses = responses_by_id(&workflow_output.stdout)?;
+    assert_runtime_tools_list_result_is_compact(&workflow_responses[&2]["result"]);
     let workflow_tools = tools_from_response(&workflow_responses[&2]);
     assert_eq!(
         tool_names_from_tools(workflow_tools),
@@ -535,6 +538,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     assert_success_captured(&read_only_output);
     assert_eq!(captured_stderr(&read_only_output), "");
     let read_only_responses = responses_by_id(&read_only_output.stdout)?;
+    assert_runtime_tools_list_result_is_compact(&read_only_responses[&11]["result"]);
     let read_only_tools = tools_from_response(&read_only_responses[&11]);
     let read_only_names = tool_names_from_tools(read_only_tools);
     assert_eq!(read_only_names, expected_read_only_tools());
@@ -973,6 +977,10 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
             continue;
         }
         let schema = &tool["inputSchema"];
+        assert!(
+            !json_member_exists(schema, "examples"),
+            "{name} runtime input schema must not contain examples"
+        );
         assert_eq!(schema["type"], "object", "{name} schema should be object");
         let properties = schema["properties"]
             .as_object()
@@ -1005,6 +1013,29 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
             !schema_definitions_contain(schema, "ToolEnvelope"),
             "{name} should not include ToolEnvelope in public schema definitions"
         );
+    }
+}
+
+fn assert_runtime_tools_list_result_is_compact(result: &Value) {
+    let serialized = serde_json::to_vec(result).expect("tools/list result should serialize");
+    assert!(
+        serialized.len() <= MAX_RUNTIME_TOOLS_LIST_BYTES,
+        "runtime tools/list result is {} bytes (limit {})",
+        serialized.len(),
+        MAX_RUNTIME_TOOLS_LIST_BYTES
+    );
+}
+
+fn json_member_exists(value: &Value, member: &str) -> bool {
+    match value {
+        Value::Object(object) => {
+            object.contains_key(member)
+                || object
+                    .values()
+                    .any(|child| json_member_exists(child, member))
+        }
+        Value::Array(items) => items.iter().any(|child| json_member_exists(child, member)),
+        _ => false,
     }
 }
 

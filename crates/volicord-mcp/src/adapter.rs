@@ -10,10 +10,7 @@ use std::sync::{
     Arc, Condvar, Mutex,
 };
 use volicord_platform_fs::capture_git_workspace_snapshot;
-use volicord_types::{
-    host_feature_implementation_for_version, HostFeature, HostFeatureImplementation,
-    ManagedMcpClientInfo,
-};
+use volicord_types::ManagedMcpClientInfo;
 
 const MANAGED_MCP_CLIENT_IDENTITY_CONFLICT_CODE: &str = "MANAGED_MCP_CLIENT_IDENTITY_CONFLICT";
 
@@ -400,6 +397,60 @@ impl McpAdapter {
             && self.current_host_capability_verification_matches(capabilities)
     }
 
+    pub(crate) fn record_local_web_runtime_probe_best_effort(
+        &self,
+        capabilities: &McpUserChannelCapabilities,
+        outcome: HostRuntimeProbeOutcome,
+        failure_class: HostRuntimeProbeFailureClass,
+    ) {
+        if capabilities.launch_origin != "managed_host" {
+            return;
+        }
+        let Ok(Some(connection)) = agent_connection_record_read_only(
+            &self.runtime_home,
+            self.context.connection_internal_id.as_str(),
+        ) else {
+            return;
+        };
+        if !connection.enabled || connection.host_kind == "generic" {
+            return;
+        }
+        let now = UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now()));
+        let Ok(expires_at) = now.checked_add(chrono::Duration::hours(1)) else {
+            return;
+        };
+        let probes: &[HostRuntimeProbeId] = if outcome == HostRuntimeProbeOutcome::Unsupported {
+            &[HostRuntimeProbeId::McpCapabilityAdvertisedAndExercised]
+        } else {
+            &[
+                HostRuntimeProbeId::ModelSeparatedUserActionUi,
+                HostRuntimeProbeId::McpCapabilityAdvertisedAndExercised,
+            ]
+        };
+        for profile in [IntegrationProfile::Record, IntegrationProfile::Detective] {
+            for &probe_id in probes {
+                let _ = record_host_runtime_probe_observation(
+                    &self.runtime_home,
+                    HostRuntimeProbeObservation {
+                        probe_id,
+                        outcome,
+                        failure_class,
+                        connection_internal_id: connection.connection_internal_id.clone(),
+                        host_kind: connection.host_kind.clone(),
+                        host_version: capabilities.client_version.clone(),
+                        client_name: capabilities.client_name.clone(),
+                        client_version: capabilities.client_version.clone(),
+                        adapter_profile: profile,
+                        adapter_version: crate::build_info().package_version.to_owned(),
+                        managed_fingerprint: connection.managed_fingerprint.clone(),
+                        observed_at: now.clone(),
+                        expires_at: expires_at.clone(),
+                    },
+                );
+            }
+        }
+    }
+
     fn current_host_capability_verification_matches(
         &self,
         capabilities: &McpUserChannelCapabilities,
@@ -429,14 +480,6 @@ impl McpAdapter {
             return false;
         };
         if !connection.enabled || connection.host_kind == "generic" {
-            return false;
-        }
-        if host_feature_implementation_for_version(
-            &connection.host_kind,
-            Some(client_version),
-            HostFeature::LocalWebUserChannel,
-        ) != HostFeatureImplementation::Implemented
-        {
             return false;
         }
         let Some(executable_sha256) = crate::build_info::current_executable_sha256() else {
@@ -1359,7 +1402,11 @@ impl McpAdapter {
             }
         })?;
         let storage_capability = self.session_storage_capability()?;
-        Ok(mcp_tools_for_mode_and_storage(mode, storage_capability))
+        Ok(mcp_tools_for_mode_and_storage_with_detail(
+            mode,
+            storage_capability,
+            ToolSchemaDetail::RuntimeCompact,
+        ))
     }
 
     pub(crate) fn session_storage_capability(
@@ -1559,6 +1606,7 @@ impl McpAdapter {
                 envelope,
                 plain_language_request: args.plain_language_request,
                 requested_mode: args.requested_mode,
+                requested_control_level: args.requested_control_level,
                 resume_policy: args.resume_policy,
                 acceptance_policy: args.acceptance_policy,
                 lineage: args.lineage,
@@ -1855,6 +1903,7 @@ impl McpAdapter {
                 run_id: args.run_id,
                 baseline_ref: args.baseline_ref,
                 write_ticket_id: args.write_ticket_id,
+                performed_operation: args.performed_operation,
                 summary: args.summary,
                 observed_changes: args.observed_changes,
                 artifact_inputs: args.artifact_inputs,
@@ -2854,6 +2903,7 @@ fn record_run_root_fields() -> &'static [&'static str] {
         "run_id",
         "baseline_ref",
         "write_ticket_id",
+        "performed_operation",
         "summary",
         "observed_changes",
         "artifact_inputs",

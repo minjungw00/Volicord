@@ -125,13 +125,14 @@ pub mod core_fixtures {
         EvidenceRequirement, EvidenceSourceKind, EvidenceTarget, EvidenceUpdateProvenance,
         IdempotencyKey, InitialScope, IntakeRequest, JsonObject, JudgmentKind,
         JudgmentPresentation, ObservedChanges, PrepareWriteRequest, ProjectId, RecordId,
-        RecordRunRequest, RedactionState, RequestId, RequestUserActionRequest, RequestedMode,
-        RequiredNullable, ResolveUserActionRequest, ResumePolicy, RunKind, ScopeUpdate,
-        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
-        StateRecordRef, StatusInclude, StatusRequest, TaskId, ToolEnvelope, UpdateScopeRequest,
-        UserActionChoiceDraft, UserActionContext, UserActionDraft,
-        UserActionEvidenceObservationDraft, UserActionOptionId, UserActionOptionInput,
-        UserActionRequestId, UserActionRequiredFor, UserActionResolutionInput, WriteTicketId,
+        RecordRunRequest, RedactionState, RequestId, RequestUserActionRequest,
+        RequestedControlLevel, RequestedMode, RequiredNullable, ResolveUserActionRequest,
+        ResumePolicy, RunKind, ScopeUpdate, SensitiveActionScope, StageArtifactRequest,
+        StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusInclude, StatusRequest,
+        TaskId, ToolEnvelope, UpdateScopeRequest, UserActionChoiceDraft, UserActionContext,
+        UserActionDraft, UserActionEvidenceObservationDraft, UserActionOptionId,
+        UserActionOptionInput, UserActionRequestId, UserActionRequiredFor,
+        UserActionResolutionInput, WriteTicketId,
     };
 
     use super::*;
@@ -364,6 +365,7 @@ pub mod core_fixtures {
                 ),
                 plain_language_request: "Create a test export flow.".to_owned(),
                 requested_mode: RequestedMode::Work,
+                requested_control_level: RequestedControlLevel::Auto,
                 resume_policy: ResumePolicy::CreateNew,
                 acceptance_policy: RequiredNullable::null(),
                 lineage: RequiredNullable::null(),
@@ -504,6 +506,7 @@ pub mod core_fixtures {
                 run_id: None.into(),
                 baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
                 write_ticket_id: None.into(),
+                performed_operation: None.into(),
                 summary: "Recorded implementation run.".to_owned(),
                 observed_changes: ObservedChanges {
                     changed_paths: Vec::new(),
@@ -914,6 +917,9 @@ pub mod core_fixtures {
                     task_id,
                     created_by_actor_source,
                     mode,
+                    requested_control_level,
+                    effective_control_level,
+                    control_level_reason,
                     work_phase,
                     acceptance_policy,
                     acceptance_policy_reason,
@@ -934,6 +940,9 @@ pub mod core_fixtures {
                     ?2,
                     ?3,
                     'work',
+                    'tracked',
+                    'tracked',
+                    'Superseding work uses tracked control.',
                     'shaping',
                     'required',
                     'Superseding work requires explicit acceptance.',
@@ -1252,31 +1261,36 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Replaces Write Ticket timestamps for fixed-clock tests.
+        /// Replaces Write Ticket creation and optional idle-timeout timestamps for fixed-clock tests.
         pub fn set_write_ticket_timestamps(
             &self,
             write_ticket_id: &str,
             created_at: &str,
-            expires_at: &str,
+            idle_expires_at: &str,
         ) -> Result<(), StoreError> {
             self.conn()?.execute(
                 "UPDATE write_tickets
                     SET created_at = ?3,
-                        expires_at = ?4
+                        idle_expires_at = ?4
                   WHERE project_id = ?1
                     AND write_ticket_id = ?2",
-                rusqlite::params![self.project_id, write_ticket_id, created_at, expires_at],
+                rusqlite::params![
+                    self.project_id,
+                    write_ticket_id,
+                    created_at,
+                    idle_expires_at
+                ],
             )?;
             Ok(())
         }
 
-        /// Reads Write Ticket `created_at` and `expires_at` timestamp strings.
+        /// Reads Write Ticket `created_at` and optional `idle_expires_at` timestamp strings.
         pub fn write_ticket_timestamps(
             &self,
             write_ticket_id: &str,
-        ) -> Result<(String, String), StoreError> {
+        ) -> Result<(String, Option<String>), StoreError> {
             Ok(self.conn()?.query_row(
-                "SELECT created_at, expires_at
+                "SELECT created_at, idle_expires_at
                    FROM write_tickets
                   WHERE project_id = ?1
                     AND write_ticket_id = ?2",

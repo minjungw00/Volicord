@@ -1,0 +1,382 @@
+use super::*;
+use volicord_store::diagnostics::{
+    read_workflow_metric_aggregates, start_diagnostic_session, DiagnosticHostKind,
+    DiagnosticSessionStart, DiagnosticTransport, WorkflowMetricAggregateRow,
+};
+
+fn start_metrics_session(harness: &MethodHarness, session_id: &str) -> Result<(), Box<dyn Error>> {
+    start_diagnostic_session(
+        &harness.runtime_home_path,
+        DiagnosticSessionStart {
+            session_id,
+            connection_id: Some(CONNECTION_ID),
+            project_id: Some(PROJECT_ID),
+            transport: DiagnosticTransport::McpStdio,
+            host_kind: Some(DiagnosticHostKind::Codex),
+            package_version: "test",
+            build_id: "core-workflow-metrics-test",
+        },
+    )?;
+    Ok(())
+}
+
+fn metric_total(rows: &[WorkflowMetricAggregateRow], kind: &str) -> u64 {
+    rows.iter()
+        .filter(|row| row.metric_kind == kind)
+        .map(|row| row.value_total)
+        .sum()
+}
+
+fn metric_samples(rows: &[WorkflowMetricAggregateRow], kind: &str) -> u64 {
+    rows.iter()
+        .filter(|row| row.metric_kind == kind)
+        .map(|row| row.sample_count)
+        .sum()
+}
+
+#[test]
+fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
+    harness.use_clock(clock.clone());
+    let session_id = "session_core_write_metrics";
+    start_metrics_session(&harness, session_id)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "core_write_metrics")?;
+
+    let issued = harness.service.prepare_write(
+        prepare_write_request(
+            "req_core_metrics_issue",
+            "idem_core_metrics_issue",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(issued.response_value["write_ticket_effect"], "issued");
+    let ticket_id = response_record_id(&issued.response_value, "write_ticket_ref");
+
+    let reused = harness.service.prepare_write(
+        prepare_write_request(
+            "req_core_metrics_reuse",
+            "idem_core_metrics_reuse",
+            Some(3),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(reused.response_value["write_ticket_effect"], "reused");
+
+    insert_unrecorded_change(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        UnrecordedChangeInsert {
+            unrecorded_change_id: "unrecorded_core_metrics_first_write".to_owned(),
+            session_id: None,
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            task_id: Some(task_id.clone()),
+            confidence: UnrecordedChangeConfidence::Confirmed.as_str().to_owned(),
+            summary: "Confirmed product write observation for metric timing.".to_owned(),
+            observed_paths_json: json!(["src/export.rs"]).to_string(),
+            detection_json: "{}".to_owned(),
+            detected_at: "2026-06-18T00:00:01Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    clock.advance(Duration::seconds(2));
+    let run_request = product_write_record_run_request(
+        "req_core_metrics_first_write",
+        "idem_core_metrics_first_write",
+        4,
+        &task_id,
+        &change_unit_id,
+        &ticket_id,
+        "run_core_metrics_first_write",
+    );
+    let first_run = harness.service.record_run(
+        run_request.clone(),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(
+        first_run.response_value["base"]["effect_kind"],
+        "core_committed"
+    );
+    let replayed_run = harness.service.record_run(
+        run_request,
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert!(replayed_run.replayed);
+
+    let reissue_request = prepare_write_request(
+        "req_core_metrics_reissue",
+        "idem_core_metrics_reissue",
+        Some(5),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    let reissued = harness.service.prepare_write(
+        reissue_request.clone(),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(reissued.response_value["write_ticket_effect"], "issued");
+    let replayed_reissue = harness.service.prepare_write(
+        reissue_request,
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert!(replayed_reissue.replayed);
+
+    let reconciled = harness.service.reconcile_changes(
+        reconcile_changes_request(
+            "req_core_metrics_reconcile_write",
+            "idem_core_metrics_reconcile_write",
+            Some(6),
+            &task_id,
+            Vec::new(),
+        ),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(
+        reconciled.response_value["resolved_changes"][0]["resolution_basis"],
+        "recorded_as_expected_write"
+    );
+
+    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
+    assert_eq!(metric_total(&rows, "write_ticket_issued"), 1);
+    assert_eq!(metric_total(&rows, "write_ticket_reused"), 1);
+    assert_eq!(metric_total(&rows, "write_ticket_reissued"), 1);
+    assert_eq!(
+        metric_total(&rows, "first_product_write_duration_micros"),
+        1_000_000
+    );
+    assert_eq!(
+        metric_samples(&rows, "confirmed_unrecorded_false_positive"),
+        1
+    );
+    assert_eq!(
+        metric_total(&rows, "confirmed_unrecorded_false_positive"),
+        0
+    );
+    Ok(())
+}
+
+#[test]
+fn first_write_metric_stays_pending_without_an_actual_write_timestamp() -> Result<(), Box<dyn Error>>
+{
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
+    harness.use_clock(clock.clone());
+    let session_id = "session_core_write_metric_pending";
+    start_metrics_session(&harness, session_id)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "core_write_metric_pending")?;
+    let issued = harness.service.prepare_write(
+        prepare_write_request(
+            "req_core_write_metric_pending_prepare",
+            "idem_core_write_metric_pending_prepare",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    let ticket_id = response_record_id(&issued.response_value, "write_ticket_ref");
+    clock.advance(Duration::seconds(30));
+
+    let recorded = harness.service.record_run(
+        product_write_record_run_request(
+            "req_core_write_metric_pending_run",
+            "idem_core_write_metric_pending_run",
+            3,
+            &task_id,
+            &change_unit_id,
+            &ticket_id,
+            "run_core_write_metric_pending",
+        ),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(
+        recorded.response_value["base"]["effect_kind"],
+        "core_committed"
+    );
+
+    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
+    assert_eq!(
+        metric_samples(&rows, "first_product_write_duration_micros"),
+        0
+    );
+    Ok(())
+}
+
+#[test]
+fn terminal_task_duration_metric_is_not_replayed() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at(DEFAULT_METHOD_TEST_CLOCK);
+    harness.use_clock(clock.clone());
+    let session_id = "session_core_close_metrics";
+    start_metrics_session(&harness, session_id)?;
+    let (task_id, _change_unit_id, state_version) =
+        create_close_ready_task(&harness, "core_close_metrics")?;
+    clock.advance(Duration::seconds(5));
+    let request = close_task_request(CloseTaskFixture {
+        request_id: "req_core_close_metrics",
+        idempotency_key: Some("idem_core_close_metrics"),
+        dry_run: false,
+        expected_state_version: Some(state_version),
+        task_id: &task_id,
+        intent: CloseIntent::Complete,
+        close_reason: Some(CloseReason::CompletedSelfChecked),
+        superseding_task_id: None,
+    });
+
+    let closed = harness.service.close_task(
+        request.clone(),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(closed.response_value["close_state"], "closed");
+    let replayed = harness.service.close_task(
+        request,
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert!(replayed.replayed);
+
+    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
+    assert_eq!(metric_total(&rows, "task_duration_micros"), 5_000_000);
+    Ok(())
+}
+
+#[test]
+fn user_roundtrip_metric_counts_one_committed_resolution() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let session_id = "session_core_user_roundtrip";
+    start_metrics_session(&harness, session_id)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "core_user_roundtrip")?;
+    let pending = harness.service.request_user_action(
+        user_action_request(
+            "req_core_user_roundtrip_pending",
+            "idem_core_user_roundtrip_pending",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let request_id = response_record_id(&pending.response_value, "user_action_request_ref");
+    let resolution = resolve_user_action_request(
+        "req_core_user_roundtrip_resolve",
+        "submission_core_user_roundtrip",
+        None,
+        &task_id,
+        &request_id,
+        "accept",
+    );
+
+    let resolved = harness.service.resolve_user_action(
+        resolution.clone(),
+        invocation_with_session(OperationCategory::UserOnly, session_id),
+    )?;
+    assert!(!resolved.replayed);
+    assert_eq!(
+        resolved.response_value["base"]["effect_kind"],
+        "core_committed"
+    );
+    assert_eq!(
+        resolved
+            .verified_invocation
+            .as_ref()
+            .and_then(|invocation| invocation.session_id.as_deref()),
+        Some(session_id)
+    );
+    let replayed = harness.service.resolve_user_action(
+        resolution,
+        invocation_with_session(OperationCategory::UserOnly, session_id),
+    )?;
+    assert!(replayed.replayed);
+
+    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
+    assert_eq!(metric_total(&rows, "user_roundtrip"), 1);
+    Ok(())
+}
+
+#[test]
+fn confirmed_invalid_observation_records_one_false_positive() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let session_id = "session_core_reconcile_metrics";
+    start_metrics_session(&harness, session_id)?;
+    record_guard_installation(
+        &harness,
+        "core_reconcile_metrics",
+        "detective",
+        "active",
+        "{}",
+    )?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "core_reconcile_metrics")?;
+    insert_guarded_unrecorded_change_with_paths(
+        &harness,
+        &task_id,
+        "core_reconcile_metrics",
+        "[123]",
+    )?;
+    let request = reconcile_changes_request(
+        "req_core_reconcile_metrics",
+        "idem_core_reconcile_metrics",
+        Some(2),
+        &task_id,
+        Vec::new(),
+    );
+
+    let reconciled = harness.service.reconcile_changes(
+        request.clone(),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(
+        reconciled.response_value["resolved_changes"][0]["resolution_basis"],
+        "invalid_observation"
+    );
+    let replayed = harness.service.reconcile_changes(
+        request,
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert!(replayed.replayed);
+
+    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
+    assert_eq!(
+        metric_total(&rows, "confirmed_unrecorded_false_positive"),
+        1
+    );
+    Ok(())
+}
+
+#[test]
+fn explicit_sensitive_approval_block_is_counted_once() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let session_id = "session_core_sensitive_block";
+    start_metrics_session(&harness, session_id)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "core_sensitive_block")?;
+    let mut request = prepare_write_request(
+        "req_core_sensitive_block",
+        "idem_core_sensitive_block",
+        Some(2),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    request.sensitive_categories = vec!["network".to_owned()];
+
+    let blocked = harness.service.prepare_write(
+        request.clone(),
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert_eq!(blocked.response_value["decision"], "approval_required");
+    let replayed = harness.service.prepare_write(
+        request,
+        invocation_with_session(OperationCategory::AgentWorkflow, session_id),
+    )?;
+    assert!(replayed.replayed);
+
+    let rows = read_workflow_metric_aggregates(&harness.runtime_home_path, PROJECT_ID)?;
+    assert_eq!(metric_total(&rows, "sensitive_approval_missing_block"), 1);
+    assert_eq!(metric_total(&rows, "confirmed_structured_write_deny"), 0);
+    Ok(())
+}

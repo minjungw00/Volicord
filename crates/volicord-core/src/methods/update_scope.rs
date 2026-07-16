@@ -90,7 +90,7 @@ fn plan_update_scope(
 ) -> Result<MethodPlan, PlanError> {
     let planned_state_version = project_state.state_version + 1;
     let plan_now = operation_now.clone();
-    let task = store
+    let mut task = store
         .task_record(&request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
@@ -115,6 +115,62 @@ fn plan_update_scope(
             )))
         })?;
     validate_requested_effect_contract(store, project_state, &request)?;
+    let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+    let current_control =
+        parse_task_control_level(&task.effective_control_level).map_err(CorePipelineError::from)?;
+    let resolved_control =
+        resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
+    let sensitive_effect = request
+        .change_unit
+        .effect_contract
+        .as_ref()
+        .is_some_and(|contract| {
+            !contract.sensitive_action_expectations.is_empty()
+                || contract.allowed_effects.iter().any(|effect| {
+                    matches!(
+                        effect,
+                        ChangeUnitEffectKind::SensitiveAction
+                            | ChangeUnitEffectKind::ExternalNetwork
+                            | ChangeUnitEffectKind::SecretAccess
+                    )
+                })
+        });
+    let next_control = if sensitive_effect {
+        TaskControlLevel::Sensitive
+    } else {
+        resolved_control.effective_control_level
+    };
+    let current_acceptance = parse_acceptance_policy(&task.acceptance_policy)?;
+    let control_acceptance = acceptance_policy_for_control(next_control, &workflow_policy);
+    let next_acceptance = if acceptance_policy_rank_for_scope(resolved_control.acceptance_policy)
+        >= acceptance_policy_rank_for_scope(control_acceptance)
+    {
+        resolved_control.acceptance_policy
+    } else {
+        control_acceptance
+    };
+    let acceptance_raised = acceptance_policy_rank_for_scope(next_acceptance)
+        > acceptance_policy_rank_for_scope(current_acceptance);
+    let control_raised = next_control > current_control;
+    let control_level_reason = if sensitive_effect && control_raised {
+        "Core raised control to `sensitive` for the proposed Change Unit effect contract."
+            .to_owned()
+    } else if control_raised {
+        resolved_control.control_level_reason.clone()
+    } else {
+        task.control_level_reason.clone()
+    };
+    let acceptance_policy_reason = if acceptance_raised
+        && next_control == resolved_control.effective_control_level
+        && resolved_control.acceptance_raised
+    {
+        resolved_control.acceptance_policy_reason.clone()
+    } else {
+        format!(
+            "Effective control `{}` requires final acceptance for the current close basis.",
+            next_control.as_str()
+        )
+    };
     let linked_scope_decision_refs = validate_related_scope_decisions(
         store,
         project_state,
@@ -238,6 +294,25 @@ fn plan_update_scope(
         }))?),
         close_summary_json: None,
     })];
+    if control_raised || acceptance_raised {
+        storage_mutations.push(CoreStorageMutation::UpdateTaskControlLevel(
+            TaskControlLevelUpdate {
+                task_id: task.task_id.clone(),
+                effective_control_level: next_control.as_str().to_owned(),
+                control_level_reason: control_level_reason.clone(),
+                acceptance_policy: acceptance_raised
+                    .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
+                acceptance_policy_reason: acceptance_raised
+                    .then(|| acceptance_policy_reason.clone()),
+            },
+        ));
+        task.effective_control_level = next_control.as_str().to_owned();
+        task.control_level_reason = control_level_reason;
+        if acceptance_raised {
+            task.acceptance_policy = acceptance_policy_storage(next_acceptance).to_owned();
+            task.acceptance_policy_reason = acceptance_policy_reason;
+        }
+    }
     if let Some(mutation) = acceptance_criteria_mutation {
         storage_mutations.push(CoreStorageMutation::ReplaceAcceptanceCriteria(mutation));
     }
@@ -372,9 +447,22 @@ fn plan_update_scope(
         };
 
     if scope_changed && !active_write_tickets.is_empty() {
-        storage_mutations.push(CoreStorageMutation::MarkActiveWriteTicketsStale {
-            task_id: request.task_id.as_str().to_owned(),
-        });
+        let invalidation_reason = if current_scope.baseline_ref != next_scope.baseline_ref {
+            WriteTicketInvalidationReason::BaselineChanged
+        } else if matches!(
+            request.change_unit.operation,
+            ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
+        ) {
+            WriteTicketInvalidationReason::ChangeUnitChanged
+        } else {
+            WriteTicketInvalidationReason::ScopeRevisionChanged
+        };
+        storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
+            WriteTicketInvalidation {
+                task_id: request.task_id.as_str().to_owned(),
+                invalidation_reason: invalidation_reason.as_str().to_owned(),
+            },
+        ));
     }
     if scope_changed {
         storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
@@ -497,6 +585,7 @@ fn plan_update_scope(
         *plan_now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
+        store,
         project_id: &request.envelope.project_id,
         state_version: planned_state_version,
         task: &synthetic_task,
@@ -538,6 +627,14 @@ fn plan_update_scope(
         result_fields: strip_base(serde_json::to_value(result)?)?,
         next_actions,
     })
+}
+
+fn acceptance_policy_rank_for_scope(policy: AcceptancePolicy) -> u8 {
+    match policy {
+        AcceptancePolicy::NotRequired => 0,
+        AcceptancePolicy::PolicyDependent => 1,
+        AcceptancePolicy::Required => 2,
+    }
 }
 
 fn plan_acceptance_criteria_replacement(

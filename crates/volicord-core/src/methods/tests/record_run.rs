@@ -123,25 +123,35 @@ fn task_mode_run_kind_matrix_is_enforced_before_commit() -> Result<(), Box<dyn E
 }
 
 #[test]
-fn advisor_run_rejects_product_write_fields_without_effect() -> Result<(), Box<dyn Error>> {
-    for (suffix, product_write_observed, changed_paths, write_ticket_id) in [
+fn advisor_run_rejects_write_and_sensitive_effects_without_effect() -> Result<(), Box<dyn Error>> {
+    for (suffix, product_write_observed, changed_paths, write_ticket_id, sensitive_categories) in [
         (
             "advisor_observed_write",
             true,
             vec!["src/export.rs".to_owned()],
             None,
+            Vec::new(),
         ),
         (
             "advisor_changed_paths",
             false,
             vec!["src/export.rs".to_owned()],
             None,
+            Vec::new(),
         ),
         (
             "advisor_write_ticket",
             false,
             Vec::new(),
             Some(WriteTicketId::new("wt_advisor_forbidden")),
+            Vec::new(),
+        ),
+        (
+            "advisor_sensitive_effect",
+            false,
+            Vec::new(),
+            None,
+            vec!["network".to_owned()],
         ),
     ] {
         let harness = MethodHarness::new()?;
@@ -160,6 +170,7 @@ fn advisor_run_rejects_product_write_fields_without_effect() -> Result<(), Box<d
         request.kind = RunKind::ShapingUpdate;
         request.observed_changes.product_file_write_observed = product_write_observed;
         request.observed_changes.changed_paths = changed_paths;
+        request.observed_changes.sensitive_categories = sensitive_categories;
         request.write_ticket_id = write_ticket_id.into();
 
         let response = harness
@@ -221,6 +232,385 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
     );
     assert!(after_revision.current_close_basis.is_none());
     assert!(response.response_value["current_close_basis"].is_null());
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_old_ticket_while_policy_control_reevaluation_is_pending(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_pending_policy_raise")?;
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_run_pending_policy_raise_prepare",
+            "idem_run_pending_policy_raise_prepare",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    let marker_fingerprint = format!("sha256:{}", "c".repeat(64));
+    let metadata_json = volicord_types::canonical_json_string(&json!({
+        "policy_control_reevaluation": {
+            "policy_version": 2,
+            "policy_fingerprint": marker_fingerprint,
+            "required_effective_control_level": "sensitive",
+            "required_acceptance_policy": "required",
+            "marked_at": "2026-06-18T00:00:00Z"
+        }
+    }))?;
+    harness.conn()?.execute(
+        "UPDATE tasks SET metadata_json = ?3 WHERE project_id = ?1 AND task_id = ?2",
+        rusqlite::params![PROJECT_ID, task_id, metadata_json],
+    )?;
+    let before = harness.counts()?;
+    let request = product_write_record_run_request(
+        "req_run_pending_policy_raise_record",
+        "idem_run_pending_policy_raise_record",
+        before.state_version,
+        &task_id,
+        &change_unit_id,
+        &ticket_id,
+        "run_pending_policy_raise",
+    );
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "WRITE_TICKET_INVALID"
+    );
+    assert_write_ticket_invalid_reason(&response, "approval_basis_changed");
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "active");
+    Ok(())
+}
+
+#[test]
+fn non_product_category_signal_requires_final_without_manufacturing_sensitive_control(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let (task_id, change_unit_id) = create_task_with_mode_and_change_unit(
+        &harness,
+        "run_non_product_sensitive",
+        RequestedMode::Direct,
+    )?;
+    let before = harness.counts()?;
+    let mut request = record_run_request(
+        "req_run_non_product_sensitive",
+        "idem_run_non_product_sensitive",
+        false,
+        Some(before.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.kind = RunKind::Direct;
+    request.observed_changes.sensitive_categories =
+        vec!["network".to_owned(), "secret_access".to_owned()];
+    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "The non-product sensitive effects were recorded.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["run_summary"]["observed_changes"]["product_file_write_observed"],
+        false
+    );
+    assert_eq!(
+        response.response_value["run_summary"]["observed_changes"]["sensitive_categories"],
+        json!(["network", "secret_access"])
+    );
+    assert_eq!(
+        response.response_value["state"]["effective_control_level"],
+        "light"
+    );
+    assert_eq!(
+        response.response_value["state"]["acceptance_policy"],
+        "required"
+    );
+    assert_close_blocker(
+        &response.response_value["state"],
+        "missing_final_acceptance",
+    );
+    assert_eq!(
+        response.response_value["current_close_basis"]["sensitive_action_requirements"],
+        json!([])
+    );
+
+    let after = harness.counts()?;
+    assert_eq!(after.state_version, before.state_version + 1);
+    assert_eq!(after.runs, before.runs + 1);
+    assert_eq!(
+        after.user_action_requests, before.user_action_requests,
+        "observed categories must not manufacture sensitive-approval authority"
+    );
+    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let stored_task = store
+        .task_record(&TaskId::new(&task_id))?
+        .expect("recorded Run Task remains current");
+    assert_eq!(stored_task.effective_control_level, "light");
+    assert_eq!(stored_task.acceptance_policy, "required");
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_run_non_product_sensitive_status",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_record_run_close_projection_matches_status(
+        &response.response_value,
+        &status.response_value,
+    );
+    Ok(())
+}
+
+#[test]
+fn explicit_sensitive_non_product_run_requires_and_preserves_exact_approval_basis(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-07-16T00:00:00Z");
+    harness.use_clock(clock.clone());
+    enable_record_run_capabilities(&harness)?;
+
+    let mut intake = intake_request(
+        "req_sensitive_non_product_task",
+        "idem_sensitive_non_product_task",
+        false,
+        Some(0),
+        RequestedMode::Direct,
+    );
+    intake.requested_control_level = RequestedControlLevel::Sensitive;
+    let intake = harness
+        .service
+        .intake(intake, invocation(OperationCategory::AgentWorkflow))?;
+    let task_id = response_record_id(&intake.response_value, "task_ref");
+    let scope = harness.service.update_scope(
+        update_scope_request(
+            "req_sensitive_non_product_scope",
+            "idem_sensitive_non_product_scope",
+            false,
+            Some(1),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Bound one non-product sensitive action.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let change_unit_id = response_record_id(&scope.response_value, "change_unit_ref");
+
+    let before_unauthorized = harness.counts()?;
+    let mut unauthorized = record_run_request(
+        "req_sensitive_non_product_without_ticket",
+        "idem_sensitive_non_product_without_ticket",
+        false,
+        Some(before_unauthorized.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    unauthorized.kind = RunKind::Direct;
+    let rejected = harness
+        .service
+        .record_run(unauthorized, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        rejected.response_value["errors"][0]["code"],
+        "WRITE_TICKET_REQUIRED"
+    );
+    assert_eq!(harness.counts()?, before_unauthorized);
+    let basisless_close = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_sensitive_non_product_basisless_close",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(
+        &basisless_close.response_value,
+        "missing_sensitive_action_basis",
+    );
+
+    let expires_at = UtcTimestamp::parse("2026-07-16T00:05:00Z")?;
+    let mut approval_request = user_action_request(
+        "req_sensitive_non_product_approval",
+        "idem_sensitive_non_product_approval",
+        false,
+        Some(before_unauthorized.state_version),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::SensitiveApproval,
+    );
+    approval_request.expires_at = Some(expires_at.clone()).into();
+    let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+        unreachable!("sensitive approval fixture is choice-shaped")
+    };
+    choice.sensitive_action_scope = Some(sensitive_scope(
+        "local_sensitive_step",
+        Vec::new(),
+        Vec::new(),
+    ))
+    .into();
+    choice
+        .sensitive_action_scope
+        .as_mut()
+        .expect("sensitive approval scope")
+        .expires_at = Some(expires_at).into();
+    let approval = harness.service.request_user_action(
+        approval_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let approval_id = response_record_id(&approval.response_value, "user_action_request_ref");
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_sensitive_non_product_approval_resolve",
+            "idem_sensitive_non_product_approval_resolve",
+            None,
+            &task_id,
+            &approval_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    let mut prepare = prepare_write_request(
+        "req_sensitive_non_product_prepare",
+        "idem_sensitive_non_product_prepare",
+        Some(harness.counts()?.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    prepare.product_file_write_intended = false;
+    prepare.intended_paths.clear();
+    let prepared = harness
+        .service
+        .prepare_write(prepare, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(prepared.response_value["decision"], "allowed");
+    let write_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+
+    for (suffix, performed_operation) in [
+        ("missing", None),
+        ("different", Some("another_sensitive_step".to_owned())),
+    ] {
+        let before_mismatch = harness.counts()?;
+        let mut mismatch = record_run_request(
+            &format!("req_sensitive_non_product_{suffix}_operation"),
+            &format!("idem_sensitive_non_product_{suffix}_operation"),
+            false,
+            Some(before_mismatch.state_version),
+            &task_id,
+            &change_unit_id,
+        );
+        mismatch.kind = RunKind::Direct;
+        mismatch.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+        mismatch.performed_operation = performed_operation.into();
+        let rejected = harness
+            .service
+            .record_run(mismatch, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            rejected.response_value["errors"][0]["code"],
+            "WRITE_TICKET_INVALID"
+        );
+        assert_eq!(
+            rejected.response_value["errors"][0]["details"]["write_ticket_reason"],
+            "operation_mismatch"
+        );
+        assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+        assert_eq!(harness.counts()?, before_mismatch);
+    }
+
+    let mut run = record_run_request(
+        "req_sensitive_non_product_record",
+        "idem_sensitive_non_product_record",
+        false,
+        Some(harness.counts()?.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::Direct;
+    run.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    run.performed_operation = Some("  local_sensitive_step  ".to_owned()).into();
+    run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        result_summary: "The exact non-product sensitive action was recorded.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let recorded = harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        recorded.response_value["base"]["response_kind"], "result",
+        "{:#}",
+        recorded.response_value
+    );
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+    let requirements = recorded.response_value["current_close_basis"]
+        ["sensitive_action_requirements"]
+        .as_array()
+        .expect("sensitive action requirements");
+    assert_eq!(requirements.len(), 1);
+    assert_eq!(requirements[0]["action_kind"], "local_sensitive_step");
+    assert_eq!(requirements[0]["normalized_paths"], json!([]));
+    assert_eq!(requirements[0]["sensitive_categories"], json!([]));
+    assert_no_close_blocker(
+        &recorded.response_value["state"],
+        "missing_sensitive_action_basis",
+    );
+    assert_no_close_blocker(
+        &recorded.response_value["state"],
+        "missing_sensitive_approval",
+    );
+    assert_close_blocker(
+        &recorded.response_value["state"],
+        "missing_final_acceptance",
+    );
+
+    clock.advance(Duration::minutes(6));
+    let close = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_sensitive_non_product_close_after_expiry",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_no_close_blocker(&close.response_value, "missing_sensitive_action_basis");
+    assert_close_blocker(&close.response_value, "missing_sensitive_approval");
     Ok(())
 }
 
@@ -402,11 +792,69 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
         enable_record_run_capabilities(&harness)?;
         let (task_id, change_unit_id) =
             create_task_with_change_unit(&harness, &format!("run_pending_sensitive_{suffix}"))?;
+
+        if !run_categories.is_empty() {
+            let mut ticket_approval = user_action_request(
+                &format!("req_run_ticket_approval_{suffix}"),
+                &format!("idem_run_ticket_approval_{suffix}"),
+                false,
+                Some(harness.counts()?.state_version),
+                &task_id,
+                Some(&change_unit_id),
+                JudgmentKind::SensitiveApproval,
+            );
+            let volicord_types::UserActionDraft::Choice(choice) = &mut ticket_approval.action
+            else {
+                unreachable!("sensitive approval fixture is choice-shaped")
+            };
+            choice.sensitive_action_scope = Some(sensitive_scope(
+                run_operation,
+                run_paths.to_vec(),
+                run_categories.to_vec(),
+            ))
+            .into();
+            let requested = harness.service.request_user_action(
+                ticket_approval,
+                invocation(OperationCategory::AgentWorkflow),
+            )?;
+            let approval_id =
+                response_record_id(&requested.response_value, "user_action_request_ref");
+            harness.service.resolve_user_action(
+                resolve_user_action_request(
+                    &format!("req_run_ticket_approval_resolve_{suffix}"),
+                    &format!("submission_run_ticket_approval_{suffix}"),
+                    None,
+                    &task_id,
+                    &approval_id,
+                    "accept",
+                ),
+                invocation(OperationCategory::UserOnly),
+            )?;
+        }
+        let mut prepare = prepare_write_request(
+            &format!("req_run_ticket_prepare_{suffix}"),
+            &format!("idem_run_ticket_prepare_{suffix}"),
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        );
+        prepare.intended_operation = run_operation.to_owned();
+        prepare.intended_paths = run_paths.iter().map(|path| (*path).to_owned()).collect();
+        prepare.sensitive_categories = run_categories
+            .iter()
+            .map(|category| (*category).to_owned())
+            .collect();
+        let prepared = harness
+            .service
+            .prepare_write(prepare, invocation(OperationCategory::AgentWorkflow))?;
+        assert_eq!(prepared.response_value["decision"], "allowed");
+        let write_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+
         let mut pending = user_action_request(
             &format!("req_run_pending_sensitive_{suffix}"),
             &format!("idem_run_pending_sensitive_{suffix}"),
             false,
-            Some(2),
+            Some(harness.counts()?.state_version),
             &task_id,
             Some(&change_unit_id),
             JudgmentKind::SensitiveApproval,
@@ -433,21 +881,6 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
             })?;
         }
 
-        let write_ticket_id = format!("wa_pending_sensitive_{suffix}");
-        insert_active_write_ticket_with_scope(
-            &harness,
-            WriteTicketScopeFixture {
-                task_id: &task_id,
-                change_unit_id: &change_unit_id,
-                write_ticket_id: &write_ticket_id,
-                basis_state_version: 3,
-                created_at: "2999-01-01T00:00:00.000Z",
-                expires_at: "2999-01-01T00:15:00.000Z",
-                intended_operation: run_operation,
-                intended_paths: run_paths,
-                sensitive_categories: run_categories,
-            },
-        )?;
         let before = harness.counts()?;
         let mut request = product_write_record_run_request(
             &format!("req_run_pending_sensitive_record_{suffix}"),
@@ -464,6 +897,7 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
             .iter()
             .map(|category| (*category).to_owned())
             .collect();
+        request.performed_operation = Some(run_operation.to_owned()).into();
         let response = harness
             .service
             .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -493,6 +927,7 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
                 .iter()
                 .map(|category| (*category).to_owned())
                 .collect();
+            dry_run.performed_operation = Some(run_operation.to_owned()).into();
             let dry_run = harness
                 .service
                 .record_run(dry_run, invocation(OperationCategory::AgentWorkflow))?;
@@ -1772,7 +2207,8 @@ fn record_run_dry_run_allocates_no_residual_risk_ids() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box<dyn Error>> {
+fn record_run_product_write_omits_optional_operation_and_consumes_ticket_once(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_write")?;
@@ -1791,6 +2227,7 @@ fn record_run_product_write_consumes_valid_write_ticket_once() -> Result<(), Box
     request.observed_changes.product_file_write_observed = true;
     request.observed_changes.changed_paths = vec!["src/export.rs".to_owned()];
     request.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
+    request.performed_operation = None.into();
     request.evidence_updates = vec![supported_evidence_update(
         "Product write was reported with external tool output.",
     )];
@@ -2016,12 +2453,12 @@ fn record_run_consumes_write_ticket_at_fourteen_minutes_fifty_nine_seconds(
 }
 
 #[test]
-fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
-) -> Result<(), Box<dyn Error>> {
+fn record_run_accepts_default_write_ticket_after_fifteen_minutes() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_1500")?;
-    let id_generator = CountingDurableIdGenerator::new(["auth_1500", "prepare_event_1500"]);
+    let id_generator =
+        CountingDurableIdGenerator::new(["auth_1500", "prepare_event_1500", "record_event_1500"]);
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
     harness.use_generator_and_clock(id_generator, clock.clone());
     let write_ticket_id =
@@ -2042,22 +2479,14 @@ fn record_run_rejects_write_ticket_at_exactly_fifteen_minutes_without_effect(
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "WRITE_TICKET_INVALID"
-    );
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["write_ticket_reason"],
-        "expired"
-    );
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
-    assert_eq!(harness.counts()?, before);
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+    assert_eq!(harness.counts()?.runs, before.runs + 1);
     Ok(())
 }
 
 #[test]
-fn record_run_limits_historical_far_future_write_ticket_to_fifteen_minutes(
+fn record_run_honors_configured_far_future_idle_timeout_without_fixed_cap(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
@@ -2071,7 +2500,7 @@ fn record_run_limits_historical_far_future_write_ticket_to_fifteen_minutes(
         "2026-06-18T00:00:00.000Z",
         "2999-01-01T00:00:00.000Z",
     )?;
-    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let id_generator = CountingDurableIdGenerator::new(["record_event_far_future"]);
     let clock = ManualClock::at("2026-06-18T00:15:00Z");
     harness.use_generator_and_clock(id_generator, clock);
     let before = harness.counts()?;
@@ -2089,18 +2518,13 @@ fn record_run_limits_historical_far_future_write_ticket_to_fifteen_minutes(
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["write_ticket_reason"],
-        "expired"
-    );
-    assert_eq!(harness.counts()?, before);
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(harness.counts()?.runs, before.runs + 1);
     Ok(())
 }
 
 #[test]
-fn record_run_honors_stored_expiration_earlier_than_fifteen_minutes() -> Result<(), Box<dyn Error>>
-{
+fn record_run_honors_configured_idle_timeout_boundary() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_early_exp")?;
@@ -2134,7 +2558,7 @@ fn record_run_honors_stored_expiration_earlier_than_fifteen_minutes() -> Result<
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["details"]["write_ticket_reason"],
-        "expired"
+        "idle_timeout"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -2152,8 +2576,8 @@ fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result
         &change_unit_id,
         "wa_bad_timestamp",
         2,
+        "2026-06-18T00:00:00.000Z",
         "not-a-timestamp",
-        "2026-06-18T00:15:00.000Z",
     )?;
     let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
     let clock = ManualClock::at("2026-06-18T00:00:00Z");
@@ -2177,13 +2601,13 @@ fn record_run_treats_invalid_write_ticket_timestamp_as_corrupt_state() -> Result
     let details = &response.response_value["errors"][0]["details"]["owner_state_error"];
     assert_eq!(details["table"], "write_tickets");
     assert_eq!(details["record_ref"], "wa_bad_timestamp");
-    assert_eq!(details["logical_column"], "created_at");
+    assert_eq!(details["logical_column"], "idle_expires_at");
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn record_run_stale_basis_precedes_write_ticket_expiration() -> Result<(), Box<dyn Error>> {
+fn record_run_ignores_unrelated_state_version_increment() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_auth_stale_exp")?;
@@ -2196,19 +2620,28 @@ fn record_run_stale_basis_precedes_write_ticket_expiration() -> Result<(), Box<d
         "2026-06-18T00:00:00.000Z",
         "2999-01-01T00:00:00.000Z",
     )?;
-    harness.service.update_scope(
-        update_scope_request(
-            "req_run_auth_stale_exp_touch",
-            "idem_run_auth_stale_exp_touch",
-            false,
-            Some(2),
-            &task_id,
-            ChangeUnitOperation::KeepCurrent,
-            "Initial current scope.",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
-    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let mut touch = update_scope_request(
+        "req_run_auth_stale_exp_touch",
+        "idem_run_auth_stale_exp_touch",
+        false,
+        Some(2),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    touch.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
+        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
+            active_acceptance_criterion_id(&harness, &task_id)?,
+        ))
+        .into(),
+        statement: "The scoped behavior is represented.".to_owned(),
+        evidence_requirement: EvidenceRequirement::NotRequired,
+    }])
+    .into();
+    harness
+        .service
+        .update_scope(touch, invocation(OperationCategory::AgentWorkflow))?;
+    let id_generator = CountingDurableIdGenerator::new(["record_event_unrelated_state"]);
     let clock = ManualClock::at("2026-06-18T00:15:00Z");
     harness.use_generator_and_clock(id_generator, clock);
     let before = harness.counts()?;
@@ -2226,12 +2659,8 @@ fn record_run_stale_basis_precedes_write_ticket_expiration() -> Result<(), Box<d
         invocation(OperationCategory::AgentWorkflow),
     )?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "STATE_VERSION_CONFLICT"
-    );
-    assert_eq!(harness.counts()?, before);
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(harness.counts()?.runs, before.runs + 1);
     Ok(())
 }
 
@@ -2267,24 +2696,33 @@ fn record_run_missing_write_ticket_rejects_product_write_without_effect(
 }
 
 #[test]
-fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<(), Box<dyn Error>> {
+fn record_run_ticket_survives_unrelated_committed_scope_noop() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stale_auth")?;
     let write_ticket_id =
         prepare_write_ticket(&harness, &task_id, &change_unit_id, 2, "run_stale_auth")?;
-    harness.service.update_scope(
-        update_scope_request(
-            "req_run_stale_auth_touch",
-            "idem_run_stale_auth_touch",
-            false,
-            Some(3),
-            &task_id,
-            ChangeUnitOperation::KeepCurrent,
-            "Initial current scope.",
-        ),
-        invocation(OperationCategory::AgentWorkflow),
-    )?;
+    let mut touch = update_scope_request(
+        "req_run_stale_auth_touch",
+        "idem_run_stale_auth_touch",
+        false,
+        Some(3),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Initial current scope.",
+    );
+    touch.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
+        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
+            active_acceptance_criterion_id(&harness, &task_id)?,
+        ))
+        .into(),
+        statement: "The scoped behavior is represented.".to_owned(),
+        evidence_requirement: EvidenceRequirement::NotRequired,
+    }])
+    .into();
+    harness
+        .service
+        .update_scope(touch, invocation(OperationCategory::AgentWorkflow))?;
     let before = harness.counts()?;
 
     let mut request = record_run_request(
@@ -2302,13 +2740,9 @@ fn record_run_stale_write_ticket_basis_rejects_before_consumption() -> Result<()
         .service
         .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "STATE_VERSION_CONFLICT"
-    );
-    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "stale");
-    assert_eq!(harness.counts()?, before);
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "consumed");
+    assert_eq!(harness.counts()?.runs, before.runs + 1);
     Ok(())
 }
 
@@ -2577,6 +3011,108 @@ fn record_run_rejects_write_ticket_sensitive_category_mismatch_without_consumpti
         "active"
     );
     assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_expired_sensitive_approval_basis_without_consumption(
+) -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let clock = ManualClock::at("2026-06-18T00:00:00Z");
+    harness.use_clock(clock.clone());
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_expired_sensitive_basis")?;
+    let mut approval_request = user_action_request(
+        "req_run_expired_sensitive_basis_approval",
+        "idem_run_expired_sensitive_basis_approval",
+        false,
+        Some(2),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::SensitiveApproval,
+    );
+    let expires_at = UtcTimestamp::parse("2026-06-18T00:05:00Z")?;
+    approval_request.expires_at = Some(expires_at.clone()).into();
+    let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+        unreachable!("sensitive approval fixture is choice-shaped")
+    };
+    choice
+        .sensitive_action_scope
+        .as_mut()
+        .expect("sensitive approval scope")
+        .expires_at = Some(expires_at).into();
+    let approval = harness.service.request_user_action(
+        approval_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let approval_id = response_record_id(&approval.response_value, "user_action_request_ref");
+    harness.service.resolve_user_action(
+        resolve_user_action_request(
+            "req_run_expired_sensitive_basis_resolve",
+            "idem_run_expired_sensitive_basis_resolve",
+            None,
+            &task_id,
+            &approval_id,
+            "accept",
+        ),
+        invocation(OperationCategory::UserOnly),
+    )?;
+
+    let mut prepare = prepare_write_request(
+        "req_run_expired_sensitive_basis_prepare",
+        "idem_run_expired_sensitive_basis_prepare",
+        Some(4),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    prepare.sensitive_categories = vec!["network".to_owned()];
+    let prepared = harness
+        .service
+        .prepare_write(prepare, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(prepared.response_value["decision"], "allowed");
+    let write_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    clock.advance(Duration::minutes(6));
+    let before = harness.counts()?;
+
+    let mut request = product_write_record_run_request(
+        "req_run_expired_sensitive_basis_record",
+        "idem_run_expired_sensitive_basis_record",
+        before.state_version,
+        &task_id,
+        &change_unit_id,
+        &write_ticket_id,
+        "run_expired_sensitive_basis",
+    );
+    request.observed_changes.sensitive_categories = vec!["network".to_owned()];
+    let response = harness
+        .service
+        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_write_ticket_invalid_reason(&response, "approval_basis_changed");
+    assert_eq!(write_ticket_status(&harness, &write_ticket_id)?, "active");
+    assert_eq!(harness.counts()?, before);
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_expired_sensitive_basis",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+    assert_eq!(
+        status.response_value["write_ticket_summary"]["status"],
+        "invalidated"
+    );
+    assert_eq!(
+        status.response_value["write_ticket_summary"]["invalidation_reason"],
+        "approval_basis_changed"
+    );
+    assert_no_close_blocker(&status.response_value, "open_write_ticket");
     Ok(())
 }
 

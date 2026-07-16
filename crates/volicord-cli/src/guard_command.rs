@@ -5,24 +5,29 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
 use volicord_store::{
+    agent_connections::agent_connection_record_read_only,
     bootstrap::{project_record_for_execution, ProjectRecord},
     core_pipeline::CoreProjectStore,
     diagnostics::{
-        record_diagnostic_event, start_diagnostic_session, DiagnosticEvent, DiagnosticEventKind,
-        DiagnosticHostKind, DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport,
-        DiagnosticUserChannelKind,
+        record_diagnostic_event, record_workflow_metric_event, start_diagnostic_session,
+        DiagnosticEvent, DiagnosticEventKind, DiagnosticHostKind, DiagnosticOutcome,
+        DiagnosticSessionStart, DiagnosticTransport, DiagnosticUserChannelKind,
+        WorkflowMetricDecision, WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     },
     guards::{
         agent_session, guard_event, insert_agent_session, insert_guard_event,
-        observe_guard_installation, AgentSessionInsert, GuardEventInsert,
-        GuardInstallationObservation,
+        observe_guard_installation, prior_guard_event_exists_for_session_kind, AgentSessionInsert,
+        GuardEventInsert, GuardInstallationObservation,
     },
+    host_runtime_probes::record_host_runtime_probe_observation,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
 };
 use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, IntegrationProfile,
-    UtcTimestamp, VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
+    canonical_json_bare_sha256, canonical_json_bytes, GuardDecision, HostRuntimeProbeFailureClass,
+    HostRuntimeProbeId, HostRuntimeProbeObservation, HostRuntimeProbeOutcome, IntegrationProfile,
+    ObservationConfidence, UtcTimestamp,
+    VERIFICATION_BASIS_REGISTERED_HOST_STOP_HOOK_CONNECTION_BINDING,
     VERIFICATION_BASIS_UNREGISTERED_HOST_HOOK_EVENT,
 };
 
@@ -63,6 +68,7 @@ use envelope::{
 use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
 use prompt_capture::handle_prompt_capture;
 use render::{render_guard_output, RenderedGuardOutput};
+use tool_observation::{tool_name_is_direct_write, tool_observation, ToolObservation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardCommandOutcome {
@@ -170,10 +176,35 @@ where
     let input = protect_managed_guard_input(input, &envelope)?;
     validate_existing_managed_session_binding(&runtime_home, &project, &envelope)?;
     let subject = guard_subject(phase, &input, &envelope, &project);
-    if phase == GuardPhase::Stop {
+    if matches!(phase, GuardPhase::PostTool | GuardPhase::Stop) {
         if let Some(replayed) =
-            replayed_stop_phase_result(&runtime_home, &project, &envelope, phase, &subject)?
+            replayed_guard_phase_result(&runtime_home, &project, &envelope, phase, &subject)?
         {
+            record_guard_runtime_probes_best_effort(
+                &runtime_home,
+                &project,
+                &envelope,
+                phase,
+                &input.raw_value,
+                phase == GuardPhase::Stop,
+            );
+            record_guard_diagnostic_best_effort(
+                &runtime_home,
+                &project,
+                &envelope,
+                phase,
+                diagnostic_started,
+                input.raw_text.len() as u64,
+                &replayed.result,
+            );
+            record_guard_workflow_metrics_best_effort(
+                &runtime_home,
+                &envelope,
+                phase,
+                replayed.decision,
+                &replayed.result,
+                true,
+            );
             let rendered = render_guard_command_output(
                 phase,
                 replayed.decision,
@@ -191,6 +222,9 @@ where
         }
     }
     ensure_required_session(&runtime_home, &project, &envelope, phase)?;
+    if phase == GuardPhase::PromptCapture {
+        let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
+    }
     let _activation =
         observe_guard_installation_activation(&runtime_home, &project, &envelope, phase, &options)?;
     let stop_invocation_binding_basis = (phase == GuardPhase::Stop)
@@ -230,6 +264,14 @@ where
         subject,
         phase_result.result.clone(),
     )?;
+    record_guard_runtime_probes_best_effort(
+        &runtime_home,
+        &project,
+        &envelope,
+        phase,
+        &input.raw_value,
+        false,
+    );
     if let Some(expected_write) = phase_result.expected_write {
         persist_expected_write(&runtime_home, &project, expected_write)?;
     }
@@ -242,6 +284,14 @@ where
         input.raw_text.len() as u64,
         &phase_result.result,
     );
+    record_guard_workflow_metrics_best_effort(
+        &runtime_home,
+        &envelope,
+        phase,
+        phase_result.decision,
+        &phase_result.result,
+        false,
+    );
     let rendered = render_guard_command_output(
         phase,
         phase_result.decision,
@@ -251,6 +301,17 @@ where
         &runtime_home,
         &project,
     )?;
+    if phase == GuardPhase::Stop && matches!(options.output, OutputFormat::HostNative(_)) {
+        record_guard_probe_results_best_effort(
+            &runtime_home,
+            &envelope,
+            &[(
+                HostRuntimeProbeId::FixedUiAuthorityDisclosure,
+                HostRuntimeProbeOutcome::Unavailable,
+                HostRuntimeProbeFailureClass::ProbeNotRun,
+            )],
+        );
+    }
     Ok(GuardCommandOutcome {
         stdout: rendered.stdout,
         stderr: rendered.stderr,
@@ -284,15 +345,7 @@ fn render_guard_command_output(
             rendered.stdout = authority_output.stdout;
         }
         Err(_) => {
-            let minimal_base = match decision {
-                GuardDecision::Deny => json!({
-                    "decision": "block",
-                    "reason": "Volicord blocked this Stop event; inspect its stored GuardEvent for the historical decision."
-                }),
-                GuardDecision::Allow | GuardDecision::Warn | GuardDecision::InjectContext => {
-                    json!({"continue": true})
-                }
-            };
+            let minimal_base = json!({"continue": true});
             let safe_projection = FinalAuthorityProjection::fallback(
                 FinalAuthorityFallbackReason::RenderingUnavailable,
                 None,
@@ -406,7 +459,7 @@ fn managed_final_output_host(host_kind: &str) -> Option<ManagedFinalOutputHost> 
     }
 }
 
-fn replayed_stop_phase_result(
+fn replayed_guard_phase_result(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
@@ -514,24 +567,7 @@ fn record_guard_diagnostic_best_effort(
     } else {
         DiagnosticOutcome::Success
     };
-    let build = volicord_mcp::build_info();
-    let host_kind = Some(DiagnosticHostKind::from_connection_host_kind(
-        &envelope.host_kind,
-    ));
-    if start_diagnostic_session(
-        runtime_home,
-        DiagnosticSessionStart {
-            session_id,
-            connection_id: Some(&envelope.connection_id),
-            project_id: Some(&project.project_id),
-            transport: DiagnosticTransport::GuardHook,
-            host_kind,
-            package_version: build.package_version,
-            build_id: &build.build_id,
-        },
-    )
-    .is_err()
-    {
+    if !start_guard_diagnostic_session_best_effort(runtime_home, project, envelope) {
         return;
     }
     let _ = record_diagnostic_event(
@@ -555,6 +591,231 @@ fn record_guard_diagnostic_best_effort(
             outcome,
         },
     );
+}
+
+fn start_guard_diagnostic_session_best_effort(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+) -> bool {
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return false;
+    };
+    let build = volicord_mcp::build_info();
+    start_diagnostic_session(
+        runtime_home,
+        DiagnosticSessionStart {
+            session_id,
+            connection_id: Some(&envelope.connection_id),
+            project_id: Some(&project.project_id),
+            transport: DiagnosticTransport::GuardHook,
+            host_kind: Some(DiagnosticHostKind::from_connection_host_kind(
+                &envelope.host_kind,
+            )),
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    )
+    .is_ok()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_guard_workflow_metrics_best_effort(
+    runtime_home: &Path,
+    envelope: &GuardEnvelope,
+    phase: GuardPhase,
+    decision: GuardDecision,
+    result: &Value,
+    repeated_stop: bool,
+) {
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return;
+    };
+    let integration_profile = match envelope.guard_mode.as_str() {
+        "record" => Some(IntegrationProfile::Record),
+        "detective" => Some(IntegrationProfile::Detective),
+        _ => None,
+    };
+    let record = |metric_kind: WorkflowMetricKind,
+                  value: u64,
+                  metric_decision: Option<WorkflowMetricDecision>,
+                  observation_confidence: Option<ObservationConfidence>,
+                  outcome: Option<WorkflowMetricOutcome>| {
+        let _ = record_workflow_metric_event(
+            runtime_home,
+            &WorkflowMetricEvent {
+                session_id: session_id.to_owned(),
+                metric_kind,
+                value,
+                method_name: None,
+                integration_profile,
+                decision: metric_decision,
+                observation_confidence,
+                outcome,
+            },
+        );
+    };
+
+    match phase {
+        GuardPhase::PreTool => {
+            let confidence = result
+                .pointer("/tool/confidence")
+                .and_then(Value::as_str)
+                .and_then(workflow_observation_confidence);
+            let metric_decision = match decision {
+                GuardDecision::Allow => Some(WorkflowMetricDecision::Allow),
+                GuardDecision::Warn => Some(WorkflowMetricDecision::Warn),
+                GuardDecision::Deny => Some(WorkflowMetricDecision::Deny),
+                GuardDecision::InjectContext => None,
+            };
+            if let (Some(metric_decision), Some(confidence)) = (metric_decision, confidence) {
+                record(
+                    WorkflowMetricKind::PreToolDecision,
+                    1,
+                    Some(metric_decision),
+                    Some(confidence),
+                    None,
+                );
+            }
+            let task_level = result
+                .pointer("/context/active_task_effective_control_level")
+                .and_then(Value::as_str);
+            let structured_product_write = confidence == Some(ObservationConfidence::Structured)
+                && result.pointer("/tool/effect").and_then(Value::as_str)
+                    == Some("product_file_write");
+            if decision == GuardDecision::Deny
+                && structured_product_write
+                && matches!(task_level, Some("light" | "tracked"))
+            {
+                record(
+                    WorkflowMetricKind::ConfirmedStructuredWriteDeny,
+                    1,
+                    None,
+                    None,
+                    Some(WorkflowMetricOutcome::Rejected),
+                );
+            }
+        }
+        GuardPhase::PostTool => {
+            let confidence = result
+                .pointer("/tool/confidence")
+                .and_then(Value::as_str)
+                .and_then(workflow_observation_confidence);
+            let effect = result
+                .pointer("/tool/effect")
+                .and_then(Value::as_str)
+                .and_then(workflow_observation_effect);
+            if let (Some(confidence), Some(effect)) = (confidence, effect) {
+                record(
+                    WorkflowMetricKind::ObservationAssessment,
+                    1,
+                    None,
+                    Some(confidence),
+                    Some(effect),
+                );
+            }
+            let out_of_scope_count = result
+                .get("unrecorded_changes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|change| {
+                    change.get("confidence").and_then(Value::as_str) == Some("confirmed")
+                        && matches!(
+                            change.get("correlation_status").and_then(Value::as_str),
+                            Some("out_of_scope_expected_write" | "out_of_scope_write_ticket")
+                        )
+                })
+                .count() as u64;
+            if out_of_scope_count > 0 {
+                record(
+                    WorkflowMetricKind::ConfirmedOutOfScopeWrite,
+                    out_of_scope_count,
+                    None,
+                    None,
+                    Some(WorkflowMetricOutcome::Success),
+                );
+            }
+            let suspected_resolved_no_change = result
+                .get("resolved_suspected_changes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|change| {
+                    change.get("confidence").and_then(Value::as_str) == Some("suspected")
+                        && change.get("resolution_basis").and_then(Value::as_str)
+                            == Some("invalid_observation")
+                })
+                .count() as u64;
+            if suspected_resolved_no_change > 0 {
+                record(
+                    WorkflowMetricKind::SuspectedResolvedNoChange,
+                    suspected_resolved_no_change,
+                    None,
+                    None,
+                    Some(WorkflowMetricOutcome::Success),
+                );
+            }
+        }
+        GuardPhase::Stop => {
+            let refresh_succeeded = result
+                .get("authoritative_refresh_succeeded")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let outcome = if refresh_succeeded {
+                WorkflowMetricOutcome::Success
+            } else {
+                WorkflowMetricOutcome::Unavailable
+            };
+            record(WorkflowMetricKind::StopCall, 1, None, None, Some(outcome));
+            if repeated_stop {
+                record(WorkflowMetricKind::StopRepeat, 1, None, None, Some(outcome));
+            } else {
+                record(
+                    WorkflowMetricKind::AuthorityRefresh,
+                    1,
+                    None,
+                    None,
+                    Some(outcome),
+                );
+            }
+            if result
+                .get("completion_claim_allowed")
+                .and_then(Value::as_bool)
+                == Some(false)
+            {
+                record(
+                    WorkflowMetricKind::CompletionClaimSuppressed,
+                    1,
+                    None,
+                    None,
+                    Some(outcome),
+                );
+            }
+        }
+        GuardPhase::SessionStart | GuardPhase::PromptCapture => {}
+    }
+}
+
+fn workflow_observation_confidence(value: &str) -> Option<ObservationConfidence> {
+    match value {
+        "confirmed" => Some(ObservationConfidence::Confirmed),
+        "structured" => Some(ObservationConfidence::Structured),
+        "heuristic" => Some(ObservationConfidence::Heuristic),
+        "unknown" => Some(ObservationConfidence::Unknown),
+        _ => None,
+    }
+}
+
+fn workflow_observation_effect(value: &str) -> Option<WorkflowMetricOutcome> {
+    match value {
+        "read_only" => Some(WorkflowMetricOutcome::ReadOnly),
+        "product_file_write" => Some(WorkflowMetricOutcome::ProductFileWrite),
+        "non_product_write" => Some(WorkflowMetricOutcome::NonProductWrite),
+        "external_effect" => Some(WorkflowMetricOutcome::ExternalEffect),
+        "unknown" => Some(WorkflowMetricOutcome::Unknown),
+        _ => None,
+    }
 }
 
 fn attach_guard_disclosure(result: &mut Value) {
@@ -721,6 +982,14 @@ fn persist_guard_event(
     subject: Value,
     result: Value,
 ) -> Result<(), GuardCommandError> {
+    let subject_json = object_text(subject)?;
+    let source_payload_sha256 = guard_event_source_payload_sha256(
+        envelope.session_id.as_deref(),
+        &envelope.connection_id,
+        envelope.guard_installation_id.as_deref(),
+        phase.event_kind(),
+        &subject_json,
+    )?;
     let input = GuardEventInsert {
         guard_event_id: envelope.event_id.clone(),
         session_id: envelope.session_id.clone(),
@@ -728,11 +997,12 @@ fn persist_guard_event(
         guard_installation_id: envelope.guard_installation_id.clone(),
         event_kind: phase.event_kind().to_owned(),
         decision: decision.as_str().to_owned(),
-        subject_json: object_text(subject)?,
+        subject_json,
         result_json: object_text(result)?,
         occurred_at: envelope.occurred_at.clone(),
         metadata_json: json!({
             "source": "volicord_guard_cli",
+            "source_payload_sha256": source_payload_sha256,
             "cooperative_detective": true
         })
         .to_string(),
@@ -750,6 +1020,198 @@ fn persist_guard_event(
     }
     insert_guard_event(runtime_home, &project.project_id, input)?;
     Ok(())
+}
+
+fn record_guard_runtime_probes_best_effort(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    phase: GuardPhase,
+    event: &Value,
+    repeated_stop: bool,
+) {
+    let mut observations = vec![(
+        HostRuntimeProbeId::LifecycleHookDelivery,
+        HostRuntimeProbeOutcome::Passed,
+        HostRuntimeProbeFailureClass::None,
+    )];
+    match phase {
+        GuardPhase::PreTool => {
+            if let Some(observation) = pre_tool_structured_paths_probe(project, event) {
+                observations.push(observation);
+            }
+        }
+        GuardPhase::PostTool => {
+            if let Some(observation) = post_tool_structured_paths_probe(project, event) {
+                observations.push(observation);
+            }
+        }
+        GuardPhase::Stop => observations.push(
+            if repeated_stop
+                || event.get("stop_hook_active").and_then(Value::as_bool) == Some(true)
+                || prior_stop_delivery_exists(runtime_home, project, envelope)
+            {
+                (
+                    HostRuntimeProbeId::StopDeliveryAndReplay,
+                    HostRuntimeProbeOutcome::Failed,
+                    HostRuntimeProbeFailureClass::SecondStopRequested,
+                )
+            } else {
+                (
+                    HostRuntimeProbeId::StopDeliveryAndReplay,
+                    HostRuntimeProbeOutcome::Unavailable,
+                    HostRuntimeProbeFailureClass::ProbeNotRun,
+                )
+            },
+        ),
+        GuardPhase::SessionStart | GuardPhase::PromptCapture => {}
+    }
+
+    record_guard_probe_results_best_effort(runtime_home, envelope, &observations);
+}
+
+type GuardProbeResult = (
+    HostRuntimeProbeId,
+    HostRuntimeProbeOutcome,
+    HostRuntimeProbeFailureClass,
+);
+
+fn pre_tool_structured_paths_probe(
+    project: &ProjectRecord,
+    event: &Value,
+) -> Option<GuardProbeResult> {
+    let observation = tool_observation(event, &project.repo_root);
+    if !tool_name_is_direct_write(observation.tool_name.as_deref()) {
+        return None;
+    }
+    Some(if observation.structured_paths.is_empty() {
+        (
+            HostRuntimeProbeId::PreToolStructuredTargetPaths,
+            HostRuntimeProbeOutcome::Failed,
+            HostRuntimeProbeFailureClass::StructuredPathsMissing,
+        )
+    } else {
+        (
+            HostRuntimeProbeId::PreToolStructuredTargetPaths,
+            HostRuntimeProbeOutcome::Passed,
+            HostRuntimeProbeFailureClass::None,
+        )
+    })
+}
+
+fn post_tool_structured_paths_probe(
+    project: &ProjectRecord,
+    event: &Value,
+) -> Option<GuardProbeResult> {
+    let observation = tool_observation(event, &project.repo_root);
+    if !tool_name_is_direct_write(observation.tool_name.as_deref())
+        || !post_tool_reports_successful_write(&observation)
+        || (observation.changed_paths_reported && observation.changed_paths.is_empty())
+    {
+        return None;
+    }
+    Some(
+        if observation.changed_paths_reported && !observation.changed_paths.is_empty() {
+            (
+                HostRuntimeProbeId::PostToolStructuredChangedPaths,
+                HostRuntimeProbeOutcome::Passed,
+                HostRuntimeProbeFailureClass::None,
+            )
+        } else {
+            (
+                HostRuntimeProbeId::PostToolStructuredChangedPaths,
+                HostRuntimeProbeOutcome::Failed,
+                HostRuntimeProbeFailureClass::StructuredPathsMissing,
+            )
+        },
+    )
+}
+
+fn post_tool_reports_successful_write(observation: &ToolObservation) -> bool {
+    !observation.changed_paths.is_empty()
+        || observation.success == Some(true)
+        || observation.exit_code == Some(0)
+        || observation.status.as_deref().is_some_and(|status| {
+            matches!(
+                status.to_ascii_lowercase().as_str(),
+                "complete" | "completed" | "ok" | "success" | "succeeded"
+            )
+        })
+}
+
+fn prior_stop_delivery_exists(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+) -> bool {
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return false;
+    };
+    prior_guard_event_exists_for_session_kind(
+        runtime_home,
+        &project.project_id,
+        session_id,
+        &envelope.connection_id,
+        "stop",
+        &envelope.event_id,
+    )
+    .unwrap_or(false)
+}
+
+fn record_guard_probe_results_best_effort(
+    runtime_home: &Path,
+    envelope: &GuardEnvelope,
+    observations: &[(
+        HostRuntimeProbeId,
+        HostRuntimeProbeOutcome,
+        HostRuntimeProbeFailureClass,
+    )],
+) {
+    if !is_managed_builtin_host(&envelope.host_kind) {
+        return;
+    }
+    let Ok(Some(connection)) =
+        agent_connection_record_read_only(runtime_home, &envelope.connection_id)
+    else {
+        return;
+    };
+    let adapter_profile = match envelope.guard_mode.as_str() {
+        "record" => IntegrationProfile::Record,
+        "detective" => IntegrationProfile::Detective,
+        _ => return,
+    };
+    let now = UtcTimestamp::from_datetime(DateTime::<Utc>::from(std::time::SystemTime::now()));
+    let Ok(expires_at) = now.checked_add(chrono::Duration::hours(1)) else {
+        return;
+    };
+    let host_version = serde_json::from_str::<Value>(&connection.last_verification_report_json)
+        .ok()
+        .and_then(|report| {
+            report
+                .pointer("/host/host_version")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        });
+    for &(probe_id, outcome, failure_class) in observations {
+        let _ = record_host_runtime_probe_observation(
+            runtime_home,
+            HostRuntimeProbeObservation {
+                probe_id,
+                outcome,
+                failure_class,
+                connection_internal_id: connection.connection_internal_id.clone(),
+                host_kind: connection.host_kind.clone(),
+                host_version: host_version.clone(),
+                client_name: None,
+                client_version: None,
+                adapter_profile,
+                adapter_version: env!("CARGO_PKG_VERSION").to_owned(),
+                managed_fingerprint: connection.managed_fingerprint.clone(),
+                observed_at: now.clone(),
+                expires_at: expires_at.clone(),
+            },
+        );
+    }
 }
 
 fn guard_subject(
@@ -1280,7 +1742,11 @@ fn json_error(error: serde_json::Error) -> GuardCommandError {
 
 #[cfg(test)]
 mod replay_tests {
+    use std::error::Error;
+
     use super::*;
+    use volicord_store::host_runtime_probes::host_runtime_probe_snapshot_read_only;
+    use volicord_test_support::core_fixtures::CoreFixture;
 
     #[test]
     fn final_model_prose_is_redacted_from_guard_subjects() {
@@ -1296,6 +1762,149 @@ mod replay_tests {
         assert_eq!(redacted["last_assistant_message"]["omitted"], true);
         assert_eq!(redacted["assistant_message"]["omitted"], true);
         assert_eq!(redacted["nested"]["transcript"]["omitted"], true);
+    }
+
+    #[test]
+    fn managed_guard_events_publish_actual_runtime_probe_results() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("guard-runtime-probes")?;
+        let envelope = GuardEnvelope {
+            event_id: "guard_event_probe".to_owned(),
+            session_id: Some("session_probe".to_owned()),
+            connection_id: fixture.connection_id().to_owned(),
+            guard_installation_id: Some("guard_probe".to_owned()),
+            host_kind: "codex".to_owned(),
+            guard_mode: "detective".to_owned(),
+            occurred_at: "2026-07-16T00:00:00Z".to_owned(),
+        };
+        let project =
+            project_record_for_execution(fixture.runtime_home_path(), fixture.project_id())?
+                .expect("fixture project");
+        assert_eq!(
+            pre_tool_structured_paths_probe(
+                &project,
+                &json!({"tool_name": "bash", "command": "git status"}),
+            ),
+            None
+        );
+        assert_eq!(
+            pre_tool_structured_paths_probe(&project, &json!({"tool_name": "edit"})),
+            Some((
+                HostRuntimeProbeId::PreToolStructuredTargetPaths,
+                HostRuntimeProbeOutcome::Failed,
+                HostRuntimeProbeFailureClass::StructuredPathsMissing,
+            ))
+        );
+        assert_eq!(
+            post_tool_structured_paths_probe(
+                &project,
+                &json!({"tool_name": "edit", "success": true}),
+            ),
+            Some((
+                HostRuntimeProbeId::PostToolStructuredChangedPaths,
+                HostRuntimeProbeOutcome::Failed,
+                HostRuntimeProbeFailureClass::StructuredPathsMissing,
+            ))
+        );
+        assert_eq!(
+            post_tool_structured_paths_probe(
+                &project,
+                &json!({"tool_name": "edit", "success": true, "changed_paths": []}),
+            ),
+            None
+        );
+        record_guard_runtime_probes_best_effort(
+            fixture.runtime_home_path(),
+            &project,
+            &envelope,
+            GuardPhase::PreTool,
+            &json!({"tool_name": "edit", "target_path": ["src/lib.rs"]}),
+            false,
+        );
+        record_guard_runtime_probes_best_effort(
+            fixture.runtime_home_path(),
+            &project,
+            &envelope,
+            GuardPhase::PostTool,
+            &json!({
+                "tool_name": "edit",
+                "success": true,
+                "changed_paths": ["src/lib.rs"]
+            }),
+            false,
+        );
+        for (phase, event) in [
+            (
+                GuardPhase::PreTool,
+                json!({"tool_name": "bash", "command": "git status"}),
+            ),
+            (
+                GuardPhase::PostTool,
+                json!({"tool_name": "bash", "command": "git status", "success": true}),
+            ),
+            (
+                GuardPhase::PostTool,
+                json!({"tool_name": "edit", "success": true, "changed_paths": []}),
+            ),
+        ] {
+            record_guard_runtime_probes_best_effort(
+                fixture.runtime_home_path(),
+                &project,
+                &envelope,
+                phase,
+                &event,
+                false,
+            );
+        }
+        record_guard_runtime_probes_best_effort(
+            fixture.runtime_home_path(),
+            &project,
+            &envelope,
+            GuardPhase::Stop,
+            &json!({}),
+            false,
+        );
+
+        let snapshot = host_runtime_probe_snapshot_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )?
+        .expect("fixture connection has a probe snapshot");
+        let outcome = |probe_id| {
+            snapshot
+                .observations
+                .iter()
+                .find(|observation| observation.probe_id == probe_id)
+                .map(|observation| (observation.outcome, observation.failure_class))
+        };
+        assert_eq!(
+            outcome(HostRuntimeProbeId::LifecycleHookDelivery),
+            Some((
+                HostRuntimeProbeOutcome::Passed,
+                HostRuntimeProbeFailureClass::None,
+            ))
+        );
+        assert_eq!(
+            outcome(HostRuntimeProbeId::PreToolStructuredTargetPaths),
+            Some((
+                HostRuntimeProbeOutcome::Passed,
+                HostRuntimeProbeFailureClass::None,
+            ))
+        );
+        assert_eq!(
+            outcome(HostRuntimeProbeId::PostToolStructuredChangedPaths),
+            Some((
+                HostRuntimeProbeOutcome::Passed,
+                HostRuntimeProbeFailureClass::None,
+            ))
+        );
+        assert_eq!(
+            outcome(HostRuntimeProbeId::StopDeliveryAndReplay),
+            Some((
+                HostRuntimeProbeOutcome::Unavailable,
+                HostRuntimeProbeFailureClass::ProbeNotRun,
+            ))
+        );
+        Ok(())
     }
 
     #[test]

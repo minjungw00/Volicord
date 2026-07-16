@@ -39,12 +39,11 @@ pub(super) fn write_ticket_coverage(
     summary: &GuardStateSummary,
     observation: &ToolObservation,
 ) -> WriteTicketCoverage {
-    let observed_paths = normalized_observed_paths(
-        observation
-            .paths
-            .iter()
-            .chain(observation.changed_paths.iter()),
-    );
+    let observed_paths = if observation.changed_paths.is_empty() {
+        normalized_observed_paths(observation.structured_paths.iter())
+    } else {
+        normalized_observed_paths(observation.changed_paths.iter())
+    };
     if observed_paths.is_empty() {
         return WriteTicketCoverage::NoObservedPaths;
     }
@@ -54,7 +53,13 @@ pub(super) fn write_ticket_coverage(
     let matching = summary
         .active_write_tickets
         .iter()
-        .filter(|ticket| paths_are_authorized(&observed_paths, &ticket.intended_paths))
+        .filter(|ticket| {
+            paths_are_authorized(
+                &observed_paths,
+                &ticket.intended_paths,
+                &ticket.denied_paths,
+            )
+        })
         .cloned()
         .collect::<Vec<_>>();
     if matching.len() == 1 {
@@ -92,7 +97,9 @@ pub(super) fn active_write_ticket_match(
     let matching = summary
         .active_write_tickets
         .iter()
-        .filter(|ticket| paths_are_authorized(changed, &ticket.intended_paths))
+        .filter(|ticket| {
+            paths_are_authorized(changed, &ticket.intended_paths, &ticket.denied_paths)
+        })
         .cloned()
         .collect::<Vec<_>>();
     if matching.len() == 1 {
@@ -128,13 +135,20 @@ pub(super) fn normalized_observed_paths<'a>(
         .collect()
 }
 
-pub(super) fn paths_are_authorized(observed_paths: &[String], authorized_paths: &[String]) -> bool {
+pub(super) fn paths_are_authorized(
+    observed_paths: &[String],
+    authorized_paths: &[String],
+    denied_paths: &[String],
+) -> bool {
     !observed_paths.is_empty()
         && !authorized_paths.is_empty()
         && observed_paths.iter().all(|path| {
             authorized_paths
                 .iter()
                 .any(|authorized| path_is_within(path, authorized))
+                && !denied_paths
+                    .iter()
+                    .any(|denied| path_is_within(path, denied))
         })
 }
 

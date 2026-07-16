@@ -7,10 +7,10 @@ use sha2::{Digest, Sha256};
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_string, evidence_capture_input_sha256,
     validate_evidence_capture_expected_outcome, validate_evidence_capture_limitations,
-    validate_evidence_capture_observed_outcome, AgentSessionId,
-    ConnectionObservationSourceSelector, EvidenceCaptureSpec, EvidenceProducerKind, JsonObject,
-    PersistedEvidenceCaptureReceiptBody, RedactionState, RequiredNullable, UtcTimestamp,
-    EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
+    validate_evidence_capture_observed_outcome, ActorSource, AgentSessionId,
+    ConnectionObservationSourceSelector, EvidenceCaptureSpec, EvidenceProducer,
+    EvidenceProducerKind, EvidenceTarget, JsonObject, PersistedEvidenceCaptureReceiptBody,
+    RedactionState, RequiredNullable, UtcTimestamp, EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
 };
 
 use crate::{
@@ -244,6 +244,249 @@ pub struct EvidenceProducerRecord {
     pub canonical_producer_json: String,
     pub created_at: String,
     pub metadata_json: String,
+}
+
+/// Revalidates every typed evidence-capture owner record before an offline conversion.
+///
+/// This deliberately exercises the ordinary immutable-intent and source-receipt
+/// validators. A v6 row that is syntactically valid JSON but not the complete owner
+/// shape therefore cannot be copied into a v7 Runtime Home.
+pub(crate) fn validate_v6_typed_owner_state_for_conversion(
+    conn: &Connection,
+    project_id: &str,
+) -> StoreResult<()> {
+    let mut intents = conn.prepare(
+        "SELECT evidence_capture_intent_id
+           FROM evidence_capture_intents
+          WHERE project_id = ?1
+          ORDER BY evidence_capture_intent_id",
+    )?;
+    let intent_ids = intents
+        .query_map([project_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for intent_id in intent_ids {
+        let intent = read_intent(conn, project_id, &intent_id)?.ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "evidence_capture_intents",
+                intent_id.clone(),
+                "evidence_capture_intent_id",
+            )
+        })?;
+        validate_persisted_intent(&intent)?;
+    }
+
+    let mut receipts = conn.prepare(
+        "SELECT evidence_capture_receipt_id
+           FROM evidence_capture_receipts
+          WHERE project_id = ?1
+          ORDER BY evidence_capture_receipt_id",
+    )?;
+    let receipt_ids = receipts
+        .query_map([project_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for receipt_id in receipt_ids {
+        validate_persisted_receipt(conn, project_id, &receipt_id)?;
+    }
+
+    let mut producers = conn.prepare(
+        "SELECT evidence_producer_id
+           FROM evidence_producers
+          WHERE project_id = ?1
+          ORDER BY evidence_producer_id",
+    )?;
+    let producer_ids = producers
+        .query_map([project_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for producer_id in producer_ids {
+        let record = read_producer(conn, project_id, &producer_id)?.ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "evidence_producers",
+                producer_id.clone(),
+                "evidence_producer_id",
+            )
+        })?;
+        validate_persisted_producer(&record)?;
+    }
+    Ok(())
+}
+
+fn validate_persisted_intent(intent: &EvidenceCaptureIntentRecord) -> StoreResult<()> {
+    let corrupt_json = |column: &'static str| {
+        StoreError::corrupt_owner_state_json(
+            "evidence_capture_intents",
+            intent.evidence_capture_intent_id.clone(),
+            column,
+        )
+    };
+    serde_json::from_str::<EvidenceTarget>(&intent.target_json)
+        .map_err(|_| corrupt_json("target_json"))?;
+    let capture = serde_json::from_str::<EvidenceCaptureSpec>(&intent.capture_spec_json)
+        .map_err(|_| corrupt_json("capture_spec_json"))?;
+    let expected_outcome = serde_json::from_str::<JsonObject>(&intent.expected_outcome_json)
+        .map_err(|_| corrupt_json("expected_outcome_json"))?;
+    serde_json::from_str::<PersistedCaptureSessionContext>(&intent.session_context_json)
+        .map_err(|_| corrupt_json("session_context_json"))?;
+    serde_json::from_str::<JsonObject>(&intent.workspace_context_json)
+        .map_err(|_| corrupt_json("workspace_context_json"))?;
+    serde_json::from_str::<JsonObject>(&intent.metadata_json)
+        .map_err(|_| corrupt_json("metadata_json"))?;
+
+    let expected_capture_kind = match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => "verified_command_execution",
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => "verified_tool_invocation",
+        EvidenceCaptureSpec::RegisteredConnectionObservation { .. } => {
+            "registered_connection_observation"
+        }
+    };
+    let calculated_input_sha256 =
+        evidence_capture_input_sha256(&capture).map_err(|_| corrupt_json("capture_spec_json"))?;
+    let actor_is_canonical = intent
+        .requested_by_actor_source
+        .parse::<ActorSource>()
+        .is_ok_and(|actor| actor.to_canonical_string() == intent.requested_by_actor_source);
+    if intent.capture_kind != expected_capture_kind
+        || intent.input_sha256 != calculated_input_sha256
+        || !actor_is_canonical
+        || validate_evidence_capture_expected_outcome(&capture, &expected_outcome).is_err()
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_intents",
+            intent.evidence_capture_intent_id.clone(),
+            "typed_owner_state",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_persisted_receipt(
+    conn: &Connection,
+    project_id: &str,
+    receipt_id: &str,
+) -> StoreResult<()> {
+    let receipt = read_receipt(conn, project_id, receipt_id)?.ok_or_else(|| {
+        StoreError::corrupt_owner_state_value(
+            "evidence_capture_receipts",
+            receipt_id.to_owned(),
+            "evidence_capture_receipt_id",
+        )
+    })?;
+    let intent =
+        read_intent(conn, project_id, &receipt.evidence_capture_intent_id)?.ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "evidence_capture_receipts",
+                receipt_id.to_owned(),
+                "evidence_capture_intent_id",
+            )
+        })?;
+    let input = EvidenceCaptureReceiptInsert {
+        evidence_capture_receipt_id: receipt.evidence_capture_receipt_id.clone(),
+        evidence_capture_intent_id: receipt.evidence_capture_intent_id.clone(),
+        staging_handle_id: receipt.staging_handle_id.clone(),
+        task_id: intent.task_id.clone(),
+        capture_kind: receipt.capture_kind.clone(),
+        input_sha256: receipt.input_sha256.clone(),
+        result_sha256: receipt.result_sha256.clone(),
+        expected_outcome_json: receipt.expected_outcome_json.clone(),
+        observed_outcome_json: receipt.observed_outcome_json.clone(),
+        source_refs_json: receipt.source_refs_json.clone(),
+        observed_by_actor_source: receipt.observed_by_actor_source.clone(),
+        observed_at: receipt.observed_at.clone(),
+        limitations_json: receipt.limitations_json.clone(),
+        safe_receipt_json: receipt.safe_receipt_json.clone(),
+        created_at: receipt.created_at.clone(),
+        staging_expires_at: intent.expires_at.clone(),
+        metadata_json: receipt.metadata_json.clone(),
+    };
+    validate_receipt_input(&input)?;
+    let mut expected_claims = validate_receipt_against_intent(&input, &intent)?.claims;
+    expected_claims.sort_by(|left, right| {
+        (
+            left.source_claim_kind.as_str(),
+            left.source_claim_id.as_str(),
+        )
+            .cmp(&(
+                right.source_claim_kind.as_str(),
+                right.source_claim_id.as_str(),
+            ))
+    });
+    let actual_claims = read_source_claims_for_receipt(conn, project_id, receipt_id)?;
+    let safe_bytes = receipt.safe_receipt_json.as_bytes();
+    let exact_claims = actual_claims.len() == expected_claims.len()
+        && actual_claims
+            .iter()
+            .zip(expected_claims.iter())
+            .all(|(actual, expected)| {
+                actual.project_id == project_id
+                    && actual.source_claim_kind == expected.source_claim_kind.as_str()
+                    && actual.source_claim_id == expected.source_claim_id
+                    && actual.evidence_capture_intent_id == intent.evidence_capture_intent_id
+                    && actual.evidence_capture_receipt_id == receipt.evidence_capture_receipt_id
+                    && actual.capture_kind == intent.capture_kind
+                    && actual.claimed_at == receipt.created_at
+            });
+    if receipt.project_id != project_id
+        || receipt.completeness != "complete"
+        || receipt.safe_receipt_sha256 != sha256_hex(safe_bytes)
+        || receipt.safe_receipt_size_bytes != u64::try_from(safe_bytes.len()).unwrap_or(u64::MAX)
+        || !exact_claims
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_receipts",
+            receipt_id.to_owned(),
+            "typed_owner_state",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_persisted_producer(record: &EvidenceProducerRecord) -> StoreResult<()> {
+    let producer: EvidenceProducer = serde_json::from_str(&record.canonical_producer_json)
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "evidence_producers",
+                record.evidence_producer_id.clone(),
+                "canonical_producer_json",
+            )
+        })?;
+    let canonical = canonical_json_string(&producer).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "evidence_producers",
+            record.evidence_producer_id.clone(),
+            "canonical_producer_json",
+        )
+    })?;
+    let producer_kind =
+        serde_json::from_value::<EvidenceProducerKind>(Value::String(record.producer_kind.clone()))
+            .map_err(|_| {
+                StoreError::corrupt_owner_state_value(
+                    "evidence_producers",
+                    record.evidence_producer_id.clone(),
+                    "producer_kind",
+                )
+            })?;
+    if canonical != record.canonical_producer_json
+        || producer.evidence_producer_id.as_str() != record.evidence_producer_id
+        || producer.capture_intent_id.as_str() != record.evidence_capture_intent_id
+        || producer.capture_receipt_id.as_str() != record.evidence_capture_receipt_id
+        || producer.observation_ref.record_id.as_str() != record.evidence_observation_id
+        || producer.run_ref.record_id.as_str() != record.run_id
+        || producer.project_id.as_str() != record.project_id
+        || producer.task_id.as_str() != record.task_id
+        || producer.change_unit_id.as_str() != record.change_unit_id
+        || producer.scope_revision != record.scope_revision
+        || producer.baseline_ref.as_str() != record.baseline_ref
+        || producer.producer_kind != producer_kind
+        || producer.finalized_at.to_canonical_string() != record.created_at
+        || producer.receipt_artifact_refs.len() != 1
+        || producer.receipt_artifact_refs[0].artifact_id.as_str() != record.artifact_id
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_producers",
+            record.evidence_producer_id.clone(),
+            "typed_owner_state",
+        ));
+    }
+    Ok(())
 }
 
 impl CoreProjectStore {
@@ -2305,12 +2548,14 @@ mod tests {
     fn seed_graph(store: &CoreProjectStore) -> StoreResult<()> {
         store.conn.execute(
             "INSERT INTO tasks (
-                project_id, task_id, created_by_actor_source, mode, work_phase,
+                project_id, task_id, created_by_actor_source, mode,
+                requested_control_level, effective_control_level, control_level_reason, work_phase,
                 acceptance_policy, acceptance_policy_reason, lifecycle_phase,
                 created_at, updated_at
             ) VALUES (
                 'project_capture', 'task_capture', 'agent_connection:conn_capture',
-                'work', 'implementation', 'required', 'capture fixture',
+                'work', 'tracked', 'tracked', 'Evidence-capture fixture control.',
+                'implementation', 'required', 'capture fixture',
                 'implementation', '2026-07-13T00:00:00Z', '2026-07-13T00:00:00Z'
             )",
             [],

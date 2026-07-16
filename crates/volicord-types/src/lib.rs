@@ -992,6 +992,42 @@ mod tests {
     }
 
     #[test]
+    fn mutation_assessment_exposes_bounded_classification_and_reason_codes() {
+        let assessment: MutationAssessment = serde_json::from_value(json!({
+            "effect": "product_file_write",
+            "confidence": "structured",
+            "paths": [{
+                "raw": "src/lib.rs",
+                "normalized": "src/lib.rs",
+                "inside_repo": true
+            }],
+            "reason_codes": ["structured_product_write"]
+        }))
+        .expect("mutation assessment should deserialize");
+
+        assert_eq!(assessment.effect, ObservedEffectKind::ProductFileWrite);
+        assert_eq!(assessment.confidence, ObservationConfidence::Structured);
+        assert_eq!(assessment.paths[0].raw, "src/lib.rs");
+        assert_eq!(assessment.reason_codes, ["structured_product_write"]);
+
+        let schema = serde_json::to_value(schema_for!(MutationAssessment))
+            .expect("MutationAssessment schema should serialize");
+        let required = schema["required"]
+            .as_array()
+            .expect("MutationAssessment schema should have required fields");
+        for field in ["effect", "confidence", "paths", "reason_codes"] {
+            assert!(
+                required.iter().any(|required| required == field),
+                "MutationAssessment schema should require {field}: {schema}"
+            );
+        }
+        assert!(
+            schema["properties"]["reason_codes"].is_object(),
+            "MutationAssessment schema should expose reason_codes: {schema}"
+        );
+    }
+
+    #[test]
     fn canonical_json_hash_is_order_stable() {
         let first = json!({
             "z": 3,
@@ -1089,6 +1125,34 @@ mod tests {
             remove_path(&mut missing, path);
             assert_schema_and_serde(method_name, missing, false);
         }
+    }
+
+    #[test]
+    fn record_run_performed_operation_omission_defaults_to_null() {
+        let schema = public_request_schema("volicord.record_run").expect("record_run schema");
+        assert!(!schema["required"]
+            .as_array()
+            .expect("record_run required fields")
+            .iter()
+            .any(|field| field == "performed_operation"));
+        assert_eq!(
+            schema["properties"]["performed_operation"]["default"],
+            Value::Null
+        );
+
+        let mut omitted = record_run_request_json();
+        omitted
+            .as_object_mut()
+            .expect("record_run request object")
+            .remove("performed_operation");
+        assert_schema_and_serde("volicord.record_run", omitted.clone(), true);
+        let decoded: RecordRunRequest =
+            serde_json::from_value(omitted).expect("omitted operation should decode");
+        assert!(decoded.performed_operation.is_none());
+        assert!(serde_json::to_value(decoded)
+            .expect("record_run request should serialize")
+            .get("performed_operation")
+            .is_none());
     }
 
     #[test]
@@ -3508,6 +3572,7 @@ mod tests {
             "run_id": null,
             "baseline_ref": "baseline_empty_001",
             "write_ticket_id": null,
+            "performed_operation": null,
             "summary": "Search-result count validation passed.",
             "observed_changes": {
                 "changed_paths": [],

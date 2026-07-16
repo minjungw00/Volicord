@@ -131,8 +131,8 @@ mod unix {
     const RELEASE_SOURCE_ARCHIVE_ALGORITHM: &str = "git_archive_tar_sha256_v1";
     const LIVE_USER_ACTION_RESULT_KIND: &str = "live_host_user_action_release_validation";
     const NATIVE_STOP_OUTCOME_READY_ALLOW: &str = "ready_allow";
-    const NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_BLOCK: &str =
-        "detective_partial_coverage_block";
+    const NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_ALLOW_INCOMPLETE: &str =
+        "detective_partial_coverage_allow_incomplete";
     const LIVE_EVIDENCE_OBSERVATION_RESULT_KIND: &str =
         "live_host_evidence_observation_release_validation";
     const LIVE_CLI_FALLBACK_RESULT_KIND: &str = "live_host_cli_fallback_release_validation";
@@ -1227,40 +1227,44 @@ mod unix {
         assert_eq!(excluded_null_cell["requested_verified"], false);
         assert_eq!(excluded_null_cell["run_state"], "ignored");
 
-        let static_final_path = result_dir.join("codex-record-final-output.json");
-        let mut static_final = LiveResultRecorder::new_for_kind_and_profile(
+        let implemented_final_path = result_dir.join("codex-record-final-output.json");
+        let mut implemented_final = LiveResultRecorder::new_for_kind_and_profile(
             "codex-record-final-output",
             "codex",
             LIVE_FINAL_OUTPUT_RESULT_KIND,
             Some(IntegrationProfile::Record),
-            Some(static_final_path.clone()),
+            Some(implemented_final_path.clone()),
         )?;
-        static_final.release_candidate = Some(candidate.clone());
-        static_final.release_feature = Some(HostFeature::RecordFinalOutput);
-        static_final.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
-        let static_summary = final_output_unavailable_summary_with_host_identity(
+        implemented_final.release_candidate = Some(candidate.clone());
+        implemented_final.release_feature = Some(HostFeature::RecordFinalOutput);
+        implemented_final.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
+        let implemented_final_summary = final_output_unavailable_summary_with_host_identity(
             "codex",
             IntegrationProfile::Record,
-            "fixture static unsupported feature",
+            "fixture implemented feature unavailable",
             "0.144.4",
             &binary_sha256,
             "fixture-build-id",
         );
-        validate_final_output_result_shape(&static_summary, IntegrationProfile::Record)?;
-        static_final.record_final(&static_summary)?;
-        let static_final_cell: Value = serde_json::from_slice(&fs::read(&static_final_path)?)?;
-        assert_eq!(static_final_cell["host_version"], "0.144.4");
-        assert_eq!(static_final_cell["client_name"], Value::Null);
-        assert_eq!(static_final_cell["client_version"], Value::Null);
-        assert_eq!(static_final_cell["requested_verified"], false);
+        validate_final_output_result_shape(&implemented_final_summary, IntegrationProfile::Record)?;
+        implemented_final.record_final(&implemented_final_summary)?;
+        let implemented_final_cell: Value =
+            serde_json::from_slice(&fs::read(&implemented_final_path)?)?;
+        assert_eq!(implemented_final_cell["host_version"], "0.144.4");
+        assert_eq!(implemented_final_cell["client_name"], Value::Null);
+        assert_eq!(implemented_final_cell["client_version"], Value::Null);
+        assert_eq!(implemented_final_cell["requested_verified"], true);
         assert_eq!(
-            static_final_cell["implementation_disposition"],
-            "unsupported_by_host"
+            implemented_final_cell["implementation_disposition"],
+            "implemented"
         );
-        assert_eq!(static_final_cell["claimed_status"], "unsupported_by_host");
-        assert_eq!(static_final_cell["run_state"], "not_applicable");
-        assert_eq!(static_final_cell["evidence_artifact_path"], Value::Null);
-        assert!(!release_evidence_path(&static_final_path)?.exists());
+        assert_eq!(
+            implemented_final_cell["claimed_status"],
+            "implemented_unverified"
+        );
+        assert_eq!(implemented_final_cell["run_state"], "ignored");
+        assert!(implemented_final_cell["evidence_artifact_path"].is_string());
+        assert!(release_evidence_path(&implemented_final_path)?.exists());
 
         let reviewed_local_web_path = result_dir.join("codex-reviewed-local-web.json");
         let mut reviewed_local_web =
@@ -1275,8 +1279,8 @@ mod unix {
         reviewed_local_web.record_final(&live_user_action_unavailable_summary(
             "codex",
             Some("0.144.4"),
-            "static_unsupported_by_host",
-            "reviewed Codex version does not expose the required local-web surface",
+            "host_delivery_boundary",
+            "fixture does not expose the required live-host local-web surface",
         ))?;
         let reviewed_local_web_cell: Value =
             serde_json::from_slice(&fs::read(&reviewed_local_web_path)?)?;
@@ -1286,33 +1290,35 @@ mod unix {
         assert_eq!(reviewed_local_web_cell["client_version"], Value::Null);
         assert_eq!(
             reviewed_local_web_cell["implementation_disposition"],
-            "unsupported_by_host"
+            "implemented"
         );
-        assert_eq!(reviewed_local_web_cell["requested_verified"], false);
-        assert_eq!(reviewed_local_web_cell["run_state"], "not_applicable");
-        assert_eq!(
-            reviewed_local_web_cell["evidence_artifact_path"],
-            Value::Null
-        );
+        assert_eq!(reviewed_local_web_cell["requested_verified"], true);
+        assert_eq!(reviewed_local_web_cell["run_state"], "ignored");
+        assert!(reviewed_local_web_cell["evidence_artifact_path"].is_string());
 
-        let forbidden_static_root = release_root.join("forbidden-static-results");
-        let (forbidden_static_dir, _, _) = create_live_result_root(&forbidden_static_root)?;
-        let forbidden_static_path =
-            forbidden_static_dir.join("codex-record-final-output-requested.json");
-        let mut forbidden_static = LiveResultRecorder::new_for_kind_and_profile(
+        let requested_implemented_root = release_root.join("requested-implemented-results");
+        let (requested_implemented_dir, _, _) =
+            create_live_result_root(&requested_implemented_root)?;
+        let requested_implemented_path =
+            requested_implemented_dir.join("codex-record-final-output-requested.json");
+        let mut requested_implemented = LiveResultRecorder::new_for_kind_and_profile(
             "codex-record-final-output-requested",
             "codex",
             LIVE_FINAL_OUTPUT_RESULT_KIND,
             Some(IntegrationProfile::Record),
-            Some(forbidden_static_path.clone()),
+            Some(requested_implemented_path.clone()),
         )?;
-        forbidden_static.release_candidate = Some(candidate.clone());
-        forbidden_static.release_feature = Some(HostFeature::RecordFinalOutput);
-        forbidden_static.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
-        forbidden_static.release_requested_verified = Some(true);
-        assert!(forbidden_static.record_final(&static_summary).is_err());
-        assert!(!forbidden_static_path.exists());
-        drop(forbidden_static);
+        requested_implemented.release_candidate = Some(candidate.clone());
+        requested_implemented.release_feature = Some(HostFeature::RecordFinalOutput);
+        requested_implemented.bind_observed_volicord_build_id("fixture-build-id".to_owned())?;
+        requested_implemented.release_requested_verified = Some(true);
+        requested_implemented.record_final(&implemented_final_summary)?;
+        let requested_cell: Value =
+            serde_json::from_slice(&fs::read(&requested_implemented_path)?)?;
+        assert_eq!(requested_cell["implementation_disposition"], "implemented");
+        assert_eq!(requested_cell["requested_verified"], true);
+        assert_eq!(requested_cell["claimed_status"], "implemented_unverified");
+        drop(requested_implemented);
 
         let rejected_result_root = release_root.join("rejected-cell-results");
         let (rejected_result_dir, _, _) = create_live_result_root(&rejected_result_root)?;
@@ -3001,13 +3007,13 @@ mod unix {
     }
 
     #[test]
-    fn reviewed_codex_static_unsupported_live_runner_never_launches_host_and_publishes_cell(
+    fn reviewed_codex_version_enters_live_runner_without_becoming_an_implementation_gate(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = LiveSmokeFixture::new("reviewed-codex-static-unsupported-runner")?;
+        let fixture = LiveSmokeFixture::new("reviewed-codex-implementation-coordinate-runner")?;
         let candidate = ReleaseCandidate {
             descriptor_path: None,
             schema: RELEASE_CANDIDATE_SCHEMA.to_owned(),
-            candidate_id: "candidate_reviewed_codex_static_unsupported".to_owned(),
+            candidate_id: "candidate_reviewed_codex_implementation_coordinate".to_owned(),
             candidate_path: path_text(&fixture.volicord_path),
             source_revision: "a".repeat(40),
             source_clean: true,
@@ -3039,25 +3045,29 @@ mod unix {
         )?;
         let result_root = fixture
             .release_artifact_root
-            .join("static-unsupported-results");
+            .join("implementation-coordinate-results");
         let (cell_directory, _, _) = create_live_result_root(&result_root)?;
         let cell_path = cell_directory.join("codex-local-web.json");
         let mut recorder = LiveResultRecorder::new("codex", Some(cell_path.clone()))?;
         recorder.release_candidate = Some(candidate.clone());
         recorder.release_feature = Some(HostFeature::LocalWebUserChannel);
 
-        execute_live_evidence_observation_round_trip(
+        let error = execute_live_evidence_observation_round_trip(
             "codex",
             InstalledHostExecutable::at_path("codex", &fake_codex),
             "host_trust_required",
             recorder,
-        )?;
+        )
+        .expect_err("non-interactive fixture stops after the implemented-host preflight");
+        assert!(error
+            .to_string()
+            .contains("requires interactive terminal stdin and stdout"));
         assert_eq!(
             fs::read_to_string(&authenticated_launch_log)?
                 .lines()
                 .count(),
             0,
-            "reviewed static unsupported Codex must not reach login status or an authenticated host turn"
+            "non-interactive fixture must stop before an authenticated host turn"
         );
 
         let cell: Value = serde_json::from_slice(&fs::read(&cell_path)?)?;
@@ -3065,21 +3075,21 @@ mod unix {
         assert_eq!(cell["host_kind"], "codex");
         assert_eq!(cell["host_version"], REVIEWED_CODEX_HOST_VERSION);
         assert_eq!(cell["feature"], "local_web_user_channel");
-        assert_eq!(cell["implementation_disposition"], "unsupported_by_host");
-        assert_eq!(cell["requested_verified"], false);
-        assert_eq!(cell["claimed_status"], "unsupported_by_host");
-        assert_eq!(cell["run_state"], "not_applicable");
+        assert_eq!(cell["implementation_disposition"], "implemented");
+        assert_eq!(cell["requested_verified"], true);
+        assert_eq!(cell["claimed_status"], "implemented_unverified");
+        assert_eq!(cell["run_state"], "ignored");
         assert_eq!(cell["client_name"], Value::Null);
         assert_eq!(cell["client_version"], Value::Null);
-        assert_eq!(cell["evidence_artifact_path"], Value::Null);
-        assert_eq!(cell["evidence_artifact_sha256"], Value::Null);
-        assert!(!release_evidence_path(&cell_path)?.exists());
+        assert!(cell["evidence_artifact_path"].is_string());
+        assert!(cell["evidence_artifact_sha256"].is_string());
+        assert!(release_evidence_path(&cell_path)?.exists());
         assert_eq!(
             fs::read_to_string(&authenticated_launch_log)?
                 .lines()
                 .count(),
             0,
-            "host-free publication must not launch the reviewed Codex host"
+            "non-interactive preflight must not launch the reviewed Codex host"
         );
 
         drop(ResultRootLease::acquire_exclusive_for_cell_path(
@@ -3373,6 +3383,10 @@ mod unix {
                 Value::String("deny".to_owned()),
             ),
             (
+                &["stop_hook", "completion_claim_allowed"][..],
+                Value::Bool(false),
+            ),
+            (
                 &["authority_receipt", "close_blockers"][..],
                 serde_json::json!([{
                     "category": "connection_capability",
@@ -3427,7 +3441,11 @@ mod unix {
                 &["user_action", "channel_kind"][..],
                 Value::String("cli".to_owned()),
             ),
-            (&["stop_hook", "allowed"][..], Value::Bool(true)),
+            (&["stop_hook", "allowed"][..], Value::Bool(false)),
+            (
+                &["stop_hook", "completion_claim_allowed"][..],
+                Value::Bool(true),
+            ),
             (
                 &["stop_hook", "outcome"][..],
                 Value::String(NATIVE_STOP_OUTCOME_READY_ALLOW.to_owned()),
@@ -6704,7 +6722,7 @@ mod unix {
             );
             assert_eq!(
                 unavailable["host_feature_support"]["record_final_output"],
-                "unsupported_by_host"
+                "implemented_unverified"
             );
         }
 
@@ -6970,12 +6988,10 @@ mod unix {
             )?;
             let before_active = guard_observation_counts(&fixture, &project_id)?;
             let first_active = fixture.run_generated_final_output_handler(host, &active_event)?;
-            let expected_continue = profile == IntegrationProfile::Record
-                || prepared.receipt.close_state == StatusCloseState::Ready;
             verify_authority_receipt_wire(
                 &first_active,
                 &prepared.receipt,
-                expected_continue,
+                true,
                 active_private_prose,
             )
             .map_err(|error| {
@@ -7015,12 +7031,10 @@ mod unix {
             let replayed_canonical_receipt =
                 canonical_json_string(&replayed_authority.receipt.canonical_receipt)?;
             let second_active = fixture.run_generated_final_output_handler(host, &active_event)?;
-            let replayed_continue = profile == IntegrationProfile::Record
-                || replayed_authority.receipt.close_state == StatusCloseState::Ready;
             verify_authority_receipt_wire(
                 &second_active,
                 &replayed_authority.receipt,
-                replayed_continue,
+                true,
                 active_private_prose,
             )
             .map_err(|error| {
@@ -7260,6 +7274,32 @@ mod unix {
         );
         let init_json: Value = serde_json::from_slice(&init.stdout)?;
         assert_init_host_feature_support(&init_json, "codex", None, IntegrationProfile::Record);
+        let refreshed_connection_id = init_json["connection"]["connection_id"]
+            .as_str()
+            .ok_or("Record init should return the active connection id")?;
+        let refreshed_context =
+            McpConnectionContext::resolve(fixture.runtime_home_path(), refreshed_connection_id)?
+                .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let refreshed_adapter = McpAdapter::new(fixture.runtime_home_path(), refreshed_context);
+        let refreshed_status = refreshed_adapter.call_tool(
+            "volicord.status",
+            serde_json::json!({
+                "task_id": task_id,
+                "detail": "full"
+            }),
+        )?;
+        let refreshed_receipt: AuthorityReceipt =
+            serde_json::from_value(refreshed_status.response_value["authority_receipt"].clone())?;
+        assert!(refreshed_receipt.state_version > receipt.state_version);
+        assert_eq!(refreshed_receipt.close_state, StatusCloseState::Ready);
+        assert!(refreshed_receipt.close_blockers.is_empty());
+        assert_eq!(
+            refreshed_receipt
+                .latest_run_ref
+                .as_ref()
+                .map(|run| run.record_id.as_str()),
+            Some(receipt.latest_run_id.as_str())
+        );
         let event = serde_json::json!({
             "event_id": "live_advisor_stop_ready",
             "session_id": "live_advisor_stop_ready_session",
@@ -7296,7 +7336,7 @@ mod unix {
         )?;
         assert_eq!(stop_receipt.project_id.as_str(), fixture.project_id());
         assert_eq!(stop_receipt.task_ref.record_id.as_str(), task_id);
-        assert_eq!(stop_receipt.state_version, receipt.state_version);
+        assert_eq!(stop_receipt, refreshed_receipt);
         assert_eq!(
             stop_receipt
                 .latest_run_ref
@@ -14998,7 +15038,7 @@ mod unix {
         let prompt = live_user_action_prompt(&marker, &project_id);
         let judgment_stop_cursor = stop_event_cursor(&fixture, &project_id)?;
         println!(
-            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. After it reports the final Volicord status, let the first managed Stop hook complete. If Stop is blocked and the host retries, interrupt before a second distinct Stop and exit without claiming close. The harness reads the persisted Stop receipt directly; do not copy a final-output receipt.\n\n{prompt}\n=== end instruction ===\n"
+            "\n=== Volicord live {host} user-action smoke ===\nThe host will receive this initial instruction and may ask you to trust the repository or approve its MCP server. When the host-native user-action selector appears, choose one option yourself. Do not type credentials or secrets. After it reports the final Volicord status, let the single managed Stop hook complete normally. Stop must allow termination even when completion remains blocked, and the harness rejects a second distinct Stop event. The harness reads the persisted Stop receipt directly; do not copy a final-output receipt.\n\n{prompt}\n=== end instruction ===\n"
         );
         let status = fixture.run_authenticated_interactive_host(
             host,
@@ -18207,10 +18247,11 @@ mod unix {
                 "guard_event_id": format!("guard_event_{}", "1".repeat(16)),
                 "session_id": format!("mhs_{}", "2".repeat(64)),
                 "connection_id": "CONN-native-fixture",
-                "decision": "deny",
-                "allowed": false,
+                "decision": "allow",
+                "allowed": true,
+                "completion_claim_allowed": false,
                 "reason_codes": ["close_readiness_blocked"],
-                "outcome": NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_BLOCK,
+                "outcome": NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_ALLOW_INCOMPLETE,
                 "decision_observed_from_guard_event": true,
                 "receipt_state_version": 5,
                 "latest_run_id": "RUN-native-fixture"
@@ -18230,6 +18271,7 @@ mod unix {
                 "state_version": 5,
                 "latest_run_id": "RUN-native-fixture",
                 "close_state": "blocked",
+                "completion_claim_allowed": false,
                 "close_blockers": [{
                     "category": "connection_capability",
                     "code": "session_watch_unavailable",
@@ -18253,9 +18295,11 @@ mod unix {
         let mut value = native_user_action_result_shape_fixture(host, executable_sha256);
         value["stop_hook"]["decision"] = Value::String("allow".to_owned());
         value["stop_hook"]["allowed"] = Value::Bool(true);
+        value["stop_hook"]["completion_claim_allowed"] = Value::Bool(true);
         value["stop_hook"]["reason_codes"] = serde_json::json!([]);
         value["stop_hook"]["outcome"] = Value::String(NATIVE_STOP_OUTCOME_READY_ALLOW.to_owned());
         value["authority_receipt"]["close_state"] = Value::String("ready".to_owned());
+        value["authority_receipt"]["completion_claim_allowed"] = Value::Bool(true);
         value["authority_receipt"]["close_blockers"] = serde_json::json!([]);
         value["session_watch"]["coverage_basis"] = Value::String("mcp_start".to_owned());
         value["session_watch"]["partial_coverage_warning_present"] = Value::Bool(false);
@@ -20048,15 +20092,15 @@ mod unix {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum VerifiedNativeStopOutcome {
         ReadyAllow,
-        DetectivePartialCoverageBlock,
+        DetectivePartialCoverageAllowIncomplete,
     }
 
     impl VerifiedNativeStopOutcome {
         fn as_str(self) -> &'static str {
             match self {
                 Self::ReadyAllow => NATIVE_STOP_OUTCOME_READY_ALLOW,
-                Self::DetectivePartialCoverageBlock => {
-                    NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_BLOCK
+                Self::DetectivePartialCoverageAllowIncomplete => {
+                    NATIVE_STOP_OUTCOME_DETECTIVE_PARTIAL_COVERAGE_ALLOW_INCOMPLETE
                 }
             }
         }
@@ -20065,6 +20109,7 @@ mod unix {
     struct NativeStopOutcomeFacts<'a> {
         decision: &'a str,
         allowed: bool,
+        completion_claim_allowed: bool,
         reason_codes: &'a [String],
         close_state: StatusCloseState,
         blockers: &'a [NativeStopBlockerFacts],
@@ -20078,6 +20123,7 @@ mod unix {
     ) -> Result<VerifiedNativeStopOutcome, Box<dyn Error>> {
         if facts.decision == "allow"
             && facts.allowed
+            && facts.completion_claim_allowed
             && facts.reason_codes.is_empty()
             && facts.close_state == StatusCloseState::Ready
             && facts.blockers.is_empty()
@@ -20087,8 +20133,9 @@ mod unix {
         {
             return Ok(VerifiedNativeStopOutcome::ReadyAllow);
         }
-        if facts.decision == "deny"
-            && !facts.allowed
+        if facts.decision == "allow"
+            && facts.allowed
+            && !facts.completion_claim_allowed
             && facts.reason_codes == ["close_readiness_blocked"]
             && facts.close_state == StatusCloseState::Blocked
             && facts.blockers
@@ -20110,10 +20157,10 @@ mod unix {
             )
             && facts.partial_coverage_warning_present
         {
-            return Ok(VerifiedNativeStopOutcome::DetectivePartialCoverageBlock);
+            return Ok(VerifiedNativeStopOutcome::DetectivePartialCoverageAllowIncomplete);
         }
         Err(io::Error::other(
-            "native UserAction Stop outcome is neither ready allow nor the exact Detective partial-coverage block",
+            "native UserAction Stop outcome is neither ready allow nor the exact Detective partial-coverage allow-with-incomplete-disclosure",
         )
         .into())
     }
@@ -20124,6 +20171,7 @@ mod unix {
         connection_id: String,
         decision: String,
         allowed: bool,
+        completion_claim_allowed: bool,
         reason_codes: Vec<String>,
         state_version: u64,
         latest_run_id: String,
@@ -20815,10 +20863,13 @@ mod unix {
                 .get("allowed")
                 .and_then(Value::as_bool)
                 .ok_or_else(|| io::Error::other("the live Stop result has no allowed Boolean"))?;
-            if decision != result_decision
-                || !matches!(decision.as_str(), "allow" | "deny")
-                || allowed != (decision == "allow")
-            {
+            let completion_claim_allowed = result
+                .get("completion_claim_allowed")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| {
+                    io::Error::other("the live Stop result has no completion_claim_allowed Boolean")
+                })?;
+            if decision != result_decision || decision != "allow" || !allowed {
                 return Err(io::Error::other(
                     "the stored live Stop decision and result decision are inconsistent",
                 )
@@ -20866,6 +20917,7 @@ mod unix {
             )?;
             if stop_receipt.close_state != stop_close_state
                 || stop_receipt.close_blockers != stop_close_blockers
+                || stop_receipt.completion_claim_allowed != completion_claim_allowed
             {
                 return Err(io::Error::other(
                     "the live Stop close projection and AuthorityReceipt are inconsistent",
@@ -20923,6 +20975,7 @@ mod unix {
                 StopVerificationPolicy::RequireReadyAllow => {
                     if decision != "allow"
                         || !allowed
+                        || !completion_claim_allowed
                         || !reason_codes.is_empty()
                         || stop_close_state != StatusCloseState::Ready
                         || !blockers.is_empty()
@@ -20968,6 +21021,7 @@ mod unix {
                     let outcome = verify_native_stop_outcome(NativeStopOutcomeFacts {
                         decision: &decision,
                         allowed,
+                        completion_claim_allowed,
                         reason_codes: &reason_codes,
                         close_state: stop_close_state,
                         blockers: &blockers,
@@ -20995,6 +21049,7 @@ mod unix {
                 connection_id: stored_connection_id,
                 decision,
                 allowed,
+                completion_claim_allowed,
                 reason_codes,
                 state_version: stop_receipt.state_version,
                 latest_run_id: stop_latest_run.record_id.as_str().to_owned(),
@@ -21394,6 +21449,7 @@ mod unix {
                     "connection_id",
                     "decision",
                     "allowed",
+                    "completion_claim_allowed",
                     "reason_codes",
                     "outcome",
                     "decision_observed_from_guard_event",
@@ -21421,6 +21477,7 @@ mod unix {
                     "state_version",
                     "latest_run_id",
                     "close_state",
+                    "completion_claim_allowed",
                     "close_blockers",
                 ][..],
             ),
@@ -21483,6 +21540,11 @@ mod unix {
         let stop_allowed = value["stop_hook"]["allowed"]
             .as_bool()
             .ok_or_else(|| io::Error::other("native-user-action Stop has no allowed Boolean"))?;
+        let stop_completion_claim_allowed = value["stop_hook"]["completion_claim_allowed"]
+            .as_bool()
+            .ok_or_else(|| {
+                io::Error::other("native-user-action Stop has no completion_claim_allowed Boolean")
+            })?;
         let stop_reason_codes = value["stop_hook"]["reason_codes"]
             .as_array()
             .ok_or_else(|| io::Error::other("native-user-action Stop has no reason-code array"))?
@@ -21516,6 +21578,7 @@ mod unix {
         let derived_stop_outcome = verify_native_stop_outcome(NativeStopOutcomeFacts {
             decision: stop_decision,
             allowed: stop_allowed,
+            completion_claim_allowed: stop_completion_claim_allowed,
             reason_codes: &stop_reason_codes,
             close_state: stop_close_state,
             blockers: &stop_blockers,
@@ -21667,6 +21730,7 @@ mod unix {
                 "connection_id": stop_observation.connection_id,
                 "decision": stop_observation.decision,
                 "allowed": stop_observation.allowed,
+                "completion_claim_allowed": stop_observation.completion_claim_allowed,
                 "reason_codes": stop_observation.reason_codes,
                 "outcome": native_outcome.as_str(),
                 "decision_observed_from_guard_event": true,
@@ -21688,6 +21752,7 @@ mod unix {
                 "state_version": stop_observation.canonical_receipt.state_version,
                 "latest_run_id": stop_observation.latest_run_id,
                 "close_state": stop_observation.close_state,
+                "completion_claim_allowed": stop_observation.completion_claim_allowed,
                 "close_blockers": stop_blockers
             },
             "session_watch": {

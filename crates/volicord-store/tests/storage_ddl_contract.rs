@@ -313,6 +313,56 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
             "evidence_capture_receipts",
             "evidence_capture_source_claims",
             "evidence_producers",
+            "project_workflow_policies",
+            "session_end_receipts",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "tasks",
+        &[
+            "requested_control_level",
+            "effective_control_level",
+            "control_level_reason",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "write_tickets",
+        &[
+            "validity_basis_json",
+            "allowed_path_prefixes_json",
+            "denied_path_prefixes_json",
+            "idle_expires_at",
+            "invalidation_reason",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "project_workflow_policies",
+        &[
+            "policy_schema",
+            "policy_version",
+            "policy_json",
+            "policy_fingerprint",
+            "source",
+            "applied_at",
+            "created_at",
+        ],
+    );
+    assert_columns_include(
+        &initial_project_schema,
+        "session_end_receipts",
+        &[
+            "session_end_receipt_id",
+            "session_id",
+            "active_task_id",
+            "task_state",
+            "close_blocker_codes_json",
+            "next_actor",
+            "completion_claim_allowed",
+            "authority_refresh_succeeded",
+            "created_at",
         ],
     );
     assert_columns_include(
@@ -499,7 +549,12 @@ fn initial_schemas_satisfy_connection_storage_contract() -> Result<(), Box<dyn E
     assert_columns_include(
         &initial_project_schema,
         "unrecorded_changes",
-        &["unrecorded_change_id", "status", "resolution_json"],
+        &[
+            "unrecorded_change_id",
+            "status",
+            "confidence",
+            "resolution_json",
+        ],
     );
     assert_columns_include(
         &initial_project_schema,
@@ -1849,6 +1904,9 @@ fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
             task_id,
             created_by_actor_source,
             mode,
+            requested_control_level,
+            effective_control_level,
+            control_level_reason,
             work_phase,
             acceptance_policy,
             acceptance_policy_reason,
@@ -1862,6 +1920,9 @@ fn insert_minimal_project_graph(conn: &Connection) -> rusqlite::Result<()> {
             'task_a',
             'agent_connection:conn_main',
             'work',
+            'tracked',
+            'tracked',
+            'DDL fixture control.',
             'shaping',
             'required',
             'DDL fixture requires explicit acceptance.',
@@ -2142,8 +2203,8 @@ fn assert_write_ticket_status_is_closed(label: &str, conn: &Connection) {
                 task_id,
                 basis_state_version,
                 status,
+                validity_basis_json,
                 created_by_actor_source,
-                expires_at,
                 created_at
             )
             VALUES (
@@ -2152,8 +2213,8 @@ fn assert_write_ticket_status_is_closed(label: &str, conn: &Connection) {
                 'task_a',
                 1,
                 'accepted',
+                '{}',
                 'agent_connection:conn_main',
-                't2',
                 't1'
             )",
             [],
@@ -2313,6 +2374,9 @@ fn assert_acceptance_evidence_target_constraints(label: &str, conn: &Connection)
             task_id,
             created_by_actor_source,
             mode,
+            requested_control_level,
+            effective_control_level,
+            control_level_reason,
             work_phase,
             acceptance_policy,
             acceptance_policy_reason,
@@ -2326,6 +2390,9 @@ fn assert_acceptance_evidence_target_constraints(label: &str, conn: &Connection)
             'task_b',
             'agent_connection:conn_main',
             'work',
+            'tracked',
+            'tracked',
+            'DDL fixture control.',
             'shaping',
             'required',
             'DDL fixture requires explicit acceptance.',

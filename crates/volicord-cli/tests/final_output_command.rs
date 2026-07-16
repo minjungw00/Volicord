@@ -65,7 +65,7 @@ fn binary_final_output_drains_stdin_and_projects_only_fresh_authority() -> Resul
         "stop": {"command": "volicord", "args": record_command_args("stop")}
     });
     let policy = json!({
-        "schema": "volicord-policy-v1",
+        "schema": "volicord-policy-v2",
         "managed_by": "volicord",
         "storage_scope": "local_overlay",
         "connection_intent": "shared",
@@ -74,6 +74,22 @@ fn binary_final_output_drains_stdin_and_projects_only_fresh_authority() -> Resul
         "connection_id": fixture.connection_id(),
         "guard_installation_id": installation_id,
         "selected_profile": "record",
+        "workflow": {
+            "default_direct_control": "tracked",
+            "default_work_control": "tracked",
+            "light": {
+                "enabled": false,
+                "max_intended_paths": 3,
+                "allowed_path_patterns": [],
+                "denied_path_patterns": [],
+                "final_acceptance": "policy_dependent"
+            },
+            "write_ticket": {"idle_timeout_minutes": null},
+            "detective": {
+                "unknown_effect_behavior": "warn",
+                "stop_behavior": "allow_with_disclosure"
+            }
+        },
         "mcp": {"command": "volicord", "args": ["mcp", "--stdio"], "env": {}},
         "host_hook": {"enabled": false, "commands": commands}
     });

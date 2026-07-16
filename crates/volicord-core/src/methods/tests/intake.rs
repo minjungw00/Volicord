@@ -25,6 +25,15 @@ fn intake_commits_once_and_replays_without_effect() -> Result<(), Box<dyn Error>
     );
     assert_eq!(first.response_value["base"]["state_version"], 1);
     assert_eq!(first.response_value["state"]["mode"], "work");
+    assert_eq!(
+        first.response_value["state"]["requested_control_level"],
+        "auto"
+    );
+    assert_eq!(
+        first.response_value["state"]["effective_control_level"],
+        "tracked"
+    );
+    assert!(first.response_value["state"]["project_policy"].is_null());
     assert_eq!(after_first.state_version, before.state_version + 1);
     assert_eq!(after_first.tasks, before.tasks + 1);
     assert_eq!(after_first.task_events, before.task_events + 1);
@@ -145,12 +154,336 @@ fn intake_records_mode_default_phase_and_acceptance_policy() -> Result<(), Box<d
     )?;
     assert_eq!(advisor.response_value["state"]["work_phase"], "shaping");
     assert_eq!(
+        advisor.response_value["state"]["effective_control_level"],
+        "observe"
+    );
+    assert_eq!(
         advisor.response_value["state"]["acceptance_policy"],
         "not_required"
     );
     assert!(advisor.response_value["state"]["acceptance_policy_reason"]
         .as_str()
         .is_some_and(|reason| !reason.is_empty()));
+    Ok(())
+}
+
+#[test]
+fn intake_resolves_light_control_from_authoritative_project_policy() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let mut request = intake_request(
+        "req_intake_light_policy",
+        "idem_intake_light_policy",
+        false,
+        Some(harness.counts()?.state_version),
+        RequestedMode::Direct,
+    );
+    request.requested_control_level = RequestedControlLevel::Light;
+
+    let response = harness
+        .service
+        .intake(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(
+        response.response_value["state"]["effective_control_level"],
+        "light"
+    );
+    assert_eq!(
+        response.response_value["state"]["acceptance_policy"],
+        "policy_dependent"
+    );
+    assert_eq!(
+        response.response_value["state"]["project_policy"]["policy_schema"],
+        "volicord-policy-v2"
+    );
+    assert_eq!(
+        response.response_value["state"]["project_policy"]["policy_version"],
+        1
+    );
+    Ok(())
+}
+
+#[test]
+fn intake_applies_control_floor_and_policy_defaults() -> Result<(), Box<dyn Error>> {
+    let disabled = MethodHarness::new()?;
+    let mut disabled_policy = light_workflow_policy();
+    disabled_policy["light"]["enabled"] = json!(false);
+    disabled.set_workflow_policy(disabled_policy)?;
+    let mut light_request = intake_request(
+        "req_intake_disabled_light",
+        "idem_intake_disabled_light",
+        false,
+        Some(disabled.counts()?.state_version),
+        RequestedMode::Direct,
+    );
+    light_request.requested_control_level = RequestedControlLevel::Light;
+    let light = disabled
+        .service
+        .intake(light_request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        light.response_value["state"]["effective_control_level"],
+        "tracked"
+    );
+    assert_eq!(
+        light.response_value["state"]["acceptance_policy"],
+        "required"
+    );
+
+    let sensitive = MethodHarness::new()?;
+    let mut sensitive_request = intake_request(
+        "req_intake_sensitive_control",
+        "idem_intake_sensitive_control",
+        false,
+        Some(0),
+        RequestedMode::Direct,
+    );
+    sensitive_request.requested_control_level = RequestedControlLevel::Sensitive;
+    let sensitive = sensitive.service.intake(
+        sensitive_request,
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        sensitive.response_value["state"]["effective_control_level"],
+        "sensitive"
+    );
+    assert_eq!(
+        sensitive.response_value["state"]["acceptance_policy"],
+        "required"
+    );
+
+    let direct_default = MethodHarness::new()?;
+    direct_default.set_workflow_policy(light_workflow_policy())?;
+    let direct = direct_default.service.intake(
+        intake_request(
+            "req_intake_direct_policy_default",
+            "idem_intake_direct_policy_default",
+            false,
+            Some(direct_default.counts()?.state_version),
+            RequestedMode::Direct,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    assert_eq!(
+        direct.response_value["state"]["effective_control_level"],
+        "light"
+    );
+    Ok(())
+}
+
+#[test]
+fn intake_resume_never_lowers_active_control_after_policy_relaxation() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let mut tracked_policy = light_workflow_policy();
+    tracked_policy["default_direct_control"] = json!("tracked");
+    harness.set_workflow_policy(tracked_policy)?;
+    let created = harness.service.intake(
+        intake_request(
+            "req_intake_resume_no_lower_create",
+            "idem_intake_resume_no_lower_create",
+            false,
+            Some(harness.counts()?.state_version),
+            RequestedMode::Direct,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&created.response_value, "task_ref");
+    harness.set_workflow_policy_version(2, light_workflow_policy())?;
+    let mut resume = intake_request(
+        "req_intake_resume_no_lower",
+        "idem_intake_resume_no_lower",
+        false,
+        Some(harness.counts()?.state_version),
+        RequestedMode::Direct,
+    );
+    resume.resume_policy = ResumePolicy::ResumeActive;
+    resume.envelope.task_id = Some(TaskId::new(&task_id)).into();
+    let resumed = harness
+        .service
+        .intake(resume, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(
+        resumed.response_value["state"]["effective_control_level"],
+        "tracked"
+    );
+    assert_eq!(
+        response_record_id(&resumed.response_value, "task_ref"),
+        task_id
+    );
+    Ok(())
+}
+
+#[test]
+fn intake_resume_applies_preserved_strengthening_after_policy_relaxation(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let created = harness.service.intake(
+        intake_request(
+            "req_intake_preserved_raise_create",
+            "idem_intake_preserved_raise_create",
+            false,
+            Some(harness.counts()?.state_version),
+            RequestedMode::Direct,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let task_id = response_record_id(&created.response_value, "task_ref");
+    assert_eq!(
+        created.response_value["state"]["effective_control_level"],
+        "light"
+    );
+
+    let mut sensitive_policy = light_workflow_policy();
+    sensitive_policy["default_direct_control"] = json!("sensitive");
+    harness.set_workflow_policy_version(2, sensitive_policy)?;
+    harness.set_workflow_policy_version(3, light_workflow_policy())?;
+
+    let mut resume = intake_request(
+        "req_intake_preserved_raise_resume",
+        "idem_intake_preserved_raise_resume",
+        false,
+        Some(harness.counts()?.state_version),
+        RequestedMode::Direct,
+    );
+    resume.resume_policy = ResumePolicy::ResumeActive;
+    resume.envelope.task_id = Some(TaskId::new(&task_id)).into();
+    let resumed = harness
+        .service
+        .intake(resume, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(
+        resumed.response_value["state"]["effective_control_level"],
+        "sensitive"
+    );
+    assert_eq!(
+        resumed.response_value["state"]["acceptance_policy"],
+        "required"
+    );
+    let (effective, acceptance, metadata_json): (String, String, String) =
+        harness.conn()?.query_row(
+            "SELECT effective_control_level, acceptance_policy, metadata_json
+           FROM tasks
+          WHERE project_id = ?1 AND task_id = ?2",
+            rusqlite::params![PROJECT_ID, task_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+    assert_eq!(effective, "sensitive");
+    assert_eq!(acceptance, "required");
+    assert!(serde_json::from_str::<Value>(&metadata_json)?
+        .get("policy_control_reevaluation")
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn intake_json_omission_defaults_requested_control_to_auto() -> Result<(), Box<dyn Error>> {
+    let request = intake_request(
+        "req_intake_omitted_control",
+        "idem_intake_omitted_control",
+        false,
+        Some(0),
+        RequestedMode::Work,
+    );
+    let mut value = serde_json::to_value(request)?;
+    value
+        .as_object_mut()
+        .expect("intake request object")
+        .remove("requested_control_level");
+    let decoded: IntakeRequest = serde_json::from_value(value)?;
+    assert_eq!(decoded.requested_control_level, RequestedControlLevel::Auto);
+    Ok(())
+}
+
+#[test]
+fn intake_does_not_weaken_required_light_acceptance_policy() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let mut policy = light_workflow_policy();
+    policy["light"]["final_acceptance"] = json!("required");
+    harness.set_workflow_policy(policy)?;
+    let mut request = intake_request(
+        "req_intake_required_light_acceptance",
+        "idem_intake_required_light_acceptance",
+        false,
+        Some(harness.counts()?.state_version),
+        RequestedMode::Direct,
+    );
+    request.requested_control_level = RequestedControlLevel::Light;
+    request.acceptance_policy = RequiredNullable::some(AcceptancePolicy::PolicyDependent);
+
+    let response = harness
+        .service
+        .intake(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(
+        response.response_value["state"]["effective_control_level"],
+        "light"
+    );
+    assert_eq!(
+        response.response_value["state"]["acceptance_policy"],
+        "required"
+    );
+    Ok(())
+}
+
+#[test]
+fn intake_create_new_invalidates_replaced_task_write_ticket() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (old_task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "intake_create_new_ticket")?;
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_intake_create_new_ticket_prepare",
+            "idem_intake_create_new_ticket_prepare",
+            Some(2),
+            Some(&old_task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+
+    let response = harness.service.intake(
+        intake_request(
+            "req_intake_create_new_ticket",
+            "idem_intake_create_new_ticket",
+            false,
+            Some(3),
+            RequestedMode::Work,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "invalidated");
+    let reason: String = harness.conn()?.query_row(
+        "SELECT invalidation_reason FROM write_tickets
+          WHERE project_id = ?1 AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, ticket_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(reason, "task_closed");
+    Ok(())
+}
+
+#[test]
+fn intake_rejects_incompatible_advisor_control_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let before = harness.counts()?;
+    let mut request = intake_request(
+        "req_advisor_tracked_control",
+        "idem_advisor_tracked_control",
+        false,
+        Some(0),
+        RequestedMode::Advisor,
+    );
+    request.requested_control_level = RequestedControlLevel::Tracked;
+
+    let response = harness
+        .service
+        .intake(request, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 

@@ -1334,6 +1334,14 @@ fn close_task_complete_blocks_missing_final_acceptance() -> Result<(), Box<dyn E
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_eq!(
+        response.response_value["authority_receipt"]["completion_claim_allowed"],
+        false
+    );
+    assert_eq!(
+        response.response_value["authority_receipt"]["close_blockers"],
+        response.response_value["blockers"]
+    );
     let blocker = close_blocker_by_code(&response.response_value, "missing_final_acceptance");
     let action = &blocker["next_actions"][0];
     assert_eq!(action["presentation_role"], "primary");
@@ -2230,6 +2238,10 @@ fn close_task_complete_success() -> Result<(), Box<dyn Error>> {
     assert_authority_disclosure(&response.response_value);
     assert_eq!(response.response_value["blockers"], json!([]));
     assert_eq!(
+        response.response_value["authority_receipt"]["completion_claim_allowed"],
+        true
+    );
+    assert_eq!(
         response.response_value["base"]["effect_kind"],
         "core_committed"
     );
@@ -2280,6 +2292,10 @@ fn close_task_complete_success() -> Result<(), Box<dyn Error>> {
         "none"
     );
     assert!(status.response_value["authority_receipt"]["next_action"].is_null());
+    assert_eq!(
+        status.response_value["authority_receipt"]["completion_claim_allowed"],
+        true
+    );
     Ok(())
 }
 
@@ -2341,24 +2357,25 @@ fn advisor_close_complete_persists_and_projects_advice_only() -> Result<(), Box<
 }
 
 #[test]
-fn advisor_policy_dependent_acceptance_requires_final_only_when_risk_exists(
+fn light_policy_dependent_acceptance_requires_final_only_when_risk_exists(
 ) -> Result<(), Box<dyn Error>> {
     let no_risk = MethodHarness::new()?;
+    no_risk.set_workflow_policy(light_workflow_policy())?;
     let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
         &no_risk,
-        "advisor_policy_dependent_no_risk",
-        RequestedMode::Advisor,
+        "light_policy_dependent_no_risk",
+        RequestedMode::Direct,
         Some(AcceptancePolicy::PolicyDependent),
     )?;
     let mut run = record_run_request(
-        "req_advisor_policy_dependent_no_risk_run",
-        "idem_advisor_policy_dependent_no_risk_run",
+        "req_light_policy_dependent_no_risk_run",
+        "idem_light_policy_dependent_no_risk_run",
         false,
-        Some(2),
+        Some(no_risk.counts()?.state_version),
         &task_id,
         &change_unit_id,
     );
-    run.kind = RunKind::ShapingUpdate;
+    run.kind = RunKind::Direct;
     run.evidence_updates = vec![supported_evidence_update(
         "Policy-dependent advice evidence.",
     )];
@@ -2372,7 +2389,7 @@ fn advisor_policy_dependent_acceptance_requires_final_only_when_risk_exists(
         .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
     let check = no_risk.service.check_close(
         check_close_request(CloseTaskFixture {
-            request_id: "req_advisor_policy_dependent_no_risk_check",
+            request_id: "req_light_policy_dependent_no_risk_check",
             idempotency_key: None,
             dry_run: false,
             expected_state_version: None,
@@ -2389,21 +2406,22 @@ fn advisor_policy_dependent_acceptance_requires_final_only_when_risk_exists(
         .any(|code| code == "missing_final_acceptance"));
 
     let with_risk = MethodHarness::new()?;
+    with_risk.set_workflow_policy(light_workflow_policy())?;
     let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
         &with_risk,
-        "advisor_policy_dependent_with_risk",
-        RequestedMode::Advisor,
+        "light_policy_dependent_with_risk",
+        RequestedMode::Direct,
         Some(AcceptancePolicy::PolicyDependent),
     )?;
     let mut run = record_run_request(
-        "req_advisor_policy_dependent_with_risk_run",
-        "idem_advisor_policy_dependent_with_risk_run",
+        "req_light_policy_dependent_with_risk_run",
+        "idem_light_policy_dependent_with_risk_run",
         false,
-        Some(2),
+        Some(with_risk.counts()?.state_version),
         &task_id,
         &change_unit_id,
     );
-    run.kind = RunKind::ShapingUpdate;
+    run.kind = RunKind::Direct;
     run.evidence_updates = vec![supported_evidence_update("Risk-bearing advice evidence.")];
     run.close_assessment = Some(close_assessment_with_risks(
         "Policy-dependent advice with residual risk.",
@@ -2415,7 +2433,7 @@ fn advisor_policy_dependent_acceptance_requires_final_only_when_risk_exists(
         .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
     let check = with_risk.service.check_close(
         check_close_request(CloseTaskFixture {
-            request_id: "req_advisor_policy_dependent_with_risk_check",
+            request_id: "req_light_policy_dependent_with_risk_check",
             idempotency_key: None,
             dry_run: false,
             expected_state_version: None,
@@ -2428,6 +2446,230 @@ fn advisor_policy_dependent_acceptance_requires_final_only_when_risk_exists(
     )?;
     assert_close_blocker(&check.response_value, "missing_final_acceptance");
     assert_close_blocker(&check.response_value, "missing_residual_risk_acceptance");
+    Ok(())
+}
+
+#[test]
+fn close_uses_preserved_sensitive_policy_raise_after_policy_relaxation(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
+        &harness,
+        "close_preserved_policy_raise",
+        RequestedMode::Direct,
+        Some(AcceptancePolicy::PolicyDependent),
+    )?;
+    let mut run = record_run_request(
+        "req_close_preserved_policy_raise_run",
+        "idem_close_preserved_policy_raise_run",
+        false,
+        Some(harness.counts()?.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::Direct;
+    run.evidence_updates = vec![supported_evidence_update(
+        "Evidence recorded before the policy strengthening.",
+    )];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "The Light task has no residual risk.",
+        Vec::new(),
+    ))
+    .into();
+    harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+
+    let mut sensitive_policy = light_workflow_policy();
+    sensitive_policy["default_direct_control"] = json!("sensitive");
+    harness.set_workflow_policy_version(2, sensitive_policy)?;
+    harness.set_workflow_policy_version(3, light_workflow_policy())?;
+
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_close_preserved_policy_raise_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(
+        check.response_value["state"]["effective_control_level"],
+        "sensitive"
+    );
+    assert_eq!(
+        check.response_value["state"]["acceptance_policy"],
+        "required"
+    );
+    assert_close_blocker(&check.response_value, "missing_sensitive_action_basis");
+    assert_close_blocker(&check.response_value, "missing_final_acceptance");
+    Ok(())
+}
+
+#[test]
+fn light_not_required_acceptance_still_fails_closed_on_current_risk() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let mut policy = light_workflow_policy();
+    policy["light"]["final_acceptance"] = json!("not_required");
+    harness.set_workflow_policy(policy)?;
+    let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
+        &harness,
+        "light_not_required_with_risk",
+        RequestedMode::Direct,
+        Some(AcceptancePolicy::NotRequired),
+    )?;
+    let mut run = record_run_request(
+        "req_light_not_required_with_risk_run",
+        "idem_light_not_required_with_risk_run",
+        false,
+        Some(harness.counts()?.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::Direct;
+    run.evidence_updates = vec![supported_evidence_update("Light risk evidence.")];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Light result retains a risk.",
+        vec![residual_risk_input("A user-owned risk remains.")],
+    ))
+    .into();
+    harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_light_not_required_with_risk_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(&check.response_value, "missing_final_acceptance");
+    assert_close_blocker(&check.response_value, "missing_residual_risk_acceptance");
+    Ok(())
+}
+
+#[test]
+fn light_non_write_sensitive_run_still_requires_final_acceptance() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
+        &harness,
+        "light_sensitive_non_write",
+        RequestedMode::Direct,
+        Some(AcceptancePolicy::PolicyDependent),
+    )?;
+    let mut run = record_run_request(
+        "req_light_sensitive_non_write_run",
+        "idem_light_sensitive_non_write_run",
+        false,
+        Some(harness.counts()?.state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    run.kind = RunKind::Direct;
+    run.observed_changes.sensitive_categories = vec!["network".to_owned(), "credential".to_owned()];
+    run.evidence_updates = vec![supported_evidence_update(
+        "Sensitive non-write run evidence.",
+    )];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Sensitive non-write run completed.",
+        Vec::new(),
+    ))
+    .into();
+    let recorded = harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    assert_eq!(recorded.response_value["base"]["response_kind"], "result");
+
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_light_sensitive_non_write_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(&check.response_value, "missing_final_acceptance");
+    Ok(())
+}
+
+#[test]
+fn light_policy_narrowing_after_write_requires_final_acceptance() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let (task_id, change_unit_id) = create_task_with_policy_and_change_unit(
+        &harness,
+        "light_policy_narrowed_write",
+        RequestedMode::Direct,
+        Some(AcceptancePolicy::PolicyDependent),
+    )?;
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_light_policy_narrowed_prepare",
+            "idem_light_policy_narrowed_prepare",
+            Some(harness.counts()?.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    let mut run = product_write_record_run_request(
+        "req_light_policy_narrowed_run",
+        "idem_light_policy_narrowed_run",
+        harness.counts()?.state_version,
+        &task_id,
+        &change_unit_id,
+        &ticket_id,
+        "run_light_policy_narrowed",
+    );
+    run.evidence_updates = vec![supported_evidence_update("Narrowed-policy write evidence.")];
+    run.close_assessment = Some(close_assessment_with_risks(
+        "Write completed before policy narrowing.",
+        Vec::new(),
+    ))
+    .into();
+    harness
+        .service
+        .record_run(run, invocation(OperationCategory::AgentWorkflow))?;
+    let mut narrowed = light_workflow_policy();
+    narrowed["light"]["denied_path_patterns"] = json!(["src/export.rs"]);
+    harness.set_workflow_policy_version(2, narrowed)?;
+
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_light_policy_narrowed_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+    assert_close_blocker(&check.response_value, "missing_final_acceptance");
     Ok(())
 }
 
@@ -3727,6 +3969,70 @@ fn guarded_close_blocks_unresolved_unrecorded_changes_and_check_is_read_only(
 }
 
 #[test]
+fn suspected_unrecorded_change_alone_does_not_block_close() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _, after_final) =
+        create_close_ready_task(&harness, "suspected_unrecorded_close")?;
+    insert_unrecorded_change(
+        &harness.runtime_home_path,
+        PROJECT_ID,
+        UnrecordedChangeInsert {
+            unrecorded_change_id: "unrecorded_change_suspected_close".to_owned(),
+            session_id: None,
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            task_id: Some(task_id.clone()),
+            confidence: UnrecordedChangeConfidence::Suspected.as_str().to_owned(),
+            summary: "A possible Product Repository change needs verification.".to_owned(),
+            observed_paths_json: r#"["src/export.rs"]"#.to_owned(),
+            detection_json: "{}".to_owned(),
+            detected_at: "2026-06-18T00:00:00Z".to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let before = harness.counts()?;
+
+    let check = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_suspected_unrecorded_close",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_eq!(check.response_value["close_state"], "ready");
+    assert_no_close_blocker(&check.response_value, "unresolved_unrecorded_changes");
+    assert_eq!(
+        check.response_value["guard_health"]["unresolved_unrecorded_change_count"],
+        0
+    );
+    assert_eq!(harness.counts()?, before);
+
+    let complete = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_suspected_unrecorded_close",
+            idempotency_key: Some("idem_close_suspected_unrecorded_close"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(complete.response_value["close_state"], "closed");
+    assert_eq!(complete.response_value["blockers"], json!([]));
+    Ok(())
+}
+
+#[test]
 fn guarded_close_blocks_write_ticket_issue_from_guard_event() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let guard_installation_id =
@@ -3943,7 +4249,7 @@ fn guarded_close_blocks_write_ticket_path_scope_guard_event() -> Result<(), Box<
 }
 
 #[test]
-fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Error>> {
+fn close_check_blocks_only_active_unconsumed_write_tickets() -> Result<(), Box<dyn Error>> {
     let mut open_harness = MethodHarness::new()?;
     open_harness.use_clock(ManualClock::at("2026-06-18T00:00:00Z"));
     let (open_task_id, open_change_unit_id) =
@@ -3980,7 +4286,7 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
     expired_harness.use_clock(clock.clone());
     let (expired_task_id, expired_change_unit_id) =
         create_task_with_change_unit(&expired_harness, "expired_ticket_close")?;
-    expired_harness.service.prepare_write(
+    let prepared = expired_harness.service.prepare_write(
         prepare_write_request(
             "req_expired_ticket_prepare",
             "idem_expired_ticket_prepare",
@@ -3989,6 +4295,14 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
             Some(&expired_change_unit_id),
         ),
         invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let expired_ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    expired_harness.conn()?.execute(
+        "UPDATE write_tickets
+            SET idle_expires_at = '2026-06-18T00:15:00Z'
+          WHERE project_id = ?1
+            AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, expired_ticket_id],
     )?;
     clock.advance(Duration::minutes(15));
 
@@ -4006,7 +4320,8 @@ fn close_check_blocks_open_and_expired_write_tickets() -> Result<(), Box<dyn Err
         invocation(OperationCategory::Read),
     )?;
     assert_eq!(expired.response_value["close_state"], "blocked");
-    assert_close_blocker(&expired.response_value, "expired_write_ticket");
+    assert_no_close_blocker(&expired.response_value, "expired_write_ticket");
+    assert_no_close_blocker(&expired.response_value, "write_ticket_stale");
     assert_no_close_blocker(&expired.response_value, "open_write_ticket");
     Ok(())
 }
@@ -4983,6 +5298,58 @@ fn close_task_cancel_succeeds_without_close_evidence() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn close_task_cancel_invalidates_active_ticket_atomically() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "close_cancel_active_ticket")?;
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_close_cancel_active_ticket_prepare",
+            "idem_close_cancel_active_ticket_prepare",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    let (after_authority, _) = record_cancellation_authority(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        3,
+        "close_cancel_active_ticket",
+        true,
+    )?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_cancel_active_ticket",
+            idempotency_key: Some("idem_close_cancel_active_ticket"),
+            dry_run: false,
+            expected_state_version: Some(after_authority),
+            task_id: &task_id,
+            intent: CloseIntent::Cancel,
+            close_reason: Some(CloseReason::Cancelled),
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "cancelled");
+    assert_no_close_blocker(&response.response_value, "open_write_ticket");
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "invalidated");
+    let reason: String = harness.conn()?.query_row(
+        "SELECT invalidation_reason FROM write_tickets
+          WHERE project_id = ?1 AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, ticket_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(reason, "task_closed");
+    Ok(())
+}
+
+#[test]
 fn close_task_cancel_requires_current_user_cancellation_authority() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_change_unit(&harness, "cancel_missing_authority")?;
@@ -5156,6 +5523,56 @@ fn close_task_supersede_success() -> Result<(), Box<dyn Error>> {
         "superseded"
     );
     assert!(status.response_value["authority_receipt"]["next_action"].is_null());
+    assert_eq!(
+        status.response_value["authority_receipt"]["completion_claim_allowed"],
+        false
+    );
+    Ok(())
+}
+
+#[test]
+fn close_task_supersede_invalidates_active_ticket_atomically() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "close_supersede_active_ticket")?;
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_close_supersede_active_ticket_prepare",
+            "idem_close_supersede_active_ticket_prepare",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
+    let superseding_task_id = "task_close_superseding_active_ticket";
+    insert_superseding_task(&harness, superseding_task_id)?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_supersede_active_ticket",
+            idempotency_key: Some("idem_close_supersede_active_ticket"),
+            dry_run: false,
+            expected_state_version: Some(3),
+            task_id: &task_id,
+            intent: CloseIntent::Supersede,
+            close_reason: Some(CloseReason::Superseded),
+            superseding_task_id: Some(superseding_task_id),
+        }),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "superseded");
+    assert_no_close_blocker(&response.response_value, "open_write_ticket");
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "invalidated");
+    let reason: String = harness.conn()?.query_row(
+        "SELECT invalidation_reason FROM write_tickets
+          WHERE project_id = ?1 AND write_ticket_id = ?2",
+        rusqlite::params![PROJECT_ID, ticket_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(reason, "task_closed");
     Ok(())
 }
 

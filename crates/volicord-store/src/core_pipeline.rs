@@ -110,7 +110,7 @@ pub struct VerifiedReplayContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingTaskEvent {
     pub event_id: String,
-    pub task_id: String,
+    pub task_id: Option<String>,
     pub change_unit_id: Option<String>,
     pub event_kind: String,
     pub event_payload_json: String,
@@ -123,6 +123,7 @@ pub enum CoreStorageMutation {
     SetActiveTask { task_id: String },
     SupersedeTask { task_id: String },
     CloseTask(TaskCloseUpdate),
+    UpdateTaskControlLevel(TaskControlLevelUpdate),
     UpdateTaskScope(TaskScopeUpdate),
     UpdateTaskScopeRevision(TaskScopeRevisionUpdate),
     UpdateTaskCloseBasis(TaskCloseBasisUpdate),
@@ -131,6 +132,8 @@ pub enum CoreStorageMutation {
     InsertCurrentChangeUnit(ChangeUnitInsert),
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
     MarkActiveWriteTicketsStale { task_id: String },
+    InvalidateActiveWriteTickets(WriteTicketInvalidation),
+    InvalidateWriteTicket(WriteTicketByIdInvalidation),
     InsertWriteTicket(WriteTicketInsert),
     ConsumeWriteTicket(WriteTicketConsumption),
     InsertRun(RunInsert),
@@ -148,6 +151,17 @@ pub enum CoreStorageMutation {
     UpdateUserActionBasis(UserActionBasisUpdate),
     MarkUserActionBasesStatus(UserActionBasisStatusMark),
     MarkUserActionsSupersededOrStale(UserActionInvalidation),
+    ApplyProjectWorkflowPolicy(ProjectWorkflowPolicyMutation),
+}
+
+/// Storage input for one authority-bound project workflow-policy replacement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectWorkflowPolicyMutation {
+    pub policy_version: u64,
+    pub policy_json: String,
+    pub policy_fingerprint: String,
+    pub source: String,
+    pub expected_prior_fingerprint: Option<String>,
 }
 
 /// Storage input for inserting a Task current row.
@@ -156,6 +170,9 @@ pub struct TaskInsert {
     pub task_id: String,
     pub created_by_actor_source: String,
     pub mode: String,
+    pub requested_control_level: String,
+    pub effective_control_level: String,
+    pub control_level_reason: String,
     pub work_phase: String,
     pub acceptance_policy: String,
     pub acceptance_policy_reason: String,
@@ -187,6 +204,16 @@ pub struct TaskScopeUpdate {
     pub bounded_context_json: Option<String>,
     pub autonomy_boundary_json: Option<String>,
     pub close_summary_json: Option<String>,
+}
+
+/// Storage input for an upward-only Task control transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskControlLevelUpdate {
+    pub task_id: String,
+    pub effective_control_level: String,
+    pub control_level_reason: String,
+    pub acceptance_policy: Option<String>,
+    pub acceptance_policy_reason: Option<String>,
 }
 
 /// One canonical acceptance criterion in a complete Task replacement set.
@@ -353,12 +380,29 @@ pub struct WriteTicketInsert {
     pub write_ticket_id: String,
     pub task_id: String,
     pub change_unit_id: String,
+    pub validity_basis_json: String,
+    pub allowed_path_prefixes_json: String,
+    pub denied_path_prefixes_json: String,
     pub attempt_scope_json: String,
     pub created_by_actor_source: String,
     pub created_by_user_action_resolution_id: Option<String>,
-    pub expires_at: String,
+    pub idle_expires_at: Option<String>,
     pub created_at: String,
     pub metadata_json: String,
+}
+
+/// Storage input for invalidating every active write ticket for one Task.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteTicketInvalidation {
+    pub task_id: String,
+    pub invalidation_reason: String,
+}
+
+/// Storage input for invalidating one specifically identified active write ticket.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteTicketByIdInvalidation {
+    pub write_ticket_id: String,
+    pub invalidation_reason: String,
 }
 
 /// Storage input for closing one open write ticket through a compatible Run.
@@ -408,6 +452,15 @@ pub struct RunObservedChangesRecord {
     pub change_unit_id: Option<String>,
     pub observed_changes: ObservedChanges,
     pub status: String,
+}
+
+/// Non-authoritative observation-time candidate used only for bounded workflow metrics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductWriteObservationCandidate {
+    pub source_table: String,
+    pub source_id: String,
+    pub observed_paths_json: String,
+    pub observed_at: String,
 }
 
 /// Storage input for promoting one staged artifact to a persistent artifact.
@@ -610,6 +663,9 @@ pub struct TaskRecord {
     pub project_id: String,
     pub task_id: String,
     pub mode: String,
+    pub requested_control_level: String,
+    pub effective_control_level: String,
+    pub control_level_reason: String,
     pub work_phase: String,
     pub acceptance_policy: String,
     pub acceptance_policy_reason: String,
@@ -630,6 +686,7 @@ pub struct TaskRecord {
     pub close_summary_json: String,
     pub current_change_unit_id: Option<String>,
     pub closed_at: Option<String>,
+    pub metadata_json: String,
 }
 
 /// Canonical acceptance criterion row.
@@ -689,8 +746,12 @@ pub struct WriteTicketRecord {
     pub change_unit_id: Option<String>,
     pub basis_state_version: u64,
     pub status: String,
+    pub validity_basis_json: String,
+    pub allowed_path_prefixes_json: String,
+    pub denied_path_prefixes_json: String,
     pub attempt_scope_json: String,
-    pub expires_at: String,
+    pub idle_expires_at: Option<String>,
+    pub invalidation_reason: Option<String>,
     pub created_at: String,
     pub consumed_by_run_id: Option<String>,
     pub consumed_at: Option<String>,
@@ -876,7 +937,7 @@ mod commit;
 mod mutation_apply;
 mod open;
 mod replay;
-mod validation;
+pub(crate) mod validation;
 
 impl CoreProjectStore {
     /// Runs related read-only lookups against one SQLite snapshot.
@@ -949,6 +1010,78 @@ impl CoreProjectStore {
     /// Reads one Task current row.
     pub fn task_record(&self, task_id: &TaskId) -> StoreResult<Option<TaskRecord>> {
         task_record(&self.conn, &self.project.project_id, task_id.as_str())
+    }
+
+    /// Reads the immutable canonical creation time for one Task.
+    pub fn task_created_at(&self, task_id: &TaskId) -> StoreResult<Option<UtcTimestamp>> {
+        validate_identifier("task_id", task_id.as_str())?;
+        let raw = self
+            .conn
+            .query_row(
+                "SELECT created_at
+                   FROM tasks
+                  WHERE project_id = ?1
+                    AND task_id = ?2",
+                params![self.project.project_id, task_id.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        raw.map(|value| {
+            UtcTimestamp::parse(&value).map_err(|_| {
+                StoreError::corrupt_owner_state_value("tasks", task_id.as_str(), "created_at")
+            })
+        })
+        .transpose()
+    }
+
+    /// Lists confirmed, Task-bound product-write observation candidates without assigning
+    /// authority or interpreting their path payloads.
+    pub fn product_write_observation_candidates_for_task(
+        &self,
+        task_id: &TaskId,
+    ) -> StoreResult<Vec<ProductWriteObservationCandidate>> {
+        validate_identifier("task_id", task_id.as_str())?;
+        let mut candidates = Vec::new();
+        let mut expected = self.conn.prepare(
+            "SELECT expected_write_id, matched_paths_json, matched_at
+               FROM expected_writes
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND status = 'matched'",
+        )?;
+        let rows =
+            expected.query_map(params![self.project.project_id, task_id.as_str()], |row| {
+                Ok(ProductWriteObservationCandidate {
+                    source_table: "expected_writes".to_owned(),
+                    source_id: row.get(0)?,
+                    observed_paths_json: row.get(1)?,
+                    observed_at: row.get(2)?,
+                })
+            })?;
+        for row in rows {
+            candidates.push(row?);
+        }
+
+        let mut unrecorded = self.conn.prepare(
+            "SELECT unrecorded_change_id, observed_paths_json, detected_at
+               FROM unrecorded_changes
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND confidence = 'confirmed'",
+        )?;
+        let rows =
+            unrecorded.query_map(params![self.project.project_id, task_id.as_str()], |row| {
+                Ok(ProductWriteObservationCandidate {
+                    source_table: "unrecorded_changes".to_owned(),
+                    source_id: row.get(0)?,
+                    observed_paths_json: row.get(1)?,
+                    observed_at: row.get(2)?,
+                })
+            })?;
+        for row in rows {
+            candidates.push(row?);
+        }
+        Ok(candidates)
     }
 
     /// Lists every Task row for lineage-flow projection.
@@ -1655,6 +1788,9 @@ fn task_record(
             project_id,
             task_id,
             mode,
+            requested_control_level,
+            effective_control_level,
+            control_level_reason,
             work_phase,
             acceptance_policy,
             acceptance_policy_reason,
@@ -1674,7 +1810,8 @@ fn task_record(
             close_basis_json,
             close_summary_json,
             current_change_unit_id,
-            closed_at
+            closed_at,
+            metadata_json
          FROM tasks
          WHERE project_id = ?1
            AND task_id = ?2",
@@ -1688,12 +1825,14 @@ fn task_record(
 fn task_records(conn: &Connection, project_id: &str) -> StoreResult<Vec<TaskRecord>> {
     let mut statement = conn.prepare(
         "SELECT
-            project_id, task_id, mode, work_phase, acceptance_policy,
+            project_id, task_id, mode, requested_control_level,
+            effective_control_level, control_level_reason, work_phase, acceptance_policy,
             acceptance_policy_reason, predecessor_task_id, lineage_relation,
             lineage_reason, carry_forward_json, lifecycle_phase, result, title,
             summary, shaping_summary_json, bounded_context_json,
             autonomy_boundary_json, scope_revision, close_basis_revision,
             close_basis_json, close_summary_json, current_change_unit_id, closed_at
+            , metadata_json
          FROM tasks
          WHERE project_id = ?1
          ORDER BY volicord_utc_seconds(created_at),
@@ -1710,26 +1849,30 @@ fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord>
         project_id: row.get(0)?,
         task_id: row.get(1)?,
         mode: row.get(2)?,
-        work_phase: row.get(3)?,
-        acceptance_policy: row.get(4)?,
-        acceptance_policy_reason: row.get(5)?,
-        predecessor_task_id: row.get(6)?,
-        lineage_relation: row.get(7)?,
-        lineage_reason: row.get(8)?,
-        carry_forward_json: row.get(9)?,
-        lifecycle_phase: row.get(10)?,
-        result: row.get(11)?,
-        title: row.get(12)?,
-        summary: row.get(13)?,
-        shaping_summary_json: row.get(14)?,
-        bounded_context_json: row.get(15)?,
-        autonomy_boundary_json: row.get(16)?,
-        scope_revision: nonnegative_i64_to_u64("tasks.scope_revision", row.get(17)?)?,
-        close_basis_revision: nonnegative_i64_to_u64("tasks.close_basis_revision", row.get(18)?)?,
-        close_basis_json: row.get(19)?,
-        close_summary_json: row.get(20)?,
-        current_change_unit_id: row.get(21)?,
-        closed_at: row.get(22)?,
+        requested_control_level: row.get(3)?,
+        effective_control_level: row.get(4)?,
+        control_level_reason: row.get(5)?,
+        work_phase: row.get(6)?,
+        acceptance_policy: row.get(7)?,
+        acceptance_policy_reason: row.get(8)?,
+        predecessor_task_id: row.get(9)?,
+        lineage_relation: row.get(10)?,
+        lineage_reason: row.get(11)?,
+        carry_forward_json: row.get(12)?,
+        lifecycle_phase: row.get(13)?,
+        result: row.get(14)?,
+        title: row.get(15)?,
+        summary: row.get(16)?,
+        shaping_summary_json: row.get(17)?,
+        bounded_context_json: row.get(18)?,
+        autonomy_boundary_json: row.get(19)?,
+        scope_revision: nonnegative_i64_to_u64("tasks.scope_revision", row.get(20)?)?,
+        close_basis_revision: nonnegative_i64_to_u64("tasks.close_basis_revision", row.get(21)?)?,
+        close_basis_json: row.get(22)?,
+        close_summary_json: row.get(23)?,
+        current_change_unit_id: row.get(24)?,
+        closed_at: row.get(25)?,
+        metadata_json: row.get(26)?,
     })
 }
 
@@ -1959,8 +2102,12 @@ fn active_write_tickets(
             change_unit_id,
             basis_state_version,
             status,
+            validity_basis_json,
+            allowed_path_prefixes_json,
+            denied_path_prefixes_json,
             attempt_scope_json,
-            expires_at,
+            idle_expires_at,
+            invalidation_reason,
             created_at,
             consumed_by_run_id,
             consumed_at
@@ -1991,15 +2138,19 @@ fn write_tickets_for_task(
             change_unit_id,
             basis_state_version,
             status,
+            validity_basis_json,
+            allowed_path_prefixes_json,
+            denied_path_prefixes_json,
             attempt_scope_json,
-            expires_at,
+            idle_expires_at,
+            invalidation_reason,
             created_at,
             consumed_by_run_id,
             consumed_at
          FROM write_tickets
          WHERE project_id = ?1
            AND task_id = ?2
-         ORDER BY basis_state_version DESC",
+         ORDER BY basis_state_version DESC, write_ticket_id",
     )?;
     let rows = stmt.query_map(params![project_id, task_id], write_ticket_record_from_row)?;
     let mut records = Vec::new();
@@ -2022,8 +2173,12 @@ fn write_ticket_record(
             change_unit_id,
             basis_state_version,
             status,
+            validity_basis_json,
+            allowed_path_prefixes_json,
+            denied_path_prefixes_json,
             attempt_scope_json,
-            expires_at,
+            idle_expires_at,
+            invalidation_reason,
             created_at,
             consumed_by_run_id,
             consumed_at
@@ -2049,11 +2204,15 @@ fn write_ticket_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Wri
             basis_state_version,
         )?,
         status: row.get(5)?,
-        attempt_scope_json: row.get(6)?,
-        expires_at: row.get(7)?,
-        created_at: row.get(8)?,
-        consumed_by_run_id: row.get(9)?,
-        consumed_at: row.get(10)?,
+        validity_basis_json: row.get(6)?,
+        allowed_path_prefixes_json: row.get(7)?,
+        denied_path_prefixes_json: row.get(8)?,
+        attempt_scope_json: row.get(9)?,
+        idle_expires_at: row.get(10)?,
+        invalidation_reason: row.get(11)?,
+        created_at: row.get(12)?,
+        consumed_by_run_id: row.get(13)?,
+        consumed_at: row.get(14)?,
     })
 }
 
@@ -4408,10 +4567,13 @@ mod tests {
                     write_ticket_id: "write_ticket_invalid_expiry".to_owned(),
                     task_id: task_id.to_owned(),
                     change_unit_id: "change_unit_missing".to_owned(),
+                    validity_basis_json: "{}".to_owned(),
+                    allowed_path_prefixes_json: "[]".to_owned(),
+                    denied_path_prefixes_json: "[]".to_owned(),
                     attempt_scope_json: "{}".to_owned(),
                     created_by_actor_source: ACTOR_SOURCE.to_owned(),
                     created_by_user_action_resolution_id: None,
-                    expires_at: "tomorrow".to_owned(),
+                    idle_expires_at: Some("tomorrow".to_owned()),
                     created_at: "2026-07-13T00:00:00Z".to_owned(),
                     metadata_json: "{}".to_owned(),
                 })
@@ -7594,7 +7756,7 @@ mod tests {
     fn pending_event_for_task(marker: &str, task_id: &str) -> PendingTaskEvent {
         PendingTaskEvent {
             event_id: format!("evt_{marker}"),
-            task_id: task_id.to_owned(),
+            task_id: Some(task_id.to_owned()),
             change_unit_id: None,
             event_kind: "store_test_event".to_owned(),
             event_payload_json: "{}".to_owned(),
@@ -7606,6 +7768,9 @@ mod tests {
             task_id: task_id.to_owned(),
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
             mode: "work".to_owned(),
+            requested_control_level: "tracked".to_owned(),
+            effective_control_level: "tracked".to_owned(),
+            control_level_reason: "Store test control.".to_owned(),
             work_phase: "shaping".to_owned(),
             acceptance_policy: "required".to_owned(),
             acceptance_policy_reason: "Store test policy.".to_owned(),

@@ -34,7 +34,7 @@ use crate::{
 
 use super::GuardIntegrationError;
 
-pub(crate) const VOLICORD_POLICY_SCHEMA: &str = "volicord-policy-v1";
+pub(crate) const VOLICORD_POLICY_SCHEMA: &str = "volicord-policy-v2";
 pub(crate) const VOLICORD_POLICY_FILE: &str = ".volicord/policy.json";
 pub(crate) const AGENTS_FILE: &str = "AGENTS.md";
 pub(crate) const GUIDANCE_START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->";

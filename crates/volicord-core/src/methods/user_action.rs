@@ -1826,6 +1826,7 @@ fn projected_user_action_state(
         *now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
+        store,
         project_id: &envelope.project_id,
         state_version: planned_state_version,
         task,
@@ -2116,7 +2117,8 @@ fn execute_resolve_user_action(
             },
         );
     }
-    service.execute_prepared_request(
+    let session_id = prepared.context.verified_invocation.session_id.clone();
+    let response = service.execute_prepared_request(
         prepared,
         OwnerPipelineBranch::CommitMutation {
             result_fields: plan.method.result_fields,
@@ -2126,7 +2128,16 @@ fn execute_resolve_user_action(
             change_unit_id: plan.method.change_unit_id,
             storage_mutations: plan.method.storage_mutations,
         },
-    )
+    )?;
+    if response_committed_fresh_effect(&response) {
+        record_core_workflow_metric_best_effort(
+            service,
+            session_id.as_deref(),
+            WorkflowMetricKind::UserRoundtrip,
+            1,
+        );
+    }
+    Ok(response)
 }
 
 struct LocalWebTokenContext {

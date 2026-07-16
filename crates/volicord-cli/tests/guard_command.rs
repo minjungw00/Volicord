@@ -2,26 +2,32 @@
 
 mod support;
 
-use std::{error::Error, fs};
+use std::{error::Error, fs, path::PathBuf, process::Command};
 
 use serde_json::{json, Value};
 use support::{
     assertions::{assert_success, json_stdout, stderr, stdout},
     guard_fixture::*,
 };
+use volicord_store::core_pipeline::CoreProjectStore;
 use volicord_store::diagnostics::{
-    diagnostics_db_path, read_diagnostic_session, start_diagnostic_session, DiagnosticHostKind,
-    DiagnosticSessionStart, DiagnosticTransport,
+    diagnostics_db_path, read_diagnostic_session, read_workflow_metric_aggregates,
+    start_diagnostic_session, DiagnosticHostKind, DiagnosticSessionStart, DiagnosticTransport,
 };
 use volicord_store::guards::{
     agent_session, expected_write, guard_event, guard_health_record, guard_installation,
     insert_agent_session, list_pending_expected_writes, list_unresolved_unrecorded_changes,
-    prompt_capture, prompt_capture_availability, unrecorded_change, AgentSessionInsert,
+    post_tool_guard_events_for_session_since, prompt_capture, prompt_capture_availability,
+    recorded_run_write_ticket_consumption, unrecorded_change, AgentSessionInsert,
+    POST_TOOL_CORRELATION_EVENT_LIMIT,
 };
+use volicord_store::host_runtime_probes::host_runtime_probe_snapshot_read_only;
 use volicord_store::session_watch::{
     create_watch_baseline, latest_watch_baseline_for_connection, latest_watch_baseline_for_session,
     snapshot_product_repository, SessionWatchStatus, WatchBaselineCreate, WatchSnapshotOptions,
 };
+use volicord_store::workflow_records::task_policy_control_reevaluation;
+use volicord_types::{HostRuntimeProbeFailureClass, HostRuntimeProbeId, HostRuntimeProbeOutcome};
 
 #[cfg(unix)]
 #[cfg(unix)]
@@ -63,6 +69,22 @@ fn guard_durable_counts(fixture: &GuardCliFixture) -> Result<GuardDurableCounts,
         expected_writes: count("expected_writes")?,
         prompt_captures: count("prompt_captures")?,
     })
+}
+
+fn session_end_receipt_count(fixture: &GuardCliFixture) -> Result<i64, Box<dyn Error>> {
+    let connection = rusqlite::Connection::open_with_flags(
+        fixture
+            .runtime_home()
+            .join("projects")
+            .join(fixture.project_id())
+            .join("state.sqlite"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    Ok(
+        connection.query_row("SELECT COUNT(*) FROM session_end_receipts", [], |row| {
+            row.get(0)
+        })?,
+    )
 }
 
 fn assert_output_excludes(output: &std::process::Output, markers: &[&str]) {
@@ -330,6 +352,265 @@ fn guard_pre_tool_denies_product_write_without_active_task() -> Result<(), Box<d
     let stored = guard_event(fixture.runtime_home(), fixture.project_id(), guard_event_id)?
         .expect("deny event should be stored");
     assert_eq!(stored.decision, "deny");
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics.iter().any(|row| {
+        row.metric_kind == "pre_tool_decision"
+            && row.decision.as_deref() == Some("deny")
+            && row.observation_confidence.as_deref() == Some("structured")
+            && row.value_total == 1
+    }));
+    assert!(!metrics
+        .iter()
+        .any(|row| row.metric_kind == "confirmed_structured_write_deny"));
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_does_not_infer_sensitive_approval_from_missing_ticket(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-sensitive-approval")?;
+    fixture.create_sensitive_active_task()?;
+    let event = json!({
+        "event_id": "guard_pre_sensitive_approval_missing",
+        "session_id": "guard_session_pre_sensitive_approval_missing",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": "src/export.rs"
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_eq!(output.status.code(), Some(1));
+    assert_reason(&json_stdout(&output)?, "write_ticket_missing");
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(!metrics
+        .iter()
+        .any(|row| row.metric_kind == "sensitive_approval_missing_block"));
+    assert!(!metrics
+        .iter()
+        .any(|row| row.metric_kind == "confirmed_structured_write_deny"));
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_excludes_active_ticket_with_expired_sensitive_approval(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-expired-sensitive-approval")?;
+    let task_id = fixture.create_sensitive_active_task()?;
+    let (approval_request_id, write_ticket_id) =
+        fixture.prepare_sensitive_write_with_approval(&task_id)?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+    fixture.expire_user_action_at_core_clock(&approval_request_id)?;
+    assert_eq!(
+        fixture.write_ticket_status(&write_ticket_id)?,
+        "active",
+        "the regression requires an active storage row whose approval basis has expired"
+    );
+
+    let event = json!({
+        "event_id": "guard_pre_expired_sensitive_approval",
+        "session_id": "guard_session_pre_expired_sensitive_approval",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": "src/export.rs"
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "guard output: {}",
+        stdout(&output)
+    );
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_missing");
+    assert_eq!(
+        value["result"]["context"]["current_write_ticket_ids"],
+        json!([])
+    );
+    assert_eq!(
+        value["result"]["context"]["stale_write_ticket_ids"],
+        json!([write_ticket_id])
+    );
+    assert!(list_pending_expected_writes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )?
+    .is_empty());
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_excludes_old_empty_basis_ticket_after_task_becomes_sensitive(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-policy-strengthened-sensitive")?;
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+    fixture.strengthen_active_task_to_sensitive_without_ticket_invalidation(&task_id)?;
+    assert_eq!(
+        fixture.write_ticket_status(&write_ticket_id)?,
+        "active",
+        "the regression requires the older non-sensitive ticket row to remain active"
+    );
+
+    let event = json!({
+        "event_id": "guard_pre_policy_strengthened_sensitive",
+        "session_id": "guard_session_policy_strengthened_sensitive",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": "src/export.rs"
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_missing");
+    assert_eq!(
+        value["result"]["context"]["active_task_effective_control_level"],
+        "sensitive"
+    );
+    assert_eq!(
+        value["result"]["context"]["current_write_ticket_ids"],
+        json!([])
+    );
+    assert_eq!(
+        value["result"]["context"]["stale_write_ticket_ids"],
+        json!([write_ticket_id])
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_excludes_active_ticket_after_baseline_binding_changes(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-stale-baseline")?;
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    fixture
+        .change_current_baseline_without_ticket_invalidation(&task_id, "baseline_guard_rebound")?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+
+    let event = json!({
+        "event_id": "guard_pre_stale_baseline",
+        "session_id": "guard_session_pre_stale_baseline",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": "src/export.rs"
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_missing");
+    assert_eq!(
+        value["result"]["context"]["stale_write_ticket_ids"],
+        json!([write_ticket_id])
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_excludes_active_ticket_after_workspace_binding_changes(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-stale-workspace")?;
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    fixture.make_ticket_workspace_stale(&task_id, &write_ticket_id)?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+
+    let event = json!({
+        "event_id": "guard_pre_stale_workspace",
+        "session_id": "guard_session_pre_stale_workspace",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": "src/export.rs"
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(output.status.code(), Some(1));
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "deny");
+    assert_reason(&value, "write_ticket_missing");
+    assert_eq!(
+        value["result"]["context"]["stale_write_ticket_ids"],
+        json!([write_ticket_id])
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_warns_when_bound_workspace_cannot_be_refreshed() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-unavailable-workspace")?;
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    fixture.make_ticket_workspace_probe_unavailable(&task_id, &write_ticket_id)?;
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+
+    let event = json!({
+        "event_id": "guard_pre_unavailable_workspace",
+        "session_id": "guard_session_pre_unavailable_workspace",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": "src/export.rs"
+    });
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "warn");
+    assert_reason(&value, "write_ticket_workspace_unverified");
+    assert_eq!(
+        value["result"]["context"]["current_write_ticket_ids"],
+        json!([write_ticket_id])
+    );
+    assert_eq!(
+        value["result"]["context"]["uncertain_write_ticket_ids"],
+        value["result"]["context"]["current_write_ticket_ids"]
+    );
+    assert_eq!(
+        value["result"]["write_ticket_backing"]["status"],
+        "ticket_backed"
+    );
     Ok(())
 }
 
@@ -593,7 +874,7 @@ fn guard_codex_native_output_contract_uses_checked_in_hook_events() -> Result<()
     )?;
     let output = run_host_guard(&pre_bash, "pre-tool", "codex", &event, &[])?;
     let value = assert_host_native_json_stdout(&output, 0)?;
-    assert_pre_tool_deny_output(&value, "no_active_task");
+    assert_context_output(&value, "PreToolUse", "Volicord context");
 
     let post = GuardCliFixture::new("guard-codex-native-post-bash")?;
     post.create_active_task()?;
@@ -632,7 +913,8 @@ fn guard_codex_native_output_contract_uses_checked_in_hook_events() -> Result<()
     let event = host_fixture_event(&stop, CODEX_STOP_EVENT, "guard_codex_native_stop", "codex")?;
     let output = run_host_guard(&stop, "stop", "codex", &event, &[])?;
     let value = assert_host_native_json_stdout(&output, 0)?;
-    assert_block_output(&value, "close_readiness_blocked");
+    assert_eq!(value["continue"], true);
+    assert!(value.get("decision").is_none());
     Ok(())
 }
 
@@ -671,7 +953,7 @@ fn guard_claude_native_output_contract_uses_checked_in_hook_events() -> Result<(
     let output = run_host_guard(&pre_bash, "pre-tool", "claude-code", &event, &[])?;
     assert_ne!(output.status.code(), Some(1));
     let value = assert_host_native_json_stdout(&output, 0)?;
-    assert_pre_tool_deny_output(&value, "no_active_task");
+    assert_context_output(&value, "PreToolUse", "Volicord context");
 
     let post = GuardCliFixture::new("guard-claude-native-post-bash")?;
     post.create_active_task()?;
@@ -731,7 +1013,8 @@ fn guard_claude_native_output_contract_uses_checked_in_hook_events() -> Result<(
     let output = run_host_guard(&stop, "stop", "claude-code", &event, &[])?;
     assert_ne!(output.status.code(), Some(1));
     let value = assert_host_native_json_stdout(&output, 0)?;
-    assert_block_output(&value, "close_readiness_blocked");
+    assert_eq!(value["continue"], true);
+    assert!(value.get("decision").is_none());
     Ok(())
 }
 
@@ -1458,15 +1741,15 @@ fn guard_host_output_non_policy_error_uses_stderr_not_stdout() -> Result<(), Box
 }
 
 #[test]
-fn guard_pre_tool_rejects_paths_outside_project_allowlist() -> Result<(), Box<dyn Error>> {
+fn guard_pre_tool_rejects_direct_writes_outside_project_allowlist() -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-pre-outside-project")?;
     let event = json!({
         "event_id": "guard_pre_outside_project",
         "session_id": "guard_session_pre_outside_project",
         "connection_id": fixture.connection_id(),
         "host_kind": "codex",
-        "tool_name": "read",
-        "paths": ["../outside-product-repo.txt"]
+        "tool_name": "Write",
+        "tool_input": {"file_path": "../outside-product-repo.txt", "content": "changed"}
     });
 
     let output = run_guard(
@@ -1521,6 +1804,12 @@ fn guard_pre_tool_requires_current_write_ticket() -> Result<(), Box<dyn Error>> 
         .as_str()
         .expect("write-ticket disclosure should be present")
         .contains("not OS-level enforcement"));
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics.iter().any(|row| {
+        row.metric_kind == "confirmed_structured_write_deny"
+            && row.outcome.as_deref() == Some("rejected")
+            && row.value_total == 1
+    }));
 
     fixture.prepare_write(&task_id)?;
     let allowed_event = json!({
@@ -1576,6 +1865,153 @@ fn guard_pre_tool_requires_current_write_ticket() -> Result<(), Box<dyn Error>> 
         out_of_scope_value["result"]["write_ticket_backing"]["status"],
         "out_of_scope"
     );
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_rejects_active_ticket_while_policy_reevaluation_is_pending(
+) -> Result<(), Box<dyn Error>> {
+    for (label, acceptance_escalation) in [("control", false), ("acceptance", true)] {
+        let fixture = GuardCliFixture::new(&format!("guard-pre-policy-reevaluation-{label}"))?;
+        let task_id = fixture.create_active_task()?;
+        let write_ticket_id = fixture.prepare_write(&task_id)?;
+        assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
+        let store = CoreProjectStore::open(
+            fixture.runtime_home(),
+            &volicord_types::ProjectId::new(fixture.project_id()),
+        )?;
+        let before_task = store
+            .task_record(&volicord_types::TaskId::new(&task_id))?
+            .expect("active Task");
+        if acceptance_escalation {
+            fixture.set_active_task_acceptance_policy_without_ticket_invalidation(
+                &task_id,
+                "not_required",
+            )?;
+        }
+        let required_control = if acceptance_escalation {
+            before_task.effective_control_level.clone()
+        } else {
+            "sensitive".to_owned()
+        };
+        let required_acceptance = acceptance_escalation.then_some("required");
+        fixture.mark_active_task_policy_control_reevaluation_without_ticket_invalidation(
+            &task_id,
+            &required_control,
+            required_acceptance,
+        )?;
+
+        let event = json!({
+            "event_id": format!("guard_pre_policy_reevaluation_{label}"),
+            "session_id": format!("guard_session_policy_reevaluation_{label}"),
+            "connection_id": fixture.connection_id(),
+            "host_kind": "codex",
+            "tool_name": "Write",
+            "path": DEFAULT_PRODUCT_PATH
+        });
+        let output = run_guard(
+            fixture.runtime_home(),
+            fixture.repo_root(),
+            ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+            &event,
+        )?;
+
+        let value = json_stdout(&output)?;
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "unexpected policy reevaluation result: {value}; stderr={}",
+            stderr(&output)
+        );
+        assert_eq!(value["decision"], "deny");
+        assert_reason(&value, "policy_control_reevaluation_required");
+        assert!(value["result"]["reasons"]
+            .as_array()
+            .expect("reasons")
+            .iter()
+            .any(|reason| reason["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("volicord.prepare_write"))));
+        assert_eq!(
+            value["result"]["context"]["current_write_ticket_ids"],
+            json!([])
+        );
+        assert!(value["result"]["context"]["stale_write_ticket_ids"]
+            .as_array()
+            .is_some_and(|ids| ids.iter().any(|id| id == &write_ticket_id)));
+        assert_eq!(
+            value["result"]["context"]["policy_control_reevaluation"]
+                ["required_effective_control_level"],
+            required_control
+        );
+        assert_eq!(
+            value["result"]["context"]["policy_control_reevaluation"]["required_acceptance_policy"],
+            required_acceptance.map(Value::from).unwrap_or(Value::Null)
+        );
+        assert_eq!(
+            value["result"]["context"]["policy_control_reevaluation"]["prepare_write_required"],
+            true
+        );
+        assert_eq!(
+            value["result"]["write_ticket_backing"]["status"],
+            "missing_ticket"
+        );
+        assert!(value["result"]["expected_write"].is_null());
+        assert_eq!(
+            fixture.write_ticket_status(&write_ticket_id)?,
+            "active",
+            "Guard must exclude the ticket without mutating Core-owned status"
+        );
+        let after_task = store
+            .task_record(&volicord_types::TaskId::new(&task_id))?
+            .expect("active Task remains");
+        assert!(task_policy_control_reevaluation(&after_task)?.is_some());
+    }
+    Ok(())
+}
+
+#[test]
+fn guard_pre_tool_fails_closed_on_malformed_policy_reevaluation() -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-pre-malformed-policy-reevaluation")?;
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    fixture.mark_active_task_policy_control_reevaluation_without_ticket_invalidation(
+        &task_id,
+        "invalid_control_level",
+        None,
+    )?;
+    let event_id = "guard_pre_malformed_policy_reevaluation";
+    let event = json!({
+        "event_id": event_id,
+        "session_id": "guard_session_malformed_policy_reevaluation",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Write",
+        "path": DEFAULT_PRODUCT_PATH
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout={}; stderr={}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(stdout(&output).is_empty());
+    assert!(
+        stderr(&output).contains("stored owner value tasks.policy_control_reevaluation"),
+        "stderr={}",
+        stderr(&output)
+    );
+    assert!(guard_event(fixture.runtime_home(), fixture.project_id(), event_id)?.is_none());
+    assert_eq!(fixture.write_ticket_status(&write_ticket_id)?, "active");
     Ok(())
 }
 
@@ -1673,6 +2109,243 @@ fn guard_post_tool_records_unrecorded_product_file_changes() -> Result<(), Box<d
 }
 
 #[test]
+fn guard_post_tool_resolves_suspected_change_after_confirmed_no_change(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-post-suspected-no-change")?;
+    fixture.create_active_task()?;
+    let uncertain = json!({
+        "event_id": "guard_post_suspected",
+        "session_id": "guard_session_suspected",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_suspected",
+        "command": "node script.js",
+        "paths": ["src/export.rs"],
+        "success": true
+    });
+
+    let uncertain_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &uncertain,
+    )?;
+    assert_success(&uncertain_output);
+    let uncertain_value = json_stdout(&uncertain_output)?;
+    assert_eq!(uncertain_value["decision"], "warn");
+    assert_eq!(
+        uncertain_value["result"]["unrecorded_changes"][0]["confidence"],
+        "suspected"
+    );
+    assert_eq!(
+        uncertain_value["result"]["change_observation"]["source"],
+        "heuristic_event"
+    );
+    let unresolved = list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?;
+    assert_eq!(unresolved.len(), 1);
+    assert_eq!(unresolved[0].confidence, "suspected");
+
+    let confirmed_no_change = json!({
+        "event_id": "guard_post_suspected_confirmed_empty",
+        "session_id": "guard_session_suspected",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_suspected",
+        "command": "node script.js",
+        "success": true,
+        "changed_paths": []
+    });
+    let resolved_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &confirmed_no_change,
+    )?;
+    assert_success(&resolved_output);
+    let resolved_value = json_stdout(&resolved_output)?;
+    assert_eq!(resolved_value["decision"], "allow");
+    assert_eq!(
+        resolved_value["result"]["change_observation"]["source"],
+        "structured_host_changed_paths"
+    );
+    assert_eq!(
+        resolved_value["result"]["change_observation"]["confirms_no_change"],
+        true
+    );
+    assert_eq!(
+        resolved_value["result"]["resolved_suspected_changes"][0]["resolution_basis"],
+        "invalid_observation"
+    );
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics
+        .iter()
+        .any(|row| { row.metric_kind == "suspected_resolved_no_change" && row.value_total == 1 }));
+    Ok(())
+}
+
+#[test]
+fn guard_post_tool_promotes_matching_suspected_change_after_confirmed_diff(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-post-suspected-promoted")?;
+    fixture.create_active_task()?;
+    let uncertain = json!({
+        "event_id": "guard_post_suspected_before_diff",
+        "session_id": "guard_session_suspected_promoted",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_suspected_promoted",
+        "command": "node script.js",
+        "paths": ["src/export.rs"],
+        "success": true
+    });
+    let uncertain_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &uncertain,
+    )?;
+    assert_success(&uncertain_output);
+    let uncertain_value = json_stdout(&uncertain_output)?;
+    let suspected_id = uncertain_value["result"]["unrecorded_changes"][0]["unrecorded_change_id"]
+        .as_str()
+        .expect("suspected change id")
+        .to_owned();
+
+    let confirmed = json!({
+        "event_id": "guard_post_suspected_confirmed_diff",
+        "session_id": "guard_session_suspected_promoted",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_suspected_promoted",
+        "command": "node script.js",
+        "success": true,
+        "changed_paths": ["src/export.rs"]
+    });
+    let confirmed_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &confirmed,
+    )?;
+    assert_success(&confirmed_output);
+    let confirmed_value = json_stdout(&confirmed_output)?;
+    assert_eq!(confirmed_value["decision"], "warn");
+    assert_eq!(
+        confirmed_value["result"]["unrecorded_changes"][0]["status"],
+        "promoted"
+    );
+    assert_eq!(
+        confirmed_value["result"]["unrecorded_changes"][0]["unrecorded_change_id"],
+        suspected_id
+    );
+
+    let unresolved = list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?;
+    assert_eq!(unresolved.len(), 1);
+    assert_eq!(unresolved[0].unrecorded_change_id, suspected_id);
+    assert_eq!(unresolved[0].confidence, "confirmed");
+    assert_eq!(
+        serde_json::from_str::<Value>(&unresolved[0].detection_json)?["promotion"]["basis"],
+        "deterministic_post_tool_observation"
+    );
+    Ok(())
+}
+
+#[test]
+fn guard_post_tool_uses_git_diff_when_host_paths_and_watcher_are_unavailable(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-post-git-diff")?;
+    let task_id = fixture.create_active_task()?;
+    for args in [
+        vec!["init"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=Volicord Test",
+            "-c",
+            "user.email=volicord@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "baseline",
+        ],
+    ] {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(fixture.repo_root())
+            .output()?;
+        assert!(
+            output.status.success(),
+            "temporary Git fixture setup failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    fs::create_dir_all(fixture.repo_root().join("src"))?;
+    fs::write(
+        fixture.repo_root().join("src/diff-only.rs"),
+        "pub const DIFF_ONLY: bool = true;\n",
+    )?;
+    let event = json!({
+        "event_id": "guard_post_git_diff",
+        "session_id": "guard_session_git_diff",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_git_diff",
+        "command": "node script.js",
+        "success": true
+    });
+
+    let output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &event,
+    )?;
+    assert_success(&output);
+    let value = json_stdout(&output)?;
+    assert_eq!(value["decision"], "warn");
+    assert_eq!(
+        value["result"]["change_observation"]["source"],
+        "git_worktree_diff"
+    );
+    assert_eq!(
+        value["result"]["unrecorded_changes"][0]["confidence"],
+        "confirmed"
+    );
+    assert_eq!(
+        value["result"]["unrecorded_changes"][0]["observed_paths"],
+        json!(["src/diff-only.rs"])
+    );
+    let unresolved = list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?;
+    assert_eq!(unresolved.len(), 1);
+    assert_eq!(unresolved[0].task_id.as_deref(), Some(task_id.as_str()));
+    assert_eq!(unresolved[0].confidence, "confirmed");
+    Ok(())
+}
+
+#[test]
 fn guard_post_tool_links_active_write_ticket_without_expected_write() -> Result<(), Box<dyn Error>>
 {
     let fixture = GuardCliFixture::new("guard-post-ticket-backed")?;
@@ -1714,6 +2387,475 @@ fn guard_post_tool_links_active_write_ticket_without_expected_write() -> Result<
         .as_array()
         .expect("unrecorded changes should be an array")
         .is_empty());
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn guard_post_tool_subtracts_only_unchanged_recorded_ticket_correlation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-recorded-dirty-subtraction")?;
+    let repo_root = PathBuf::from(fixture.repo_arg());
+    fs::create_dir_all(repo_root.join("src"))?;
+    fs::write(repo_root.join(DEFAULT_PRODUCT_PATH), "baseline contents\n")?;
+    for args in [
+        vec!["init"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=Volicord Test",
+            "-c",
+            "user.email=volicord@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "baseline",
+        ],
+    ] {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&repo_root)
+            .output()?;
+        assert!(
+            output.status.success(),
+            "temporary Git fixture setup failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let task_id = fixture.create_active_task()?;
+    let write_ticket_id = fixture.prepare_write(&task_id)?;
+    fixture.bind_ticket_to_current_workspace(&task_id, &write_ticket_id)?;
+    fs::write(
+        repo_root.join(DEFAULT_PRODUCT_PATH),
+        "authorized correlated contents\n",
+    )?;
+
+    let correlated = json!({
+        "event_id": "guard_recorded_dirty_authorized_post",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "touch src/export.rs",
+        "success": true,
+        "changed_paths": [DEFAULT_PRODUCT_PATH]
+    });
+    let correlated_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &correlated,
+    )?;
+    assert_success(&correlated_output);
+    let correlated_value = json_stdout(&correlated_output)?;
+    assert_eq!(
+        correlated_value["decision"], "allow",
+        "unexpected correlation result: {correlated_value}"
+    );
+    assert!(
+        correlated_value["result"]["ticket_backed_observations"][0]["repository_identity"]
+            ["snapshot_digest"]
+            .as_str()
+            .is_some()
+    );
+    let correlation_guard_event_id = correlated_value["guard_event_id"]
+        .as_str()
+        .expect("correlation guard event id")
+        .to_owned();
+    let managed_session_id = correlated_value["session_id"]
+        .as_str()
+        .expect("managed session id")
+        .to_owned();
+
+    let run_id = fixture.record_product_write(&task_id, &write_ticket_id)?;
+    let replay_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &correlated,
+    )?;
+    assert_success(&replay_output);
+    let replay_value = json_stdout(&replay_output)?;
+    assert_eq!(replay_value["decision"], "allow");
+    assert_eq!(replay_value["guard_event_id"], correlation_guard_event_id);
+    assert_eq!(
+        replay_value["result"]["ticket_backed_observations"],
+        correlated_value["result"]["ticket_backed_observations"]
+    );
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
+    let session = agent_session(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        &managed_session_id,
+    )?
+    .expect("guard session should exist");
+    let correlation_events = post_tool_guard_events_for_session_since(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        &managed_session_id,
+        fixture.connection_id(),
+        &session.started_at,
+    )?;
+    let correlation_event = correlation_events
+        .iter()
+        .find(|event| event.guard_event_id == correlation_guard_event_id)
+        .expect("correlation event should be in the bounded session window");
+    let metadata: Value = serde_json::from_str(&correlation_event.metadata_json)?;
+    let subject: Value = serde_json::from_str(&correlation_event.subject_json)?;
+    assert_eq!(
+        metadata["source_payload_sha256"],
+        volicord_types::canonical_json_bare_sha256(&json!({
+            "session_id": correlation_event.session_id,
+            "connection_id": correlation_event.connection_internal_id,
+            "guard_installation_id": correlation_event.guard_installation_id,
+            "event_kind": correlation_event.event_kind,
+            "raw_event_sha256": subject["raw_event_sha256"]
+        }))?
+    );
+    assert_eq!(
+        recorded_run_write_ticket_consumption(
+            fixture.runtime_home(),
+            fixture.project_id(),
+            &run_id,
+        )?
+        .expect("recorded Run should confirm ticket consumption")
+        .write_ticket_id,
+        write_ticket_id
+    );
+    let store = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?;
+    let ticket = store
+        .write_ticket_record(&write_ticket_id)?
+        .expect("consumed ticket should remain queryable");
+    let run = store
+        .run_record(&run_id)?
+        .expect("recorded Run should remain queryable");
+    let validity: volicord_types::WriteTicketValidityBasis =
+        serde_json::from_str(&ticket.validity_basis_json)?;
+    assert_eq!(ticket.status, "consumed");
+    assert_eq!(ticket.consumed_by_run_id.as_deref(), Some(run_id.as_str()));
+    assert_eq!(ticket.change_unit_id, run.change_unit_id);
+    assert_eq!(validity.scope_revision, run.scope_revision);
+    assert_eq!(
+        validity.baseline_ref.as_ref().map(|value| value.as_str()),
+        run.baseline_ref.as_deref()
+    );
+    let observed = store.run_observed_changes_for_task(&volicord_types::TaskId::new(&task_id))?;
+    assert!(observed.iter().any(|observed| {
+        observed.run_id == run_id
+            && observed.observed_changes.product_file_write_observed
+            && observed
+                .observed_changes
+                .changed_paths
+                .iter()
+                .any(|path| path == DEFAULT_PRODUCT_PATH)
+    }));
+    assert!(ticket
+        .consumed_at
+        .as_deref()
+        .is_some_and(|consumed_at| correlation_event.occurred_at.as_str() <= consumed_at));
+    let current_snapshot = snapshot_product_repository(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        WatchSnapshotOptions {
+            watch_paths: vec![PathBuf::from(DEFAULT_PRODUCT_PATH)],
+            ..WatchSnapshotOptions::default()
+        },
+    )?;
+    let current_head = Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(fixture.repo_root())
+        .output()?;
+    assert!(current_head.status.success());
+    let identity =
+        &correlated_value["result"]["ticket_backed_observations"][0]["repository_identity"];
+    assert_eq!(identity["snapshot_digest"], current_snapshot.digest);
+    assert_eq!(
+        identity["baseline_identity"],
+        json!({
+            "kind": "git_worktree",
+            "session_id": managed_session_id,
+            "connection_internal_id": fixture.connection_id(),
+            "session_started_at": session.started_at,
+            "head_oid": String::from_utf8(current_head.stdout)?.trim()
+        })
+    );
+    let unchanged_read = json!({
+        "event_id": "guard_recorded_dirty_unchanged_read",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "git status --short",
+        "success": true
+    });
+    let unchanged_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &unchanged_read,
+    )?;
+    assert_success(&unchanged_output);
+    let unchanged_value = json_stdout(&unchanged_output)?;
+    assert_eq!(
+        unchanged_value["decision"],
+        "allow",
+        "unexpected unchanged result: {unchanged_value}; stderr={}",
+        stderr(&unchanged_output)
+    );
+    assert_eq!(
+        unchanged_value["result"]["recorded_change_suppressions"][0]["observed_paths"],
+        json!([DEFAULT_PRODUCT_PATH])
+    );
+    assert!(unchanged_value["result"]["unrecorded_changes"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+    assert!(list_unresolved_unrecorded_changes(
+        fixture.runtime_home(),
+        fixture.project_id(),
+        Some(fixture.connection_id()),
+    )?
+    .is_empty());
+
+    let state_db = fixture
+        .runtime_home()
+        .join("projects")
+        .join(fixture.project_id())
+        .join("state.sqlite");
+    let mut state = rusqlite::Connection::open(&state_db)?;
+    let original_ticket_effect: String = state.query_row(
+        "SELECT write_ticket_effect_json FROM runs WHERE project_id = ?1 AND run_id = ?2",
+        rusqlite::params![fixture.project_id(), run_id],
+        |row| row.get(0),
+    )?;
+    state.execute(
+        "UPDATE runs SET write_ticket_effect_json = ?3 WHERE project_id = ?1 AND run_id = ?2",
+        rusqlite::params![
+            fixture.project_id(),
+            run_id,
+            json!({"write_ticket_id": "wt_wrong_binding", "effect": "consumed"}).to_string()
+        ],
+    )?;
+    let wrong_binding_read = json!({
+        "event_id": "guard_recorded_dirty_wrong_binding_read",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "git status --short",
+        "success": true
+    });
+    let wrong_binding_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &wrong_binding_read,
+    )?;
+    assert_success(&wrong_binding_output);
+    let wrong_binding_value = json_stdout(&wrong_binding_output)?;
+    assert_eq!(wrong_binding_value["decision"], "warn");
+    assert!(
+        wrong_binding_value["result"]["recorded_change_suppressions"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+    state.execute(
+        "UPDATE runs SET write_ticket_effect_json = ?3 WHERE project_id = ?1 AND run_id = ?2",
+        rusqlite::params![fixture.project_id(), run_id, original_ticket_effect],
+    )?;
+
+    fs::write(
+        repo_root.join(DEFAULT_PRODUCT_PATH),
+        "later unrecorded contents\n",
+    )?;
+    let changed_read = json!({
+        "event_id": "guard_recorded_dirty_changed_read",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "git status --short",
+        "success": true
+    });
+    let changed_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &changed_read,
+    )?;
+    assert_success(&changed_output);
+    let changed_value = json_stdout(&changed_output)?;
+    assert_eq!(changed_value["decision"], "warn");
+    assert!(changed_value["result"]["recorded_change_suppressions"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+    assert_eq!(
+        changed_value["result"]["unrecorded_changes"][0]["confidence"],
+        "confirmed"
+    );
+
+    fs::remove_file(repo_root.join(DEFAULT_PRODUCT_PATH))?;
+    let deleted_read = json!({
+        "event_id": "guard_recorded_dirty_deleted_read",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "git status --short",
+        "success": true
+    });
+    let deleted_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &deleted_read,
+    )?;
+    assert_success(&deleted_output);
+    let deleted_value = json_stdout(&deleted_output)?;
+    assert_eq!(deleted_value["decision"], "warn");
+    assert!(deleted_value["result"]["recorded_change_suppressions"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+
+    fs::write(
+        repo_root.join(DEFAULT_PRODUCT_PATH),
+        "authorized correlated contents\n",
+    )?;
+    let structured_read = json!({
+        "event_id": "guard_recorded_dirty_structured_current_tool",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "git status --short",
+        "success": true,
+        "changed_paths": [DEFAULT_PRODUCT_PATH]
+    });
+    let structured_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &structured_read,
+    )?;
+    assert_success(&structured_output);
+    let structured_value = json_stdout(&structured_output)?;
+    assert_eq!(
+        structured_value["result"]["change_observation"]["source"],
+        "structured_host_changed_paths"
+    );
+    assert_eq!(structured_value["decision"], "warn");
+    assert!(structured_value["result"]["recorded_change_suppressions"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+
+    let transaction = state.transaction()?;
+    for index in 0..=POST_TOOL_CORRELATION_EVENT_LIMIT {
+        transaction.execute(
+            "INSERT INTO guard_events (
+                project_id, guard_event_id, session_id, connection_internal_id,
+                guard_installation_id, event_kind, decision, subject_json,
+                result_json, occurred_at, metadata_json
+             ) VALUES (?1, ?2, ?3, ?4, NULL, 'post_tool', 'allow', '{}', '{}', ?5, '{}')",
+            rusqlite::params![
+                fixture.project_id(),
+                format!("guard_event_cap_{index:04}"),
+                managed_session_id,
+                fixture.connection_id(),
+                correlation_event.occurred_at,
+            ],
+        )?;
+    }
+    transaction.commit()?;
+    let capped_read = json!({
+        "event_id": "guard_recorded_dirty_capped_window",
+        "session_id": "guard_recorded_dirty_session",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "command": "git status --short",
+        "success": true
+    });
+    let capped_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &capped_read,
+    )?;
+    assert_success(&capped_output);
+    let capped_value = json_stdout(&capped_output)?;
+    assert_eq!(capped_value["decision"], "warn");
+    assert!(capped_value["result"]["recorded_change_suppressions"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+    Ok(())
+}
+
+#[test]
+fn guard_post_tool_resolves_matching_suspect_when_ticket_confirms_authority(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = GuardCliFixture::new("guard-post-suspected-ticket-backed")?;
+    let task_id = fixture.create_active_task()?;
+    fixture.prepare_write(&task_id)?;
+    let uncertain = json!({
+        "event_id": "guard_post_ticket_suspected",
+        "session_id": "guard_session_ticket_suspected",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_ticket_suspected",
+        "command": "node script.js",
+        "paths": ["src/export.rs"],
+        "success": true
+    });
+    let uncertain_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &uncertain,
+    )?;
+    assert_success(&uncertain_output);
+    assert_eq!(
+        json_stdout(&uncertain_output)?["result"]["unrecorded_changes"][0]["confidence"],
+        "suspected"
+    );
+
+    let confirmed = json!({
+        "event_id": "guard_post_ticket_confirmed",
+        "session_id": "guard_session_ticket_suspected",
+        "connection_id": fixture.connection_id(),
+        "host_kind": "codex",
+        "tool_name": "Bash",
+        "tool_call_id": "tool_call_ticket_suspected",
+        "command": "node script.js",
+        "success": true,
+        "changed_paths": ["src/export.rs"]
+    });
+    let confirmed_output = run_guard(
+        fixture.runtime_home(),
+        fixture.repo_root(),
+        ["_hook", "post-tool", "--repo", fixture.repo_arg()],
+        &confirmed,
+    )?;
+    assert_success(&confirmed_output);
+    let confirmed_value = json_stdout(&confirmed_output)?;
+    assert_eq!(confirmed_value["decision"], "allow");
+    assert_eq!(
+        confirmed_value["result"]["resolved_suspected_changes"][0]["resolution_basis"],
+        "covered_by_write_ticket"
+    );
     assert!(list_unresolved_unrecorded_changes(
         fixture.runtime_home(),
         fixture.project_id(),
@@ -1912,6 +3054,10 @@ fn guard_post_tool_records_out_of_scope_expected_write() -> Result<(), Box<dyn E
         value["result"]["unrecorded_changes"][0]["observed_paths"][0],
         "src/other.rs"
     );
+    assert_eq!(
+        value["result"]["unrecorded_changes"][0]["correlation_status"],
+        "out_of_scope_expected_write"
+    );
     let change_id = value["result"]["unrecorded_changes"][0]["unrecorded_change_id"]
         .as_str()
         .expect("unrecorded change id should be present");
@@ -1934,6 +3080,10 @@ fn guard_post_tool_records_out_of_scope_expected_write() -> Result<(), Box<dyn E
         .len(),
         1
     );
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics
+        .iter()
+        .any(|row| { row.metric_kind == "confirmed_out_of_scope_write" && row.value_total == 1 }));
     Ok(())
 }
 
@@ -1961,7 +3111,7 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
     assert_success(&pre_output);
     let pre_value = json_stdout(&pre_output)?;
     assert_eq!(pre_value["decision"], "warn");
-    assert_reason(&pre_value, "unknown_mutation_risk");
+    assert_reason(&pre_value, "unknown_effect_warning");
     assert!(pre_value["result"]["expected_write"].is_null());
     assert!(list_pending_expected_writes(
         fixture.runtime_home(),
@@ -1970,7 +3120,7 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
     )?
     .is_empty());
 
-    let denied_pre = json!({
+    let policy_cannot_turn_heuristics_into_denial = json!({
         "event_id": "guard_pre_ambiguous_shell_policy_deny",
         "session_id": "guard_session_ambiguous_shell",
         "connection_id": fixture.connection_id(),
@@ -1983,17 +3133,17 @@ fn guard_pre_tool_ambiguous_shell_does_not_create_expected_write() -> Result<(),
         },
         "timestamp": "2026-06-30T05:20:30Z"
     });
-    let denied_output = run_guard(
+    let policy_output = run_guard(
         fixture.runtime_home(),
         fixture.repo_root(),
         ["_hook", "pre-tool", "--repo", fixture.repo_arg()],
-        &denied_pre,
+        &policy_cannot_turn_heuristics_into_denial,
     )?;
-    assert_eq!(denied_output.status.code(), Some(1));
-    let denied_value = json_stdout(&denied_output)?;
-    assert_eq!(denied_value["decision"], "deny");
-    assert_reason(&denied_value, "unknown_mutation_risk");
-    assert!(denied_value["result"]["expected_write"].is_null());
+    assert_success(&policy_output);
+    let policy_value = json_stdout(&policy_output)?;
+    assert_eq!(policy_value["decision"], "warn");
+    assert_reason(&policy_value, "unknown_effect_warning");
+    assert!(policy_value["result"]["expected_write"].is_null());
     assert!(list_pending_expected_writes(
         fixture.runtime_home(),
         fixture.project_id(),
@@ -2581,6 +3731,10 @@ fn guard_prompt_capture_resolves_choice_command() -> Result<(), Box<dyn Error>> 
     assert_eq!(diagnostics.totals.core_reached_count, 1);
     assert_eq!(diagnostics.totals.core_committed_count, 1);
     assert_eq!(diagnostics.totals.replayed_count, 0);
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics.iter().any(|row| {
+        row.metric_kind == "user_roundtrip" && row.value_total == 1 && row.sample_count == 1
+    }));
 
     let replay_event = prompt_event(
         &fixture,
@@ -2607,6 +3761,10 @@ fn guard_prompt_capture_resolves_choice_command() -> Result<(), Box<dyn Error>> 
     assert_eq!(diagnostics.totals.core_reached_count, 2);
     assert_eq!(diagnostics.totals.core_committed_count, 1);
     assert_eq!(diagnostics.totals.replayed_count, 1);
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics.iter().any(|row| {
+        row.metric_kind == "user_roundtrip" && row.value_total == 1 && row.sample_count == 1
+    }));
     Ok(())
 }
 
@@ -3549,7 +4707,8 @@ fn guard_prompt_capture_rejects_multiple_commands() -> Result<(), Box<dyn Error>
 }
 
 #[test]
-fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<(), Box<dyn Error>> {
+fn guard_stop_allows_termination_but_suppresses_completion_when_close_blocks(
+) -> Result<(), Box<dyn Error>> {
     let fixture = GuardCliFixture::new("guard-stop-blocked")?;
     fixture.create_active_task()?;
     let event = json!({
@@ -3566,9 +4725,12 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
         ["_hook", "stop", "--repo", fixture.repo_arg()],
         &event,
     )?;
-    assert_eq!(output.status.code(), Some(1));
+    assert_success(&output);
     let value = json_stdout(&output)?;
-    assert_eq!(value["decision"], "deny");
+    assert_eq!(value["decision"], "allow");
+    assert_eq!(value["allowed"], true);
+    assert_eq!(value["result"]["completion_claim_allowed"], false);
+    assert_eq!(value["result"]["task_state"], "blocked");
     assert_reason(&value, "close_readiness_blocked");
     assert!(value["result"]["close_status"]["close_blockers"]
         .as_array()
@@ -3583,6 +4745,37 @@ fn guard_stop_denies_false_completion_when_close_readiness_blocks() -> Result<()
         value["result"]["close_status"]["authority_receipt"]["task_ref"]["record_id"],
         value["result"]["close_status"]["active_task"]
     );
+    assert_eq!(value["result"]["session_end_receipt_persisted"], true);
+    let managed_session_id = volicord_types::managed_host_session_id(
+        "codex",
+        fixture.connection_id(),
+        "guard_session_stop",
+    )?;
+    let store = CoreProjectStore::open(
+        fixture.runtime_home(),
+        &volicord_types::ProjectId::new(fixture.project_id()),
+    )?;
+    let receipt = store
+        .latest_session_end_receipt_for_session(&managed_session_id)?
+        .expect("Stop should persist a bounded session-end receipt");
+    assert_eq!(receipt.managed_session_id, managed_session_id);
+    assert_eq!(receipt.task_state.as_str(), "blocked");
+    assert!(!receipt.completion_claim_allowed);
+    assert!(receipt.authority_refresh_succeeded);
+    let blocker_codes: Vec<String> = serde_json::from_str(&receipt.close_blocker_codes_json)?;
+    assert!(blocker_codes.contains(&"missing_current_close_basis".to_owned()));
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    for metric_kind in [
+        "stop_call",
+        "authority_refresh",
+        "completion_claim_suppressed",
+    ] {
+        assert!(metrics.iter().any(|row| {
+            row.metric_kind == metric_kind
+                && row.outcome.as_deref() == Some("success")
+                && row.value_total == 1
+        }));
+    }
     Ok(())
 }
 
@@ -3727,8 +4920,10 @@ fn guard_stop_refresh_uses_the_exact_hook_session_watch_baseline() -> Result<(),
             &stop_event,
         )?;
         let value = json_stdout(&output)?;
-        assert_eq!(output.status.code(), Some(1));
-        assert_eq!(value["decision"], "deny");
+        assert_success(&output);
+        assert_eq!(value["decision"], "allow");
+        assert_eq!(value["allowed"], true);
+        assert_eq!(value["result"]["completion_claim_allowed"], false);
         assert_eq!(value["session_id"], exact_session_id);
         assert_reason(&value, "close_readiness_blocked");
         let blocker_codes = close_blocker_codes(&value["result"]["close_status"]);
@@ -3744,7 +4939,7 @@ fn guard_stop_refresh_uses_the_exact_hook_session_watch_baseline() -> Result<(),
 }
 
 #[test]
-fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(), Box<dyn Error>> {
+fn guard_stop_allows_when_authoritative_status_refresh_is_rejected() -> Result<(), Box<dyn Error>> {
     const CORRUPT_OWNER_VALUE: &str =
         "{\"private_refresh_body\":\"must-not-appear-in-stop-output\"";
     let fixture = GuardCliFixture::new("guard-stop-rejected-refresh")?;
@@ -3765,10 +4960,12 @@ fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(
         ["_hook", "stop", "--repo", fixture.repo_arg()],
         &event,
     )?;
-    assert_eq!(output.status.code(), Some(1));
+    assert_success(&output);
     let value = json_stdout(&output)?;
-    assert_eq!(value["decision"], "deny");
-    assert_eq!(value["allowed"], false);
+    assert_eq!(value["decision"], "allow");
+    assert_eq!(value["allowed"], true);
+    assert_eq!(value["result"]["completion_claim_allowed"], false);
+    assert_eq!(value["result"]["task_state"], "authority_unknown");
     assert_reason(&value, "authoritative_refresh_failed");
     assert_eq!(
         value["result"]["close_status"]["authoritative_refresh"],
@@ -3808,7 +5005,7 @@ fn guard_stop_denies_when_authoritative_status_refresh_is_rejected() -> Result<(
 }
 
 #[test]
-fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Error>> {
+fn guard_stop_host_output_always_allows_continue() -> Result<(), Box<dyn Error>> {
     let blocked = GuardCliFixture::new("guard-host-stop-block")?;
     let (blocked_installation_id, blocked_policy_hash) =
         blocked.install_guard_policy_for_host("codex")?;
@@ -3843,11 +5040,9 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
     )?;
     assert_success(&blocked_output);
     let blocked_value = json_stdout(&blocked_output)?;
-    assert_eq!(blocked_value["decision"], "block");
-    assert!(blocked_value["reason"]
-        .as_str()
-        .expect("stop block reason should be a string")
-        .contains("close_readiness_blocked"));
+    assert_eq!(blocked_value["continue"], true);
+    assert!(blocked_value.get("decision").is_none());
+    assert!(blocked_value.get("reason").is_none());
     let receipt_message = blocked_value["systemMessage"]
         .as_str()
         .expect("active Stop output should display the fresh authority receipt");
@@ -3857,6 +5052,7 @@ fn guard_stop_host_output_blocks_and_allows_continue() -> Result<(), Box<dyn Err
     let receipt: Value = serde_json::from_str(receipt_json)?;
     assert_eq!(receipt["project_id"], blocked.project_id());
     assert_eq!(receipt["task_ref"]["record_id"], blocked_task_id);
+    assert_eq!(receipt["completion_claim_allowed"], false);
     assert_eq!(
         receipt["task_ref"]["produced_at_state_version"],
         receipt["state_version"]
@@ -3953,11 +5149,9 @@ fn guard_stop_host_output_reports_status_fallback_when_refresh_fails() -> Result
     )?;
     assert_success(&output);
     let value = json_stdout(&output)?;
-    assert_eq!(value["decision"], "block");
-    assert!(value["reason"]
-        .as_str()
-        .expect("refresh failure should preserve the Stop block reason")
-        .contains("authoritative_refresh_failed"));
+    assert_eq!(value["continue"], true);
+    assert!(value.get("decision").is_none());
+    assert!(value.get("reason").is_none());
     let message = value["systemMessage"]
         .as_str()
         .expect("refresh failure should display the status fallback");
@@ -4017,6 +5211,24 @@ fn guard_stop_exact_replay_preserves_history_but_refreshes_current_authority(
     )?;
     assert_eq!(first_receipt["task_ref"]["record_id"], first_task_id);
     assert!(!stdout(&first_output).contains(PRIVATE_FINAL_PROSE));
+    let first_probes =
+        host_runtime_probe_snapshot_read_only(fixture.runtime_home(), fixture.connection_id())?
+            .expect("first Stop should retain a bounded runtime-probe snapshot");
+    for probe_id in [
+        HostRuntimeProbeId::StopDeliveryAndReplay,
+        HostRuntimeProbeId::FixedUiAuthorityDisclosure,
+    ] {
+        let observation = first_probes
+            .observations
+            .iter()
+            .find(|observation| observation.probe_id == probe_id)
+            .expect("first Stop should make the unrun probe state explicit");
+        assert_eq!(observation.outcome, HostRuntimeProbeOutcome::Unavailable);
+        assert_eq!(
+            observation.failure_class,
+            HostRuntimeProbeFailureClass::ProbeNotRun
+        );
+    }
 
     let guard_event_id = fixture.only_guard_event_id("stop")?;
     let stored_before = guard_event(
@@ -4027,6 +5239,7 @@ fn guard_stop_exact_replay_preserves_history_but_refreshes_current_authority(
     .expect("first Stop should persist one historical GuardEvent");
     assert!(!stored_before.subject_json.contains(PRIVATE_FINAL_PROSE));
     assert!(!stored_before.result_json.contains(PRIVATE_FINAL_PROSE));
+    assert_eq!(session_end_receipt_count(&fixture)?, 1);
 
     let current_task_id = fixture.create_additional_active_task("stop_fresh_replay")?;
     let before_replay = fixture.replay_effect_snapshot()?;
@@ -4053,6 +5266,7 @@ fn guard_stop_exact_replay_preserves_history_but_refreshes_current_authority(
     assert!(replay_output.stdout.len() <= 8 * 1024);
     assert!(!stdout(&replay_output).contains(PRIVATE_FINAL_PROSE));
     assert_eq!(fixture.replay_effect_snapshot()?, before_replay);
+    assert_eq!(session_end_receipt_count(&fixture)?, 1);
     assert_eq!(
         guard_event(
             fixture.runtime_home(),
@@ -4061,6 +5275,41 @@ fn guard_stop_exact_replay_preserves_history_but_refreshes_current_authority(
         )?
         .expect("exact replay should retain the historical GuardEvent"),
         stored_before
+    );
+    let metrics = read_workflow_metric_aggregates(fixture.runtime_home(), fixture.project_id())?;
+    assert!(metrics
+        .iter()
+        .any(|row| row.metric_kind == "stop_call" && row.value_total == 2));
+    assert!(metrics
+        .iter()
+        .any(|row| row.metric_kind == "stop_repeat" && row.value_total == 1));
+    assert!(metrics
+        .iter()
+        .any(|row| row.metric_kind == "authority_refresh" && row.value_total == 1));
+    assert!(!metrics.iter().any(|row| row.metric_kind == "status_reread"));
+    let probes =
+        host_runtime_probe_snapshot_read_only(fixture.runtime_home(), fixture.connection_id())?
+            .expect("managed Stop should retain a bounded runtime-probe snapshot");
+    let probe = |probe_id| {
+        probes
+            .observations
+            .iter()
+            .find(|observation| observation.probe_id == probe_id)
+            .map(|observation| (observation.outcome, observation.failure_class))
+    };
+    assert_eq!(
+        probe(HostRuntimeProbeId::StopDeliveryAndReplay),
+        Some((
+            HostRuntimeProbeOutcome::Failed,
+            HostRuntimeProbeFailureClass::SecondStopRequested,
+        ))
+    );
+    assert_eq!(
+        probe(HostRuntimeProbeId::FixedUiAuthorityDisclosure),
+        Some((
+            HostRuntimeProbeOutcome::Unavailable,
+            HostRuntimeProbeFailureClass::ProbeNotRun,
+        ))
     );
     Ok(())
 }

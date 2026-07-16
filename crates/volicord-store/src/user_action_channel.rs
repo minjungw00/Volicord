@@ -1639,11 +1639,13 @@ mod tests {
         let conn = fixture.conn()?;
         conn.execute(
             "INSERT OR IGNORE INTO tasks (
-                project_id, task_id, created_by_actor_source, mode, work_phase,
+                project_id, task_id, created_by_actor_source, mode,
+                requested_control_level, effective_control_level, control_level_reason, work_phase,
                 acceptance_policy, acceptance_policy_reason, carry_forward_json,
                 lifecycle_phase, created_at, updated_at
             ) VALUES (
-                ?1, 'task_user_action_channel', ?2, 'work', 'shaping',
+                ?1, 'task_user_action_channel', ?2, 'work',
+                'tracked', 'tracked', 'User-action channel fixture control.', 'shaping',
                 'required', 'Channel fixture requires an action.', '[]',
                 'ready', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
             )",

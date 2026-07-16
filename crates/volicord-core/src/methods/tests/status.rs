@@ -40,8 +40,7 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn status_renders_effective_write_ticket_expiration_without_mutating_row(
-) -> Result<(), Box<dyn Error>> {
+fn status_renders_idle_timeout_invalidation_without_mutating_row() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "status_auth_expired")?;
     insert_active_write_ticket_with_timestamps(
@@ -51,7 +50,7 @@ fn status_renders_effective_write_ticket_expiration_without_mutating_row(
         "wa_status_future",
         2,
         "2026-06-18T00:00:00.000Z",
-        "2999-01-01T00:00:00.000Z",
+        "2026-06-18T00:15:00Z",
     )?;
     let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
     let clock = ManualClock::at("2026-06-18T00:15:00Z");
@@ -69,11 +68,15 @@ fn status_renders_effective_write_ticket_expiration_without_mutating_row(
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
         response.response_value["write_ticket_summary"]["status"],
-        "expired"
+        "invalidated"
     );
     assert_eq!(
         response.response_value["active_task"]["write_ticket_summary"]["status"],
-        "expired"
+        "invalidated"
+    );
+    assert_eq!(
+        response.response_value["write_ticket_summary"]["invalidation_reason"],
+        "idle_timeout"
     );
     assert_eq!(write_ticket_status(&harness, "wa_status_future")?, "active");
     assert_eq!(harness.counts()?, before);
@@ -98,7 +101,7 @@ fn status_rejects_unrepresentable_stored_write_ticket_expiry_without_effect(
     )?;
     harness.conn()?.execute(
         "UPDATE write_tickets
-            SET expires_at = '9999-12-31T23:59:59-23:59'
+            SET idle_expires_at = '9999-12-31T23:59:59-23:59'
           WHERE project_id = ?1
             AND write_ticket_id = ?2",
         rusqlite::params![PROJECT_ID, write_ticket_id],
@@ -128,7 +131,7 @@ fn status_rejects_unrepresentable_stored_write_ticket_expiry_without_effect(
         &response,
         "write_tickets",
         write_ticket_id,
-        "expires_at",
+        "idle_expires_at",
         &harness.runtime_home_path,
     );
     assert_eq!(harness.counts()?, before);
@@ -190,7 +193,7 @@ fn status_selects_latest_write_ticket_by_basis_state_version_when_ids_disagree(
 
     assert_eq!(
         response.response_value["write_ticket_summary"]["status"],
-        "stale"
+        "active"
     );
     assert_eq!(
         response.response_value["write_ticket_summary"]["basis_state_version"],
@@ -199,6 +202,110 @@ fn status_selects_latest_write_ticket_by_basis_state_version_when_ids_disagree(
     assert_eq!(
         response.response_value["write_ticket_summary"]["write_ticket_ref"]["record_id"],
         "wa_a_new"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn status_projects_control_policy_ticket_basis_invalidation_and_completion_claim(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    harness.set_workflow_policy(light_workflow_policy())?;
+    let policy_state_version = harness.counts()?.state_version;
+    let mut intake = intake_request(
+        "req_status_authority_contract_task",
+        "idem_status_authority_contract_task",
+        false,
+        Some(policy_state_version),
+        RequestedMode::Direct,
+    );
+    intake.requested_control_level = RequestedControlLevel::Light;
+    let created = harness
+        .service
+        .intake(intake, invocation(OperationCategory::AgentWorkflow))?;
+    let task_id = response_record_id(&created.response_value, "task_ref");
+    let scoped = harness.service.update_scope(
+        update_scope_request(
+            "req_status_authority_contract_scope",
+            "idem_status_authority_contract_scope",
+            false,
+            Some(policy_state_version + 1),
+            &task_id,
+            ChangeUnitOperation::CreateCurrent,
+            "Initial status contract scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let change_unit_id = response_record_id(&scoped.response_value, "change_unit_ref");
+    let prepared = harness.service.prepare_write(
+        prepare_write_request(
+            "req_status_authority_contract_prepare",
+            "idem_status_authority_contract_prepare",
+            Some(policy_state_version + 2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let validity_basis = prepared.response_value["write_ticket"]["validity_basis"].clone();
+    assert_eq!(validity_basis["task_id"], task_id);
+    assert_eq!(validity_basis["change_unit_id"], change_unit_id);
+    assert_eq!(validity_basis["baseline_ref"], "baseline_test");
+    assert_eq!(validity_basis["approval_basis_refs"], json!([]));
+
+    harness.service.update_scope(
+        update_scope_request(
+            "req_status_authority_contract_change",
+            "idem_status_authority_contract_change",
+            false,
+            Some(policy_state_version + 3),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Materially changed status contract scope.",
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let before = harness.counts()?;
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_authority_contract_read",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(OperationCategory::Read),
+    )?;
+
+    let active_task = &status.response_value["active_task"];
+    assert_eq!(active_task["requested_control_level"], "light");
+    assert_eq!(active_task["effective_control_level"], "light");
+    assert_eq!(
+        active_task["control_level_reason"],
+        "Core selected effective control `light` from the caller request and project workflow policy."
+    );
+    assert_eq!(active_task["project_policy"]["policy_version"], 1);
+    assert_eq!(active_task["project_policy"]["source"], "test_fixture");
+    assert_eq!(
+        status.response_value["write_ticket_summary"]["validity_basis"],
+        validity_basis
+    );
+    assert_eq!(
+        status.response_value["write_ticket_summary"]["invalidation_reason"],
+        "scope_revision_changed"
+    );
+    assert_eq!(
+        active_task["write_ticket_summary"],
+        status.response_value["write_ticket_summary"]
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["completion_claim_allowed"],
+        false
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -682,6 +789,10 @@ fn status_ready_close_uses_empty_blockers_only_after_computation() -> Result<(),
     assert_eq!(
         status.response_value["authority_receipt"]["next_action"]["owner_method"],
         "volicord.close_task"
+    );
+    assert_eq!(
+        status.response_value["authority_receipt"]["completion_claim_allowed"],
+        true
     );
     assert_eq!(harness.counts()?, before);
     Ok(())

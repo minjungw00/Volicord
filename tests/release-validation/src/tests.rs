@@ -461,14 +461,14 @@ fn exact_matrix_gate_and_separate_audit_pass() {
     let manifest = fixture.run_gate("manifest.json", EVALUATED_AT);
     assert_eq!(manifest.verdict, GateVerdict::Pass);
     assert_eq!(manifest.cells.len(), 12);
-    assert_eq!(manifest.requested_verified_claims.len(), 10);
+    assert_eq!(manifest.requested_verified_claims.len(), 12);
     assert_eq!(
         manifest
             .cells
             .iter()
             .filter(|cell| cell.derived_status == HostFeatureSupportStatus::UnsupportedByHost)
             .count(),
-        2
+        0
     );
 
     let audit = run_audit(
@@ -535,23 +535,15 @@ fn exact_matrix_gate_and_separate_audit_pass() {
 
 #[cfg(unix)]
 #[test]
-fn reviewed_codex_version_matrix_is_enforced_by_gate_and_audit() {
+fn reviewed_codex_version_is_a_release_coordinate_not_an_implementation_gate() {
     let mut fixture = Fixture::new();
     fixture.set_codex_host_version(REVIEWED_CODEX_HOST_VERSION);
 
     let manifest = fixture.run_gate("reviewed-codex.json", EVALUATED_AT);
     assert_eq!(manifest.schema, MANIFEST_SCHEMA);
     assert_eq!(manifest.verdict, GateVerdict::Pass);
-    assert_eq!(manifest.requested_verified_claims.len(), 9);
-    let expected = [
-        HostFeatureImplementation::Implemented,
-        HostFeatureImplementation::UnsupportedByHost,
-        HostFeatureImplementation::Implemented,
-        HostFeatureImplementation::Implemented,
-        HostFeatureImplementation::UnsupportedByHost,
-        HostFeatureImplementation::UnsupportedByHost,
-    ];
-    for (feature, expected) in HostFeature::ALL.into_iter().zip(expected) {
+    assert_eq!(manifest.requested_verified_claims.len(), 12);
+    for feature in HostFeature::ALL {
         let cell = manifest
             .cells
             .iter()
@@ -573,12 +565,7 @@ fn reviewed_codex_version_matrix_is_enforced_by_gate_and_audit() {
         assert_eq!(cell.raw.environment.client_version, cell.raw.client_version);
         assert_eq!(
             cell.raw.implementation_disposition,
-            match expected {
-                HostFeatureImplementation::Implemented => ImplementationDisposition::Implemented,
-                HostFeatureImplementation::UnsupportedByHost => {
-                    ImplementationDisposition::UnsupportedByHost
-                }
-            },
+            ImplementationDisposition::Implemented,
             "{}",
             feature.as_str()
         );
@@ -661,46 +648,30 @@ fn implemented_client_identity_missing_downgrades_gate_and_independent_audit() {
 
 #[cfg(unix)]
 #[test]
-fn static_unsupported_cells_may_omit_client_identity_with_non_null_host() {
+fn reviewed_codex_cells_keep_exact_client_identity_for_every_implemented_feature() {
     let mut fixture = Fixture::new();
     fixture.set_codex_host_version(REVIEWED_CODEX_HOST_VERSION);
-    for index in 0..fixture.cells.len() {
-        if fixture.cells[index].host_kind == HostKind::Codex
-            && fixture.cells[index].implementation_disposition
-                == ImplementationDisposition::UnsupportedByHost
-        {
-            fixture.cells[index].client_name = RequiredNullable::null();
-            fixture.cells[index].client_version = RequiredNullable::null();
-            fixture.cells[index].environment.client_name = RequiredNullable::null();
-            fixture.cells[index].environment.client_version = RequiredNullable::null();
-            fixture.write_cell(index);
-        }
-    }
 
-    let manifest = fixture.run_gate("static-unsupported-null-client.json", EVALUATED_AT);
+    let manifest = fixture.run_gate("reviewed-codex-client-identity.json", EVALUATED_AT);
     assert_eq!(manifest.verdict, GateVerdict::Pass);
     assert!(manifest
         .cells
         .iter()
-        .filter(|cell| {
-            cell.raw.host_kind == HostKind::Codex
-                && cell.raw.implementation_disposition
-                    == ImplementationDisposition::UnsupportedByHost
-        })
+        .filter(|cell| { cell.raw.host_kind == HostKind::Codex })
         .all(|cell| {
-            cell.raw.host_version.as_ref().is_some()
-                && cell.raw.client_name.as_ref().is_none()
-                && cell.raw.client_version.as_ref().is_none()
-                && cell.derived_status == HostFeatureSupportStatus::UnsupportedByHost
-                && !cell
-                    .finding_codes
-                    .iter()
-                    .any(|code| code.starts_with("client_identity_"))
+            cell.raw.implementation_disposition == ImplementationDisposition::Implemented
+                && cell.raw.host_version.as_ref().map(String::as_str)
+                    == Some(REVIEWED_CODEX_HOST_VERSION)
+                && cell.raw.client_name.as_ref().map(String::as_str)
+                    == Some(REVIEWED_CODEX_MCP_CLIENT_NAME)
+                && cell.raw.client_version.as_ref().map(String::as_str)
+                    == Some(REVIEWED_CODEX_HOST_VERSION)
+                && cell.derived_status == HostFeatureSupportStatus::Verified
         }));
 
     let audit = fixture.run_audit(
-        "static-unsupported-null-client.json",
-        "static-unsupported-null-client-audit.json",
+        "reviewed-codex-client-identity.json",
+        "reviewed-codex-client-identity-audit.json",
     );
     assert_eq!(audit.audit_verdict, AuditVerdict::Pass);
     assert_eq!(audit.recalculated_verdict, GateVerdict::Pass);
@@ -1868,12 +1839,8 @@ fn unavailable_implemented_cell_rejects_passing_assertions() {
 fn static_unsupported_cells_cannot_request_verified() {
     let fixture = Fixture::new();
     let mut cells = fixture.cells.clone();
-    let index = cells
-        .iter()
-        .position(|cell| {
-            cell.implementation_disposition == ImplementationDisposition::UnsupportedByHost
-        })
-        .expect("static unsupported cell");
+    let index = fixture.implemented_cell_index();
+    cells[index].implementation_disposition = ImplementationDisposition::UnsupportedByHost;
     cells[index].requested_verified = true;
     let error = evaluate_release_matrix(
         &fixture.context,
@@ -1887,7 +1854,7 @@ fn static_unsupported_cells_cannot_request_verified() {
 
 #[cfg(unix)]
 #[test]
-fn static_unsupported_coordinate_mismatches_fail_matrix_invariants() {
+fn implemented_coordinate_mismatches_fail_matrix_invariants() {
     let cases = [
         ("candidate", "all_cell_candidate_coordinates_exact"),
         ("environment", "all_cell_environment_coordinates_exact"),
@@ -1895,13 +1862,7 @@ fn static_unsupported_coordinate_mismatches_fail_matrix_invariants() {
 
     for (case, expected_invariant) in cases {
         let mut fixture = Fixture::new();
-        let index = fixture
-            .cells
-            .iter()
-            .position(|cell| {
-                cell.implementation_disposition == ImplementationDisposition::UnsupportedByHost
-            })
-            .expect("static unsupported cell");
+        let index = fixture.implemented_cell_index();
         match case {
             "candidate" => fixture.cells[index].candidate_id.push_str("-other"),
             "environment" => {
@@ -1915,7 +1876,7 @@ fn static_unsupported_coordinate_mismatches_fail_matrix_invariants() {
         }
         fixture.write_cell(index);
 
-        let manifest_name = format!("static-unsupported-{case}-mismatch.json");
+        let manifest_name = format!("implemented-{case}-mismatch.json");
         let manifest = fixture.run_gate(&manifest_name, EVALUATED_AT);
         assert_eq!(manifest.verdict, GateVerdict::Fail);
         assert!(
@@ -2413,9 +2374,8 @@ fn result_root_lease_rejects_a_shape_invalid_prior_cell_before_the_next_attempt(
 
     let mut invalid = fixture
         .cells
-        .iter()
-        .find(|cell| cell.evidence_artifact_path.as_ref().is_none())
-        .expect("fixture includes a static unsupported cell")
+        .first()
+        .expect("fixture includes a release cell")
         .clone();
     invalid.schema = "wrong-cell-schema".to_owned();
     fs::write(

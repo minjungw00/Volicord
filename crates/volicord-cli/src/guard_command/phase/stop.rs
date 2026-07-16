@@ -5,15 +5,18 @@ use volicord_core::{
     validate_authority_status, AuthorityStatusExpectation, CoreService, InvocationContext,
 };
 use volicord_store::bootstrap::ProjectRecord;
+use volicord_store::{core_pipeline::CoreProjectStore, workflow_records::SessionEndReceiptInsert};
 use volicord_types::{
-    ActorSource, ChangeUnitId, ErrorCode, GuardDecision, OperationCategory, ProjectId, RequestId,
-    ResponseKind, StatusInclude, StatusRequest, StatusResult, TaskId, ToolEnvelope,
+    ActorSource, AuthorityNextActor, ChangeUnitId, ErrorCode, GuardDecision, OperationCategory,
+    ProjectId, RequestId, ResponseKind, SessionEndTaskState, StatusInclude, StatusRequest,
+    StatusResult, TaskId, ToolEnvelope,
 };
 
 use super::GuardPhaseResult;
 use crate::guard_command::{
     args::GuardInput,
     context::{guard_state_summary, GuardReason, GuardStateSummary},
+    core_current_timestamp,
     envelope::GuardEnvelope,
     render::{context_json, reasons_json},
     stable_id, GuardCommandError,
@@ -26,25 +29,78 @@ pub(in crate::guard_command) fn handle_stop(
     input: &GuardInput,
     invocation_binding_basis: &str,
 ) -> Result<GuardPhaseResult, GuardCommandError> {
-    let summary = guard_state_summary(runtime_home, project, envelope, input)?;
-    let (decision, reasons, close_status) = stop_decision(
+    let summary = match guard_state_summary(runtime_home, project, envelope, input) {
+        Ok(summary) => summary,
+        Err(_) => {
+            let mut disposition = refresh_failure_disposition(
+                "Volicord could not read current project authority for this Stop event.",
+                Value::Null,
+            );
+            disposition.session_end_receipt_persisted =
+                persist_stop_receipt(runtime_home, project, envelope, &disposition);
+            return Ok(stop_result(disposition, Value::Null));
+        }
+    };
+    let mut disposition = stop_decision(
         runtime_home,
         project,
         envelope,
         &summary,
         invocation_binding_basis,
-    )?;
-    Ok(GuardPhaseResult::new(
-        decision,
+    );
+    disposition.session_end_receipt_persisted =
+        persist_stop_receipt(runtime_home, project, envelope, &disposition);
+    Ok(stop_result(disposition, context_json(&summary)))
+}
+
+fn stop_result(disposition: StopDisposition, context: Value) -> GuardPhaseResult {
+    GuardPhaseResult::new(
+        GuardDecision::Allow,
         json!({
-            "decision": decision.as_str(),
-            "allowed": decision != GuardDecision::Deny,
-            "reasons": reasons_json(&reasons),
-            "close_status": close_status,
-            "context": context_json(&summary),
+            "decision": "allow",
+            "allowed": true,
+            "completion_claim_allowed": disposition.completion_claim_allowed,
+            "task_state": disposition.task_state.as_str(),
+            "reasons": reasons_json(&disposition.reasons),
+            "next_actor": disposition.next_actor.as_str(),
+            "authoritative_refresh_succeeded": disposition.authoritative_refresh_succeeded,
+            "session_end_receipt_persisted": disposition.session_end_receipt_persisted,
+            "close_status": disposition.close_status,
+            "context": context,
             "enforcement_level": "cooperative_detective"
         }),
-    ))
+    )
+}
+
+struct StopDisposition {
+    reasons: Vec<GuardReason>,
+    close_status: Value,
+    close_blocker_codes: Vec<String>,
+    completion_claim_allowed: bool,
+    task_state: SessionEndTaskState,
+    next_actor: AuthorityNextActor,
+    authoritative_refresh_succeeded: bool,
+    session_end_receipt_persisted: bool,
+}
+
+fn refresh_failure_disposition(message: &str, _context: Value) -> StopDisposition {
+    StopDisposition {
+        reasons: vec![GuardReason {
+            code: "authoritative_refresh_failed",
+            message: message.to_owned(),
+            severity: "incomplete",
+        }],
+        close_status: json!({
+            "active_task": null,
+            "authoritative_refresh": {"error_codes": []}
+        }),
+        close_blocker_codes: Vec::new(),
+        completion_claim_allowed: false,
+        task_state: SessionEndTaskState::AuthorityUnknown,
+        next_actor: AuthorityNextActor::None,
+        authoritative_refresh_succeeded: false,
+        session_end_receipt_persisted: false,
+    }
 }
 
 fn stop_decision(
@@ -53,13 +109,18 @@ fn stop_decision(
     envelope: &GuardEnvelope,
     summary: &GuardStateSummary,
     invocation_binding_basis: &str,
-) -> Result<(GuardDecision, Vec<GuardReason>, Value), GuardCommandError> {
+) -> StopDisposition {
     let Some(task_id) = summary.active_task_id.as_deref() else {
-        return Ok((
-            GuardDecision::Allow,
-            Vec::new(),
-            json!({"active_task": null, "close_blockers": []}),
-        ));
+        return StopDisposition {
+            reasons: Vec::new(),
+            close_status: json!({"active_task": null, "close_blockers": []}),
+            close_blocker_codes: Vec::new(),
+            completion_claim_allowed: false,
+            task_state: SessionEndTaskState::None,
+            next_actor: AuthorityNextActor::None,
+            authoritative_refresh_succeeded: true,
+            session_end_receipt_persisted: false,
+        };
     };
     let mut invocation = InvocationContext::new(
         ProjectId::new(&project.project_id),
@@ -70,7 +131,7 @@ fn stop_decision(
     if let Some(session_id) = envelope.session_id.as_deref() {
         invocation = invocation.with_session_id(session_id);
     }
-    let response = CoreService::new(runtime_home).status(
+    let response = match CoreService::new(runtime_home).status(
         StatusRequest {
             envelope: ToolEnvelope {
                 project_id: ProjectId::new(&project.project_id),
@@ -95,20 +156,41 @@ fn stop_decision(
             },
         },
         invocation,
-    )?;
+    ) {
+        Ok(response) => response,
+        Err(_) => {
+            return StopDisposition {
+                reasons: vec![GuardReason {
+                    code: "authoritative_refresh_failed",
+                    message: "Volicord could not confirm current authoritative status for the active task.".to_owned(),
+                    severity: "incomplete",
+                }],
+                close_status: json!({
+                    "active_task": task_id,
+                    "authoritative_refresh": {"error_codes": []}
+                }),
+                close_blocker_codes: Vec::new(),
+                completion_claim_allowed: false,
+                task_state: SessionEndTaskState::AuthorityUnknown,
+                next_actor: AuthorityNextActor::None,
+                authoritative_refresh_succeeded: false,
+                session_end_receipt_persisted: false,
+            };
+        }
+    };
     let mut reasons = Vec::new();
     if summary.pending_user_action_count > 0 {
         reasons.push(GuardReason {
             code: "pending_user_actions",
             message: "User-owned actions are still pending for the active task.".to_owned(),
-            severity: "deny",
+            severity: "incomplete",
         });
     }
     if summary.unresolved_unrecorded_change_count > 0 {
         reasons.push(GuardReason {
             code: "unresolved_unrecorded_changes",
             message: "Observed Product Repository changes still need reconciliation.".to_owned(),
-            severity: "deny",
+            severity: "incomplete",
         });
     }
     let response_kind = recognized_response_kind(&response.response_value);
@@ -122,20 +204,25 @@ fn stop_decision(
                 message:
                     "Volicord could not confirm current authoritative status for the active task."
                         .to_owned(),
-                severity: "deny",
+                severity: "incomplete",
             },
         );
-        return Ok((
-            GuardDecision::Deny,
+        return StopDisposition {
             reasons,
-            json!({
+            close_status: json!({
                 "active_task": task_id,
                 "authoritative_refresh": {
                     "response_kind": response_kind.map(response_kind_label),
                     "error_codes": public_error_codes(&response.response_value)
                 }
             }),
-        ));
+            close_blocker_codes: Vec::new(),
+            completion_claim_allowed: false,
+            task_state: SessionEndTaskState::AuthorityUnknown,
+            next_actor: AuthorityNextActor::None,
+            authoritative_refresh_succeeded: false,
+            session_end_receipt_persisted: false,
+        };
     };
     let authority_receipt = status_result
         .authority_receipt
@@ -150,26 +237,80 @@ fn stop_decision(
             GuardReason {
                 code: "close_readiness_blocked",
                 message: "Close readiness has blockers for the active task.".to_owned(),
-                severity: "deny",
+                severity: "incomplete",
             },
         );
     }
-    let decision = if reasons.iter().any(|reason| reason.severity == "deny") {
-        GuardDecision::Deny
-    } else {
-        GuardDecision::Allow
-    };
-    Ok((
-        decision,
+    let completion_claim_allowed = authority_receipt.completion_claim_allowed
+        && close_blockers.is_empty()
+        && reasons.is_empty();
+    let next_actor = authority_receipt.next_actor;
+    let close_blocker_codes = close_blockers
+        .iter()
+        .map(|blocker| blocker.code.clone())
+        .collect::<Vec<_>>();
+    StopDisposition {
         reasons,
-        json!({
+        close_status: json!({
             "active_task": task_id,
             "status_summary": status_result.status_summary,
             "close_state": status_result.close_state,
             "close_blockers": close_blockers,
             "authority_receipt": authority_receipt
         }),
-    ))
+        close_blocker_codes,
+        completion_claim_allowed,
+        task_state: if completion_claim_allowed {
+            SessionEndTaskState::Ready
+        } else {
+            SessionEndTaskState::Blocked
+        },
+        next_actor,
+        authoritative_refresh_succeeded: true,
+        session_end_receipt_persisted: false,
+    }
+}
+
+fn persist_stop_receipt(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+    envelope: &GuardEnvelope,
+    disposition: &StopDisposition,
+) -> bool {
+    let Some(session_id) = envelope.session_id.as_deref() else {
+        return false;
+    };
+    let Ok(close_blocker_codes_json) = serde_json::to_string(&disposition.close_blocker_codes)
+    else {
+        return false;
+    };
+    let Ok(mut store) = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))
+    else {
+        return false;
+    };
+    let Ok(created_at) = core_current_timestamp(&store) else {
+        return false;
+    };
+    store
+        .insert_session_end_receipt(SessionEndReceiptInsert {
+            session_end_receipt_id: stable_id(
+                "session_end_receipt",
+                &[&project.project_id, session_id, &envelope.event_id],
+            ),
+            managed_session_id: session_id.to_owned(),
+            active_task_id: disposition
+                .close_status
+                .get("active_task")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            task_state: disposition.task_state,
+            close_blocker_codes_json,
+            next_actor: disposition.next_actor,
+            completion_claim_allowed: disposition.completion_claim_allowed,
+            authority_refresh_succeeded: disposition.authoritative_refresh_succeeded,
+            created_at: created_at.to_string(),
+        })
+        .is_ok()
 }
 
 fn authoritative_status_result(

@@ -123,6 +123,19 @@ fn status_result_fields(
         .map(|profile| guarantee_display_from_profile(profile, verified_invocation, state_version));
 
     if let Some(task) = task {
+        let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
+        let resolved_control = resolve_task_control_authority(task, &workflow_policy)
+            .map_err(CorePipelineError::from)?;
+        let mut resolved_task = task.clone();
+        if resolved_control.control_raised || resolved_control.acceptance_raised {
+            resolved_task.effective_control_level =
+                resolved_control.effective_control_level.as_str().to_owned();
+            resolved_task.control_level_reason = resolved_control.control_level_reason;
+            resolved_task.acceptance_policy =
+                acceptance_policy_storage(resolved_control.acceptance_policy).to_owned();
+            resolved_task.acceptance_policy_reason = resolved_control.acceptance_policy_reason;
+        }
+        let task = &resolved_task;
         let task_id = TaskId::new(task.task_id.clone());
         let current_change_unit = store
             .current_change_unit(&task_id)
@@ -242,6 +255,7 @@ fn status_result_fields(
         }
         if include.task {
             let state = build_state_summary(SummaryBuild {
+                store,
                 project_id,
                 state_version,
                 task,
@@ -283,6 +297,12 @@ fn status_result_fields(
         let product_file_write_observed = latest_run
             .as_ref()
             .is_some_and(|record| record.observed_changes.product_file_write_observed);
+        let completion_claim_allowed = current_close_basis.is_some()
+            && effective_close_blockers.is_empty()
+            && matches!(
+                effective_close_state,
+                CloseState::Ready | CloseState::Closed
+            );
         authority_receipt = Some(AuthorityReceipt {
             project_id: project_id.clone(),
             state_version,
@@ -294,6 +314,7 @@ fn status_result_fields(
             evidence_gate: Some(close_plan.evidence_gate),
             close_state: status_close_state(effective_close_state),
             close_blockers: effective_close_blockers,
+            completion_claim_allowed,
             next_actor: AuthorityNextActor::None,
             next_action: None,
         });

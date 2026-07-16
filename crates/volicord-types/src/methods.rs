@@ -26,9 +26,10 @@ use crate::values::{
     CloseState, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
     EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome,
     MethodName, MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState,
-    RequestedMode, ResumePolicy, RunKind, StatusCloseState, StatusDetailLevel,
-    UnrecordedChangeResolutionBasis, UserActionChannelKind, UserActionKind, UserActionOptionAction,
-    UserActionRequiredFor, UserActionStatus, UtcTimestamp, WriteTicketEffect,
+    RequestedControlLevel, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
+    StatusDetailLevel, UnrecordedChangeResolutionBasis, UserActionChannelKind, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -445,6 +446,8 @@ pub struct IntakeRequest {
     pub envelope: ToolEnvelope,
     pub plain_language_request: String,
     pub requested_mode: RequestedMode,
+    #[serde(default)]
+    pub requested_control_level: RequestedControlLevel,
     pub resume_policy: ResumePolicy,
     pub acceptance_policy: RequiredNullable<AcceptancePolicy>,
     pub lineage: RequiredNullable<TaskLineageInput>,
@@ -473,6 +476,8 @@ pub struct McpIntakeArguments {
     pub detail: MutationDetailLevel,
     pub plain_language_request: String,
     pub requested_mode: RequestedMode,
+    #[serde(default)]
+    pub requested_control_level: RequestedControlLevel,
     pub resume_policy: ResumePolicy,
     pub acceptance_policy: RequiredNullable<AcceptancePolicy>,
     pub lineage: RequiredNullable<TaskLineageInput>,
@@ -979,6 +984,8 @@ pub struct RecordRunRequest {
     pub run_id: RequiredNullable<RunId>,
     pub baseline_ref: BaselineRef,
     pub write_ticket_id: RequiredNullable<WriteTicketId>,
+    #[serde(default, skip_serializing_if = "RequiredNullable::is_none")]
+    pub performed_operation: RequiredNullable<String>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
     pub artifact_inputs: Vec<ArtifactInput>,
@@ -1013,6 +1020,8 @@ pub struct McpRecordRunArguments {
     pub baseline_ref: BaselineRef,
     #[serde(default)]
     pub write_ticket_id: RequiredNullable<WriteTicketId>,
+    #[serde(default)]
+    pub performed_operation: RequiredNullable<String>,
     pub summary: String,
     pub observed_changes: ObservedChanges,
     #[serde(default)]
@@ -1369,6 +1378,7 @@ pub struct CloseTaskResult {
     pub evidence_summary: Option<EvidenceSummary>,
     pub evidence_gate: EvidenceGateSummary,
     pub artifact_refs: Vec<ArtifactRef>,
+    pub authority_receipt: AuthorityReceipt,
 }
 
 /// Returns the generated JSON Schema for one public method request shape.

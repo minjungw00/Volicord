@@ -8,12 +8,15 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
+    core_pipeline::CoreProjectStore,
     guards::GuardInstallationRecord,
     inspection::{
         AgentConnectionInspectionRecord, GuardInstallationInspectionRecord, ProjectInspectionRecord,
     },
 };
-use volicord_types::{host_hook_capability_matches_owner_binding, HostHookCapabilityOwnerBinding};
+use volicord_types::{
+    host_hook_capability_matches_owner_binding, HostHookCapabilityOwnerBinding, ProjectId,
+};
 
 use crate::host_integration::{
     contracts::{
@@ -412,11 +415,12 @@ pub(crate) fn guard_file_findings(capability_json: &str) -> GuardFileFindings {
 }
 
 pub(crate) fn guard_file_findings_for_installation(
+    runtime_home: &Path,
     installation: &GuardInstallationRecord,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
 ) -> GuardFileFindings {
-    let matched_repo_roots = projects
+    let matched_projects = projects
         .iter()
         .filter(|project| {
             installation
@@ -429,10 +433,9 @@ pub(crate) fn guard_file_findings_for_installation(
                         .as_deref()
                         .is_some_and(|id| id == project.project_id))
         })
-        .map(|project| project.project.repo_root.clone())
         .collect::<Vec<_>>();
-    let project_repo_roots = if matched_repo_roots.len() == 1 {
-        matched_repo_roots
+    let project_repo_roots = if matched_projects.len() == 1 {
+        vec![matched_projects[0].project.repo_root.clone()]
     } else {
         Vec::new()
     };
@@ -448,7 +451,46 @@ pub(crate) fn guard_file_findings_for_installation(
             && installation.project_id.is_none(),
         strict_authority: false,
     };
-    guard_file_findings_with_context(&installation.host_capability_json, Some(context))
+    let mut findings =
+        guard_file_findings_with_context(&installation.host_capability_json, Some(context));
+    if let [project] = matched_projects.as_slice() {
+        audit_authoritative_project_policy(
+            runtime_home,
+            &project.project.project_id,
+            &project.project.repo_root,
+            &connection.intent,
+            &mut findings,
+        );
+    }
+    findings
+}
+
+fn audit_authoritative_project_policy(
+    runtime_home: &Path,
+    project_id: &str,
+    repo_root: &Path,
+    connection_intent: &str,
+    findings: &mut GuardFileFindings,
+) {
+    let path = repo_root.join(super::files::VOLICORD_POLICY_FILE);
+    let path_text = path.display().to_string();
+    let valid = (|| {
+        let store =
+            CoreProjectStore::open_read_only(runtime_home, &ProjectId::new(project_id)).ok()?;
+        let authority = store.project_workflow_policy().ok()??;
+        let text = super::files::read_managed_text(repo_root, &path).ok()??;
+        let policy = serde_json::from_str::<Value>(&text).ok()?;
+        validate_policy_schema(&policy, connection_intent).ok()?;
+        let fingerprint = policy_hash(&policy).ok()?;
+        (authority.policy_schema == super::files::VOLICORD_POLICY_SCHEMA
+            && fingerprint == authority.policy_fingerprint)
+            .then_some(())
+    })()
+    .is_some();
+    if !valid {
+        findings.broken_files.push(path_text);
+        findings.set_kind_state(HostIntegrationFileKind::VolicordPolicy, "broken");
+    }
 }
 
 pub(crate) fn host_hook_capability_binding_valid_for_installation(
@@ -2217,7 +2259,7 @@ pub(crate) fn hook_wrapper_comment_value<'a>(content: &'a str, key: &str) -> Opt
 }
 
 pub(crate) fn policy_hash(policy: &Value) -> Result<String, serde_json::Error> {
-    serde_json::to_string(policy).map(|text| sha256_text(&text))
+    volicord_types::canonical_json_sha256(policy).map(|hash| hash.into_inner())
 }
 
 pub(crate) fn sha256_text(text: &str) -> String {
